@@ -2,6 +2,25 @@ interface CustomOptions {
   query?: Record<string, any>;
 }
 
+
+export const cachePolicy = process.env.NEXT_PUBLIC_CACHE_POLICY;
+
+
+export const getCachePolicy = () => {
+  switch (cachePolicy) {
+    case "no-cache":
+      return "no-store";
+    case "cache":
+      return "default";
+    case "cache-first":
+      return "default";
+    case "network-only":
+      return "no-store";
+    default:
+      return "default";
+  }
+}
+
 export async function customFetch(url: string, options?: CustomOptions): Promise<Response> {
   const params = new URLSearchParams();
 
@@ -31,7 +50,7 @@ export async function customFetch(url: string, options?: CustomOptions): Promise
 
   const urlWithParams = `${url}?${params.toString()}`;
 
-  const response = await fetch(urlWithParams, { cache: "no-store" });
+  const response = await fetch(urlWithParams, { cache: getCachePolicy() });
 
   if (!response.ok) {
     const error = await response.json();

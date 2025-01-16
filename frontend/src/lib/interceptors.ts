@@ -4,7 +4,6 @@ import { IAuthResponse } from "@/types/auth.types";
 import { getAccessToken, removeFromStorage, saveTokenStorage } from "@/services/cookie.service";
 import { authService } from "@/services/auth.service";
 
-export const PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL;
 export const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 const options: CreateAxiosDefaults = {

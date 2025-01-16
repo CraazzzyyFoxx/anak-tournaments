@@ -61,6 +61,10 @@ services:
       - traefik.http.routers.backend-http.entrypoints=http
     volumes:
       - ./logs/backend:/logs
+    env_file:
+      - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - redis
     networks:
@@ -83,6 +87,10 @@ services:
       - traefik.http.routers.parser-api-http.entrypoints=http
       - traefik.http.services.parser-api-http.loadbalancer.server.port=8081
     command: uvicorn main:app --host 0.0.0.0 --port 8081 --loop uvloop
+    env_file:
+      - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./logs/parser:/logs
     networks:
@@ -96,6 +104,10 @@ services:
       context: ./backend
       args:
         APP_PATH: parser
+    env_file:
+      - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - redis
     volumes:
@@ -116,6 +128,7 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
         NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
         CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
+        NEXT_PUBLIC_CACHE_POLICY: ${NEXT_PUBLIC_CACHE_POLICY}
     labels:
       - traefik.enable=true
       - traefik.docker.network=traefik-public
