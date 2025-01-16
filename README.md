@@ -1,8 +1,6 @@
 # Anak`s Tournaments Statistics
 
-[![Build Status](https://github.com/TeKrop/overfast-api/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/TeKrop/overfast-api/actions/workflows/build.yml)
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=TeKrop_overfast-api&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=TeKrop_overfast-api)
-![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/TeKrop/1362ebafcd51d3f65dae7935b1d322eb/raw/pytest.json)
+![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/CraazzzyyFoxx/1362ebafcd51d3f65dae7935b1d322eb/raw/pytest.json)
 [![Issues](https://img.shields.io/github/issues/CraazzzyyFoxx/anak-tournaments)](https://github.com/CraazzzyyFoxx/anak-tournaments)
 [![Documentation](https://img.shields.io/badge/documentation-yes-brightgreen.svg)](https://aqt.craazzzyyfoxx.me/api/redoc)
 [![License: MIT](https://img.shields.io/github/license/CraazzzyyFoxx/anak-tournaments)](https://github.com/CraazzzyyFoxx/anak-tournaments/blob/master/LICENSE)
@@ -107,4 +105,4 @@ All data provided by the API is owned by Anakq and their community.
 
 Copyright © 2024-2025 [Andrey Podyanov](https://github.com/CraazzzyyFoxx).
 
-This project is [MIT](https://github.com/TeKrop/overfast-api/blob/master/LICENSE) licensed.
+This project is [MIT](https://github.com/CraazzzyyFoxx/anak-tournaments/blob/master/LICENSE) licensed.
