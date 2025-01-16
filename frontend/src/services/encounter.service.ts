@@ -1,0 +1,48 @@
+import { API_URL } from "@/lib/interceptors";
+import { Encounter, MatchWithStats } from "@/types/encounter.types";
+import { PaginatedResponse } from "@/types/pagination.types";
+import { customFetch } from "@/lib/custom_fetch";
+
+export default class encounterService {
+  static async getEncounter(id: number): Promise<Encounter> {
+    return customFetch(`${API_URL}/encounters/${id}`, {
+      query: {
+        entities: [
+          "matches",
+          "matches.map",
+          "teams",
+          "teams.players",
+          "teams.placement",
+          "teams.players.user",
+          "tournament",
+          "tournament_group"
+        ]
+      }
+    }).then((res) => res.json());
+  }
+  static async getMatch(match_id: number): Promise<MatchWithStats> {
+    return customFetch(`${API_URL}/matches/${match_id}`, {
+      query: {
+        entities: ["teams", "teams.players", "teams.players.user", "map", "map.gamemode"]
+      }
+    }).then((res) => res.json());
+  }
+  static async getAll(
+    page: number,
+    query: string,
+    tournamentId: number | null = null
+  ): Promise<PaginatedResponse<Encounter>> {
+    return customFetch(`${API_URL}/encounters`, {
+      query: {
+        per_page: 15,
+        page: page,
+        query: query,
+        sort: "id",
+        order: "desc",
+        entities: ["tournament", "tournament_group"],
+        fields: ["name"],
+        tournament_id: tournamentId
+      }
+    }).then((res) => res.json());
+  }
+}

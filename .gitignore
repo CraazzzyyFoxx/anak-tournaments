@@ -1,0 +1,17 @@
+.idea/
+.vscode/
+.mypy_cache/
+.pytest_cache/
+__pycache__/
+node_modules/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+.env
+
+.coverage
+.coverage*
+/app/.idea
+/parser/.idea
+logs/

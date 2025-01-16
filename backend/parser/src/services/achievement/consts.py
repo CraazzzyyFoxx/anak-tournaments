@@ -1,0 +1,712 @@
+from src import schemas
+
+heroes_achievements: list[schemas.AchievementCreate] = [
+    schemas.AchievementCreate(
+        name="Nerf this!",
+        slug="dva",
+        description_ru="Иметь лучшее K/D на Диве за турнир",
+        description_en="Have the best K/D as D.Va during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="ANDTHEYSAY",
+        slug="doomfist",
+        description_ru="Иметь лучшее K/D на Думфисте за турнир",
+        description_en="Have the best K/D as Doomfist during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="A C C E L E R A N D O",
+        slug="lucio",
+        description_ru="Иметь лучшее K/D на Люсио за турнир",
+        description_en="Have the best K/D as Lúcio during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="Déjà vu",
+        slug="tracer",
+        description_ru="Иметь лучшее K/D на Трейсер за турнир",
+        description_en="Have the best K/D as Tracer during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name='That’s "SIR" to you',
+        slug="soldier-76",
+        description_ru="Иметь лучшее K/D на Солдате за турнир",
+        description_en="Have the best K/D as Soldier: 76 during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="Mada Mada",
+        slug="genji",
+        description_ru="Иметь лучшее K/D на Генжи за турнир",
+        description_en="Have the best K/D as Genji during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="W I N T O N",
+        slug="winston",
+        description_ru="Иметь лучшее K/D на Винтоне за турнир",
+        description_en="Have the best K/D as Winston during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="Simple geometry",
+        slug="hanzo",
+        description_ru="Иметь лучшее K/D на Ханзо за турнир",
+        description_en="Have the best K/D as Hanzo during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="Heroes never die",
+        slug="mercy",
+        description_ru="Иметь лучшее K/D на Мерси за турнир",
+        description_en="Have the best K/D as Mercy during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="Everyone dies",
+        slug="ana",
+        description_ru="Иметь лучшее K/D на Ане за турнир",
+        description_en="Have the best K/D as Ana during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="THIS ENDS NOW",
+        slug="sojourn",
+        description_ru="Иметь лучшее K/D на Соджорн за турнир",
+        description_en="Have the best K/D as Sojourn during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="Кокоё",
+        slug="kiriko",
+        description_ru="Иметь лучшее K/D на Кирико за турнир",
+        description_en="Have the best K/D as Kiriko during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="DIE DIE DIE",
+        slug="reaper",
+        description_ru="Иметь лучшее K/D на Рипере за турнир",
+        description_en="Have the best K/D as Reaper during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="Боевой конь",
+        slug="orisa",
+        description_ru="Иметь лучшее K/D на Орисе за турнир",
+        description_en="Have the best K/D as Orisa during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="Огонь по готовности!",
+        slug="zarya",
+        description_ru="Иметь лучшее K/D на Заре за турнир",
+        description_en="Have the best K/D as Zarya during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="Курарефан1",
+        slug="pharah",
+        description_ru="Иметь лучшее K/D на Фарре за турнир",
+        description_en="Have the best K/D as Pharah during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="За победу мать продам",
+        slug="bastion",
+        description_ru="Иметь лучшее K/D на Бастионе за турнир",
+        description_en="Have the best K/D as Bastion during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="Специалист по взрывам",
+        slug="junkrat",
+        description_ru="Иметь лучшее K/D на Джанкрете за турнир",
+        description_en="Have the best K/D as Junkrat during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="Hey bro, nice ass",
+        slug="widowmaker",
+        description_ru="Иметь лучшее K/D на Видоу за турнир",
+        description_en="Have the best K/D as Widowmaker during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="Maximum efficiency",
+        slug="baptiste",
+        description_ru="Иметь лучшее K/D на Баптисте за турнир",
+        description_en="Have the best K/D as Baptiste during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="BOOOOOOB!!!",
+        slug="ashe",
+        description_ru="Иметь лучшее K/D на Аше за турнир",
+        description_en="Have the best K/D as Ashe during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="Собака сутулая",
+        slug="cassidy",
+        description_ru="Иметь лучшее K/D на МакКри за турнир",
+        description_en="Have the best K/D as Cassidy during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="SUFFER AS I HAD!",
+        slug="ramattra",
+        description_ru="Иметь лучшее K/D на Рамматре за турнир",
+        description_en="Have the best K/D as Ramattra during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="цветочек))",
+        slug="lifeweaver",
+        description_ru="Иметь лучшее K/D на ЛайфВивере за турнир",
+        description_en="Have the best K/D as Lifeweaver during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="Солнце взошло",
+        slug="illari",
+        description_ru="Иметь лучшее K/D на Иллари за турнир",
+        description_en="Have the best K/D as Illari during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="Get rocked",
+        slug="sigma",
+        description_ru="Иметь лучшее K/D на Сигме за турнир",
+        description_en="Have the best K/D as Sigma during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="Шароеб",
+        slug="wrecking-ball",
+        description_ru="Иметь лучшее K/D на Хомяке за турнир",
+        description_en="Have the best K/D as Wrecking Ball during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="A-MEI-ZING",
+        slug="mei",
+        description_ru="Иметь лучшее K/D на Мей за турнир",
+        description_en="Have the best K/D as Mei during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="Назад в будущее",
+        slug="symmetra",
+        description_ru="Иметь лучшее K/D на Симметре за турнир",
+        description_en="Have the best K/D as Symmetra during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="Experience my ass",
+        slug="zenyatta",
+        description_ru="Иметь лучшее K/D на Дзене за турнир",
+        description_en="Have the best K/D as Zenyatta during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="Cummaster",
+        slug="torbjorn",
+        description_ru="Иметь лучшее K/D на Торбе за турнир",
+        description_en="Have the best K/D as Torbjörn during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="Женщина мечты",
+        slug="junker-queen",
+        description_ru="Иметь лучшее K/D на Квине за турнир",
+        description_en="Have the best K/D as Junker Queen during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="Лучшая муха помойки",
+        slug="echo",
+        description_ru="Иметь лучшее K/D на Эхо за турнир",
+        description_en="Have the best K/D as Echo during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="ПИВО!",
+        slug="reinhardt",
+        description_ru="Иметь лучшее K/D на Рейне за турнир",
+        description_en="Have the best K/D as Reinhardt during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="Пыль в дымоход",
+        slug="moira",
+        description_ru="Иметь лучшее K/D на Мойре за турнир",
+        description_en="Have the best K/D as Moira during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="Кошкодевочка",
+        slug="sombra",
+        description_ru="Иметь лучшее K/D на Сомбре за турнир",
+        description_en="Have the best K/D as Sombra during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="👍 👍 👍",
+        slug="roadhog",
+        description_ru="Иметь лучшее K/D на Хоге за турнир",
+        description_en="Have the best K/D as Roadhog during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="АЛЛАХ ТИЛЬМЕ",
+        slug="brigitte",
+        description_ru="Иметь лучшее K/D на Бриге за турнир",
+        description_en="Have the best K/D as Brigitte during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="СЕ СЕ КИ КИ",
+        slug="mauga",
+        description_ru="Иметь лучшее K/D на Мауге за турнир",
+        description_en="Have the best K/D as Mauga during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="Профессиональный крот",
+        slug="venture",
+        description_ru="Иметь лучшее K/D на Вентуре за турнир",
+        description_en="Have the best K/D as Venture during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="Я могу и так",
+        slug="juno",
+        description_ru="Иметь лучшее K/D на Юне за турнир",
+        description_en="Have the best K/D as Juno during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="Я и есть опасность",
+        slug="hazard",
+        description_ru="Иметь лучшее K/D на Азарте за турнир",
+        description_en="Have the best K/D as Hazard during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="Фрик",
+        slug="freak",
+        description_ru="Сыграть на персонаже с пикрейтом менее 0.1% в течение турнира.",
+        description_en="Play a character with a pickrate of less than 0.1% during the tournament.",
+    ),
+    schemas.AchievementCreate(
+        name="Мистери хироус",
+        slug="mystery-heroes",
+        description_ru="Отыграть турнир минимум 7 героями.",
+        description_en="Play the tournament with at least 7 heroes.",
+    ),
+    schemas.AchievementCreate(
+        name="Человек Швейцарский нож",
+        slug="swiss-knife",
+        description_ru="За всю историю логов сыграть минимум на 20 разных героях.",
+        description_en="Play at least 20 different heroes in the history of logs.",
+    )
+]
+
+overall_achievements: list[schemas.AchievementCreate] = [
+    schemas.AchievementCreate(
+        name="Добро пожаловать в клуб",
+        slug="welcome",
+        description_ru="Принять участие в турнире любым способом.",
+        description_en="Take part in the tournament in any way.",
+    ),
+    schemas.AchievementCreate(
+        name="ЗА ЧЕСТЬ И СЛАВУ",
+        slug="honor-and-glory",
+        description_ru="Выиграть турнир.",
+        description_en="Win the tournament.",
+    ),
+    schemas.AchievementCreate(
+        name="Универсальный игрок",
+        slug="versatile-player",
+        description_ru="Отыграть 3 турнира на трёх разных ролях.",
+        description_en="Play 3 tournaments in three different roles.",
+    ),
+    schemas.AchievementCreate(
+        name="Это не удача, это скилл!",
+        slug="two-wins-players",
+        description_ru="Выиграть турнир 2 раза.",
+        description_en="Win the tournament 2 times.",
+    ),
+    schemas.AchievementCreate(
+        name="ТАГАНРООООООГ",
+        slug="three-wins-players",
+        description_ru="Выиграть турнир 3 раза.",
+        description_en="Win the tournament 3 times.",
+    ),
+    schemas.AchievementCreate(
+        name="Сизиф и камень",
+        slug="sisyphus-and-stone",
+        description_ru="Занять второе место более двух раз.",
+        description_en="Take second place more than two times.",
+    ),
+    schemas.AchievementCreate(
+        name="Олд",
+        slug="old",
+        description_ru="Сыграть турнир в OW1.",
+        description_en="Play a tournament in OW1.",
+    ),
+    schemas.AchievementCreate(
+        name="Молодая кровь",
+        slug="young-blood",
+        description_ru="Сыграть турнир в OW2.",
+        description_en="Play a tournament in OW2.",
+    ),
+    schemas.AchievementCreate(
+        name="ЛУПИ ИХ ДАХАО💪🏻😈🤙🏻 МЕСИ ИХ ДАХАО💪🏻😈🤙🏻",
+        slug="dahao",
+        description_ru="Выиграть турнир на двух разных ролях.",
+        description_en="Win a tournament in two different roles.",
+    ),
+    schemas.AchievementCreate(
+        name="Патологический лох",
+        slug="pathological-sucker",
+        description_ru="Занять второе место на всех ролях.",
+        description_en="Take second place in all roles.",
+    ),
+    schemas.AchievementCreate(
+        name="Властелин всех стихий",
+        slug="lord-of-all-the-elements",
+        description_ru="Выиграть турнир на трех разных ролях.",
+        description_en="Win a tournament in three different roles.",
+    ),
+    schemas.AchievementCreate(
+        name="Дворовой киберспортсмен",
+        slug="backyard-cyber-athlete",
+        description_ru="Играл OWAL.",
+        description_en="Played OWAL.",
+    ),
+    schemas.AchievementCreate(
+        name="Заслужанная аномалия",
+        slug="well-deserved-anomaly",
+        description_ru="Победитель OWAL.",
+        description_en="Winner of OWAL.",
+    ),
+    schemas.AchievementCreate(
+        name="Это генетика",
+        slug="its-genetics",
+        description_ru="Отыграть все турниры 1 героем",
+        description_en="Play all tournaments with 1 hero",
+    ),
+    schemas.AchievementCreate(
+        name="Капитан Джек Воробей",
+        slug="captain-jack-sparrow",
+        description_ru="Стать капитаном в своей команде.",
+        description_en="Become a captain in your team.",
+    ),
+    schemas.AchievementCreate(
+        name="Джентльмен неудачи",
+        slug="worst-player-winrate",
+        description_ru="Войти в топ20 игроков по винрейту (снизу).",
+        description_en="Enter the top 20 players by winrate (from the bottom).",
+    ),
+    schemas.AchievementCreate(
+        name="Все просто, я лучший!",
+        slug="best-player-winrate",
+        description_ru="Войти в топ20 игроков по винрейту.",
+        description_en="Enter the top 20 players by winrate.",
+    ),
+    schemas.AchievementCreate(
+        name="Стабильный победитель",
+        slug="consistent-winner",
+        description_ru="Занять место в топ20 по выигранным картам.",
+        description_en="Take a place in the top 20 by won maps.",
+    ),
+    schemas.AchievementCreate(
+        name="Мы просто стреляли пули",
+        slug="just-shooting",
+        description_ru="Выиграть турнир с винрейтом 90%+.",
+        description_en="Win a tournament with a winrate of 90%+.",
+    ),
+    schemas.AchievementCreate(
+        name="Я обязательно выживу",
+        slug="ill-definitely-survive",
+        description_ru="Занять топ 1 по минимальному кол-ву смертей в логах турика.",
+        description_en="Take top 1 by the minimum number of deaths in the logs of the tournament.",
+    ),
+    schemas.AchievementCreate(
+        name="Машина убийца",
+        slug="killer-machine",
+        description_ru="Занять топ 1 по максимальному кол-ву убийств в логах турика.",
+        description_en="Take top 1 by the maximum number of kills in the logs of the tournament.",
+    ),
+    schemas.AchievementCreate(
+        name="Просто стреляй в голову",
+        slug="just-shoot-in-the-head",
+        description_ru="Занять топ 1 по кол-ву хедшотов в логах турика.",
+        description_en="Take top 1 by the number of headshots in the logs of the tournament.",
+    ),
+    schemas.AchievementCreate(
+        name="Срать вечно",
+        slug="poop_forever",
+        description_ru="Нанести наибольшее количество урона/мин за турнир",
+        description_en="Deal the most damage/min per tournament",
+    ),
+    schemas.AchievementCreate(
+        name="Один выстрел, один труп",
+        slug="one-shot-one-kill",
+        description_ru="Стать топ 1 по крит. меткости в прицеле на турнире",
+        description_en="Become the top 1 by crit accuracy in the sight during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="Спейс создан",
+        slug="space-created",
+        description_ru="Умереть 1000+ раз за историю логов",
+        description_en="Die 1000+ times in the history of logs",
+    ),
+    schemas.AchievementCreate(
+        name="ё#%ный рот этого казино",
+        slug="fucking-casino-mouth",
+        description_ru="Сыграть 20 турниров",
+        description_en="Play 20 tournaments",
+    ),
+    schemas.AchievementCreate(
+        name="Завсегдатай кабанения",
+        slug="regular-boar",
+        description_ru="Сыграть 30 турниров",
+        description_en="Play 30 tournaments",
+    )
+]
+
+
+divisions_achievements: list[schemas.AchievementCreate] = [
+    schemas.AchievementCreate(
+        name="Моя сила растёт",
+        slug="my-strength-is-growing",
+        description_ru="Получить плюс див после турнира.",
+        description_en="Get a plus div after the tournament.",
+    ),
+    schemas.AchievementCreate(
+        name="Недостаточно хорош",
+        slug="not-good-enough",
+        description_ru="Получить минус див после турнира.",
+        description_en="Get a minus div after the tournament.",
+    ),
+    schemas.AchievementCreate(
+        name="Мне нужно больше силы",
+        slug="i-need-more-power",
+        description_ru="Получить 3 див или выше.",
+        description_en="Get 3 div or higher.",
+    ),
+    schemas.AchievementCreate(
+        name="Мой бур пронзит небеса",
+        slug="my-drill-will-pierce-the-sky",
+        description_ru="Поднял за время турниров 10+ дивизионов.",
+        description_en="Raised 10+ divisions during the tournaments.",
+    ),
+    schemas.AchievementCreate(
+        name="Баланс от Анака",
+        slug="balance-from-anak",
+        description_ru="Получил +4 или больше дивов за турнир.",
+        description_en="Got +4 or more divs for the tournament.",
+    ),
+    schemas.AchievementCreate(
+        name="Критический провал",
+        slug="critical-failure",
+        description_ru="Получил -4 или больше дивов за турнир.",
+        description_en="Got -4 or more divs for the tournament.",
+    ),
+    schemas.AchievementCreate(
+        name="Да мне и так нормально...",
+        slug="im-fine-with-that",
+        description_ru="Иметь один и тот же дивизион в течении 7+ турниров.",
+        description_en="Have the same division for 7+ tournaments.",
+    ),
+]
+
+
+team_achievements: list[schemas.AchievementCreate] = [
+    schemas.AchievementCreate(
+        name="Точность превыше всего",
+        slug="accuracy-is-above-all-else",
+        description_ru="Заролиться в команду с двумя хитсканами.",
+        description_en="Roll into a team with two hitscans.",
+    ),
+    schemas.AchievementCreate(
+        name="Простая геометрия",
+        slug="simple-geometry",
+        description_ru="Заролиться в команду с двумя проджектайл дд.",
+        description_en="Roll into a team with two projectile dps.",
+    ),
+    schemas.AchievementCreate(
+        name="Мерси не ожидается",
+        slug="no_mercy",
+        description_ru="Заролиться в команду с двумя мейн саппортами.",
+        description_en="Roll into a team with two main supports.",
+    ),
+    schemas.AchievementCreate(
+        name="Хил платно",
+        slug="heal_for_a_fee",
+        description_ru="Заролиться в команду с двумя хилами.",
+        description_en="Roll into a team with two healers.",
+    ),
+    schemas.AchievementCreate(
+        name="Киберкотлета с пюрешкой",
+        slug="damage-above-5-division",
+        description_ru="Попасть в команду к капитану дд 5 дива и выше.",
+        description_en="Get into a team with a captain dps 5 div and above.",
+    ),
+    schemas.AchievementCreate(
+        name="Беру весь огонь на себя",
+        slug="tank-above-5-division",
+        description_ru="Попасть в команду к капитану танку 5 дива и выше.",
+        description_en="Get into a team with a captain tank 5 div and above.",
+    ),
+    schemas.AchievementCreate(
+        name="Умрёшь только когда я скажу",
+        slug="support-above-5-division",
+        description_ru="Попасть в команду к капитану саппорту 5 дива и выше.",
+        description_en="Get into a team with a captain support 5 div and above.",
+    ),
+    schemas.AchievementCreate(
+        name="LFS 20 EST 4.5k+",
+        slug="lfs-4500",
+        description_ru="Попасться с одним и тем же игроком 3+ раза.",
+        description_en="Get caught with the same player 3+ times.",
+    ),
+    schemas.AchievementCreate(
+        name="Я конченный, бегите",
+        slug="im-screwed-run",
+        description_ru="Отыграть весь турик не сменив персонажа.",
+        description_en="Play the whole tournament without changing the character.",
+    ),
+    schemas.AchievementCreate(
+        name="Работаем с тем, что есть",
+        slug="we-work-with-what-we-have",
+        description_ru="Заролиться с тиммейтом OTP в команду.",
+        description_en="Roll with a OTP teammate into a team.",
+    ),
+    schemas.AchievementCreate(
+        name="Какая же нам пи№#а",
+        slug="were-so-fucked",
+        description_ru="Заролиться в команду с 3+ OTP тиммейтами.",
+        description_en="Roll into a team with 3+ OTP teammates.",
+    ),
+]
+
+
+standing_achievements: list[schemas.AchievementCreate] = [
+    schemas.AchievementCreate(
+        name="Новичкам везёт",
+        slug="beginners-are-lucky",
+        description_ru="Пройти во второй день с новичком в команде.",
+        description_en="Pass to the second day with a newcomer in the team.",
+    ),
+    schemas.AchievementCreate(
+        name="Да не лохи мы…",
+        slug="were-not-suckers",
+        description_ru="Отдать финал турнира 2-3.",
+        description_en="Give the final of the tournament 2-3.",
+    ),
+    schemas.AchievementCreate(
+        name="Reverse Sweep Champion",
+        slug="reverse-sweep-champion",
+        description_ru="Выиграть турнир, упадя в нижнюю сетку.",
+        description_en="Win a tournament by falling into the lower bracket.",
+    ),
+    schemas.AchievementCreate(
+        name="На дно!!!",
+        slug="to-the-bottom",
+        description_ru="Отлететь в первый день со счётом 0-10 заняв последнее место в своей группе.",
+        description_en="Take off on the first day with a score of 0-10, taking the last place in your group.",
+    ),
+    schemas.AchievementCreate(
+        name="Самураю нет цели...",
+        slug="samurai-has-no-purpose",
+        description_ru="Не выйти во второй день ни разу.",
+        description_en="Not to go out on the second day even once.",
+    ),
+    schemas.AchievementCreate(
+        name="Мы лучшие среди лучших",
+        slug="the-best-among-the-best",
+        description_ru="Стать топ 1 своей группы в первый день со счётом 10-0.",
+        description_en="Become the top 1 of your group on the first day with a score of 10-0.",
+    ),
+    schemas.AchievementCreate(
+        name="Переигран и уничтожен",
+        slug="revenge-is-sweet",
+        description_ru="Победить соперника, который ранее вас выиграл.",
+        description_en="Defeat an opponent who previously beat you.",
+    ),
+    schemas.AchievementCreate(
+        name="Грязный смурф",
+        slug="dirty-smurf",
+        description_ru="Стать чемпионом в свой первый турнир.",
+        description_en="Become a champion in your first tournament.",
+    ),
+    schemas.AchievementCreate(
+        name="Якорь мне в глотку",
+        slug="anchor-in-my-throat",
+        description_ru="Выиграть турик, имея в команде тиммейта 20 дива.",
+        description_en="Win the tournament with a teammate 20 div.",
+    ),
+    schemas.AchievementCreate(
+        name="Мне просто повезло",
+        slug="win-2-plus-consecutive",
+        description_ru="Выиграть 2+ турнира подряд.",
+        description_en="Win 2+ tournaments in a row.",
+    ),
+    schemas.AchievementCreate(
+        name="Да нормальный у меня див!",
+        slug="five-second-day-streak",
+        description_ru="Выйти во второй день 5 турниров подряд",
+        description_en="Go out on the second day 5 tournaments in a row",
+    ),
+    schemas.AchievementCreate(
+        name="Я УБИВАЛ Я ВОРОВАЛ",
+        slug="i-killed-i-stole",
+        description_ru="Добраться до финала, пройдя по всей нижней сетке.",
+        description_en="Get to the final by going through the entire lower bracket.",
+    )
+]
+
+match_achievements: list[schemas.AchievementCreate] = [
+    schemas.AchievementCreate(
+        name="Френдли",
+        slug="friendly",
+        description_ru="Сыграть карту с 0 убийствами.",
+        description_en="Play a map with 0 kills.",
+    ),
+    schemas.AchievementCreate(
+        name="Борис Хрен Попадешь",
+        slug="boris_dick",
+        description_ru="Выиграть карту ни умерев ни разу.",
+        description_en="Win a card without dying once.",
+    ),
+    schemas.AchievementCreate(
+        name="Главное не хукнись",
+        slug="just_dont_fuck_around",
+        description_ru="Умереть за карту 20+ раз",
+        description_en="Die for a map 20+ times",
+    ),
+    schemas.AchievementCreate(
+        name="Джон Уик",
+        slug="john_wick",
+        description_ru="Сделать более 60 элимов за карту",
+        description_en="Make over 60 eliminations per map",
+    ),
+    schemas.AchievementCreate(
+        name="Смена на заводе отработана",
+        slug="the-shift-factory-is-done",
+        description_ru="Нахилять более 30000 ед. хила за карту",
+        description_en="Heal for more than 30,000 hit points per map",
+    ),
+    schemas.AchievementCreate(
+        name="РАБОТАЕМ ЕКАТЕРИНА!",
+        slug="shooting_and_screaming",
+        description_ru="Нанести более 35000 ед. урона за карту",
+        description_en="Deal more than 35000 damage per map",
+    ),
+    schemas.AchievementCreate(
+        name="Это фиаско братан",
+        slug="fiasko",
+        description_ru="Упасть за карту от бупа 3+ раза за карту",
+        description_en="Fall for a map from a boop 3+ times per map",
+    ),
+    schemas.AchievementCreate(
+        name="Чувак это яма",
+        slug="boop_master",
+        description_ru="Бупнуть за карту противника 3+ раза за карту",
+        description_en="Boop the opponent 3+ times per map",
+    ),
+    schemas.AchievementCreate(
+        name="Пуля не дура",
+        slug="bullet-is-not-stupid",
+        description_ru="Убить 10+ человек за карту хедшотом",
+        description_en="Kill 10+ people per map with headshots",
+    ),
+    schemas.AchievementCreate(
+        name="Набалансил",
+        slug="balanced",
+        description_ru="Сыграть матч с близостью 0%",
+        description_en="Play a match with a close 0%",
+    ),
+    schemas.AchievementCreate(
+        name="Я сосал меня е&%ли",
+        slug="hard_game",
+        description_ru="Сыграть матч с близостью 100%",
+        description_en="Play a match with a close 100%",
+    ),
+    schemas.AchievementCreate(
+        name="7 лет в Азкабане",
+        slug="7_years_in_azkaban",
+        description_ru="Сыграть матч длительностью 25+ минут",
+        description_en="Play a match lasting 25+ minutes",
+    ),
+    schemas.AchievementCreate(
+        name="Скорострел",
+        slug="fast",
+        description_ru="Сыграть матч длительностью максимум 5 мин",
+        description_en="Play a match lasting a maximum of 5 minutes",
+    )
+]
