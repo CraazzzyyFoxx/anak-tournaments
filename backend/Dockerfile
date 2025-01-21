@@ -32,7 +32,7 @@ ENV PYTHONPATH=/app
 ARG APP_PATH
 
 COPY ./scripts /app/scripts
-COPY ./pyproject.toml ./uv.lock ./alembic.ini /app/
+COPY ./pyproject.toml ./uv.lock /app/
 COPY ./README.md /app/
 COPY ./$APP_PATH .
 
