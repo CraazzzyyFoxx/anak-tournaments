@@ -59,6 +59,7 @@ services:
       - traefik.http.services.backend-http.loadbalancer.server.port=8000
       - traefik.http.routers.backend-http.rule=PathPrefix(`/api`)
       - traefik.http.routers.backend-http.entrypoints=http
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4 --loop uvloop
     volumes:
       - ./logs/backend:/logs
     env_file:
