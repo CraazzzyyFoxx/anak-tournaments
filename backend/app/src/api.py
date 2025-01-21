@@ -1,6 +1,5 @@
 from fastapi import APIRouter
 
-from src.core import config
 from src.services.achievements.views import router as achievements_router
 from src.services.encounter.views import encounter_router, match_router
 from src.services.gamemode.views import router as gamemode_router
@@ -12,7 +11,7 @@ from src.services.tournament.views import router as tournament_router
 from src.services.user.views import router as user_router
 from src.services.utils.views import router as utils_router
 
-router = APIRouter(prefix=config.settings.api_v1_str)
+router = APIRouter()
 router.include_router(user_router)
 router.include_router(tournament_router)
 router.include_router(team_router)

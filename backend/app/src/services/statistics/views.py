@@ -1,3 +1,5 @@
+import typing
+
 from fastapi import APIRouter, Depends
 
 from src import schemas
@@ -15,11 +17,13 @@ router = APIRouter(prefix="/statistics", tags=[enums.RouteTag.STATISTICS])
     summary="Get champion statistics",
 )
 async def get_most_champions(
-    params: pagination.PaginationQueryParams = Depends(),
+    params: pagination.PaginationSortQueryParams[
+        typing.Literal["id", "name", "value"]
+    ] = Depends(),
     session=Depends(db.get_async_session),
 ):
     return await flows.get_most_champions(
-        session, pagination.PaginationParams.from_query_params(params)
+        session, pagination.PaginationSortParams.from_query_params(params)
     )
 
 
@@ -30,11 +34,13 @@ async def get_most_champions(
     summary="Get win rate statistics",
 )
 async def get_player_winrate(
-    params: pagination.PaginationQueryParams = Depends(),
+    params: pagination.PaginationSortQueryParams[
+        typing.Literal["id", "name", "value"]
+    ] = Depends(),
     session=Depends(db.get_async_session),
 ):
     return await flows.get_to_winrate_players(
-        session, pagination.PaginationParams.from_query_params(params)
+        session, pagination.PaginationSortParams.from_query_params(params)
     )
 
 
@@ -45,9 +51,11 @@ async def get_player_winrate(
     summary="Get won maps statistics",
 )
 async def get_top_won_maps_players(
-    params: pagination.PaginationQueryParams = Depends(),
+    params: pagination.PaginationSortQueryParams[
+        typing.Literal["id", "name", "value"]
+    ] = Depends(),
     session=Depends(db.get_async_session),
 ):
     return await flows.get_to_won_players(
-        session, pagination.PaginationParams.from_query_params(params)
+        session, pagination.PaginationSortParams.from_query_params(params)
     )

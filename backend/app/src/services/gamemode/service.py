@@ -53,14 +53,14 @@ async def get(
 
 async def get_all(
     session: AsyncSession,
-    params: pagination.SearchPaginationParams,
+    params: pagination.PaginationSortSearchParams,
 ) -> tuple[typing.Sequence[models.Gamemode], int]:
     """
     Retrieves a paginated list of gamemodes based on search parameters.
 
     Parameters:
         session (AsyncSession): The SQLAlchemy async session.
-        params (pagination.SearchPaginationParams): Search, pagination, and sorting parameters.
+        params (pagination.PaginationSortSearchParams): Search, pagination, and sorting parameters.
 
     Returns:
         tuple[typing.Sequence[models.Gamemode], int]: A tuple containing:

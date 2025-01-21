@@ -143,7 +143,7 @@ async def get_by_battle_tag(
 
 
 async def get_all(
-    session: AsyncSession, params: pagination.SearchPaginationParams
+    session: AsyncSession, params: pagination.PaginationSortSearchParams
 ) -> pagination.Paginated[schemas.UserRead]:
     """
     Retrieves a paginated list of `User` model instances and converts them to `UserRead` schemas.
@@ -226,13 +226,16 @@ async def get_profile(session: AsyncSession, id: int) -> schemas.UserProfile:
         matches_won, matches_lose, avg_closeness = matches
     roles = await get_roles(session, user.id)
     hero_statistics = await hero_flows.get_playtime(
-        session, schemas.HeroPlaytimePaginationParams(user_id=user.id)
+        session,
+        schemas.HeroPlaytimePaginationParams(
+            user_id=user.id, sort="playtime", order="desc"
+        ),
     )
 
     teams, total_teams = await service.get_teams(
         session,
         user.id,
-        params=pagination.PaginationParams(
+        params=pagination.PaginationSortParams(
             page=1, per_page=-1, entities=["tournament", "placement"]
         ),
     )
@@ -400,9 +403,6 @@ async def get_tournament_with_stats(
         session, user.id, tournament_id, ["team", "team.tournament", "team.placement"]
     )
     team = player.team
-    last_role, last_division = await service.get_tournament_role(
-        session, team.tournament, user.id
-    )
     statistics = await service.get_tournament_stats_overall(
         session, team.tournament, user.id
     )
@@ -414,12 +414,14 @@ async def get_tournament_with_stats(
     winrate = await statistics_service.get_tournament_winrate(
         session, team.tournament, user.id
     )
+
     if winrate:
         stats["winrate"] = schemas.UserTournamentStat(
             value=winrate[1], rank=winrate[2], total=winrate[3]
         )
     else:
         stats["winrate"] = schemas.UserTournamentStat(value=0, rank=0, total=0)
+
     for values in await statistics_service.get_tournament_avg_match_stat_for_user_bulk(
         session, team.tournament, user.id, tournament_stats, False
     ):
@@ -427,6 +429,7 @@ async def get_tournament_with_stats(
             continue
         stat, user_id, value, rank, total = values
         stats[stat] = schemas.UserTournamentStat(value=value, rank=rank, total=total)
+
     for values in await statistics_service.get_tournament_avg_match_stat_for_user_bulk(
         session, team.tournament, user.id, tournament_stats_reverted, True
     ):
@@ -434,6 +437,7 @@ async def get_tournament_with_stats(
             continue
         stat, user_id, value, rank, total = values
         stats[stat] = schemas.UserTournamentStat(value=value, rank=rank, total=total)
+
     for placement in team.standings:
         if placement.buchholz is None:
             last_playoff_placement = placement.position
@@ -444,9 +448,9 @@ async def get_tournament_with_stats(
         id=team.tournament.id,
         number=team.tournament.number,
         name=team.tournament.name,
-        division=last_division,
+        division=player.div,
         closeness=round(statistics[2], 2) if statistics[2] else 0,
-        role=last_role,
+        role=player.role,
         maps=statistics[0] + statistics[1] if statistics[0] else 0,
         maps_won=statistics[0] if statistics[0] else 0,
         playtime=round(statistics[3], 2) if statistics[3] else 0,
@@ -456,7 +460,9 @@ async def get_tournament_with_stats(
     )
 
 
-async def get_heroes(session: AsyncSession, id: int, params: pagination.PaginationParams) -> pagination.Paginated[schemas.HeroWithUserStats]:
+async def get_heroes(
+    session: AsyncSession, id: int, params: pagination.PaginationParams
+) -> pagination.Paginated[schemas.HeroWithUserStats]:
     """
     Retrieves a user's hero statistics, including performance and comparisons with other users.
 
@@ -469,7 +475,7 @@ async def get_heroes(session: AsyncSession, id: int, params: pagination.Paginati
         A list of `HeroWithUserStats` schemas representing the user's hero statistics.
     """
     user = await get(session, id, [])
-    user_stats = await service.get_statistics_by_heroes(session, user.id, params)
+    user_stats = await service.get_statistics_by_heroes(session, user.id)
     all_stats = await service.get_statistics_by_heroes_all_values(session)
     payload: list[schemas.HeroWithUserStats] = []
 
@@ -521,12 +527,14 @@ async def get_heroes(session: AsyncSession, id: int, params: pagination.Paginati
         page=params.page,
         per_page=params.per_page,
         total=len(payload),
-        results=payload[params.per_page * (params.page - 1): params.per_page * params.page],
+        results=payload[
+            params.per_page * (params.page - 1) : params.per_page * params.page
+        ],
     )
 
 
 async def get_best_teammates(
-    session: AsyncSession, id: int, params: pagination.PaginationParams
+    session: AsyncSession, id: int, params: pagination.PaginationSortParams
 ) -> pagination.Paginated[schemas.UserBestTeammate]:
     """
     Retrieves a paginated list of a user's best teammates, including win rate, tournaments played together,

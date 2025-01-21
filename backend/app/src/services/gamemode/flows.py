@@ -63,14 +63,14 @@ async def get(
 
 
 async def get_all(
-    session: AsyncSession, params: pagination.SearchPaginationParams
+    session: AsyncSession, params: pagination.PaginationSortSearchParams
 ) -> pagination.Paginated[schemas.GamemodeRead]:
     """
     Retrieves a paginated list of gamemodes and converts them to Pydantic schemas.
 
     Parameters:
         session (AsyncSession): The SQLAlchemy async session.
-        params (pagination.SearchPaginationParams): Search, pagination, and sorting parameters.
+        params (pagination.PaginationSortSearchParams): Search, pagination, and sorting parameters.
 
     Returns:
         pagination.Paginated[schemas.GamemodeRead]: A paginated list of Pydantic schemas representing the gamemodes.

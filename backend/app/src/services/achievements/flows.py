@@ -72,14 +72,14 @@ async def get(
 
 
 async def get_all(
-    session: AsyncSession, params: pagination.PaginationParams
+    session: AsyncSession, params: pagination.PaginationSortParams
 ) -> pagination.Paginated[schemas.AchievementRead]:
     """
     Retrieves a paginated list of achievements and converts them to Pydantic schemas.
 
     Parameters:
         session (AsyncSession): The SQLAlchemy async session.
-        params (pagination.PaginationParams): Pagination and sorting parameters.
+        params (pagination.PaginationSortParams): Pagination and sorting parameters.
 
     Returns:
         pagination.Paginated[schemas.AchievementRead]: A paginated list of Pydantic schemas representing the achievements.

@@ -9,7 +9,7 @@ export const cachePolicy = process.env.NEXT_PUBLIC_CACHE_POLICY;
 export const getCachePolicy = () => {
   switch (cachePolicy) {
     case "no-cache":
-      return "no-store";
+      return "no-cache";
     case "cache":
       return "default";
     case "cache-first":

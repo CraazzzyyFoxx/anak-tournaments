@@ -90,6 +90,7 @@ class UserMap(BaseModel):
     loss: int
     draw: int
     win_rate: float
+    heroes: list[schemas.HeroPlaytime]
 
 
 class UserProfile(BaseModel):

@@ -8,7 +8,6 @@ import { cn } from "@/lib/utils";
 import { GoogleAnalytics } from "@next/third-parties/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import Header from "@/components/Header";
-import { SidebarProvider } from "@/components/ui/sidebar";
 import { Footer } from "@/components/Footer";
 import { Separator } from "@/components/ui/separator";
 
@@ -35,14 +34,14 @@ export default function RootLayout({
 }>) {
   return (
     <ClerkProvider>
-      <html lang="en">
-        <body className={cn(inter.className)}>
+      <html lang="en" className="h-full">
+        <body className={cn(inter.className, "h-full")}>
           <GoogleAnalytics gaId="G-6TYE0K6SQM" />
           <ThemeProvider attribute="class" defaultTheme="dark" disableTransitionOnChange>
             <Providers>
-              <div className="w-full max-w-screen-3xl mt-6 mx-auto px-10">
+              <div className="w-full max-w-screen-3xl mt-6 mx-auto px-10 h-full">
                 <Header />
-                <div className="flex w-full flex-col">
+                <div className="flex w-full flex-col min-h-[95%]">
                   <main className="flex flex-1 flex-col gap-4 pt-4 md:gap-8 md:pt-8 ">
                     {children}
                   </main>

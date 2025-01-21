@@ -8,7 +8,6 @@ from src.core import config
     [
         (1, 10, "id", "desc", [], "", []),
         (1, 25, "slug", "desc", [], "", []),
-        (1, 10, "image_path", "asc", [], "", []),
         (1, 10, "name", "asc", [], "", []),
         (1, 10, "similarity:name", "asc", [], "assault", ["name"]),
     ],

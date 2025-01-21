@@ -93,14 +93,14 @@ async def get_by_name_and_gamemode(
 
 async def get_all(
     session: AsyncSession,
-    params: pagination.PaginationParams,
+    params: pagination.PaginationSortParams,
 ) -> tuple[typing.Sequence[models.Map], int]:
     """
     Retrieves a paginated list of maps.
 
     Parameters:
         session (AsyncSession): The SQLAlchemy async session.
-        params (pagination.PaginationParams): Pagination and sorting parameters.
+        params (pagination.PaginationSortParams): Pagination and sorting parameters.
 
     Returns:
         tuple[typing.Sequence[models.Map], int]: A tuple containing:
@@ -116,7 +116,7 @@ async def get_all(
 
 
 async def get_top_maps(
-    session: AsyncSession, user_id: int, params: pagination.PaginationParams
+    session: AsyncSession, user_id: int, params: pagination.PaginationSortParams
 ) -> tuple[typing.Sequence[tuple[models.Map, int, int, int, float]], int]:
     """
     Retrieves a paginated list of top maps for a specific user, including statistics.
@@ -124,7 +124,7 @@ async def get_top_maps(
     Parameters:
         session (AsyncSession): The SQLAlchemy async session.
         user_id (int): The ID of the user.
-        params (pagination.PaginationParams): Pagination and sorting parameters.
+        params (pagination.PaginationSortParams): Pagination and sorting parameters.
 
     Returns:
         tuple[typing.Sequence[tuple[models.Map, int, int, int, float]], int]: A tuple containing:
@@ -160,12 +160,12 @@ async def get_top_maps(
         sa.select(
             models.Map.id.label("map_id"),
             sa.func.count(models.Match.id).label("count"),
-            sa.func.sum(home_team_win).label("won_maps"),
-            sa.func.sum(away_team_win).label("lost_maps"),
-            sa.func.sum(draw).label("draw_maps"),
+            sa.func.sum(home_team_win).label("win"),
+            sa.func.sum(away_team_win).label("loss"),
+            sa.func.sum(draw).label("draw"),
             (sa.func.sum(home_team_win) / sa.func.count(models.Match.id))
             .cast(sa.Numeric(10, 2))
-            .label("win_rate"),
+            .label("winrate"),
         )
         .select_from(models.Match)
         .join(models.Map, models.Map.id == models.Match.map_id)
@@ -186,10 +186,10 @@ async def get_top_maps(
         sa.select(
             models.Map,
             subquery.c.count,
-            subquery.c.won_maps,
-            subquery.c.lost_maps,
-            subquery.c.draw_maps,
-            subquery.c.win_rate,
+            subquery.c.win,
+            subquery.c.loss,
+            subquery.c.draw,
+            subquery.c.winrate,
         )
         .join(subquery, subquery.c.map_id == models.Map.id)
         .options(*map_entities(params.entities))

@@ -50,7 +50,7 @@ exclude = ["venv", ".venv", "alembic"]
 
 [tool.ruff]
 target-version = "py312"
-exclude = ["alembic", "app/schemas/__init__.py", "app/models/__init__.py"]
+exclude = ["alembic", "app/src/schemas/__init__.py", "app/src/models/__init__.py"]
 
 [tool.ruff.lint]
 select = [

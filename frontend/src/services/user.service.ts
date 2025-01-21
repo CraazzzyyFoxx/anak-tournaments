@@ -53,9 +53,10 @@ export default class userService {
   static async getUserTopMaps(id: number): Promise<PaginatedResponse<UserMapRead>> {
     return customFetch(`${API_URL}/users/${id}/maps`, {
       query: {
-        sort: "win_rate",
+        sort: "winrate",
         order: "desc",
-        per_page: -1
+        per_page: -1,
+        entities: ["heroes"]
       }
     }).then((res) => res.json());
   }

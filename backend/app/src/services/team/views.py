@@ -1,3 +1,5 @@
+import typing
+
 from cashews import cache
 from cashews.contrib.fastapi import cache_control_ttl
 from fastapi import APIRouter, Depends, Query
@@ -42,7 +44,9 @@ async def get_one(
     summary="Get all teams",
 )
 async def get_all(
-    params: schemas.TeamFilterQueryParams = Depends(),
+    params: schemas.TeamFilterQueryParams[
+        typing.Literal["id", "name", "total_sr", "avg_sr", "placement"]
+    ] = Depends(),
     session=Depends(db.get_async_session),
 ):
     return await flows.get_all(

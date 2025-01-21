@@ -101,7 +101,7 @@ async def get_by_number_and_league(
 
 
 async def get_all(
-    session: AsyncSession, params: pagination.SearchPaginationParams
+    session: AsyncSession, params: pagination.PaginationSortSearchParams
 ) -> tuple[typing.Sequence[models.Tournament], int]:
     """
     Retrieves a paginated list of `Tournament` model instances based on filtering and sorting parameters.

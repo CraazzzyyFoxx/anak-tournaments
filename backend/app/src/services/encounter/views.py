@@ -1,3 +1,5 @@
+import typing
+
 from cashews import cache
 from cashews.contrib.fastapi import cache_control_ttl
 from fastapi import APIRouter, Depends, Query
@@ -21,7 +23,19 @@ match_router = APIRouter(prefix="/matches", tags=[enums.RouteTag.MATCH])
 )
 async def get_all_encounters(
     session: AsyncSession = Depends(db.get_async_session),
-    params: schemas.EncounterSearchQueryParams = Depends(),
+    params: schemas.EncounterSearchQueryParams[
+        typing.Literal[
+            "id",
+            "name",
+            "home_score",
+            "away_score",
+            "round",
+            "closeness",
+            "status",
+            "home_team_id",
+            "away_team_id",
+        ]
+    ] = Depends(),
 ):
     return await flows.get_all_encounters(
         session, schemas.EncounterSearchParams.from_query_params(params)
@@ -57,7 +71,18 @@ async def get_one(
 )
 async def get_all_matches(
     session: AsyncSession = Depends(db.get_async_session),
-    params: schemas.MatchSearchQueryParams = Depends(),
+    params: schemas.MatchSearchQueryParams[
+        typing.Literal[
+            "id",
+            "home_team_id",
+            "away_team_id",
+            "home_score",
+            "away_score",
+            "encounter_id",
+            "map_id",
+            "log_name",
+        ]
+    ] = Depends(),
 ):
     return await flows.get_all_matches(
         session, schemas.MatchSearchParams.from_query_params(params)

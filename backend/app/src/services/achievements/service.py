@@ -88,14 +88,14 @@ async def get(
 
 
 async def get_all(
-    session: AsyncSession, params: pagination.PaginationParams
+    session: AsyncSession, params: pagination.PaginationSortParams
 ) -> tuple[typing.Sequence[tuple[models.Achievement, float]], int]:
     """
     Retrieves a paginated list of all achievements along with their rarity and the total count of achievements.
 
     Parameters:
         session (AsyncSession): The SQLAlchemy async session.
-        params (pagination.PaginationParams): Pagination and sorting parameters.
+        params (pagination.PaginationSortParams): Pagination and sorting parameters.
 
     Returns:
         tuple[typing.Sequence[tuple[models.Achievement, float]], int]: A tuple containing:
@@ -105,7 +105,7 @@ async def get_all(
     count_query = sa.select(sa.func.count(models.Achievement.id))
     rarity_subq = get_rarity_subq()
     query = (
-        sa.select(models.Achievement, rarity_subq.c.rarity)
+        sa.select(models.Achievement, rarity_subq.c.rarity.label("rarity"))
         .options(*achievement_entity(params.entities))
         .join(rarity_subq, models.Achievement.id == rarity_subq.c.achievement_id)
     )

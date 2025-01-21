@@ -157,7 +157,7 @@ async def get_by_number_and_league(
 
 
 async def get_all(
-    session: AsyncSession, params: pagination.SearchPaginationParams
+    session: AsyncSession, params: pagination.PaginationSortSearchParams
 ) -> pagination.Paginated[schemas.TournamentRead]:
     """
     Retrieves a paginated list of `Tournament` model instances and converts them to `TournamentRead` schemas.

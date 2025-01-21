@@ -7,7 +7,6 @@ from src.core import config
     ("page", "per_page", "sort", "order", "entities", "query", "fields"),
     [
         (1, 10, "id", "desc", [], "", []),
-        (1, 25, "image_path", "asc", [], "", []),
         (1, 10, "name", "asc", [], "", []),
         (1, 25, "similarity:name", "desc", [], "nepal", ["name"]),
     ],

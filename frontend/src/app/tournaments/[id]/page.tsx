@@ -17,12 +17,12 @@ import TournamentHeroPlaytimePage from "@/app/tournaments/pages/TournamentHeroPl
 import { Badge } from "@/components/ui/badge";
 
 const items = [
-  {
-    title: "Overview",
-    url: "?tab=overview",
-    icon: Home,
-    tab: "overview"
-  },
+  // {
+  //   title: "Overview",
+  //   url: "?tab=overview",
+  //   icon: Home,
+  //   tab: "overview"
+  // },
   {
     title: "Teams",
     url: "?tab=teams",
@@ -71,8 +71,8 @@ const TournamentPage = async ({
   const search = searchParams.search || "";
   const tournament = await tournamentService.get(tournamentId);
 
-  if (!["overview", "teams", "matches", "heroes", "standings"].includes(activeTab)) {
-    activeTab = "overview";
+  if (!["teams", "matches", "heroes", "standings"].includes(activeTab)) {
+    activeTab = "teams";
     searchParamsObj.set("tab", activeTab);
     searchParamsChanged = true;
   }

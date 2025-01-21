@@ -7,14 +7,14 @@ from . import service
 
 
 async def get_most_champions(
-    session: AsyncSession, params: pagination.PaginationParams
+    session: AsyncSession, params: pagination.PaginationSortParams
 ) -> pagination.Paginated[schemas.PlayerStatistics]:
     """
     Retrieves a paginated list of players with the most championship wins.
 
     Parameters:
         session (AsyncSession): The SQLAlchemy async session.
-        params (pagination.PaginationParams): Pagination and sorting parameters.
+        params (pagination.PaginationSortParams): Pagination and sorting parameters.
 
     Returns:
         pagination.Paginated[schemas.PlayerStatistics]: A paginated list of Pydantic schemas representing players and their championship counts.
@@ -36,14 +36,14 @@ async def get_most_champions(
 
 
 async def get_to_winrate_players(
-    session: AsyncSession, params: pagination.PaginationParams
+    session: AsyncSession, params: pagination.PaginationSortParams
 ) -> pagination.Paginated[schemas.PlayerStatistics]:
     """
     Retrieves a paginated list of players with the highest win rates.
 
     Parameters:
         session (AsyncSession): The SQLAlchemy async session.
-        params (pagination.PaginationParams): Pagination and sorting parameters.
+        params (pagination.PaginationSortParams): Pagination and sorting parameters.
 
     Returns:
         pagination.Paginated[schemas.PlayerStatistics]: A paginated list of Pydantic schemas representing players and their win rates.
@@ -65,14 +65,14 @@ async def get_to_winrate_players(
 
 
 async def get_to_won_players(
-    session: AsyncSession, params: pagination.PaginationParams
+    session: AsyncSession, params: pagination.PaginationSortParams
 ) -> pagination.Paginated[schemas.PlayerStatistics]:
     """
     Retrieves a paginated list of players with the most wins.
 
     Parameters:
         session (AsyncSession): The SQLAlchemy async session.
-        params (pagination.PaginationParams): Pagination and sorting parameters.
+        params (pagination.PaginationSortParams): Pagination and sorting parameters.
 
     Returns:
         pagination.Paginated[schemas.PlayerStatistics]: A paginated list of Pydantic schemas representing players and their win counts.
