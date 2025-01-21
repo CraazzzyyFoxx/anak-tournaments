@@ -15,7 +15,9 @@ export default class heroService {
         page: page,
         per_page: perPage,
         user_id: userId,
-        tournament_id: tournamentId
+        tournament_id: tournamentId,
+        sort: "playtime",
+        order: "desc"
       }
     }).then((res) => res.json());
   }

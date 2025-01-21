@@ -36,14 +36,14 @@ encounter_query = (
 
 
 async def get_top_champions(
-    session: AsyncSession, params: pagination.PaginationParams
+    session: AsyncSession, params: pagination.PaginationSortParams
 ) -> tuple[typing.Sequence[tuple[models.Player, int]], int]:
     """
     Retrieves a paginated list of players with the most championship wins.
 
     Parameters:
         session (AsyncSession): The SQLAlchemy async session.
-        params (pagination.PaginationParams): Pagination and sorting parameters.
+        params (pagination.PaginationSortParams): Pagination and sorting parameters.
 
     Returns:
         tuple[typing.Sequence[tuple[models.Player, int]], int]: A tuple containing:
@@ -80,14 +80,14 @@ async def get_top_champions(
 
 
 async def get_top_winrate_players(
-    session: AsyncSession, params: pagination.PaginationParams
+    session: AsyncSession, params: pagination.PaginationSortParams
 ) -> tuple[typing.Sequence[tuple[models.Player, float]], int]:
     """
     Retrieves a paginated list of players with the highest win rates.
 
     Parameters:
         session (AsyncSession): The SQLAlchemy async session.
-        params (pagination.PaginationParams): Pagination and sorting parameters.
+        params (pagination.PaginationSortParams): Pagination and sorting parameters.
 
     Returns:
         tuple[typing.Sequence[tuple[models.Player, float]], int]: A tuple containing:
@@ -125,14 +125,14 @@ async def get_top_winrate_players(
 
 
 async def get_top_won_players(
-    session: AsyncSession, params: pagination.PaginationParams
+    session: AsyncSession, params: pagination.PaginationSortParams
 ) -> tuple[typing.Sequence[tuple[models.Player, int]], int]:
     """
     Retrieves a paginated list of players with the most wins.
 
     Parameters:
         session (AsyncSession): The SQLAlchemy async session.
-        params (pagination.PaginationParams): Pagination and sorting parameters.
+        params (pagination.PaginationSortParams): Pagination and sorting parameters.
 
     Returns:
         tuple[typing.Sequence[tuple[models.Player, int]], int]: A tuple containing:
@@ -262,6 +262,7 @@ async def get_tournament_avg_match_stat_for_user_bulk(
                 models.MatchStatistics.name.in_(stats_names),
                 models.Encounter.tournament_id == tournament.id,
                 models.MatchStatistics.round == 0,
+                models.MatchStatistics.hero_id.is_(None),
             )
         )
         .group_by(models.MatchStatistics.user_id, models.MatchStatistics.name)
@@ -275,7 +276,6 @@ async def get_tournament_avg_match_stat_for_user_bulk(
     ).where(stats_query.c.user_id == user_id)
 
     result = await session.execute(query)
-
     return result.all()  # type: ignore
 
 

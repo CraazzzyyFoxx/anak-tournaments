@@ -47,6 +47,7 @@ app = FastAPI(
     debug=True if config.settings.environment == "development" else False,
     redoc_url="/redoc",
     exception_handlers=exception_handlers,
+    root_path=config.settings.api_v1_str,
 )
 app.include_router(api.router)
 app.add_middleware(CacheDeleteMiddleware)

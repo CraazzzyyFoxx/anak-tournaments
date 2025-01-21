@@ -66,7 +66,7 @@ class MatchReadWithStats(MatchRead):
 
 
 @dataclass
-class EncounterSearchParams(pagination.SearchPaginationParams):
+class EncounterSearchParams(pagination.PaginationSortSearchParams):
     tournament_id: int | None = None
 
     def apply_search(self, query: sa.Select, model: type[db.Base]) -> sa.Select:
@@ -85,12 +85,12 @@ class EncounterSearchParams(pagination.SearchPaginationParams):
         return query.where(sa.or_(*criteria))
 
 
-class EncounterSearchQueryParams(pagination.SearchQueryParams):
+class EncounterSearchQueryParams(pagination.PaginationSortSearchQueryParams):
     tournament_id: int | None = None
 
 
 @dataclass
-class MatchSearchParams(pagination.SearchPaginationParams):
+class MatchSearchParams(pagination.PaginationSortSearchParams):
     tournament_id: int | None = None
     home_team_id: int | None = None
     away_team_id: int | None = None
@@ -106,7 +106,7 @@ class MatchSearchParams(pagination.SearchPaginationParams):
         return query.where(sa.or_(*criteria))
 
 
-class MatchSearchQueryParams(pagination.SearchQueryParams):
+class MatchSearchQueryParams(pagination.PaginationSortSearchQueryParams):
     tournament_id: int | None = None
     home_team_id: int | None = None
     away_team_id: int | None = None

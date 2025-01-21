@@ -1,3 +1,5 @@
+import typing
+
 from cashews import cache
 from cashews.contrib.fastapi import cache_control_ttl
 from fastapi import APIRouter, Depends, Query
@@ -23,10 +25,14 @@ router = APIRouter(prefix="/achievements", tags=[enums.RouteTag.ACHIEVEMENTS])
 )
 async def get_all(
     session: AsyncSession = Depends(db.get_async_session),
-    params: pagination.PaginationQueryParams = Depends(),
+    params: pagination.PaginationSortQueryParams[
+        typing.Literal[
+            "id", "name", "slug", "rarity", "similarity:name", "similarity:slug"
+        ]
+    ] = Depends(),
 ):
     return await flows.get_all(
-        session, pagination.PaginationParams.from_query_params(params)
+        session, pagination.PaginationSortParams.from_query_params(params)
     )
 
 

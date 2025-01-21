@@ -2,6 +2,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models, schemas
 from src.core import errors, pagination
+from src.services.hero import flows as hero_flows
+from src.services.hero import service as hero_service
 from src.services.user import flows as user_flows
 
 from . import service
@@ -85,14 +87,14 @@ async def get_by_name(
 
 
 async def get_all(
-    session: AsyncSession, params: pagination.PaginationParams
+    session: AsyncSession, params: pagination.PaginationSortParams
 ) -> pagination.Paginated[schemas.MapRead]:
     """
     Retrieves a paginated list of maps and converts them to Pydantic schemas.
 
     Parameters:
         session (AsyncSession): The SQLAlchemy async session.
-        params (pagination.PaginationParams): Pagination and sorting parameters.
+        params (pagination.PaginationSortParams): Pagination and sorting parameters.
 
     Returns:
         pagination.Paginated[schemas.MapRead]: A paginated list of Pydantic schemas representing the maps.
@@ -110,7 +112,7 @@ async def get_all(
 
 
 async def get_top_user(
-    session: AsyncSession, id: int, params: pagination.PaginationParams
+    session: AsyncSession, id: int, params: pagination.PaginationSortParams
 ) -> pagination.Paginated[schemas.UserMap]:
     """
     Retrieves a paginated list of top maps for a specific user, including statistics.
@@ -118,18 +120,17 @@ async def get_top_user(
     Parameters:
         session (AsyncSession): The SQLAlchemy async session.
         id (int): The ID of the user.
-        params (pagination.PaginationParams): Pagination and sorting parameters.
+        params (pagination.PaginationSortParams): Pagination and sorting parameters.
 
     Returns:
         pagination.Paginated[schemas.UserMap]: A paginated list of Pydantic schemas representing the user's top maps with statistics.
     """
     user = await user_flows.get(session, id, [])
     maps, total = await service.get_top_maps(session, user.id, params)
-    return pagination.Paginated(
-        page=params.page,
-        per_page=params.per_page,
-        total=total,
-        results=[
+    results: list[schemas.UserMap] = []
+
+    for map_, count, win, loss, draw, win_rate in maps:
+        results.append(
             schemas.UserMap(
                 map=await to_pydantic(session, map_, params.entities),
                 count=count,
@@ -137,7 +138,32 @@ async def get_top_user(
                 loss=loss,
                 draw=draw,
                 win_rate=win_rate,
+                heroes=[],
             )
-            for map_, count, win, loss, draw, win_rate in maps
-        ],
+        )
+
+    if "heroes" in params.entities:
+        maps_ids = [result.map.id for result in results]
+        heroes_data = await hero_service.get_heroes_playtime_by_maps(
+            session, maps_ids, user.id
+        )
+        heroes_data_per_map: dict[int, list[schemas.HeroPlaytime]] = {
+            map_id: [] for map_id in maps_ids
+        }
+        for hero, map_id, playtime in heroes_data:
+            heroes_data_per_map[map_id].append(
+                schemas.HeroPlaytime(
+                    hero=await hero_flows.to_pydantic(session, hero, []),
+                    playtime=playtime,
+                )
+            )
+
+        for result in results:
+            result.heroes = heroes_data_per_map[result.map.id][:5]
+
+    return pagination.Paginated(
+        page=params.page,
+        per_page=params.per_page,
+        total=total,
+        results=results,
     )

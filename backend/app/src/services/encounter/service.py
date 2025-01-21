@@ -283,7 +283,7 @@ async def get_by_user_with_teams(
 
 
 async def get_by_user(
-    session: AsyncSession, user_id: int, params: pagination.PaginationParams
+    session: AsyncSession, user_id: int, params: pagination.PaginationSortParams
 ) -> tuple[
     typing.Sequence[tuple[models.Encounter, models.Match, int, list[dict]]], int
 ]:
@@ -293,7 +293,7 @@ async def get_by_user(
     Parameters:
         session (AsyncSession): The SQLAlchemy async session.
         user_id (int): The ID of the user.
-        params (pagination.PaginationParams): Pagination and sorting parameters.
+        params (pagination.PaginationSortParams): Pagination and sorting parameters.
 
     Returns:
         tuple[typing.Sequence[tuple[models.Encounter, models.Match, int, list[dict]]], int]: A tuple containing:

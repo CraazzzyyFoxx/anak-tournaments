@@ -84,22 +84,22 @@ class ChallongeTeam(BaseModel):
     tournament: TournamentRead | None
 
 
-class TeamFilterQueryParams(pagination.PaginationQueryParams):
+class TeamFilterQueryParams(pagination.PaginationSortQueryParams):
     tournament_id: int | None = None
 
 
 @dataclass
-class TeamFilterParams(pagination.PaginationParams):
+class TeamFilterParams(pagination.PaginationSortParams):
     tournament_id: int | None = None
 
 
-class PlayerFilterQueryParams(pagination.PaginationQueryParams):
+class PlayerFilterQueryParams(pagination.PaginationSortQueryParams):
     tournament_id: int | None = None
     team_id: int | None = None
 
 
 @dataclass
-class PlayerFilterParams(pagination.PaginationParams):
+class PlayerFilterParams(pagination.PaginationSortParams):
     tournament_id: int | None = None
     team_id: int | None = None
 

@@ -1,3 +1,5 @@
+import typing
+
 from cashews import cache
 from cashews.contrib.fastapi import cache_control_ttl
 from fastapi import APIRouter, Depends, Query
@@ -21,10 +23,12 @@ router = APIRouter(prefix="/gamemodes", tags=[enums.RouteTag.GAMEMODE])
 async def get_all(
     request: Request,
     session: AsyncSession = Depends(db.get_async_session),
-    params: pagination.SearchQueryParams = Depends(),
+    params: pagination.PaginationSortSearchQueryParams[
+        typing.Literal["id", "name", "slug", "similarity:name", "similarity:slug"]
+    ] = Depends(),
 ):
     return await flows.get_all(
-        session, pagination.SearchPaginationParams.from_query_params(params)
+        session, pagination.PaginationSortSearchParams.from_query_params(params)
     )
 
 

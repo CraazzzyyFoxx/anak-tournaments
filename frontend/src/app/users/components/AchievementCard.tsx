@@ -16,7 +16,7 @@ import { TypographyH2 } from "@/components/ui/typography";
 
 const AchievementCard = ({ achievement }: { achievement: AchievementRarity }) => {
   return (
-    <Card className="relative bg-cover bg-center rounded-lg shadow-md overflow-hidden transition-transform transform hover:scale-110 min-h-[240px] group">
+    <Card className="relative bg-cover bg-center rounded-lg shadow-md overflow-hidden transition-transform transform hover:scale-110 min-h-[240px] group aspect-square">
       <Image
         src={`/achievements/${achievement.slug}.webp`}
         alt={achievement.slug}

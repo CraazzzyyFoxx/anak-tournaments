@@ -104,7 +104,7 @@ export const UserTournamentHeader = ({ tournament }: { tournament: UserTournamen
                 Place {tournament.placement} of {tournament.count_teams}
               </span>
             </div>
-            <div className="flex flex-row gap-2 mb-2 items-center">
+            <div className="flex flex-row gap-2 mb-2 items-center xs:ml-5 xl:ml-0">
               <div className="mt-0.5">
                 <PlayerRoleIcon role={tournament.role} />
               </div>

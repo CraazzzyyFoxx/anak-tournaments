@@ -59,7 +59,7 @@ class MatchStatistics(db.TimeStampIntegerMixin):
     name: Mapped[enums.LogStatsName] = mapped_column(
         Enum(enums.LogStatsName), index=True
     )
-    value: Mapped[float] = mapped_column(Float(), index=True)
+    value: Mapped[float] = mapped_column(Float())
 
 
 class MatchKillFeed(db.TimeStampIntegerMixin):

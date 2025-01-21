@@ -37,25 +37,26 @@ class HeroPlaytime(BaseModel):
     playtime: float
 
 
-class HeroPlaytimeQueryPaginationParams(pagination.PaginationQueryParams):
+class HeroPlaytimeQueryPaginationParams(pagination.PaginationSortQueryParams):
     user_id: int | typing.Literal["all"] = "all"
+    sort: typing.Literal["id", "name", "slug", "playtime"] = "playtime"
     tournament_id: int | None = None
 
 
 @dataclass
-class HeroPlaytimePaginationParams(pagination.PaginationParams):
+class HeroPlaytimePaginationParams(pagination.PaginationSortParams):
     user_id: int | typing.Literal["all"] = "all"
     tournament_id: int | None = None
 
 
-class HeroStatsQueryPaginationParams(pagination.PaginationQueryParams):
+class HeroStatsQueryPaginationParams(pagination.PaginationSortQueryParams):
     user_id: int | typing.Literal["all"] = "all"
     group_by: typing.Literal["overall", "match"] = "overall"
     stat: enums.LogStatsName = enums.LogStatsName.KDA
 
 
 @dataclass
-class HeroStatsPaginationParams(pagination.PaginationParams):
+class HeroStatsPaginationParams(pagination.PaginationSortParams):
     user_id: int | typing.Literal["all"] = "all"
     group_by: typing.Literal["overall", "match"] = "overall"
     stat: enums.LogStatsName = enums.LogStatsName.HeroTimePlayed

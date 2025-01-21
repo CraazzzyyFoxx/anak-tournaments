@@ -1,3 +1,5 @@
+import typing
+
 from cashews import cache
 from cashews.contrib.fastapi import cache_control_ttl
 from fastapi import APIRouter, Depends, Query
@@ -22,11 +24,13 @@ router = APIRouter(prefix="/users", tags=[enums.RouteTag.USER])
     summary="Search for users",
 )
 async def get_all(
-    params: pagination.SearchQueryParams = Depends(),
+    params: pagination.PaginationSortSearchQueryParams[
+        typing.Literal["id", "name", "similarity:name"]
+    ] = Depends(),
     session=Depends(db.get_async_session),
 ):
     return await flows.get_all(
-        session, pagination.SearchPaginationParams.from_query_params(params)
+        session, pagination.PaginationSortSearchParams.from_query_params(params)
     )
 
 
@@ -121,10 +125,22 @@ async def get_maps(
     request: Request,
     id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    params: pagination.PaginationQueryParams = Depends(),
+    params: pagination.PaginationSortQueryParams[
+        typing.Literal[
+            "id",
+            "count",
+            "win",
+            "loss",
+            "draw",
+            "winrate",
+            "gamemode_id",
+            "slug",
+            "name",
+        ]
+    ] = Depends(),
 ):
     maps = await map_flows.get_top_user(
-        session, id, pagination.PaginationParams.from_query_params(params)
+        session, id, pagination.PaginationSortParams.from_query_params(params)
     )
     return maps
 
@@ -143,10 +159,14 @@ async def get_encounters(
     request: Request,
     id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    params: pagination.PaginationQueryParams = Depends(),
+    params: pagination.PaginationSortQueryParams[
+        typing.Literal[
+            "id", "name", "home_team_id", "away_team_id", "closeness", "round"
+        ]
+    ] = Depends(),
 ):
     encounters = await encounter_flows.get_encounters_by_user(
-        session, id, pagination.PaginationParams.from_query_params(params)
+        session, id, pagination.PaginationSortParams.from_query_params(params)
     )
     return encounters
 
@@ -166,9 +186,11 @@ async def get_heroes(
     request: Request,
     id: int,
     params: pagination.PaginationQueryParams = Depends(),
-    session: AsyncSession = Depends(db.get_async_session)
+    session: AsyncSession = Depends(db.get_async_session),
 ):
-    heroes = await flows.get_heroes(session, id, pagination.PaginationParams.from_query_params(params))
+    heroes = await flows.get_heroes(
+        session, id, pagination.PaginationParams.from_query_params(params)
+    )
     return heroes
 
 
@@ -185,10 +207,12 @@ async def get_heroes(
 async def get_teammates(
     request: Request,
     id: int,
-    params: pagination.PaginationQueryParams = Depends(),
+    params: pagination.PaginationSortQueryParams[
+        typing.Literal["id", "name", "winrate", "tournaments"]
+    ] = Depends(),
     session: AsyncSession = Depends(db.get_async_session),
 ):
     teammates = await flows.get_best_teammates(
-        session, id, pagination.PaginationParams.from_query_params(params)
+        session, id, pagination.PaginationSortParams.from_query_params(params)
     )
     return teammates

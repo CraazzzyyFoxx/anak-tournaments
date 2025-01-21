@@ -39,7 +39,7 @@ async def to_pydantic(
             session, standing.tournament, []
         )
     if "matches_history" in entities:
-        matches_history = await encounter_flows.get_by_team_group(
+        matches_history = await encounter_flows.get_encounters_by_team_group(
             session, standing.team_id, standing.group_id, entities
         )
 
@@ -48,7 +48,7 @@ async def to_pydantic(
         team=team,
         group=group,
         tournament=tournament,
-        matches_history=matches_history
+        matches_history=matches_history,
     )
 
 

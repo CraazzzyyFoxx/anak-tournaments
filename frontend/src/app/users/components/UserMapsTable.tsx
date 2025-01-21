@@ -30,6 +30,8 @@ import { TypographyH4 } from "@/components/ui/typography";
 import { PaginatedResponse } from "@/types/pagination.types";
 import { Card } from "@/components/ui/card";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { HeroPlaytime } from "@/types/hero.types";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const columns: ColumnDef<UserMapRead>[] = [
   {
@@ -38,10 +40,10 @@ const columns: ColumnDef<UserMapRead>[] = [
     cell: ({ row }) => {
       const map: MapRead = row.getValue("map");
       return (
-        <div className="relative h-[55px] min-w-[150px]">
+        <div className="relative h-[55px] min-w-[250px]">
           <div className="absolute inset-0 z-[1] bg-gradient-to-r from-transparent from-0% via-transparent to-card to-75%" />
           <Image
-            className="h-full w-full min-w-[150px] brightness-75 z-0 relative"
+            className="h-full w-full min-w-[250px] brightness-75 z-0 relative"
             src={map.image_path}
             alt={map.name}
             style={{ objectFit: "cover" }}
@@ -53,6 +55,24 @@ const columns: ColumnDef<UserMapRead>[] = [
         </div>
       );
     }
+  },
+  {
+    accessorKey: "heroes",
+    header: () => <div className="flex justify-center">Heroes</div>,
+    cell: ({ row }) => (
+      <div className="flex flex-row gap-2 max-w-56">
+        {row.getValue<HeroPlaytime[]>("heroes").map((hero) => {
+          return (
+            <Avatar key={`hero-${hero}`}>
+              <AvatarImage src={hero.hero.image_path} asChild>
+                <Image src={hero.hero.image_path} alt="Hero" width={128} height={128} />
+              </AvatarImage>
+              <AvatarFallback> </AvatarFallback>
+            </Avatar>
+          );
+        })}
+      </div>
+    )
   },
   {
     accessorKey: "win_rate",

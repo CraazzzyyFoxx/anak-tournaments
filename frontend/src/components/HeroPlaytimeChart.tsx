@@ -19,7 +19,7 @@ const HeroPlaytimeChart = ({ heroes }: HeroPlaytimeChartProps) => {
     return heroes.map((heroPlaytime) => {
       return {
         name: heroPlaytime.hero.slug,
-        value: heroPlaytime.playtime,
+        value: (heroPlaytime.playtime * 100),
         fill: `var(--color-${heroPlaytime.hero.slug})`,
         icon: heroPlaytime.hero.image_path
       };

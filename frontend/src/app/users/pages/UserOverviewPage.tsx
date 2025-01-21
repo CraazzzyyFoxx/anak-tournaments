@@ -55,7 +55,7 @@ const UserOverviewPage = async ({ profile, tournamentId, user }: OverviewPagePro
       <div className="grid gap-8 grid-cols-1 lg:grid-cols-2 xl:grid-cols-1 col-span-9 xl:col-span-2">
         <UserOverview profile={profile} />
         <UserRoles roles={profile.roles} />
-        <UserBestTeammates className="xs:hidden md:block" teammates={teammates.results} />
+        <UserBestTeammates className="xs:hidden xl:block" teammates={teammates.results} />
       </div>
       <div className="col-span-9 xl:col-span-7">
         <div className="grid gap-8 grid-cols-1">

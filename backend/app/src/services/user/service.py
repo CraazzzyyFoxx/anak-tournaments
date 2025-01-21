@@ -98,7 +98,7 @@ async def get(
 
 
 async def get_all(
-    session: AsyncSession, params: pagination.SearchPaginationParams
+    session: AsyncSession, params: pagination.PaginationSortSearchParams
 ) -> tuple[typing.Sequence[models.User], int]:
     """
     Retrieves a paginated list of `User` model instances based on filtering and sorting parameters.
@@ -223,7 +223,7 @@ async def get_overall_statistics(
 
 
 async def get_teams(
-    session: AsyncSession, user_id: int, params: pagination.PaginationParams
+    session: AsyncSession, user_id: int, params: pagination.PaginationSortParams
 ) -> tuple[typing.Sequence[models.Team], int]:
     """
     Retrieves a paginated list of teams associated with a user, optionally including related entities.
@@ -448,8 +448,10 @@ async def get_tournament_stats_overall(
                 models.MatchStatistics.user_id == models.Player.user_id,
                 models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed,
                 models.MatchStatistics.hero_id.is_(None),
+                models.MatchStatistics.round == 0,
             )
         )
+        .group_by(models.Player.user_id)
     )
 
     query_overall = (
@@ -478,17 +480,17 @@ async def get_tournament_stats_overall(
     result = await session.execute(query_overall)
     result_playtime = await session.execute(playtime_query)
     maps = result.unique().first()
-    playtime = result_playtime.unique().first()
+    playtime = result_playtime.first()
 
     won_maps, lost_maps, closeness = 0, 0, 0
     if maps:
         won_maps, lost_maps, closeness = maps
 
-    return won_maps, lost_maps, closeness, playtime[0]
+    return won_maps, lost_maps, closeness, playtime[0] if playtime else 0
 
 
 async def get_statistics_by_heroes(
-    session: AsyncSession, user_id: int, params: pagination.PaginationParams
+    session: AsyncSession, user_id: int
 ) -> tuple[enums.LogStatsName, models.Hero, float, float, float, dict]:
     """
     Retrieves a user's hero statistics, including total value, max value, average value, and best performance metadata.
@@ -536,7 +538,11 @@ async def get_statistics_by_heroes(
                 models.MatchStatistics.hero_id.isnot(None),
             )
         )
-        .order_by(models.MatchStatistics.hero_id, models.MatchStatistics.value.desc(), models.MatchStatistics.name,)
+        .order_by(
+            models.MatchStatistics.hero_id,
+            models.MatchStatistics.value.desc(),
+            models.MatchStatistics.name,
+        )
         .cte("user_match_encounter")
     )
 
@@ -570,7 +576,7 @@ async def get_statistics_by_heroes(
                 user_match.c.hero_id == models.MatchStatistics.hero_id,
                 user_match.c.name == models.MatchStatistics.name,
                 user_match.c.row_num == 1,
-            )
+            ),
         )
         .where(
             sa.and_(
@@ -639,7 +645,11 @@ async def get_statistics_by_heroes_all_values(
         .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
         .join(models.User, models.User.id == models.MatchStatistics.user_id)
         .where(
-            sa.and_(models.MatchStatistics.round == 0, models.MatchStatistics.value > 0, models.MatchStatistics.hero_id.isnot(None))
+            sa.and_(
+                models.MatchStatistics.round == 0,
+                models.MatchStatistics.value > 0,
+                models.MatchStatistics.hero_id.isnot(None),
+            )
         )
         .order_by(
             models.MatchStatistics.hero_id,
@@ -703,7 +713,7 @@ async def get_statistics_by_heroes_all_values(
 
 
 async def get_best_teammates(
-    session: AsyncSession, user_id: int, params: pagination.PaginationParams
+    session: AsyncSession, user_id: int, params: pagination.PaginationSortParams
 ) -> tuple[
     typing.Sequence[tuple[models.User, int, int, float, int, float, float]], int
 ]:
@@ -729,15 +739,19 @@ async def get_best_teammates(
 
     home_score_case = sa.case(
         (
-            models.Encounter.home_team_id == OuterPlayer.team_id,
-            models.Encounter.home_score,
+            sa.and_(
+                models.Encounter.home_team_id == OuterPlayer.team_id,
+                models.Encounter.home_score,
+            )
         ),
         else_=models.Encounter.away_score,
     )
     away_score_case = sa.case(
         (
-            models.Encounter.home_team_id == OuterPlayer.team_id,
-            models.Encounter.away_score,
+            sa.and_(
+                models.Encounter.home_team_id == OuterPlayer.team_id,
+                models.Encounter.away_score,
+            )
         ),
         else_=models.Encounter.home_score,
     )
@@ -781,8 +795,11 @@ async def get_best_teammates(
             sa.func.avg(
                 sa.case(
                     (
-                        models.MatchStatistics.name == enums.LogStatsName.Performance,
-                        models.MatchStatistics.value,
+                        sa.and_(
+                            models.MatchStatistics.name
+                            == enums.LogStatsName.Performance,
+                            models.MatchStatistics.value,
+                        )
                     ),
                     else_=None,
                 )
@@ -790,8 +807,10 @@ async def get_best_teammates(
             sa.func.avg(
                 sa.case(
                     (
-                        models.MatchStatistics.name == enums.LogStatsName.KDA,
-                        models.MatchStatistics.value,
+                        sa.and_(
+                            models.MatchStatistics.name == enums.LogStatsName.KDA,
+                            models.MatchStatistics.value,
+                        )
                     ),
                     else_=None,
                 )
@@ -834,4 +853,4 @@ async def get_best_teammates(
     query = params.apply_pagination_sort(query)
     result = await session.execute(query)
     count_result = await session.execute(count_query)
-    return result.all(), count_result.scalar_one()
+    return result.all(), count_result.scalar_one()  # type: ignore

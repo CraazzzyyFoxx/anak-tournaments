@@ -193,6 +193,39 @@ async def get_all_matches(
     )
 
 
+def create_team_with_match_stats(
+    team: schemas.TeamRead,
+    team_stats: dict[
+        int, tuple[dict[int, dict[enums.LogStatsName, int]], dict[int, list[dict]]]
+    ],
+) -> schemas.TeamWithMatchStats:
+    """
+    Creates a TeamWithMatchStats schema from a TeamRead schema and a dictionary of team statistics.
+
+    Parameters:
+        team (schemas.TeamRead): The team data.
+        team_stats (dict[int, tuple[dict[int, dict[enums.LogStatsName, int]], dict[int, list[dict]]]]):
+            A dictionary where the key is the player user ID and the value is a tuple containing:
+                - A dictionary of round numbers to dictionaries of log stats names and their values.
+                - A dictionary of round numbers to lists of hero statistics.
+
+    Returns:
+        schemas.TeamWithMatchStats: The team data with match statistics included.
+    """
+    return schemas.TeamWithMatchStats(
+        **team.model_dump(exclude={"players"}),
+        players=[
+            schemas.PlayerWithMatchStats(
+                **player.model_dump(),
+                stats=team_stats[player.user_id][0],
+                heroes=team_stats[player.user_id][1],  # type: ignore
+            )
+            for player in team.players
+            if team_stats[player.user_id][1]
+        ],
+    )
+
+
 async def get_match(
     session: AsyncSession, match_id: int, entities: list[str]
 ) -> schemas.MatchReadWithStats:
@@ -245,30 +278,8 @@ async def get_match(
         max_round = max(max_round, max(player_data[0].keys()) if player_data[0] else 0)
 
     match_read = await to_pydantic_match(session, match, entities)
-    home_team = schemas.TeamWithMatchStats(
-        **match_read.home_team.model_dump(exclude={"players"}),
-        players=[
-            schemas.PlayerWithMatchStats(
-                **player.model_dump(),
-                stats=home_team_stats[player.user_id][0],
-                heroes=home_team_stats[player.user_id][1],
-            )
-            for player in match_read.home_team.players
-            if home_team_stats[player.user_id][1]
-        ],
-    )
-    away_team = schemas.TeamWithMatchStats(
-        **match_read.away_team.model_dump(exclude={"players"}),
-        players=[
-            schemas.PlayerWithMatchStats(
-                **player.model_dump(),
-                stats=away_team_stats[player.user_id][0],
-                heroes=away_team_stats[player.user_id][1],
-            )
-            for player in match_read.away_team.players
-            if away_team_stats[player.user_id][1]
-        ],
-    )
+    home_team = create_team_with_match_stats(match_read.home_team, home_team_stats)
+    away_team = create_team_with_match_stats(match_read.away_team, away_team_stats)
     return schemas.MatchReadWithStats(
         **match_read.model_dump(exclude={"home_team", "away_team"}),
         rounds=max_round,
@@ -278,7 +289,7 @@ async def get_match(
 
 
 async def get_encounters_by_user(
-    session: AsyncSession, user_id: int, params: pagination.PaginationParams
+    session: AsyncSession, user_id: int, params: pagination.PaginationSortParams
 ) -> pagination.Paginated[schemas.EncounterReadWithUserStats]:
     """
     Retrieves a paginated list of encounters involving a specific user, including user statistics.
@@ -286,7 +297,7 @@ async def get_encounters_by_user(
     Parameters:
         session (AsyncSession): The SQLAlchemy async session.
         user_id (int): The ID of the user.
-        params (pagination.PaginationParams): Pagination and sorting parameters.
+        params (pagination.PaginationSortParams): Pagination and sorting parameters.
 
     Returns:
         pagination.Paginated[schemas.EncounterReadWithUserStats]: A paginated list of Pydantic schemas representing the encounters with user statistics.
@@ -337,7 +348,7 @@ async def get_encounters_by_user(
     )
 
 
-async def get_by_team(
+async def get_encounters_by_team(
     session: AsyncSession, team_id: int, entities: list[str]
 ) -> list[schemas.EncounterRead]:
     """
@@ -355,7 +366,7 @@ async def get_by_team(
     return [await to_pydantic(session, encounter, entities) for encounter in encounters]
 
 
-async def get_by_team_group(
+async def get_encounters_by_team_group(
     session: AsyncSession, team_id: int, group_id: int, entities: list[str]
 ) -> list[schemas.EncounterRead]:
     """
