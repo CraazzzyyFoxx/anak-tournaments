@@ -45,6 +45,7 @@ export interface Match {
   map: MapRead | null;
   home_team: Team | null;
   away_team: Team | null;
+  encounter: Encounter | null;
 }
 
 export interface MatchWithStats extends Match {

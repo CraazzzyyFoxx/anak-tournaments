@@ -106,4 +106,4 @@ async def get_match(
     session: AsyncSession = Depends(db.get_async_session),
     entities: list[str] = Query([]),
 ):
-    return await flows.get_match(session, id, entities)
+    return await flows.get_match_with_stats(session, id, entities)

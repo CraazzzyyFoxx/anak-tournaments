@@ -5,7 +5,7 @@ __all__ = (
     "UserAchievementRead",
 )
 
-from src.schemas import HeroRead, TournamentRead
+from src.schemas import HeroRead, TournamentRead, MatchRead
 
 
 class AchievementRead(BaseRead):
@@ -17,10 +17,12 @@ class AchievementRead(BaseRead):
     rarity: float
 
     hero: HeroRead | None
+    count: int | None
 
 
 class UserAchievementRead(AchievementRead):
     count: int
     tournaments_ids: list[int]
     tournaments: list[TournamentRead]
-    matches: list[int]
+    matches_ids: list[int]
+    matches: list[MatchRead]

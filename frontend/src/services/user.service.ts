@@ -92,7 +92,7 @@ export default class userService {
   static async getUserAchievements(id: number): Promise<AchievementRarity[]> {
     return customFetch(`${API_URL}/achievements/user/${id}`, {
       query: {
-        entities: ["tournaments"]
+        entities: ["tournaments", "matches"]
       }
     }).then((res) => res.json());
   }

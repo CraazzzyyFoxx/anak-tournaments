@@ -97,7 +97,9 @@ async def to_pydantic_match(
             session, match.away_team, teams_entities
         )
     if "encounter" in entities:
-        encounter = await to_pydantic(session, match.encounter, [])
+        encounter = await to_pydantic(
+            session, match.encounter, utils.prepare_entities(entities, "encounter")
+        )
     if "map" in entities:
         map_read = await map_flows.to_pydantic(
             session, match.map, utils.prepare_entities(entities, "map")
@@ -224,9 +226,37 @@ def create_team_with_match_stats(
             if team_stats[player.user_id][1]
         ],
     )
+    
+
+async def get_match(session: AsyncSession, match_id: int, entities: list[str]) -> schemas.MatchRead:
+    """
+    Retrieves a match by its ID and converts it to a Pydantic schema.
+
+    Parameters:
+        session (AsyncSession): The SQLAlchemy async session.
+        match_id (int): The ID of the match to retrieve.
+        entities (list[str]): A list of related entities to include (e.g., ["teams", "map"]).
+
+    Returns:
+        schemas.MatchRead: The Pydantic schema representing the match.
+
+    Raises:
+        errors.ApiHTTPException: If the match is not found.
+    """
+    match = await service.get_match(session, match_id, entities)
+    if not match:
+        raise errors.ApiHTTPException(
+            status_code=404,
+            detail=[
+                errors.ApiExc(
+                    code="not_found", msg=f"Match with id {match_id} not found"
+                )
+            ],
+        )
+    return await to_pydantic_match(session, match, entities)
 
 
-async def get_match(
+async def get_match_with_stats(
     session: AsyncSession, match_id: int, entities: list[str]
 ) -> schemas.MatchReadWithStats:
     """
@@ -247,16 +277,7 @@ async def get_match(
         entities.append("teams")
     if "teams.players" not in entities:
         entities.append("teams.players")
-    match = await service.get_match(session, match_id, entities)
-    if not match:
-        raise errors.ApiHTTPException(
-            status_code=404,
-            detail=[
-                errors.ApiExc(
-                    code="not_found", msg=f"Match with id {match_id} not found"
-                )
-            ],
-        )
+    match = await get_match(session, match_id, entities)
     max_round: int = 0
     home_team_stats: dict[
         int, tuple[dict[int, dict[enums.LogStatsName, int]], dict[int, list[dict]]]
@@ -277,11 +298,10 @@ async def get_match(
         away_team_stats[player.user_id] = player_data
         max_round = max(max_round, max(player_data[0].keys()) if player_data[0] else 0)
 
-    match_read = await to_pydantic_match(session, match, entities)
-    home_team = create_team_with_match_stats(match_read.home_team, home_team_stats)
-    away_team = create_team_with_match_stats(match_read.away_team, away_team_stats)
+    home_team = create_team_with_match_stats(match.home_team, home_team_stats)
+    away_team = create_team_with_match_stats(match.away_team, away_team_stats)
     return schemas.MatchReadWithStats(
-        **match_read.model_dump(exclude={"home_team", "away_team"}),
+        **match.model_dump(exclude={"home_team", "away_team"}),
         rounds=max_round,
         home_team=home_team,
         away_team=away_team,

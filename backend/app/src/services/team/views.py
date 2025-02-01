@@ -45,7 +45,7 @@ async def get_one(
 )
 async def get_all(
     params: schemas.TeamFilterQueryParams[
-        typing.Literal["id", "name", "total_sr", "avg_sr", "placement"]
+        typing.Literal["id", "name", "total_sr", "avg_sr", "placement", "group"]
     ] = Depends(),
     session=Depends(db.get_async_session),
 ):

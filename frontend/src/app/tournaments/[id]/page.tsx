@@ -3,17 +3,17 @@ import tournamentService from "@/services/tournament.service";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import dayjs from "dayjs";
 import { redirect } from "next/navigation";
-import TournamentStandingsPage from "@/app/tournaments/pages/TournamentStandingsPage";
+import TournamentStandingsPage from "@/app/tournaments/[id]/pages/TournamentStandingsPage";
 import { TournamentChallongeLink } from "@/app/tournaments/components/TournamentCard";
 import { Sidebar, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
-import { Calendar, Home, Inbox, Search, Settings } from "lucide-react";
+import { Calendar, Inbox, Search, Settings } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 import TournamentTeamsPage, {
   TournamentTeamsPageSkeleton
-} from "@/app/tournaments/pages/TournamentTeamsPage";
-import TournamentEncountersPage from "@/app/tournaments/pages/TournamentEncountersPage";
-import TournamentHeroPlaytimePage from "@/app/tournaments/pages/TournamentHeroPlaytimePage";
+} from "@/app/tournaments/[id]/pages/TournamentTeamsPage";
+import TournamentEncountersPage from "@/app/tournaments/[id]/pages/TournamentEncountersPage";
+import TournamentHeroPlaytimePage from "@/app/tournaments/[id]/pages/TournamentHeroPlaytimePage";
 import { Badge } from "@/components/ui/badge";
 
 const items = [

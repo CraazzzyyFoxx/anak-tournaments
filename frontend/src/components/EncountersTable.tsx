@@ -17,6 +17,8 @@ import {
 } from "@/components/ui/table";
 import { PaginationWithLinks } from "@/components/ui/pagination-with-links";
 import { PaginatedResponse } from "@/types/pagination.types";
+import { Tournament, TournamentGroup } from "@/types/tournament.types";
+import { ScrollArea, ScrollBar } from "./ui/scroll-area";
 
 const EncountersTable = ({
   data,
@@ -43,12 +45,9 @@ const EncountersTable = ({
           accessorKey: "tournament",
           header: "Tournament",
           cell: ({ row }) => {
-            // @ts-ignore
-            let name = `Tournament ${row.getValue("tournament").number}`;
-            // @ts-ignore
-            if (row.getValue("tournament").is_league) {
-              // @ts-ignore
-              name = row.getValue("tournament").name;
+            let name = `Tournament ${row.getValue<Tournament>("tournament").number}`;
+            if (row.getValue<Tournament>("tournament").is_league) {
+              name = row.getValue<Tournament>("tournament").name;
             }
 
             return <div className="capitalize">{name}</div>;
@@ -57,13 +56,6 @@ const EncountersTable = ({
       ];
     }
     columns = [
-      ...columns,
-      {
-        accessorKey: "tournament_group",
-        header: "Group",
-        // @ts-ignore
-        cell: ({ row }) => <div>{row.getValue("tournament_group").name}</div>
-      },
       {
         accessorKey: "name",
         header: () => <div>Name</div>,
@@ -71,11 +63,23 @@ const EncountersTable = ({
           return <div className="font-medium">{row.getValue("name")}</div>;
         }
       },
+      ...columns,
+      {
+        accessorKey: "tournament_group",
+        header: "Group",
+        cell: ({ row }) => <div>{row.getValue<TournamentGroup>("tournament_group").name}</div>
+      },
+      {
+        accessorKey: "round",
+        header: "Round",
+        cell: ({ row }) => <div>{row.getValue("round")}</div>
+      },
+  
       {
         accessorKey: "score",
         header: "Score",
         cell: ({ row }) => {
-          const score: Score = row.getValue("score");
+          const score = row.getValue<Score>("score");
           return (
             <div>
               {score.home}-{score.away}
@@ -87,7 +91,6 @@ const EncountersTable = ({
         accessorKey: "closeness",
         header: () => <div className="text-center">Percentage of closeness</div>,
         cell: ({ row }) => {
-          // @ts-ignore
           const closeness = row.getValue<number>("closeness")
             ? `${(row.getValue<number>("closeness") * 100).toFixed(0)}%`
             : "-";
@@ -144,6 +147,7 @@ const EncountersTable = ({
         />
       </div>
       <div className="rounded-md border">
+        <ScrollArea>
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
@@ -186,6 +190,8 @@ const EncountersTable = ({
             )}
           </TableBody>
         </Table>
+        <ScrollBar orientation="horizontal"/>
+        </ScrollArea>
       </div>
       <div className="flex items-center justify-end space-x-2 py-4">
         <PaginationWithLinks page={InitialPage} totalCount={data.total} pageSize={15} />

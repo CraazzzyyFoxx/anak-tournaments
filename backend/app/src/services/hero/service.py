@@ -80,68 +80,74 @@ async def get_heroes_playtime(
         params (schemas.HeroPlaytimePaginationParams): Pagination and filtering parameters.
 
     Returns:
-        typing.Sequence[tuple[models.Hero, float]: A tuple containing:
-            - A sequence of tuples, each containing a Hero object and its playtime percentage.
-            - The total count of heroes.
+        typing.Sequence[tuple[models.Hero, float]]: A sequence of tuples, each containing a Hero object and its playtime percentage.
     """
-    overall_play_time_subquery = (
-        sa.select(sa.func.sum(models.MatchStatistics.value))
-        .select_from(models.Hero)
-        .join(models.MatchStatistics, models.MatchStatistics.hero_id == models.Hero.id)
-        .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-        .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-        .where(
-            sa.and_(
-                models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed,
-                models.MatchStatistics.value > 60,
-                models.MatchStatistics.round == 0,
-            )
-        )
-    )
-
     if params.user_id and params.user_id != "all":
-        overall_play_time_subquery = overall_play_time_subquery.where(
-            models.MatchStatistics.user_id == params.user_id
+        playtime_cte = (
+            sa.select(
+                models.MatchStatistics.hero_id,
+                sa.func.sum(models.MatchStatistics.value).label("playtime"),
+            )
+            .where(
+                sa.and_(
+                    models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed,
+                    models.MatchStatistics.value > 60,
+                    models.MatchStatistics.round == 0,
+                    models.MatchStatistics.hero_id.isnot(None),
+                    models.MatchStatistics.user_id == params.user_id,
+                )
+            )
+            .group_by(models.MatchStatistics.hero_id)
         )
+    else:
+        playtime_cte = (
+            sa.select(
+                models.MatchStatistics.hero_id,
+                sa.func.sum(models.MatchStatistics.value).label("playtime"),
+            )
+            .where(
+                sa.and_(
+                    models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed,
+                    models.MatchStatistics.value > 60,
+                    models.MatchStatistics.round == 0,
+                    models.MatchStatistics.hero_id.isnot(None),
+                )
+            )
+            .group_by(models.MatchStatistics.hero_id)
+        )
+
     if params.tournament_id:
-        overall_play_time_subquery = overall_play_time_subquery.where(
-            sa.and_(models.Encounter.tournament_id == params.tournament_id)
+        playtime_cte = (
+            playtime_cte.join(
+                models.Match, models.Match.id == models.MatchStatistics.match_id
+            )
+            .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
+            .where(models.Encounter.tournament_id == params.tournament_id)
         )
+
+    playtime_cte = playtime_cte.cte("playtime_cte")
+
+    overall_play_time_subquery = (
+        sa.select(
+            sa.func.sum(playtime_cte.c.playtime).label("total_playtime")
+        ).select_from(playtime_cte)
+    ).scalar_subquery()
 
     query = (
         sa.select(
             models.Hero,
-            (
-                sa.func.sum(models.MatchStatistics.value)
-                / overall_play_time_subquery.as_scalar()
-            ).label("playtime"),
-        )
-        .select_from(models.Hero)
-        .join(
-            models.MatchStatistics,
-            sa.and_(
-                models.MatchStatistics.hero_id == models.Hero.id,
-                models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed,
-                models.MatchStatistics.value > 60,
-                models.MatchStatistics.round == 0,
+            (sa.func.sum(playtime_cte.c.playtime) / overall_play_time_subquery).label(
+                "playtime"
             ),
         )
-        .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-        .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
+        .select_from(models.Hero)
+        .join(playtime_cte, models.Hero.id == playtime_cte.c.hero_id)
         .group_by(models.Hero.id)
     )
 
-    if params.user_id and params.user_id != "all":
-        query = query.where(models.MatchStatistics.user_id == params.user_id)
-
-    if params.tournament_id:
-        query = query.where(
-            sa.and_(models.Encounter.tournament_id == params.tournament_id)
-        )
-
     query = params.apply_sort(query)
     result = await session.execute(query)
-    return result.all()  # type: ignore
+    return result.all()
 
 
 async def get_heroes_stats(

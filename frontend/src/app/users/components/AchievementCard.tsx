@@ -13,6 +13,7 @@ import {
   DialogTrigger
 } from "@/components/ui/dialog";
 import { TypographyH2 } from "@/components/ui/typography";
+import Link from "next/link";
 
 const AchievementCard = ({ achievement }: { achievement: AchievementRarity }) => {
   return (
@@ -53,11 +54,30 @@ const AchievementCard = ({ achievement }: { achievement: AchievementRarity }) =>
                 <ul className="ml-6 list-disc [&>li]:mt-2">
                   {achievement.tournaments.map((tournament) => (
                     <li key={`${achievement.slug}-${tournament.id}`}>
-                      <span>{tournament.name}</span>
+                      <Link href={`/tournaments/${tournament.id}`}>
+                        {tournament.name}
+                      </Link>
                     </li>
                   ))}
                 </ul>
               </div>
+              {
+                achievement.matches.length > 0 ?
+                <div>
+                  <div>Матчи:</div>
+                  <ul className="ml-6 list-disc [&>li]:mt-2">
+                    {achievement.matches.map((match) => (
+                      <li key={`${achievement.slug}-${match.id}`}>
+                        <Link href={`/matches/${match.id}`}>
+                          {`${match.home_team?.name} - ${match.away_team?.name}`}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                :
+                <></>
+              }
             </DialogContent>
           </Dialog>
         )}

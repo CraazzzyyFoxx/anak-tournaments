@@ -363,7 +363,7 @@ async def get_tournaments(
             team_id=team.id,
             team=team.name,
             players=[
-                await team_flows.to_player_pydantic(session, player, [])
+                await team_flows.to_pydantic_player(session, player, [])
                 for player in team.players
             ],
             closeness=round(avg_closeness, 2) if avg_closeness else 0,
@@ -423,19 +423,17 @@ async def get_tournament_with_stats(
         stats["winrate"] = schemas.UserTournamentStat(value=0, rank=0, total=0)
 
     for values in await statistics_service.get_tournament_avg_match_stat_for_user_bulk(
-        session, team.tournament, user.id, tournament_stats, False
+        session,
+        team.tournament,
+        user.id,
+        [*tournament_stats, *tournament_stats_reverted],
     ):
         if not values:
             continue
-        stat, user_id, value, rank, total = values
-        stats[stat] = schemas.UserTournamentStat(value=value, rank=rank, total=total)
+        stat, user_id, value, rank_desc, rank_asc, total = values
 
-    for values in await statistics_service.get_tournament_avg_match_stat_for_user_bulk(
-        session, team.tournament, user.id, tournament_stats_reverted, True
-    ):
-        if not values:
-            continue
-        stat, user_id, value, rank, total = values
+        rank = rank_desc if stat in tournament_stats else rank_asc
+
         stats[stat] = schemas.UserTournamentStat(value=value, rank=rank, total=total)
 
     for placement in team.standings:

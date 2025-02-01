@@ -7,10 +7,12 @@ import { User } from "@/types/user.types";
 
 const PlayerName = ({
   player,
-  includeSpecialization
+  includeSpecialization,
+  excludeBadge
 }: {
   player: Player | User;
   includeSpecialization: boolean;
+  excludeBadge?: boolean;
 }) => {
   const name = player.name.split("#")[0];
   const tag = player.name.split("#")[1];
@@ -21,7 +23,7 @@ const PlayerName = ({
         <Link href={`/users/${player.name.replace("#", "-")}`}>
           <h4 className="text-base font-semibold">{name}</h4>
         </Link>
-        {tag && (
+        {(tag && !excludeBadge) && (
           <Badge variant="secondary" className="px-1 text-xs">
             <p className="text-muted-foreground">{`#${tag}`}</p>
           </Badge>

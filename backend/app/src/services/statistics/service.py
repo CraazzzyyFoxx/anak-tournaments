@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src import models
 from src.core import enums, pagination
 
-# Common SQLAlchemy expressions for calculating home and away scores
+
 home_score_case = sa.case(
     (models.Encounter.home_team_id == models.Team.id, models.Encounter.home_score),
     else_=models.Encounter.away_score,
@@ -16,7 +16,7 @@ away_score_case = sa.case(
     else_=models.Encounter.home_score,
 ).label("away_score_case")
 
-# Subquery to calculate scores for encounters
+
 encounter_query = (
     sa.select(
         models.Player.id,
@@ -218,8 +218,7 @@ async def get_tournament_avg_match_stat_for_user_bulk(
     tournament: models.Tournament,
     user_id: int,
     stats_names: list[enums.LogStatsName],
-    order: bool = False,
-) -> typing.Sequence[tuple[enums.LogStatsName, int, float, int, int]]:
+) -> typing.Sequence[tuple[enums.LogStatsName, int, float, int, int, int]]:
     """
     Retrieves the average match statistics for a specific user in a tournament across multiple stats, along with their ranks.
 
@@ -228,7 +227,6 @@ async def get_tournament_avg_match_stat_for_user_bulk(
         tournament (models.Tournament): The Tournament model instance.
         user_id (int): The ID of the user.
         stats_names (list[enums.LogStatsName]): A list of statistic names to retrieve.
-        order (bool): If True, orders the results in ascending order; otherwise, descending.
 
     Returns:
         typing.Sequence[tuple[enums.LogStatsName, int, float, int, int]]: A sequence of tuples, each containing:
@@ -238,11 +236,6 @@ async def get_tournament_avg_match_stat_for_user_bulk(
             - The rank.
             - The total count of users.
     """
-    if not order:
-        order_by = sa.desc(sa.func.avg(models.MatchStatistics.value))
-    else:
-        order_by = sa.asc(sa.func.avg(models.MatchStatistics.value))
-
     stats_query = (
         sa.select(
             models.MatchStatistics.name,
@@ -251,8 +244,17 @@ async def get_tournament_avg_match_stat_for_user_bulk(
             .cast(sa.Numeric(10, 2))
             .label("value"),
             sa.func.dense_rank()
-            .over(order_by=order_by, partition_by=models.MatchStatistics.name)
+            .over(
+                order_by=sa.desc(sa.func.avg(models.MatchStatistics.value)),
+                partition_by=models.MatchStatistics.name,
+            )
             .label("rank"),
+            sa.func.dense_rank()
+            .over(
+                order_by=sa.asc(sa.func.avg(models.MatchStatistics.value)),
+                partition_by=models.MatchStatistics.name,
+            )
+            .label("rank_asc"),
         )
         .select_from(models.MatchStatistics)
         .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
