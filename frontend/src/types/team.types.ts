@@ -46,3 +46,14 @@ export interface PlayerWithStats extends Player {
 export interface TeamWithStats extends Team {
   players: PlayerWithStats[];
 }
+
+
+export interface PlayerAnalytics extends Player {
+  move_1: number;
+  move_2: number;
+  points: number;
+}
+
+export interface TeamAnalytics extends Team {
+  players: PlayerAnalytics[];
+}

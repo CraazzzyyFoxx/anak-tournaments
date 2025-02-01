@@ -115,6 +115,61 @@ async def get_all(
     return results.all(), count.scalar()  # type: ignore
 
 
+async def get_count_users_achievements(session: AsyncSession, achievements_ids: list[int]) -> dict[int, int]:
+    """
+    Retrieves the count of users who have earned each achievement in a list of achievement IDs.
+
+    Parameters:
+        session (AsyncSession): The SQLAlchemy async session.
+        achievements_ids (list[int]): A list of achievement IDs.
+
+    Returns:
+        dict[int, int]: A dictionary mapping achievement IDs to the count of users who have earned them.
+    """
+    query = (
+        sa.select(
+            models.AchievementUser.achievement_id,
+            sa.func.count(sa.distinct(models.AchievementUser.user_id)).label("count"),
+        )
+        .where(models.AchievementUser.achievement_id.in_(achievements_ids))
+        .group_by(models.AchievementUser.achievement_id)
+    )
+
+    results = await session.execute(query)
+
+    return {row[0]: row[1] for row in results.all()}
+
+
+async def get_users_achievements(
+        session: AsyncSession, achievement_id: int, params: pagination.PaginationParams
+) -> tuple[list[models.User], int]:
+    """
+    Retrieves a paginated list of distinct users who have earned a specific achievement.
+
+    Args:
+        session: AsyncSession: The database session to execute the query.
+        achievement_id: int: The ID of the achievement to fetch associated users for.
+        params: pagination.PaginationParams: Parameters for pagination to limit and sort results.
+
+    Returns:
+        list[models.User]: A list of distinct User models associated with the given achievement.
+    """
+    total_query = (
+        sa.select(sa.func.count(sa.distinct(models.AchievementUser.user_id)))
+        .where(models.AchievementUser.achievement_id == achievement_id)
+    )
+    query = (
+        sa.select(models.AchievementUser)
+        .distinct(models.AchievementUser.user_id)
+        .options(sa.orm.joinedload(models.AchievementUser.user))
+        .where(models.AchievementUser.achievement_id == achievement_id)
+    )
+    query = params.apply_pagination(query)
+    results = await session.scalars(query)
+    total = await session.scalar(total_query)
+    return [result.user for result in results], total
+
+
 async def get_user(
     session: AsyncSession, user: models.User
 ) -> typing.Sequence[tuple[models.AchievementUser, int]]:

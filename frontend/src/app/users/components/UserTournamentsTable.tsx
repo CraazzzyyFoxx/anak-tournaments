@@ -12,6 +12,7 @@ import { TournamentTeamTable } from "@/components/TournamentTeamCard";
 import UserTournamentEncounters from "@/app/users/components/UserTournamentEncounters";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 
 export const UserTournamentStatsCard = ({ tournament }: { tournament: UserTournament }) => {
   const maps = tournament.maps_won + tournament.maps_lost;
@@ -94,7 +95,9 @@ export const UserTournamentHeader = ({ tournament }: { tournament: UserTournamen
         <div className="grid xs:grid-cols-2 sm:grid-cols-11 md:gap-4 xs:gap-1.5 items-center w-full fixed-columns min-h-10 xs:ml-8 md:ml-0">
           <div className="col-span-1">
             <h3 className="scroll-m-20 text-2xl font-semibold tracking-tight xs:text-left md:text-center">
-              {tournamentNumber}
+              <Link href={`/tournaments/${tournament.id}`}>
+                {tournamentNumber}
+              </Link>
             </h3>
           </div>
           <span className="col-span-2 text-left">Team {tournament.team}</span>

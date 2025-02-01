@@ -15,7 +15,7 @@ import {EncounterWithUserStats, MatchWithUserStats} from "@/types/user.types";
 import { useRouter } from "next/navigation";
 import { PaginationWithLinks } from "@/components/ui/pagination-with-links";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import PerformanceBadge from "@/app/users/components/PerformanceBagde";
+import { PerformanceBadgeWithTooltip } from "@/components/PerformanceBagde";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { PaginatedResponse } from "@/types/pagination.types";
 import Image from "next/image";
@@ -104,7 +104,7 @@ const columns: ColumnDef<EncounterWithUserStats>[] = [
             row.getValue<MatchWithUserStats[]>("mvp").map(
               (match) => {
                 return (
-                  <PerformanceBadge
+                  <PerformanceBadgeWithTooltip
                     key={`performance-${row.getValue("id")}-${match.id}`}
                     match={match}
                   />
@@ -162,50 +162,48 @@ const UserEncountersTable = ({
       <ScrollArea>
         <Card className="w-full">
           <TooltipProvider>
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  {table.getHeaderGroups().map((headerGroup) => (
-                    <TableRow key={headerGroup.id}>
-                      {headerGroup.headers.map((header) => {
-                        return (
-                          <TableHead key={header.id}>
-                            {header.isPlaceholder
-                              ? null
-                              : flexRender(header.column.columnDef.header, header.getContext())}
-                          </TableHead>
-                        );
-                      })}
+            <Table>
+              <TableHeader>
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <TableRow key={headerGroup.id}>
+                    {headerGroup.headers.map((header) => {
+                      return (
+                        <TableHead key={header.id}>
+                          {header.isPlaceholder
+                            ? null
+                            : flexRender(header.column.columnDef.header, header.getContext())}
+                        </TableHead>
+                      );
+                    })}
+                  </TableRow>
+                ))}
+              </TableHeader>
+              <TableBody>
+                {table.getRowModel().rows?.length ? (
+                  table.getRowModel().rows.map((row) => (
+                    <TableRow
+                      key={row.original.id}
+                      data-state={row.getIsSelected() && "selected"}
+                      onClick={() => {
+                        router.push(`/encounters/${row.original.id}`);
+                      }}
+                    >
+                      {row.getVisibleCells().map((cell) => (
+                        <TableCell key={cell.id}>
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </TableCell>
+                      ))}
                     </TableRow>
-                  ))}
-                </TableHeader>
-                <TableBody>
-                  {table.getRowModel().rows?.length ? (
-                    table.getRowModel().rows.map((row) => (
-                      <TableRow
-                        key={row.original.id}
-                        data-state={row.getIsSelected() && "selected"}
-                        onClick={() => {
-                          router.push(`/encounters/${row.original.id}`);
-                        }}
-                      >
-                        {row.getVisibleCells().map((cell) => (
-                          <TableCell key={cell.id}>
-                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={columns.length} className="h-24 text-center">
-                        No results.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={columns.length} className="h-24 text-center">
+                      No results.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
           </TooltipProvider>
         </Card>
         <ScrollBar orientation="horizontal" />

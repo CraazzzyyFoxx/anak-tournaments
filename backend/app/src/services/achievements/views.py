@@ -59,6 +59,21 @@ async def get(
 
 
 @router.get(
+    path="/{id}/users",
+    response_model=pagination.Paginated[schemas.UserRead],
+    description="Retrieve all users who have earned a specific achievement by its ID. Supports pagination.",
+    summary="Get users who earned an achievement",
+)
+async def get_users_achievement(
+    id: int,
+    params: pagination.PaginationQueryParams = Depends(),
+    session: AsyncSession = Depends(db.get_async_session),
+):
+    return await flows.get_users_achievement(session, id, pagination.PaginationParams.from_query_params(params))
+
+
+
+@router.get(
     path="/user/{user_id}",
     response_model=list[schemas.UserAchievementRead],
     description=""

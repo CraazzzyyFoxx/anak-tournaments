@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import Link from "next/link";
 
 export interface UserLastTournamentProps {
   tournament: UserTournamentWithStats | null;
@@ -268,7 +269,9 @@ const UserLastTournamentCard = ({ tournament, tournaments }: UserLastTournamentP
           <div className="flex flex-row items-center gap-2 scroll-m-20 text-xl font-semibold tracking-tight">
             <Box />
             <div className="flex flex-row gap-6">
-              <span>{tournamentName}</span>
+              <Link href={`/tournaments/${tournament.id}`}>
+                {tournamentName}
+              </Link>
             </div>
           </div>
           <div className="flex flex-1 xs:flex-col xs:gap-4 xs1:flex-row xs1:items-center justify-between">

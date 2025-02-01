@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Table, TableBody, TableCell, TableHead, TableRow } from "@/components/ui/table";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import PerformanceBadge from "@/app/users/components/PerformanceBagde";
+import { PerformanceBadgeWithTooltip } from "@/components/PerformanceBagde";
 import { CircleMinus, CirclePlus } from "lucide-react";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 
@@ -26,7 +26,7 @@ const UserTournamentEncounters = ({ tournament, team_id }: UserTournamentEncount
             <TableHead className="w-[350px]">Match</TableHead>
             <TableHead>Score</TableHead>
             <TableHead>Heroes</TableHead>
-            <TableHead>MVP Status</TableHead>
+            <TableHead>MVP Score</TableHead>
             <TableHead className="text-center">Closeness</TableHead>
             <TableHead className="text-center">Logs</TableHead>
           </TableRow>
@@ -97,7 +97,7 @@ const UserTournamentEncounters = ({ tournament, team_id }: UserTournamentEncount
                     <div className="flex flex-row gap-2">
                       {encounter.matches.map((match) => {
                         return (
-                          <PerformanceBadge
+                          <PerformanceBadgeWithTooltip
                             key={`performance-${encounter.id}-${match}`}
                             match={match}
                           />

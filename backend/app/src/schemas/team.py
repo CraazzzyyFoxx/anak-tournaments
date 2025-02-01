@@ -20,6 +20,8 @@ __all__ = (
     "PlayerFilterParams",
     "PlayerWithMatchStats",
     "TeamWithMatchStats",
+    "PlayerAnalytics",
+    "TeamAnalytics",
 )
 
 
@@ -111,3 +113,13 @@ class PlayerWithMatchStats(PlayerRead):
 
 class TeamWithMatchStats(TeamRead):
     players: list[PlayerWithMatchStats]
+
+
+class PlayerAnalytics(PlayerRead):
+    points: float
+    move_1: float | None
+    move_2: float | None
+
+
+class TeamAnalytics(TeamRead):
+    players: list[PlayerAnalytics]

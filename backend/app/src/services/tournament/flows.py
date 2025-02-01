@@ -1,11 +1,13 @@
 from itertools import groupby
 
+from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models, schemas
 from src.core import enums, errors, pagination
 from src.services.team import service as team_service
 from src.services.user import flows as user_flows
+from src.services.team import flows as team_flows
 
 from . import service
 
@@ -340,3 +342,56 @@ async def get_owal_standings(session: AsyncSession) -> schemas.OwalStandings:
         days=[await to_pydantic(session, day, []) for day in days_tournament],
         standings=standings_output,
     )
+
+
+async def get_analytics(session: AsyncSession, tournament_id: int) -> list[schemas.TeamAnalytics]:
+    """
+    Retrieves analytics data for a specific tournament.
+
+    Parameters:
+        session (AsyncSession): The SQLAlchemy async session.
+        tournament_id (int): The ID of the tournament.
+
+    Returns:
+        schemas.TeamAnalytics: The analytics data for the tournament.
+    """
+
+    global_cache: dict[int, dict[int, dict[int, float]]] = {}
+    cache: dict[int, dict[int, tuple[int, int, float]]] = {}
+    tournament_cache: dict[int, schemas.TournamentRead]
+    team_cache: dict[int, schemas.TeamRead] = {}
+    player_cache: dict[int, schemas.PlayerRead] = {}
+    data = await service.get_analytics(session, tournament_id)
+    for team, player, tournament, wins, losses, move_1, move_2, points in data:
+        if tournament.id != tournament_id:
+            continue
+
+        cache.setdefault(team.id, {})
+        cache[team.id][player.id] = [move_1, move_2, points]
+        team_cache.setdefault(team.id, await team_flows.to_pydantic(session, team, []))
+        player_cache.setdefault(
+            player.id, await team_flows.to_pydantic_player(session, player, [])
+        )
+
+    output: list[schemas.TeamAnalytics] = []
+
+    for team_id, players in cache.items():
+        team = team_cache[team_id]
+        players_output: list[schemas.PlayerAnalytics] = []
+        for player_id, data in players.items():
+            player = player_cache[player_id]
+            players_output.append(
+                schemas.PlayerAnalytics(
+                    **player.model_dump(),
+                    move_1=data[0] - player.rank if data[0] is not None else None,
+                    move_2=data[1] - player.rank if data[1] is not None else None,
+                    points=round(data[2], 2),
+                )
+            )
+        output.append(
+            schemas.TeamAnalytics(
+                **team.model_dump(exclude={"players"}), players=players_output
+            )
+        )
+
+    return output

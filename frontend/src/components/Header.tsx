@@ -12,38 +12,48 @@ import {
   NavigationMenuLink,
   NavigationMenuList,
   NavigationMenuTrigger,
-  navigationMenuTriggerStyle
 } from "@/components/ui/navigation-menu";
 import { cn } from "@/lib/utils";
+import Github from "@/components/icons/Github";
 
 const tournament_components: { title: string; href: string; description: string }[] = [
   {
     title: "Tournaments",
     href: "/tournaments",
-    description: "Place where all tournaments are listed."
+    description: "Place where all tournaments are listed"
   },
   {
     title: "Teams",
     href: "/teams",
-    description: "Place where all teams are listed."
+    description: "Place where all teams are listed"
   },
   {
     title: "OWAL",
     href: "/owal",
-    description: "Place where all OWAL tournaments are listed."
-  }
+    description: "Place where all OWAL tournaments are listed"
+  },
+  // {
+  //   title: "Analytics",
+  //   href: "/tournaments/analytics",
+  //   description: "Page with analytics for tournaments"
+  // }
 ];
 
 const users_components: { title: string; href: string; description: string }[] = [
   {
     title: "Users",
     href: "/users",
-    description: "Place where all users are listed."
+    description: "Place where all users are listed"
   },
   {
     title: "Compare",
     href: "/users/compare",
-    description: "Page where you can compare users."
+    description: "Page where you can compare users"
+  },
+  {
+    title: "Achievements",
+    href: "/achievements",
+    description: "Page where all achievements are listed"
   }
 ];
 
@@ -51,12 +61,12 @@ const matches_components: { title: string; href: string; description: string }[]
   {
     title: "Encounters",
     href: "/encounters",
-    description: "Place where all encounters are listed."
+    description: "Place where all encounters are listed"
   },
   {
     title: "Matches",
     href: "/matches",
-    description: "Page where all matches are listed."
+    description: "Page where all matches are listed"
   }
 ];
 
@@ -128,6 +138,9 @@ const Header = () => {
         <div className="ml-auto flex-1 sm:flex-initial">
           <UserSearch />
         </div>
+        <Link href={"https://github.com/CraazzzyyFoxx/anak-tournaments"}>
+          <Github />
+        </Link>
       </div>
     </header>
   );

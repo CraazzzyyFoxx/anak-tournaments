@@ -145,3 +145,23 @@ async def get_owal_standings(
     session: AsyncSession = Depends(db.get_async_session),
 ):
     return await flows.get_owal_standings(session)
+
+
+@router.get(
+    path="/statistics/analytics",
+    response_model=list[schemas.TeamAnalytics],
+    description=f"Retrieve analytics for tournaments. **Cache TTL: {config.settings.tournaments_cache_ttl / 60} minutes.**",
+    summary="Get tournament analytics",
+)
+@cache(
+    ttl=cache_control_ttl(default=config.settings.tournaments_cache_ttl),
+    key="fastapi:{request.url.path}/{request.query_params}",
+)
+async def get_analytics(
+    request: Request,
+    tournament_id: int,
+    start_tournament_id: int | None = None,
+    end_tournament_id: int | None = None,
+    session: AsyncSession = Depends(db.get_async_session),
+):
+    return await flows.get_analytics(session, tournament_id)

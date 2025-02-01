@@ -23,7 +23,7 @@ export default class encounterService {
   static async getMatch(match_id: number): Promise<MatchWithStats> {
     return customFetch(`${API_URL}/matches/${match_id}`, {
       query: {
-        entities: ["teams", "teams.players", "teams.players.user", "map", "map.gamemode"]
+        entities: ["teams", "teams.players", "teams.players.user", "map", "map.gamemode", "encounter", "encounter.tournament", "encounter.tournament_group"]
       }
     }).then((res) => res.json());
   }
@@ -41,6 +41,24 @@ export default class encounterService {
         order: "desc",
         entities: ["tournament", "tournament_group"],
         fields: ["name"],
+        tournament_id: tournamentId
+      }
+    }).then((res) => res.json());
+  }
+  static async getAllMatches(
+    page: number,
+    perPage: number,
+    query: string,
+    tournamentId: number | null = null
+  ): Promise<PaginatedResponse<MatchWithStats>> {
+    return customFetch(`${API_URL}/matches`, {
+      query: {
+        per_page: perPage,
+        page: page,
+        query: query,
+        sort: "id",
+        order: "desc",
+        entities: ["teams", "map", "map.gamemode", "encounter", "encounter.tournament", "encounter.tournament_group"],
         tournament_id: tournamentId
       }
     }).then((res) => res.json());

@@ -35,7 +35,7 @@ async def to_pydantic(
     if "players" in entities:
         players_entities = utils.prepare_entities(entities, "players")
         players_read = [
-            await to_player_pydantic(session, player, players_entities)
+            await to_pydantic_player(session, player, players_entities)
             for player in team.players
         ]
     if "captain" in entities:
@@ -67,7 +67,7 @@ async def to_pydantic(
     )
 
 
-async def to_player_pydantic(
+async def to_pydantic_player(
     session: AsyncSession, player: models.Player, entities: list[str]
 ) -> schemas.PlayerRead:
     """

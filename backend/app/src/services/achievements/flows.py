@@ -1,3 +1,5 @@
+import typing
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models, schemas
@@ -5,6 +7,7 @@ from src.core import errors, pagination
 from src.services.hero import flows as hero_flows
 from src.services.tournament import flows as tournament_flows
 from src.services.user import flows as user_flows
+from src.services.encounter import flows as encounter_flows
 
 from . import service
 
@@ -28,14 +31,58 @@ async def to_pydantic(
         schemas.AchievementRead: The Pydantic schema representing the achievement.
     """
     hero = None
+    count = None
     if "hero" in entities and achievement.hero:
         hero = await hero_flows.to_pydantic(session, achievement.hero, [])
+    if "count" in entities:
+        count = await service.get_count_users_achievements(session, [achievement.id])
 
     return schemas.AchievementRead(
         **achievement.to_dict(),
         rarity=rarity,
         hero=hero,
+        count=count[achievement.id] if count else None,
     )
+
+
+async def bulk_to_pydantic(
+    session: AsyncSession,
+    achievements: typing.Sequence[tuple[models.Achievement, float]],
+    entities: list[str],
+) -> list[schemas.AchievementRead]:
+    """
+    Converts a list of Achievement model instances to Pydantic schemas (AchievementRead), including related entities.
+
+    Parameters:
+        session (AsyncSession): The SQLAlchemy async session.
+        achievements (list[tuple[models.Achievement, float]]): A list of Achievement model instances and their rarity.
+        entities (list[str]): A list of related entities to include (e.g., ["hero"]).
+
+    Returns:
+        list[schemas.AchievementRead]: A list of Pydantic schemas representing the achievements.
+    """
+    output: list[schemas.AchievementRead] = []
+    count = None
+
+    if "count" in entities:
+        achievement_ids = [achievement.id for achievement, _ in achievements]
+        count = await service.get_count_users_achievements(session, achievement_ids)
+
+    for achievement, rarity in achievements:
+        hero = None
+        if "hero" in entities and achievement.hero:
+            hero = await hero_flows.to_pydantic(session, achievement.hero, [])
+
+        output.append(
+            schemas.AchievementRead(
+                **achievement.to_dict(),
+                rarity=rarity,
+                hero=hero,
+                count=count[achievement.id] if count else None,
+            )
+        )
+
+    return output
 
 
 async def get(
@@ -89,10 +136,7 @@ async def get_all(
         total=total,
         per_page=params.per_page,
         page=params.page,
-        results=[
-            await to_pydantic(session, achievement[0], achievement[1], params.entities)
-            for achievement in achievements
-        ],
+        results=await bulk_to_pydantic(session, achievements, params.entities),
     )
 
 
@@ -126,8 +170,9 @@ async def get_user_achievements(
                 tournaments_ids=(
                     [achievement.tournament_id] if achievement.tournament_id else []
                 ),
-                matches=[achievement.match_id] if achievement.match_id else [],
+                matches_ids=[achievement.match_id] if achievement.match_id else [],
                 tournaments=[],
+                matches=[],
                 hero=None,
             )
         else:
@@ -143,9 +188,9 @@ async def get_user_achievements(
             if (
                 achievement.match_id
                 and achievement.match_id
-                not in cache[achievement.achievement_id].matches
+                not in cache[achievement.achievement_id].matches_ids
             ):
-                cache[achievement.achievement_id].matches.append(achievement.match_id)
+                cache[achievement.achievement_id].matches_ids.append(achievement.match_id)
 
     if "tournaments" in entities:
         for achievement in cache.values():
@@ -155,5 +200,35 @@ async def get_user_achievements(
                         session, tournament_id, []
                     )
                     achievement.tournaments.append(tournament)
+                    
+    if "matches" in entities:
+        for achievement in cache.values():
+            if achievement.matches_ids:
+                for match_id in achievement.matches_ids:
+                    match = await encounter_flows.get_match(session, match_id, ["map", "teams"])
+                    achievement.matches.append(match)
 
     return list(cache.values())
+
+
+async def get_users_achievement(
+        session: AsyncSession, achievement_id: int, params: pagination.PaginationParams
+) -> pagination.Paginated[schemas.UserRead]:
+    """
+    Retrieves a paginated list of users who have earned a specific achievement.
+
+    Args:
+        session: AsyncSession: Database session to be used for retrieving data.
+        achievement_id: int: Identifier for the achievement to filter users by.
+        params: pagination.PaginationParams: Pagination parameters including page number and items per page.
+
+    Returns:
+        pagination.Paginated[schemas.UserRead]: A paginated response containing a list of users and pagination details.
+    """
+    users, total = await service.get_users_achievements(session, achievement_id, params)
+    return pagination.Paginated(
+        total=total,
+        per_page=params.per_page,
+        page=params.page,
+        results=[await user_flows.to_pydantic(session, user, []) for user in users],
+    )

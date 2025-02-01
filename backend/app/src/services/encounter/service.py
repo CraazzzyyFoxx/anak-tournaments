@@ -10,7 +10,6 @@ from src.services.map import service as map_service
 from src.services.team import service as team_service
 from src.services.tournament import service as tournament_service
 
-# JSONB object for hero data
 hero_jsonb_object = sa.func.jsonb_build_object(
     "id",
     models.Hero.id,
@@ -31,7 +30,6 @@ hero_jsonb_object = sa.func.jsonb_build_object(
 )
 
 
-# JSONB object for match data
 match_jsonb_object = sa.func.jsonb_build_object(
     "id",
     models.Match.id,
@@ -140,7 +138,17 @@ def match_entities(
             )
         )
     if "encounter" in in_entities:
-        entities.append(utils.join_entity(child, models.Match.encounter))
+        encounter_entity = utils.join_entity(child, models.Match.encounter)
+        entities.append(encounter_entity)
+
+        if "encounter.matches" in in_entities:
+            in_entities.remove("encounter.matches")
+
+        entities.extend(
+            encounter_entities(
+                utils.prepare_entities(in_entities, "encounter"), encounter_entity
+            )
+        )
     if "map" in in_entities:
         map_entity = utils.join_entity(child, models.Match.map)
         entities.append(map_entity)
@@ -274,7 +282,12 @@ async def get_by_user_with_teams(
         )
         .outerjoin(performance_cte, performance_cte.c.match_id == models.Match.id)
         .outerjoin(heroes_cte, heroes_cte.c.match_id == models.Match.id)
-        .where(sa.and_(models.Player.user_id == user_id))
+        .where(
+            sa.and_(
+                models.Player.user_id == user_id,
+                models.Player.is_substitution.is_(False),
+            )
+        )
         .order_by(models.Team.id, models.Encounter.id)
     )
 

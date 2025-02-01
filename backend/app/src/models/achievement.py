@@ -6,6 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.core import db
 from src.models.hero import Hero
 from src.models.tournament import Tournament
+from src.models.user import User
 
 if typing.TYPE_CHECKING:
     from src.models.match import Match
@@ -44,3 +45,4 @@ class AchievementUser(db.TimeStampIntegerMixin):
     tournament: Mapped[Tournament] = relationship()
     achievement: Mapped[Achievement] = relationship()
     match: Mapped[typing.Optional["Match"]] = relationship()
+    user: Mapped[User] = relationship()

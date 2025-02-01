@@ -32,12 +32,12 @@ const UserBestTeammates = ({ teammates, className }: UserBestTeammatesProps) => 
                 <p className="text-sm font-semibold text-s">{teammate.stats.kda}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground font-semibold">MVP</p>
-                <p className="text-sm font-semibold">{teammate.stats.performance}</p>
+                <p className="text-xs text-muted-foreground font-semibold">MVP Score</p>
+                <p className="text-sm font-semibold text-center">{teammate.stats.performance}</p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground font-semibold">Win ratio</p>
-                <p className="text-sm font-semibold">{(teammate.winrate * 100).toFixed(0)}%</p>
+                <p className="text-sm font-semibold text-center">{(teammate.winrate * 100).toFixed(0)}%</p>
               </div>
             </div>
           </div>

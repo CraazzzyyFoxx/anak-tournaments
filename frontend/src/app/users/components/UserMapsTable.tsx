@@ -3,7 +3,6 @@
 import React from "react";
 import {
   ColumnDef,
-  flexRender,
   getCoreRowModel,
   getPaginationRowModel,
   getSortedRowModel,
@@ -11,14 +10,6 @@ import {
   SortingState,
   useReactTable
 } from "@tanstack/react-table";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow
-} from "@/components/ui/table";
 import { PaginationControlled } from "@/components/ui/pagination-with-links";
 import { UserMapRead } from "@/types/user.types";
 import { MapRead } from "@/types/map.types";
@@ -32,6 +23,7 @@ import { Card } from "@/components/ui/card";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { HeroPlaytime } from "@/types/hero.types";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import TableComponent from "@/components/TableComponent";
 
 const columns: ColumnDef<UserMapRead>[] = [
   {
@@ -40,10 +32,10 @@ const columns: ColumnDef<UserMapRead>[] = [
     cell: ({ row }) => {
       const map: MapRead = row.getValue("map");
       return (
-        <div className="relative h-[55px] min-w-[250px]">
+        <div className="relative h-[55px] min-w-[300px]">
           <div className="absolute inset-0 z-[1] bg-gradient-to-r from-transparent from-0% via-transparent to-card to-75%" />
           <Image
-            className="h-full w-full min-w-[250px] brightness-75 z-0 relative"
+            className="h-full w-full min-w-[300px] brightness-75 z-0 relative"
             src={map.image_path}
             alt={map.name}
             style={{ objectFit: "cover" }}
@@ -58,19 +50,23 @@ const columns: ColumnDef<UserMapRead>[] = [
   },
   {
     accessorKey: "heroes",
-    header: () => <div className="flex justify-center">Heroes</div>,
+    maxSize: 2,
+    enableResizing: false,
+    header: () => <div className="flex justify-self-end min-w-64">Heroes</div>,
     cell: ({ row }) => (
-      <div className="flex flex-row gap-2 max-w-56">
-        {row.getValue<HeroPlaytime[]>("heroes").map((hero) => {
-          return (
-            <Avatar key={`hero-${hero}`}>
-              <AvatarImage src={hero.hero.image_path} asChild>
-                <Image src={hero.hero.image_path} alt="Hero" width={128} height={128} />
-              </AvatarImage>
-              <AvatarFallback> </AvatarFallback>
-            </Avatar>
-          );
-        })}
+      <div className="flex justify-self-end">
+        <div className="flex gap-2 justify-self-start min-w-64">
+          {row.getValue<HeroPlaytime[]>("heroes").map((hero) => {
+            return (
+              <Avatar key={`hero-${hero}`}>
+                <AvatarImage src={hero.hero.image_path} asChild>
+                  <Image src={hero.hero.image_path} alt="Hero" width={128} height={128} />
+                </AvatarImage>
+                <AvatarFallback> </AvatarFallback>
+              </Avatar>
+            );
+          })}
+        </div>
       </div>
     )
   },
@@ -167,46 +163,11 @@ const UserMapsTable = ({ maps }: { maps: PaginatedResponse<UserMapRead> }) => {
       <ScrollArea>
         <Card className="w-full">
           <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                {table.getHeaderGroups().map((headerGroup) => (
-                  <TableRow key={headerGroup.id}>
-                    {headerGroup.headers.map((header) => {
-                      return (
-                        <TableHead key={header.id}>
-                          {header.isPlaceholder
-                            ? null
-                            : flexRender(header.column.columnDef.header, header.getContext())}
-                        </TableHead>
-                      );
-                    })}
-                  </TableRow>
-                ))}
-              </TableHeader>
-              <TableBody>
-                {table.getRowModel().rows?.length ? (
-                  table.getRowModel().rows.map((row) => (
-                    <TableRow
-                      key={row.id}
-                      data-state={row.getIsSelected() && "selected"}
-                      className="hover:bg-card data-[state=selected]:bg-card"
-                    >
-                      {row.getVisibleCells().map((cell) => (
-                        <TableCell className="p-0" key={cell.id}>
-                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={columns.length} className="h-24 text-center">
-                      No results.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+            <TableComponent
+              table={table}
+              columns={columns}
+              tableCellClassName={"p-0"}
+            />
           </div>
         </Card>
         <ScrollBar orientation="horizontal" />
