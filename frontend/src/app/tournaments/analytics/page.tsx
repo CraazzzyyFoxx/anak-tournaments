@@ -1,7 +1,7 @@
 "use client";
 
 
-import React, { useEffect, useState } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import tournamentService from "@/services/tournament.service";
@@ -115,4 +115,10 @@ const AnalyticsPage = () => {
   );
 };
 
-export default AnalyticsPage;
+const AnalyticsPageWrapper = () => (
+  <Suspense fallback={<div>Loading...</div>}>
+    <AnalyticsPage />
+  </Suspense>
+);
+
+export default AnalyticsPageWrapper;
