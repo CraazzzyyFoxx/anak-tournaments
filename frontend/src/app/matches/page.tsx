@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import tournamentService from "@/services/tournament.service";
@@ -182,8 +182,13 @@ const MatchesPage = () => {
         )
       }
     </div>
-
   );
 };
 
-export default MatchesPage;
+const MatchesPageWrapper = () => (
+  <Suspense fallback={<div>Loading...</div>}>
+    <MatchesPage />
+  </Suspense>
+);
+
+export default MatchesPageWrapper;
