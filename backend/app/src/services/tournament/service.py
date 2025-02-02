@@ -469,3 +469,25 @@ async def get_analytics(
 
     result = await session.execute(query)
     return result.all()  # type: ignore
+
+
+async def get_bulk_tournament(
+        session: AsyncSession, tournaments_ids: list[int], entities: list[str]
+) -> typing.Sequence[models.Tournament]:
+    """
+    Retrieves a list of `Tournament` model instances by their IDs.
+
+    Args:
+        session: An SQLAlchemy `AsyncSession` for database interaction.
+        tournaments_ids: A list of tournament IDs to retrieve.
+
+    Returns:
+        A sequence of `Tournament` model instances.
+    """
+    query = (
+        sa.select(models.Tournament)
+        .options(*tournament_entities(entities))
+        .where(models.Tournament.id.in_(tournaments_ids))
+    )
+    result = await session.execute(query)
+    return result.scalars().all()

@@ -12,6 +12,7 @@ from src.services.hero import flows as hero_flows
 from src.services.statistics import service as statistics_service
 from src.services.team import flows as team_flows
 from src.services.tournament import flows as tournament_flows
+from src.services.team import service as team_service
 
 from . import service
 
@@ -303,10 +304,12 @@ async def get_tournaments(
     user = await get(session, id, [])
     output: list[schemas.UserTournament] = []
     tournaments = await service.get_tournaments_with_stats(session, user.id)
+    tournaments_ids = [tournament[0].tournament_id for tournament in tournaments]
     encounters: dict[int, list[schemas.EncounterReadWithUserStats]] = {}
     encounters_cache: dict[int, dict[int, models.Encounter]] = {}
     matches_cache: dict[int, dict[int, list[schemas.MatchReadWithUserStats]]] = {}
     matches = await encounter_service.get_by_user_with_teams(session, user.id, ["map"])
+    placements = await team_service.get_team_count_by_tournament_bulk(session, tournaments_ids)
 
     for team, encounter, match, performance, heroes in matches:
         encounters.setdefault(team.id, [])
@@ -341,8 +344,7 @@ async def get_tournaments(
         won: int = 0
         lost: int = 0
         draw: int = 0
-        placements: list[int] = [s.overall_position for s in team.tournament.standings]
-        placement: int = team.standings[0].overall_position
+        placement: int | None = team.standings[0].overall_position if team.standings else None
 
         for player in team.players:
             if player.user_id == user.id:
@@ -372,7 +374,7 @@ async def get_tournaments(
             placement=placement,
             role=user_role,
             division=user_division,
-            count_teams=max(placements),
+            count_teams=placements[team.tournament_id],
             won=won,
             lost=lost,
             draw=draw,

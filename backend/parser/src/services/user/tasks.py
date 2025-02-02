@@ -95,7 +95,7 @@ async def initial_parse(session: AsyncSession) -> None:
         has_discord=False,
         has_smurf=True,
     )
-    for i in range(34, 36 + 1):
+    for i in range(34, 37 + 1):
         await create_or_update_player_from_csv(
             session,
             f"answers/{i}.csv",

@@ -146,25 +146,25 @@ async def get_player_by_team_and_user(
     return result.unique().scalars().first()
 
 
-def get_player_by_user(
-    session: Session, user_id: int, entities: list[str]
+async def get_player_by_user(
+    session: AsyncSession, user_id: int, entities: list[str]
 ) -> typing.Sequence[models.Player]:
     query = (
         sa.select(models.Player).where(sa.and_(models.Player.user_id == user_id)).options(*player_entities(entities))
     )
-    result = session.execute(query)
+    result = await session.execute(query)
     return result.unique().scalars().all()
 
 
-def get_player_by_user_and_role(
-    session: Session, user_id: int, role: enums.HeroClass, entities: list[str]
+async def get_player_by_user_and_role(
+    session: AsyncSession, user_id: int, role: enums.HeroClass, entities: list[str]
 ) -> typing.Sequence[models.Player]:
     query = (
         sa.select(models.Player)
         .options(*player_entities(entities))
         .where(sa.and_(models.Player.user_id == user_id, models.Player.role == role))
     )
-    result = session.execute(query)
+    result = await session.execute(query)
     return result.unique().scalars().all()
 
 

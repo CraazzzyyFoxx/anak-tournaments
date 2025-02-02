@@ -399,7 +399,7 @@ async def get_by_user(
         )
         .join(heroes_cte, heroes_cte.c.match_id == models.Match.id, isouter=True)
     )
-
+    query = params.apply_sort(query)
     result = await session.execute(query)
     total_result = await session.execute(total_query)
     return result.all(), total_result.scalar_one()  # type: ignore

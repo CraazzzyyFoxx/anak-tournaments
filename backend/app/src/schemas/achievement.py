@@ -1,11 +1,14 @@
+from pydantic import BaseModel
+
 from .base import BaseRead
 
 __all__ = (
     "AchievementRead",
     "UserAchievementRead",
+    "AchievementEarned"
 )
 
-from src.schemas import HeroRead, TournamentRead, MatchRead
+from src.schemas import HeroRead, TournamentRead, MatchRead, UserRead
 
 
 class AchievementRead(BaseRead):
@@ -26,3 +29,9 @@ class UserAchievementRead(AchievementRead):
     tournaments: list[TournamentRead]
     matches_ids: list[int]
     matches: list[MatchRead]
+
+
+class AchievementEarned(BaseModel):
+    user: UserRead
+    count: int
+    last_tournament: TournamentRead | None

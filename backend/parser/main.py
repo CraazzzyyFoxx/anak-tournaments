@@ -13,7 +13,6 @@ from src.core.logging import logger
 from src.middlewares.exception import ExceptionMiddleware
 from src.middlewares.time import TimeMiddleware
 
-from src.services.achievement import flows as achievement_flows
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):

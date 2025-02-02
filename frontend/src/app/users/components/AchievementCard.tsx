@@ -84,7 +84,9 @@ const AchievementCard = ({ achievement }: { achievement: AchievementRarity }) =>
       </div>
       <CardHeader className="relative p-4 z-10">
         <CardTitle className="text-xl font-bold text-white drop-shadow-2xl">
-          {achievement.name}
+          <Link href={`/achievements/${achievement.id}`}>
+            {achievement.name}
+          </Link>
         </CardTitle>
       </CardHeader>
     </Card>

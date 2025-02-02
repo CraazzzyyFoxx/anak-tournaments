@@ -50,6 +50,11 @@ class AppConfig(BaseSettings):
     s3_secret_key: str
     s3_endpoint_url: str
 
+    proxy_ip: str | None
+    proxy_port: int | None
+    proxy_username: str | None
+    proxy_password: str | None
+
     @property
     def db_url_asyncpg(self):
         url = (

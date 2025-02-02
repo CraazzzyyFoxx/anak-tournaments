@@ -60,7 +60,7 @@ async def get(
 
 @router.get(
     path="/{id}/users",
-    response_model=pagination.Paginated[schemas.UserRead],
+    response_model=pagination.Paginated[schemas.AchievementEarned],
     description="Retrieve all users who have earned a specific achievement by its ID. Supports pagination.",
     summary="Get users who earned an achievement",
 )

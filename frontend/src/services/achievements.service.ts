@@ -1,8 +1,7 @@
 import { API_URL } from "@/lib/interceptors";
 import { PaginatedResponse } from "@/types/pagination.types";
 import { customFetch } from "@/lib/custom_fetch";
-import { Achievement } from "@/types/achievement.types";
-import { User } from "@/types/user.types";
+import { Achievement, AchievementEarned } from "@/types/achievement.types";
 
 export default class achievementsService {
   static async getAll(
@@ -22,7 +21,7 @@ export default class achievementsService {
   static async getOne(id: number): Promise<Achievement> {
     return customFetch(`${API_URL}/achievements/${id}`).then((res) => res.json());
   }
-  static async getUsers(id: number, page: number, perPage: number): Promise<PaginatedResponse<User>> {
+  static async getUsers(id: number, page: number, perPage: number): Promise<PaginatedResponse<AchievementEarned>> {
     return customFetch(
       `${API_URL}/achievements/${id}/users`,
       {
