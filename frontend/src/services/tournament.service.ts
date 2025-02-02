@@ -2,7 +2,7 @@ import { API_URL } from "@/lib/interceptors";
 import { PaginatedResponse } from "@/types/pagination.types";
 import { OwalStandings, Standings, Tournament } from "@/types/tournament.types";
 import { customFetch } from "@/lib/custom_fetch";
-import { TeamAnalytics } from "@/types/team.types";
+import { TournamentAnalytics } from "@/types/analytics.types";
 
 export default class tournamentService {
   static async getAll(): Promise<PaginatedResponse<Tournament>> {
@@ -33,7 +33,7 @@ export default class tournamentService {
       }
     }).then((response) => response.json());
   }
-  static async getAnalytics(id: number): Promise<TeamAnalytics[]> {
+  static async getAnalytics(id: number): Promise<TournamentAnalytics> {
     return customFetch(`${API_URL}/tournaments/statistics/analytics`, {
       query: {
         tournament_id: id
