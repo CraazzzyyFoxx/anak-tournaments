@@ -1,7 +1,6 @@
 import httpx
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 
 from src import schemas, models
 from src.core import pagination, errors
@@ -28,8 +27,8 @@ async def fetch_maps(gamemode: models.Gamemode) -> list[schemas.OverfastMap]:
     return [schemas.OverfastMap.model_validate(map) for map in response.json()]
 
 
-def get_by_name_and_gamemode(session: Session, name: str, gamemode: str) -> models.Map:
-    map = service.get_by_name_and_gamemode(session, name, gamemode)
+async def get_by_name_and_gamemode(session: AsyncSession, name: str, gamemode: str) -> models.Map:
+    map = await service.get_by_name_and_gamemode(session, name, gamemode)
     if not map:
         raise errors.ApiHTTPException(
             status_code=404,

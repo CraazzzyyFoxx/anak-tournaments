@@ -1,6 +1,6 @@
 import React from "react";
 import achievementsService from "@/services/achievements.service";
-import AchievementCard from "@/app/components/AchievementCard";
+import AchievementCard from "@/app/achievements/components/AchievementCard";
 
 const AchievementsPage = async () => {
   const achievements = await achievementsService.getAll(1, -1);

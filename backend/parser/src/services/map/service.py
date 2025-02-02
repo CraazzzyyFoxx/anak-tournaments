@@ -34,13 +34,13 @@ async def get_by_name(session: AsyncSession, name: str) -> models.Map | None:
     return result.scalar_one_or_none()
 
 
-def get_by_name_and_gamemode(session: Session, name: str, gamemode: str) -> models.Map | None:
+async def get_by_name_and_gamemode(session: AsyncSession, name: str, gamemode: str) -> models.Map | None:
     query = (
         sa.select(models.Map)
         .join(models.Gamemode)
         .where(sa.and_(models.Map.name == name, models.Gamemode.name == gamemode))
     )
-    result = session.execute(query)
+    result = await session.execute(query)
     return result.scalar_one_or_none()
 
 

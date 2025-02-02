@@ -105,15 +105,15 @@ async def get_by_name_group_id(
     return result.scalars().first()
 
 
-def get_match_by_encounter_and_map(
-    session: Session, encounter_id: int, map_id: int, entities: list[str]
+async def get_match_by_encounter_and_map(
+    session: AsyncSession, encounter_id: int, map_id: int, entities: list[str]
 ) -> models.Match | None:
     query = (
         sa.select(models.Match)
         .where(sa.and_(models.Match.encounter_id == encounter_id, models.Match.map_id == map_id))
         .options(*match_entities(entities))
     )
-    result = session.execute(query)
+    result = await session.execute(query)
     return result.scalars().first()
 
 
@@ -220,8 +220,8 @@ async def create(
     return encounter
 
 
-def update(
-    session: Session,
+async def update(
+    session: AsyncSession,
     encounter: models.Encounter,
     *,
     name: str | None = None,
@@ -247,12 +247,12 @@ def update(
     encounter.challonge_id = challonge_id or encounter.challonge_id
     encounter.has_logs = has_logs or encounter.has_logs
     encounter.status = status or encounter.status
-    session.commit()
+    await session.commit()
     return encounter
 
 
-def create_match(
-    session: Session,
+async def create_match(
+    session: AsyncSession,
     encounter: models.Encounter,
     *,
     time: float,
@@ -274,7 +274,7 @@ def create_match(
         map_id=map.id,
     )
     session.add(match)
-    session.commit()
+    await session.commit()
     logger.info(
         f"Match created [home_team_id={home_team_id}, away_team_id={away_team_id}] for encounter {encounter.id}"
     )

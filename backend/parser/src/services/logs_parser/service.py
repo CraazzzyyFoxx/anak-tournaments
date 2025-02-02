@@ -1,11 +1,10 @@
 import sqlalchemy as sa
-
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models
 
 
-def get_user_by_battle_name(session: Session, battle_name: str, verbose: bool = False) -> models.User | None:
+async def get_user_by_battle_name(session: AsyncSession, battle_name: str, verbose: bool = False) -> models.User | None:
     if verbose:
         query = (
             sa.select(models.User)
@@ -29,12 +28,12 @@ def get_user_by_battle_name(session: Session, battle_name: str, verbose: bool = 
                 )
             )
         )
-    result = session.scalars(query)
+    result = await session.scalars(query)
     return result.unique().first()
 
 
-def get_user_by_team_and_battle_name(
-    session: Session, team: models.Team, battle_name: str, verbose: bool = False
+async def get_user_by_team_and_battle_name(
+    session: AsyncSession, team: models.Team, battle_name: str, verbose: bool = False
 ) -> models.Player | None:
     if verbose:
         query = (
@@ -69,5 +68,5 @@ def get_user_by_team_and_battle_name(
                 )
             )
         )
-    result = session.scalars(query)
+    result = await session.scalars(query)
     return result.unique().first()

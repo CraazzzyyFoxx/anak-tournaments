@@ -10,7 +10,7 @@ from src.core import config
 
 
 class S3AsyncClient:
-    def __init__(self,bucket_name: str):
+    def __init__(self, bucket_name: str):
         self.config = {
             "aws_access_key_id": config.app.s3_access_key,
             "aws_secret_access_key": config.app.s3_secret_key,
@@ -35,13 +35,26 @@ class S3AsyncClient:
             logger.exception(f"Error getting logs: {e}")
             return []
 
-    async def get_log_by_filename(self, filename: str) -> str:
+    async def get_log_by_filename(self, tournament_id: int, filename: str) -> str:
+        if not filename.startswith("logs/"):
+            filename = f"logs/{tournament_id}/{filename}"
         try:
             async with self.get_client() as _client:
+                # Check if the object exists using head_object
+                try:
+                    await _client.head_object(Bucket=self.bucket_name, Key=filename)
+                except ClientError as e:
+                    if e.response["Error"]["Code"] == "404":  # Specific handling of NoSuchKey
+                        logger.error(f"File '{filename}' does not exist in bucket '{self.bucket_name}'.")
+                        return ""
+                    else:
+                        raise
+
                 response = await _client.get_object(Bucket=self.bucket_name, Key=filename)
                 return await response["Body"].read()
         except ClientError as e:
-            logger.exception(f"Error getting logs: {e}")
+            # Catch-all for other ClientErrors
+            logger.exception(f"Error getting log by filename: {e}")
             return ""
 
 

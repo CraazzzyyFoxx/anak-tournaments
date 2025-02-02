@@ -13,13 +13,18 @@ from src.core.logging import logger
 from src.middlewares.exception import ExceptionMiddleware
 from src.middlewares.time import TimeMiddleware
 
+from src.services.tournament import flows as tournament_flows
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     logger.info("Application... Online!")
-    # async with db.async_session_maker() as session:
-    #     await achievement_flows.calculate_achievements(session)
-
+    async with db.async_session_maker() as session:
+        # for index in range(21, 36):
+        #     await tournament_flows.get_analytics(session,  index)
+        #
+        # await tournament_flows.get_analytics(session, 46)
+        pass
     yield
 
 
