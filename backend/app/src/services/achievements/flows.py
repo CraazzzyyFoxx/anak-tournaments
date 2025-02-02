@@ -8,6 +8,8 @@ from src.services.hero import flows as hero_flows
 from src.services.tournament import flows as tournament_flows
 from src.services.user import flows as user_flows
 from src.services.encounter import flows as encounter_flows
+from src.services.tournament import service as tournament_service
+from src.services.tournament import flows as tournament_flows
 
 from . import service
 
@@ -213,7 +215,7 @@ async def get_user_achievements(
 
 async def get_users_achievement(
         session: AsyncSession, achievement_id: int, params: pagination.PaginationParams
-) -> pagination.Paginated[schemas.UserRead]:
+) -> pagination.Paginated[schemas.AchievementEarned]:
     """
     Retrieves a paginated list of users who have earned a specific achievement.
 
@@ -223,12 +225,36 @@ async def get_users_achievement(
         params: pagination.PaginationParams: Pagination parameters including page number and items per page.
 
     Returns:
-        pagination.Paginated[schemas.UserRead]: A paginated response containing a list of users and pagination details.
+        pagination.Paginated[schemas.AchievementEarned]: A paginated response containing a list of users and pagination details.
     """
     users, total = await service.get_users_achievements(session, achievement_id, params)
+    results: list[schemas.AchievementEarned] = []
+    tournament_to_fetch: list[int] = []
+
+    for user, count, last_tournament_id in users:
+        if last_tournament_id:
+            tournament_to_fetch.append(last_tournament_id)
+
+    tournaments = await tournament_service.get_bulk_tournament(session, tournament_to_fetch, [])
+
+    for user, count, last_tournament_id in users:
+        last_tournament = None
+        if last_tournament_id:
+            for tournament in tournaments:
+                if tournament.id == last_tournament_id:
+                    last_tournament = tournament
+                    break
+
+        results.append(schemas.AchievementEarned(
+            user=await user_flows.to_pydantic(session, user, []),
+            count=count,
+            last_tournament=await tournament_flows.to_pydantic(session, last_tournament, []) if last_tournament else None,
+        ))
+
+
     return pagination.Paginated(
         total=total,
         per_page=params.per_page,
         page=params.page,
-        results=[await user_flows.to_pydantic(session, user, []) for user in users],
+        results=results,
     )

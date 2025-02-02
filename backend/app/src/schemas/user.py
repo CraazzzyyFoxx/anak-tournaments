@@ -49,7 +49,7 @@ class UserTournament(BaseModel):
     team: str
     players: list["schemas.PlayerRead"]
     closeness: float
-    placement: int
+    placement: int | None
     count_teams: int
     won: int
     lost: int

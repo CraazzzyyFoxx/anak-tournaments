@@ -1,5 +1,6 @@
 import { Tournament } from "@/types/tournament.types";
 import { Match } from "./encounter.types";
+import { User } from "@/types/user.types";
 
 export interface Achievement {
   id: number;
@@ -20,4 +21,11 @@ export interface AchievementRarity extends Achievement {
   tournaments: Tournament[];
   matches_ids: number[];
   matches: Match[]
+}
+
+
+export interface AchievementEarned {
+  user: User
+  count: number
+  last_tournament: Tournament
 }

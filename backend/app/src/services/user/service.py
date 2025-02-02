@@ -397,7 +397,6 @@ async def get_tournaments_with_stats(
             sa.and_(
                 models.Player.user_id == user_id,
                 models.Player.is_substitution.is_(False),
-                models.Tournament.is_finished.is_(True),
             )
         )
         .group_by(models.Team.id)

@@ -49,6 +49,8 @@ export const UserTournamentStatsCard = ({ tournament }: { tournament: UserTourna
 export const getTournamentColor = (tournament: UserTournament) => {
   let color = "background";
 
+  if (!tournament.placement) return color
+
   if (tournament.id > 20) {
     if (tournament.placement <= 13) {
       color = "from-green-300";
@@ -104,7 +106,7 @@ export const UserTournamentHeader = ({ tournament }: { tournament: UserTournamen
           <div className="flex col-span-2 justify-between xs:w-48 md:w-auto">
             <div className="flex items-center gap-4">
               <span>
-                Place {tournament.placement} of {tournament.count_teams}
+                Place {tournament.placement ? tournament.placement : "-"} of {tournament.count_teams}
               </span>
             </div>
             <div className="flex flex-row gap-2 mb-2 items-center xs:ml-5 xl:ml-0">

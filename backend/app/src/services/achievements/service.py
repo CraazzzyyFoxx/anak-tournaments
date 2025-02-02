@@ -142,7 +142,7 @@ async def get_count_users_achievements(session: AsyncSession, achievements_ids: 
 
 async def get_users_achievements(
         session: AsyncSession, achievement_id: int, params: pagination.PaginationParams
-) -> tuple[list[models.User], int]:
+) -> list[tuple[models.User, int, int], int]:
     """
     Retrieves a paginated list of distinct users who have earned a specific achievement.
 
@@ -159,15 +159,21 @@ async def get_users_achievements(
         .where(models.AchievementUser.achievement_id == achievement_id)
     )
     query = (
-        sa.select(models.AchievementUser)
-        .distinct(models.AchievementUser.user_id)
-        .options(sa.orm.joinedload(models.AchievementUser.user))
+        sa.select(
+            models.User,
+            sa.func.count(models.AchievementUser.id).label("total"),
+            sa.func.max(models.AchievementUser.tournament_id).label("last_tournament_id"),
+        )
+        .select_from(models.AchievementUser)
+        .join(models.User, models.User.id == models.AchievementUser.user_id)
         .where(models.AchievementUser.achievement_id == achievement_id)
+        .group_by(models.User.id)
+        .order_by(sa.desc(sa.text("total")))
     )
     query = params.apply_pagination(query)
-    results = await session.scalars(query)
+    results = await session.execute(query)
     total = await session.scalar(total_query)
-    return [result.user for result in results], total
+    return [(result[0], result[1], result[2]) for result in results], total
 
 
 async def get_user(
