@@ -105,8 +105,8 @@ async def get_by_captain_tournament(
     return result.scalars().first()
 
 
-def get_by_players_tournament(
-    session: Session, players_ids: list[int], tournament: models.Tournament, entities: list[str]
+async def get_by_players_tournament(
+    session: AsyncSession, players_ids: list[int], tournament: models.Tournament, entities: list[str]
 ) -> models.Team | None:
     query = (
         sa.select(models.Team)
@@ -122,7 +122,7 @@ def get_by_players_tournament(
         .group_by(models.Team.id)
         .having(sa.func.count(models.Player.id) >= 3)
     )
-    result = session.execute(query)
+    result = await session.execute(query)
     return result.scalars().first()
 
 

@@ -1,3 +1,7 @@
+import sqlalchemy as sa
+import pandas as pd
+import numpy as np
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -242,3 +246,70 @@ async def create(
         challonge_id=challonge_tournament.id,
     )
     return tournament
+
+
+async def get_analytics(session: AsyncSession, tournament_id: int):
+    COEF_NOVICE_FIRST = 1 / 0.15
+    COEF_NOVICE_SECOND = 1 / 0.11
+    COEF_REGULAR = 1 / 0.065
+
+    data  = await service.get_analytics(session)
+    df = pd.DataFrame([
+        {
+            "tournament_id": row[2],
+            "team_id": row[0],
+            "player_name": row[1].name,
+            "player_id": row[1].id,
+            "user_id": row[1].user_id,
+            "id_role": f"{row[1].user_id}-{row[1].role}",
+            "cost": row[1].rank,
+            "wins": row[3],
+            "losses": row[4],
+            "previous_cost": row[5],
+            "pre-previous_cost": row[6],
+            "shift": 0
+        }
+        for row in data
+    ])
+
+    df['is_changed'] = df['previous_cost'] != df['cost']
+
+    for id_role in df['id_role'].unique():
+        rows = df[df['id_role'] == id_role]
+        is_novice = True
+        for index, row in rows.iterrows():
+            if is_novice:
+                if row['is_changed']:
+                    df.at[index, 'shift'] = (row['wins'] - row['losses']) / COEF_NOVICE_FIRST
+                    is_novice = False
+                else:
+                    df.at[index, 'shift'] = (row['wins'] - row['losses']) / COEF_NOVICE_SECOND
+            else:
+                df.at[index, 'shift'] = (row['wins'] - row['losses']) / COEF_REGULAR
+                if row['is_changed']:
+                    df.at[index, 'shift'] += (row['wins'] - row['losses']) / COEF_REGULAR
+                else:
+                    df.at[index, 'shift'] += df.at[rows.index[rows.index.get_loc(index) - 1], 'shift']
+
+    final_df = df[df['tournament_id'] == tournament_id]
+    final_df = final_df.replace({np.nan: None})
+
+    await session.execute(
+        sa.delete(models.TournamentAnalytics).where(models.TournamentAnalytics.tournament_id == tournament_id)
+    )
+    await session.commit()
+
+    for index, row in final_df.iterrows():
+        analytics_item = models.TournamentAnalytics(
+            tournament_id=row['tournament_id'],
+            team_id=row['team_id'],
+            player_id=row['player_id'],
+            wins=row['wins'],
+            losses=row['losses'],
+            shift_one=row["cost"] - row["previous_cost"] if row["previous_cost"] else None,
+            shift_two=row["cost"] - row["pre-previous_cost"] if row["pre-previous_cost"] else None,
+            shift=0,
+            calculated_shift=round(row["shift"], 2),
+        )
+        session.add(analytics_item)
+    await session.commit()

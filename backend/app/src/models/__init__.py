@@ -8,3 +8,4 @@ from .encounter import *
 from .match import *
 from .standings import *
 from .achievement import *
+from .analytics import *

@@ -1,6 +1,5 @@
 from itertools import groupby
 
-from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models, schemas
@@ -344,7 +343,42 @@ async def get_owal_standings(session: AsyncSession) -> schemas.OwalStandings:
     )
 
 
-async def get_analytics(session: AsyncSession, tournament_id: int) -> list[schemas.TeamAnalytics]:
+def resolve_team_shift(value: float) -> int:
+    if value >= 119:
+        return 6
+    if value >= 99:
+        return 5
+    if value >= 79:
+        return 4
+    if value >= 59:
+        return 3
+    if value >= 39:
+        return 2
+    if value >= 19:
+        return 1
+
+    if value <= -20:
+        return 0
+
+    if value <= -39:
+        return -1
+    if value <= -39:
+        return -2
+    if value <= -59:
+        return -3
+    if value <= -79:
+        return -4
+    if value <= -99:
+        return -5
+    if value <= -119:
+        return -6
+
+    return 0
+
+
+async def get_analytics(
+        session: AsyncSession, tournament_id: int,
+) -> schemas.TournamentAnalytics:
     """
     Retrieves analytics data for a specific tournament.
 
@@ -355,43 +389,56 @@ async def get_analytics(session: AsyncSession, tournament_id: int) -> list[schem
     Returns:
         schemas.TeamAnalytics: The analytics data for the tournament.
     """
-
-    global_cache: dict[int, dict[int, dict[int, float]]] = {}
-    cache: dict[int, dict[int, tuple[int, int, float]]] = {}
-    tournament_cache: dict[int, schemas.TournamentRead]
-    team_cache: dict[int, schemas.TeamRead] = {}
-    player_cache: dict[int, schemas.PlayerRead] = {}
-    data = await service.get_analytics(session, tournament_id)
-    for team, player, tournament, wins, losses, move_1, move_2, points in data:
-        if tournament.id != tournament_id:
-            continue
-
-        cache.setdefault(team.id, {})
-        cache[team.id][player.id] = [move_1, move_2, points]
-        team_cache.setdefault(team.id, await team_flows.to_pydantic(session, team, []))
-        player_cache.setdefault(
-            player.id, await team_flows.to_pydantic_player(session, player, [])
-        )
-
     output: list[schemas.TeamAnalytics] = []
+    cache_teams: dict[int, models.Team] = {}
+    cache_players: dict[int, list[tuple[models.Player, models.TournamentAnalytics]]] = {}
+    cache_teams_wins: dict[int, int] = {}
+    cache_teams_manual_shift: dict[int, int] = {}
+    min_team_cost: int = 0
+    max_team_cost: int = 0
+    avg_team_cost: int = 0
 
-    for team_id, players in cache.items():
-        team = team_cache[team_id]
-        players_output: list[schemas.PlayerAnalytics] = []
-        for player_id, data in players.items():
-            player = player_cache[player_id]
-            players_output.append(
-                schemas.PlayerAnalytics(
-                    **player.model_dump(),
-                    move_1=data[0] - player.rank if data[0] is not None else None,
-                    move_2=data[1] - player.rank if data[1] is not None else None,
-                    points=round(data[2], 2),
-                )
-            )
+    data = await service.get_analytics(session, tournament_id)
+    for team, player, analytics in data:
+        cache_teams[team.id] = team
+        cache_players.setdefault(team.id, [])
+        cache_teams_manual_shift.setdefault(team.id, 0)
+        cache_teams_manual_shift[team.id] += analytics.shift_one if analytics.shift_one else 0
+        cache_players[team.id].append((player, analytics))
+        if team.id not in cache_teams_wins:
+            cache_teams_wins[team.id] = analytics.wins
+
+        min_team_cost = min(min_team_cost, team.total_sr / 100)
+        max_team_cost = max(max_team_cost, team.total_sr/ 100)
+        avg_team_cost += team.total_sr
+
+
+    for team_id, team in cache_teams.items():
+        players = cache_players[team_id]
+        team_read = await team_flows.to_pydantic(session, team, ["placement", "group"])
+        balancer_shift = resolve_team_shift(team.total_sr - avg_team_cost)
+        manual_shift = round(cache_teams_manual_shift[team_id] / 100)
+
+        print(f"Team: {team.name} - {balancer_shift} - {cache_teams_manual_shift[team_id]}")
+
         output.append(
             schemas.TeamAnalytics(
-                **team.model_dump(exclude={"players"}), players=players_output
+                **team_read.model_dump(exclude={"players"}),
+                balancer_shift=balancer_shift,
+                manual_shift=manual_shift,
+                total_shift=balancer_shift + manual_shift,
+                players=[
+                    schemas.PlayerAnalytics(
+                        **(await team_flows.to_pydantic_player(session, player, [])).model_dump(),
+                        move_1=analytics.shift_one,
+                        move_2=analytics.shift_two,
+                        points=analytics.calculated_shift
+                    ) for player, analytics in players
+                ]
             )
         )
 
-    return output
+    return schemas.TournamentAnalytics(
+        teams=sorted(output, key=lambda x: x.placement),
+        teams_wins=cache_teams_wins
+    )

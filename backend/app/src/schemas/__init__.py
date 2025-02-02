@@ -10,3 +10,4 @@ from .standing import *
 from .statisctics import *
 from .achievement import *
 from .user import *
+from .analytics import *

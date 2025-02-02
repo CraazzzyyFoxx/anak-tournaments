@@ -31,8 +31,8 @@ async def initial_create(session: AsyncSession) -> None:
                 )
 
 
-def get_by_name(session: Session, name: str) -> models.Hero:
-    hero = service.get_by_name(session, name)
+async def get_by_name(session: AsyncSession, name: str) -> models.Hero:
+    hero = await service.get_by_name(session, name)
     if not hero:
         raise errors.ApiHTTPException(
             status_code=404,

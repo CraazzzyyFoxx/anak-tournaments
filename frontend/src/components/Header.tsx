@@ -32,11 +32,11 @@ const tournament_components: { title: string; href: string; description: string 
     href: "/owal",
     description: "Place where all OWAL tournaments are listed"
   },
-  // {
-  //   title: "Analytics",
-  //   href: "/tournaments/analytics",
-  //   description: "Page with analytics for tournaments"
-  // }
+  {
+    title: "Analytics",
+    href: "/tournaments/analytics",
+    description: "Page with analytics for tournaments"
+  }
 ];
 
 const users_components: { title: string; href: string; description: string }[] = [

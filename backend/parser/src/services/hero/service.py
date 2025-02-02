@@ -17,11 +17,11 @@ async def get_by_slug(session: AsyncSession, slug: str) -> models.Hero | None:
     return result.scalar_one_or_none()
 
 
-def get_by_name(session: Session, name: str) -> models.Hero | None:
+async def get_by_name(session: AsyncSession, name: str) -> models.Hero | None:
     query = sa.select(
         models.Hero,
     ).where(sa.and_(models.Hero.name == name))
-    result = session.execute(query)
+    result = await session.execute(query)
     return result.scalar_one_or_none()
 
 

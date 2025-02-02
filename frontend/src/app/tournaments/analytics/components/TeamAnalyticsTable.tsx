@@ -1,5 +1,5 @@
 import React from "react";
-import { PlayerAnalytics, TeamAnalytics } from "@/types/team.types";
+import { PlayerAnalytics, TeamAnalytics } from "@/types/analytics.types";
 import { sortTeamPlayers } from "@/utils/player";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -8,6 +8,7 @@ import PlayerName from "@/components/PlayerName";
 import Image from "next/image";
 import { Card, CardContent } from "@/components/ui/card";
 import { TypographyH4 } from "@/components/ui/typography";
+import { TournamentTeamCardSkeleton } from "@/components/TournamentTeamCard";
 
 
 export const TournamentTeamTable = ({ players }: { players: PlayerAnalytics[] }) => {
@@ -29,6 +30,14 @@ export const TournamentTeamTable = ({ players }: { players: PlayerAnalytics[] })
         </TableHeader>
         <TableBody>
           {sortedPlayers.map((player) => {
+            let color = ""
+
+            if (player.points <= -1)
+              color = "text-center bg-green-400 text-black"
+            if (player.points >= 1)
+              color = "text-center bg-red-400 text-black"
+
+
             return (
               <TableRow key={player.id}>
                 <TableCell className="font-medium">
@@ -49,7 +58,7 @@ export const TournamentTeamTable = ({ players }: { players: PlayerAnalytics[] })
                 </TableCell>
                 <TableCell className="text-center">{player.move_2}</TableCell>
                 <TableCell className="text-center">{player.move_1}</TableCell>
-                <TableCell className="text-center">{player.points}</TableCell>
+                <TableCell className={color}>{player.points}</TableCell>
               </TableRow>
             );
           })}
@@ -61,7 +70,7 @@ export const TournamentTeamTable = ({ players }: { players: PlayerAnalytics[] })
 };
 
 
-const TeamAnalyticsTable = ({ team }: { team: TeamAnalytics }) => {
+const TeamAnalyticsCard = ({ team }: { team: TeamAnalytics }) => {
   let color = "text-group-a";
 
   if (team.group?.name == "B") color = "text-group-b";
@@ -87,5 +96,25 @@ const TeamAnalyticsTable = ({ team }: { team: TeamAnalytics }) => {
     </Card>
   );
 };
+
+
+const TeamAnalyticsTable = ({ teams, isLoading }: { teams: TeamAnalytics[], isLoading: boolean }) => {
+  return (
+    <div className="grid grid-cols-2 xs:grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+      {isLoading ? (
+        <>
+          <TournamentTeamCardSkeleton />
+          <TournamentTeamCardSkeleton />
+          <TournamentTeamCardSkeleton />
+          <TournamentTeamCardSkeleton />
+          <TournamentTeamCardSkeleton />
+          <TournamentTeamCardSkeleton />
+        </>
+      ) : (
+        teams.map((team) => <TeamAnalyticsCard key={team.id} team={team} />)
+      )}
+    </div>
+  )
+}
 
 export default TeamAnalyticsTable;

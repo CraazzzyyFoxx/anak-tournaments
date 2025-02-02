@@ -76,6 +76,7 @@ class APILogger:
             "celery",
             "sqlalchemy.engine.Engine",
             "websockets.legacy.server",
+            "faststream"
         ):
             _logger = logging.getLogger(_log)
             _logger.handlers = [InterceptHandler()]
