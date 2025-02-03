@@ -16,7 +16,6 @@ import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { PerformanceBadge } from "@/components/PerformanceBagde";
 import { ScrollBar, ScrollArea } from "@/components/ui/scroll-area";
 
-
 interface MatchTeamTableProps {
   team: TeamWithStats;
   isHome: boolean;
@@ -24,8 +23,8 @@ interface MatchTeamTableProps {
   matchRound: number;
 }
 
-const MatchTeamTable = ({team, isHome, maxHeroes, matchRound}: MatchTeamTableProps) => {
-// @ts-ignore
+const MatchTeamTable = ({ team, isHome, maxHeroes, matchRound }: MatchTeamTableProps) => {
+  // @ts-ignore
   const sortedPlayers: PlayerWithStats[] = sortTeamPlayers(team.players);
   const backgroundColor = isHome ? "[#104e48]" : "[#4c2332]";
 

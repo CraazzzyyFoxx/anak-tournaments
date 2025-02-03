@@ -17,7 +17,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <SidebarProvider>
-    {children}
-  </SidebarProvider>;
+  return <SidebarProvider>{children}</SidebarProvider>;
 }

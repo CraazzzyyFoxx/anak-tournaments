@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/table";
 import { Standings } from "@/types/tournament.types";
 import { Encounter } from "@/types/encounter.types";
-import {cn} from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 export interface StandingTableProps {
   standings: Standings[];
@@ -70,16 +70,13 @@ const StandingsTable = ({ standings, is_groups }: StandingTableProps) => {
       <TableBody>
         {sortedStandings.map((standing) => {
           const position = is_groups ? standing.position : standing.overall_position;
-          let color = ""
+          let color = "";
           if (!is_groups) {
             color = "text-group-" + standing.team?.group?.name.toLowerCase();
           }
 
-
           return (
-            <TableRow
-              key={`${standing.group_id}-${standing.team_id}`}
-            >
+            <TableRow key={`${standing.group_id}-${standing.team_id}`}>
               {is_groups ? (
                 <>
                   <TableCell className="w-[50px] text-center">{position}</TableCell>

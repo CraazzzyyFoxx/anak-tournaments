@@ -4,12 +4,20 @@ import React, { Suspense, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import tournamentService from "@/services/tournament.service";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
 import encounterService from "@/services/encounter.service";
 import {
   ColumnDef,
   getCoreRowModel,
-  getPaginationRowModel, getSortedRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
   PaginationState,
   SortingState,
   useReactTable
@@ -20,7 +28,6 @@ import { Match, Score } from "@/types/encounter.types";
 import { PaginationWithLinks } from "@/components/ui/pagination-with-links";
 import TableComponent from "@/components/TableComponent";
 import { Skeleton } from "@/components/ui/skeleton";
-
 
 const columns: ColumnDef<Match>[] = [
   {
@@ -56,14 +63,18 @@ const columns: ColumnDef<Match>[] = [
     accessorKey: "Group",
     header: () => <div>Group</div>,
     cell: ({ row }) => {
-      return <div className="font-medium p-1 pl-2">{row.original.encounter?.tournament_group.name}</div>;
+      return (
+        <div className="font-medium p-1 pl-2">{row.original.encounter?.tournament_group.name}</div>
+      );
     }
   },
   {
     accessorKey: "name",
     header: () => <div>Name</div>,
     cell: ({ row }) => {
-      return <div className="font-medium p-1 pl-2">{`${row.original.home_team?.name } - ${row.original.away_team?.name }`}</div>;
+      return (
+        <div className="font-medium p-1 pl-2">{`${row.original.home_team?.name} - ${row.original.away_team?.name}`}</div>
+      );
     }
   },
   {
@@ -77,9 +88,8 @@ const columns: ColumnDef<Match>[] = [
         </div>
       );
     }
-  },
+  }
 ];
-
 
 const MatchesPage = () => {
   const router = useRouter();
@@ -98,9 +108,8 @@ const MatchesPage = () => {
   });
   const { data: matchesData, isLoading: isLoadingMatches } = useQuery({
     queryKey: ["matches", pagination.pageIndex],
-    queryFn: () => encounterService.getAllMatches(pagination.pageIndex + 1, pagination.pageSize, ""),
+    queryFn: () => encounterService.getAllMatches(pagination.pageIndex + 1, pagination.pageSize, "")
   });
-
 
   const table = useReactTable({
     data: matchesData?.results || [],
@@ -158,29 +167,27 @@ const MatchesPage = () => {
           </SelectContent>
         </Select>
       </div>
-      {
-        isLoadingMatches ? (
-          <Skeleton className="flex w-full h-[600px]"/>
-        ) : (
-          <div className="flex flex-col gap-8">
-            <div className="rounded-md border">
-              <TableComponent
-                table={table}
-                columns={columns}
-                rowOnClick={(row) => router.push(`/matches/${row.original.id}`)}
-                tableCellClassName={"p-0"}
-              />
-            </div>
-            <div className="flex items-center justify-end space-x-2 py-4">
-              <PaginationWithLinks
-                page={pagination.pageIndex + 1}
-                totalCount={matchesData?.total || 0}
-                pageSize={pagination.pageSize}
-              />
-            </div>
+      {isLoadingMatches ? (
+        <Skeleton className="flex w-full h-[600px]" />
+      ) : (
+        <div className="flex flex-col gap-8">
+          <div className="rounded-md border">
+            <TableComponent
+              table={table}
+              columns={columns}
+              rowOnClick={(row) => router.push(`/matches/${row.original.id}`)}
+              tableCellClassName={"p-0"}
+            />
           </div>
-        )
-      }
+          <div className="flex items-center justify-end space-x-2 py-4">
+            <PaginationWithLinks
+              page={pagination.pageIndex + 1}
+              totalCount={matchesData?.total || 0}
+              pageSize={pagination.pageSize}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

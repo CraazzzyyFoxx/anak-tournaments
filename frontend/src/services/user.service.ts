@@ -78,16 +78,13 @@ export default class userService {
     }).then((res) => res.json());
   }
   static async getUserHeroes(id: number): Promise<PaginatedResponse<HeroWithUserStats>> {
-    return customFetch(
-      `${API_URL}/users/${id}/heroes`,
-      {
-        query: {
-          per_page: -1,
-          sort: "id",
-          order: "asc"
-        }
+    return customFetch(`${API_URL}/users/${id}/heroes`, {
+      query: {
+        per_page: -1,
+        sort: "id",
+        order: "asc"
       }
-    ).then((res) => res.json());
+    }).then((res) => res.json());
   }
   static async getUserAchievements(id: number): Promise<AchievementRarity[]> {
     return customFetch(`${API_URL}/achievements/user/${id}`, {

@@ -20,30 +20,30 @@ const UserBestTeammates = ({ teammates, className }: UserBestTeammatesProps) => 
         </div>
       </CardHeader>
       <CardContent>
-        {
-          teammates.map((teammate, index) => (
-            <div key={index} className="p-2">
-              <div className="flex flex-row justify-between">
-                <PlayerName player={teammate.user} includeSpecialization={false} />
-                <p className="text-sm text-muted-foreground">{teammate.tournaments} times</p>
+        {teammates.map((teammate, index) => (
+          <div key={index} className="p-2">
+            <div className="flex flex-row justify-between">
+              <PlayerName player={teammate.user} includeSpecialization={false} />
+              <p className="text-sm text-muted-foreground">{teammate.tournaments} times</p>
+            </div>
+            <div className="flex flex-row justify-between mt-1">
+              <div>
+                <p className="text-xs text-muted-foreground font-semibold">KDA</p>
+                <p className="text-sm font-semibold text-s">{teammate.stats.kda}</p>
               </div>
-              <div className="flex flex-row justify-between mt-1">
-                <div>
-                  <p className="text-xs text-muted-foreground font-semibold">KDA</p>
-                  <p className="text-sm font-semibold text-s">{teammate.stats.kda}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground font-semibold">MVP Score</p>
-                  <p className="text-sm font-semibold text-center">{teammate.stats.performance}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground font-semibold">Win ratio</p>
-                  <p className="text-sm font-semibold text-center">{(teammate.winrate * 100).toFixed(0)}%</p>
-                </div>
+              <div>
+                <p className="text-xs text-muted-foreground font-semibold">MVP Score</p>
+                <p className="text-sm font-semibold text-center">{teammate.stats.performance}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground font-semibold">Win ratio</p>
+                <p className="text-sm font-semibold text-center">
+                  {(teammate.winrate * 100).toFixed(0)}%
+                </p>
               </div>
             </div>
-          ))
-        }
+          </div>
+        ))}
       </CardContent>
     </Card>
   );

@@ -5,29 +5,37 @@ import { Achievement } from "@/types/achievement.types";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import achievementsService from "@/services/achievements.service";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
+} from "@/components/ui/table";
 import { Card } from "@/components/ui/card";
 import { useRouter } from "next/navigation";
 import PlayerName from "@/components/PlayerName";
 
-const AchievementUsers = ({achievement}: {achievement: Achievement}) => {
+const AchievementUsers = ({ achievement }: { achievement: Achievement }) => {
   const router = useRouter();
 
   const fetchUsers = async ({ pageParam = 1 }) => {
-    return achievementsService.getUsers(achievement.id, pageParam, 30)
-  }
+    return achievementsService.getUsers(achievement.id, pageParam, 30);
+  };
 
   const {
     data,
     fetchNextPage,
     hasNextPage,
-    isFetchingNextPage,
+    isFetchingNextPage
     // @ts-ignore
   } = useInfiniteQuery({
-    queryKey: ['achievement', 'users', achievement.id],
+    queryKey: ["achievement", "users", achievement.id],
     queryFn: fetchUsers,
-    getNextPageParam: (lastPage, pages) => lastPage.total / lastPage.per_page > lastPage.page ? lastPage.page + 1 : undefined,
-  })
+    getNextPageParam: (lastPage, pages) =>
+      lastPage.total / lastPage.per_page > lastPage.page ? lastPage.page + 1 : undefined
+  });
 
   useEffect(() => {
     const handleScroll = () => {
@@ -41,8 +49,8 @@ const AchievementUsers = ({achievement}: {achievement: Achievement}) => {
       }
     };
 
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   return (
@@ -53,43 +61,36 @@ const AchievementUsers = ({achievement}: {achievement: Achievement}) => {
             <TableRow>
               <TableHead>User</TableHead>
               <TableHead>Count</TableHead>
-              {
-                data?.pages[0].results[0].last_tournament &&
-                <TableHead>Last Tournament</TableHead>
-              }
+              {data?.pages[0].results[0].last_tournament && <TableHead>Last Tournament</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
-            {
-              data?.pages.map((group) => (
-                group.results.map(
-                  (achievement) => (
-                    <TableRow key={achievement.user.id}
-                              onClick={() => router.push(`/users/${achievement.user.name.replace("#", "-")}`)}>
-                      <TableCell>
-                        <PlayerName player={achievement.user} includeSpecialization={false} />
-                      </TableCell>
-                      <TableCell>{achievement.count}</TableCell>
-                      <TableCell>{achievement.last_tournament?.name}</TableCell>
-                    </TableRow>
-                  )
-                )
+            {data?.pages.map((group) =>
+              group.results.map((achievement) => (
+                <TableRow
+                  key={achievement.user.id}
+                  onClick={() => router.push(`/users/${achievement.user.name.replace("#", "-")}`)}
+                >
+                  <TableCell>
+                    <PlayerName player={achievement.user} includeSpecialization={false} />
+                  </TableCell>
+                  <TableCell>{achievement.count}</TableCell>
+                  <TableCell>{achievement.last_tournament?.name}</TableCell>
+                </TableRow>
               ))
-            }
+            )}
           </TableBody>
         </Table>
       </Card>
       <div className="flex justify-center mt-8">
-        {
-          hasNextPage && (
-            <Button onClick={() => fetchNextPage()} disabled={isFetchingNextPage}>
-              Load More
-            </Button>
-          )
-        }
+        {hasNextPage && (
+          <Button onClick={() => fetchNextPage()} disabled={isFetchingNextPage}>
+            Load More
+          </Button>
+        )}
       </div>
     </div>
-)
+  );
 };
 
 export default AchievementUsers;

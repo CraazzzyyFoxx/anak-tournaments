@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 import React from "react";
 
@@ -31,7 +31,7 @@ const AchievementCard = ({ achievement }: { achievement: Achievement }) => {
       <div className="absolute inset-0 flex items-center justify-center text-white p-4 transition-opacity duration-300 opacity-0 group-hover:opacity-100 z-10">
         <p className="text-center text-sm">{achievement.description_ru}</p>
       </div>
-      <div className="absolute bottom-2 left-2 bg-black bg-opacity-0 text-white transition-opacity duration-300 opacity-0 group-hover:opacity-100 z-10"/>
+      <div className="absolute bottom-2 left-2 bg-black bg-opacity-0 text-white transition-opacity duration-300 opacity-0 group-hover:opacity-100 z-10" />
       <CardHeader className="relative p-4 z-10">
         <CardTitle className="text-xl font-bold text-white drop-shadow-2xl">
           {achievement.name}

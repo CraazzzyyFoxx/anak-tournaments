@@ -49,7 +49,7 @@ export const UserTournamentStatsCard = ({ tournament }: { tournament: UserTourna
 export const getTournamentColor = (tournament: UserTournament) => {
   let color = "background";
 
-  if (!tournament.placement) return color
+  if (!tournament.placement) return color;
 
   if (tournament.id > 20) {
     if (tournament.placement <= 13) {
@@ -97,16 +97,15 @@ export const UserTournamentHeader = ({ tournament }: { tournament: UserTournamen
         <div className="grid xs:grid-cols-2 sm:grid-cols-11 md:gap-4 xs:gap-1.5 items-center w-full fixed-columns min-h-10 xs:ml-8 md:ml-0">
           <div className="col-span-1">
             <h3 className="scroll-m-20 text-2xl font-semibold tracking-tight xs:text-left md:text-center">
-              <Link href={`/tournaments/${tournament.id}`}>
-                {tournamentNumber}
-              </Link>
+              <Link href={`/tournaments/${tournament.id}`}>{tournamentNumber}</Link>
             </h3>
           </div>
           <span className="col-span-2 text-left">Team {tournament.team}</span>
           <div className="flex col-span-2 justify-between xs:w-48 md:w-auto">
             <div className="flex items-center gap-4">
               <span>
-                Place {tournament.placement ? tournament.placement : "-"} of {tournament.count_teams}
+                Place {tournament.placement ? tournament.placement : "-"} of{" "}
+                {tournament.count_teams}
               </span>
             </div>
             <div className="flex flex-row gap-2 mb-2 items-center xs:ml-5 xl:ml-0">

@@ -2,9 +2,7 @@ interface CustomOptions {
   query?: Record<string, any>;
 }
 
-
 export const cachePolicy = process.env.NEXT_PUBLIC_CACHE_POLICY;
-
 
 export const getCachePolicy = () => {
   switch (cachePolicy) {
@@ -19,7 +17,7 @@ export const getCachePolicy = () => {
     default:
       return "default";
   }
-}
+};
 
 export async function customFetch(url: string, options?: CustomOptions): Promise<Response> {
   const params = new URLSearchParams();

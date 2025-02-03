@@ -1,9 +1,9 @@
-"use client"
+"use client";
 
-import React, {useCallback} from 'react';
-import {TabsList, TabsTrigger} from "@/components/ui/tabs";
-import {usePathname, useRouter, useSearchParams} from "next/navigation";
-import {ScrollArea, ScrollBar} from "@/components/ui/scroll-area";
+import React, { useCallback } from "react";
+import { TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 
 const UserProfileTabList = () => {
   const router = useRouter();

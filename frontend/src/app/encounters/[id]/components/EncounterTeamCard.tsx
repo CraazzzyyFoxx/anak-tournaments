@@ -2,7 +2,14 @@ import React from "react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Team } from "@/types/team.types";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
+} from "@/components/ui/table";
 import { CircleMinus, CirclePlus, Recycle } from "lucide-react";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import PlayerName from "@/components/PlayerName";
