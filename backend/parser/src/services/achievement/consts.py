@@ -270,7 +270,7 @@ heroes_achievements: list[schemas.AchievementCreate] = [
         slug="swiss-knife",
         description_ru="За всю историю логов сыграть минимум на 20 разных героях.",
         description_en="Play at least 20 different heroes in the history of logs.",
-    )
+    ),
 ]
 
 overall_achievements: list[schemas.AchievementCreate] = [
@@ -435,7 +435,7 @@ overall_achievements: list[schemas.AchievementCreate] = [
         slug="regular-boar",
         description_ru="Сыграть 30 турниров",
         description_en="Play 30 tournaments",
-    )
+    ),
 ]
 
 
@@ -627,7 +627,7 @@ standing_achievements: list[schemas.AchievementCreate] = [
         slug="i-killed-i-stole",
         description_ru="Добраться до финала, пройдя по всей нижней сетке.",
         description_en="Get to the final by going through the entire lower bracket.",
-    )
+    ),
 ]
 
 match_achievements: list[schemas.AchievementCreate] = [
@@ -708,5 +708,5 @@ match_achievements: list[schemas.AchievementCreate] = [
         slug="fast",
         description_ru="Сыграть матч длительностью максимум 5 мин",
         description_en="Play a match lasting a maximum of 5 minutes",
-    )
+    ),
 ]

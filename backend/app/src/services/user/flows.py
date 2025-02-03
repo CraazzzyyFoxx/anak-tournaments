@@ -309,7 +309,9 @@ async def get_tournaments(
     encounters_cache: dict[int, dict[int, models.Encounter]] = {}
     matches_cache: dict[int, dict[int, list[schemas.MatchReadWithUserStats]]] = {}
     matches = await encounter_service.get_by_user_with_teams(session, user.id, ["map"])
-    placements = await team_service.get_team_count_by_tournament_bulk(session, tournaments_ids)
+    placements = await team_service.get_team_count_by_tournament_bulk(
+        session, tournaments_ids
+    )
 
     for team, encounter, match, performance, heroes in matches:
         encounters.setdefault(team.id, [])
@@ -344,7 +346,9 @@ async def get_tournaments(
         won: int = 0
         lost: int = 0
         draw: int = 0
-        placement: int | None = team.standings[0].overall_position if team.standings else None
+        placement: int | None = (
+            team.standings[0].overall_position if team.standings else None
+        )
 
         for player in team.players:
             if player.user_id == user.id:

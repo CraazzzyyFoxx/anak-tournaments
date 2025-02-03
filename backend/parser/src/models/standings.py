@@ -12,9 +12,15 @@ class Standing(db.TimeStampIntegerMixin):
 
     __table_args__ = (UniqueConstraint("tournament_id", "group_id", "team_id"),)
 
-    tournament_id: Mapped[int] = mapped_column(Integer, ForeignKey(models.Tournament.id), index=True)
-    group_id: Mapped[int] = mapped_column(Integer, ForeignKey(models.TournamentGroup.id), index=True)
-    team_id: Mapped[int] = mapped_column(Integer, ForeignKey(models.Team.id), index=True)
+    tournament_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey(models.Tournament.id), index=True
+    )
+    group_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey(models.TournamentGroup.id), index=True
+    )
+    team_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey(models.Team.id), index=True
+    )
     position: Mapped[int] = mapped_column(Integer)
     overall_position: Mapped[int] = mapped_column(Integer, server_default="0")
     matches: Mapped[int] = mapped_column(Integer)

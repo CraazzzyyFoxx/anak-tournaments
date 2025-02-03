@@ -22,7 +22,9 @@ class Team(db.TimeStampIntegerMixin):
     total_sr: Mapped[int] = mapped_column(Integer())
 
     captain_id: Mapped[int] = mapped_column(ForeignKey("user.id"), index=True)
-    tournament_id: Mapped[int] = mapped_column(ForeignKey(Tournament.id, ondelete="CASCADE"), index=True)
+    tournament_id: Mapped[int] = mapped_column(
+        ForeignKey(Tournament.id, ondelete="CASCADE"), index=True
+    )
     tournament: Mapped[Tournament] = relationship()
 
     players: Mapped[list["Player"]] = relationship(back_populates="team")
@@ -38,10 +40,14 @@ class Player(db.TimeStampIntegerMixin):
     secondary: Mapped[bool] = mapped_column(Boolean())
     rank: Mapped[int] = mapped_column(Integer())
     div: Mapped[int] = mapped_column(Integer())
-    role: Mapped[enums.HeroClass | None] = mapped_column(Enum(enums.HeroClass), nullable=True)
+    role: Mapped[enums.HeroClass | None] = mapped_column(
+        Enum(enums.HeroClass), nullable=True
+    )
     is_substitution: Mapped[bool] = mapped_column(Boolean(), server_default="false")
     related_player_id: Mapped[int | None] = mapped_column(Integer(), nullable=True)
-    tournament_id: Mapped[int] = mapped_column(ForeignKey(Tournament.id, ondelete="CASCADE"), index=True)
+    tournament_id: Mapped[int] = mapped_column(
+        ForeignKey(Tournament.id, ondelete="CASCADE"), index=True
+    )
     is_newcomer: Mapped[bool] = mapped_column(Boolean(), server_default="false")
     is_newcomer_role: Mapped[bool] = mapped_column(Boolean(), server_default="false")
 
@@ -60,8 +66,12 @@ class ChallongeTeam(db.TimeStampIntegerMixin):
 
     challonge_id: Mapped[int] = mapped_column(Integer())
     team_id: Mapped[int] = mapped_column(ForeignKey(Team.id, ondelete="CASCADE"))
-    group_id: Mapped[int | None] = mapped_column(ForeignKey(TournamentGroup.id, ondelete="CASCADE"), nullable=True)
-    tournament_id: Mapped[int] = mapped_column(ForeignKey(Tournament.id, ondelete="CASCADE"))
+    group_id: Mapped[int | None] = mapped_column(
+        ForeignKey(TournamentGroup.id, ondelete="CASCADE"), nullable=True
+    )
+    tournament_id: Mapped[int] = mapped_column(
+        ForeignKey(Tournament.id, ondelete="CASCADE")
+    )
 
     team: Mapped[Team] = relationship()
     group: Mapped[TournamentGroup] = relationship()

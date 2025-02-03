@@ -39,5 +39,7 @@ async def create_access_token() -> str:
         "sub": config.app.super_user_email,
         "aud": "aqt_parser",
     }
-    access_token = utils.generate_jwt(token_data, config.app.access_token_secret, 24 * 3600 * 7)
+    access_token = utils.generate_jwt(
+        token_data, config.app.access_token_secret, 24 * 3600 * 7
+    )
     return access_token

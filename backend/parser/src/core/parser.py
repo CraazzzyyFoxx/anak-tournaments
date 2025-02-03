@@ -7,12 +7,21 @@ from src.core import db
 
 
 class Parser:
-    def __init__(self, gatherer: typing.AsyncGenerator, func: typing.Callable, entity: str, *, count_workers: int = 1):
+    def __init__(
+        self,
+        gatherer: typing.AsyncGenerator,
+        func: typing.Callable,
+        entity: str,
+        *,
+        count_workers: int = 1,
+    ):
         self.gatherer = gatherer
         self.func = func
         self.count_workers = count_workers
         self.entity = entity
-        self._queue: asyncio.Queue[typing.Any] = asyncio.Queue(maxsize=self.count_workers)
+        self._queue: asyncio.Queue[typing.Any] = asyncio.Queue(
+            maxsize=self.count_workers
+        )
 
     async def start(self):
         await asyncio.gather(self.start_gatherer(), self.start_workers())
@@ -28,7 +37,9 @@ class Parser:
                 await self._queue.put({})
 
     async def start_workers(self):
-        await asyncio.gather(*[asyncio.create_task(self.worker()) for _ in range(self.count_workers)])
+        await asyncio.gather(
+            *[asyncio.create_task(self.worker()) for _ in range(self.count_workers)]
+        )
 
     async def worker(self):
         while True:

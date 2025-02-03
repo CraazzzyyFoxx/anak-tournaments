@@ -330,15 +330,9 @@ async def get_team_count_by_tournament_bulk(
         The total count of players associated with the specified tournament.
     """
     query = (
-        sa.select(
-            models.Team.tournament_id,
-            sa.func.count(models.Team.id)
-        ).where(
-            models.Team.tournament_id.in_(tournaments_ids)
-        )
+        sa.select(models.Team.tournament_id, sa.func.count(models.Team.id))
+        .where(models.Team.tournament_id.in_(tournaments_ids))
         .group_by(models.Team.tournament_id)
     )
     result = await session.execute(query)
-    return {
-        row[0]: row[1] for row in result.all()
-    }
+    return {row[0]: row[1] for row in result.all()}

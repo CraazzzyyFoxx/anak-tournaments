@@ -335,7 +335,7 @@ async def get_owal_days(session: AsyncSession) -> typing.Sequence[models.Tournam
 
 
 async def get_bulk_tournament(
-        session: AsyncSession, tournaments_ids: list[int], entities: list[str]
+    session: AsyncSession, tournaments_ids: list[int], entities: list[str]
 ) -> typing.Sequence[models.Tournament]:
     """
     Retrieves a list of `Tournament` model instances by their IDs.
@@ -357,7 +357,7 @@ async def get_bulk_tournament(
 
 
 async def get_analytics(
-        session: AsyncSession, tournament_id: int
+    session: AsyncSession, tournament_id: int
 ) -> typing.Sequence[tuple[models.Team, models.Player, models.TournamentAnalytics]]:
     query = (
         sa.select(

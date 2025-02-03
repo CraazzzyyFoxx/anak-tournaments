@@ -6,7 +6,9 @@ from src.core import enums
 from . import service
 
 router = APIRouter(
-    prefix="/challonge", tags=[enums.RouteTag.CHALLONGE], dependencies=[Depends(auth_flows.current_user)]
+    prefix="/challonge",
+    tags=[enums.RouteTag.CHALLONGE],
+    dependencies=[Depends(auth_flows.current_user)],
 )
 
 

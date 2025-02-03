@@ -6,7 +6,7 @@ from src.models.tournament import Tournament
 from src.models.team import Player, Team
 
 
-__all__ = ("TournamentAnalytics", )
+__all__ = ("TournamentAnalytics",)
 
 
 class TournamentAnalytics(db.TimeStampIntegerMixin):
@@ -14,7 +14,9 @@ class TournamentAnalytics(db.TimeStampIntegerMixin):
 
     player_id: Mapped[int] = mapped_column(ForeignKey(Player.id, ondelete="CASCADE"))
     team_id: Mapped[int] = mapped_column(ForeignKey(Team.id, ondelete="CASCADE"))
-    tournament_id: Mapped[int] = mapped_column(ForeignKey(Tournament.id, ondelete="CASCADE"))
+    tournament_id: Mapped[int] = mapped_column(
+        ForeignKey(Tournament.id, ondelete="CASCADE")
+    )
     wins: Mapped[int] = mapped_column()
     losses: Mapped[int] = mapped_column()
     shift_one: Mapped[int | None] = mapped_column(nullable=True)
@@ -25,6 +27,3 @@ class TournamentAnalytics(db.TimeStampIntegerMixin):
     tournament: Mapped[Tournament] = relationship()
     player: Mapped[Player] = relationship()
     team: Mapped[Team] = relationship()
-
-
-

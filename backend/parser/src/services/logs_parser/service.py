@@ -4,7 +4,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src import models
 
 
-async def get_user_by_battle_name(session: AsyncSession, battle_name: str, verbose: bool = False) -> models.User | None:
+async def get_user_by_battle_name(
+    session: AsyncSession, battle_name: str, verbose: bool = False
+) -> models.User | None:
     if verbose:
         query = (
             sa.select(models.User)

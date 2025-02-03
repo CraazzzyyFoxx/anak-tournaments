@@ -12,7 +12,10 @@ async def fetch_gamemodes() -> list[schemas.OverfastGamemode]:
         response = await client.get("https://overfast.craazzzyyfoxx.me/gamemodes")
         response.raise_for_status()
 
-    return [schemas.OverfastGamemode.model_validate(gamemode) for gamemode in response.json()]
+    return [
+        schemas.OverfastGamemode.model_validate(gamemode)
+        for gamemode in response.json()
+    ]
 
 
 async def initial_create(session: AsyncSession) -> None:

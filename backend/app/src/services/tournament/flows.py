@@ -377,7 +377,8 @@ def resolve_team_shift(value: float) -> int:
 
 
 async def get_analytics(
-        session: AsyncSession, tournament_id: int,
+    session: AsyncSession,
+    tournament_id: int,
 ) -> schemas.TournamentAnalytics:
     """
     Retrieves analytics data for a specific tournament.
@@ -391,7 +392,9 @@ async def get_analytics(
     """
     output: list[schemas.TeamAnalytics] = []
     cache_teams: dict[int, models.Team] = {}
-    cache_players: dict[int, list[tuple[models.Player, models.TournamentAnalytics]]] = {}
+    cache_players: dict[
+        int, list[tuple[models.Player, models.TournamentAnalytics]]
+    ] = {}
     cache_teams_wins: dict[int, int] = {}
     cache_teams_manual_shift: dict[int, int] = {}
     min_team_cost: int = 0
@@ -403,23 +406,22 @@ async def get_analytics(
         cache_teams[team.id] = team
         cache_players.setdefault(team.id, [])
         cache_teams_manual_shift.setdefault(team.id, 0)
-        cache_teams_manual_shift[team.id] += analytics.shift_one if analytics.shift_one else 0
+        cache_teams_manual_shift[team.id] += (
+            analytics.shift_one if analytics.shift_one else 0
+        )
         cache_players[team.id].append((player, analytics))
         if team.id not in cache_teams_wins:
             cache_teams_wins[team.id] = analytics.wins
 
         min_team_cost = min(min_team_cost, team.total_sr / 100)
-        max_team_cost = max(max_team_cost, team.total_sr/ 100)
+        max_team_cost = max(max_team_cost, team.total_sr / 100)
         avg_team_cost += team.total_sr
-
 
     for team_id, team in cache_teams.items():
         players = cache_players[team_id]
         team_read = await team_flows.to_pydantic(session, team, ["placement", "group"])
         balancer_shift = resolve_team_shift(team.total_sr - avg_team_cost)
         manual_shift = round(cache_teams_manual_shift[team_id] / 100)
-
-        print(f"Team: {team.name} - {balancer_shift} - {cache_teams_manual_shift[team_id]}")
 
         output.append(
             schemas.TeamAnalytics(
@@ -429,16 +431,18 @@ async def get_analytics(
                 total_shift=balancer_shift + manual_shift,
                 players=[
                     schemas.PlayerAnalytics(
-                        **(await team_flows.to_pydantic_player(session, player, [])).model_dump(),
+                        **(
+                            await team_flows.to_pydantic_player(session, player, [])
+                        ).model_dump(),
                         move_1=analytics.shift_one,
                         move_2=analytics.shift_two,
-                        points=analytics.calculated_shift
-                    ) for player, analytics in players
-                ]
+                        points=analytics.calculated_shift,
+                    )
+                    for player, analytics in players
+                ],
             )
         )
 
     return schemas.TournamentAnalytics(
-        teams=sorted(output, key=lambda x: x.placement),
-        teams_wins=cache_teams_wins
+        teams=sorted(output, key=lambda x: x.placement), teams_wins=cache_teams_wins
     )

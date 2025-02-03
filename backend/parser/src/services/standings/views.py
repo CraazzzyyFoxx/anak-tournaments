@@ -7,7 +7,11 @@ from src.services.auth import flows as auth_flows
 
 from . import flows
 
-router = APIRouter(prefix="/standing", tags=[enums.RouteTag.STANDINGS], dependencies=[Depends(auth_flows.current_user)])
+router = APIRouter(
+    prefix="/standing",
+    tags=[enums.RouteTag.STANDINGS],
+    dependencies=[Depends(auth_flows.current_user)],
+)
 
 
 @router.post(path="/create", response_model=list[schemas.StandingRead])

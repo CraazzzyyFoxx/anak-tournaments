@@ -1,10 +1,11 @@
-import os
 from contextlib import asynccontextmanager
 
 from cashews import cache
-from cashews.contrib.fastapi import (CacheDeleteMiddleware,
-                                     CacheEtagMiddleware,
-                                     CacheRequestControlMiddleware)
+from cashews.contrib.fastapi import (
+    CacheDeleteMiddleware,
+    CacheEtagMiddleware,
+    CacheRequestControlMiddleware,
+)
 from fastapi import FastAPI
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError

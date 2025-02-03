@@ -18,7 +18,8 @@ async def to_pydantic(
     groups: list[schemas.TournamentGroupRead] = []
     if "groups" in entities:
         groups = [
-            schemas.TournamentGroupRead.model_validate(group, from_attributes=True) for group in tournament.groups
+            schemas.TournamentGroupRead.model_validate(group, from_attributes=True)
+            for group in tournament.groups
         ]
     return schemas.TournamentRead(
         id=tournament.id,
@@ -78,12 +79,16 @@ def get_sync(session: Session, id: int, entities: list[str]) -> models.Tournamen
     return tournament
 
 
-async def get_read(session: AsyncSession, id: int, entities: list[str]) -> schemas.TournamentRead:
+async def get_read(
+    session: AsyncSession, id: int, entities: list[str]
+) -> schemas.TournamentRead:
     tournament = await get(session, id, entities)
     return await to_pydantic(session, tournament, entities)
 
 
-async def get_by_number(session: AsyncSession, number: int, entities: list[str]) -> models.Tournament:
+async def get_by_number(
+    session: AsyncSession, number: int, entities: list[str]
+) -> models.Tournament:
     tournament = await service.get_by_number(session, number, entities)
     if tournament is None:
         raise errors.ApiHTTPException(
@@ -101,7 +106,9 @@ async def get_by_number(session: AsyncSession, number: int, entities: list[str])
 async def get_by_number_and_league(
     session: AsyncSession, number: int, is_league: bool, entities: list[str]
 ) -> models.Tournament:
-    tournament = await service.get_by_number_and_league(session, number, is_league, entities)
+    tournament = await service.get_by_number_and_league(
+        session, number, is_league, entities
+    )
     if tournament is None:
         raise errors.ApiHTTPException(
             status_code=404,
@@ -115,7 +122,9 @@ async def get_by_number_and_league(
     return tournament
 
 
-async def get_by_name(session: AsyncSession, name: str, entities: list[str]) -> models.Tournament:
+async def get_by_name(
+    session: AsyncSession, name: str, entities: list[str]
+) -> models.Tournament:
     tournament = await service.get_by_name(session, name, entities)
     if tournament is None:
         raise errors.ApiHTTPException(
@@ -130,7 +139,9 @@ async def get_by_name(session: AsyncSession, name: str, entities: list[str]) -> 
     return tournament
 
 
-def get_groups_from_matches(matches: list[schemas.ChallongeMatch]) -> list[tuple[int, str]]:
+def get_groups_from_matches(
+    matches: list[schemas.ChallongeMatch],
+) -> list[tuple[int, str]]:
     groups_ids: list[int] = []
     for match in matches:
         if match.group_id is None:
@@ -146,7 +157,9 @@ def get_groups_from_matches(matches: list[schemas.ChallongeMatch]) -> list[tuple
 
 
 async def create_groups(
-    session: AsyncSession, tournament: models.Tournament, challonge_tournament: schemas.ChallongeTournament
+    session: AsyncSession,
+    tournament: models.Tournament,
+    challonge_tournament: schemas.ChallongeTournament,
 ) -> models.Tournament:
     matches = await challonge_service.fetch_matches(challonge_tournament.id)
     groups = get_groups_from_matches(matches)
@@ -160,7 +173,11 @@ async def create_groups(
             challonge_slug=challonge_tournament.url,
         )
     await service.create_group(
-        session, tournament, name="Playoffs", is_groups=False, challonge_slug=challonge_tournament.url
+        session,
+        tournament,
+        name="Playoffs",
+        is_groups=False,
+        challonge_slug=challonge_tournament.url,
     )
 
     return tournament
@@ -212,7 +229,10 @@ async def create(
     groups_challonge_slugs: list[str],
     playoffs_challonge_slug: str,
 ) -> models.Tournament:
-    if await service.get_by_number_and_league(session, number, is_league, []) is not None:
+    if (
+        await service.get_by_number_and_league(session, number, is_league, [])
+        is not None
+    ):
         raise errors.ApiHTTPException(
             status_code=400,
             detail=[
@@ -223,7 +243,12 @@ async def create(
             ],
         )
 
-    tournament = await service.create(session, number=number, name=f"Турнир Сабов Anakq #{number}", is_league=is_league)
+    tournament = await service.create(
+        session,
+        number=number,
+        name=f"Турнир Сабов Anakq #{number}",
+        is_league=is_league,
+    )
 
     for sym_index, slug in enumerate(groups_challonge_slugs, start=65):
         challonge_tournament = await challonge_service.fetch_tournament(slug)
@@ -236,7 +261,9 @@ async def create(
             challonge_id=challonge_tournament.id,
         )
 
-    challonge_tournament = await challonge_service.fetch_tournament(playoffs_challonge_slug)
+    challonge_tournament = await challonge_service.fetch_tournament(
+        playoffs_challonge_slug
+    )
     await service.create_group(
         session,
         tournament,
@@ -253,61 +280,78 @@ async def get_analytics(session: AsyncSession, tournament_id: int):
     COEF_NOVICE_SECOND = 1 / 0.11
     COEF_REGULAR = 1 / 0.065
 
-    data  = await service.get_analytics(session)
-    df = pd.DataFrame([
-        {
-            "tournament_id": row[2],
-            "team_id": row[0],
-            "player_name": row[1].name,
-            "player_id": row[1].id,
-            "user_id": row[1].user_id,
-            "id_role": f"{row[1].user_id}-{row[1].role}",
-            "cost": row[1].rank,
-            "wins": row[3],
-            "losses": row[4],
-            "previous_cost": row[5],
-            "pre-previous_cost": row[6],
-            "shift": 0
-        }
-        for row in data
-    ])
+    data = await service.get_analytics(session)
 
-    df['is_changed'] = df['previous_cost'] != df['cost']
+    df = pd.DataFrame(
+        [
+            {
+                "tournament_id": row[2],
+                "team_id": row[0],
+                "player_name": row[1].name,
+                "player_id": row[1].id,
+                "user_id": row[1].user_id,
+                "id_role": f"{row[1].user_id}-{row[1].role}",
+                "cost": row[1].rank,
+                "wins": row[3],
+                "losses": row[4],
+                "previous_cost": row[5],
+                "pre-previous_cost": row[6],
+                "shift": 0,
+            }
+            for row in data
+        ]
+    )
 
-    for id_role in df['id_role'].unique():
-        rows = df[df['id_role'] == id_role]
+    df["is_changed"] = df["previous_cost"] != df["cost"]
+
+    for id_role in df["id_role"].unique():
+        rows = df[df["id_role"] == id_role]
         is_novice = True
         for index, row in rows.iterrows():
             if is_novice:
-                if row['is_changed']:
-                    df.at[index, 'shift'] = (row['wins'] - row['losses']) / COEF_NOVICE_FIRST
+                if row["is_changed"]:
+                    df.at[index, "shift"] = (
+                        row["wins"] - row["losses"]
+                    ) / COEF_NOVICE_FIRST
                     is_novice = False
                 else:
-                    df.at[index, 'shift'] = (row['wins'] - row['losses']) / COEF_NOVICE_SECOND
+                    df.at[index, "shift"] = (
+                        row["wins"] - row["losses"]
+                    ) / COEF_NOVICE_SECOND
             else:
-                df.at[index, 'shift'] = (row['wins'] - row['losses']) / COEF_REGULAR
-                if row['is_changed']:
-                    df.at[index, 'shift'] += (row['wins'] - row['losses']) / COEF_REGULAR
+                df.at[index, "shift"] = (row["wins"] - row["losses"]) / COEF_REGULAR
+                if row["is_changed"]:
+                    df.at[index, "shift"] += (
+                        row["wins"] - row["losses"]
+                    ) / COEF_REGULAR
                 else:
-                    df.at[index, 'shift'] += df.at[rows.index[rows.index.get_loc(index) - 1], 'shift']
+                    df.at[index, "shift"] += df.at[
+                        rows.index[rows.index.get_loc(index) - 1], "shift"
+                    ]
 
-    final_df = df[df['tournament_id'] == tournament_id]
+    final_df = df[df["tournament_id"] == tournament_id]
     final_df = final_df.replace({np.nan: None})
 
     await session.execute(
-        sa.delete(models.TournamentAnalytics).where(models.TournamentAnalytics.tournament_id == tournament_id)
+        sa.delete(models.TournamentAnalytics).where(
+            models.TournamentAnalytics.tournament_id == tournament_id
+        )
     )
     await session.commit()
 
     for index, row in final_df.iterrows():
         analytics_item = models.TournamentAnalytics(
-            tournament_id=row['tournament_id'],
-            team_id=row['team_id'],
-            player_id=row['player_id'],
-            wins=row['wins'],
-            losses=row['losses'],
-            shift_one=row["cost"] - row["previous_cost"] if row["previous_cost"] else None,
-            shift_two=row["cost"] - row["pre-previous_cost"] if row["pre-previous_cost"] else None,
+            tournament_id=row["tournament_id"],
+            team_id=row["team_id"],
+            player_id=row["player_id"],
+            wins=row["wins"],
+            losses=row["losses"],
+            shift_one=row["cost"] - row["previous_cost"]
+            if row["previous_cost"]
+            else None,
+            shift_two=row["cost"] - row["pre-previous_cost"]
+            if row["pre-previous_cost"]
+            else None,
             shift=0,
             calculated_shift=round(row["shift"], 2),
         )

@@ -14,6 +14,7 @@ from src.middlewares.exception import ExceptionMiddleware
 from src.middlewares.time import TimeMiddleware
 
 from src.services.tournament import flows as tournament_flows
+from src.services.achievement import flows as achievement_flows
 
 
 @asynccontextmanager
@@ -23,8 +24,9 @@ async def lifespan(_: FastAPI):
         # for index in range(21, 36):
         #     await tournament_flows.get_analytics(session,  index)
         #
-        # await tournament_flows.get_analytics(session, 46)
+        await tournament_flows.get_analytics(session, 46)
         pass
+        # await achievement_flows.calculate_achievements(session)
     yield
 
 
@@ -62,7 +64,9 @@ async def validation_exception_handler(_: Request, exc: RequestValidationError):
         content={
             "detail": [
                 {
-                    "msg": jsonable_encoder(exc.errors(), exclude={"url", "type", "ctx"}),
+                    "msg": jsonable_encoder(
+                        exc.errors(), exclude={"url", "type", "ctx"}
+                    ),
                     "code": "unprocessable_entity",
                 }
             ]

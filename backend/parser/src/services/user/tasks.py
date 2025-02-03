@@ -32,7 +32,9 @@ async def create_or_update_player_from_csv(
         for index, row in enumerate(file_reader, 0):
             if index < start_row:
                 continue
-            battle_tag = row[battle_tag_row].strip().replace(" #", "#").replace("# ", "#")
+            battle_tag = (
+                row[battle_tag_row].strip().replace(" #", "#").replace("# ", "#")
+            )
             twitch = row[twitch_row].strip()
             discord = row[discord_row].strip() if has_discord else None
             smurfs = row[smurf_row] if has_smurf else ""

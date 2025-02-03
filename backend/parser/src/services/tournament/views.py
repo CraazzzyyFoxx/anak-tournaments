@@ -8,7 +8,9 @@ from src.services.auth import flows as auth_flows
 from . import flows
 
 router = APIRouter(
-    prefix="/tournament", tags=[enums.RouteTag.TOURNAMENT], dependencies=[Depends(auth_flows.current_user)]
+    prefix="/tournament",
+    tags=[enums.RouteTag.TOURNAMENT],
+    dependencies=[Depends(auth_flows.current_user)],
 )
 
 
@@ -20,7 +22,9 @@ async def create(
     groups_challonge_slugs: list[str] = Query([]),
     session=Depends(db.get_async_session),
 ):
-    tournament = await flows.create(session, number, is_league, groups_challonge_slugs, playoffs_challonge_slug)
+    tournament = await flows.create(
+        session, number, is_league, groups_challonge_slugs, playoffs_challonge_slug
+    )
     return await flows.to_pydantic(session, tournament, [])
 
 

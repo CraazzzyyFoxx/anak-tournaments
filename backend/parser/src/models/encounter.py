@@ -18,15 +18,21 @@ class Encounter(db.TimeStampIntegerMixin):
     __tablename__ = "encounter"
 
     name: Mapped[str] = mapped_column(String())
-    home_team_id: Mapped[int | None] = mapped_column(ForeignKey(Team.id, ondelete="CASCADE"), nullable=True, index=True)
-    away_team_id: Mapped[int | None] = mapped_column(ForeignKey(Team.id, ondelete="CASCADE"), nullable=True, index=True)
+    home_team_id: Mapped[int | None] = mapped_column(
+        ForeignKey(Team.id, ondelete="CASCADE"), nullable=True, index=True
+    )
+    away_team_id: Mapped[int | None] = mapped_column(
+        ForeignKey(Team.id, ondelete="CASCADE"), nullable=True, index=True
+    )
     home_score: Mapped[int] = mapped_column(Integer())
     away_score: Mapped[int] = mapped_column(Integer())
 
     round: Mapped[int] = mapped_column(Integer(), index=True)
     closeness: Mapped[float | None] = mapped_column(Float(), nullable=True)
 
-    tournament_id: Mapped[int] = mapped_column(ForeignKey(Tournament.id, ondelete="CASCADE"), index=True)
+    tournament_id: Mapped[int] = mapped_column(
+        ForeignKey(Tournament.id, ondelete="CASCADE"), index=True
+    )
     tournament_group_id: Mapped[int | None] = mapped_column(
         ForeignKey(TournamentGroup.id, ondelete="CASCADE"), nullable=True
     )

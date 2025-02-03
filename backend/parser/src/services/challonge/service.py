@@ -14,9 +14,11 @@ else:
 
 challonge_client = AsyncClient(
     base_url="https://api.challonge.com/v1/",
-    auth=BasicAuth(username=config.app.challonge_username, password=config.app.challonge_api_key),
+    auth=BasicAuth(
+        username=config.app.challonge_username, password=config.app.challonge_api_key
+    ),
     proxy=proxy_conf,
-    timeout=15
+    timeout=15,
 )
 
 
@@ -26,7 +28,12 @@ async def fetch_tournament(tournament_id: str) -> schemas.ChallongeTournament:
     if resp.status_code != 200:
         raise errors.ApiHTTPException(
             status_code=400,
-            detail=[errors.ApiExc(code="not_found", msg=f"Tournament with id {tournament_id} not found.")],
+            detail=[
+                errors.ApiExc(
+                    code="not_found",
+                    msg=f"Tournament with id {tournament_id} not found.",
+                )
+            ],
         )
     return schemas.ChallongeTournament.model_validate(data["tournament"])
 
@@ -37,9 +44,17 @@ async def fetch_participants(tournament_id: int) -> list[schemas.ChallongePartic
     if resp.status_code != 200:
         raise errors.ApiHTTPException(
             status_code=400,
-            detail=[errors.ApiExc(code="not_found", msg=f"Tournament with id {tournament_id} not found.")],
+            detail=[
+                errors.ApiExc(
+                    code="not_found",
+                    msg=f"Tournament with id {tournament_id} not found.",
+                )
+            ],
         )
-    return [schemas.ChallongeParticipant.model_validate(participant["participant"]) for participant in data]
+    return [
+        schemas.ChallongeParticipant.model_validate(participant["participant"])
+        for participant in data
+    ]
 
 
 async def fetch_matches(tournament_id: int) -> list[schemas.ChallongeMatch]:
@@ -48,6 +63,11 @@ async def fetch_matches(tournament_id: int) -> list[schemas.ChallongeMatch]:
     if resp.status_code != 200:
         raise errors.ApiHTTPException(
             status_code=400,
-            detail=[errors.ApiExc(code="not_found", msg=f"Tournament with id {tournament_id} not found.")],
+            detail=[
+                errors.ApiExc(
+                    code="not_found",
+                    msg=f"Tournament with id {tournament_id} not found.",
+                )
+            ],
         )
     return [schemas.ChallongeMatch.model_validate(match["match"]) for match in data]

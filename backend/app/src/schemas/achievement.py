@@ -2,11 +2,7 @@ from pydantic import BaseModel
 
 from .base import BaseRead
 
-__all__ = (
-    "AchievementRead",
-    "UserAchievementRead",
-    "AchievementEarned"
-)
+__all__ = ("AchievementRead", "UserAchievementRead", "AchievementEarned")
 
 from src.schemas import HeroRead, TournamentRead, MatchRead, UserRead
 

@@ -13,7 +13,9 @@ from src import models, schemas
 from src.core import utils
 
 
-def user_entities(in_entities: list[str], child: typing.Any | None = None) -> list[_AbstractLoad]:
+def user_entities(
+    in_entities: list[str], child: typing.Any | None = None
+) -> list[_AbstractLoad]:
     entities = []
     if "battle_tag" in in_entities:
         entities.append(utils.join_entity(child, models.User.battle_tag))
@@ -26,22 +28,36 @@ def user_entities(in_entities: list[str], child: typing.Any | None = None) -> li
 
 def join_entities(query: sa.Select, in_entities: list[str]) -> sa.Select:
     if "battle_tag" in in_entities:
-        query = query.join(models.UserBattleTag, models.User.id == models.UserBattleTag.user_id)
+        query = query.join(
+            models.UserBattleTag, models.User.id == models.UserBattleTag.user_id
+        )
     if "discord" in in_entities:
-        query = query.join(models.UserDiscord, models.User.id == models.UserDiscord.user_id)
+        query = query.join(
+            models.UserDiscord, models.User.id == models.UserDiscord.user_id
+        )
     if "twitch" in in_entities:
-        query = query.join(models.UserTwitch, models.User.id == models.UserTwitch.user_id)
+        query = query.join(
+            models.UserTwitch, models.User.id == models.UserTwitch.user_id
+        )
 
     return query
 
 
-async def get(session: AsyncSession, user_id: int, entities: list[str]) -> models.User | None:
-    query = sa.select(models.User).options(*user_entities(entities)).where(sa.and_(models.User.id == user_id))
+async def get(
+    session: AsyncSession, user_id: int, entities: list[str]
+) -> models.User | None:
+    query = (
+        sa.select(models.User)
+        .options(*user_entities(entities))
+        .where(sa.and_(models.User.id == user_id))
+    )
     result = await session.execute(query)
     return result.unique().scalar_one_or_none()
 
 
-async def get_by_battle_tag(session: AsyncSession, battle_tag: str, entities: list[str]) -> models.User | None:
+async def get_by_battle_tag(
+    session: AsyncSession, battle_tag: str, entities: list[str]
+) -> models.User | None:
     query = (
         sa.select(models.User)
         .options(*user_entities(entities))
@@ -56,17 +72,25 @@ async def get_by_battle_tag(session: AsyncSession, battle_tag: str, entities: li
     return result.unique().scalar_one_or_none()
 
 
-async def find_by_csv(session: AsyncSession, data_in: schemas.UserCSV) -> models.User | None:
+async def find_by_csv(
+    session: AsyncSession, data_in: schemas.UserCSV
+) -> models.User | None:
     clauses = []
     if data_in.battle_tag:
         clauses.append(models.UserBattleTag.battle_tag == data_in.battle_tag)
-        clauses.append(sa.func.initcap(models.UserBattleTag.battle_tag) == data_in.battle_tag)
+        clauses.append(
+            sa.func.initcap(models.UserBattleTag.battle_tag) == data_in.battle_tag
+        )
     if data_in.discord:
         clauses.append(models.UserDiscord.name == data_in.discord)
 
     query = (
         sa.select(models.User)
-        .join(models.UserDiscord, models.User.id == models.UserDiscord.user_id, isouter=True)
+        .join(
+            models.UserDiscord,
+            models.User.id == models.UserDiscord.user_id,
+            isouter=True,
+        )
         .join(models.UserBattleTag, models.User.id == models.UserBattleTag.user_id)
         .where(
             sa.or_(
@@ -92,15 +116,23 @@ async def find_by_csv(session: AsyncSession, data_in: schemas.UserCSV) -> models
             sa.or_(
                 models.UserTwitch.name == data_in.twitch,
                 (
-                    sa.func.upper(sa.func.left(models.UserTwitch.name, 1)).cast(sa.String)
-                    + sa.func.lower(sa.func.substring(models.UserTwitch.name, 2)).cast(sa.String)
+                    sa.func.upper(sa.func.left(models.UserTwitch.name, 1)).cast(
+                        sa.String
+                    )
+                    + sa.func.lower(sa.func.substring(models.UserTwitch.name, 2)).cast(
+                        sa.String
+                    )
                 )
                 == data_in.twitch.capitalize(),
                 sa.func.initcap(models.UserTwitch.name) == data_in.twitch,
                 models.UserTwitch.name == data_in.twitch.capitalize(),
                 (
-                    sa.func.upper(sa.func.left(models.UserTwitch.name, 1)).cast(sa.String)
-                    + sa.func.lower(sa.func.substring(models.UserTwitch.name, 2)).cast(sa.String)
+                    sa.func.upper(sa.func.left(models.UserTwitch.name, 1)).cast(
+                        sa.String
+                    )
+                    + sa.func.lower(sa.func.substring(models.UserTwitch.name, 2)).cast(
+                        sa.String
+                    )
                 )
                 == data_in.battle_tag,
             )
@@ -115,7 +147,9 @@ async def find_by_csv(session: AsyncSession, data_in: schemas.UserCSV) -> models
         smurf_clauses = []
         for smurf in data_in.smurfs:
             smurf_clauses.append(models.UserBattleTag.battle_tag == smurf)
-            smurf_clauses.append(sa.func.initcap(models.UserBattleTag.battle_tag) == smurf)
+            smurf_clauses.append(
+                sa.func.initcap(models.UserBattleTag.battle_tag) == smurf
+            )
 
         smurf_query = (
             sa.select(models.User)
@@ -128,7 +162,9 @@ async def find_by_csv(session: AsyncSession, data_in: schemas.UserCSV) -> models
     return None
 
 
-async def find_by_battle_tag(session: AsyncSession, battle_tag: str, entities: list[str]) -> models.User | None:
+async def find_by_battle_tag(
+    session: AsyncSession, battle_tag: str, entities: list[str]
+) -> models.User | None:
     query = (
         sa.select(models.User)
         .options(*user_entities(entities))
@@ -166,7 +202,9 @@ async def find_by_battle_tag(session: AsyncSession, battle_tag: str, entities: l
     return None
 
 
-async def get_battle_tag(session: AsyncSession, battle_tag: str) -> models.UserBattleTag | None:
+async def get_battle_tag(
+    session: AsyncSession, battle_tag: str
+) -> models.UserBattleTag | None:
     query = sa.select(models.UserBattleTag).where(
         sa.or_(
             models.UserBattleTag.battle_tag == battle_tag,
@@ -178,13 +216,17 @@ async def get_battle_tag(session: AsyncSession, battle_tag: str) -> models.UserB
 
 
 async def get_discord(session: AsyncSession, discord: str) -> models.UserDiscord | None:
-    query = sa.select(models.UserDiscord).where(sa.and_(models.UserDiscord.name == discord))
+    query = sa.select(models.UserDiscord).where(
+        sa.and_(models.UserDiscord.name == discord)
+    )
     result = await session.execute(query)
     return result.unique().first()
 
 
 async def get_twitch(session: AsyncSession, twitch: str) -> models.UserTwitch | None:
-    query = sa.select(models.UserTwitch).where(sa.and_(models.UserTwitch.name == twitch))
+    query = sa.select(models.UserTwitch).where(
+        sa.and_(models.UserTwitch.name == twitch)
+    )
     result = await session.execute(query)
     return result.unique().first()
 
@@ -202,7 +244,9 @@ async def create(
     logger.info(f"Player created [id={player.id} name={battle_tag}]")
     try:
         name, tag = battle_tag.split("#")
-        await create_battle_tag(session, player, battle_tag=battle_tag, name=name, tag=tag)
+        await create_battle_tag(
+            session, player, battle_tag=battle_tag, name=name, tag=tag
+        )
     except ValueError:
         pass
     if discord:
@@ -228,7 +272,9 @@ async def create_battle_tag(
     )
     session.add(player_battle_tag)
     await session.commit()
-    logger.info(f"Battle Tag created [tag={battle_tag}] for player [id={player.id} name={name}]")
+    logger.info(
+        f"Battle Tag created [tag={battle_tag}] for player [id={player.id} name={name}]"
+    )
     return player_battle_tag
 
 
@@ -248,7 +294,9 @@ def create_battle_tag_sync(
     )
     session.add(player_battle_tag)
     session.commit()
-    logger.info(f"Battle Tag created [tag={battle_tag}] for player [id={player.id} name={name}]")
+    logger.info(
+        f"Battle Tag created [tag={battle_tag}] for player [id={player.id} name={name}]"
+    )
     return player_battle_tag
 
 
@@ -264,7 +312,9 @@ async def create_discord(
     )
     session.add(player_discord)
     await session.commit()
-    logger.info(f"Discord created [discord={discord}] for player [id={player.id} name={player.name}]")
+    logger.info(
+        f"Discord created [discord={discord}] for player [id={player.id} name={player.name}]"
+    )
     return player_discord
 
 
@@ -293,7 +343,9 @@ async def create_twitch(
     )
     session.add(player_twitch)
     await session.commit()
-    logger.info(f"Twitch created [twitch={twitch}] for player [id={player.id} name={player.name}]")
+    logger.info(
+        f"Twitch created [twitch={twitch}] for player [id={player.id} name={player.name}]"
+    )
     return player_twitch
 
 

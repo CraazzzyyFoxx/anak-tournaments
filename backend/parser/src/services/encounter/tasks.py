@@ -9,4 +9,6 @@ async def bulk_create() -> None:
     async with db.async_session_maker() as session:
         tournaments = await tournament_service.get_all(session)
         for tournament in tournaments:
-            await flows.bulk_create_for_tournament_from_challonge(session, tournament.id)
+            await flows.bulk_create_for_tournament_from_challonge(
+                session, tournament.id
+            )

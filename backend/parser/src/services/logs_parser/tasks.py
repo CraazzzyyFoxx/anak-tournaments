@@ -13,29 +13,36 @@ from . import flows
 
 
 @faststream.broker.subscriber("process_match_logs")
-async def process_match_logs(tournament_id: int, filename: str, session: Depends(db.get_async_session)):
+async def process_match_logs(
+    tournament_id: int, filename: str, session: Depends(db.get_async_session)
+):
     tournament = await tournament_flows.get(session, tournament_id, [])
-    logger.info(f"Trying get logs from s3 for tournament {tournament.id} and filename {filename}")
+    logger.info(
+        f"Trying get logs from s3 for tournament {tournament.id} and filename {filename}"
+    )
     data = asyncio.run(s3_service.async_client.get_log_by_filename(filename))
-    logger.info(f"Got logs from s3 for tournament {tournament.id} and filename {filename}")
+    logger.info(
+        f"Got logs from s3 for tournament {tournament.id} and filename {filename}"
+    )
     data_str = [line.decode() for line in data.split(b"\n")]
     if data_str[-1] == "":
         data_str.pop()
     processor = flows.MatchLogProcessor(tournament, filename.split("/")[-1], data_str)
     await processor.start(session)
 
-    logger.info(f"Logs for file {filename} in tournament {tournament.name} are being processed")
-
+    logger.info(
+        f"Logs for file {filename} in tournament {tournament.name} are being processed"
+    )
 
 
 @faststream.broker.subscriber(name="process_tournament_logs")
-async def process_tournament_logs(tournament_id: int, session: Depends(db.get_async_session)):
+async def process_tournament_logs(
+    tournament_id: int, session: Depends(db.get_async_session)
+):
     tournament = await tournament_flows.get(session, tournament_id, [])
     logs = asyncio.run(s3_service.async_client.get_logs_by_tournament(tournament.id))
 
-    workflow = process_match_logs.chunks(
-        ((tournament.id, log) for log in logs), 10
-    )
+    workflow = process_match_logs.chunks(((tournament.id, log) for log in logs), 10)
     result = workflow.apply_async()
 
     while not result.ready():

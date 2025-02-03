@@ -2,7 +2,15 @@ from pydantic import BaseModel
 
 from src.schemas import BaseRead
 
-__all__ = ("UserCSV", "UserRead", "UserDiscordRead", "UserTwitchRead", "UserBattleTagRead", "UserUpdate", "UserDasha")
+__all__ = (
+    "UserCSV",
+    "UserRead",
+    "UserDiscordRead",
+    "UserTwitchRead",
+    "UserBattleTagRead",
+    "UserUpdate",
+    "UserDasha",
+)
 
 
 class UserCSV(BaseModel):

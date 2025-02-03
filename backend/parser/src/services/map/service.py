@@ -10,7 +10,9 @@ from src import models
 from src.core import pagination, utils
 
 
-def map_entities(in_entities: list[str], child: typing.Any | None = None) -> list[_AbstractLoad]:
+def map_entities(
+    in_entities: list[str], child: typing.Any | None = None
+) -> list[_AbstractLoad]:
     entities = []
     if "gamemode" in in_entities:
         entities.append(utils.join_entity(child, models.Map.gamemode))
@@ -34,7 +36,9 @@ async def get_by_name(session: AsyncSession, name: str) -> models.Map | None:
     return result.scalar_one_or_none()
 
 
-async def get_by_name_and_gamemode(session: AsyncSession, name: str, gamemode: str) -> models.Map | None:
+async def get_by_name_and_gamemode(
+    session: AsyncSession, name: str, gamemode: str
+) -> models.Map | None:
     query = (
         sa.select(models.Map)
         .join(models.Gamemode)
