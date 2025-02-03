@@ -5,8 +5,7 @@ import AchievementUsers from "@/app/achievements/[id]/components/AchiementUsers"
 
 const AchievementPage = async (props: { params: Promise<{ id: number }> }) => {
   const params = await props.params;
-  const data = await achievementsService.getOne(params.id)
-
+  const data = await achievementsService.getOne(params.id);
 
   return (
     <div>
@@ -27,7 +26,7 @@ const AchievementPage = async (props: { params: Promise<{ id: number }> }) => {
           </div>
         </div>
       </div>
-      <AchievementUsers achievement={data}/>
+      <AchievementUsers achievement={data} />
     </div>
   );
 };

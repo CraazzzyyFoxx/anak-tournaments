@@ -54,15 +54,12 @@ const AchievementCard = ({ achievement }: { achievement: AchievementRarity }) =>
                 <ul className="ml-6 list-disc [&>li]:mt-2">
                   {achievement.tournaments.map((tournament) => (
                     <li key={`${achievement.slug}-${tournament.id}`}>
-                      <Link href={`/tournaments/${tournament.id}`}>
-                        {tournament.name}
-                      </Link>
+                      <Link href={`/tournaments/${tournament.id}`}>{tournament.name}</Link>
                     </li>
                   ))}
                 </ul>
               </div>
-              {
-                achievement.matches.length > 0 ?
+              {achievement.matches.length > 0 ? (
                 <div>
                   <div>Матчи:</div>
                   <ul className="ml-6 list-disc [&>li]:mt-2">
@@ -75,18 +72,16 @@ const AchievementCard = ({ achievement }: { achievement: AchievementRarity }) =>
                     ))}
                   </ul>
                 </div>
-                :
+              ) : (
                 <></>
-              }
+              )}
             </DialogContent>
           </Dialog>
         )}
       </div>
       <CardHeader className="relative p-4 z-10">
         <CardTitle className="text-xl font-bold text-white drop-shadow-2xl">
-          <Link href={`/achievements/${achievement.id}`}>
-            {achievement.name}
-          </Link>
+          <Link href={`/achievements/${achievement.id}`}>{achievement.name}</Link>
         </CardTitle>
       </CardHeader>
     </Card>

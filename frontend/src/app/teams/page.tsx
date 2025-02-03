@@ -1,6 +1,6 @@
 "use client";
 
-import React, {Suspense, useEffect, useState} from "react";
+import React, { Suspense, useEffect, useState } from "react";
 import teamService from "@/services/team.service";
 import { TournamentTeamCard, TournamentTeamCardSkeleton } from "@/components/TournamentTeamCard";
 import tournamentService from "@/services/tournament.service";

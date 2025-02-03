@@ -23,7 +23,7 @@ const PlayerName = ({
         <Link href={`/users/${player.name.replace("#", "-")}`}>
           <h4 className="text-base font-semibold">{name}</h4>
         </Link>
-        {(tag && !excludeBadge) && (
+        {tag && !excludeBadge && (
           <Badge variant="secondary" className="px-1 text-xs">
             <p className="text-muted-foreground">{`#${tag}`}</p>
           </Badge>

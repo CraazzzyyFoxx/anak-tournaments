@@ -42,7 +42,7 @@ const TeamComboBox = ({ teams, onSelect, selectedTeam }: TeamComboBoxProps) => {
         >
           {selectedTeam
             ? values.find((team) => team.value === selectedTeam)?.label
-            : "Select team..."}
+            : "Find team..."}
           <ChevronsUpDown className="opacity-50" />
         </Button>
       </PopoverTrigger>

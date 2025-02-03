@@ -26,7 +26,7 @@ function_hero_map: dict[str, schemas.AchievementFunction] = {
 
 
 function_overall_map: dict[str, schemas.AchievementFunction] = {
-    "welcome" : schemas.AchievementFunction(
+    "welcome": schemas.AchievementFunction(
         slug="welcome",
         tournament_required=False,
         function=service.calculate_welcome_to_club_achievements,
@@ -164,6 +164,7 @@ async def create_hero_kd_achievements(session: AsyncSession) -> None:
         if tournament.id >= 21:
             await service.create_hero_kd_achievements(session, tournament)
 
+
 async def calculate_to_bottom_achievements(session: AsyncSession) -> None:
     for tournament in await tournament_service.get_all(session):
         await service.calculate_to_bottom_achievements(session, tournament)
@@ -174,9 +175,13 @@ async def calculate_i_need_more_power_achievements(session: AsyncSession) -> Non
         await service.calculate_i_need_more_power_achievements(session, tournament)
 
 
-async def calculate_accuracy_is_above_all_else_achievements(session: AsyncSession) -> None:
+async def calculate_accuracy_is_above_all_else_achievements(
+    session: AsyncSession,
+) -> None:
     for tournament in await tournament_service.get_all(session):
-        await service.calculate_accuracy_is_above_all_else_achievements(session, tournament)
+        await service.calculate_accuracy_is_above_all_else_achievements(
+            session, tournament
+        )
 
 
 async def calculate_simple_geometry_achievements(session: AsyncSession) -> None:
@@ -199,12 +204,18 @@ async def calculate_beginners_are_lucky_achievements(session: AsyncSession) -> N
 
     for tournament in tournaments:
         if tournament.id >= 21:
-            await service.calculate_beginners_are_lucky_achievements(session, tournament)
+            await service.calculate_beginners_are_lucky_achievements(
+                session, tournament
+            )
 
 
-async def calculate_captains_with_5_division_and_above_achievements(session: AsyncSession) -> None:
+async def calculate_captains_with_5_division_and_above_achievements(
+    session: AsyncSession,
+) -> None:
     for tournament in await tournament_service.get_all(session):
-        await service.calculate_captains_with_5_division_and_above_achievements(session, tournament)
+        await service.calculate_captains_with_5_division_and_above_achievements(
+            session, tournament
+        )
 
 
 async def calculate_reverse_sweep_champion_achievements(session: AsyncSession) -> None:
@@ -214,7 +225,9 @@ async def calculate_reverse_sweep_champion_achievements(session: AsyncSession) -
 
 async def calculate_the_best_among_the_best_achievements(session: AsyncSession) -> None:
     for tournament in await tournament_service.get_all(session):
-        await service.calculate_the_best_among_the_best_achievements(session, tournament)
+        await service.calculate_the_best_among_the_best_achievements(
+            session, tournament
+        )
 
 
 async def calculate_im_screwed_run_achievements(session: AsyncSession) -> None:
@@ -222,9 +235,13 @@ async def calculate_im_screwed_run_achievements(session: AsyncSession) -> None:
         await service.calculate_im_screwed_run_achievements(session, tournament)
 
 
-async def calculate_we_work_with_what_we_have_achievements(session: AsyncSession) -> None:
+async def calculate_we_work_with_what_we_have_achievements(
+    session: AsyncSession,
+) -> None:
     for tournament in await tournament_service.get_all(session):
-        await service.calculate_we_work_with_what_we_have_achievements(session, tournament)
+        await service.calculate_we_work_with_what_we_have_achievements(
+            session, tournament
+        )
 
 
 async def calculate_were_so_fucked_achievements(session: AsyncSession) -> None:
@@ -277,9 +294,13 @@ async def calculate_john_wick_achievements(session: AsyncSession) -> None:
         await service.calculate_john_wick_achievements(session, tournament)
 
 
-async def calculate_the_shift_factory_is_done_achievements(session: AsyncSession) -> None:
+async def calculate_the_shift_factory_is_done_achievements(
+    session: AsyncSession,
+) -> None:
     for tournament in await tournament_service.get_all(session):
-        await service.calculate_the_shift_factory_is_done_achievements(session, tournament)
+        await service.calculate_the_shift_factory_is_done_achievements(
+            session, tournament
+        )
 
 
 async def calculate_shooting_and_screaming_achievements(session: AsyncSession) -> None:

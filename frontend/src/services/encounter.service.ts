@@ -23,7 +23,16 @@ export default class encounterService {
   static async getMatch(match_id: number): Promise<MatchWithStats> {
     return customFetch(`${API_URL}/matches/${match_id}`, {
       query: {
-        entities: ["teams", "teams.players", "teams.players.user", "map", "map.gamemode", "encounter", "encounter.tournament", "encounter.tournament_group"]
+        entities: [
+          "teams",
+          "teams.players",
+          "teams.players.user",
+          "map",
+          "map.gamemode",
+          "encounter",
+          "encounter.tournament",
+          "encounter.tournament_group"
+        ]
       }
     }).then((res) => res.json());
   }
@@ -58,7 +67,14 @@ export default class encounterService {
         query: query,
         sort: "id",
         order: "desc",
-        entities: ["teams", "map", "map.gamemode", "encounter", "encounter.tournament", "encounter.tournament_group"],
+        entities: [
+          "teams",
+          "map",
+          "map.gamemode",
+          "encounter",
+          "encounter.tournament",
+          "encounter.tournament_group"
+        ],
         tournament_id: tournamentId
       }
     }).then((res) => res.json());

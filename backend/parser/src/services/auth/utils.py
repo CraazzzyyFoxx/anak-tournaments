@@ -8,7 +8,9 @@ import jwt
 password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
-def verify_and_update_password(plain_password: str, hashed_password: str) -> tuple[bool, str]:
+def verify_and_update_password(
+    plain_password: str, hashed_password: str
+) -> tuple[bool, str]:
     hashed_password = hash_password(hashed_password)
     return password_context.verify_and_update(plain_password, hashed_password)  # type: ignore
 

@@ -163,11 +163,7 @@ const UserMapsTable = ({ maps }: { maps: PaginatedResponse<UserMapRead> }) => {
       <ScrollArea>
         <Card className="w-full">
           <div className="rounded-md border">
-            <TableComponent
-              table={table}
-              columns={columns}
-              tableCellClassName={"p-0"}
-            />
+            <TableComponent table={table} columns={columns} tableCellClassName={"p-0"} />
           </div>
         </Card>
         <ScrollBar orientation="horizontal" />

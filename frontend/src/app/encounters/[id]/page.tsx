@@ -29,8 +29,18 @@ export async function generateMetadata(props: {
 const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
   const params = await props.params;
   const encounter = await encounterService.getEncounter(params.id);
-  const homeTeamState = encounter.score.home === encounter.score.away ? "Tie" : encounter.score.home > encounter.score.away ? "Winner" : "Losser";
-  const awayTeamState = encounter.score.home === encounter.score.away ? "Tie" : encounter.score.home < encounter.score.away ? "Winner" : "Losser";
+  const homeTeamState =
+    encounter.score.home === encounter.score.away
+      ? "Tie"
+      : encounter.score.home > encounter.score.away
+        ? "Winner"
+        : "Losser";
+  const awayTeamState =
+    encounter.score.home === encounter.score.away
+      ? "Tie"
+      : encounter.score.home < encounter.score.away
+        ? "Winner"
+        : "Losser";
   let name = `${encounter.tournament.number}`;
   if (encounter.tournament.is_league) {
     name = encounter.tournament.name;

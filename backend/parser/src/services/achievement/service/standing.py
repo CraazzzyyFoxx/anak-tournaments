@@ -8,8 +8,12 @@ from src import models
 from . import crud
 
 
-async def calculate_to_bottom_achievements(session: AsyncSession, tournament: models.Tournament) -> None:
-    if not (achievement := await crud.get_achievement_or_log_error(session, "to-the-bottom")):
+async def calculate_to_bottom_achievements(
+    session: AsyncSession, tournament: models.Tournament
+) -> None:
+    if not (
+        achievement := await crud.get_achievement_or_log_error(session, "to-the-bottom")
+    ):
         return
 
     await crud.delete_user_achievements(session, achievement, tournament.id)
@@ -34,11 +38,19 @@ async def calculate_to_bottom_achievements(session: AsyncSession, tournament: mo
 
     await crud.create_user_achievements(session, achievement, users, tournament.id)
     await session.commit()
-    logger.info(f"Achievements 'To bottom' for tournament {tournament.name} created successfully")
+    logger.info(
+        f"Achievements 'To bottom' for tournament {tournament.name} created successfully"
+    )
 
 
-async def calculate_beginners_are_lucky_achievements(session: AsyncSession, tournament: models.Tournament) -> None:
-    if not (achievement := await crud.get_achievement_or_log_error(session, "beginners-are-lucky")):
+async def calculate_beginners_are_lucky_achievements(
+    session: AsyncSession, tournament: models.Tournament
+) -> None:
+    if not (
+        achievement := await crud.get_achievement_or_log_error(
+            session, "beginners-are-lucky"
+        )
+    ):
         return
 
     await crud.delete_user_achievements(session, achievement, tournament.id)
@@ -55,33 +67,43 @@ async def calculate_beginners_are_lucky_achievements(session: AsyncSession, tour
                 sa.or_(
                     sa.and_(
                         models.Tournament.number.between(5, 20),
-                        models.Standing.overall_position < 7
+                        models.Standing.overall_position < 7,
                     ),
                     sa.and_(
                         ~models.Tournament.number.between(5, 20),
-                        models.Standing.overall_position < 13
-                    )
+                        models.Standing.overall_position < 13,
+                    ),
                 ),
             )
         )
         .group_by(models.Team.id)
-        .having(sa.func.sum(sa.case((models.Player.is_newcomer.is_(True), 1), else_=0)) >= 1)
+        .having(
+            sa.func.sum(sa.case((models.Player.is_newcomer.is_(True), 1), else_=0)) >= 1
+        )
     )
 
     result = await session.scalars(query)
     for team in result.unique().all():
         for player in team.players:
             user_achievement = models.AchievementUser(
-                user_id=player.user_id, achievement_id=achievement.id, tournament_id=tournament.id
+                user_id=player.user_id,
+                achievement_id=achievement.id,
+                tournament_id=tournament.id,
             )
             session.add(user_achievement)
 
     await session.commit()
-    logger.info(f"Achievements 'Beginners are lucky' for tournament {tournament.name} created successfully")
+    logger.info(
+        f"Achievements 'Beginners are lucky' for tournament {tournament.name} created successfully"
+    )
 
 
-async def calculate_dirty_smurf_achievements(session: AsyncSession, tournament: models.Tournament) -> None:
-    if not (achievement := await crud.get_achievement_or_log_error(session, "dirty-smurf")):
+async def calculate_dirty_smurf_achievements(
+    session: AsyncSession, tournament: models.Tournament
+) -> None:
+    if not (
+        achievement := await crud.get_achievement_or_log_error(session, "dirty-smurf")
+    ):
         return
 
     await crud.delete_user_achievements(session, achievement, tournament.id)
@@ -105,11 +127,17 @@ async def calculate_dirty_smurf_achievements(session: AsyncSession, tournament: 
     await crud.create_user_achievements(session, achievement, users, tournament.id)
 
     await session.commit()
-    logger.info(f"Achievements 'Beginners are lucky' in tournament {tournament.name} for {len(users)} users created")
+    logger.info(
+        f"Achievements 'Beginners are lucky' in tournament {tournament.name} for {len(users)} users created"
+    )
 
 
 async def calculate_samurai_has_no_purpose_achievements(session: AsyncSession) -> None:
-    if not (achievement := await crud.get_achievement_or_log_error(session, "samurai-has-no-purpose")):
+    if not (
+        achievement := await crud.get_achievement_or_log_error(
+            session, "samurai-has-no-purpose"
+        )
+    ):
         return
 
     await crud.delete_user_achievements(session, achievement)
@@ -125,12 +153,12 @@ async def calculate_samurai_has_no_purpose_achievements(session: AsyncSession) -
             sa.or_(
                 sa.and_(
                     models.Tournament.number.between(5, 20),
-                    models.Standing.overall_position < 7
+                    models.Standing.overall_position < 7,
                 ),
                 sa.and_(
                     ~models.Tournament.number.between(5, 20),
-                    models.Standing.overall_position < 13
-                )
+                    models.Standing.overall_position < 13,
+                ),
             ),
             models.Tournament.is_league.is_(False),
             models.Player.user_id == OuterPlayer.user_id,
@@ -147,7 +175,11 @@ async def calculate_samurai_has_no_purpose_achievements(session: AsyncSession) -
 
 
 async def calculate_consistent_winner_achievements(session: AsyncSession) -> None:
-    if not (achievement := await crud.get_achievement_or_log_error(session, "consistent-winner")):
+    if not (
+        achievement := await crud.get_achievement_or_log_error(
+            session, "consistent-winner"
+        )
+    ):
         return
 
     sum_home = sa.func.sum(crud.encounter_query.c.home_score)
@@ -161,7 +193,10 @@ async def calculate_consistent_winner_achievements(session: AsyncSession) -> Non
         .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
         .join(crud.encounter_query, crud.encounter_query.c.id == models.Player.id)
         .where(
-            sa.and_(models.Player.is_substitution.is_(False), models.Tournament.is_league.is_(False)),
+            sa.and_(
+                models.Player.is_substitution.is_(False),
+                models.Tournament.is_league.is_(False),
+            ),
         )
         .group_by(models.User.id)
         .order_by(winrate.desc())
@@ -175,15 +210,25 @@ async def calculate_consistent_winner_achievements(session: AsyncSession) -> Non
 
 
 async def calculate_were_not_suckers_achievements(session: AsyncSession) -> None:
-    if not (achievement := await crud.get_achievement_or_log_error(session, "were-not-suckers")):
+    if not (
+        achievement := await crud.get_achievement_or_log_error(
+            session, "were-not-suckers"
+        )
+    ):
         return
 
     await crud.delete_user_achievements(session, achievement)
 
     subquery = (
-        sa.select(models.Encounter.tournament_id, sa.func.max(models.Encounter.round).label("max_round"))
+        sa.select(
+            models.Encounter.tournament_id,
+            sa.func.max(models.Encounter.round).label("max_round"),
+        )
         .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-        .join(models.TournamentGroup, models.TournamentGroup.id == models.Encounter.tournament_group_id)
+        .join(
+            models.TournamentGroup,
+            models.TournamentGroup.id == models.Encounter.tournament_group_id,
+        )
         .where(
             sa.and_(
                 models.TournamentGroup.is_groups.is_(False),
@@ -196,7 +241,10 @@ async def calculate_were_not_suckers_achievements(session: AsyncSession) -> None
     query = (
         sa.select(models.Encounter)
         .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-        .join(models.TournamentGroup, models.TournamentGroup.id == models.Encounter.tournament_group_id)
+        .join(
+            models.TournamentGroup,
+            models.TournamentGroup.id == models.Encounter.tournament_group_id,
+        )
         .join(
             subquery,
             sa.and_(
@@ -207,8 +255,12 @@ async def calculate_were_not_suckers_achievements(session: AsyncSession) -> None
         .options(
             sa.orm.joinedload(models.Encounter.home_team),
             sa.orm.joinedload(models.Encounter.away_team),
-            sa.orm.joinedload(models.Encounter.home_team).joinedload(models.Team.players),
-            sa.orm.joinedload(models.Encounter.away_team).joinedload(models.Team.players),
+            sa.orm.joinedload(models.Encounter.home_team).joinedload(
+                models.Team.players
+            ),
+            sa.orm.joinedload(models.Encounter.away_team).joinedload(
+                models.Team.players
+            ),
         )
     )
 
@@ -219,22 +271,38 @@ async def calculate_were_not_suckers_achievements(session: AsyncSession) -> None
         if encounter.home_score == 2 and encounter.away_score == 3:
             users.setdefault(encounter.tournament_id, [])
             users[encounter.tournament_id].extend(
-                [p.user_id for p in encounter.home_team.players if not p.is_substitution]
+                [
+                    p.user_id
+                    for p in encounter.home_team.players
+                    if not p.is_substitution
+                ]
             )
         elif encounter.home_score == 3 and encounter.away_score == 2:
             users.setdefault(encounter.tournament_id, [])
             users[encounter.tournament_id].extend(
-                [p.user_id for p in encounter.away_team.players if not p.is_substitution]
+                [
+                    p.user_id
+                    for p in encounter.away_team.players
+                    if not p.is_substitution
+                ]
             )
 
     for tournament_id, user_ids in users.items():
-        await crud.create_user_achievements(session, achievement, user_ids, tournament_id)
+        await crud.create_user_achievements(
+            session, achievement, user_ids, tournament_id
+        )
     await session.commit()
     logger.info("Achievements 'We're not suckers' created successfully")
 
 
-async def calculate_reverse_sweep_champion_achievements(session: AsyncSession, tournament: models.Tournament) -> None:
-    if not (achievement := await crud.get_achievement_or_log_error(session, "reverse-sweep-champion")):
+async def calculate_reverse_sweep_champion_achievements(
+    session: AsyncSession, tournament: models.Tournament
+) -> None:
+    if not (
+        achievement := await crud.get_achievement_or_log_error(
+            session, "reverse-sweep-champion"
+        )
+    ):
         return
 
     await crud.delete_user_achievements(session, achievement, tournament.id)
@@ -285,15 +353,24 @@ async def calculate_reverse_sweep_champion_achievements(session: AsyncSession, t
     )
 
 
-async def calculate_the_best_among_the_best_achievements(session: AsyncSession, tournament: models.Tournament) -> None:
-    if not (achievement := await crud.get_achievement_or_log_error(session, "the-best-among-the-best")):
+async def calculate_the_best_among_the_best_achievements(
+    session: AsyncSession, tournament: models.Tournament
+) -> None:
+    if not (
+        achievement := await crud.get_achievement_or_log_error(
+            session, "the-best-among-the-best"
+        )
+    ):
         return
 
     await crud.delete_user_achievements(session, achievement, tournament.id)
     query = (
         sa.select(models.Player.user_id)
         .join(models.Standing, models.Player.team_id == models.Standing.team_id)
-        .join(models.TournamentGroup, models.TournamentGroup.id == models.Standing.group_id)
+        .join(
+            models.TournamentGroup,
+            models.TournamentGroup.id == models.Standing.group_id,
+        )
         .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
         .where(
             sa.and_(
@@ -317,7 +394,9 @@ async def calculate_the_best_among_the_best_achievements(session: AsyncSession, 
     )
 
 
-async def calculate_revenge_achievement(session: AsyncSession, tournament: models.Tournament) -> None:
+async def calculate_revenge_achievement(
+    session: AsyncSession, tournament: models.Tournament
+) -> None:
     """
     Grants an achievement to users whose team won a match (Encounter E2)
     against a team that had previously beaten them (Encounter E1).
@@ -352,22 +431,15 @@ async def calculate_revenge_achievement(session: AsyncSession, tournament: model
                 E1.home_team_id == E2.home_team_id,
                 E1.away_team_id == E2.away_team_id,
             ),
-            sa.and_(
-                E1.home_score > E1.away_score,
-                E2.home_score < E2.away_score
-            )
-
+            sa.and_(E1.home_score > E1.away_score, E2.home_score < E2.away_score),
         ),
         sa.and_(
             sa.and_(
                 E1.home_team_id == E2.away_team_id,
                 E1.away_team_id == E2.home_team_id,
             ),
-            sa.and_(
-                E1.home_score > E1.away_score,
-                E2.home_score < E2.away_score
-            )
-        )
+            sa.and_(E1.home_score > E1.away_score, E2.home_score < E2.away_score),
+        ),
     )
 
     subquery = (
@@ -385,9 +457,8 @@ async def calculate_revenge_achievement(session: AsyncSession, tournament: model
         .subquery("revenge_matches")
     )
 
-    revenge_query = (
-        sa.select(models.Encounter)
-        .where(models.Encounter.id.in_(sa.select(subquery)))
+    revenge_query = sa.select(models.Encounter).where(
+        models.Encounter.id.in_(sa.select(subquery))
     )
 
     result = await session.execute(revenge_query)
@@ -401,18 +472,17 @@ async def calculate_revenge_achievement(session: AsyncSession, tournament: model
         else:
             winner_team_id = enc.away_team_id
 
-        players_query =(
-            sa.select(models.Player.user_id)
-            .where(
-                sa.and_(models.Player.team_id == winner_team_id)
-            )
+        players_query = sa.select(models.Player.user_id).where(
+            sa.and_(models.Player.team_id == winner_team_id)
         )
         player_result = await session.execute(players_query)
         user_ids = [row[0] for row in player_result.all()]
 
         if user_ids:
             awarded_count += len(user_ids)
-            await crud.create_user_achievements(session, achievement, user_ids, tournament.id)
+            await crud.create_user_achievements(
+                session, achievement, user_ids, tournament.id
+            )
 
     await session.commit()
     logger.info(
@@ -421,8 +491,12 @@ async def calculate_revenge_achievement(session: AsyncSession, tournament: model
     )
 
 
-async def calculate_win_with_20_div_achievement(session: AsyncSession, tournament: models.Tournament) -> None:
-    achievement = await crud.get_achievement_or_log_error(session, "anchor-in-my-throat")
+async def calculate_win_with_20_div_achievement(
+    session: AsyncSession, tournament: models.Tournament
+) -> None:
+    achievement = await crud.get_achievement_or_log_error(
+        session, "anchor-in-my-throat"
+    )
     if not achievement:
         return
 
@@ -448,7 +522,9 @@ async def calculate_win_with_20_div_achievement(session: AsyncSession, tournamen
 
     if team:
         user_ids = [player.user_id for player in team.players]
-        await crud.create_user_achievements(session, achievement, user_ids, tournament.id)
+        await crud.create_user_achievements(
+            session, achievement, user_ids, tournament.id
+        )
         await session.commit()
         logger.info(
             f"Achievement 'anchor-in-my-throat' created for {len(user_ids)} users in tournament {tournament.name}"
@@ -475,15 +551,16 @@ async def calculate_consecutive_wins_achievement(session: AsyncSession) -> None:
         session: The AsyncSession used for database I/O.
     """
 
-    achievement = await crud.get_achievement_or_log_error(session, "win-2-plus-consecutive")
+    achievement = await crud.get_achievement_or_log_error(
+        session, "win-2-plus-consecutive"
+    )
     if not achievement:
         return
     await crud.delete_user_achievements(session, achievement)
 
-
     row_number_expr = sa.func.row_number().over(
-        partition_by=models.Player.user_id,                 # each user separately
-        order_by=models.Tournament.number.asc()             # ascending order of tournament_number
+        partition_by=models.Player.user_id,  # each user separately
+        order_by=models.Tournament.number.asc(),  # ascending order of tournament_number
     )
 
     # subquery (CTE) selecting user_id, the "tournament_number," and group_id
@@ -493,7 +570,7 @@ async def calculate_consecutive_wins_achievement(session: AsyncSession) -> None:
             models.Player.user_id.label("user_id"),
             models.Tournament.number.label("t_num"),
             # group_id = tournament_number - row_number()
-            (models.Tournament.number - row_number_expr).label("group_id")
+            (models.Tournament.number - row_number_expr).label("group_id"),
         )
         .join(models.Team, models.Team.id == models.Player.team_id)
         .join(models.Standing, models.Standing.team_id == models.Team.id)
@@ -501,7 +578,7 @@ async def calculate_consecutive_wins_achievement(session: AsyncSession) -> None:
         .where(
             sa.and_(
                 models.Standing.overall_position == 1,
-                models.Standing.buchholz.is_(None),       # final standing row
+                models.Standing.buchholz.is_(None),  # final standing row
                 models.Tournament.is_league.is_(False),  # ignore league tournaments
             )
         )
@@ -557,7 +634,9 @@ async def calculate_five_second_day_streak_achievement(session: AsyncSession) ->
     """
 
     # 1) Fetch the achievement record
-    achievement = await crud.get_achievement_or_log_error(session, "five-second-day-streak")
+    achievement = await crud.get_achievement_or_log_error(
+        session, "five-second-day-streak"
+    )
     if not achievement:
         return
 
@@ -566,8 +645,7 @@ async def calculate_five_second_day_streak_achievement(session: AsyncSession) ->
 
     # A typical row_number expression
     row_number_expr = sa.func.row_number().over(
-        partition_by=models.Player.user_id,
-        order_by=models.Tournament.number.asc()
+        partition_by=models.Player.user_id, order_by=models.Tournament.number.asc()
     )
 
     # We only gather tournaments where the user "exited to the second day"
@@ -577,7 +655,7 @@ async def calculate_five_second_day_streak_achievement(session: AsyncSession) ->
         sa.select(
             models.Player.user_id.label("user_id"),
             models.Tournament.number.label("t_num"),
-            (models.Tournament.number - row_number_expr).label("group_id")
+            (models.Tournament.number - row_number_expr).label("group_id"),
         )
         .join(models.Team, models.Team.id == models.Player.team_id)
         .join(models.Standing, models.Standing.team_id == models.Team.id)
@@ -587,12 +665,12 @@ async def calculate_five_second_day_streak_achievement(session: AsyncSession) ->
                 sa.or_(
                     sa.and_(
                         models.Tournament.number.between(5, 20),
-                        models.Standing.overall_position < 7
+                        models.Standing.overall_position < 7,
                     ),
                     sa.and_(
                         ~models.Tournament.number.between(5, 20),
-                        models.Standing.overall_position < 13
-                    )
+                        models.Standing.overall_position < 13,
+                    ),
                 ),
                 models.Standing.buchholz.is_(None),
                 models.Tournament.is_league.is_(False),
@@ -625,7 +703,9 @@ async def calculate_five_second_day_streak_achievement(session: AsyncSession) ->
     )
 
 
-async def calculate_lower_bracket_run_achievement(session: AsyncSession, tournament: models.Tournament) -> None:
+async def calculate_lower_bracket_run_achievement(
+    session: AsyncSession, tournament: models.Tournament
+) -> None:
     achievement = await crud.get_achievement_or_log_error(session, "i-killed-i-stole")
     if not achievement:
         return
@@ -635,13 +715,16 @@ async def calculate_lower_bracket_run_achievement(session: AsyncSession, tournam
     query = (
         sa.select(models.Player.user_id)
         .join(models.Standing, models.Player.team_id == models.Standing.team_id)
-        .join(models.TournamentGroup, models.TournamentGroup.id == models.Standing.group_id)
+        .join(
+            models.TournamentGroup,
+            models.TournamentGroup.id == models.Standing.group_id,
+        )
         .join(
             models.Encounter,
             sa.or_(
                 models.Encounter.home_team_id == models.Player.team_id,
-                models.Encounter.away_team_id == models.Player.team_id
-            )
+                models.Encounter.away_team_id == models.Player.team_id,
+            ),
         )
         .where(
             sa.and_(
@@ -649,7 +732,7 @@ async def calculate_lower_bracket_run_achievement(session: AsyncSession, tournam
                 models.Player.is_substitution.is_(False),
                 models.Standing.overall_position.in_([1, 2]),
                 models.Encounter.round < 0,
-                models.TournamentGroup.is_groups.is_(False)
+                models.TournamentGroup.is_groups.is_(False),
             )
         )
         .group_by(models.Player.user_id)

@@ -121,7 +121,7 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
               </h4>
             </div>
           </div>
-  
+
           <div className="flex flex-col text-right">
             <p className="leading-7">Log name</p>
             <h4 className="scroll-m-20 text-xl font-semibold tracking-tight">{match.log_name}</h4>
@@ -139,11 +139,11 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
         </div>
       </CardHeader>
       <Tabs defaultValue="0">
-      <TabsList className="ml-8">
-        <TabsTrigger value="0">All Match</TabsTrigger>
-        {...tabsTriggers}
-      </TabsList>
-      {...tabsContent}
+        <TabsList className="ml-8">
+          <TabsTrigger value="0">All Match</TabsTrigger>
+          {...tabsTriggers}
+        </TabsList>
+        {...tabsContent}
       </Tabs>
     </Card>
   );

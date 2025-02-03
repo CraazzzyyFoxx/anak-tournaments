@@ -10,7 +10,9 @@ from . import crud
 
 
 async def calculate_lfs_4500_achievements(session: AsyncSession) -> None:
-    if not (achievement := await crud.get_achievement_or_log_error(session, "lfs-4500")):
+    if not (
+        achievement := await crud.get_achievement_or_log_error(session, "lfs-4500")
+    ):
         return
 
     await crud.delete_user_achievements(session, achievement)
@@ -35,9 +37,13 @@ async def calculate_lfs_4500_achievements(session: AsyncSession) -> None:
 
     result = await session.execute(query)
     for user_id_1, user_id_2, _ in result.all():
-        user_achievement = models.AchievementUser(user_id=user_id_1, achievement_id=achievement.id)
+        user_achievement = models.AchievementUser(
+            user_id=user_id_1, achievement_id=achievement.id
+        )
         session.add(user_achievement)
-        user_achievement = models.AchievementUser(user_id=user_id_2, achievement_id=achievement.id)
+        user_achievement = models.AchievementUser(
+            user_id=user_id_2, achievement_id=achievement.id
+        )
         session.add(user_achievement)
 
     await session.commit()
@@ -82,12 +88,16 @@ async def calculate_team_classes_achievements(
     for team in result.unique().all():
         for player in team.players:
             user_achievement = models.AchievementUser(
-                user_id=player.user_id, achievement_id=achievement.id, tournament_id=tournament.id
+                user_id=player.user_id,
+                achievement_id=achievement.id,
+                tournament_id=tournament.id,
             )
             session.add(user_achievement)
 
     await session.commit()
-    logger.info(f"Achievements '{slug}' for tournament {tournament.name} created successfully")
+    logger.info(
+        f"Achievements '{slug}' for tournament {tournament.name} created successfully"
+    )
 
 
 async def calculate_accuracy_is_above_all_else_achievements(
@@ -104,7 +114,9 @@ async def calculate_accuracy_is_above_all_else_achievements(
     )
 
 
-async def calculate_simple_geometry_achievements(session: AsyncSession, tournament: models.Tournament) -> None:
+async def calculate_simple_geometry_achievements(
+    session: AsyncSession, tournament: models.Tournament
+) -> None:
     await calculate_team_classes_achievements(
         session=session,
         slug="simple-geometry",
@@ -116,7 +128,9 @@ async def calculate_simple_geometry_achievements(session: AsyncSession, tourname
     )
 
 
-async def calculate_no_mercy_achievements(session: AsyncSession, tournament: models.Tournament) -> None:
+async def calculate_no_mercy_achievements(
+    session: AsyncSession, tournament: models.Tournament
+) -> None:
     await calculate_team_classes_achievements(
         session=session,
         slug="no_mercy",
@@ -128,7 +142,9 @@ async def calculate_no_mercy_achievements(session: AsyncSession, tournament: mod
     )
 
 
-async def calculate_heal_for_a_fee_achievements(session: AsyncSession, tournament: models.Tournament) -> None:
+async def calculate_heal_for_a_fee_achievements(
+    session: AsyncSession, tournament: models.Tournament
+) -> None:
     await calculate_team_classes_achievements(
         session=session,
         slug="heal_for_a_fee",
@@ -168,7 +184,9 @@ def get_otp_users_subquery(tournament: models.Tournament):
     return subquery
 
 
-async def calculate_im_screwed_run_achievements(session: AsyncSession, tournament: models.Tournament) -> None:
+async def calculate_im_screwed_run_achievements(
+    session: AsyncSession, tournament: models.Tournament
+) -> None:
     achievement = await crud.get_achievement_or_log_error(session, "im-screwed-run")
     if not achievement:
         return
@@ -191,7 +209,9 @@ async def calculate_im_screwed_run_achievements(session: AsyncSession, tournamen
 async def calculate_we_work_with_what_we_have_achievements(
     session: AsyncSession, tournament: models.Tournament
 ) -> None:
-    achievement = await crud.get_achievement_or_log_error(session, "we-work-with-what-we-have")
+    achievement = await crud.get_achievement_or_log_error(
+        session, "we-work-with-what-we-have"
+    )
     if not achievement:
         return
 
@@ -224,7 +244,9 @@ async def calculate_we_work_with_what_we_have_achievements(
     )
 
 
-async def calculate_were_so_fucked_achievements(session: AsyncSession, tournament: models.Tournament) -> None:
+async def calculate_were_so_fucked_achievements(
+    session: AsyncSession, tournament: models.Tournament
+) -> None:
     achievement = await crud.get_achievement_or_log_error(session, "were-so-fucked")
     if not achievement:
         return
@@ -233,7 +255,10 @@ async def calculate_were_so_fucked_achievements(session: AsyncSession, tournamen
 
     subquery_otp_users = get_otp_users_subquery(tournament)
     subquery_teams_with_count_otp = (
-        sa.select(models.Player.team_id.label("team_id"), sa.func.count(models.Player.user_id).label("otp_count"))
+        sa.select(
+            models.Player.team_id.label("team_id"),
+            sa.func.count(models.Player.user_id).label("otp_count"),
+        )
         .join(subquery_otp_users, subquery_otp_users.c.user_id == models.Player.user_id)
         .where(models.Player.is_substitution.is_(False))
         .group_by(models.Player.team_id)

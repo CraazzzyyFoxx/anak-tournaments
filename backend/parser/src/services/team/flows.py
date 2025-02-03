@@ -25,7 +25,12 @@ def resolve_hero_role_from_balancer(role: str) -> enums.HeroClass | None:
     if role.lower() == "support":
         return enums.HeroClass.support
     raise errors.ApiHTTPException(
-        status_code=400, detail=[errors.ApiExc(code="invalid_hero_role", msg=f"{role} is not a valid hero role.")]
+        status_code=400,
+        detail=[
+            errors.ApiExc(
+                code="invalid_hero_role", msg=f"{role} is not a valid hero role."
+            )
+        ],
     )
 
 
@@ -76,7 +81,10 @@ async def get(session: AsyncSession, id: int, entities: list[str]) -> models.Tea
     team = await service.get(session, id, entities)
     if not team:
         raise errors.ApiHTTPException(
-            status_code=404, detail=[errors.ApiExc(code="not_found", msg="Team with id {id} not found.")]
+            status_code=404,
+            detail=[
+                errors.ApiExc(code="not_found", msg="Team with id {id} not found.")
+            ],
         )
     return team
 
@@ -84,12 +92,17 @@ async def get(session: AsyncSession, id: int, entities: list[str]) -> models.Tea
 async def get_by_name_and_tournament(
     session: AsyncSession, tournament_id: int, name: str, entities: list[str]
 ) -> models.Team:
-    team = await service.get_by_name_and_tournament(session, tournament_id, name, entities)
+    team = await service.get_by_name_and_tournament(
+        session, tournament_id, name, entities
+    )
     if not team:
         raise errors.ApiHTTPException(
             status_code=404,
             detail=[
-                errors.ApiExc(code="not_found", msg=f"Team with name {name} in tournament {tournament_id} not found.")
+                errors.ApiExc(
+                    code="not_found",
+                    msg=f"Team with name {name} in tournament {tournament_id} not found.",
+                )
             ],
         )
     return team
@@ -98,7 +111,9 @@ async def get_by_name_and_tournament(
 async def get_by_tournament_challonge_id(
     session: AsyncSession, tournament_id: int, challonge_id: int, entities: list[str]
 ) -> models.Team:
-    team = await service.get_by_tournament_challonge_id(session, tournament_id, challonge_id, entities)
+    team = await service.get_by_tournament_challonge_id(
+        session, tournament_id, challonge_id, entities
+    )
     if not team:
         raise errors.ApiHTTPException(
             status_code=404,
@@ -115,7 +130,9 @@ async def get_by_tournament_challonge_id(
 async def get_player_by_user_and_tournament(
     session: AsyncSession, user_id: int, tournament_id: int, entities: list[str]
 ) -> models.Player:
-    player = await service.get_player_by_user_and_tournament(session, user_id, tournament_id, entities)
+    player = await service.get_player_by_user_and_tournament(
+        session, user_id, tournament_id, entities
+    )
     if not player:
         raise errors.ApiHTTPException(
             status_code=400,
@@ -133,7 +150,9 @@ async def get_player_by_user_and_tournament(
 async def get_player_by_team_and_user(
     session: AsyncSession, team_id: int, user_id: int, entities: list[str]
 ) -> models.Player:
-    player = await service.get_player_by_team_and_user(session, team_id, user_id, entities)
+    player = await service.get_player_by_team_and_user(
+        session, team_id, user_id, entities
+    )
     if not player:
         raise errors.ApiHTTPException(
             status_code=404,
@@ -237,7 +256,9 @@ async def bulk_create_from_balancer(
             name = team_data.name
 
         captain = await user_flows.find_by_battle_tag(session, team_data.name)
-        team = await service.get_by_name_and_tournament(session, tournament.id, name, [])
+        team = await service.get_by_name_and_tournament(
+            session, tournament.id, name, []
+        )
         if not team:
             team = await create(
                 session,
@@ -249,21 +270,31 @@ async def bulk_create_from_balancer(
                 captain=captain,
             )
         else:
-            logger.info(f"Team {name} already exists in tournament {tournament.name}. Skipping...")
+            logger.info(
+                f"Team {name} already exists in tournament {tournament.name}. Skipping..."
+            )
 
         for player in team_data.members:
-            logger.info(f"Trying to add player {player.name} to team {team.name} in tournament {tournament.name}")
+            logger.info(
+                f"Trying to add player {player.name} to team {team.name} in tournament {tournament.name}"
+            )
             user = await user_flows.find_by_battle_tag(session, player.name)
-            player_db = await service.get_player_by_user_and_tournament(session, user.id, tournament.id, [])
+            player_db = await service.get_player_by_user_and_tournament(
+                session, user.id, tournament.id, []
+            )
             if player_db:
                 logger.info(
                     f"Player {player.name} already exists in team [name={team.name} tournament={tournament.name}]."
                 )
                 continue
 
-            is_newcomer = not bool(await service.get_player_by_user(session, user.id, []))
+            is_newcomer = not bool(
+                await service.get_player_by_user(session, user.id, [])
+            )
             role = resolve_hero_role_from_balancer(player.role)
-            is_newcomer_role = not bool(await service.get_player_by_user_and_role(session, user.id, role, []))
+            is_newcomer_role = not bool(
+                await service.get_player_by_user_and_role(session, user.id, role, [])
+            )
 
             await create_player(
                 session,
@@ -279,7 +310,9 @@ async def bulk_create_from_balancer(
                 is_newcomer=is_newcomer,
                 is_newcomer_role=is_newcomer_role,
             )
-            logger.info(f"Player {player.name} added to team {team.name} in tournament {tournament.id}")
+            logger.info(
+                f"Player {player.name} added to team {team.name} in tournament {tournament.id}"
+            )
 
     return None
 
@@ -314,14 +347,11 @@ async def _create_from_challonge_participant(
         name = format_team_name(participant.name, None)
         team = await get_by_name_and_tournament(session, tournament.id, name, [])
 
-    query = (
-        sa.select(models.ChallongeTeam)
-        .where(
-            sa.and_(
-                models.ChallongeTeam.challonge_id == challonge_id,
-                models.ChallongeTeam.group_id == group_id,
-                models.ChallongeTeam.team_id == team.id
-            )
+    query = sa.select(models.ChallongeTeam).where(
+        sa.and_(
+            models.ChallongeTeam.challonge_id == challonge_id,
+            models.ChallongeTeam.group_id == group_id,
+            models.ChallongeTeam.team_id == team.id,
         )
     )
 
@@ -332,33 +362,48 @@ async def _create_from_challonge_participant(
         return challonge_team
 
     challonge_team = models.ChallongeTeam(
-        challonge_id=challonge_id, team_id=team.id, group_id=group_id, tournament_id=tournament.id
+        challonge_id=challonge_id,
+        team_id=team.id,
+        group_id=group_id,
+        tournament_id=tournament.id,
     )
     return challonge_team
 
 
 async def bulk_create_for_tournament_from_challonge(
-    session: AsyncSession,
-    tournament_id: int,
-    name_mapper: dict[str, str]
+    session: AsyncSession, tournament_id: int, name_mapper: dict[str, str]
 ) -> None:
     tournament = await tournament_flows.get(session, tournament_id, ["groups"])
     logger.info(f"Creating teams for tournament {tournament.name} from challonge")
 
     if not tournament.challonge_id:
         for group in tournament.groups:
-            participants = await challonge_service.fetch_participants(group.challonge_id)
+            participants = await challonge_service.fetch_participants(
+                group.challonge_id
+            )
             for participant in participants:
                 challonge_team = await _create_from_challonge_participant(
-                    session, tournament, group.id, participant, not group.is_groups, name_mapper
+                    session,
+                    tournament,
+                    group.id,
+                    participant,
+                    not group.is_groups,
+                    name_mapper,
                 )
                 session.add(challonge_team)
     else:
-        participants = await challonge_service.fetch_participants(tournament.challonge_id)
+        participants = await challonge_service.fetch_participants(
+            tournament.challonge_id
+        )
         for group in tournament.groups:
             for participant in participants:
                 challonge_team = await _create_from_challonge_participant(
-                    session, tournament, group.id, participant, not group.is_groups, name_mapper
+                    session,
+                    tournament,
+                    group.id,
+                    participant,
+                    not group.is_groups,
+                    name_mapper,
                 )
                 session.add(challonge_team)
 
@@ -366,6 +411,10 @@ async def bulk_create_for_tournament_from_challonge(
     logger.info(f"Teams for tournament {tournament.name} created successfully")
 
 
-async def bulk_create_from_challonge(session: AsyncSession, name_mapper: dict[str, str]) -> None:
+async def bulk_create_from_challonge(
+    session: AsyncSession, name_mapper: dict[str, str]
+) -> None:
     for tournament in await tournament_service.get_all(session):
-        await bulk_create_for_tournament_from_challonge(session, tournament.id, name_mapper)
+        await bulk_create_for_tournament_from_challonge(
+            session, tournament.id, name_mapper
+        )

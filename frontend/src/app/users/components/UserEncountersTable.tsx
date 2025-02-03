@@ -11,7 +11,7 @@ import {
   TableHeader,
   TableRow
 } from "@/components/ui/table";
-import {EncounterWithUserStats, MatchWithUserStats} from "@/types/user.types";
+import { EncounterWithUserStats, MatchWithUserStats } from "@/types/user.types";
 import { useRouter } from "next/navigation";
 import { PaginationWithLinks } from "@/components/ui/pagination-with-links";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -21,8 +21,8 @@ import { PaginatedResponse } from "@/types/pagination.types";
 import Image from "next/image";
 import { Card } from "@/components/ui/card";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
-import {Score} from "@/types/encounter.types";
-import {Tournament, TournamentGroup} from "@/types/tournament.types";
+import { Score } from "@/types/encounter.types";
+import { Tournament, TournamentGroup } from "@/types/tournament.types";
 
 const columns: ColumnDef<EncounterWithUserStats>[] = [
   {
@@ -65,17 +65,13 @@ const columns: ColumnDef<EncounterWithUserStats>[] = [
     cell: ({ row }) => {
       const heroes: string[] = [];
 
-      row.getValue<MatchWithUserStats[]>("heroes").forEach(
-        (match) => {
-          match.heroes.forEach(
-            (hero) => {
-              if (!heroes.includes(hero.image_path)) {
-                heroes.push(hero.image_path);
-              }
-            }
-          );
-        }
-      );
+      row.getValue<MatchWithUserStats[]>("heroes").forEach((match) => {
+        match.heroes.forEach((hero) => {
+          if (!heroes.includes(hero.image_path)) {
+            heroes.push(hero.image_path);
+          }
+        });
+      });
 
       return (
         <div className="flex flex-row gap-2">
@@ -100,18 +96,14 @@ const columns: ColumnDef<EncounterWithUserStats>[] = [
     cell: ({ row }) => {
       return (
         <div className="flex flex-row gap-2">
-          {
-            row.getValue<MatchWithUserStats[]>("mvp").map(
-              (match) => {
-                return (
-                  <PerformanceBadgeWithTooltip
-                    key={`performance-${row.getValue("id")}-${match.id}`}
-                    match={match}
-                  />
-                );
-              }
-            )
-          }
+          {row.getValue<MatchWithUserStats[]>("mvp").map((match) => {
+            return (
+              <PerformanceBadgeWithTooltip
+                key={`performance-${row.getValue("id")}-${match.id}`}
+                match={match}
+              />
+            );
+          })}
         </div>
       );
     }

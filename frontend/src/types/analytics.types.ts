@@ -8,13 +8,12 @@ export interface PlayerAnalytics extends Player {
 
 export interface TeamAnalytics extends Team {
   players: PlayerAnalytics[];
-  balancer_shift: number
-  manual_shift: number
-  total_shift: number
+  balancer_shift: number;
+  manual_shift: number;
+  total_shift: number;
 }
 
 export interface TournamentAnalytics {
   teams: TeamAnalytics[];
-  teams_wins: Record<number, number>
-
+  teams_wins: Record<number, number>;
 }

@@ -21,7 +21,9 @@ class InterceptHandler(logging.Handler):
             frame = frame.f_back
             depth += 1
 
-        logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
+        logger.opt(depth=depth, exception=record.exc_info).log(
+            level, record.getMessage()
+        )
 
 
 class APILogger:
@@ -76,7 +78,7 @@ class APILogger:
             "celery",
             "sqlalchemy.engine.Engine",
             "websockets.legacy.server",
-            "faststream"
+            "faststream",
         ):
             _logger = logging.getLogger(_log)
             _logger.handlers = [InterceptHandler()]

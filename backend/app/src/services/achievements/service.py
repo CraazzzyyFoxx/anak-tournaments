@@ -115,7 +115,9 @@ async def get_all(
     return results.all(), count.scalar()  # type: ignore
 
 
-async def get_count_users_achievements(session: AsyncSession, achievements_ids: list[int]) -> dict[int, int]:
+async def get_count_users_achievements(
+    session: AsyncSession, achievements_ids: list[int]
+) -> dict[int, int]:
     """
     Retrieves the count of users who have earned each achievement in a list of achievement IDs.
 
@@ -141,7 +143,7 @@ async def get_count_users_achievements(session: AsyncSession, achievements_ids: 
 
 
 async def get_users_achievements(
-        session: AsyncSession, achievement_id: int, params: pagination.PaginationParams
+    session: AsyncSession, achievement_id: int, params: pagination.PaginationParams
 ) -> list[tuple[models.User, int, int], int]:
     """
     Retrieves a paginated list of distinct users who have earned a specific achievement.
@@ -154,15 +156,16 @@ async def get_users_achievements(
     Returns:
         list[models.User]: A list of distinct User models associated with the given achievement.
     """
-    total_query = (
-        sa.select(sa.func.count(sa.distinct(models.AchievementUser.user_id)))
-        .where(models.AchievementUser.achievement_id == achievement_id)
-    )
+    total_query = sa.select(
+        sa.func.count(sa.distinct(models.AchievementUser.user_id))
+    ).where(models.AchievementUser.achievement_id == achievement_id)
     query = (
         sa.select(
             models.User,
             sa.func.count(models.AchievementUser.id).label("total"),
-            sa.func.max(models.AchievementUser.tournament_id).label("last_tournament_id"),
+            sa.func.max(models.AchievementUser.tournament_id).label(
+                "last_tournament_id"
+            ),
         )
         .select_from(models.AchievementUser)
         .join(models.User, models.User.id == models.AchievementUser.user_id)

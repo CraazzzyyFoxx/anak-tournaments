@@ -65,7 +65,7 @@ async def get_top_champions(
         .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
         .where(
             sa.and_(
-                models.Standing.position == 1,
+                models.Standing.overall_position == 1,
                 models.TournamentGroup.is_groups.is_(False),
                 models.Player.is_substitution.is_(False),
                 models.Tournament.is_league.is_(False),

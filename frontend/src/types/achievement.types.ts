@@ -20,12 +20,11 @@ export interface AchievementRarity extends Achievement {
   tournaments_ids: number[];
   tournaments: Tournament[];
   matches_ids: number[];
-  matches: Match[]
+  matches: Match[];
 }
 
-
 export interface AchievementEarned {
-  user: User
-  count: number
-  last_tournament: Tournament
+  user: User;
+  count: number;
+  last_tournament: Tournament;
 }

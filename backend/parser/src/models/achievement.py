@@ -21,16 +21,24 @@ class Achievement(db.TimeStampIntegerMixin):
     slug: Mapped[str] = mapped_column(String())
     description_ru: Mapped[str] = mapped_column(String())
     description_en: Mapped[str] = mapped_column(String())
-    hero_id: Mapped[int | None] = mapped_column(ForeignKey(Hero.id, ondelete="CASCADE"), nullable=True)
+    hero_id: Mapped[int | None] = mapped_column(
+        ForeignKey(Hero.id, ondelete="CASCADE"), nullable=True
+    )
 
 
 class AchievementUser(db.TimeStampIntegerMixin):
     __tablename__ = "achievement_user"
 
     user_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"))
-    achievement_id: Mapped[int] = mapped_column(ForeignKey(Achievement.id, ondelete="CASCADE"))
-    tournament_id: Mapped[int | None] = mapped_column(ForeignKey(Tournament.id, ondelete="CASCADE"), nullable=True)
-    match_id: Mapped[int | None] = mapped_column(ForeignKey("match.id", ondelete="CASCADE"), nullable=True)
+    achievement_id: Mapped[int] = mapped_column(
+        ForeignKey(Achievement.id, ondelete="CASCADE")
+    )
+    tournament_id: Mapped[int | None] = mapped_column(
+        ForeignKey(Tournament.id, ondelete="CASCADE"), nullable=True
+    )
+    match_id: Mapped[int | None] = mapped_column(
+        ForeignKey("match.id", ondelete="CASCADE"), nullable=True
+    )
 
     tournament: Mapped[Tournament] = relationship()
     match: Mapped[typing.Optional["Match"]] = relationship()

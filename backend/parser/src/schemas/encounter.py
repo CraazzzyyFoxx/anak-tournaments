@@ -1,4 +1,11 @@
-from src.schemas import BaseRead, TournamentRead, TournamentGroupRead, TeamRead, MapRead, Score
+from src.schemas import (
+    BaseRead,
+    TournamentRead,
+    TournamentGroupRead,
+    TeamRead,
+    MapRead,
+    Score,
+)
 
 
 __all__ = ("EncounterRead", "MatchRead")

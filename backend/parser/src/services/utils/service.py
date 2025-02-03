@@ -94,11 +94,11 @@ async def get_teams_from_dasha(payload: list) -> dict[int, schemas.DashaTeam]:
                             team_id=team_id,
                             user_id=user_id,
                             name=player_name,
-                            role=role if role != "Flex" else None,   # type: ignore
+                            role=role if role != "Flex" else None,  # type: ignore
                             price=price,
                             division=division,
                         )
-                    ]
+                    ],
                 )
             else:
                 data[team_id].players.append(
@@ -108,7 +108,7 @@ async def get_teams_from_dasha(payload: list) -> dict[int, schemas.DashaTeam]:
                         team_id=team_id,
                         user_id=user_id,
                         name=player_name,
-                        role=role if role != "Flex" else None,   # type: ignore
+                        role=role if role != "Flex" else None,  # type: ignore
                         price=price,
                         division=division,
                     )
@@ -121,7 +121,9 @@ async def get_teams_from_dasha(payload: list) -> dict[int, schemas.DashaTeam]:
     return data
 
 
-async def transform_dasha_teams_to_normal(teams: dict[int, schemas.DashaTeam]) -> dict[int, list[schemas.BalancerTeam]]:
+async def transform_dasha_teams_to_normal(
+    teams: dict[int, schemas.DashaTeam],
+) -> dict[int, list[schemas.BalancerTeam]]:
     data: dict[int, list[schemas.BalancerTeam]] = {}
 
     for team_id, team in teams.items():
@@ -144,7 +146,7 @@ async def transform_dasha_teams_to_normal(teams: dict[int, schemas.DashaTeam]) -
                         rank=player.price,
                     )
                     for player in team.players
-                ]
+                ],
             )
         )
 

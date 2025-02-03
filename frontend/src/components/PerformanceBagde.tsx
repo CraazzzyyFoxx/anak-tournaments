@@ -43,7 +43,6 @@ export const PerformanceBadgeWithTooltip = ({ match }: { match: MatchWithUserSta
   );
 };
 
-
 export const PerformanceBadge = ({ performance }: { performance: number | undefined }) => {
   let bgColor = "bg-[#2c3f52]";
   let color = "text-[#ffffff]";

@@ -10,7 +10,11 @@ from src.services.auth import flows as auth_flows
 
 from . import flows
 
-router = APIRouter(prefix="/teams", tags=[enums.RouteTag.TEAMS], dependencies=[Depends(auth_flows.current_user)])
+router = APIRouter(
+    prefix="/teams",
+    tags=[enums.RouteTag.TEAMS],
+    dependencies=[Depends(auth_flows.current_user)],
+)
 
 
 @router.post(path="/create/balancer")
@@ -21,7 +25,9 @@ async def bulk_create_from_balancer(
 ):
     text = await data.read()
     payload = orjson.loads(text)
-    teams = [schemas.BalancerTeam.model_validate(team) for team in payload["data"]["teams"]]
+    teams = [
+        schemas.BalancerTeam.model_validate(team) for team in payload["data"]["teams"]
+    ]
     return await flows.bulk_create_from_balancer(session, tournament_id, teams)
 
 
@@ -31,7 +37,9 @@ async def bulk_create_from_challonge(
     name_mapper: dict[str, str],
     session=Depends(db.get_async_session),
 ):
-    await flows.bulk_create_for_tournament_from_challonge(session, tournament_id, name_mapper)
+    await flows.bulk_create_for_tournament_from_challonge(
+        session, tournament_id, name_mapper
+    )
     return {"message": "Teams created successfully"}
 
 

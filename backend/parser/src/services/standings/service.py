@@ -39,22 +39,28 @@ async def get_by_tournament(
 
 
 async def delete_by_tournament(session: AsyncSession, tournament_id: int) -> None:
-    query = sa.delete(models.Standing).where(sa.and_(models.Standing.tournament_id == tournament_id))
+    query = sa.delete(models.Standing).where(
+        sa.and_(models.Standing.tournament_id == tournament_id)
+    )
     await session.execute(query)
     await session.commit()
 
 
 def calculate_median_buchholz_and_tb_for_teams_in_group(
-    players_in: dict[int, schemas.StandingTeamData]
+    players_in: dict[int, schemas.StandingTeamData],
 ) -> list[schemas.StandingTeamDataWithBuchholzTB]:
     median_buchholz_scores: dict[int, float] = {}
     tb_scores: dict[int, int] = {}
 
     for player in players_in.values():
-        opponent_scores = sorted([players_in[opponent_id].points for opponent_id in player.opponents])
+        opponent_scores = sorted(
+            [players_in[opponent_id].points for opponent_id in player.opponents]
+        )
 
         if len(opponent_scores) > 2:
-            opponent_scores = opponent_scores[1:-1]  # Remove the highest and lowest scores
+            opponent_scores = opponent_scores[
+                1:-1
+            ]  # Remove the highest and lowest scores
 
         median_buchholz_scores[player.id] = sum(opponent_scores)
 
@@ -84,7 +90,9 @@ def calculate_median_buchholz_and_tb_for_teams_in_group(
                 opponents=player.opponents,
                 buchholz=median_buchholz_scores[player.id],
                 matches=player.matches,
-                tb=tb_scores.get(player.id, 0),  # Add TB value, default to 0 if not found
+                tb=tb_scores.get(
+                    player.id, 0
+                ),  # Add TB value, default to 0 if not found
             )
         )
 
@@ -144,12 +152,18 @@ def prepare_teams_for_groups(
 def prepare_teams_for_playoffs_double_elimination(
     encounters: typing.Sequence[models.Encounter],
 ) -> list[schemas.StandingTeamDataWithRanking]:
-    participants = list({match.home_team_id for match in encounters} | {match.away_team_id for match in encounters})
+    participants = list(
+        {match.home_team_id for match in encounters}
+        | {match.away_team_id for match in encounters}
+    )
     data: dict[int, dict[str, float | int]] = {
-        participant: {"win": 0, "lose": 0, "placement": 0} for participant in participants
+        participant: {"win": 0, "lose": 0, "placement": 0}
+        for participant in participants
     }
 
-    last_game = sorted([e for e in encounters if e.round > 0], key=lambda x: x.round, reverse=True)[0]
+    last_game = sorted(
+        [e for e in encounters if e.round > 0], key=lambda x: x.round, reverse=True
+    )[0]
     if last_game.home_score > last_game.away_score:
         data[last_game.home_team_id]["placement"] = 1
         data[last_game.away_team_id]["placement"] = 2
@@ -237,11 +251,14 @@ def prepare_teams_for_playoffs_single_elimination(
     """
 
     # 1) Собираем все команды
-    participants = list({m.home_team_id for m in encounters} | {m.away_team_id for m in encounters})
+    participants = list(
+        {m.home_team_id for m in encounters} | {m.away_team_id for m in encounters}
+    )
 
     # Для хранения статистики (win/lose/placement) по каждой команде
     data: dict[int, dict[str, float | int]] = {
-        participant: {"win": 0, "lose": 0, "placement": 0} for participant in participants
+        participant: {"win": 0, "lose": 0, "placement": 0}
+        for participant in participants
     }
 
     # 2) Считаем победы и поражения, фиксируем раунд проигрыша
@@ -396,7 +413,9 @@ def calculate_for_groups(
 
 
 def calculate_for_playoffs(
-    group: models.TournamentGroup, encounters: typing.Sequence[models.Encounter], tournament: models.Tournament
+    group: models.TournamentGroup,
+    encounters: typing.Sequence[models.Encounter],
+    tournament: models.Tournament,
 ) -> list[models.Standing]:
     standings = []
 
@@ -424,7 +443,9 @@ def calculate_for_playoffs(
     return standings
 
 
-async def calculate_overall_positions(standings: list[models.Standing], has_playoffs: bool) -> list[models.Standing]:
+async def calculate_overall_positions(
+    standings: list[models.Standing], has_playoffs: bool
+) -> list[models.Standing]:
     min_position = len(standings)
     if has_playoffs:
         min_position -= len([s for s in standings if s.overall_position != -1])
@@ -453,7 +474,9 @@ async def calculate_for_tournament(
     has_playoffs = any(not group.is_groups for group in tournament.groups)
     overall_standings: list[models.Standing] = []
     for group in tournament.groups:
-        encounters = await encounter_service.get_by_tournament_group_id(session, tournament.id, group.id, [])
+        encounters = await encounter_service.get_by_tournament_group_id(
+            session, tournament.id, group.id, []
+        )
         if group.is_groups:
             standings = calculate_for_groups(group, encounters)
             overall_standings.extend(standings)

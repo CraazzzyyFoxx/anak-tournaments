@@ -192,7 +192,9 @@ async def get_user_achievements(
                 and achievement.match_id
                 not in cache[achievement.achievement_id].matches_ids
             ):
-                cache[achievement.achievement_id].matches_ids.append(achievement.match_id)
+                cache[achievement.achievement_id].matches_ids.append(
+                    achievement.match_id
+                )
 
     if "tournaments" in entities:
         for achievement in cache.values():
@@ -202,19 +204,21 @@ async def get_user_achievements(
                         session, tournament_id, []
                     )
                     achievement.tournaments.append(tournament)
-                    
+
     if "matches" in entities:
         for achievement in cache.values():
             if achievement.matches_ids:
                 for match_id in achievement.matches_ids:
-                    match = await encounter_flows.get_match(session, match_id, ["map", "teams"])
+                    match = await encounter_flows.get_match(
+                        session, match_id, ["map", "teams"]
+                    )
                     achievement.matches.append(match)
 
     return list(cache.values())
 
 
 async def get_users_achievement(
-        session: AsyncSession, achievement_id: int, params: pagination.PaginationParams
+    session: AsyncSession, achievement_id: int, params: pagination.PaginationParams
 ) -> pagination.Paginated[schemas.AchievementEarned]:
     """
     Retrieves a paginated list of users who have earned a specific achievement.
@@ -235,7 +239,9 @@ async def get_users_achievement(
         if last_tournament_id:
             tournament_to_fetch.append(last_tournament_id)
 
-    tournaments = await tournament_service.get_bulk_tournament(session, tournament_to_fetch, [])
+    tournaments = await tournament_service.get_bulk_tournament(
+        session, tournament_to_fetch, []
+    )
 
     for user, count, last_tournament_id in users:
         last_tournament = None
@@ -245,12 +251,17 @@ async def get_users_achievement(
                     last_tournament = tournament
                     break
 
-        results.append(schemas.AchievementEarned(
-            user=await user_flows.to_pydantic(session, user, []),
-            count=count,
-            last_tournament=await tournament_flows.to_pydantic(session, last_tournament, []) if last_tournament else None,
-        ))
-
+        results.append(
+            schemas.AchievementEarned(
+                user=await user_flows.to_pydantic(session, user, []),
+                count=count,
+                last_tournament=await tournament_flows.to_pydantic(
+                    session, last_tournament, []
+                )
+                if last_tournament
+                else None,
+            )
+        )
 
     return pagination.Paginated(
         total=total,

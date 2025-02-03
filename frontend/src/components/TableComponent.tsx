@@ -1,7 +1,13 @@
 import React from "react";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
+} from "@/components/ui/table";
 import { ColumnDef, flexRender, Table as reactTable } from "@tanstack/react-table";
-
 
 export interface TableComponentProps {
   table: reactTable<any>;
@@ -10,8 +16,12 @@ export interface TableComponentProps {
   tableCellClassName?: string;
 }
 
-
-const TableComponent = ({table, columns, rowOnClick, tableCellClassName}: TableComponentProps) => {
+const TableComponent = ({
+  table,
+  columns,
+  rowOnClick,
+  tableCellClassName
+}: TableComponentProps) => {
   return (
     <Table>
       <TableHeader>
@@ -37,8 +47,7 @@ const TableComponent = ({table, columns, rowOnClick, tableCellClassName}: TableC
               data-state={row.getIsSelected() && "selected"}
               onClick={() => {
                 if (rowOnClick) rowOnClick(row);
-              }
-              }
+              }}
             >
               {row.getVisibleCells().map((cell) => (
                 <TableCell className={tableCellClassName} key={cell.id}>

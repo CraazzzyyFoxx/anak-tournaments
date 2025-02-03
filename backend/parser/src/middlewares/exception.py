@@ -12,7 +12,9 @@ from src.core import config, errors
 
 
 class ExceptionMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
         try:
             response = await call_next(request)
         except RequestValidationError as e:
@@ -23,7 +25,9 @@ class ExceptionMiddleware(BaseHTTPMiddleware):
                 content={
                     "detail": [
                         {
-                            "msg": jsonable_encoder(e.errors(), exclude={"url", "type", "ctx"}),
+                            "msg": jsonable_encoder(
+                                e.errors(), exclude={"url", "type", "ctx"}
+                            ),
                             "code": "unprocessable_entity",
                         }
                     ]
@@ -43,9 +47,13 @@ class ExceptionMiddleware(BaseHTTPMiddleware):
                 },
             )
         except errors.ApiHTTPException as e:
-            response = ORJSONResponse(content={"detail": e.detail}, status_code=e.status_code)
+            response = ORJSONResponse(
+                content={"detail": e.detail}, status_code=e.status_code
+            )
         except HTTPException as e:
-            response = ORJSONResponse(content={"detail": [e.detail]}, status_code=e.status_code)
+            response = ORJSONResponse(
+                content={"detail": [e.detail]}, status_code=e.status_code
+            )
         except Exception as e:
             logger.exception(e)
             response = ORJSONResponse(

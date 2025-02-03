@@ -17,9 +17,15 @@ class User(db.TimeStampIntegerMixin):
 
     name: Mapped[str] = mapped_column(String(), unique=True)
 
-    discord: Mapped[list["UserDiscord"]] = relationship(back_populates="user", uselist=True)
-    battle_tag: Mapped[list["UserBattleTag"]] = relationship(back_populates="user", uselist=True)
-    twitch: Mapped[list["UserTwitch"]] = relationship(back_populates="user", uselist=True)
+    discord: Mapped[list["UserDiscord"]] = relationship(
+        back_populates="user", uselist=True
+    )
+    battle_tag: Mapped[list["UserBattleTag"]] = relationship(
+        back_populates="user", uselist=True
+    )
+    twitch: Mapped[list["UserTwitch"]] = relationship(
+        back_populates="user", uselist=True
+    )
 
     def __repr__(self):
         return f"<User id={self.id} name={self.name}>"

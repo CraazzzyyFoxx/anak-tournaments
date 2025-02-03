@@ -22,8 +22,12 @@ class MatchLogProcessor:
         self.tournament: models.Tournament = tournament
         self.filename: str = name
         self.data_in: list[str] = data_in
-        self.rows: list[tuple[enums.LogEventType, float, list[str]]] = self.format_rows()
-        self.rows_grouped: dict[int, list[tuple[enums.LogEventType, float, list[str]]]] = self.group_by_rounds()
+        self.rows: list[tuple[enums.LogEventType, float, list[str]]] = (
+            self.format_rows()
+        )
+        self.rows_grouped: dict[
+            int, list[tuple[enums.LogEventType, float, list[str]]]
+        ] = self.group_by_rounds()
 
     def format_rows(self) -> list[tuple[enums.LogEventType, float, list[str]]]:
         formatted_rows = []
@@ -34,15 +38,21 @@ class MatchLogProcessor:
             formatted_rows.append((event, float(row[2]), row[3:]))
         return formatted_rows
 
-    def get_rows_by_time(self, time: float) -> list[tuple[enums.LogEventType, float, list[str]]]:
+    def get_rows_by_time(
+        self, time: float
+    ) -> list[tuple[enums.LogEventType, float, list[str]]]:
         return [row for row in self.rows if row[1] == time]
 
-    def group_by_rounds(self) -> dict[int, list[tuple[enums.LogEventType, float, list[str]]]]:
+    def group_by_rounds(
+        self,
+    ) -> dict[int, list[tuple[enums.LogEventType, float, list[str]]]]:
         rounds: list[schemas.Round] = []
         current_round: schemas.Round | None = None
         for row in self.rows:
             if row[0] == enums.LogEventType.RoundStart:
-                current_round = schemas.Round(events=self.get_rows_by_time(row[1]), start=row[1], end=row[1])
+                current_round = schemas.Round(
+                    events=self.get_rows_by_time(row[1]), start=row[1], end=row[1]
+                )
                 rounds.append(current_round)
             elif row[0] == enums.LogEventType.RoundEnd:
                 current_round["events"].extend(self.get_rows_by_time(row[1]))
@@ -86,7 +96,10 @@ class MatchLogProcessor:
     ) -> dict[int, list[tuple[enums.LogEventType, float, list[str]]]]:
         rows = []
         if not before and not after:
-            return {i: [row for row in self.rows_grouped[i] if row[0] == event.value] for i in self.rows_grouped}
+            return {
+                i: [row for row in self.rows_grouped[i] if row[0] == event.value]
+                for i in self.rows_grouped
+            }
 
         if after:
             for i in self.rows_grouped:
@@ -102,7 +115,9 @@ class MatchLogProcessor:
                         break
                     rows.append(row)
 
-        return {i: [row for row in rows if row[0] == event.value] for i in self.rows_grouped}
+        return {
+            i: [row for row in rows if row[0] == event.value] for i in self.rows_grouped
+        }
 
     def get_team_names(self) -> tuple[str, str]:
         row = self.get_rows_by_event(enums.LogEventType.MatchStart)[0]
@@ -131,7 +146,9 @@ class MatchLogProcessor:
 
     def validate(self, is_raise: bool):
         if len(self.get_rows_by_event(enums.LogEventType.MatchEnd)) == 0:
-            logger.error(f"Match log {self.filename} in tournament {self.tournament.name} is not finished")
+            logger.error(
+                f"Match log {self.filename} in tournament {self.tournament.name} is not finished"
+            )
             if is_raise:
                 raise errors.ApiHTTPException(
                     status_code=400,
@@ -164,12 +181,19 @@ class MatchLogProcessor:
         """Производим тупую проверку наличия игроков в базе по battle_name"""
         teams_raw = self.get_teams_raw()
         teams_names = list(teams_raw.keys())
-        teams: dict[str, list[tuple[str, models.User | None]]] = {teams_names[0]: [], teams_names[1]: []}
+        teams: dict[str, list[tuple[str, models.User | None]]] = {
+            teams_names[0]: [],
+            teams_names[1]: [],
+        }
         for team_name, players in teams_raw.items():
             for player in players:
-                logger.info(f"Trying to get user by battle name {player} in team {team_name}")
+                logger.info(
+                    f"Trying to get user by battle name {player} in team {team_name}"
+                )
                 for verbose in [True, False]:
-                    if user := await service.get_user_by_battle_name(session, player, verbose):
+                    if user := await service.get_user_by_battle_name(
+                        session, player, verbose
+                    ):
                         break
 
                 teams[team_name].append((player, user))
@@ -179,7 +203,9 @@ class MatchLogProcessor:
                         f"User [id={user.id} name={user.name}] found by battle name {player} in team {team_name}"
                     )
                 else:
-                    logger.error(f"User not found by battle name {player} in team {team_name}")
+                    logger.error(
+                        f"User not found by battle name {player} in team {team_name}"
+                    )
         return teams
 
     async def find_team_by_players(
@@ -193,7 +219,11 @@ class MatchLogProcessor:
             for i in range(len(team_players_search) - 2):
                 team_db = await team_service.get_by_players_tournament(
                     session,
-                    [player.id for _, player in team_players_search if player is not None][i:],
+                    [
+                        player.id
+                        for _, player in team_players_search
+                        if player is not None
+                    ][i:],
                     self.tournament,
                     ["players", "players.user"],
                 )
@@ -217,22 +247,33 @@ class MatchLogProcessor:
         tuple[models.Team, list[tuple[str, models.User | None]]],
     ]:
         home_team_name, away_team_name = self.get_team_names()
-        logger.info(f"Home team name: {home_team_name}, away team name: {away_team_name}")
+        logger.info(
+            f"Home team name: {home_team_name}, away team name: {away_team_name}"
+        )
         players = await self.get_players_by_battle_names(session)
         logger.info(f"Players: {players}")
         home_team = await self.find_team_by_players(session, players[home_team_name])
         away_team = await self.find_team_by_players(session, players[away_team_name])
-        return (home_team, players[home_team_name]), (away_team, players[away_team_name])
+        return (home_team, players[home_team_name]), (
+            away_team,
+            players[away_team_name],
+        )
 
     @staticmethod
     async def get_players_by_team_and_battle_name(
-        session: AsyncSession, team: models.Team, players: list[tuple[str, models.User | None]]
+        session: AsyncSession,
+        team: models.Team,
+        players: list[tuple[str, models.User | None]],
     ) -> list[tuple[str, models.Player | None]]:
         players_out: list[tuple[str, models.Player | None]] = []
         for player in players:
-            logger.info(f"Trying to get user by battle name {player[0]} in team {team.name}")
+            logger.info(
+                f"Trying to get user by battle name {player[0]} in team {team.name}"
+            )
             for verbose in [True, False]:
-                if user := await service.get_user_by_team_and_battle_name(session, team, player[0], verbose):
+                if user := await service.get_user_by_team_and_battle_name(
+                    session, team, player[0], verbose
+                ):
                     break
 
             players_out.append((player[0], user))
@@ -242,12 +283,16 @@ class MatchLogProcessor:
                     f"User [id={user.id} name={user.name}] found by battle name {player[0]} in team {team.name}"
                 )
             else:
-                logger.error(f"User not found by battle name {player[0]} in team {team.name}")
+                logger.error(
+                    f"User not found by battle name {player[0]} in team {team.name}"
+                )
 
         return players_out
 
     @staticmethod
-    def get_missing_player(team: models.Team, players: list[models.Player]) -> models.Player | None:
+    def get_missing_player(
+        team: models.Team, players: list[models.Player]
+    ) -> models.Player | None:
         for player in team.players:
             if player not in players:
                 return player
@@ -255,12 +300,20 @@ class MatchLogProcessor:
         return None
 
     async def add_substitution(
-        self, session: AsyncSession, team: models.Team, player: models.Player, user: models.User
+        self,
+        session: AsyncSession,
+        team: models.Team,
+        player: models.Player,
+        user: models.User,
     ) -> models.Player:
         player_data = None
-        players_data = await team_service.get_player_by_user_and_role(session, user.id, player.role, [])
+        players_data = await team_service.get_player_by_user_and_role(
+            session, user.id, player.role, []
+        )
         if players_data:
-            player_data = sorted(players_data, key=lambda p: p.tournament_id, reverse=True)[0]
+            player_data = sorted(
+                players_data, key=lambda p: p.tournament_id, reverse=True
+            )[0]
         return await team_service.create_player(
             session,
             name=user.name,
@@ -289,8 +342,12 @@ class MatchLogProcessor:
     ) -> tuple[models.Team, dict[str, models.Player]]:
         players = [player[1] for player in players_in]
         players_raw = [player[1] for player in players_raw_in if player[1] is not None]
-        players_out: dict[str, models.Player] = {player[0]: player[1] for player in players_in}
-        players_raw_in_2 = [player for player in players_raw_in if player[1] is not None]
+        players_out: dict[str, models.Player] = {
+            player[0]: player[1] for player in players_in
+        }
+        players_raw_in_2 = [
+            player for player in players_raw_in if player[1] is not None
+        ]
         normal_team_len = len([p for p in team.players if not p.is_substitution])
 
         if len(players) == normal_team_len and len(players_raw_in_2) == normal_team_len:
@@ -304,24 +361,37 @@ class MatchLogProcessor:
         # ):  # Если кто-то случайно зашел в матч и не был в команде
         #     return team, players_out
 
-        if (len(players) == normal_team_len - 1 and len(players_raw) == normal_team_len) or len(players_raw) > len(
-            players
-        ):
+        if (
+            len(players) == normal_team_len - 1 and len(players_raw) == normal_team_len
+        ) or len(players_raw) > len(players):
             logger.warning(f"Team {team.name} has 5 players in log, but only 4 in db")
             players_user_ids = [player.user_id for player in players]
             missing_player = self.get_missing_player(team, players)
             for user in players_raw_in:
                 if user[1] and user[1].id not in players_user_ids:
-                    logger.warning(f"Player {user[1].name} is not in team {team.name}, adding")
-                    new_player = await self.add_substitution(session, team, missing_player, user[1])
+                    logger.warning(
+                        f"Player {user[1].name} is not in team {team.name}, adding"
+                    )
+                    new_player = await self.add_substitution(
+                        session, team, missing_player, user[1]
+                    )
                     players_out[user[0]] = new_player
             return team, players_out
 
-        logger.warning(f"player len={len(players)} player_raw len={len(players_raw_in)}")
-        if len(players) == normal_team_len - 1 and len(players_raw) == normal_team_len - 1:
-            missing_player_name = [player[0] for player in players_raw_in if player[1] is None][0]
+        logger.warning(
+            f"player len={len(players)} player_raw len={len(players_raw_in)}"
+        )
+        if (
+            len(players) == normal_team_len - 1
+            and len(players_raw) == normal_team_len - 1
+        ):
+            missing_player_name = [
+                player[0] for player in players_raw_in if player[1] is None
+            ][0]
             missing_player = self.get_missing_player(team, players)
-            logger.warning(f"Player {missing_player.name} changed battle name to {missing_player_name}, updating")
+            logger.warning(
+                f"Player {missing_player.name} changed battle name to {missing_player_name}, updating"
+            )
             await user_service.create_battle_tag(
                 session,
                 missing_player.user,
@@ -345,26 +415,44 @@ class MatchLogProcessor:
 
     async def process_teams(
         self, session: AsyncSession
-    ) -> tuple[tuple[models.Team, dict[str, models.Player]], tuple[models.Team, dict[str, models.Player]]]:
+    ) -> tuple[
+        tuple[models.Team, dict[str, models.Player]],
+        tuple[models.Team, dict[str, models.Player]],
+    ]:
         home_team, away_team = await self.find_teams_by_players(session)
-        home_players = await self.get_players_by_team_and_battle_name(session, home_team[0], home_team[1])
-        away_players = await self.get_players_by_team_and_battle_name(session, away_team[0], away_team[1])
+        home_players = await self.get_players_by_team_and_battle_name(
+            session, home_team[0], home_team[1]
+        )
+        away_players = await self.get_players_by_team_and_battle_name(
+            session, away_team[0], away_team[1]
+        )
         home_team_out = await self.fix_team_players_collision(
-            session, home_team[0], [p for p in home_players if p[1] is not None], home_team[1]
+            session,
+            home_team[0],
+            [p for p in home_players if p[1] is not None],
+            home_team[1],
         )
         away_team_out = await self.fix_team_players_collision(
-            session, away_team[0], [p for p in away_players if p[1] is not None], away_team[1]
+            session,
+            away_team[0],
+            [p for p in away_players if p[1] is not None],
+            away_team[1],
         )
         return home_team_out, away_team_out
 
     async def process_kills(
-        self, session: AsyncSession, match: models.Match, players: dict[str, models.Player]
+        self,
+        session: AsyncSession,
+        match: models.Match,
+        players: dict[str, models.Player],
     ) -> list[models.MatchKillFeed]:
         fights: list[schemas.Fight] = []
         current_fight: schemas.Fight | None = None
         kill_feed: list[models.MatchKillFeed] = []
 
-        for match_round, rows in self.get_grouped_rows_by_event(enums.LogEventType.Kill).items():
+        for match_round, rows in self.get_grouped_rows_by_event(
+            enums.LogEventType.Kill
+        ).items():
             for row in rows:
                 if row[2][1] not in players:
                     logger.warning(f"Player {row[2][1]} not found in players")
@@ -385,16 +473,20 @@ class MatchLogProcessor:
                         victim_id=victim.user_id,
                         victim_hero_id=victim_hero.id,
                         victim_team_id=victim.team_id,
-                        ability=enums.AbilityEvent(row[2][6]) if row[2][6] != "0" else None,
+                        ability=enums.AbilityEvent(row[2][6])
+                        if row[2][6] != "0"
+                        else None,
                         damage=float(row[2][7]),
-                        is_critical_hit=True if row[2][8] == 'True' else False,
-                        is_environmental=True if row[2][9] == 'True' else False,
+                        is_critical_hit=True if row[2][8] == "True" else False,
+                        is_environmental=True if row[2][9] == "True" else False,
                     )
                 )
 
         for kill in sorted(kill_feed, key=lambda x: x.time):
             if not current_fight or kill.time - current_fight["end"] > 15:
-                current_fight = schemas.Fight(kills=[kill], start=kill.time, end=kill.time)
+                current_fight = schemas.Fight(
+                    kills=[kill], start=kill.time, end=kill.time
+                )
                 fights.append(current_fight)
             else:
                 current_fight["kills"].append(kill)
@@ -443,40 +535,74 @@ class MatchLogProcessor:
         )
 
     async def create_assists(
-        self, session: AsyncSession, match: models.Match, players: dict[str, models.Player]
+        self,
+        session: AsyncSession,
+        match: models.Match,
+        players: dict[str, models.Player],
     ) -> list[models.MatchEvent]:
         assists: list[models.MatchEvent] = []
-        for match_round, rows in self.get_grouped_rows_by_event(enums.LogEventType.OffensiveAssist).items():
+        for match_round, rows in self.get_grouped_rows_by_event(
+            enums.LogEventType.OffensiveAssist
+        ).items():
             for row in rows:
                 assist = await self.format_event(
-                    session, match, players, match_round, row, enums.MatchEvent.OffensiveAssist
+                    session,
+                    match,
+                    players,
+                    match_round,
+                    row,
+                    enums.MatchEvent.OffensiveAssist,
                 )
                 assists.append(assist)
 
-        for match_round, rows in self.get_grouped_rows_by_event(enums.LogEventType.DefensiveAssist).items():
+        for match_round, rows in self.get_grouped_rows_by_event(
+            enums.LogEventType.DefensiveAssist
+        ).items():
             for row in rows:
                 assist = await self.format_event(
-                    session, match, players, match_round, row, enums.MatchEvent.DefensiveAssist
+                    session,
+                    match,
+                    players,
+                    match_round,
+                    row,
+                    enums.MatchEvent.DefensiveAssist,
                 )
                 assists.append(assist)
 
         return assists
 
     async def create_ultimates(
-        self, session: AsyncSession, match: models.Match, players: dict[str, models.Player]
+        self,
+        session: AsyncSession,
+        match: models.Match,
+        players: dict[str, models.Player],
     ) -> list[models.MatchEvent]:
         ultimates: list[models.MatchEvent] = []
-        for match_round, rows in self.get_grouped_rows_by_event(enums.LogEventType.UltimateCharged).items():
+        for match_round, rows in self.get_grouped_rows_by_event(
+            enums.LogEventType.UltimateCharged
+        ).items():
             for row in rows:
                 ultimate = await self.format_event(
-                    session, match, players, match_round, row, enums.MatchEvent.UltimateCharged
+                    session,
+                    match,
+                    players,
+                    match_round,
+                    row,
+                    enums.MatchEvent.UltimateCharged,
                 )
                 ultimates.append(ultimate)
 
-        for match_round, rows in self.get_grouped_rows_by_event(enums.LogEventType.UltimateStart).items():
+        for match_round, rows in self.get_grouped_rows_by_event(
+            enums.LogEventType.UltimateStart
+        ).items():
             for row in rows:
                 ultimate = await self.format_event(
-                    session, match, players, match_round, row, enums.MatchEvent.UltimateStart
+                    session,
+                    match,
+                    players,
+                    match_round,
+                    row,
+                    enums.MatchEvent.UltimateStart,
                 )
                 ultimates.append(ultimate)
 
@@ -485,17 +611,27 @@ class MatchLogProcessor:
         ).items():
             for row in rows:
                 ultimate = await self.format_event(
-                    session, match, players, match_round, row, enums.MatchEvent.UltimateEnd
+                    session,
+                    match,
+                    players,
+                    match_round,
+                    row,
+                    enums.MatchEvent.UltimateEnd,
                 )
                 ultimates.append(ultimate)
 
         return ultimates
 
     async def create_hero_swaps(
-        self, session: AsyncSession, match: models.Match, players: dict[str, models.Player]
+        self,
+        session: AsyncSession,
+        match: models.Match,
+        players: dict[str, models.Player],
     ) -> list[models.MatchEvent]:
         hero_swaps: list[models.MatchEvent] = []
-        for match_round, rows in self.get_grouped_rows_by_event(enums.LogEventType.HeroSwap).items():
+        for match_round, rows in self.get_grouped_rows_by_event(
+            enums.LogEventType.HeroSwap
+        ).items():
             for row in rows:
                 hero_swap = await self.format_event(
                     session, match, players, match_round, row, enums.MatchEvent.HeroSwap
@@ -505,20 +641,37 @@ class MatchLogProcessor:
         return hero_swaps
 
     async def create_echo_duplicate(
-        self, session: AsyncSession, match: models.Match, players: dict[str, models.Player]
+        self,
+        session: AsyncSession,
+        match: models.Match,
+        players: dict[str, models.Player],
     ) -> list[models.MatchEvent]:
         echo_duplicate: list[models.MatchEvent] = []
-        for match_round, rows in self.get_grouped_rows_by_event(enums.LogEventType.EchoDuplicateStart).items():
+        for match_round, rows in self.get_grouped_rows_by_event(
+            enums.LogEventType.EchoDuplicateStart
+        ).items():
             for row in rows:
                 echo_duplicate_event = await self.format_event(
-                    session, match, players, match_round, row, enums.MatchEvent.EchoDuplicateStart
+                    session,
+                    match,
+                    players,
+                    match_round,
+                    row,
+                    enums.MatchEvent.EchoDuplicateStart,
                 )
                 echo_duplicate.append(echo_duplicate_event)
 
-        for match_round, rows in self.get_grouped_rows_by_event(enums.LogEventType.EchoDuplicateEnd).items():
+        for match_round, rows in self.get_grouped_rows_by_event(
+            enums.LogEventType.EchoDuplicateEnd
+        ).items():
             for row in rows:
                 echo_duplicate_event = await self.format_event(
-                    session, match, players, match_round, row, enums.MatchEvent.EchoDuplicateEnd
+                    session,
+                    match,
+                    players,
+                    match_round,
+                    row,
+                    enums.MatchEvent.EchoDuplicateEnd,
                 )
                 echo_duplicate.append(echo_duplicate_event)
 
@@ -537,7 +690,10 @@ class MatchLogProcessor:
 
         for player_name, player_data in cache_round.items():
             for match_round, round_data in player_data.items():
-                if players[player_name].role in [enums.HeroClass.tank, enums.HeroClass.damage]:
+                if players[player_name].role in [
+                    enums.HeroClass.tank,
+                    enums.HeroClass.damage,
+                ]:
                     value = (
                         round_data[enums.LogStatsName.Eliminations] * 500
                         + round_data[enums.LogStatsName.OffensiveAssists] * 50
@@ -572,19 +728,48 @@ class MatchLogProcessor:
             for match_round, value in player_data.items():
                 player = players[player_name]
                 stats.append(
-                    self.create_stat(match, enums.LogStatsName.PerformancePoints, player, match_round, None, value)
+                    self.create_stat(
+                        match,
+                        enums.LogStatsName.PerformancePoints,
+                        player,
+                        match_round,
+                        None,
+                        value,
+                    )
                 )
                 if match_round == max_round:
                     stats.append(
-                        self.create_stat(match, enums.LogStatsName.PerformancePoints, player, 0, None, value)
+                        self.create_stat(
+                            match,
+                            enums.LogStatsName.PerformancePoints,
+                            player,
+                            0,
+                            None,
+                            value,
+                        )
                     )
 
         for match_round, mvp_data in mvps_cache_reverted.items():
-            for i, (value, player_name) in enumerate(sorted(mvp_data.items(), reverse=True, key=lambda x: x[0]), 1):
+            for i, (value, player_name) in enumerate(
+                sorted(mvp_data.items(), reverse=True, key=lambda x: x[0]), 1
+            ):
                 player = players[player_name]
-                stats.append(self.create_stat(match, enums.LogStatsName.Performance, player, match_round, None, i))
+                stats.append(
+                    self.create_stat(
+                        match,
+                        enums.LogStatsName.Performance,
+                        player,
+                        match_round,
+                        None,
+                        i,
+                    )
+                )
                 if match_round == max_round:
-                    stats.append(self.create_stat(match, enums.LogStatsName.Performance, player, 0, None, i))
+                    stats.append(
+                        self.create_stat(
+                            match, enums.LogStatsName.Performance, player, 0, None, i
+                        )
+                    )
         return stats
 
     @staticmethod
@@ -615,25 +800,71 @@ class MatchLogProcessor:
         hero_id: int | None,
     ) -> list[models.MatchStatistics]:
         stats: list[models.MatchStatistics] = []
-        kd = cache[enums.LogStatsName.Eliminations] / max(cache[enums.LogStatsName.Deaths], 1)
+        kd = cache[enums.LogStatsName.Eliminations] / max(
+            cache[enums.LogStatsName.Deaths], 1
+        )
         kda = (
             cache[enums.LogStatsName.Eliminations]
             + cache[enums.LogStatsName.OffensiveAssists]
             + cache[enums.LogStatsName.DefensiveAssists]
         ) / max(cache[enums.LogStatsName.Deaths], 1)
-        dmg_dlt = cache[enums.LogStatsName.HeroDamageDealt] - cache[enums.LogStatsName.DamageTaken]
-        fbe = cache[enums.LogStatsName.FinalBlows] / max(cache[enums.LogStatsName.Eliminations], 1)
-        dmg_fb = cache[enums.LogStatsName.HeroDamageDealt] / max(cache[enums.LogStatsName.FinalBlows], 1)
-        assists = cache[enums.LogStatsName.OffensiveAssists] + cache[enums.LogStatsName.DefensiveAssists]
-        stats.append(self.create_stat(match, enums.LogStatsName.KD, player, match_round, hero_id, kd))
-        stats.append(self.create_stat(match, enums.LogStatsName.KDA, player, match_round, hero_id, kda))
-        stats.append(self.create_stat(match, enums.LogStatsName.DamageDelta, player, match_round, hero_id, dmg_dlt))
-        stats.append(self.create_stat(match, enums.LogStatsName.FBE, player, match_round, hero_id, fbe))
-        stats.append(self.create_stat(match, enums.LogStatsName.DamageFB, player, match_round, hero_id, dmg_fb))
-        stats.append(self.create_stat(match, enums.LogStatsName.Assists, player, match_round, hero_id, assists))
+        dmg_dlt = (
+            cache[enums.LogStatsName.HeroDamageDealt]
+            - cache[enums.LogStatsName.DamageTaken]
+        )
+        fbe = cache[enums.LogStatsName.FinalBlows] / max(
+            cache[enums.LogStatsName.Eliminations], 1
+        )
+        dmg_fb = cache[enums.LogStatsName.HeroDamageDealt] / max(
+            cache[enums.LogStatsName.FinalBlows], 1
+        )
+        assists = (
+            cache[enums.LogStatsName.OffensiveAssists]
+            + cache[enums.LogStatsName.DefensiveAssists]
+        )
+        stats.append(
+            self.create_stat(
+                match, enums.LogStatsName.KD, player, match_round, hero_id, kd
+            )
+        )
+        stats.append(
+            self.create_stat(
+                match, enums.LogStatsName.KDA, player, match_round, hero_id, kda
+            )
+        )
+        stats.append(
+            self.create_stat(
+                match,
+                enums.LogStatsName.DamageDelta,
+                player,
+                match_round,
+                hero_id,
+                dmg_dlt,
+            )
+        )
+        stats.append(
+            self.create_stat(
+                match, enums.LogStatsName.FBE, player, match_round, hero_id, fbe
+            )
+        )
+        stats.append(
+            self.create_stat(
+                match, enums.LogStatsName.DamageFB, player, match_round, hero_id, dmg_fb
+            )
+        )
+        stats.append(
+            self.create_stat(
+                match, enums.LogStatsName.Assists, player, match_round, hero_id, assists
+            )
+        )
         return stats
 
-    async def create_stats(self, session: AsyncSession, match: models.Match, players: dict[str, models.Player]) -> None:
+    async def create_stats(
+        self,
+        session: AsyncSession,
+        match: models.Match,
+        players: dict[str, models.Player],
+    ) -> None:
         cache: dict[str, dict[int, dict[int, dict[enums.LogStatsName, float]]]] = {}
         cache_round: dict[str, dict[int, dict[enums.LogStatsName, float]]] = {}
         max_round: int = 0
@@ -657,7 +888,16 @@ class MatchLogProcessor:
                 cache[player_name][match_round][hero.id][stat_name] = value
                 cache_round[player_name][match_round].setdefault(stat_name, 0)
                 cache_round[player_name][match_round][stat_name] += value
-                session.add(self.create_stat(match, stat_name, players[player_name], match_round, hero.id, value))
+                session.add(
+                    self.create_stat(
+                        match,
+                        stat_name,
+                        players[player_name],
+                        match_round,
+                        hero.id,
+                        value,
+                    )
+                )
 
         session.add_all(self.calculate_mvps(match, players, cache_round, max_round))
         await session.commit()
@@ -667,11 +907,21 @@ class MatchLogProcessor:
                 for hero_id, hero_cache in round_cache.items():
                     player = players[player_name]
                     if max_round == match_round:
-                        session.add_all(self.calculate_stats(hero_cache, match, player, 0, hero_id))
+                        session.add_all(
+                            self.calculate_stats(hero_cache, match, player, 0, hero_id)
+                        )
                         for stat_name, stat_value in hero_cache.items():
-                            session.add(self.create_stat(match, stat_name, player, 0, hero_id, stat_value))
+                            session.add(
+                                self.create_stat(
+                                    match, stat_name, player, 0, hero_id, stat_value
+                                )
+                            )
 
-                    session.add_all(self.calculate_stats(hero_cache, match, player, match_round, hero_id))
+                    session.add_all(
+                        self.calculate_stats(
+                            hero_cache, match, player, match_round, hero_id
+                        )
+                    )
 
         await session.commit()
 
@@ -679,22 +929,38 @@ class MatchLogProcessor:
             for match_round, round_cache in player_cache.items():
                 player = players[player_name]
                 if max_round == match_round:
-                    session.add_all(self.calculate_stats(round_cache, match, player, 0, None))
+                    session.add_all(
+                        self.calculate_stats(round_cache, match, player, 0, None)
+                    )
                     for stat_name, stat_value in round_cache.items():
-                        session.add(self.create_stat(match, stat_name, player, 0, None, stat_value))
+                        session.add(
+                            self.create_stat(
+                                match, stat_name, player, 0, None, stat_value
+                            )
+                        )
 
                 for stat_name, stat_value in round_cache.items():
-                    session.add(self.create_stat(match, stat_name, player, match_round, None, stat_value))
+                    session.add(
+                        self.create_stat(
+                            match, stat_name, player, match_round, None, stat_value
+                        )
+                    )
 
-                session.add_all(self.calculate_stats(round_cache, match, player, match_round, None))
+                session.add_all(
+                    self.calculate_stats(round_cache, match, player, match_round, None)
+                )
 
         await session.commit()
 
-    async def start(self, session: AsyncSession, is_raise: bool = True) -> models.Match | None:
-        logger.info(f"Processing match log {self.filename} in tournament {self.tournament.name}")
+    async def start(
+        self, session: AsyncSession, is_raise: bool = True
+    ) -> models.Match | None:
+        logger.info(
+            f"Processing match log {self.filename} in tournament {self.tournament.name}"
+        )
         if not self.validate(is_raise=is_raise):
             return
-        home_team, away_team = await  self.process_teams(session)
+        home_team, away_team = await self.process_teams(session)
         players: dict[str, models.Player] = {}
 
         for team in [home_team, away_team]:
@@ -702,12 +968,20 @@ class MatchLogProcessor:
                 players[name] = player
 
         match_map = await self.get_map(session)
-        logger.info(f"Match map: {match_map.name} in match log {self.filename} in tournament {self.tournament.name}")
+        logger.info(
+            f"Match map: {match_map.name} in match log {self.filename} in tournament {self.tournament.name}"
+        )
         match_time, home_score, away_score = self.get_match_score_and_time()
-        logger.info(f"Match time: {match_time}, home score: {home_score}, away score: {away_score}")
+        logger.info(
+            f"Match time: {match_time}, home score: {home_score}, away score: {away_score}"
+        )
 
-        encounter = await encounter_flows.get_by_teams_ids(session, home_team[0].id, away_team[0].id, [])
-        match = await encounter_service.get_match_by_encounter_and_map(session, encounter.id, match_map.id, [])
+        encounter = await encounter_flows.get_by_teams_ids(
+            session, home_team[0].id, away_team[0].id, []
+        )
+        match = await encounter_service.get_match_by_encounter_and_map(
+            session, encounter.id, match_map.id, []
+        )
 
         if not match:
             match = await encounter_service.create_match(
@@ -736,31 +1010,57 @@ class MatchLogProcessor:
             session.add(match)
             await session.commit()
 
-        await session.execute(sa.delete(models.MatchStatistics).where(sa.and_(models.MatchStatistics.match_id == match.id)))
-        await session.execute(sa.delete(models.MatchEvent).where(sa.and_(models.MatchEvent.match_id == match.id)))
-        await session.execute(sa.delete(models.MatchKillFeed).where(sa.and_(models.MatchKillFeed.match_id == match.id)))
+        await session.execute(
+            sa.delete(models.MatchStatistics).where(
+                sa.and_(models.MatchStatistics.match_id == match.id)
+            )
+        )
+        await session.execute(
+            sa.delete(models.MatchEvent).where(
+                sa.and_(models.MatchEvent.match_id == match.id)
+            )
+        )
+        await session.execute(
+            sa.delete(models.MatchKillFeed).where(
+                sa.and_(models.MatchKillFeed.match_id == match.id)
+            )
+        )
         await session.commit()
-        logger.info(f"Processing stats in match log {self.filename} in tournament {self.tournament.name}")
+        logger.info(
+            f"Processing stats in match log {self.filename} in tournament {self.tournament.name}"
+        )
         await self.create_stats(session, match, players)
         await session.commit()
 
-        logger.info(f"Processing kills in match log {self.filename} in tournament {self.tournament.name}")
+        logger.info(
+            f"Processing kills in match log {self.filename} in tournament {self.tournament.name}"
+        )
         kills = await self.process_kills(session, match, players)
         session.add_all(kills)
-        logger.info(f"Processing assists in match log {self.filename} in tournament {self.tournament.name}")
+        logger.info(
+            f"Processing assists in match log {self.filename} in tournament {self.tournament.name}"
+        )
         assists = await self.create_assists(session, match, players)
         session.add_all(assists)
-        logger.info(f"Processing ultimates in match log {self.filename} in tournament {self.tournament.name}")
+        logger.info(
+            f"Processing ultimates in match log {self.filename} in tournament {self.tournament.name}"
+        )
         ultimates = await self.create_ultimates(session, match, players)
         session.add_all(ultimates)
-        logger.info(f"Processing hero swaps in match log {self.filename} in tournament {self.tournament.name}")
+        logger.info(
+            f"Processing hero swaps in match log {self.filename} in tournament {self.tournament.name}"
+        )
         hero_swaps = await self.create_hero_swaps(session, match, players)
         session.add_all(hero_swaps)
-        logger.info(f"Processing echo duplicates in match log {self.filename} in tournament {self.tournament.name}")
+        logger.info(
+            f"Processing echo duplicates in match log {self.filename} in tournament {self.tournament.name}"
+        )
         echo_duplicate = await self.create_echo_duplicate(session, match, players)
         session.add_all(echo_duplicate)
         await session.commit()
-        logger.info(f"Match log {self.filename} in tournament {self.tournament.name} processed successfully")
+        logger.info(
+            f"Match log {self.filename} in tournament {self.tournament.name} processed successfully"
+        )
 
         return match
 
@@ -788,14 +1088,22 @@ async def process_closeness(session: AsyncSession, payload: list[str]):
             _,
             _,
         ) = row
-        logger.info(f"Processing row for encounter {encounter_name} in tournament {tournament_name}")
+        logger.info(
+            f"Processing row for encounter {encounter_name} in tournament {tournament_name}"
+        )
         if tournament_name.startswith("OWAL_s2"):
-            tournament = await tournament_flows.get_by_name(session, f"OWAL Season 2 | Day {tournament_name[-1]}", [])
+            tournament = await tournament_flows.get_by_name(
+                session, f"OWAL Season 2 | Day {tournament_name[-1]}", []
+            )
         else:
-            tournament = await tournament_flows.get_by_number_and_league(session, int(tournament_name), False, [])
+            tournament = await tournament_flows.get_by_number_and_league(
+                session, int(tournament_name), False, []
+            )
 
         logger.info(f"Tournament {tournament.name} found [id={tournament.id}]")
-        logger.info(f"Home team name: {home_team_name}, away team name: {away_team_name}")
+        logger.info(
+            f"Home team name: {home_team_name}, away team name: {away_team_name}"
+        )
         home_team = await team_service.get_by_name_and_tournament(
             session, tournament.id, home_team_name.strip(), []
         )
@@ -804,7 +1112,9 @@ async def process_closeness(session: AsyncSession, payload: list[str]):
         )
 
         if not home_team or not away_team:
-            logger.error(f"Home team {home_team_name} or away team {away_team_name} not found")
+            logger.error(
+                f"Home team {home_team_name} or away team {away_team_name} not found"
+            )
             continue
 
         if closeness_percent:
@@ -814,4 +1124,6 @@ async def process_closeness(session: AsyncSession, payload: list[str]):
                 encounter.closeness = round(int(closeness_percent) / 100, 2)
                 session.add(encounter)
                 await session.commit()
-        logger.info(f"Row for encounter {encounter_name} in tournament {tournament.name} processed successfully")
+        logger.info(
+            f"Row for encounter {encounter_name} in tournament {tournament.name} processed successfully"
+        )

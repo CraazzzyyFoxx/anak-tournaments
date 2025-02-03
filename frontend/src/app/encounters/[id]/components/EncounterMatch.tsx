@@ -10,7 +10,6 @@ import MatchTeamTable from "@/app/matches/[id]/components/MatchTeamTable";
 import Link from "next/link";
 import { ExternalLink } from "lucide-react";
 
-
 const EncounterMatch = async ({ match }: { match: Match }) => {
   const mapImagePath: string = match.map ? match.map?.image_path : "";
   const data = await encounterService.getMatch(match.id);
@@ -80,7 +79,9 @@ const EncounterMatch = async ({ match }: { match: Match }) => {
                   height={40}
                   width={40}
                 />
-                <h4 className="scroll-m-20 text-xl font-semibold tracking-tight">{data.map?.name}</h4>
+                <h4 className="scroll-m-20 text-xl font-semibold tracking-tight">
+                  {data.map?.name}
+                </h4>
               </div>
               <div className="flex flex-row gap-4">
                 <div className="flex flex-col text-right">
@@ -110,7 +111,9 @@ const EncounterMatch = async ({ match }: { match: Match }) => {
 
               <div className="flex flex-col text-right">
                 <p className="leading-7">Log name</p>
-                <h4 className="scroll-m-20 text-xl font-semibold tracking-tight">{match.log_name}</h4>
+                <h4 className="scroll-m-20 text-xl font-semibold tracking-tight">
+                  {match.log_name}
+                </h4>
               </div>
             </div>
             <Link href={`/matches/${data.id}`} target="_blank" rel="noopener noreferrer">

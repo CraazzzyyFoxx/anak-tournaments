@@ -18,7 +18,9 @@ async def login(
     if not user:
         raise errors.ApiHTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=[errors.ApiExc(msg="LOGIN_BAD_CREDENTIALS", code="LOGIN_BAD_CREDENTIALS")],
+            detail=[
+                errors.ApiExc(msg="LOGIN_BAD_CREDENTIALS", code="LOGIN_BAD_CREDENTIALS")
+            ],
         )
     token = await service.create_access_token()
     return ORJSONResponse({"access_token": token, "token_type": "bearer"})

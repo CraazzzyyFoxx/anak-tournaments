@@ -226,9 +226,11 @@ def create_team_with_match_stats(
             if team_stats[player.user_id][1]
         ],
     )
-    
 
-async def get_match(session: AsyncSession, match_id: int, entities: list[str]) -> schemas.MatchRead:
+
+async def get_match(
+    session: AsyncSession, match_id: int, entities: list[str]
+) -> schemas.MatchRead:
     """
     Retrieves a match by its ID and converts it to a Pydantic schema.
 

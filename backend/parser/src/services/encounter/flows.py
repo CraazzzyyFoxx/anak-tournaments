@@ -18,9 +18,11 @@ async def get_by_teams_ids(
     away_team_id: int,
     entities: list[str],
     *,
-    has_closeness: bool | None = None
+    has_closeness: bool | None = None,
 ) -> models.Encounter:
-    encounter = await service.get_by_teams(session, home_team_id, away_team_id, entities, has_closeness=has_closeness)
+    encounter = await service.get_by_teams(
+        session, home_team_id, away_team_id, entities, has_closeness=has_closeness
+    )
     if not encounter:
         raise errors.ApiHTTPException(
             status_code=404,
@@ -34,8 +36,9 @@ async def get_by_teams_ids(
     return encounter
 
 
-
-def get_by_teams_ids_sync(session: Session, home_team_id: int, away_team_id: int) -> models.Encounter:
+def get_by_teams_ids_sync(
+    session: Session, home_team_id: int, away_team_id: int
+) -> models.Encounter:
     encounter = service.get_by_teams_sync(session, home_team_id, away_team_id, [])
     if not encounter:
         raise errors.ApiHTTPException(
@@ -56,8 +59,12 @@ async def _create_encounter_from_challonge(
     group_id: int,
     match: schemas.ChallongeMatch,
 ) -> models.Encounter:
-    home_team = await team_flows.get_by_tournament_challonge_id(session, tournament.id, match.player1_id, [])
-    away_team = await team_flows.get_by_tournament_challonge_id(session, tournament.id, match.player2_id, [])
+    home_team = await team_flows.get_by_tournament_challonge_id(
+        session, tournament.id, match.player1_id, []
+    )
+    away_team = await team_flows.get_by_tournament_challonge_id(
+        session, tournament.id, match.player2_id, []
+    )
     try:
         home_score, away_score = map(int, match.scores_csv.split("-"))
     except ValueError:
@@ -84,7 +91,8 @@ async def _create_encounter_from_challonge(
         status=enums.EncounterStatus(match.state),
     )
     logger.info(
-        f"Encounter [name={match_db.name}] created in tournament " f"[id={tournament.id} number={tournament.number}]"
+        f"Encounter [name={match_db.name}] created in tournament "
+        f"[id={tournament.id} number={tournament.number}]"
     )
     return match_db
 
@@ -101,7 +109,9 @@ async def bulk_create_for_tournament_from_challonge(
             for match in matches:
                 if match.group_id is None and skip_finals:
                     continue
-                await _create_encounter_from_challonge(session, tournament, group.id, match)
+                await _create_encounter_from_challonge(
+                    session, tournament, group.id, match
+                )
     else:
         matches = await challonge_service.fetch_matches(tournament.challonge_id)
         groups_dict = {group.challonge_id: group.id for group in tournament.groups}
@@ -122,7 +132,7 @@ async def bulk_create_for_from_challonge(session: AsyncSession) -> None:
     tournaments = await tournament_service.get_all(session)
     for tournament in tournaments:
         if tournament.id == 4:
-            continue # In this tournament we have two brackets, but the first bracket is not finished.
+            continue  # In this tournament we have two brackets, but the first bracket is not finished.
             # Suz Playoffs filled manually
         await bulk_create_for_tournament_from_challonge(session, tournament.id)
 
@@ -145,7 +155,8 @@ def create_match(
             status_code=400,
             detail=[
                 errors.ApiExc(
-                    code="already_exists", msg=f"Match with encounter {encounter.id} and map {map.id} already exists"
+                    code="already_exists",
+                    msg=f"Match with encounter {encounter.id} and map {map.id} already exists",
                 )
             ],
         )

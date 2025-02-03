@@ -71,7 +71,7 @@ services:
     networks:
       - traefik-public
 
-  parser-api:
+  parser:
     image: registry.craazzzyyfoxx.me/aqt-parser:latest
     container_name: aqt-parser
     build:
@@ -87,30 +87,11 @@ services:
       - traefik.http.routers.parser-api-http.rule=PathPrefix(`/parser`)
       - traefik.http.routers.parser-api-http.entrypoints=http
       - traefik.http.services.parser-api-http.loadbalancer.server.port=8081
-    command: uvicorn main:app --host 0.0.0.0 --port 8081 --loop uvloop
+    command: uvicorn main:app --host 0.0.0.0 --port 8081 --loop uvloop --workers 2
     env_file:
       - .env
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    volumes:
-      - ./logs/parser:/logs
-    networks:
-      - traefik-public
-
-  worker:
-    image: registry.craazzzyyfoxx.me/aqt-parser:latest
-    container_name: aqt-worker
-    command: celery -A worker.celery worker --beat --loglevel=info
-    build:
-      context: ./backend
-      args:
-        APP_PATH: parser
-    env_file:
-      - .env
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    depends_on:
-      - redis
     volumes:
       - ./logs/parser:/logs
     networks:

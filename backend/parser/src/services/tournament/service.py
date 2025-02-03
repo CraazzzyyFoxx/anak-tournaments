@@ -10,28 +10,37 @@ from src import models
 from src.core import utils
 
 
-def tournament_entities(in_entities: list[str], child: typing.Any | None = None) -> list[_AbstractLoad]:
+def tournament_entities(
+    in_entities: list[str], child: typing.Any | None = None
+) -> list[_AbstractLoad]:
     entities = []
     if "groups" in in_entities:
         entities.append(utils.join_entity(child, models.Tournament.groups))
     return entities
 
 
-async def get(session: AsyncSession, id: int, entities: list[str]) -> models.Tournament | None:
+async def get(
+    session: AsyncSession, id: int, entities: list[str]
+) -> models.Tournament | None:
     query = (
-        sa.select(models.Tournament).where(sa.and_(models.Tournament.id == id)).options(*tournament_entities(entities))
+        sa.select(models.Tournament)
+        .where(sa.and_(models.Tournament.id == id))
+        .options(*tournament_entities(entities))
     )
     result = await session.execute(query)
     return result.unique().scalars().first()
 
 
-def get_sync(session: Session, id: int, entities: list[str]) -> models.Tournament | None:
+def get_sync(
+    session: Session, id: int, entities: list[str]
+) -> models.Tournament | None:
     query = (
-        sa.select(models.Tournament).where(sa.and_(models.Tournament.id == id)).options(*tournament_entities(entities))
+        sa.select(models.Tournament)
+        .where(sa.and_(models.Tournament.id == id))
+        .options(*tournament_entities(entities))
     )
     result = session.execute(query)
     return result.unique().scalars().first()
-
 
 
 async def get_all(session: AsyncSession) -> typing.Sequence[models.Tournament]:
@@ -46,7 +55,9 @@ def get_all_sync(session: Session) -> typing.Sequence[models.Tournament]:
     return result.scalars().all()
 
 
-async def get_by_number(session: AsyncSession, number: int, entities: list[str]) -> models.Tournament | None:
+async def get_by_number(
+    session: AsyncSession, number: int, entities: list[str]
+) -> models.Tournament | None:
     query = (
         sa.select(models.Tournament)
         .where(sa.and_(models.Tournament.number == number))
@@ -61,15 +72,26 @@ async def get_by_number_and_league(
 ) -> models.Tournament | None:
     query = (
         sa.select(models.Tournament)
-        .where(sa.and_(models.Tournament.number == number, models.Tournament.is_league == is_league))
+        .where(
+            sa.and_(
+                models.Tournament.number == number,
+                models.Tournament.is_league == is_league,
+            )
+        )
         .options(*tournament_entities(entities))
     )
     result = await session.execute(query)
     return result.unique().scalars().first()
 
 
-async def get_by_name(session: AsyncSession, name: str, entities: list[str]) -> models.Tournament | None:
-    query = sa.select(models.Tournament).where(sa.and_(models.Tournament.name == name)).options(*tournament_entities(entities))
+async def get_by_name(
+    session: AsyncSession, name: str, entities: list[str]
+) -> models.Tournament | None:
+    query = (
+        sa.select(models.Tournament)
+        .where(sa.and_(models.Tournament.name == name))
+        .options(*tournament_entities(entities))
+    )
     result = await session.execute(query)
     return result.unique().scalars().first()
 
@@ -121,7 +143,7 @@ async def create_group(
 
 
 async def get_analytics(
-    session: AsyncSession
+    session: AsyncSession,
 ) -> typing.Sequence[
     tuple[models.Team, models.Player, models.Tournament, int, int, int, int, float]
 ]:
@@ -158,8 +180,8 @@ async def get_analytics(
             models.Team.id,
             models.Player,
             models.Tournament.id,
-            pph.c.wins + ppa.c.wins,
-            pph.c.losses + ppa.c.losses,
+            sa.func.coalesce(pph.c.wins, 0) + sa.func.coalesce(ppa.c.wins, 0),
+            sa.func.coalesce(pph.c.losses, 0) + sa.func.coalesce(ppa.c.losses, 0),
             sa.func.lag(models.Player.rank, 1).over(
                 partition_by=(models.Player.user_id, models.Player.role),
                 order_by=models.Tournament.id,
@@ -167,21 +189,27 @@ async def get_analytics(
             sa.func.lag(models.Player.rank, 2).over(
                 partition_by=(models.Player.user_id, models.Player.role),
                 order_by=models.Tournament.id,
-            )
+            ),
         )
         .join(models.Player, models.Team.id == models.Player.team_id)
         .join(models.Tournament, models.Player.tournament_id == models.Tournament.id)
         .join(
             pph,
             sa.and_(
-                models.Player.user_id == pph.c.user_id, models.Player.role == pph.c.role, models.Player.team_id == pph.c.team_id
+                models.Player.user_id == pph.c.user_id,
+                models.Player.role == pph.c.role,
+                models.Player.team_id == pph.c.team_id,
             ),
+            isouter=True,
         )
         .join(
             ppa,
             sa.and_(
-                models.Player.user_id == ppa.c.user_id, models.Player.role == ppa.c.role, models.Player.team_id == ppa.c.team_id
+                models.Player.user_id == ppa.c.user_id,
+                models.Player.role == ppa.c.role,
+                models.Player.team_id == ppa.c.team_id,
             ),
+            isouter=True,
         )
         .where(
             models.Tournament.id >= 21,

@@ -2,7 +2,12 @@ from pydantic import BaseModel
 
 from src.schemas import BaseRead, TeamRead, TournamentRead, TournamentGroupRead
 
-__all__ = ("StandingTeamData", "StandingTeamDataWithBuchholzTB", "StandingTeamDataWithRanking", "StandingRead")
+__all__ = (
+    "StandingTeamData",
+    "StandingTeamDataWithBuchholzTB",
+    "StandingTeamDataWithRanking",
+    "StandingRead",
+)
 
 
 class StandingTeamData(BaseModel):
