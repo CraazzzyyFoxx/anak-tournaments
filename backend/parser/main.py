@@ -21,10 +21,9 @@ from src.services.achievement import flows as achievement_flows
 async def lifespan(_: FastAPI):
     logger.info("Application... Online!")
     async with db.async_session_maker() as session:
-        # for index in range(21, 36):
-        #     await tournament_flows.get_analytics(session,  index)
-        #
-        await tournament_flows.get_analytics(session, 46)
+        for index in range(21, 46+1):
+            await tournament_flows.get_analytics(session,  index)
+
         pass
         # await achievement_flows.calculate_achievements(session)
     yield

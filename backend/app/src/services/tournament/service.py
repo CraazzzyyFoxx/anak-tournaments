@@ -4,8 +4,8 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
-from src import models
-from src.core import enums, pagination, utils
+from src import models, schemas
+from src.core import enums, utils
 
 
 def tournament_entities(
@@ -101,7 +101,7 @@ async def get_by_number_and_league(
 
 
 async def get_all(
-    session: AsyncSession, params: pagination.PaginationSortSearchParams
+    session: AsyncSession, params: schemas.TournamentPaginationSortSearchParams
 ) -> tuple[typing.Sequence[models.Tournament], int]:
     """
     Retrieves a paginated list of `Tournament` model instances based on filtering and sorting parameters.
@@ -116,11 +116,16 @@ async def get_all(
         2. The total count of tournaments matching the filtering criteria.
     """
     query = sa.select(models.Tournament).options(*tournament_entities(params.entities))
+    total_query = sa.select(sa.func.count(models.Tournament.id))
     query = params.apply_pagination_sort(query, models.Tournament)
     query = params.apply_search(query, models.Tournament)
-    result = await session.execute(query)
-    total_query = sa.select(sa.func.count(models.Tournament.id))
     total_query = params.apply_search(total_query, models.Tournament)
+
+    if params.is_league is not None:
+        query = query.where(models.Tournament.is_league.is_(params.is_league))
+        total_query = total_query.where(models.Tournament.is_league.is_(params.is_league))
+
+    result = await session.execute(query)
     total_result = await session.execute(total_query)
     return result.unique().scalars().all(), total_result.scalar_one()
 

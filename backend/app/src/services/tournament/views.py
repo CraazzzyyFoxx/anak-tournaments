@@ -1,5 +1,3 @@
-import typing
-
 from cashews import cache
 from cashews.contrib.fastapi import cache_control_ttl
 from fastapi import APIRouter, Depends, Query
@@ -67,15 +65,11 @@ async def get_standings(
     summary="Get all tournaments",
 )
 async def get_all_tournaments(
-    params: pagination.PaginationSortSearchQueryParams[
-        typing.Literal[
-            "id", "name", "number", "start_date", "end_date", "similarity:name"
-        ]
-    ] = Depends(),
+    params: schemas.TournamentPaginationSortSearchQueryParams= Depends(),
     session: AsyncSession = Depends(db.get_async_session),
 ):
     return await flows.get_all(
-        session, pagination.PaginationSortSearchParams.from_query_params(params)
+        session, schemas.TournamentPaginationSortSearchParams.from_query_params(params)
     )
 
 
