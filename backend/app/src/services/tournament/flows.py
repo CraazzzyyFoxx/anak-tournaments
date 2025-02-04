@@ -1,3 +1,4 @@
+import math
 from itertools import groupby
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -158,7 +159,7 @@ async def get_by_number_and_league(
 
 
 async def get_all(
-    session: AsyncSession, params: pagination.PaginationSortSearchParams
+    session: AsyncSession, params: schemas.TournamentPaginationSortSearchParams
 ) -> pagination.Paginated[schemas.TournamentRead]:
     """
     Retrieves a paginated list of `Tournament` model instances and converts them to `TournamentRead` schemas.
@@ -343,39 +344,6 @@ async def get_owal_standings(session: AsyncSession) -> schemas.OwalStandings:
     )
 
 
-def resolve_team_shift(value: float) -> int:
-    if value >= 119:
-        return 6
-    if value >= 99:
-        return 5
-    if value >= 79:
-        return 4
-    if value >= 59:
-        return 3
-    if value >= 39:
-        return 2
-    if value >= 19:
-        return 1
-
-    if value <= -20:
-        return 0
-
-    if value <= -39:
-        return -1
-    if value <= -39:
-        return -2
-    if value <= -59:
-        return -3
-    if value <= -79:
-        return -4
-    if value <= -99:
-        return -5
-    if value <= -119:
-        return -6
-
-    return 0
-
-
 async def get_analytics(
     session: AsyncSession,
     tournament_id: int,
@@ -397,9 +365,6 @@ async def get_analytics(
     ] = {}
     cache_teams_wins: dict[int, int] = {}
     cache_teams_manual_shift: dict[int, int] = {}
-    min_team_cost: int = 0
-    max_team_cost: int = 0
-    avg_team_cost: int = 0
 
     data = await service.get_analytics(session, tournament_id)
     for team, player, analytics in data:
@@ -413,14 +378,12 @@ async def get_analytics(
         if team.id not in cache_teams_wins:
             cache_teams_wins[team.id] = analytics.wins
 
-        min_team_cost = min(min_team_cost, team.total_sr / 100)
-        max_team_cost = max(max_team_cost, team.total_sr / 100)
-        avg_team_cost += team.total_sr
+    avg_team_cost = round(sum([t.avg_sr for t in cache_teams.values()]) / len(cache_teams))
 
     for team_id, team in cache_teams.items():
         players = cache_players[team_id]
         team_read = await team_flows.to_pydantic(session, team, ["placement", "group"])
-        balancer_shift = resolve_team_shift(team.total_sr - avg_team_cost)
+        balancer_shift = -math.ceil(((team.avg_sr - (team.avg_sr % 10) ) - avg_team_cost) / 20)
         manual_shift = round(cache_teams_manual_shift[team_id] / 100)
 
         output.append(

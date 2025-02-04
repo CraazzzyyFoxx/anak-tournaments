@@ -45,7 +45,7 @@ const AnalyticsPage = () => {
     isLoading: loadingTournaments
   } = useQuery({
     queryKey: ["tournaments"],
-    queryFn: () => tournamentService.getAll()
+    queryFn: () => tournamentService.getAll(false)
   });
   const { data: analytics, isLoading: teamsLoading } = useQuery({
     queryKey: ["tournaments", "analytics", activeTournamentId],
@@ -57,6 +57,7 @@ const AnalyticsPage = () => {
   useEffect(() => {
     const newSearchParams = new URLSearchParams(searchParams);
     setActiveTournamentId(Number(newSearchParams.get("tournamentId")));
+    setActiveTab(newSearchParams.get("tab") || "overview");
     if (!newSearchParams.has("tournamentId") && isSuccessTournaments) {
       newSearchParams.set("tournamentId", String(tournamentsData?.results[0].id));
       router.push(`${pathname}?${newSearchParams.toString()}`);
@@ -108,26 +109,9 @@ const AnalyticsPage = () => {
   };
 
   return (
-    <div className="flex flex-col gap-8">
-      <Select
-        value={activeTournamentId?.toString()}
-        onValueChange={(value) => pushTournamentId(value)}
-      >
-        <SelectTrigger className="w-[250px]">
-          <SelectValue placeholder="Select a tournemnt" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectGroup>
-            {tournamentsData?.results.map((item) => (
-              <SelectItem key={item.id} value={item.id.toString()}>
-                {item.name}
-              </SelectItem>
-            ))}
-          </SelectGroup>
-        </SelectContent>
-      </Select>
-      <Tabs defaultValue={activeTab}>
-        <TabsList className="grid grid-cols-2 w-[250px] mb-8">
+    <Tabs defaultValue={activeTab}>
+      <div className="flex xs:flex-col md:flex-row gap-4 pb-4">
+        <TabsList className="grid grid-cols-2 w-[250px]">
           <TabsTrigger value="overview" onClick={() => navToTab("overview")}>
             Overview
           </TabsTrigger>
@@ -135,97 +119,114 @@ const AnalyticsPage = () => {
             Teams
           </TabsTrigger>
         </TabsList>
-        <TabsContent value="overview" className="flex flex-col w-full">
-          <div className="flex flex-col gap-8">
-            <TeamComboBox
-              teams={analytics?.teams || []}
-              onSelect={scrollToTeam}
-              selectedTeam={selectedTeam}
-            />
-            <TeamAnalyticsTable
-              teams={analytics?.teams || []}
-              isLoading={teamsLoading || loadingTournaments}
-            />
-          </div>
-        </TabsContent>
-        <TabsContent value="teams" className="grid gap-8 xs:grid-cols-1 lg:grid-cols-2">
-          <Card>
-            <ScrollArea>
-              <Table>
-                <TableHeader>
-                  <TableRow className="">
-                    <TableHead className="text-center">Actual Place</TableHead>
-                    <TableHead className="text-center">Name</TableHead>
-                    <TableHead className="text-center">Won matches</TableHead>
-                    <TableHead className="text-center">Group</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {analytics?.teams.map((team) => {
-                    let color = "text-group-a";
+        <Select
+          value={activeTournamentId?.toString()}
+          onValueChange={(value) => pushTournamentId(value)}
+        >
+          <SelectTrigger className="w-[250px]">
+            <SelectValue placeholder="Select a tournemnt" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {tournamentsData?.results.map((item) => (
+                <SelectItem key={item.id} value={item.id.toString()}>
+                  {item.name}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      </div>
+      <TabsContent value="overview" className="flex flex-col w-full">
+        <div className="flex flex-col gap-8">
+          <TeamComboBox
+            teams={analytics?.teams || []}
+            onSelect={scrollToTeam}
+            selectedTeam={selectedTeam}
+          />
+          <TeamAnalyticsTable
+            teams={analytics?.teams || []}
+            isLoading={teamsLoading || loadingTournaments}
+          />
+        </div>
+      </TabsContent>
+      <TabsContent value="teams" className="grid gap-8 xs:grid-cols-1 lg:grid-cols-2">
+        <Card>
+          <ScrollArea>
+            <Table>
+              <TableHeader>
+                <TableRow className="">
+                  <TableHead className="text-center">Actual Place</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead className="text-center">Won matches</TableHead>
+                  <TableHead className="text-center">Group</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {analytics?.teams.map((team) => {
+                  let color = "text-group-a";
 
-                    if (team.group?.name == "B") color = "text-group-b";
-                    if (team.group?.name == "C") color = "text-group-c";
-                    if (team.group?.name == "D") color = "text-group-d";
+                  if (team.group?.name == "B") color = "text-group-b";
+                  if (team.group?.name == "C") color = "text-group-c";
+                  if (team.group?.name == "D") color = "text-group-d";
+
+                  return (
+                    <TableRow key={team.id} className={color}>
+                      <TableCell className="text-center">{team.placement}</TableCell>
+                      <TableCell>{team.name}</TableCell>
+                      <TableCell className="text-center">
+                        {analytics?.teams_wins[team.id]}
+                      </TableCell>
+                      <TableCell className="text-center">{team.group?.name}</TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+            <ScrollBar orientation="horizontal" />
+          </ScrollArea>
+        </Card>
+        <Card>
+          <ScrollArea>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-center">Predicted place</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead className="text-center">Balancer shift</TableHead>
+                  <TableHead className="text-center">Anak shift</TableHead>
+                  <TableHead className="text-center">Total shift</TableHead>
+                  <TableHead className="text-center">Actual place</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {analytics?.teams
+                  .slice()
+                  .sort((a, b) => a.total_shift - b.total_shift || a.name.localeCompare(b.name))
+                  .map((team, index) => {
+                    let color = "bg-background";
+                    // @ts-ignore
+                    if (Math.abs(team.placement - (index + 1)) > 10)
+                      color = "bg-[#f1ac9d] text-black hover:hover:bg-red-400";
 
                     return (
                       <TableRow key={team.id} className={color}>
-                        <TableCell className="text-center">{team.placement}</TableCell>
+                        <TableCell className="text-center">{index + 1}</TableCell>
                         <TableCell>{team.name}</TableCell>
-                        <TableCell className="text-center">
-                          {analytics?.teams_wins[team.id]}
-                        </TableCell>
-                        <TableCell className="text-center">{team.group?.name}</TableCell>
+                        <TableCell className="text-center">{team.balancer_shift}</TableCell>
+                        <TableCell className="text-center">{team.manual_shift}</TableCell>
+                        <TableCell className="text-center">{team.total_shift}</TableCell>
+                        <TableCell className="text-center">{team.placement}</TableCell>
                       </TableRow>
                     );
                   })}
-                </TableBody>
-              </Table>
-              <ScrollBar orientation="horizontal" />
-            </ScrollArea>
-          </Card>
-          <Card>
-            <ScrollArea>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-center">Predicted place</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead className="text-center">Balancer shift</TableHead>
-                    <TableHead className="text-center">Anak shift</TableHead>
-                    <TableHead className="text-center">Total shift</TableHead>
-                    <TableHead className="text-center">Actual place</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {analytics?.teams
-                    .slice()
-                    .sort((a, b) => a.total_shift - b.total_shift)
-                    .map((team, index) => {
-                      let color = "bg-background";
-                      // @ts-ignore
-                      if (Math.abs(team.placement - (index + 1)) > 10)
-                        color = "bg-[#f1ac9d] text-black hover:hover:bg-red-400";
-
-                      return (
-                        <TableRow key={team.id} className={color}>
-                          <TableCell className="text-center">{index + 1}</TableCell>
-                          <TableCell>{team.name}</TableCell>
-                          <TableCell className="text-center">{team.balancer_shift}</TableCell>
-                          <TableCell className="text-center">{team.manual_shift}</TableCell>
-                          <TableCell className="text-center">{team.total_shift}</TableCell>
-                          <TableCell className="text-center">{team.placement}</TableCell>
-                        </TableRow>
-                      );
-                    })}
-                </TableBody>
-              </Table>
-              <ScrollBar orientation="horizontal" />
-            </ScrollArea>
-          </Card>
-        </TabsContent>
-      </Tabs>
-    </div>
+              </TableBody>
+            </Table>
+            <ScrollBar orientation="horizontal" />
+          </ScrollArea>
+        </Card>
+      </TabsContent>
+    </Tabs>
   );
 };
 

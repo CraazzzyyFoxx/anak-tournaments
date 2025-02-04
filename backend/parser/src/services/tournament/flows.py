@@ -12,6 +12,11 @@ from src.services.challonge import service as challonge_service
 from . import service
 
 
+COEF_NOVICE_FIRST = 1 / 0.15
+COEF_NOVICE_SECOND = 1 / 0.11
+COEF_REGULAR = 1 / 0.065
+
+
 async def to_pydantic(
     session: AsyncSession, tournament: models.Tournament, entities: list[str]
 ) -> schemas.TournamentRead:
@@ -276,10 +281,6 @@ async def create(
 
 
 async def get_analytics(session: AsyncSession, tournament_id: int):
-    COEF_NOVICE_FIRST = 1 / 0.15
-    COEF_NOVICE_SECOND = 1 / 0.11
-    COEF_REGULAR = 1 / 0.065
-
     data = await service.get_analytics(session)
 
     df = pd.DataFrame(
@@ -302,6 +303,8 @@ async def get_analytics(session: AsyncSession, tournament_id: int):
         ]
     )
 
+    # df['previous_cost'] = df.groupby('id_role')['cost'].shift(1)
+    # df['pre-previous_cost'] = df.groupby('id_role')['cost'].shift(2)
     df["is_changed"] = df["previous_cost"] != df["cost"]
 
     for id_role in df["id_role"].unique():
@@ -349,7 +352,7 @@ async def get_analytics(session: AsyncSession, tournament_id: int):
             shift_one=row["cost"] - row["previous_cost"]
             if row["previous_cost"]
             else None,
-            shift_two=row["cost"] - row["pre-previous_cost"]
+            shift_two=row["previous_cost"] - row["pre-previous_cost"]
             if row["pre-previous_cost"]
             else None,
             shift=0,

@@ -1,8 +1,10 @@
+import typing
 from datetime import datetime
+from dataclasses import dataclass
 
 from pydantic import BaseModel
 
-from src.core import enums
+from src.core import enums, pagination
 from src.schemas import UserRead
 from src.schemas.base import BaseRead
 
@@ -12,6 +14,8 @@ __all__ = (
     "OwalStanding",
     "OwalStandingDay",
     "OwalStandings",
+    "TournamentPaginationSortSearchQueryParams",
+    "TournamentPaginationSortSearchParams"
 )
 
 
@@ -65,3 +69,16 @@ class OwalStanding(BaseModel):
 class OwalStandings(BaseModel):
     days: list[TournamentRead]
     standings: list[OwalStanding]
+
+
+class TournamentPaginationSortSearchQueryParams(
+    pagination.PaginationSortSearchQueryParams[
+        typing.Literal["id", "name", "number", "start_date", "end_date", "similarity:name"]
+    ]
+):
+    is_league: bool | None = None
+
+
+@dataclass
+class TournamentPaginationSortSearchParams(pagination.PaginationSortSearchParams):
+    is_league: bool | None = None

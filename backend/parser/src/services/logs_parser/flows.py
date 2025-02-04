@@ -5,14 +5,16 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models, schemas
-from src.core import enums, errors
+from src.core import enums, errors, pagination
 from src.services.team import service as team_service
 from src.services.map import flows as map_flows
 from src.services.user import service as user_service
-from src.services.hero import flows as hero_flows
 from src.services.encounter import flows as encounter_flows
 from src.services.encounter import service as encounter_service
 from src.services.tournament import flows as tournament_flows
+from src.services.hero import service as hero_service
+from src.services.tournament import flows as tournaments_flows
+from src.services.s3 import service as s3_service
 
 from . import service
 
@@ -28,6 +30,7 @@ class MatchLogProcessor:
         self.rows_grouped: dict[
             int, list[tuple[enums.LogEventType, float, list[str]]]
         ] = self.group_by_rounds()
+        self.heroes: dict[str, models.Hero] = {}
 
     def format_rows(self) -> list[tuple[enums.LogEventType, float, list[str]]]:
         formatted_rows = []
@@ -169,11 +172,13 @@ class MatchLogProcessor:
         map_name = enums.map_name_dict.get(row[2][0], row[2][0])
         return await map_flows.get_by_name_and_gamemode(session, map_name, gamemode)
 
-    @staticmethod
-    async def get_hero(session: AsyncSession, hero_name: str) -> models.Hero:
+    async def get_hero(self, session: AsyncSession, hero_name: str) -> models.Hero:
         hero_name = enums.hero_translation.get(hero_name, hero_name)
-        hero = await hero_flows.get_by_name(session, hero_name)
-        return hero
+        if not self.heroes:
+            heroes, total = await hero_service.get_all(session, pagination.PaginationParams(per_page=-1))
+            self.heroes = {hero.name: hero for hero in heroes}
+
+        return self.heroes[hero_name]
 
     async def get_players_by_battle_names(
         self, session: AsyncSession
@@ -534,148 +539,47 @@ class MatchLogProcessor:
             name=name,
         )
 
-    async def create_assists(
-        self,
-        session: AsyncSession,
-        match: models.Match,
-        players: dict[str, models.Player],
+    async def create_events(
+            self,
+            session: AsyncSession,
+            match: models.Match,
+            players: dict[str, models.Player],
+            event_type: enums.LogEventType,
+            match_event_type: enums.MatchEvent,
     ) -> list[models.MatchEvent]:
-        assists: list[models.MatchEvent] = []
-        for match_round, rows in self.get_grouped_rows_by_event(
-            enums.LogEventType.OffensiveAssist
-        ).items():
+        events: list[models.MatchEvent] = []
+        for match_round, rows in self.get_grouped_rows_by_event(event_type).items():
             for row in rows:
-                assist = await self.format_event(
-                    session,
-                    match,
-                    players,
-                    match_round,
-                    row,
-                    enums.MatchEvent.OffensiveAssist,
+                event = await self.format_event(
+                    session, match, players, match_round, row, match_event_type
                 )
-                assists.append(assist)
+                events.append(event)
+        return events
 
-        for match_round, rows in self.get_grouped_rows_by_event(
-            enums.LogEventType.DefensiveAssist
-        ).items():
-            for row in rows:
-                assist = await self.format_event(
-                    session,
-                    match,
-                    players,
-                    match_round,
-                    row,
-                    enums.MatchEvent.DefensiveAssist,
-                )
-                assists.append(assist)
+    async def process_events(
+            self,
+            session: AsyncSession,
+            match: models.Match,
+            players: dict[str, models.Player],
+    ) -> None:
+        event_types = [
+            (enums.LogEventType.OffensiveAssist, enums.MatchEvent.OffensiveAssist),
+            (enums.LogEventType.DefensiveAssist, enums.MatchEvent.DefensiveAssist),
+            (enums.LogEventType.UltimateCharged, enums.MatchEvent.UltimateCharged),
+            (enums.LogEventType.UltimateStart, enums.MatchEvent.UltimateStart),
+            (enums.LogEventType.UltimateEnd, enums.MatchEvent.UltimateEnd),
+            (enums.LogEventType.HeroSwap, enums.MatchEvent.HeroSwap),
+            (enums.LogEventType.EchoDuplicateStart, enums.MatchEvent.EchoDuplicateStart),
+            (enums.LogEventType.EchoDuplicateEnd, enums.MatchEvent.EchoDuplicateEnd),
+        ]
 
-        return assists
+        all_events = []
+        for log_event, match_event in event_types:
+            events = await self.create_events(session, match, players, log_event, match_event)
+            all_events.extend(events)
 
-    async def create_ultimates(
-        self,
-        session: AsyncSession,
-        match: models.Match,
-        players: dict[str, models.Player],
-    ) -> list[models.MatchEvent]:
-        ultimates: list[models.MatchEvent] = []
-        for match_round, rows in self.get_grouped_rows_by_event(
-            enums.LogEventType.UltimateCharged
-        ).items():
-            for row in rows:
-                ultimate = await self.format_event(
-                    session,
-                    match,
-                    players,
-                    match_round,
-                    row,
-                    enums.MatchEvent.UltimateCharged,
-                )
-                ultimates.append(ultimate)
-
-        for match_round, rows in self.get_grouped_rows_by_event(
-            enums.LogEventType.UltimateStart
-        ).items():
-            for row in rows:
-                ultimate = await self.format_event(
-                    session,
-                    match,
-                    players,
-                    match_round,
-                    row,
-                    enums.MatchEvent.UltimateStart,
-                )
-                ultimates.append(ultimate)
-
-        for match_round, rows in self.get_grouped_rows_by_event(
-            enums.LogEventType.UltimateEnd, before=enums.LogEventType.MatchEnd
-        ).items():
-            for row in rows:
-                ultimate = await self.format_event(
-                    session,
-                    match,
-                    players,
-                    match_round,
-                    row,
-                    enums.MatchEvent.UltimateEnd,
-                )
-                ultimates.append(ultimate)
-
-        return ultimates
-
-    async def create_hero_swaps(
-        self,
-        session: AsyncSession,
-        match: models.Match,
-        players: dict[str, models.Player],
-    ) -> list[models.MatchEvent]:
-        hero_swaps: list[models.MatchEvent] = []
-        for match_round, rows in self.get_grouped_rows_by_event(
-            enums.LogEventType.HeroSwap
-        ).items():
-            for row in rows:
-                hero_swap = await self.format_event(
-                    session, match, players, match_round, row, enums.MatchEvent.HeroSwap
-                )
-                hero_swaps.append(hero_swap)
-
-        return hero_swaps
-
-    async def create_echo_duplicate(
-        self,
-        session: AsyncSession,
-        match: models.Match,
-        players: dict[str, models.Player],
-    ) -> list[models.MatchEvent]:
-        echo_duplicate: list[models.MatchEvent] = []
-        for match_round, rows in self.get_grouped_rows_by_event(
-            enums.LogEventType.EchoDuplicateStart
-        ).items():
-            for row in rows:
-                echo_duplicate_event = await self.format_event(
-                    session,
-                    match,
-                    players,
-                    match_round,
-                    row,
-                    enums.MatchEvent.EchoDuplicateStart,
-                )
-                echo_duplicate.append(echo_duplicate_event)
-
-        for match_round, rows in self.get_grouped_rows_by_event(
-            enums.LogEventType.EchoDuplicateEnd
-        ).items():
-            for row in rows:
-                echo_duplicate_event = await self.format_event(
-                    session,
-                    match,
-                    players,
-                    match_round,
-                    row,
-                    enums.MatchEvent.EchoDuplicateEnd,
-                )
-                echo_duplicate.append(echo_duplicate_event)
-
-        return echo_duplicate
+        session.add_all(all_events)
+        await session.commit()
 
     def calculate_mvps(
         self,
@@ -1038,29 +942,13 @@ class MatchLogProcessor:
         kills = await self.process_kills(session, match, players)
         session.add_all(kills)
         logger.info(
-            f"Processing assists in match log {self.filename} in tournament {self.tournament.name}"
+            f"Processing events in match log {self.filename} in tournament {self.tournament.name}"
         )
-        assists = await self.create_assists(session, match, players)
-        session.add_all(assists)
-        logger.info(
-            f"Processing ultimates in match log {self.filename} in tournament {self.tournament.name}"
-        )
-        ultimates = await self.create_ultimates(session, match, players)
-        session.add_all(ultimates)
-        logger.info(
-            f"Processing hero swaps in match log {self.filename} in tournament {self.tournament.name}"
-        )
-        hero_swaps = await self.create_hero_swaps(session, match, players)
-        session.add_all(hero_swaps)
-        logger.info(
-            f"Processing echo duplicates in match log {self.filename} in tournament {self.tournament.name}"
-        )
-        echo_duplicate = await self.create_echo_duplicate(session, match, players)
-        session.add_all(echo_duplicate)
-        await session.commit()
+        await self.process_events(session, match, players)
         logger.info(
             f"Match log {self.filename} in tournament {self.tournament.name} processed successfully"
         )
+        await session.commit()
 
         return match
 
@@ -1127,3 +1015,20 @@ async def process_closeness(session: AsyncSession, payload: list[str]):
         logger.info(
             f"Row for encounter {encounter_name} in tournament {tournament.name} processed successfully"
         )
+
+
+async def process_match_log(session: AsyncSession, tournament_id: int, filename: str, *, is_raise: bool = True) -> None:
+    tournament = await tournaments_flows.get(session, tournament_id, [])
+    logger.info(
+        f"Fetching logs from S3 for tournament {tournament.id} and file {filename}"
+    )
+
+    data = await s3_service.async_client.get_log_by_filename(
+        tournament.id, filename
+    )
+    decoded_lines = [line.decode() for line in data.split(b"\n") if line]
+
+    processor = MatchLogProcessor(
+        tournament, filename.split("/")[-1], decoded_lines
+    )
+    await processor.start(session, is_raise=is_raise)

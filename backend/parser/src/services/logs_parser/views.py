@@ -1,13 +1,15 @@
 from fastapi import APIRouter, Depends, UploadFile, HTTPException
 from faststream.redis.fastapi import RedisRouter
 from loguru import logger
+
 from src.core import db, enums, config
+from src.services.auth import flows as auth_flows
 from src.services.tournament import flows as tournaments_flows
 from src.services.s3 import service as s3_service
-from src.services.auth import flows as auth_flows
+from src.services.tournament import service as tournaments_service
 from . import flows
 
-PROCESS_MATCH_LOGS_TOPIC = "process_match_logs"
+PROCESS_MATCH_LOGS_TOPIC = "process_match_log"
 
 router = APIRouter(
     prefix="/logs",
@@ -67,40 +69,33 @@ async def process_tournament_logs(
     return {"message": f"Processing all logs for tournament '{tournament.name}'"}
 
 
+@router.post("/")
+async def process_all_logs(session=Depends(db.get_async_session)):
+    tournaments = await tournaments_service.get_all(session)
+    for tournament in tournaments:
+        if tournament.id > 20:
+            await task_router.broker.publish(
+                {"tournament_id": tournament.id}, "process_tournament_logs"
+            )
+    return {"message": "Processing all logs for all tournaments"}
+
+
 @publisher
 @task_router.subscriber(PROCESS_MATCH_LOGS_TOPIC)
-async def process_match_logs(tournament_id: int, filename: str):
+async def process_match_log(tournament_id: int, filename: str):
     async with db.async_session_maker() as session:
-        tournament = await tournaments_flows.get(session, tournament_id, [])
-        logger.info(
-            f"Fetching logs from S3 for tournament {tournament.id} and file {filename}"
-        )
-
-        data = await s3_service.async_client.get_log_by_filename(
-            tournament.id, filename
-        )
-        decoded_lines = [line.decode() for line in data.split(b"\n") if line]
-
-        processor = flows.MatchLogProcessor(
-            tournament, filename.split("/")[-1], decoded_lines
-        )
-        await processor.start(session)
-        logger.info(f"Logs processed: tournament={tournament.name}, file={filename}")
+        await flows.process_match_log(session, tournament_id, filename, is_raise=True)
 
 
 @publisher
 @task_router.subscriber("process_tournament_logs")
-async def process_tournament_logs(tournament_id: int):
+async def process_tournament_log(tournament_id: int):
     async with db.async_session_maker() as session:
         tournament = await tournaments_flows.get(session, tournament_id, [])
-        logs = await s3_service.async_client.get_logs_by_tournament(tournament.id)
 
-        for log in logs:
-            await task_router.broker.publish(
-                {"tournament_id": tournament_id, "filename": log},
-                PROCESS_MATCH_LOGS_TOPIC,
-            )
+    for log in await s3_service.async_client.get_logs_by_tournament(tournament.id):
+        await flows.process_match_log(session, tournament.id, log, is_raise=False)
 
-        logger.info(
-            f"All logs for tournament {tournament.name} are queued for processing."
-        )
+    logger.info(
+        f"All logs for tournament {tournament.name} are queued for processing."
+    )
