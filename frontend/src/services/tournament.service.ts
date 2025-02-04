@@ -5,9 +5,10 @@ import { customFetch } from "@/lib/custom_fetch";
 import { TournamentAnalytics } from "@/types/analytics.types";
 
 export default class tournamentService {
-  static async getAll(): Promise<PaginatedResponse<Tournament>> {
+  static async getAll(isLeague: boolean | null = null): Promise<PaginatedResponse<Tournament>> {
     return customFetch(`${API_URL}/tournaments`, {
       query: {
+        is_league: isLeague,
         page: 1,
         per_page: -1,
         sort: "id",

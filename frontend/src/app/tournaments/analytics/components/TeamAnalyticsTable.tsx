@@ -19,11 +19,9 @@ import { TournamentTeamCardSkeleton } from "@/components/TournamentTeamCard";
 
 export const TournamentTeamTable = ({ players }: { players: PlayerAnalytics[] }) => {
   // @ts-ignore
-  const sortedPlayers: PlayerAnalytics[] = useMemo(
-    () => {
-      return sortTeamPlayers(players)
-    }, [players]
-  );
+  const sortedPlayers: PlayerAnalytics[] = useMemo(() => {
+    return sortTeamPlayers(players);
+  }, [players]);
 
   return (
     <ScrollArea>
@@ -52,7 +50,7 @@ export const TournamentTeamTable = ({ players }: { players: PlayerAnalytics[] })
             return (
               <TableRow key={player.id} className={color}>
                 <TableCell className="font-medium">
-                  <PlayerRoleIcon role={player.role} />
+                  <PlayerRoleIcon role={player.role} size={22} />
                 </TableCell>
                 <TableCell>
                   <PlayerName player={player} includeSpecialization={false} excludeBadge={true} />
@@ -62,8 +60,8 @@ export const TournamentTeamTable = ({ players }: { players: PlayerAnalytics[] })
                     <Image
                       src={`/divisions/${player.division}.png`}
                       alt="Division"
-                      width={32}
-                      height={32}
+                      width={30}
+                      height={30}
                     />
                   </div>
                 </TableCell>
@@ -81,16 +79,14 @@ export const TournamentTeamTable = ({ players }: { players: PlayerAnalytics[] })
 };
 
 const TeamAnalyticsCard = ({ team }: { team: TeamAnalytics }) => {
- const color = useMemo(
-   () => {
-     let color = "text-group-a";
+  const color = useMemo(() => {
+    let color = "text-group-a";
 
-     if (team.group?.name == "B") color = "text-group-b";
-     if (team.group?.name == "C") color = "text-group-c";
-     if (team.group?.name == "D") color = "text-group-d";
-     return color
-   }, [team]
- )
+    if (team.group?.name == "B") color = "text-group-b";
+    if (team.group?.name == "C") color = "text-group-c";
+    if (team.group?.name == "D") color = "text-group-d";
+    return color;
+  }, [team]);
 
   return (
     <Card id={team.id.toString()} key={team.id}>
