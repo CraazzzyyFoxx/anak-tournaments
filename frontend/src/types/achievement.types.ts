@@ -27,4 +27,5 @@ export interface AchievementEarned {
   user: User;
   count: number;
   last_tournament: Tournament;
+  last_match: Match;
 }
