@@ -69,7 +69,7 @@ async def get_users_achievement(
     params: pagination.PaginationQueryParams = Depends(),
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    return await flows.get_users_achievement(
+    return await flows.get_achievement_users(
         session, id, pagination.PaginationParams.from_query_params(params)
     )
 

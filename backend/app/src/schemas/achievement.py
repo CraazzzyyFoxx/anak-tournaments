@@ -31,3 +31,4 @@ class AchievementEarned(BaseModel):
     user: UserRead
     count: int
     last_tournament: TournamentRead | None
+    last_match: MatchRead | None

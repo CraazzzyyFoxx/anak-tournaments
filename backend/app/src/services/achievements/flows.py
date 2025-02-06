@@ -5,11 +5,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src import models, schemas
 from src.core import errors, pagination
 from src.services.hero import flows as hero_flows
-from src.services.tournament import flows as tournament_flows
 from src.services.user import flows as user_flows
 from src.services.encounter import flows as encounter_flows
 from src.services.tournament import service as tournament_service
 from src.services.tournament import flows as tournament_flows
+from src.services.encounter import service as encounter_service
 
 from . import service
 
@@ -217,7 +217,7 @@ async def get_user_achievements(
     return list(cache.values())
 
 
-async def get_users_achievement(
+async def get_achievement_users(
     session: AsyncSession, achievement_id: int, params: pagination.PaginationParams
 ) -> pagination.Paginated[schemas.AchievementEarned]:
     """
@@ -234,22 +234,29 @@ async def get_users_achievement(
     users, total = await service.get_users_achievements(session, achievement_id, params)
     results: list[schemas.AchievementEarned] = []
     tournament_to_fetch: list[int] = []
+    matches_to_fetch: list[int] = []
 
-    for user, count, last_tournament_id in users:
+    for user, count, last_tournament_id, last_match_id in users:
         if last_tournament_id:
             tournament_to_fetch.append(last_tournament_id)
+        if last_match_id:
+            matches_to_fetch.append(last_match_id)
 
     tournaments = await tournament_service.get_bulk_tournament(
         session, tournament_to_fetch, []
     )
+    matches = await encounter_service.get_match_bulk(session, matches_to_fetch, ["encounter"])
 
-    for user, count, last_tournament_id in users:
+    tournaments_map: dict[int, models.Tournament] = {tournament.id: tournament for tournament in tournaments}
+    matches_map: dict[int, models.Match] = {match.id: match for match in matches}
+
+    for user, count, last_tournament_id, last_match_id in users:
         last_tournament = None
+        last_match = None
         if last_tournament_id:
-            for tournament in tournaments:
-                if tournament.id == last_tournament_id:
-                    last_tournament = tournament
-                    break
+            last_tournament = tournaments_map[last_tournament_id]
+        if last_match_id:
+            last_match = matches_map[last_match_id]
 
         results.append(
             schemas.AchievementEarned(
@@ -260,6 +267,9 @@ async def get_users_achievement(
                 )
                 if last_tournament
                 else None,
+                last_match=await encounter_flows.to_pydantic_match(
+                    session, last_match, ["encounter"]
+                ) if last_match else None,
             )
         )
 
