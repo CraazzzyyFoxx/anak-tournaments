@@ -22,9 +22,7 @@ class AppConfig(BaseSettings):
 
     cors_origins: list[str] = []
 
-    celery_broker_url: RedisDsn
-    celery_result_backend: RedisDsn
-    redis_password: str
+    redis_url: RedisDsn
 
     # Logging
     log_level: str = "info"
@@ -71,6 +69,14 @@ class AppConfig(BaseSettings):
             f"{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
         return f"postgresql+psycopg://{url}"
+
+    @property
+    def celery_broker_url_string(self):
+        return f"{self.redis_url}/0"
+
+    @property
+    def celery_result_backend_string(self):
+        return f"{self.redis_url}/1"
 
 
 app = AppConfig()
