@@ -60,6 +60,7 @@ async def calculate_beginners_are_lucky_achievements(
         .options(sa.orm.joinedload(models.Team.players))
         .join(models.Player, models.Team.id == models.Player.team_id)
         .join(models.Standing, models.Team.id == models.Standing.team_id)
+        .join(models.Tournament, models.Team.tournament_id == models.Tournament.id)
         .where(
             sa.and_(
                 models.Team.tournament_id == tournament.id,

@@ -33,7 +33,7 @@ const AchievementUsers = ({ achievement }: { achievement: Achievement }) => {
   } = useInfiniteQuery({
     queryKey: ["achievement", "users", achievement.id],
     queryFn: fetchUsers,
-    getNextPageParam: (lastPage, pages) =>
+    getNextPageParam: (lastPage) =>
       lastPage.total / lastPage.per_page > lastPage.page ? lastPage.page + 1 : undefined
   });
 
@@ -62,20 +62,23 @@ const AchievementUsers = ({ achievement }: { achievement: Achievement }) => {
               <TableHead>User</TableHead>
               <TableHead>Count</TableHead>
               {data?.pages[0].results[0].last_tournament && <TableHead>Last Tournament</TableHead>}
+              {data?.pages[0].results[0].last_match && <TableHead>Last Match</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {data?.pages.map((group) =>
               group.results.map((achievement) => (
-                <TableRow
-                  key={achievement.user.id}
-                  onClick={() => router.push(`/users/${achievement.user.name.replace("#", "-")}`)}
-                >
+                <TableRow key={achievement.user.id}>
                   <TableCell>
                     <PlayerName player={achievement.user} includeSpecialization={false} />
                   </TableCell>
                   <TableCell>{achievement.count}</TableCell>
-                  <TableCell>{achievement.last_tournament?.name}</TableCell>
+                  <TableCell onClick={() => router.push(`/tournaments/${achievement.last_tournament.id}`)}>
+                    {achievement.last_tournament?.name}
+                  </TableCell>
+                  <TableCell onClick={() => router.push(`/matches/${achievement.last_match.id}`)}>
+                    {achievement.last_match?.encounter?.name}
+                  </TableCell>
                 </TableRow>
               ))
             )}

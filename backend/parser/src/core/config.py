@@ -32,8 +32,8 @@ class AppConfig(BaseSettings):
     logs_celery_root_path: str = f"{Path.cwd()}/logs/celery"
     sentry_dsn: str | None = None
 
-    super_user_email: EmailStr
-    super_user_password: str
+    superuser_email: EmailStr
+    superuser_password: str
     access_token_secret: str
 
     # Postgres
@@ -49,6 +49,7 @@ class AppConfig(BaseSettings):
     s3_access_key: str
     s3_secret_key: str
     s3_endpoint_url: str
+    s3_bucket: str
 
     proxy_ip: str | None
     proxy_port: int | None

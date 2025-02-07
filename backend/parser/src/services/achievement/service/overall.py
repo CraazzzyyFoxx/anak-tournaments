@@ -249,7 +249,7 @@ async def calculate_sisyphus_and_stone_achievements(session: AsyncSession) -> No
         slug="sisyphus-and-stone",
         required_value=3,
         required_position=2,
-        operator_str="==",
+        operator_str=">=",
     )
 
 
@@ -259,7 +259,7 @@ async def calculate_dahao_achievements(session: AsyncSession) -> None:
         slug="dahao",
         required_value=2,
         required_position=1,
-        operator_str="==",
+        operator_str=">=",
         count_by="role",
     )
 

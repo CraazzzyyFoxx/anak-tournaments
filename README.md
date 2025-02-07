@@ -103,6 +103,6 @@ All data provided by the API is owned by Anakq and their community.
 
 ## 📝 License
 
-Copyright © 2024-2025 [Andrey Podyanov](https://github.com/CraazzzyyFoxx).
+Copyright © 2024-2025 [CraazzzyyFoxx](https://github.com/CraazzzyyFoxx).
 
 This project is [MIT](https://github.com/CraazzzyyFoxx/anak-tournaments/blob/master/LICENSE) licensed.

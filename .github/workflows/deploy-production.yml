@@ -7,26 +7,50 @@ on:
 
 jobs:
   deploy:
-    # Do not deploy in the main repository, only in user projects
-    if: github.repository_owner != 'fastapi'
     runs-on:
       - self-hosted
       - production
     env:
       ENVIRONMENT: production
       DOMAIN: ${{ secrets.DOMAIN_PRODUCTION }}
-      STACK_NAME: ${{ secrets.STACK_NAME_PRODUCTION }}
-      SECRET_KEY: ${{ secrets.SECRET_KEY }}
-      FIRST_SUPERUSER: ${{ secrets.FIRST_SUPERUSER }}
-      FIRST_SUPERUSER_PASSWORD: ${{ secrets.FIRST_SUPERUSER_PASSWORD }}
-      SMTP_HOST: ${{ secrets.SMTP_HOST }}
-      SMTP_USER: ${{ secrets.SMTP_USER }}
-      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-      EMAILS_FROM_EMAIL: ${{ secrets.EMAILS_FROM_EMAIL }}
-      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-      SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+      APP_PORT: ${{ secrets.APP_PORT_PRODUCTION }}
+      TRAEFIK_PORT: ${{ secrets.TRAEFIK_PORT_PRODUCTION }}
+      USERNAME: ${{ secrets.USERNAME_PRODUCTION }}
+      PASSWORD: ${{ secrets.PASSWORD_PRODUCTION }}
+
+      NEXT_API_URL: ${{ secrets.NEXT_API_URL_PRODUCTION }}
+      NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL_PRODUCTION }}
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY_PRODUCTION }}
+      CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY_PRODUCTION }}
+
+      PROJECT_URL: ${{ secrets.PROJECT_URL_PRODUCTION }}
+
+      CACHE_URL: ${{ secrets.CACHE_URL_PRODUCTION }}
+      CORS_ORIGINS: ${{ secrets.CORS_ORIGINS_PRODUCTION }}
+      CELERY_BROKER_URL: ${{ secrets.CELERY_BROKER_URL_PRODUCTION }}
+      CELERY_RESULT_BACKEND: ${{ secrets.CELERY_RESULT_BACKEND_PRODUCTION }}
+
+      SUPERUSER_EMAIL: ${{ secrets.SUPERUSER_EMAIL_PRODUCTION }}
+      SUPERUSER_PASSWORD: ${{ secrets.SUPERUSER_PASSWORD_PRODUCTION }}
+      ACCESS_TOKEN_SECRET: ${{ secrets.ACCESS_TOKEN_SECRET_PRODUCTION }}
+
+      POSTGRES_USER: ${{ secrets.POSTGRES_USER_PRODUCTION }}
+      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD_PRODUCTION }}
+      POSTGRES_DB: ${{ secrets.POSTGRES_DB_PRODUCTION }}
+      POSTGRES_HOST: ${{ secrets.POSTGRES_HOST_PRODUCTION }}
+      POSTGRES_PORT: ${{ secrets.POSTGRES_PORT_PRODUCTION }}
+
+      CHALLONGE_API_KEY: ${{ secrets.CHALLONGE_API_KEY_PRODUCTION }}
+      CHALLONGE_USERNAME: ${{ secrets.CHALLONGE_USERNAME_PRODUCTION }}
+
+      S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY_PRODUCTION }}
+      S3_SECRET_KEY: ${{ secrets.S3_SECRET_KEY_PRODUCTION }}
+      S3_ENDPOINT: ${{ secrets.S3_ENDPOINT_PRODUCTION }}
+      S3_BUCKET: ${{ secrets.S3_BUCKET_PRODUCTION }}
+
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - run: docker compose -f docker-compose.yml --project-name ${{ secrets.STACK_NAME_PRODUCTION }} build
-      - run: docker compose -f docker-compose.yml --project-name ${{ secrets.STACK_NAME_PRODUCTION }} up -d
+      - run: docker compose -f docker-compose.yml --project-name aqt build
+      - run: docker compose -f docker-compose.yml --project-name aqt up -d

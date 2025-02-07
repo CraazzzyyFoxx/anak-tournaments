@@ -656,3 +656,26 @@ async def get_all_matches(
     result = await session.execute(query)
     result_total = await session.execute(total_query)
     return result.unique().scalars().all(), result_total.scalar_one()
+
+
+async def get_match_bulk(
+        session: AsyncSession, matches_id: list[int], entities: list[str]
+) -> typing.Sequence[models.Match]:
+    """
+    Retrieves a list of matches by their IDs.
+
+    Parameters:
+        session (AsyncSession): The SQLAlchemy async session.
+        matches_id (list[int]): A list of match IDs to retrieve.
+        entities (list[str]): A list of related entities to load (e.g., ["teams", "map"]).
+
+    Returns:
+        typing.Sequence[models.Match]: A sequence of Match objects.
+    """
+    query = (
+        sa.select(models.Match)
+        .where(models.Match.id.in_(matches_id))
+        .options(*match_entities(entities))
+    )
+    result = await session.execute(query)
+    return result.scalars().all()

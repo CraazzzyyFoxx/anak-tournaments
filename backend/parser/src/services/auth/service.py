@@ -8,12 +8,12 @@ from . import utils
 
 
 async def authenticate(credentials: OAuth2PasswordRequestForm) -> bool:
-    if credentials.username.lower() != config.app.super_user_email:
+    if credentials.username.lower() != config.app.superuser_email:
         utils.hash_password(credentials.password)
         return False
 
     verified, updated_password_hash = utils.verify_and_update_password(
-        credentials.password, config.app.super_user_password
+        credentials.password, config.app.superuser_password
     )
     return verified
 
@@ -36,7 +36,7 @@ async def verify_access_token(token: str | None) -> bool:
 
 async def create_access_token() -> str:
     token_data = {
-        "sub": config.app.super_user_email,
+        "sub": config.app.superuser_email,
         "aud": "aqt_parser",
     }
     access_token = utils.generate_jwt(
