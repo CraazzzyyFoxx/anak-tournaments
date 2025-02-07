@@ -12,11 +12,10 @@ jobs:
       - production
     env:
       ENVIRONMENT: production
-      DOMAIN: ${{ secrets.DOMAIN }}
       APP_PORT: ${{ secrets.APP_PORT }}
       TRAEFIK_PORT: ${{ secrets.TRAEFIK_PORT }}
       USERNAME: ${{ secrets.USERNAME }}
-      PASSWORD: ${{ secrets.PASSWORD }}
+      HASHED_PASSWORD: ${{ secrets.HASHED_PASSWORD }}
 
       NEXT_API_URL: ${{ secrets.NEXT_API_URL }}
       NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
@@ -25,10 +24,8 @@ jobs:
 
       PROJECT_URL: ${{ secrets.PROJECT_URL }}
 
-      CACHE_URL: ${{ secrets.CACHE_URL }}
+      REDIS_URL: ${{ secrets.REDIS_URL }}
       CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
-      CELERY_BROKER_URL: ${{ secrets.CELERY_BROKER_URL }}
-      CELERY_RESULT_BACKEND: ${{ secrets.CELERY_RESULT_BACKEND }}
 
       SUPERUSER_EMAIL: ${{ secrets.SUPERUSER_EMAIL }}
       SUPERUSER_PASSWORD: ${{ secrets.SUPERUSER_PASSWORD }}

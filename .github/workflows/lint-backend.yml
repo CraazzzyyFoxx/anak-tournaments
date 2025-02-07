@@ -12,6 +12,40 @@ on:
 jobs:
   lint-backend:
     runs-on: ubuntu-latest
+    env:
+      ENVIRONMENT: production
+      APP_PORT: ${{ secrets.APP_PORT }}
+      TRAEFIK_PORT: ${{ secrets.TRAEFIK_PORT }}
+      USERNAME: ${{ secrets.USERNAME }}
+      HASHED_PASSWORD: ${{ secrets.HASHED_PASSWORD }}
+
+      NEXT_API_URL: ${{ secrets.NEXT_API_URL }}
+      NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+      CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+
+      PROJECT_URL: ${{ secrets.PROJECT_URL }}
+
+      REDIS_URL: ${{ secrets.REDIS_URL }}
+      CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
+
+      SUPERUSER_EMAIL: ${{ secrets.SUPERUSER_EMAIL }}
+      SUPERUSER_PASSWORD: ${{ secrets.SUPERUSER_PASSWORD }}
+      ACCESS_TOKEN_SECRET: ${{ secrets.ACCESS_TOKEN_SECRET }}
+
+      POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+      POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+      POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
+      POSTGRES_PORT: ${{ secrets.POSTGRES_PORT }}
+
+      CHALLONGE_API_KEY: ${{ secrets.CHALLONGE_API_KEY }}
+      CHALLONGE_USERNAME: ${{ secrets.CHALLONGE_USERNAME }}
+
+      S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
+      S3_SECRET_KEY: ${{ secrets.S3_SECRET_KEY }}
+      S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
+      S3_BUCKET: ${{ secrets.S3_BUCKET }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
