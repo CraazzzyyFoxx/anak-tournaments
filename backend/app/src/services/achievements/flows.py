@@ -4,12 +4,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models, schemas
 from src.core import errors, pagination
-from src.services.hero import flows as hero_flows
-from src.services.user import flows as user_flows
 from src.services.encounter import flows as encounter_flows
-from src.services.tournament import service as tournament_service
-from src.services.tournament import flows as tournament_flows
 from src.services.encounter import service as encounter_service
+from src.services.hero import flows as hero_flows
+from src.services.tournament import flows as tournament_flows
+from src.services.tournament import service as tournament_service
+from src.services.user import flows as user_flows
 
 from . import service
 
@@ -236,7 +236,7 @@ async def get_achievement_users(
     tournament_to_fetch: list[int] = []
     matches_to_fetch: list[int] = []
 
-    for user, count, last_tournament_id, last_match_id in users:
+    for _, _, last_tournament_id, last_match_id in users:
         if last_tournament_id:
             tournament_to_fetch.append(last_tournament_id)
         if last_match_id:
@@ -245,9 +245,13 @@ async def get_achievement_users(
     tournaments = await tournament_service.get_bulk_tournament(
         session, tournament_to_fetch, []
     )
-    matches = await encounter_service.get_match_bulk(session, matches_to_fetch, ["encounter"])
+    matches = await encounter_service.get_match_bulk(
+        session, matches_to_fetch, ["encounter"]
+    )
 
-    tournaments_map: dict[int, models.Tournament] = {tournament.id: tournament for tournament in tournaments}
+    tournaments_map: dict[int, models.Tournament] = {
+        tournament.id: tournament for tournament in tournaments
+    }
     matches_map: dict[int, models.Match] = {match.id: match for match in matches}
 
     for user, count, last_tournament_id, last_match_id in users:
@@ -269,7 +273,9 @@ async def get_achievement_users(
                 else None,
                 last_match=await encounter_flows.to_pydantic_match(
                     session, last_match, ["encounter"]
-                ) if last_match else None,
+                )
+                if last_match
+                else None,
             )
         )
 

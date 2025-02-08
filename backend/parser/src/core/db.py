@@ -1,9 +1,9 @@
+from collections.abc import AsyncGenerator
 from datetime import datetime
-from typing import AsyncGenerator
 
-from sqlalchemy import BigInteger, DateTime, func, create_engine, ColumnCollection, Uuid
+from sqlalchemy import BigInteger, ColumnCollection, DateTime, Uuid, create_engine, func
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, Session, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 from src.core import config, errors
 
@@ -43,7 +43,7 @@ class Base(DeclarativeBase):
                     detail=[errors.ApiExc(code="invalid_column", msg="Invalid column")],
                 )
             return {c.name: c for c in entity.columns}[column_name[1]]
-        except:
+        except (IndexError, KeyError):
             raise errors.ApiHTTPException(
                 status_code=400,
                 detail=[errors.ApiExc(code="invalid_column", msg="Invalid column")],

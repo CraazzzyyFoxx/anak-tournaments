@@ -1,7 +1,7 @@
 import typing
 from pathlib import Path
 
-from pydantic import RedisDsn, EmailStr
+from pydantic import EmailStr, RedisDsn
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 

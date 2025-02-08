@@ -1,6 +1,6 @@
 import typing
 
-from sqlalchemy import String, ForeignKey, Integer, Float, Boolean, Enum
+from sqlalchemy import Boolean, Enum, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.core import db, enums

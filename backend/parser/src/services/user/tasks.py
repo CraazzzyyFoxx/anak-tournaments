@@ -10,7 +10,6 @@ from src.core import config
 
 from . import flows
 
-
 battle_tag_validator = re.compile(config.app.battle_tag_regex, re.UNICODE)
 
 

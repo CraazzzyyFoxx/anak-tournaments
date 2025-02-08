@@ -1,4 +1,4 @@
-from sqlalchemy import String, Enum
+from sqlalchemy import Enum, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.core import db, enums

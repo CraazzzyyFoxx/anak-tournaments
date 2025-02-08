@@ -1,12 +1,11 @@
 import typing
 
-from sqlalchemy import String, ForeignKey, Integer, Float, Boolean, Enum
+from sqlalchemy import Boolean, Enum, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.core import db, enums
-from src.models.tournament import Tournament, TournamentGroup
 from src.models.team import Team
-
+from src.models.tournament import Tournament, TournamentGroup
 
 if typing.TYPE_CHECKING:
     from src.models.match import Match

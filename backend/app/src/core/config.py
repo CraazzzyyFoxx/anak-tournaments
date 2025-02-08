@@ -71,4 +71,5 @@ class Settings(BaseSettings):
     def backend_cache_url(self):
         return f"{self.redis_url}/4"
 
+
 settings = Settings()

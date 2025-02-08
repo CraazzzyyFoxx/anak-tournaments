@@ -5,9 +5,9 @@
 [![Documentation](https://img.shields.io/badge/documentation-yes-brightgreen.svg)](https://aqt.craazzzyyfoxx.me/api/redoc)
 [![License: MIT](https://img.shields.io/github/license/CraazzzyyFoxx/anak-tournaments)](https://github.com/CraazzzyyFoxx/anak-tournaments/blob/master/LICENSE)
 
-> AQT provides comprehensive statistics about Anakq's sub-tournaments. 
-> This includes the history of past tournaments, player statistics such as tournaments participated in, divisions, teams, heroes, and performance metrics. 
-> Built with FastAPI, Next.js, and using Traefik as a reverse proxy and Redis for caching and queuing. 
+> AQT provides comprehensive statistics about Anakq's sub-tournaments.
+> This includes the history of past tournaments, player statistics such as tournaments participated in, divisions, teams, heroes, and performance metrics.
+> Built with FastAPI, Next.js, and using Traefik as a reverse proxy and Redis for caching and queuing.
 > The project is optimized for fast and accurate data delivery, minimizing server load.
 
 ## Table of contents
@@ -22,15 +22,15 @@
 ## ✨ [Live instance](https://aqt.craazzzyyfoxx.me/)
 
 **Backend**
-> The backend is built with FastAPI and provides the core API functionality, including data retrieval, caching, and processing. 
+> The backend is built with FastAPI and provides the core API functionality, including data retrieval, caching, and processing.
 > You can explore the backend API documentation using the following links:
-> 
+>
 >Redoc Documentation: https://aqt.craazzzyyfoxx.me/api/redoc
 >Swagger UI: https://aqt.craazzzyyfoxx.me/api/docs
 
 **Frontend**
-> The frontend is built with Next.js and provides a user-friendly interface for interacting with the AQT API. 
-> It displays tournament history, player statistics, and other relevant data in an intuitive and visually appealing way. 
+> The frontend is built with Next.js and provides a user-friendly interface for interacting with the AQT API.
+> It displays tournament history, player statistics, and other relevant data in an intuitive and visually appealing way.
 >You can access the live frontend instance here:
 >
 > Frontend Live Instance: https://aqt.craazzzyyfoxx.me

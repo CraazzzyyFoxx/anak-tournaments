@@ -1,7 +1,6 @@
-import sqlalchemy as sa
-import pandas as pd
 import numpy as np
-
+import pandas as pd
+import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -10,7 +9,6 @@ from src.core import errors
 from src.services.challonge import service as challonge_service
 
 from . import service
-
 
 COEF_NOVICE_FIRST = 1 / 0.15
 COEF_NOVICE_SECOND = 1 / 0.11
@@ -342,7 +340,7 @@ async def get_analytics(session: AsyncSession, tournament_id: int):
     )
     await session.commit()
 
-    for index, row in final_df.iterrows():
+    for _, row in final_df.iterrows():
         analytics_item = models.TournamentAnalytics(
             tournament_id=row["tournament_id"],
             team_id=row["team_id"],

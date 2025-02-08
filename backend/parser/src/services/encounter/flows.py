@@ -3,10 +3,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from src import models, schemas
-from src.core import errors, enums
-from src.services.tournament import flows as tournament_flows
+from src.core import enums, errors
 from src.services.challonge import service as challonge_service
 from src.services.team import flows as team_flows
+from src.services.tournament import flows as tournament_flows
 from src.services.tournament import service as tournament_service
 
 from . import service

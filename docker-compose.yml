@@ -7,7 +7,7 @@ services:
       - redis-data:/data
     networks:
       - traefik-public
-  
+
   traefik:
     container_name: aqt-traefik
     image: traefik:3.3

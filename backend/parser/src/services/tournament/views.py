@@ -1,8 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 
-from src.core import db, enums
 from src import schemas
-
+from src.core import db, enums
 from src.services.auth import flows as auth_flows
 
 from . import flows

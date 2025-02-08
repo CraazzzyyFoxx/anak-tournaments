@@ -1,9 +1,8 @@
-from sqlalchemy import ForeignKey, Integer, Enum, Float, Boolean
+from sqlalchemy import Boolean, Enum, Float, ForeignKey, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src import models
 from src.core import db, enums
-
 
 __all__ = (
     "Match",

@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-from src.schemas import BaseRead, TeamRead, TournamentRead, TournamentGroupRead
+from src.schemas import BaseRead, TeamRead, TournamentGroupRead, TournamentRead
 
 __all__ = (
     "StandingTeamData",

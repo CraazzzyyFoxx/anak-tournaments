@@ -6,15 +6,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models, schemas
 from src.core import enums, errors, pagination
-from src.services.team import service as team_service
-from src.services.map import flows as map_flows
-from src.services.user import service as user_service
 from src.services.encounter import flows as encounter_flows
 from src.services.encounter import service as encounter_service
-from src.services.tournament import flows as tournament_flows
 from src.services.hero import service as hero_service
-from src.services.tournament import flows as tournaments_flows
+from src.services.map import flows as map_flows
 from src.services.s3 import service as s3_service
+from src.services.team import service as team_service
+from src.services.tournament import flows as tournament_flows
+from src.services.tournament import flows as tournaments_flows
+from src.services.user import service as user_service
 
 from . import service
 
@@ -24,9 +24,9 @@ class MatchLogProcessor:
         self.tournament: models.Tournament = tournament
         self.filename: str = name
         self.data_in: list[str] = data_in
-        self.rows: list[tuple[enums.LogEventType, float, list[str]]] = (
-            self.format_rows()
-        )
+        self.rows: list[
+            tuple[enums.LogEventType, float, list[str]]
+        ] = self.format_rows()
         self.rows_grouped: dict[
             int, list[tuple[enums.LogEventType, float, list[str]]]
         ] = self.group_by_rounds()
@@ -130,7 +130,7 @@ class MatchLogProcessor:
         teams = self.get_team_names()
         cache: dict[str, list[str]] = {teams[0]: [], teams[1]: []}
         for team_name in teams:
-            for event, time, values in self.get_rows_by_event(
+            for _, _, values in self.get_rows_by_event(
                 enums.LogEventType.PlayerJoined, before=enums.LogEventType.MatchEnd
             ):
                 player, team = values[0], values[1]
@@ -175,7 +175,9 @@ class MatchLogProcessor:
     async def get_hero(self, session: AsyncSession, hero_name: str) -> models.Hero:
         hero_name = enums.hero_translation.get(hero_name, hero_name)
         if not self.heroes:
-            heroes, total = await hero_service.get_all(session, pagination.PaginationParams(per_page=-1))
+            heroes, total = await hero_service.get_all(
+                session, pagination.PaginationParams(per_page=-1)
+            )
             self.heroes = {hero.name: hero for hero in heroes}
 
         return self.heroes[hero_name]
@@ -334,7 +336,7 @@ class MatchLogProcessor:
             related_player_id=player.id,
             is_newcomer=player_data.is_newcomer
             if player_data
-            else not bool((team_service.get_player_by_user(session, user.id, []))),
+            else not bool(team_service.get_player_by_user(session, user.id, [])),
             is_newcomer_role=player_data.is_newcomer_role if player_data else True,
         )
 
@@ -540,12 +542,12 @@ class MatchLogProcessor:
         )
 
     async def create_events(
-            self,
-            session: AsyncSession,
-            match: models.Match,
-            players: dict[str, models.Player],
-            event_type: enums.LogEventType,
-            match_event_type: enums.MatchEvent,
+        self,
+        session: AsyncSession,
+        match: models.Match,
+        players: dict[str, models.Player],
+        event_type: enums.LogEventType,
+        match_event_type: enums.MatchEvent,
     ) -> list[models.MatchEvent]:
         events: list[models.MatchEvent] = []
         for match_round, rows in self.get_grouped_rows_by_event(event_type).items():
@@ -557,10 +559,10 @@ class MatchLogProcessor:
         return events
 
     async def process_events(
-            self,
-            session: AsyncSession,
-            match: models.Match,
-            players: dict[str, models.Player],
+        self,
+        session: AsyncSession,
+        match: models.Match,
+        players: dict[str, models.Player],
     ) -> None:
         event_types = [
             (enums.LogEventType.OffensiveAssist, enums.MatchEvent.OffensiveAssist),
@@ -569,13 +571,18 @@ class MatchLogProcessor:
             (enums.LogEventType.UltimateStart, enums.MatchEvent.UltimateStart),
             (enums.LogEventType.UltimateEnd, enums.MatchEvent.UltimateEnd),
             (enums.LogEventType.HeroSwap, enums.MatchEvent.HeroSwap),
-            (enums.LogEventType.EchoDuplicateStart, enums.MatchEvent.EchoDuplicateStart),
+            (
+                enums.LogEventType.EchoDuplicateStart,
+                enums.MatchEvent.EchoDuplicateStart,
+            ),
             (enums.LogEventType.EchoDuplicateEnd, enums.MatchEvent.EchoDuplicateEnd),
         ]
 
         all_events = []
         for log_event, match_event in event_types:
-            events = await self.create_events(session, match, players, log_event, match_event)
+            events = await self.create_events(
+                session, match, players, log_event, match_event
+            )
             all_events.extend(events)
 
         session.add_all(all_events)
@@ -654,7 +661,7 @@ class MatchLogProcessor:
                     )
 
         for match_round, mvp_data in mvps_cache_reverted.items():
-            for i, (value, player_name) in enumerate(
+            for i, (_, player_name) in enumerate(
                 sorted(mvp_data.items(), reverse=True, key=lambda x: x[0]), 1
             ):
                 player = players[player_name]
@@ -1017,18 +1024,16 @@ async def process_closeness(session: AsyncSession, payload: list[str]):
         )
 
 
-async def process_match_log(session: AsyncSession, tournament_id: int, filename: str, *, is_raise: bool = True) -> None:
+async def process_match_log(
+    session: AsyncSession, tournament_id: int, filename: str, *, is_raise: bool = True
+) -> None:
     tournament = await tournaments_flows.get(session, tournament_id, [])
     logger.info(
         f"Fetching logs from S3 for tournament {tournament.id} and file {filename}"
     )
 
-    data = await s3_service.async_client.get_log_by_filename(
-        tournament.id, filename
-    )
+    data = await s3_service.async_client.get_log_by_filename(tournament.id, filename)
     decoded_lines = [line.decode() for line in data.split(b"\n") if line]
 
-    processor = MatchLogProcessor(
-        tournament, filename.split("/")[-1], decoded_lines
-    )
+    processor = MatchLogProcessor(tournament, filename.split("/")[-1], decoded_lines)
     await processor.start(session, is_raise=is_raise)

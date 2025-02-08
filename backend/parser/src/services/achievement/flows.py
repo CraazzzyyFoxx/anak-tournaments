@@ -1,8 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.services.tournament import service as tournament_service
-
 from src import schemas
+from src.services.tournament import service as tournament_service
 
 from . import service
 

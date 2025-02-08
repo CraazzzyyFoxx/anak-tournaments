@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends
 
+from src.core import enums
 from src.services.auth import flows as auth_flows
 
-from src.core import enums
 from . import service
 
 router = APIRouter(

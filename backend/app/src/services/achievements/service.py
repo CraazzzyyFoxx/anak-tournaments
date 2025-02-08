@@ -166,9 +166,7 @@ async def get_users_achievements(
             sa.func.max(models.AchievementUser.tournament_id).label(
                 "last_tournament_id"
             ),
-            sa.func.max(models.AchievementUser.match_id).label(
-                "last_match_id"
-            )
+            sa.func.max(models.AchievementUser.match_id).label("last_match_id"),
         )
         .select_from(models.AchievementUser)
         .join(models.User, models.User.id == models.AchievementUser.user_id)

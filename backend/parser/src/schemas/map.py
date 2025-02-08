@@ -2,7 +2,6 @@ from pydantic import BaseModel
 
 from src.schemas import BaseRead, GamemodeRead
 
-
 __all__ = (
     "OverfastMap",
     "MapRead",

@@ -1,8 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src import schemas, models
+from src import models, schemas
 from src.core import errors
-
 
 from . import service
 
@@ -58,7 +57,7 @@ async def create_or_ignore_battle_tags(
 ) -> None:
     battle_tags = [tag.battle_tag for tag in player.battle_tag]
 
-    maybe_need_add_battle_tags = [tag for tag in in_battle_tags]
+    maybe_need_add_battle_tags = list(in_battle_tags)
     for battle_tag in set(maybe_need_add_battle_tags):
         if (
             battle_tag
@@ -79,7 +78,7 @@ async def create_or_ignore_discords(
 ) -> None:
     discords = [discord.name for discord in player.discord]
 
-    maybe_need_add_discords = [discord for discord in in_discords]
+    maybe_need_add_discords = list(in_discords)
     for discord in set(maybe_need_add_discords):
         if (
             discord
@@ -94,7 +93,7 @@ async def create_or_ignore_twitches(
 ) -> None:
     twitches = [twitch.name for twitch in player.twitch]
 
-    maybe_need_add_twitches = [twitch for twitch in in_twitches]
+    maybe_need_add_twitches = list(in_twitches)
     for twitch in set(maybe_need_add_twitches):
         if (
             twitch

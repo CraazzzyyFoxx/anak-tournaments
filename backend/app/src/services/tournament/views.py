@@ -65,7 +65,7 @@ async def get_standings(
     summary="Get all tournaments",
 )
 async def get_all_tournaments(
-    params: schemas.TournamentPaginationSortSearchQueryParams= Depends(),
+    params: schemas.TournamentPaginationSortSearchQueryParams = Depends(),
     session: AsyncSession = Depends(db.get_async_session),
 ):
     return await flows.get_all(

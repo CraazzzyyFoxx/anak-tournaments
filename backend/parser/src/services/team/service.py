@@ -1,7 +1,6 @@
 import typing
 
 import sqlalchemy as sa
-
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.strategy_options import _AbstractLoad
@@ -156,7 +155,7 @@ async def get_by_players_tournament(
             sa.and_(
                 models.Player.user_id.in_(players_ids),
                 models.Team.tournament_id == tournament.id,
-                models.Player.is_substitution == False,
+                models.Player.is_substitution.is_(False),
             )
         )
         .group_by(models.Team.id)

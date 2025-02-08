@@ -2,9 +2,8 @@ from sqlalchemy import ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.core import db
-from src.models.tournament import Tournament
 from src.models.team import Player, Team
-
+from src.models.tournament import Tournament
 
 __all__ = ("TournamentAnalytics",)
 

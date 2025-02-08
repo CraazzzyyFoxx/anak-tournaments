@@ -1,15 +1,13 @@
-from loguru import logger
-
 import sqlalchemy as sa
-
+from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models, schemas
-from src.core import errors, enums
-from src.services.tournament import flows as tournament_flows
-from src.services.user import flows as user_flows
+from src.core import enums, errors
 from src.services.challonge import service as challonge_service
+from src.services.tournament import flows as tournament_flows
 from src.services.tournament import service as tournament_service
+from src.services.user import flows as user_flows
 
 from . import service
 

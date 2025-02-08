@@ -5,9 +5,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models, schemas
 from src.core import enums, errors, pagination
+from src.services.team import flows as team_flows
 from src.services.team import service as team_service
 from src.services.user import flows as user_flows
-from src.services.team import flows as team_flows
 
 from . import service
 
@@ -378,12 +378,16 @@ async def get_analytics(
         if team.id not in cache_teams_wins:
             cache_teams_wins[team.id] = analytics.wins
 
-    avg_team_cost = round(sum([t.avg_sr for t in cache_teams.values()]) / len(cache_teams))
+    avg_team_cost = round(
+        sum([t.avg_sr for t in cache_teams.values()]) / len(cache_teams)
+    )
 
     for team_id, team in cache_teams.items():
         players = cache_players[team_id]
         team_read = await team_flows.to_pydantic(session, team, ["placement", "group"])
-        balancer_shift = -math.ceil(((team.avg_sr - (team.avg_sr % 10) ) - avg_team_cost) / 20)
+        balancer_shift = -math.ceil(
+            ((team.avg_sr - (team.avg_sr % 10)) - avg_team_cost) / 20
+        )
         manual_shift = round(cache_teams_manual_shift[team_id] / 100)
 
         output.append(

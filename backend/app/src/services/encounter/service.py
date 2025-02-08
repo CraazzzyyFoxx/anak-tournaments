@@ -659,7 +659,7 @@ async def get_all_matches(
 
 
 async def get_match_bulk(
-        session: AsyncSession, matches_id: list[int], entities: list[str]
+    session: AsyncSession, matches_id: list[int], entities: list[str]
 ) -> typing.Sequence[models.Match]:
     """
     Retrieves a list of matches by their IDs.

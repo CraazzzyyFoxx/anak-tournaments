@@ -123,7 +123,9 @@ async def get_all(
 
     if params.is_league is not None:
         query = query.where(models.Tournament.is_league.is_(params.is_league))
-        total_query = total_query.where(models.Tournament.is_league.is_(params.is_league))
+        total_query = total_query.where(
+            models.Tournament.is_league.is_(params.is_league)
+        )
 
     result = await session.execute(query)
     total_result = await session.execute(total_query)

@@ -1,9 +1,8 @@
 import httpx
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src import schemas, models
-from src.core import pagination, errors
+from src import models, schemas
+from src.core import errors, pagination
 from src.services.gamemode import service as gamemode_service
 
 from . import service

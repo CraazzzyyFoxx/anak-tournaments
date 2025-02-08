@@ -1,12 +1,10 @@
 import typing
 
 import sqlalchemy as sa
-
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 
 from src import models
-from src.core import pagination, enums
+from src.core import enums, pagination
 
 
 async def get_by_slug(session: AsyncSession, slug: str) -> models.Hero | None:

@@ -3,25 +3,24 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import ORJSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.requests import Request
-
+from fastapi.responses import ORJSONResponse
 from src import api
-from src.core import config, db
+from src.core import config
 from src.core.logging import logger
 from src.middlewares.exception import ExceptionMiddleware
 from src.middlewares.time import TimeMiddleware
+from starlette.requests import Request
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     logger.info("Application... Online!")
-    async with db.async_session_maker() as session:
-        # for index in range(21, 46+1):
-        #     await tournament_flows.get_analytics(session,  index)
-        # await achievement_flows.calculate_achievements(session)
-        pass
+    # async with db.async_session_maker() as session:
+    #     # for index in range(21, 46+1):
+    #     #     await tournament_flows.get_analytics(session,  index)
+    #     # await achievement_flows.calculate_achievements(session)
+    #     pass
     yield
 
 

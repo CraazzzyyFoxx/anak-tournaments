@@ -1,11 +1,10 @@
 import typing
 
-from pydantic import BaseModel, UUID4, Field
+from pydantic import UUID4, BaseModel, Field
 
 from src.schemas import BaseRead
 from src.schemas.tournament import TournamentRead
 from src.schemas.user import UserRead
-
 
 __all__ = (
     "BalancerTeamMember",

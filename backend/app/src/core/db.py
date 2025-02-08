@@ -43,7 +43,7 @@ class Base(DeclarativeBase):
                     detail=[errors.ApiExc(code="invalid_column", msg="Invalid column")],
                 )
             return {c.name: c for c in entity.columns}[column_name[1]]
-        except:
+        except (IndexError, KeyError):
             raise errors.ApiHTTPException(
                 status_code=400,
                 detail=[errors.ApiExc(code="invalid_column", msg="Invalid column")],

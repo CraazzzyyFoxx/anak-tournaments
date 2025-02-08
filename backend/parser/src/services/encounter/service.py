@@ -2,16 +2,15 @@ import typing
 
 import sqlalchemy as sa
 from loguru import logger
-
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from src import models
-from src.core import utils, enums
+from src.core import enums, utils
+from src.services.map import service as map_service
 from src.services.team import service as team_service
 from src.services.tournament import service as tournament_service
-from src.services.map import service as map_service
 
 
 def encounter_entities(

@@ -1,9 +1,7 @@
 import typing
 
 import sqlalchemy as sa
-
 from sqlalchemy.orm.strategy_options import _AbstractLoad
-
 
 __all__ = (
     "prepare_entities",

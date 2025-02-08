@@ -1,11 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel
-
-from src.core import enums
-from src.schemas import UserRead
 from src.schemas.base import BaseRead
-
 
 __all__ = ("TournamentRead", "TournamentGroupRead")
 
