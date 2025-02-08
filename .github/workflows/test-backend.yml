@@ -62,7 +62,7 @@ jobs:
       - run: docker compose down -v --remove-orphans
         working-directory: backend
       - name: Run tests
-        run: uv run bash scripts/tests-start.sh "Coverage for ${{ github.sha }}"
+        run: uv run bash scripts/test.sh "Coverage for ${{ github.sha }}"
         working-directory: backend
       - run: docker compose down -v --remove-orphans
       - name: Store coverage files
