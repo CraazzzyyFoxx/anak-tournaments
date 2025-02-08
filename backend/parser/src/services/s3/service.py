@@ -64,4 +64,4 @@ class S3AsyncClient:
             return ""
 
 
-async_client = S3AsyncClient(bucket_name=config.app.s3_bucket)
+async_client = S3AsyncClient(bucket_name=config.app.s3_bucket_name)

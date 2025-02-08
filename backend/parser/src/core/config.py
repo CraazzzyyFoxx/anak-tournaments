@@ -47,7 +47,7 @@ class AppConfig(BaseSettings):
     s3_access_key: str
     s3_secret_key: str
     s3_endpoint_url: str
-    s3_bucket: str
+    s3_bucket_name: str
 
     proxy_ip: str | None
     proxy_port: int | None
@@ -71,11 +71,11 @@ class AppConfig(BaseSettings):
         return f"postgresql+psycopg://{url}"
 
     @property
-    def celery_broker_url_string(self):
+    def celery_broker_url(self):
         return f"{self.redis_url}/0"
 
     @property
-    def celery_result_backend_string(self):
+    def celery_result_backend(self):
         return f"{self.redis_url}/1"
 
 

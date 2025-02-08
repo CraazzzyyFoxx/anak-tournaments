@@ -59,8 +59,8 @@ app.add_middleware(
 app.add_middleware(ExceptionMiddleware)
 app.add_middleware(TimeMiddleware)
 
-cache.setup(config.settings.api_cache_url.unicode_string(), prefix="fastapi:")
-cache.setup(config.settings.backend_cache_url.unicode_string(), prefix="backend:")
+cache.setup(config.settings.api_cache_url, prefix="fastapi:")
+cache.setup(config.settings.backend_cache_url, prefix="backend:")
 
 
 @app.exception_handler(RequestValidationError)

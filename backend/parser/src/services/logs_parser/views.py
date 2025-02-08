@@ -17,7 +17,7 @@ router = APIRouter(
     tags=[enums.RouteTag.LOGS],
     dependencies=[Depends(auth_flows.current_user)],
 )
-task_router = RedisRouter(config.app.celery_broker_url.unicode_string(), logger=logger)
+task_router = RedisRouter(config.app.celery_broker_url, logger=logger)
 publisher = task_router.publisher(PROCESS_MATCH_LOGS_TOPIC, title="Logs")
 
 
