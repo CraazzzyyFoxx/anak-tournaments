@@ -379,7 +379,7 @@ async def get_analytics(
         )
         .join(models.Team, models.Team.id == models.TournamentAnalytics.team_id)
         .join(models.Player, models.Player.id == models.TournamentAnalytics.player_id)
-        .where(models.TournamentAnalytics.tournament_id == tournament_id)
+        .where(models.TournamentAnalytics.tournament_id == tournament_id, models.TournamentAnalytics.algorithm == "points")
     )
     result = await session.execute(query)
     return result.unique().all()

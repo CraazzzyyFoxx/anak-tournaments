@@ -16,6 +16,7 @@ class TournamentAnalytics(db.TimeStampIntegerMixin):
     tournament_id: Mapped[int] = mapped_column(
         ForeignKey(Tournament.id, ondelete="CASCADE")
     )
+    algorithm: Mapped[str] = mapped_column()
     wins: Mapped[int] = mapped_column()
     losses: Mapped[int] = mapped_column()
     shift_one: Mapped[int | None] = mapped_column(nullable=True)
