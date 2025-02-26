@@ -5,9 +5,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models, schemas
 from src.core import enums, errors, pagination
+from src.services.team import flows as team_flows
 from src.services.team import service as team_service
 from src.services.user import flows as user_flows
-from src.services.team import flows as team_flows
 
 from . import service
 
@@ -347,6 +347,7 @@ async def get_owal_standings(session: AsyncSession) -> schemas.OwalStandings:
 async def get_analytics(
     session: AsyncSession,
     tournament_id: int,
+    algorithm: str
 ) -> schemas.TournamentAnalytics:
     """
     Retrieves analytics data for a specific tournament.
@@ -366,7 +367,7 @@ async def get_analytics(
     cache_teams_wins: dict[int, int] = {}
     cache_teams_manual_shift: dict[int, int] = {}
 
-    data = await service.get_analytics(session, tournament_id)
+    data = await service.get_analytics(session, tournament_id, algorithm)
     for team, player, analytics in data:
         cache_teams[team.id] = team
         cache_players.setdefault(team.id, [])
@@ -378,12 +379,16 @@ async def get_analytics(
         if team.id not in cache_teams_wins:
             cache_teams_wins[team.id] = analytics.wins
 
-    avg_team_cost = round(sum([t.avg_sr for t in cache_teams.values()]) / len(cache_teams))
+    avg_team_cost = round(
+        sum([t.avg_sr for t in cache_teams.values()]) / len(cache_teams)
+    )
 
     for team_id, team in cache_teams.items():
         players = cache_players[team_id]
         team_read = await team_flows.to_pydantic(session, team, ["placement", "group"])
-        balancer_shift = -math.ceil(((team.avg_sr - (team.avg_sr % 10) ) - avg_team_cost) / 20)
+        balancer_shift = -math.ceil(
+            ((team.avg_sr - (team.avg_sr % 10)) - avg_team_cost) / 20
+        )
         manual_shift = round(cache_teams_manual_shift[team_id] / 100)
 
         output.append(

@@ -11,13 +11,12 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
-from starlette.requests import Request
-
 from src import api
 from src.core import config
 from src.core.logging import logger
 from src.middlewares.exception import ExceptionMiddleware
 from src.middlewares.time import TimeMiddleware
+from starlette.requests import Request
 
 
 @asynccontextmanager
@@ -60,8 +59,8 @@ app.add_middleware(
 app.add_middleware(ExceptionMiddleware)
 app.add_middleware(TimeMiddleware)
 
-cache.setup(config.settings.api_cache_url.unicode_string(), prefix="fastapi:")
-cache.setup(config.settings.backend_cache_url.unicode_string(), prefix="backend:")
+cache.setup(config.settings.api_cache_url, prefix="fastapi:")
+cache.setup(config.settings.backend_cache_url, prefix="backend:")
 
 
 @app.exception_handler(RequestValidationError)

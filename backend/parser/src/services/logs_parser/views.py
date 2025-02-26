@@ -1,12 +1,13 @@
-from fastapi import APIRouter, Depends, UploadFile, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from faststream.redis.fastapi import RedisRouter
 from loguru import logger
 
-from src.core import db, enums, config
+from src.core import config, db, enums
 from src.services.auth import flows as auth_flows
-from src.services.tournament import flows as tournaments_flows
 from src.services.s3 import service as s3_service
+from src.services.tournament import flows as tournaments_flows
 from src.services.tournament import service as tournaments_service
+
 from . import flows
 
 PROCESS_MATCH_LOGS_TOPIC = "process_match_log"
@@ -16,7 +17,7 @@ router = APIRouter(
     tags=[enums.RouteTag.LOGS],
     dependencies=[Depends(auth_flows.current_user)],
 )
-task_router = RedisRouter(config.app.celery_broker_url.unicode_string(), logger=logger)
+task_router = RedisRouter(config.app.celery_broker_url, logger=logger)
 publisher = task_router.publisher(PROCESS_MATCH_LOGS_TOPIC, title="Logs")
 
 
@@ -96,6 +97,4 @@ async def process_tournament_log(tournament_id: int):
     for log in await s3_service.async_client.get_logs_by_tournament(tournament.id):
         await flows.process_match_log(session, tournament.id, log, is_raise=False)
 
-    logger.info(
-        f"All logs for tournament {tournament.name} are queued for processing."
-    )
+    logger.info(f"All logs for tournament {tournament.name} are queued for processing.")

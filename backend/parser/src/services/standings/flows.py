@@ -1,5 +1,5 @@
-from sqlalchemy.ext.asyncio import AsyncSession
 from loguru import logger
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models, schemas
 from src.services.tournament import flows as tournament_flows

@@ -38,6 +38,7 @@ const AnalyticsPage = () => {
   const [previousElement, setPreviousElement] = useState<HTMLElement | null>(null);
   const [selectedTeam, setSelectedTeam] = useState<string>("");
   const [activeTab, setActiveTab] = useState<string>("overview");
+  const [algorithm, setAlgorithm] = useState<string>("points");
 
   const {
     data: tournamentsData,
@@ -48,9 +49,9 @@ const AnalyticsPage = () => {
     queryFn: () => tournamentService.getAll(false)
   });
   const { data: analytics, isLoading: teamsLoading } = useQuery({
-    queryKey: ["tournaments", "analytics", activeTournamentId],
+    queryKey: ["tournaments", "analytics", activeTournamentId, algorithm],
     // @ts-ignore
-    queryFn: () => tournamentService.getAnalytics(activeTournamentId),
+    queryFn: () => tournamentService.getAnalytics(activeTournamentId, algorithm),
     enabled: !!activeTournamentId
   });
 
@@ -58,6 +59,7 @@ const AnalyticsPage = () => {
     const newSearchParams = new URLSearchParams(searchParams);
     setActiveTournamentId(Number(newSearchParams.get("tournamentId")));
     setActiveTab(newSearchParams.get("tab") || "overview");
+    setAlgorithm(newSearchParams.get("algorithm") || "points");
     if (!newSearchParams.has("tournamentId") && isSuccessTournaments) {
       newSearchParams.set("tournamentId", String(tournamentsData?.results[0].id));
       router.push(`${pathname}?${newSearchParams.toString()}`);
@@ -86,6 +88,14 @@ const AnalyticsPage = () => {
     setActiveTournamentId(Number(newTournamentId));
   };
 
+  const pushAlgorithm = (newAlgorithm: string) => {
+    if (!searchParams) return `${pathname}?$algorithm=${newAlgorithm}`;
+    const newSearchParams = new URLSearchParams(searchParams);
+    newSearchParams.set("algorithm", String(newAlgorithm));
+    router.push(`${pathname}?${newSearchParams.toString()}`);
+    setAlgorithm(newAlgorithm);
+  }
+
   const scrollToTeam = (team: Team) => {
     setSelectedTeam(team.name);
     setTimeout(() => {
@@ -111,7 +121,7 @@ const AnalyticsPage = () => {
   return (
     <Tabs defaultValue={activeTab}>
       <div className="flex xs:flex-col md:flex-row gap-4 pb-4">
-        <TabsList className="grid grid-cols-2 w-[250px]">
+        <TabsList className="grid grid-cols-2 xs:w-full md:w-[250px]">
           <TabsTrigger value="overview" onClick={() => navToTab("overview")}>
             Overview
           </TabsTrigger>
@@ -123,7 +133,7 @@ const AnalyticsPage = () => {
           value={activeTournamentId?.toString()}
           onValueChange={(value) => pushTournamentId(value)}
         >
-          <SelectTrigger className="w-[250px]">
+          <SelectTrigger className="xs:w-full md:w-[250px]">
             <SelectValue placeholder="Select a tournemnt" />
           </SelectTrigger>
           <SelectContent>
@@ -133,6 +143,20 @@ const AnalyticsPage = () => {
                   {item.name}
                 </SelectItem>
               ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+        <Select
+          value={algorithm}
+          onValueChange={(value) => pushAlgorithm(value)}
+        >
+          <SelectTrigger className="xs:w-full md:w-[250px]">
+            <SelectValue placeholder="Select a algorithm" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              <SelectItem value="points">Points</SelectItem>
+              <SelectItem value="openskill">Open Skill</SelectItem>
             </SelectGroup>
           </SelectContent>
         </Select>

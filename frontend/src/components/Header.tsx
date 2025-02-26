@@ -4,6 +4,12 @@ import Image from "next/image";
 import { Menu } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import UserSearch from "@/components/UserSearch";
 import {
   NavigationMenu,
@@ -108,29 +114,33 @@ const Header = () => {
           </Button>
         </SheetTrigger>
         <SheetContent side="left">
-          <nav className="grid gap-6 text-lg font-medium">
-            <Link href="#" className="flex items-center gap-2 text-lg font-semibold">
+          <nav className="grid gap-2 text-lg font-medium">
+            <Link href="#" className="flex items-center gap-2 text-lg font-semibold mb-4">
               <Image src={"/logo.webp"} alt="Anak" width={32} height={32} />
               <span className="sr-only">Anakq Tournaments</span>
             </Link>
-            <Link href="/users" className="hover:text-foreground">
-              Players
-            </Link>
-            <Link href="/teams" className="text-muted-foreground hover:text-foreground">
-              Teams
-            </Link>
-            <Link
-              href="/encounters?search=&page=1"
-              className="text-muted-foreground hover:text-foreground"
-            >
-              Matches
-            </Link>
-            <Link href="/statistics" className="text-muted-foreground hover:text-foreground">
-              Logs
-            </Link>
-            <Link href="/owal" className="text-muted-foreground hover:text-foreground">
-              OWAL
-            </Link>
+            <Accordion type="single" collapsible className="w-full">
+              {Object.entries(components).map(([category, items]) => (
+                <AccordionItem key={category} value={category}>
+                  <AccordionTrigger className="text-base hover:text-foreground">
+                    {category}
+                  </AccordionTrigger>
+                  <AccordionContent>
+                    <div className="grid gap-4 pl-4">
+                      {items.map((item) => (
+                        <Link
+                          key={item.title}
+                          href={item.href}
+                          className="text-muted-foreground hover:text-foreground text-sm"
+                        >
+                          {item.title}
+                        </Link>
+                      ))}
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
           </nav>
         </SheetContent>
       </Sheet>

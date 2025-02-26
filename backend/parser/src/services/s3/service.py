@@ -1,10 +1,8 @@
-import typing
 from contextlib import asynccontextmanager
 
-from loguru import logger
 from aiobotocore.session import get_session as get_async_session
 from botocore.exceptions import ClientError
-
+from loguru import logger
 
 from src.core import config
 
@@ -24,7 +22,7 @@ class S3AsyncClient:
         async with self.session.create_client("s3", **self.config) as _client:
             yield _client
 
-    async def get_logs_by_tournament(self, tournament_id: int) -> typing.List[str]:
+    async def get_logs_by_tournament(self, tournament_id: int) -> list[str]:
         try:
             async with self.get_client() as _client:
                 response = await _client.list_objects(
@@ -66,4 +64,4 @@ class S3AsyncClient:
             return ""
 
 
-async_client = S3AsyncClient(bucket_name=config.app.s3_bucket)
+async_client = S3AsyncClient(bucket_name=config.app.s3_bucket_name)

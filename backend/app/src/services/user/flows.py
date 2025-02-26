@@ -11,8 +11,8 @@ from src.services.encounter import service as encounter_service
 from src.services.hero import flows as hero_flows
 from src.services.statistics import service as statistics_service
 from src.services.team import flows as team_flows
-from src.services.tournament import flows as tournament_flows
 from src.services.team import service as team_service
+from src.services.tournament import flows as tournament_flows
 
 from . import service
 

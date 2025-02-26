@@ -3,7 +3,6 @@ from httpx import AsyncClient, BasicAuth, Proxy
 from src import schemas
 from src.core import config, errors
 
-
 if config.app.proxy_ip:
     proxy_conf = Proxy(
         url=f"http://{config.app.proxy_username}:{config.app.proxy_password}@{config.app.proxy_ip}:{config.app.proxy_port}"

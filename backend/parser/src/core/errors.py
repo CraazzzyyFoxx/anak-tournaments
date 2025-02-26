@@ -1,8 +1,5 @@
-import typing
-
 from fastapi import HTTPException
 from pydantic import BaseModel, ValidationError
-from starlette import status
 
 
 class ApiExc(BaseModel):

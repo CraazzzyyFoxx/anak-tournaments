@@ -1,11 +1,9 @@
 import typing
-
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 import sqlalchemy as sa
-
-from sqlalchemy.ext.asyncio import AsyncSession
 from loguru import logger
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
@@ -229,6 +227,12 @@ async def get_twitch(session: AsyncSession, twitch: str) -> models.UserTwitch | 
     )
     result = await session.execute(query)
     return result.unique().first()
+
+
+async def get_all(session: AsyncSession, entities: list[str]) -> typing.Sequence[models.User]:
+    query = sa.select(models.User).options(*user_entities(entities))
+    result = await session.scalars(query)
+    return result.unique().all()
 
 
 async def create(

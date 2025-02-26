@@ -1,7 +1,6 @@
-import typing
-from enum import Enum
-from typing import Generic, List, TypedDict, TypeVar
 from dataclasses import dataclass, field
+from enum import Enum
+from typing import Generic, TypedDict, TypeVar
 
 import sqlalchemy as sa
 from fastapi import Query
@@ -25,14 +24,14 @@ class PaginationDict(TypedDict, Generic[ModelType]):
     page: int
     per_page: int
     total: int
-    results: List[ModelType]
+    results: list[ModelType]
 
 
 class Paginated(BaseModel, Generic[SchemaType]):
     page: int
     per_page: int
     total: int
-    results: List[SchemaType]
+    results: list[SchemaType]
 
 
 class SortOrder(Enum):
@@ -41,7 +40,7 @@ class SortOrder(Enum):
 
 
 def apply_search(
-    model: typing.Type[db.Base], query: sa.Select, query_str: str, fields: List[str]
+    model: type[db.Base], query: sa.Select, query_str: str, fields: list[str]
 ) -> sa.Select:
     columns = [model.depth_get_column(field.split(".")) for field in fields]
     search_query = f"%{query_str}%"
@@ -69,7 +68,7 @@ class PaginationParams:
         return cls(**query_params.model_dump())
 
     def apply_sort(
-        self, query: sa.Select, model: typing.Type[db.Base] | None = None
+        self, query: sa.Select, model: type[db.Base] | None = None
     ) -> sa.Select:
         if model:
             if self.order == SortOrder.DESC:
@@ -86,7 +85,7 @@ class PaginationParams:
             return query.order_by(order_by)
 
     def apply_pagination_sort(
-        self, query: sa.Select, model: typing.Type[db.Base] | None = None
+        self, query: sa.Select, model: type[db.Base] | None = None
     ) -> sa.Select:
         if self.per_page == -1:
             return self.apply_sort(query, model)
@@ -105,7 +104,7 @@ class SearchQueryParams(PaginationQueryParams):
     query: str = Field("")
     fields: list[str] = Field(Query(default=[]))
 
-    def apply_search(self, query: sa.Select, model: typing.Type[db.Base]) -> sa.Select:
+    def apply_search(self, query: sa.Select, model: type[db.Base]) -> sa.Select:
         return apply_search(model, query, self.query, self.fields)
 
 
@@ -114,12 +113,12 @@ class SearchPaginationParams(PaginationParams):
     query: str = ""
     fields: list[str] = field(default_factory=list)
 
-    def apply_search(self, query: sa.Select, model: typing.Type[db.Base]) -> sa.Select:
+    def apply_search(self, query: sa.Select, model: type[db.Base]) -> sa.Select:
         columns = [model.depth_get_column(field.split(".")) for field in self.fields]
         search_query = f"%{self.query}%"
         return query.where(sa.or_(*[column.ilike(search_query) for column in columns]))
 
-    def apply_sort(self, query: sa.Select, model: typing.Type[db.Base]) -> sa.Select:
+    def apply_sort(self, query: sa.Select, model: type[db.Base]) -> sa.Select:
         if self.sort.startswith("similarity"):
             sort = self.sort.split(":")[1]
             column = sa.func.word_similarity(

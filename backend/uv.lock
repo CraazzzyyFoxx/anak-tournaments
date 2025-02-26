@@ -125,6 +125,7 @@ dependencies = [
     { name = "faststream" },
     { name = "httpx" },
     { name = "loguru" },
+    { name = "openskill" },
     { name = "orjson" },
     { name = "pandas" },
     { name = "passlib" },
@@ -140,6 +141,7 @@ dependencies = [
     { name = "setuptools" },
     { name = "sqlalchemy" },
     { name = "sqlalchemy-utils" },
+    { name = "trueskillthroughtime" },
     { name = "uvicorn" },
     { name = "uvloop", marker = "sys_platform == 'linux'" },
 ]
@@ -165,6 +167,7 @@ requires-dist = [
     { name = "faststream", specifier = ">=0.5.34" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "loguru", specifier = ">=0.7.3" },
+    { name = "openskill", specifier = ">=6.0.2" },
     { name = "orjson", specifier = ">=3.10.14" },
     { name = "pandas", specifier = ">=2.2.3" },
     { name = "passlib", specifier = ">=1.7.4" },
@@ -180,6 +183,7 @@ requires-dist = [
     { name = "setuptools", specifier = ">=75.8.0" },
     { name = "sqlalchemy", specifier = ">=2.0.37" },
     { name = "sqlalchemy-utils", specifier = ">=0.41.2" },
+    { name = "trueskillthroughtime", specifier = ">=1.1.0" },
     { name = "uvicorn", specifier = ">=0.34.0" },
     { name = "uvloop", marker = "sys_platform == 'linux'" },
 ]
@@ -886,6 +890,15 @@ wheels = [
 ]
 
 [[package]]
+name = "openskill"
+version = "6.0.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/7f/7b/8bd870763a3eb72d8d075c4f43cee73ceed87947558ee393053a67d6563c/openskill-6.0.2.tar.gz", hash = "sha256:7241f6dcfffb3aa1be339fda479e608f35f127cce764e27df90a460733606d1d", size = 44197 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/10/cb/a7b67627f44ff4d32836efd32c52ce4a884c1afdd12a1ab1e0637dc2af65/openskill-6.0.2-py3-none-any.whl", hash = "sha256:d5edabe7308a74ace65bffb6eba0f0f9d8fa9ff4599eba6774c700d3f88f58cf", size = 45700 },
+]
+
+[[package]]
 name = "orjson"
 version = "3.10.14"
 source = { registry = "https://pypi.org/simple" }
@@ -1492,6 +1505,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/1a/4c/9b5764bd22eec91c4039ef4c55334e9187085da2d8a2df7bd570869aae18/starlette-0.41.3.tar.gz", hash = "sha256:0e4ab3d16522a255be6b28260b938eae2482f98ce5cc934cb08dce8dc3ba5835", size = 2574159 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/96/00/2b325970b3060c7cecebab6d295afe763365822b1306a12eeab198f74323/starlette-0.41.3-py3-none-any.whl", hash = "sha256:44cedb2b7c77a9de33a8b74b2b90e9f50d11fcf25d8270ea525ad71a25374ff7", size = 73225 },
+]
+
+[[package]]
+name = "trueskillthroughtime"
+version = "1.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/2d/96/6178541805becf65c0bdbc53a144ffc42a099853555806b3673164d6b09d/trueskillthroughtime-1.1.0.tar.gz", hash = "sha256:3b06fad64e4351ce747f60acffb7ea980685b4fe4597891ebb759956a1a82a32", size = 17912 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d4/53/57839ac1d72d13ae5f513602c9903c0541187bcb7498c4ba95d925c76e52/trueskillthroughtime-1.1.0-py3-none-any.whl", hash = "sha256:948a44e5df901eba1ee595feb5c0d45c541d91f99fa20234a2bf55958bb4251d", size = 13580 },
 ]
 
 [[package]]

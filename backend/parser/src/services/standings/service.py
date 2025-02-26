@@ -187,7 +187,7 @@ def prepare_teams_for_playoffs_double_elimination(
             under_games[encounter.round] = []
         under_games[encounter.round].append(encounter)
 
-    for stage, matches in under_games.items():
+    for matches in under_games.values():
         lossers: list[int] = []
         for match in matches:
             if match.home_score > match.away_score:
@@ -208,13 +208,13 @@ def prepare_teams_for_playoffs_double_elimination(
         output.append(
             schemas.StandingTeamDataWithRanking(
                 id=team_id,
-                wins=data[team_id]["win"],
-                loses=data[team_id]["lose"],
+                wins=team_data["win"],
+                loses=team_data["lose"],
                 draws=0,
                 points=0,
-                ranking=data[team_id]["placement"],
+                ranking=team_data["placement"],
                 opponents=[],
-                matches=data[team_id]["win"] + data[team_id]["lose"],
+                matches=team_data["win"] + team_data["lose"],
             )
         )
 

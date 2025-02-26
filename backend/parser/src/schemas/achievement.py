@@ -2,7 +2,6 @@ import typing
 
 from pydantic import BaseModel
 
-
 __all__ = ("AchievementCreate", "AchievementFunction")
 
 

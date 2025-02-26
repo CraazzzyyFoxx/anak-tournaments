@@ -1,7 +1,6 @@
 import typing
 
 import sqlalchemy as sa
-
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.strategy_options import _AbstractLoad
@@ -28,18 +27,6 @@ async def get(
         .options(*tournament_entities(entities))
     )
     result = await session.execute(query)
-    return result.unique().scalars().first()
-
-
-def get_sync(
-    session: Session, id: int, entities: list[str]
-) -> models.Tournament | None:
-    query = (
-        sa.select(models.Tournament)
-        .where(sa.and_(models.Tournament.id == id))
-        .options(*tournament_entities(entities))
-    )
-    result = session.execute(query)
     return result.unique().scalars().first()
 
 
@@ -140,83 +127,3 @@ async def create_group(
     session.add(group)
     await session.commit()
     return group
-
-
-async def get_analytics(
-    session: AsyncSession,
-) -> typing.Sequence[
-    tuple[models.Team, models.Player, models.Tournament, int, int, int, int, float]
-]:
-    pph = (
-        sa.select(
-            models.Player.user_id,
-            models.Player.role,
-            models.Player.team_id,
-            sa.func.sum(models.Encounter.home_score).label("wins"),
-            sa.func.sum(models.Encounter.away_score).label("losses"),
-        )
-        .join(models.Encounter, models.Player.team_id == models.Encounter.home_team_id)
-        .join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
-        .where(models.Tournament.id >= 21, models.Tournament.is_league.is_(False))
-        .group_by(models.Player.user_id, models.Player.role, models.Player.team_id)
-    ).cte("player_points_home")
-
-    ppa = (
-        sa.select(
-            models.Player.user_id,
-            models.Player.role,
-            models.Player.team_id,
-            sa.func.sum(models.Encounter.away_score).label("wins"),
-            sa.func.sum(models.Encounter.home_score).label("losses"),
-        )
-        .join(models.Encounter, models.Player.team_id == models.Encounter.away_team_id)
-        .join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
-        .where(models.Tournament.id >= 21, models.Tournament.is_league.is_(False))
-        .group_by(models.Player.user_id, models.Player.role, models.Player.team_id)
-    ).cte("player_points_away")
-
-    query = (
-        sa.select(
-            models.Team.id,
-            models.Player,
-            models.Tournament.id,
-            sa.func.coalesce(pph.c.wins, 0) + sa.func.coalesce(ppa.c.wins, 0),
-            sa.func.coalesce(pph.c.losses, 0) + sa.func.coalesce(ppa.c.losses, 0),
-            sa.func.lag(models.Player.rank, 1).over(
-                partition_by=(models.Player.user_id, models.Player.role),
-                order_by=models.Tournament.id,
-            ),
-            sa.func.lag(models.Player.rank, 2).over(
-                partition_by=(models.Player.user_id, models.Player.role),
-                order_by=models.Tournament.id,
-            ),
-        )
-        .join(models.Player, models.Team.id == models.Player.team_id)
-        .join(models.Tournament, models.Player.tournament_id == models.Tournament.id)
-        .join(
-            pph,
-            sa.and_(
-                models.Player.user_id == pph.c.user_id,
-                models.Player.role == pph.c.role,
-                models.Player.team_id == pph.c.team_id,
-            ),
-            isouter=True,
-        )
-        .join(
-            ppa,
-            sa.and_(
-                models.Player.user_id == ppa.c.user_id,
-                models.Player.role == ppa.c.role,
-                models.Player.team_id == ppa.c.team_id,
-            ),
-            isouter=True,
-        )
-        .where(
-            models.Tournament.id >= 21,
-            models.Tournament.is_league.is_(False),
-            models.Player.is_substitution.is_(False),
-        )
-    )
-
-    result = await session.execute(query)
-    return result.all()  # type: ignore

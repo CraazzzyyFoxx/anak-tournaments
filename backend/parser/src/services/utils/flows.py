@@ -1,11 +1,10 @@
 from loguru import logger
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import schemas
-from src.services.user import service as user_service
-from src.services.user import flows as user_flows
 from src.services.team import flows as team_flows
+from src.services.user import flows as user_flows
+from src.services.user import service as user_service
 
 from . import service
 
@@ -13,7 +12,7 @@ from . import service
 async def merge_users_with_dasha_users(session: AsyncSession, payload: list) -> None:
     users_to_merge = await service.get_users_from_dasha(payload)
 
-    for user_id_mg, user_mg in users_to_merge.items():
+    for user_mg in users_to_merge.values():
         user_csv = schemas.UserCSV(
             battle_tag=user_mg.battle_tag,
             twitch=user_mg.twitch,

@@ -1,11 +1,10 @@
 import typing
 from datetime import datetime
 
-from sqlalchemy import String, Integer, Boolean, ForeignKey, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.core import db
-
 
 if typing.TYPE_CHECKING:
     from src.models.standings import Standing

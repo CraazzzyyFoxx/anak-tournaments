@@ -1,12 +1,11 @@
 import typing
 
-from sqlalchemy import String, ForeignKey
+from sqlalchemy import ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.core import db
-from src.models.tournament import Tournament
 from src.models.hero import Hero
-
+from src.models.tournament import Tournament
 
 if typing.TYPE_CHECKING:
     from src.models.match import Match

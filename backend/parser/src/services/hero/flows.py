@@ -1,9 +1,7 @@
 import httpx
-
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 
-from src import schemas, models
+from src import models, schemas
 from src.core import enums, errors
 
 from . import service

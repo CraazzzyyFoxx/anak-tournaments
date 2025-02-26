@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src import models
 from src.core import enums, pagination
 
-
 home_score_case = sa.case(
     (models.Encounter.home_team_id == models.Team.id, models.Encounter.home_score),
     else_=models.Encounter.away_score,

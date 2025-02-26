@@ -2,7 +2,6 @@ from pydantic import BaseModel
 
 from src.schemas import PlayerRead, TeamRead
 
-
 __all__ = ("PlayerAnalytics", "TeamAnalytics", "TournamentAnalytics")
 
 

@@ -4,7 +4,7 @@ from .base import BaseRead
 
 __all__ = ("AchievementRead", "UserAchievementRead", "AchievementEarned")
 
-from src.schemas import HeroRead, TournamentRead, MatchRead, UserRead
+from src.schemas import HeroRead, MatchRead, TournamentRead, UserRead
 
 
 class AchievementRead(BaseRead):

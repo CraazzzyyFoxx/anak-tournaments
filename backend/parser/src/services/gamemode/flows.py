@@ -1,5 +1,4 @@
 import httpx
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import schemas

@@ -2,16 +2,15 @@ import typing
 
 import sqlalchemy as sa
 from loguru import logger
-
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from src import models
-from src.core import utils, enums
+from src.core import enums, utils
+from src.services.map import service as map_service
 from src.services.team import service as team_service
 from src.services.tournament import service as tournament_service
-from src.services.map import service as map_service
 
 
 def encounter_entities(
@@ -256,6 +255,18 @@ async def get_encounter_by_names(
     )
     result = await session.execute(query)
     return result.scalars().one()
+
+
+async def get_encounters_by_tournament(
+    session: AsyncSession, tournament_id: int, entities: list[str]
+) -> typing.Sequence[models.Encounter]:
+    query = (
+        sa.select(models.Encounter)
+        .options(*encounter_entities(entities))
+        .where(models.Encounter.tournament_id == tournament_id)
+    )
+    result = await session.execute(query)
+    return result.scalars().all()
 
 
 async def create(

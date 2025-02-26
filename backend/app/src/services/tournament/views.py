@@ -1,3 +1,5 @@
+import typing
+
 from cashews import cache
 from cashews.contrib.fastapi import cache_control_ttl
 from fastapi import APIRouter, Depends, Query
@@ -65,7 +67,7 @@ async def get_standings(
     summary="Get all tournaments",
 )
 async def get_all_tournaments(
-    params: schemas.TournamentPaginationSortSearchQueryParams= Depends(),
+    params: schemas.TournamentPaginationSortSearchQueryParams = Depends(),
     session: AsyncSession = Depends(db.get_async_session),
 ):
     return await flows.get_all(
@@ -154,8 +156,9 @@ async def get_owal_standings(
 async def get_analytics(
     request: Request,
     tournament_id: int,
+    algorithm: typing.Literal["points", "openskill"] = "points",
     start_tournament_id: int | None = None,
     end_tournament_id: int | None = None,
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    return await flows.get_analytics(session, tournament_id)
+    return await flows.get_analytics(session, tournament_id, algorithm)

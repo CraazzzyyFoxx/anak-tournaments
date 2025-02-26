@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import orjson
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import schemas
@@ -20,7 +19,7 @@ async def create_from_folder(session: AsyncSession) -> None:
     paths = sorted(paths, key=lambda x: x[0])
 
     for tournament_id, path in paths:
-        with open(path, "r", encoding="utf-8") as file:
+        with open(path, encoding="utf-8") as file:
             payload = orjson.loads(file.read())
             teams = [
                 schemas.BalancerTeam.model_validate(team)

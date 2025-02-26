@@ -1,7 +1,6 @@
 import typing
 
 import sqlalchemy as sa
-
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.strategy_options import _AbstractLoad
@@ -93,11 +92,11 @@ async def get_by_name_and_tournament(
 
 
 async def get_by_tournament(
-    session: AsyncSession, tournament: models.Tournament, entities: list[str]
+    session: AsyncSession, tournament_id: int, entities: list[str]
 ) -> typing.Sequence[models.Team]:
     query = (
         sa.select(models.Team)
-        .filter_by(tournament_id=tournament.id)
+        .filter_by(tournament_id=tournament_id)
         .options(*team_entities(entities))
     )
     result = await session.execute(query)
@@ -156,7 +155,7 @@ async def get_by_players_tournament(
             sa.and_(
                 models.Player.user_id.in_(players_ids),
                 models.Team.tournament_id == tournament.id,
-                models.Player.is_substitution == False,
+                models.Player.is_substitution.is_(False),
             )
         )
         .group_by(models.Team.id)

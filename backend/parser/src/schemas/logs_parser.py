@@ -2,7 +2,6 @@ import typing
 
 from src import models
 
-
 __all__ = ("Fight", "Round")
 
 from src.core import enums

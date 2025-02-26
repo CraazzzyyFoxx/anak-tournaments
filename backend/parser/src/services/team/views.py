@@ -1,12 +1,9 @@
 import orjson
-
 from fastapi import APIRouter, Depends, UploadFile
 
-from src.core import db, enums
 from src import schemas
-
+from src.core import db, enums
 from src.services.auth import flows as auth_flows
-
 
 from . import flows
 
@@ -32,7 +29,7 @@ async def bulk_create_from_balancer(
 
 
 @router.post(path="/create/challonge")
-async def bulk_create_from_challonge(
+async def create_from_challonge(
     tournament_id: int,
     name_mapper: dict[str, str],
     session=Depends(db.get_async_session),

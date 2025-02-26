@@ -1,11 +1,6 @@
-import typing
-
-from dataclasses import dataclass
-
 from pydantic import BaseModel
 
 from src.schemas import BaseRead
-from src.core import pagination, enums
 
 __all__ = (
     "OverfastHero",

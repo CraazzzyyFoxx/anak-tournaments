@@ -1,6 +1,5 @@
 import sqlalchemy as sa
 from loguru import logger
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models

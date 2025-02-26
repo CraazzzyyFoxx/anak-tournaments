@@ -28,6 +28,7 @@ import { ArrowUpDown } from "lucide-react";
 import { PaginationControlled } from "@/components/ui/pagination-with-links";
 import { CardContent, Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 
 const getDayColor = (points: number) => {
   let color = {};
@@ -201,83 +202,86 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
           placeholder="Search..."
         />
       </div>
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              {table.getHeaderGroups().map((headerGroup) => (
-                <TableRow key={headerGroup.id}>
-                  {headerGroup.headers.map((header) => {
-                    return (
-                      <TableHead className="text-center" key={header.id}>
-                        {header.isPlaceholder
-                          ? null
-                          : flexRender(header.column.columnDef.header, header.getContext())}
-                      </TableHead>
-                    );
-                  })}
-                </TableRow>
-              ))}
-            </TableHeader>
-            <TableBody>
-              {table.getRowModel().rows?.length ? (
-                table.getRowModel().rows.map((row) => (
-                  <TableRow
-                    key={row.id}
-                    data-state={row.getIsSelected() && "selected"}
-                    onClick={() => {
-                      // @ts-ignore
-                      router.push(`/users/${row.getValue("userName").replace("#", "-")}`);
-                    }}
-                  >
-                    {row.getVisibleCells().map((cell) => {
-                      // @ts-ignore
-                      if (
-                        cell.column.columnDef.header &&
-                        cell.column?.columnDef?.id?.startsWith("day") &&
-                        cell.column.columnDef.id !== "place"
-                      ) {
-                        return (
-                          // @ts-ignore
-                          <TableCell
-                            key={cell.id}
-                            className="text-center"
-                            style={getDayColor(cell?.getValue() as number)}
-                          >
-                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                          </TableCell>
-                        );
-                      }
-                      // @ts-ignore
-                      if (
-                        cell.column.columnDef.header &&
-                        cell.column.columnDef.id == "best_3_days"
-                      ) {
-                        return (
-                          <TableCell key={cell.id} className="text-center bg-gray-800">
-                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                          </TableCell>
-                        );
-                      }
+      <ScrollArea>
+        <Card>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <TableRow key={headerGroup.id}>
+                    {headerGroup.headers.map((header) => {
                       return (
-                        <TableCell className="text-center" key={cell.id}>
-                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                        </TableCell>
+                        <TableHead className="text-center" key={header.id}>
+                          {header.isPlaceholder
+                            ? null
+                            : flexRender(header.column.columnDef.header, header.getContext())}
+                        </TableHead>
                       );
                     })}
                   </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={columns.length} className="h-24 text-center">
-                    No results.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                ))}
+              </TableHeader>
+              <TableBody>
+                {table.getRowModel().rows?.length ? (
+                  table.getRowModel().rows.map((row) => (
+                    <TableRow
+                      key={row.id}
+                      data-state={row.getIsSelected() && "selected"}
+                      onClick={() => {
+                        // @ts-ignore
+                        router.push(`/users/${row.getValue("userName").replace("#", "-")}`);
+                      }}
+                    >
+                      {row.getVisibleCells().map((cell) => {
+                        // @ts-ignore
+                        if (
+                          cell.column.columnDef.header &&
+                          cell.column?.columnDef?.id?.startsWith("day") &&
+                          cell.column.columnDef.id !== "place"
+                        ) {
+                          return (
+                            // @ts-ignore
+                            <TableCell
+                              key={cell.id}
+                              className="text-center"
+                              style={getDayColor(cell?.getValue() as number)}
+                            >
+                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                            </TableCell>
+                          );
+                        }
+                        // @ts-ignore
+                        if (
+                          cell.column.columnDef.header &&
+                          cell.column.columnDef.id == "best_3_days"
+                        ) {
+                          return (
+                            <TableCell key={cell.id} className="text-center bg-gray-800">
+                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                            </TableCell>
+                          );
+                        }
+                        return (
+                          <TableCell className="text-center" key={cell.id}>
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </TableCell>
+                        );
+                      })}
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={columns.length} className="h-24 text-center">
+                      No results.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+        <ScrollBar orientation="horizontal"/>
+      </ScrollArea>
       <PaginationControlled
         totalCount={data.standings.length}
         pageSize={pagination.pageSize}

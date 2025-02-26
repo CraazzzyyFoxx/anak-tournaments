@@ -1,8 +1,7 @@
 from fastapi import APIRouter, Depends
 
-from src.core import db, enums
 from src import schemas
-
+from src.core import db, enums
 from src.services.auth import flows as auth_flows
 
 from . import flows
@@ -15,7 +14,7 @@ router = APIRouter(
 
 
 @router.post(path="/create", response_model=list[schemas.StandingRead])
-async def bulk_create_from_tournament(
+async def create_from_tournament(
     tournament_id: int,
     rewrite: bool = False,
     session=Depends(db.get_async_session),

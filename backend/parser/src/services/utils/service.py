@@ -1,5 +1,4 @@
 import csv
-
 from uuid import uuid4
 
 from src import schemas
@@ -12,7 +11,7 @@ matches_path_const = r"C:\Users\andre\PycharmProjects\anak-tournament-backend\pa
 async def get_users_from_dasha(payload: list) -> dict[int, schemas.UserDasha]:
     data: dict[int, schemas.UserDasha] = {}
 
-    with open(users_path_const, "r", encoding="utf-8") as r_file:
+    with open(users_path_const, encoding="utf-8") as r_file:
         file_reader = csv.reader(r_file)
 
         for index, row in enumerate(file_reader, 0):
@@ -58,7 +57,7 @@ async def get_teams_from_dasha(payload: list) -> dict[int, schemas.DashaTeam]:
     data: dict[int, schemas.DashaTeam] = {}
     data_costs: dict[int, list[int]] = {}
 
-    with open(teams_path_const, "r", encoding="utf-8") as r_file:
+    with open(teams_path_const, encoding="utf-8") as r_file:
         file_reader = csv.reader(r_file)
 
         for index, row in enumerate(file_reader, 0):
@@ -126,7 +125,7 @@ async def transform_dasha_teams_to_normal(
 ) -> dict[int, list[schemas.BalancerTeam]]:
     data: dict[int, list[schemas.BalancerTeam]] = {}
 
-    for team_id, team in teams.items():
+    for team in teams.values():
         if team.tournament_id not in data:
             data[team.tournament_id] = []
 

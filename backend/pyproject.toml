@@ -14,6 +14,7 @@ dependencies = [
     "faststream>=0.5.34",
     "httpx>=0.28.1",
     "loguru>=0.7.3",
+    "openskill>=6.0.2",
     "orjson>=3.10.14",
     "pandas>=2.2.3",
     "passlib>=1.7.4",
@@ -29,6 +30,7 @@ dependencies = [
     "setuptools>=75.8.0",
     "sqlalchemy>=2.0.37",
     "sqlalchemy-utils>=0.41.2",
+    "trueskillthroughtime>=1.1.0",
     "uvicorn>=0.34.0",
     "uvloop; platform_system == 'Linux'",
 ]

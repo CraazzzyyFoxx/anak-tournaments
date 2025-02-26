@@ -1,10 +1,9 @@
 import sqlalchemy as sa
 from loguru import logger
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models
-from src.core import pagination, enums
+from src.core import enums, pagination
 from src.services.hero import service as hero_service
 
 from . import crud

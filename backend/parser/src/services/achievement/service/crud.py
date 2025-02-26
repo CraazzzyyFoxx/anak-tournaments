@@ -2,20 +2,18 @@ import typing
 
 import sqlalchemy as sa
 from loguru import logger
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models
 
 from ..consts import (
-    overall_achievements,
-    match_achievements,
-    standing_achievements,
     divisions_achievements,
-    team_achievements,
     heroes_achievements,
+    match_achievements,
+    overall_achievements,
+    standing_achievements,
+    team_achievements,
 )
-
 
 __all__ = (
     "operators",
@@ -112,7 +110,7 @@ async def bulk_initial_create_achievements(session: AsyncSession) -> None:
 
 async def get_achievement_or_log_error(
     session: AsyncSession, slug: str
-) -> typing.Optional[models.Achievement]:
+) -> models.Achievement | None:
     achievement = await session.scalar(
         sa.select(models.Achievement).filter_by(slug=slug)
     )

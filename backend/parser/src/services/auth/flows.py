@@ -3,9 +3,8 @@ from typing import Annotated
 from fastapi import Depends
 from fastapi.security import OAuth2PasswordBearer
 
-
-from . import service
 from ...core import errors
+from . import service
 
 oauth2_scheme = OAuth2PasswordBearer("auth/login", auto_error=False)
 

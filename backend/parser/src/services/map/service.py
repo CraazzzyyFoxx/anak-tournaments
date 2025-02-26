@@ -1,9 +1,7 @@
 import typing
 
 import sqlalchemy as sa
-
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from src import models

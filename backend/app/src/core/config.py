@@ -35,8 +35,7 @@ class Settings(BaseSettings):
     postgres_host: str
     postgres_port: str
 
-    api_cache_url: RedisDsn
-    backend_cache_url: RedisDsn
+    redis_url: RedisDsn
 
     users_cache_ttl: int = 60 * 60
     tournaments_cache_ttl: int = 24 * 60 * 60
@@ -63,6 +62,14 @@ class Settings(BaseSettings):
             f"{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
         return f"postgresql+psycopg://{url}"
+
+    @property
+    def api_cache_url(self):
+        return f"{self.redis_url}/3"
+
+    @property
+    def backend_cache_url(self):
+        return f"{self.redis_url}/4"
 
 
 settings = Settings()

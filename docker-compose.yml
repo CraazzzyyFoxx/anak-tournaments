@@ -7,39 +7,27 @@ services:
       - redis-data:/data
     networks:
       - traefik-public
-  
-  traefik:
-    container_name: aqt-traefik
+
+  traeifk:
     image: traefik:3.3
+    container_name: aqt-traefik
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "${APP_PORT}:80"
-      - "${TRAEFIK_PORT}:8080"
-    restart: always
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik-public
-      # Define the port inside of the Docker service to use
-      - traefik.http.services.traefik-dashboard.loadbalancer.server.port=8080
-      # Make Traefik use this domain (from an environment variable) in HTTP
-      - traefik.http.routers.traefik-dashboard-http.entrypoints=http
-      # admin-auth middleware with HTTP Basic auth
-      # Using the environment variables USERNAME and HASHED_PASSWORD
-      - traefik.http.middlewares.admin-auth.basicauth.users=${USERNAME?Variable not set}:${HASHED_PASSWORD?Variable not set}
-      # Enable HTTP Basic auth, using the middleware created above
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
     command:
-      # Enable Docker in Traefik, so that it reads labels from Docker services
       - --providers.docker
-      # Do not expose all Docker services, only the ones explicitly exposed
+      - --providers.docker.constraints=Label(`traefik.constraint-label`, `traefik-public`)
       - --providers.docker.exposedbydefault=false
-      # Create an entrypoint "http" listening on port 80
       - --entrypoints.http.address=:80
-      # Enable the access log, with HTTP requests
       - --accesslog
       - --log
+      - --log.level=DEBUG
       - --api
       - --api.insecure=true
+    labels:
+      - traefik.enable=true
+      - traefik.constraint-label=traefik-public
     networks:
       - traefik-public
 
@@ -50,22 +38,41 @@ services:
       context: ./backend
       args:
         APP_PATH: app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --loop uvloop
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT}
+      - PROJECT_URL=${PROJECT_URL}
+      - REDIS_URL=${REDIS_URL}
+      - CORS_ORIGINS=${CORS_ORIGINS}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+    develop:
+      watch:
+        - path: ./backend/app
+          action: sync
+          target: /src
+          ignore:
+            - ./backend/.venv
+            - .venv
+        - path: ./backend/pyproject.toml
+          action: rebuild
+    depends_on:
+      - redis
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     labels:
       - traefik.enable=true
       - traefik.docker.network=traefik-public
       - traefik.constraint-label=traefik-public
-      - traefik.http.services.backend-http.loadbalancer.server.port=8000
       - traefik.http.routers.backend-http.rule=PathPrefix(`/api`)
       - traefik.http.routers.backend-http.entrypoints=http
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4 --loop uvloop
+      - traefik.http.services.backend-http.loadbalancer.server.port=8000
     volumes:
       - ./logs/backend:/logs
-    env_file:
-      - .env
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    depends_on:
-      - redis
+      - ./backend/htmlcov:/app/htmlcov
     networks:
       - traefik-public
 
@@ -76,8 +83,26 @@ services:
       context: ./backend
       args:
         APP_PATH: parser
-    depends_on:
-      - redis
+    command: uvicorn main:app --host 0.0.0.0 --port 8081 --loop uvloop
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT}
+      - PROJECT_URL=${PROJECT_URL}
+      - REDIS_URL=${REDIS_URL}
+      - CORS_ORIGINS=${CORS_ORIGINS}
+      - SUPERUSER_EMAIL=${SUPERUSER_EMAIL}
+      - SUPERUSER_PASSWORD=${SUPERUSER_PASSWORD}
+      - ACCESS_TOKEN_SECRET=${ACCESS_TOKEN_SECRET}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - CHALLONGE_API_KEY=${CHALLONGE_API_KEY}
+      - CHALLONGE_USERNAME=${CHALLONGE_USERNAME}
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY}
+      - S3_SECRET_KEY=${S3_SECRET_KEY}
+      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
     labels:
       - traefik.enable=true
       - traefik.docker.network=traefik-public
@@ -85,11 +110,18 @@ services:
       - traefik.http.routers.parser-api-http.rule=PathPrefix(`/parser`)
       - traefik.http.routers.parser-api-http.entrypoints=http
       - traefik.http.services.parser-api-http.loadbalancer.server.port=8081
-    command: uvicorn main:app --host 0.0.0.0 --port 8081 --loop uvloop --workers 2
-    env_file:
-      - .env
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    develop:
+      watch:
+        - path: ./backend/parser
+          action: sync
+          target: /src
+          ignore:
+            - ./backend/.venv
+            - .venv
+        - path: ./backend/pyproject.toml
+          action: rebuild
+    depends_on:
+      - redis
     volumes:
       - ./logs/parser:/logs
     networks:
@@ -102,20 +134,20 @@ services:
       - backend
     build:
       context: ./frontend
-      dockerfile: prod.Dockerfile
-      args:
-        NEXT_API_URL: ${NEXT_API_URL}
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
-        CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
-        NEXT_PUBLIC_CACHE_POLICY: ${NEXT_PUBLIC_CACHE_POLICY}
+      dockerfile: dev.Dockerfile
+    environment:
+      - NEXT_API_URL=${NEXT_API_URL}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+      - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
+      - NEXT_PUBLIC_CACHE_POLICY=${NEXT_PUBLIC_CACHE_POLICY}
     labels:
       - traefik.enable=true
       - traefik.docker.network=traefik-public
       - traefik.constraint-label=traefik-public
-      - traefik.http.services.frontend-http.loadbalancer.server.port=3000
       - traefik.http.routers.frontend-http.rule=PathPrefix(`/`)
       - traefik.http.routers.frontend-http.entrypoints=http
+      - traefik.http.services.frontend-http.loadbalancer.server.port=3000
     volumes:
       - ./logs/frontend:/logs
     networks:
@@ -126,4 +158,4 @@ volumes:
 
 networks:
   traefik-public:
-    external: true
+    external: false

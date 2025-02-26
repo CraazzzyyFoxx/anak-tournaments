@@ -1,5 +1,4 @@
 from src.core import db
-
 from src.services.tournament import service as tournament_service
 
 from . import flows

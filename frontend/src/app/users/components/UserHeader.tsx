@@ -18,7 +18,7 @@ const UserHeader = ({ profile, user }: UserHeaderProps) => {
   return (
     <div className="lg:ml-5 flex flex-row gap-4 items-center">
       <Image
-        className="rounded-xl"
+        className="rounded-xl aspect-square"
         src={getPlayerImage(profile, user)}
         width={90}
         height={90}

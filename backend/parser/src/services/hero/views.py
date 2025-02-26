@@ -1,8 +1,5 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 
-from src.core import db, enums, pagination
-from src import schemas
-
-from . import flows
+from src.core import enums
 
 router = APIRouter(prefix="/hero", tags=[enums.RouteTag.HERO])

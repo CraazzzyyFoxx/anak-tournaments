@@ -1,5 +1,4 @@
 import jwt
-
 from fastapi.security import OAuth2PasswordRequestForm
 
 from src.core import config
