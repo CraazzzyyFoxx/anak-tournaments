@@ -92,11 +92,11 @@ async def get_by_name_and_tournament(
 
 
 async def get_by_tournament(
-    session: AsyncSession, tournament: models.Tournament, entities: list[str]
+    session: AsyncSession, tournament_id: int, entities: list[str]
 ) -> typing.Sequence[models.Team]:
     query = (
         sa.select(models.Team)
-        .filter_by(tournament_id=tournament.id)
+        .filter_by(tournament_id=tournament_id)
         .options(*team_entities(entities))
     )
     result = await session.execute(query)

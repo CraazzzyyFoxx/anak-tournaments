@@ -5,7 +5,7 @@ from src.core import db
 from src.models.team import Player, Team
 from src.models.tournament import Tournament
 
-__all__ = ("TournamentAnalytics",)
+__all__ = ("TournamentAnalytics", "TournamentPrediction")
 
 
 class TournamentAnalytics(db.TimeStampIntegerMixin):
@@ -27,3 +27,15 @@ class TournamentAnalytics(db.TimeStampIntegerMixin):
     tournament: Mapped[Tournament] = relationship()
     player: Mapped[Player] = relationship()
     team: Mapped[Team] = relationship()
+
+
+class TournamentPrediction(db.TimeStampIntegerMixin):
+    __tablename__ = "analytics_predictions"
+
+
+    team_id: Mapped[int] = mapped_column(ForeignKey(Team.id, ondelete="CASCADE"))
+    tournament_id: Mapped[int] = mapped_column(
+        ForeignKey(Tournament.id, ondelete="CASCADE")
+    )
+    algorithm: Mapped[str] = mapped_column(server_default="points")
+    predicted_place: Mapped[int] = mapped_column()

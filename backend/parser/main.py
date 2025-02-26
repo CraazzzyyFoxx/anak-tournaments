@@ -6,21 +6,25 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
 from src import api
-from src.core import config
+from src.core import config, db
 from src.core.logging import logger
 from src.middlewares.exception import ExceptionMiddleware
 from src.middlewares.time import TimeMiddleware
 from starlette.requests import Request
 
+from src.services.analytics import flows as analytics_flows
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    async with db.async_session_maker() as session:
+        # for index in range(21, 46+1):
+        #      await analytics_flows.get_analytics_openskill(session,  index)
+        # pass
+        # await analytics_flows.get_analytics_openskill(session, 46)
+        # await analytics_flows.get_predictions_openskill(session, 46)
+        await analytics_flows.balance_player_ranks(session, 46)
     logger.info("Application... Online!")
-    # async with db.async_session_maker() as session:
-    #     # for index in range(21, 46+1):
-    #     #     await tournament_flows.get_analytics(session,  index)
-    #     # await achievement_flows.calculate_achievements(session)
-    #     pass
     yield
 
 

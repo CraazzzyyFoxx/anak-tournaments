@@ -257,6 +257,18 @@ async def get_encounter_by_names(
     return result.scalars().one()
 
 
+async def get_encounters_by_tournament(
+    session: AsyncSession, tournament_id: int, entities: list[str]
+) -> typing.Sequence[models.Encounter]:
+    query = (
+        sa.select(models.Encounter)
+        .options(*encounter_entities(entities))
+        .where(models.Encounter.tournament_id == tournament_id)
+    )
+    result = await session.execute(query)
+    return result.scalars().all()
+
+
 async def create(
     session: AsyncSession,
     *,

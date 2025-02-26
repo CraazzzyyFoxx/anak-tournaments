@@ -229,6 +229,12 @@ async def get_twitch(session: AsyncSession, twitch: str) -> models.UserTwitch | 
     return result.unique().first()
 
 
+async def get_all(session: AsyncSession, entities: list[str]) -> typing.Sequence[models.User]:
+    query = sa.select(models.User).options(*user_entities(entities))
+    result = await session.scalars(query)
+    return result.unique().all()
+
+
 async def create(
     session: AsyncSession,
     *,

@@ -34,10 +34,11 @@ export default class tournamentService {
       }
     }).then((response) => response.json());
   }
-  static async getAnalytics(id: number): Promise<TournamentAnalytics> {
+  static async getAnalytics(id: number, algorithm: string): Promise<TournamentAnalytics> {
     return customFetch(`${API_URL}/tournaments/statistics/analytics`, {
       query: {
-        tournament_id: id
+        tournament_id: id,
+        algorithm: algorithm
       }
     }).then((response) => response.json());
   }

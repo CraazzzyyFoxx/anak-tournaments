@@ -364,7 +364,7 @@ async def get_bulk_tournament(
 
 
 async def get_analytics(
-    session: AsyncSession, tournament_id: int
+    session: AsyncSession, tournament_id: int, algorithm: str = "points"
 ) -> typing.Sequence[tuple[models.Team, models.Player, models.TournamentAnalytics]]:
     query = (
         sa.select(
@@ -379,7 +379,10 @@ async def get_analytics(
         )
         .join(models.Team, models.Team.id == models.TournamentAnalytics.team_id)
         .join(models.Player, models.Player.id == models.TournamentAnalytics.player_id)
-        .where(models.TournamentAnalytics.tournament_id == tournament_id, models.TournamentAnalytics.algorithm == "points")
+        .where(
+            models.TournamentAnalytics.tournament_id == tournament_id,
+            models.TournamentAnalytics.algorithm == algorithm
+        )
     )
     result = await session.execute(query)
     return result.unique().all()

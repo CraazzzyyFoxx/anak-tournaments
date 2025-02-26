@@ -28,6 +28,7 @@ import { Match, Score } from "@/types/encounter.types";
 import { PaginationWithLinks } from "@/components/ui/pagination-with-links";
 import TableComponent from "@/components/TableComponent";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 
 const columns: ColumnDef<Match>[] = [
   {
@@ -172,12 +173,15 @@ const MatchesPage = () => {
       ) : (
         <div className="flex flex-col gap-8">
           <div className="rounded-md border">
-            <TableComponent
-              table={table}
-              columns={columns}
-              rowOnClick={(row) => router.push(`/matches/${row.original.id}`)}
-              tableCellClassName={"p-0"}
-            />
+            <ScrollArea>
+              <TableComponent
+                table={table}
+                columns={columns}
+                rowOnClick={(row) => router.push(`/matches/${row.original.id}`)}
+                tableCellClassName={"p-0"}
+              />
+              <ScrollBar orientation="horizontal"/>
+            </ScrollArea>
           </div>
           <div className="flex items-center justify-end space-x-2 py-4">
             <PaginationWithLinks

@@ -347,6 +347,7 @@ async def get_owal_standings(session: AsyncSession) -> schemas.OwalStandings:
 async def get_analytics(
     session: AsyncSession,
     tournament_id: int,
+    algorithm: str
 ) -> schemas.TournamentAnalytics:
     """
     Retrieves analytics data for a specific tournament.
@@ -366,7 +367,7 @@ async def get_analytics(
     cache_teams_wins: dict[int, int] = {}
     cache_teams_manual_shift: dict[int, int] = {}
 
-    data = await service.get_analytics(session, tournament_id)
+    data = await service.get_analytics(session, tournament_id, algorithm)
     for team, player, analytics in data:
         cache_teams[team.id] = team
         cache_players.setdefault(team.id, [])

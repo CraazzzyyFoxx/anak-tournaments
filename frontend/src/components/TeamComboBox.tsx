@@ -38,7 +38,7 @@ const TeamComboBox = ({ teams, onSelect, selectedTeam }: TeamComboBoxProps) => {
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className="w-[250px] justify-between"
+          className="xs:w-full md:w-[250px] justify-between"
         >
           {selectedTeam
             ? values.find((team) => team.value === selectedTeam)?.label
