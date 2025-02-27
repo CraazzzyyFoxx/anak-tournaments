@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     encounters_cache_ttl: int = 24 * 60 * 60
     achievements_cache_ttl: int = 24 * 60 * 60
 
+    clerk_secret_key: str
+    clerk_jwks_url: str
+    clerk_issuer: str
+
     @property
     def db_url_asyncpg(self):
         url = (

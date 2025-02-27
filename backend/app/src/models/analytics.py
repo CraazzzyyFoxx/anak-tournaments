@@ -32,7 +32,6 @@ class TournamentAnalytics(db.TimeStampIntegerMixin):
 class TournamentPrediction(db.TimeStampIntegerMixin):
     __tablename__ = "analytics_predictions"
 
-
     team_id: Mapped[int] = mapped_column(ForeignKey(Team.id, ondelete="CASCADE"))
     tournament_id: Mapped[int] = mapped_column(
         ForeignKey(Tournament.id, ondelete="CASCADE")

@@ -9,7 +9,7 @@ function makeQueryClient() {
       queries: {
         staleTime: 60 * 1000,
         refetchOnWindowFocus: true
-      },
+      }
     }
   });
 }

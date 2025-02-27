@@ -73,7 +73,9 @@ const AchievementUsers = ({ achievement }: { achievement: Achievement }) => {
                     <PlayerName player={achievement.user} includeSpecialization={false} />
                   </TableCell>
                   <TableCell>{achievement.count}</TableCell>
-                  <TableCell onClick={() => router.push(`/tournaments/${achievement.last_tournament.id}`)}>
+                  <TableCell
+                    onClick={() => router.push(`/tournaments/${achievement.last_tournament.id}`)}
+                  >
                     {achievement.last_tournament?.name}
                   </TableCell>
                   <TableCell onClick={() => router.push(`/matches/${achievement.last_match.id}`)}>

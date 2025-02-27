@@ -280,7 +280,7 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
             </Table>
           </CardContent>
         </Card>
-        <ScrollBar orientation="horizontal"/>
+        <ScrollBar orientation="horizontal" />
       </ScrollArea>
       <PaginationControlled
         totalCount={data.standings.length}

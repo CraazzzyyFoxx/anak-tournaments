@@ -12,6 +12,7 @@ from src.services.encounter import flows as encounter_flows
 from src.services.map import flows as map_flows
 
 from . import flows
+from ...core.clerk import get_current_user
 
 router = APIRouter(prefix="/users", tags=[enums.RouteTag.USER])
 
@@ -216,3 +217,8 @@ async def get_teammates(
         session, id, pagination.PaginationSortParams.from_query_params(params)
     )
     return teammates
+
+
+@router.get("/test/protected")
+def private_data(user=Depends(get_current_user)):
+    return {"message": "This is protected content", "user": user}

@@ -9,6 +9,7 @@ class PlayerAnalytics(PlayerRead):
     points: float
     move_1: float | None
     move_2: float | None
+    shift: float | None
 
 
 class TeamAnalytics(TeamRead):

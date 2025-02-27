@@ -2,7 +2,7 @@ import typing
 
 from cashews import cache
 from cashews.contrib.fastapi import cache_control_ttl
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Body, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 
@@ -11,6 +11,9 @@ from src.core import config, db, enums, pagination
 from src.services.standings import flows as standings_flows
 
 from . import flows
+from ...core.clerk import get_current_user
+from ...core.logging import logger
+from ...schemas.clerk import ClerkUser
 
 router = APIRouter(prefix="/tournaments", tags=[enums.RouteTag.TOURNAMENT])
 
@@ -162,3 +165,23 @@ async def get_analytics(
     session: AsyncSession = Depends(db.get_async_session),
 ):
     return await flows.get_analytics(session, tournament_id, algorithm)
+
+
+@router.post(
+    path="/statistics/analytics/change",
+    response_model=schemas.PlayerAnalytics,
+    description="Changes shift for a player in a tournament.",
+    summary="Change player shift",
+)
+async def change_shift(
+    request: Request,
+    team_id: int = Body(...),
+    player_id: int = Body(...),
+    shift: int = Body(...),
+    user: ClerkUser = Depends(get_current_user),
+    session: AsyncSession = Depends(db.get_async_session),
+):
+    if "org:anak:anak" not in user.permissions:
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    return await flows.change_shift(session, team_id, player_id, shift)

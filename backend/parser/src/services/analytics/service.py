@@ -107,6 +107,7 @@ async def get_matches(
             models.Encounter.tournament_id.between(start_range, end_range),
             # models.Tournament.is_league.is_(False),
         )
+        .order_by(models.Encounter.tournament_id, models.Encounter.id)
     )
     result = await session.scalars(query)
     return result.unique().all()  # type: ignore
