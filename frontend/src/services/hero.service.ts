@@ -1,4 +1,3 @@
-import { API_URL } from "@/lib/interceptors";
 import { HeroPlaytime } from "@/types/hero.types";
 import { PaginatedResponse } from "@/types/pagination.types";
 import { customFetch } from "@/lib/custom_fetch";
@@ -10,7 +9,7 @@ export default class heroService {
     userId: number | string = "all",
     tournamentId: number | null = null
   ): Promise<PaginatedResponse<HeroPlaytime>> {
-    return customFetch(`${API_URL}/heroes/statistics/playtime`, {
+    return customFetch(`heroes/statistics/playtime`, {
       query: {
         page: page,
         per_page: perPage,

@@ -1,5 +1,3 @@
-import { AxiosResponse } from "axios";
-import { axiosWithAuth, API_URL } from "@/lib/interceptors";
 import {
   EncounterWithUserStats,
   User,
@@ -17,16 +15,15 @@ import { customFetch } from "@/lib/custom_fetch";
 export default class userService {
   static async getAll(
     params: SearchPaginationParams
-  ): Promise<AxiosResponse<PaginatedResponse<User>>> {
-    return axiosWithAuth.get<PaginatedResponse<User>>("/users", {
-      params: params,
-      paramsSerializer: {
-        indexes: null
+  ): Promise<PaginatedResponse<User>> {
+    return customFetch("users", {
+      query: {
+        ...params,
       }
-    });
+    }).then((res) => res.json());
   }
   static async getUserByName(name: string): Promise<User> {
-    return customFetch(`${API_URL}/users/${name}`, {
+    return customFetch(`users/${name}`, {
       query: {
         entities: ["twitch", "discord", "battle_tag"]
       }
@@ -34,13 +31,13 @@ export default class userService {
   }
 
   static async getUserProfile(id: number): Promise<UserProfile> {
-    return customFetch(`${API_URL}/users/${id}/profile`).then((res) => res.json());
+    return customFetch(`users/${id}/profile`).then((res) => res.json());
   }
   static async getUserTournament(
     id: number,
     tournamentId: number
   ): Promise<UserTournamentWithStats | null> {
-    return customFetch(`${API_URL}/users/${id}/tournaments/${tournamentId}`).then((res) => {
+    return customFetch(`users/${id}/tournaments/${tournamentId}`).then((res) => {
       if (res.status === 200) {
         return res.json();
       }
@@ -48,10 +45,10 @@ export default class userService {
     });
   }
   static async getUserTournaments(id: number): Promise<UserTournament[]> {
-    return customFetch(`${API_URL}/users/${id}/tournaments`).then((res) => res.json());
+    return customFetch(`users/${id}/tournaments`).then((res) => res.json());
   }
   static async getUserTopMaps(id: number): Promise<PaginatedResponse<UserMapRead>> {
-    return customFetch(`${API_URL}/users/${id}/maps`, {
+    return customFetch(`users/${id}/maps`, {
       query: {
         sort: "winrate",
         order: "desc",
@@ -67,7 +64,7 @@ export default class userService {
     sort: string = "id",
     order: string = "desc"
   ): Promise<PaginatedResponse<EncounterWithUserStats>> {
-    return customFetch(`${API_URL}/users/${id}/encounters`, {
+    return customFetch(`users/${id}/encounters`, {
       query: {
         page: page,
         per_page: perPage,
@@ -78,7 +75,7 @@ export default class userService {
     }).then((res) => res.json());
   }
   static async getUserHeroes(id: number): Promise<PaginatedResponse<HeroWithUserStats>> {
-    return customFetch(`${API_URL}/users/${id}/heroes`, {
+    return customFetch(`users/${id}/heroes`, {
       query: {
         per_page: -1,
         sort: "id",
@@ -87,14 +84,14 @@ export default class userService {
     }).then((res) => res.json());
   }
   static async getUserAchievements(id: number): Promise<AchievementRarity[]> {
-    return customFetch(`${API_URL}/achievements/user/${id}`, {
+    return customFetch(`achievements/user/${id}`, {
       query: {
         entities: ["tournaments", "matches"]
       }
     }).then((res) => res.json());
   }
   static async getUserBestTeammates(id: number): Promise<PaginatedResponse<UserBestTeammate>> {
-    return customFetch(`${API_URL}/users/${id}/teammates`, {
+    return customFetch(`users/${id}/teammates`, {
       query: {
         per_page: 5,
         sort: "winrate",

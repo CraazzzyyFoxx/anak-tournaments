@@ -36,7 +36,7 @@ const UserSearch = () => {
         entities: []
       })
       .then((r) => {
-        setSearchData(r.data.results);
+        setSearchData(r.results);
       });
   }, [debouncedSearchValue]);
 

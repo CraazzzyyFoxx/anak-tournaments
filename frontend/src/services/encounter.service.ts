@@ -1,11 +1,10 @@
-import { API_URL } from "@/lib/interceptors";
 import { Encounter, MatchWithStats } from "@/types/encounter.types";
 import { PaginatedResponse } from "@/types/pagination.types";
 import { customFetch } from "@/lib/custom_fetch";
 
 export default class encounterService {
   static async getEncounter(id: number): Promise<Encounter> {
-    return customFetch(`${API_URL}/encounters/${id}`, {
+    return customFetch(`encounters/${id}`, {
       query: {
         entities: [
           "matches",
@@ -21,7 +20,7 @@ export default class encounterService {
     }).then((res) => res.json());
   }
   static async getMatch(match_id: number): Promise<MatchWithStats> {
-    return customFetch(`${API_URL}/matches/${match_id}`, {
+    return customFetch(`matches/${match_id}`, {
       query: {
         entities: [
           "teams",
@@ -41,7 +40,7 @@ export default class encounterService {
     query: string,
     tournamentId: number | null = null
   ): Promise<PaginatedResponse<Encounter>> {
-    return customFetch(`${API_URL}/encounters`, {
+    return customFetch(`encounters`, {
       query: {
         per_page: 15,
         page: page,
@@ -60,7 +59,7 @@ export default class encounterService {
     query: string,
     tournamentId: number | null = null
   ): Promise<PaginatedResponse<MatchWithStats>> {
-    return customFetch(`${API_URL}/matches`, {
+    return customFetch(`matches`, {
       query: {
         per_page: perPage,
         page: page,
