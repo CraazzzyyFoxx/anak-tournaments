@@ -1,7 +1,7 @@
 services:
   redis:
     container_name: aqt-redis
-    image: 'redis:latest'
+    image: 'redis/redis-stack:latest'
     restart: unless-stopped
     volumes:
       - redis-data:/data
