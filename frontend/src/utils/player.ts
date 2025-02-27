@@ -59,7 +59,6 @@ export const getPlayerImage = (profile: UserProfile, user: User) => {
     return `/avatar/${user.id % 10}.png`;
   }
 
-  const slug = profile.most_played_hero.slug;
   // if (["mauga", "juno", "junker-queen", "kiriko", "lifeweaver", "baptiste", "sojourn", "echo", "ramattra", "wrecking-ball", "venture", "illari", "ashe", "hazard"].includes(slug)) {
   //   return `/avatar/${profile.user.id % 10}.png`;
   // }
