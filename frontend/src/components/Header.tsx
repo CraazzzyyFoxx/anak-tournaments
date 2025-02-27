@@ -20,13 +20,11 @@ import {
   NavigationMenuTrigger
 } from "@/components/ui/navigation-menu";
 import { cn } from "@/lib/utils";
-import Github from "@/components/icons/Github";
 import {
   OrganizationSwitcher,
   SignedIn,
   SignedOut,
   SignInButton,
-  SignUpButton,
   UserButton
 } from "@clerk/nextjs";
 
@@ -166,7 +164,7 @@ const Header = () => {
                 width="24"
                 height="24"
               />
-              <SignInButton />
+              <SignInButton  mode={"modal"}/>
             </Button>
           </SignedOut>
           <SignedIn>

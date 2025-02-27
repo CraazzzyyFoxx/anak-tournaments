@@ -1,4 +1,3 @@
-import { API_URL } from "@/lib/interceptors";
 import { PaginatedResponse } from "@/types/pagination.types";
 import { Team } from "@/types/team.types";
 import { customFetch } from "@/lib/custom_fetch";
@@ -9,7 +8,7 @@ export default class teamService {
     sort: string = "avg_sr",
     order: string = "asc"
   ): Promise<PaginatedResponse<Team>> {
-    return customFetch(`${API_URL}/teams`, {
+    return customFetch(`teams`, {
       query: {
         page: 1,
         per_page: -1,
