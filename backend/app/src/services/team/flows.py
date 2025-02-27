@@ -274,6 +274,23 @@ async def get_player_by_user_and_tournament(
     return player
 
 
+async def get_player(
+    session: AsyncSession, player_id: int, entities: list[str]
+) -> models.Player | None:
+    """
+    Retrieves a player by their ID.
+
+    Parameters:
+        session (AsyncSession): The SQLAlchemy async session.
+        player_id (int): The ID of the player to retrieve.
+        entities (list[str]): A list of related entities to load (e.g., ["user", "team"]).
+
+    Returns:
+        models.Player: The Player object if found.
+    """
+    return await service.get_player(session, player_id, entities)
+
+
 async def get_all(
     session: AsyncSession, params: schemas.TeamFilterParams
 ) -> pagination.Paginated[schemas.TeamRead]:

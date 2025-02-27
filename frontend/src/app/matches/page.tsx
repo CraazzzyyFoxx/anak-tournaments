@@ -180,7 +180,7 @@ const MatchesPage = () => {
                 rowOnClick={(row) => router.push(`/matches/${row.original.id}`)}
                 tableCellClassName={"p-0"}
               />
-              <ScrollBar orientation="horizontal"/>
+              <ScrollBar orientation="horizontal" />
             </ScrollArea>
           </div>
           <div className="flex items-center justify-end space-x-2 py-4">

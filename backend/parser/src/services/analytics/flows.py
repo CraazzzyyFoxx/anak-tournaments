@@ -1,5 +1,4 @@
 import typing
-from collections import defaultdict
 
 import numpy as np
 import pandas as pd
@@ -23,7 +22,7 @@ COEF_REGULAR = 1 / 0.065
 mu = 1100
 
 
-async def get_data_frame(session: AsyncSession, tournament_id: int) -> pd.DataFrame:
+async def get_data_frame(session: AsyncSession) -> pd.DataFrame:
     data = await service.get_analytics(session)
     df = pd.DataFrame(
         [
@@ -51,7 +50,7 @@ async def get_data_frame(session: AsyncSession, tournament_id: int) -> pd.DataFr
 
 
 async def get_analytics(session: AsyncSession, tournament_id: int):
-    df = await get_data_frame(session, tournament_id)
+    df = await get_data_frame(session)
 
     for id_role in df["id_role"].unique():
         rows = df[df["id_role"] == id_role]
@@ -113,7 +112,7 @@ async def get_analytics(session: AsyncSession, tournament_id: int):
 
 
 def get_plackett_luce():
-    return PlackettLuce(mu=mu, sigma=mu / 5.75, beta=mu / 2.75, tau=mu / 300.0, balance=True)
+    return PlackettLuce(mu=mu, sigma=mu / 6, beta=mu / 2.75, tau=mu / 300.0, balance=True)
 
 def get_id_role(player: models.Player) -> str:
     return f"{player.user_id}-{player.role}"
@@ -121,66 +120,72 @@ def get_id_role(player: models.Player) -> str:
 
 def get_player_rating(pl: PlackettLuce, player: models.Player) -> PlackettLuceRating:
     if player.is_newcomer:
-        return pl.rating(mu=player.rank, sigma=mu / 5.25)
+        return pl.rating(mu=player.rank, sigma=mu / 4.25)
     if player.is_newcomer_role:
-        return pl.rating(mu=player.rank, sigma=mu / 5.5)
+        return pl.rating(mu=player.rank, sigma=mu / 4.25)
     return pl.rating(mu=player.rank)
 
 
 def prepare_openskill_data(
+    df: pd.DataFrame,
     pl: PlackettLuce,
     teams: typing.Sequence[models.Team],
-    matches: typing.Sequence[models.Encounter],
+    encounters: typing.Sequence[models.Encounter],
 ) -> tuple[set[str], dict[str, PlackettLuceRating], list[AnalyticsMatch]]:
     agents: set[str] = set()
     players_rating: dict[str, PlackettLuceRating] = {}
     ttt_matches: list[AnalyticsMatch] = []
 
-    for team in teams:
-        for player in team.players:
-            id_role = get_id_role(player)
-            if id_role not in players_rating:
-                players_rating[id_role] = get_player_rating(pl, player)
+    # for team in teams:
+    #     for player in team.players:
+    #         id_role = get_id_role(player)
+    #         if id_role not in players_rating:
+    #             players_rating[id_role] = get_player_rating(pl, player)
 
-    for match in matches:
-        home_team = list(map(lambda p: get_id_role(p), match.home_team.players))
-        away_team = list(map(lambda p: get_id_role(p), match.away_team.players))
-        for player in match.home_team.players:
+    for encounter in encounters:
+        home_team = list(map(lambda p: get_id_role(p), encounter.home_team.players))
+        away_team = list(map(lambda p: get_id_role(p), encounter.away_team.players))
+
+        for player in [*encounter.home_team.players, *encounter.away_team.players]:
             id_role = get_id_role(player)
-            if id_role not in players_rating:
+            rows = df[df["id_role"] == id_role]
+            player_rating = players_rating.get(id_role)
+            if player_rating is None:
                 players_rating[id_role] = get_player_rating(pl, player)
-        for player in match.away_team.players:
-            id_role = get_id_role(player)
-            if id_role not in players_rating:
-                players_rating[id_role] = get_player_rating(pl, player)
+            else:
+                if player.is_newcomer_role is False and player.rank != df[(df["id_role"] == id_role) & (df["tournament_id"] == encounter.tournament_id)]["previous_cost"].values[0]:
+                    players_rating[id_role] = get_player_rating(pl, player)
+
+            # if id_role not in players_rating:
+            #     players_rating[id_role] = get_player_rating(pl, player)
 
         agents = agents.union(set(home_team))
         agents = agents.union(set(away_team))
 
         ttt_matches.append(AnalyticsMatch(
-            tournament_id=match.tournament_id,
-            home_team_id=match.home_team_id,
-            home_team_name=match.home_team.name,
-            away_team_id=match.away_team_id,
-            away_team_name=match.away_team.name,
+            tournament_id=encounter.tournament_id,
+            home_team_id=encounter.home_team_id,
+            home_team_name=encounter.home_team.name,
+            away_team_id=encounter.away_team_id,
+            away_team_name=encounter.away_team.name,
             home_players=home_team,
             away_players=away_team,
-            home_score=match.home_score,
-            away_score=match.away_score,
-            time=match.tournament.start_date,
+            home_score=encounter.home_score,
+            away_score=encounter.away_score,
+            time=encounter.tournament.start_date,
         ))
 
-    for match in ttt_matches:
-        home_team = [players_rating[i] for i in match.home_players]
-        away_team = [players_rating[i] for i in match.away_players]
+    for encounter in ttt_matches:
+        home_team = [players_rating[i] for i in encounter.home_players]
+        away_team = [players_rating[i] for i in encounter.away_players]
         rating_game = [home_team, away_team]
-        scores = [match.home_score, match.away_score]
+        scores = [encounter.home_score, encounter.away_score]
 
         rated_home_team, rated_away_team = pl.rate(rating_game, scores=scores)
-        for id_role in range(len(match.home_players)):
-            players_rating[match.home_players[id_role]] = rated_home_team[id_role]
-        for id_role in range(len(match.away_players)):
-            players_rating[match.away_players[id_role]] = rated_away_team[id_role]
+        for id_role in range(len(encounter.home_players)):
+            players_rating[encounter.home_players[id_role]] = rated_home_team[id_role]
+        for id_role in range(len(encounter.away_players)):
+            players_rating[encounter.away_players[id_role]] = rated_away_team[id_role]
 
 
     return agents, players_rating, ttt_matches
@@ -195,12 +200,12 @@ def rank_to_div(cost: int | float) -> float:
 async def get_analytics_openskill(session: AsyncSession, tournament_id: int) -> None:
     matches = await service.get_matches(session, tournament_id-10, tournament_id)
     teams = await team_service.get_by_tournament(session, tournament_id, ["players", "players.user"])
-    df = await get_data_frame(session, tournament_id)
+    df = await get_data_frame(session)
 
     final_df = df[df["tournament_id"] == tournament_id]
     final_df = final_df.replace({np.nan: None})
     pl = get_plackett_luce()
-    agents, players_rating, ttt_matches = prepare_openskill_data(pl, teams, matches)
+    agents, players_rating, ttt_matches = prepare_openskill_data(df, pl, teams, matches)
 
     await session.execute(
         sa.delete(models.TournamentAnalytics).where(
@@ -241,17 +246,14 @@ async def get_predictions_openskill(session: AsyncSession, tournament_id: int) -
     predicted_teams: list[tuple[str, list[PlackettLuceRating]]] = []
 
     for team in teams:
-        team_players = []
-        for player in team.players:
-            team_players.append(players_rating[get_id_role(player)])
+        team_players = [players_rating[get_id_role(player)] for player in team.players]
         predicted_teams.append((team.name, team_players))
 
-    predicted = pl.predict_rank([team[1] for team in predicted_teams])
-    for team_name, predict in zip(predicted_teams, predicted):
+    predicted = pl.predict_rank([p_team[1] for p_team in predicted_teams])
+    for team_data, predict in zip(predicted_teams, predicted):
         team: models.Team | None = None
-
         for t in teams:
-            if t.name == team_name:
+            if t.name == team_data[0]:
                 team = t
                 break
 

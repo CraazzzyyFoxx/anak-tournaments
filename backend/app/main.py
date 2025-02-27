@@ -53,7 +53,7 @@ app.add_middleware(
         config.settings.cors_origins if config.settings.cors_origins else ["*"]
     ),
     allow_credentials=True,
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST", "DELETE", "PATCH", "PUT"],
     allow_headers=["*"],
 )
 app.add_middleware(ExceptionMiddleware)

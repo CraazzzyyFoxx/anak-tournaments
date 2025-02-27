@@ -345,14 +345,13 @@ async def get_owal_standings(session: AsyncSession) -> schemas.OwalStandings:
 
 
 async def get_analytics(
-    session: AsyncSession,
-    tournament_id: int,
-    algorithm: str
+    session: AsyncSession, tournament_id: int, algorithm: str
 ) -> schemas.TournamentAnalytics:
     """
     Retrieves analytics data for a specific tournament.
 
     Parameters:
+        algorithm: The algorithm to use for calculating analytics.
         session (AsyncSession): The SQLAlchemy async session.
         tournament_id (int): The ID of the tournament.
 
@@ -405,6 +404,7 @@ async def get_analytics(
                         move_1=analytics.shift_one,
                         move_2=analytics.shift_two,
                         points=analytics.calculated_shift,
+                        shift=analytics.shift,
                     )
                     for player, analytics in players
                 ],
@@ -412,5 +412,20 @@ async def get_analytics(
         )
 
     return schemas.TournamentAnalytics(
-        teams=sorted(output, key=lambda x: x.placement), teams_wins=cache_teams_wins
+        teams=sorted(output, key=lambda x: (x.placement, x.name)),
+        teams_wins=cache_teams_wins,
+    )
+
+
+async def change_shift(
+    session: AsyncSession, team_id: int, player_id: int, shift: int
+) -> schemas.PlayerAnalytics:
+    data = await service.change_shift(session, team_id, player_id, shift)
+    player = await team_flows.get_player(session, player_id, [])
+    return schemas.PlayerAnalytics(
+        **(await team_flows.to_pydantic_player(session, player, [])).model_dump(),
+        move_1=data.shift_one,
+        move_2=data.shift_two,
+        points=data.calculated_shift,
+        shift=data.shift,
     )

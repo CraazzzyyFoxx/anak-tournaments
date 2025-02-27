@@ -2,7 +2,7 @@ import { API_URL } from "@/lib/interceptors";
 import { PaginatedResponse } from "@/types/pagination.types";
 import { OwalStandings, Standings, Tournament } from "@/types/tournament.types";
 import { customFetch } from "@/lib/custom_fetch";
-import { TournamentAnalytics } from "@/types/analytics.types";
+import { PlayerAnalytics, TournamentAnalytics } from "@/types/analytics.types";
 
 export default class tournamentService {
   static async getAll(isLeague: boolean | null = null): Promise<PaginatedResponse<Tournament>> {
@@ -40,6 +40,22 @@ export default class tournamentService {
         tournament_id: id,
         algorithm: algorithm
       }
+    }).then((response) => response.json());
+  }
+  static async patchPlayerShift(
+    teamId: number,
+    playerId: number,
+    shift: number,
+    token: string
+  ): Promise<PlayerAnalytics> {
+    return customFetch(`${API_URL}/tournaments/statistics/analytics/change`, {
+      method: "POST",
+      body: {
+        team_id: teamId,
+        player_id: playerId,
+        shift: shift
+      },
+      token: token
     }).then((response) => response.json());
   }
 }

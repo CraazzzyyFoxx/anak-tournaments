@@ -153,7 +153,9 @@ class PaginationSortSearchParams(PaginationSortParams):
             return query
         return query.where(sa.or_(*[column.ilike(search_query) for column in columns]))
 
-    def apply_sort(self, query: sa.Select, model: type[db.Base] | None = None) -> sa.Select:
+    def apply_sort(
+        self, query: sa.Select, model: type[db.Base] | None = None
+    ) -> sa.Select:
         if self.sort.startswith("similarity"):
             try:
                 sort = self.sort.split(":")[1]

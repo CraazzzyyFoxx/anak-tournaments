@@ -26,11 +26,21 @@ import {
 } from "@/components/ui/table";
 import { Card } from "@/components/ui/card";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { useAuth } from "@clerk/nextjs";
+import { customFetch } from "@/lib/custom_fetch";
+import RanksPage from "@/app/tournaments/analytics/components/RanksPage";
 
 const AnalyticsPage = () => {
+  const { getToken } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+
+  // useEffect(() => {
+  //   getToken().then((token) => {
+  //     customFetch("http://192.168.1.62:8082/api/v1/users/test/protected", {token });
+  //   })
+  // }, []);
 
   // const [sortBy, setSortBy] = useState<"placement" | "group" | "avg_sr">("avg_sr");
   // const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
@@ -94,7 +104,7 @@ const AnalyticsPage = () => {
     newSearchParams.set("algorithm", String(newAlgorithm));
     router.push(`${pathname}?${newSearchParams.toString()}`);
     setAlgorithm(newAlgorithm);
-  }
+  };
 
   const scrollToTeam = (team: Team) => {
     setSelectedTeam(team.name);
@@ -121,12 +131,15 @@ const AnalyticsPage = () => {
   return (
     <Tabs defaultValue={activeTab}>
       <div className="flex xs:flex-col md:flex-row gap-4 pb-4">
-        <TabsList className="grid grid-cols-2 xs:w-full md:w-[250px]">
+        <TabsList className="grid grid-cols-3 xs:w-full md:w-[300px]">
           <TabsTrigger value="overview" onClick={() => navToTab("overview")}>
             Overview
           </TabsTrigger>
           <TabsTrigger value="teams" onClick={() => navToTab("teams")}>
             Teams
+          </TabsTrigger>
+          <TabsTrigger value={"ranks"} onClick={() => navToTab("ranks")}>
+            Divs
           </TabsTrigger>
         </TabsList>
         <Select
@@ -146,10 +159,7 @@ const AnalyticsPage = () => {
             </SelectGroup>
           </SelectContent>
         </Select>
-        <Select
-          value={algorithm}
-          onValueChange={(value) => pushAlgorithm(value)}
-        >
+        <Select value={algorithm} onValueChange={(value) => pushAlgorithm(value)}>
           <SelectTrigger className="xs:w-full md:w-[250px]">
             <SelectValue placeholder="Select a algorithm" />
           </SelectTrigger>
@@ -249,6 +259,9 @@ const AnalyticsPage = () => {
             <ScrollBar orientation="horizontal" />
           </ScrollArea>
         </Card>
+      </TabsContent>
+      <TabsContent value={"ranks"}>
+        <RanksPage />
       </TabsContent>
     </Tabs>
   );

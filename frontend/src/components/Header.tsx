@@ -8,7 +8,7 @@ import {
   Accordion,
   AccordionContent,
   AccordionItem,
-  AccordionTrigger,
+  AccordionTrigger
 } from "@/components/ui/accordion";
 import UserSearch from "@/components/UserSearch";
 import {
@@ -21,6 +21,14 @@ import {
 } from "@/components/ui/navigation-menu";
 import { cn } from "@/lib/utils";
 import Github from "@/components/icons/Github";
+import {
+  OrganizationSwitcher,
+  SignedIn,
+  SignedOut,
+  SignInButton,
+  SignUpButton,
+  UserButton
+} from "@clerk/nextjs";
 
 const tournament_components: { title: string; href: string; description: string }[] = [
   {
@@ -148,9 +156,24 @@ const Header = () => {
         <div className="ml-auto flex-1 sm:flex-initial">
           <UserSearch />
         </div>
-        <Link href={"https://github.com/CraazzzyyFoxx/anak-tournaments"}>
-          <Github />
-        </Link>
+        <div className="text-white">
+          <SignedOut>
+            <Button className="bg-[#5865f2] text-white text-md hover:bg-[#5865f2]">
+              <Image
+                className="text-white"
+                src="/discord-white.svg"
+                alt="discord"
+                width="24"
+                height="24"
+              />
+              <SignInButton />
+            </Button>
+          </SignedOut>
+          <SignedIn>
+            <OrganizationSwitcher />
+            <UserButton />
+          </SignedIn>
+        </div>
       </div>
     </header>
   );

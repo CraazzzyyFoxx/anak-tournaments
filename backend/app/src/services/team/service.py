@@ -236,6 +236,29 @@ async def get_all(
     return result.unique().scalars().all(), total_result.scalar_one()
 
 
+async def get_player(
+    session: AsyncSession, player_id: int, entities: list[str]
+) -> models.Player | None:
+    """
+    Retrieves a `Player` model instance by its ID, optionally loading specified related entities.
+
+    Args:
+        session: An SQLAlchemy `AsyncSession` for database interaction.
+        player_id: The ID of the player to retrieve.
+        entities: A list of strings representing the names of related entities to load.
+
+    Returns:
+        A `Player` model instance if found, otherwise `None`.
+    """
+    query = (
+        sa.select(models.Player)
+        .where(sa.and_(models.Player.id == player_id))
+        .options(*player_entities(entities))
+    )
+    result = await session.execute(query)
+    return result.scalars().first()
+
+
 async def get_player_by_user_and_tournament(
     session: AsyncSession, user_id: int, tournament_id: int, entities: list[str]
 ) -> models.Player | None:

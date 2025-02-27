@@ -1,5 +1,8 @@
 interface CustomOptions {
   query?: Record<string, any>;
+  token?: string;
+  body?: Record<string, any>;
+  method?: string;
 }
 
 export const cachePolicy = process.env.NEXT_PUBLIC_CACHE_POLICY;
@@ -48,7 +51,15 @@ export async function customFetch(url: string, options?: CustomOptions): Promise
 
   const urlWithParams = `${url}?${params.toString()}`;
 
-  const response = await fetch(urlWithParams, { cache: getCachePolicy() });
+  const response = await fetch(urlWithParams, {
+    cache: getCachePolicy(),
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${options.token}`
+    },
+    body: JSON.stringify(options.body),
+    method: options.method || "GET"
+  });
 
   if (!response.ok) {
     const error = await response.json();

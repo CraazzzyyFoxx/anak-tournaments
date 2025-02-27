@@ -381,8 +381,27 @@ async def get_analytics(
         .join(models.Player, models.Player.id == models.TournamentAnalytics.player_id)
         .where(
             models.TournamentAnalytics.tournament_id == tournament_id,
-            models.TournamentAnalytics.algorithm == algorithm
+            models.TournamentAnalytics.algorithm == algorithm,
         )
     )
     result = await session.execute(query)
     return result.unique().all()
+
+
+async def change_shift(
+    session: AsyncSession, team_id: int, player_id: int, shift: int
+) -> models.TournamentAnalytics:
+    query = sa.select(models.TournamentAnalytics).where(
+        sa.and_(
+            models.TournamentAnalytics.team_id == team_id,
+            models.TournamentAnalytics.player_id == player_id,
+            models.TournamentAnalytics.algorithm == "points",
+        )
+    )
+    result = await session.execute(query)
+    analytics = result.scalars().first()
+
+    analytics.shift = shift
+    session.add(analytics)
+    await session.commit()
+    return analytics

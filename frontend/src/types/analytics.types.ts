@@ -4,6 +4,7 @@ export interface PlayerAnalytics extends Player {
   move_1: number;
   move_2: number;
   points: number;
+  shift: number;
 }
 
 export interface TeamAnalytics extends Team {
