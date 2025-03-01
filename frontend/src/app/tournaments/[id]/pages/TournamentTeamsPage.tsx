@@ -22,7 +22,7 @@ const TournamentTeamsPage = async ({ tournament }: { tournament: Tournament }) =
   const teams = await teamService.getAll(tournament.id);
 
   return (
-    <div className="grid xl:grid-cols-2 gap-8">
+    <div className="grid xl:grid-cols-3 md:grid-cols-1 xs:grid-cols-1 gap-8">
       {teams.results.map((team) => (
         <TournamentTeamCard key={team.id} team={team} />
       ))}

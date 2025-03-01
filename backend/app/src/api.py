@@ -10,6 +10,7 @@ from src.services.team.views import router as team_router
 from src.services.tournament.views import router as tournament_router
 from src.services.user.views import router as user_router
 from src.services.utils.views import router as utils_router
+from src.services.analytics.views import router as analytics_router
 
 router = APIRouter()
 router.include_router(user_router)
@@ -23,3 +24,4 @@ router.include_router(gamemode_router)
 router.include_router(map_router)
 router.include_router(achievements_router)
 router.include_router(utils_router)
+router.include_router(analytics_router)

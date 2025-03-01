@@ -33,28 +33,4 @@ export default class tournamentService {
       }
     }).then((response) => response.json());
   }
-  static async getAnalytics(id: number, algorithm: string): Promise<TournamentAnalytics> {
-    return customFetch(`tournaments/statistics/analytics`, {
-      query: {
-        tournament_id: id,
-        algorithm: algorithm
-      }
-    }).then((response) => response.json());
-  }
-  static async patchPlayerShift(
-    teamId: number,
-    playerId: number,
-    shift: number,
-    token: string
-  ): Promise<PlayerAnalytics> {
-    return customFetch(`tournaments/statistics/analytics/change`, {
-      method: "POST",
-      body: {
-        team_id: teamId,
-        player_id: playerId,
-        shift: shift
-      },
-      token: token
-    }).then((response) => response.json());
-  }
 }

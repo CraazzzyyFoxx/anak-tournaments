@@ -1,8 +1,17 @@
 from pydantic import BaseModel
 
-from src.schemas import PlayerRead, TeamRead
+from src.schemas import PlayerRead, TeamRead, BaseRead
 
-__all__ = ("PlayerAnalytics", "TeamAnalytics", "TournamentAnalytics")
+__all__ = (
+    "PlayerAnalytics",
+    "TeamAnalytics",
+    "TournamentAnalytics",
+    "AnalyticsAlgorithmRead",
+)
+
+
+class AnalyticsAlgorithmRead(BaseRead):
+    name: str
 
 
 class PlayerAnalytics(PlayerRead):

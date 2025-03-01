@@ -28,8 +28,8 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
-import tournamentService from "@/services/tournament.service";
 import { useQueryClient } from "@tanstack/react-query";
+import analyticsService from "@/services/analytics.service";
 
 const ChangeDivisionModal = ({
   player,
@@ -50,9 +50,9 @@ const ChangeDivisionModal = ({
 
     getToken().then((token) => {
       // @ts-ignore
-      tournamentService.patchPlayerShift(player.team_id, player.id, division, token).then(() => {
+      analyticsService.patchPlayerShift(player.team_id, player.id, division, token).then(() => {
         setOpen(false);
-        queryClient.invalidateQueries({ queryKey: ["tournaments", "analytics"] }).then();
+        queryClient.invalidateQueries({ queryKey: ["analytics"] }).then();
       });
     });
   };

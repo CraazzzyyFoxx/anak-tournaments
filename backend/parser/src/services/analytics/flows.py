@@ -5,16 +5,12 @@ import pandas as pd
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from openskill.models import PlackettLuce, PlackettLuceRating
-from trueskillthroughtime import History, Player as TTTPlayer, Gaussian
 
 from src import models
 from src.schemas.analytics import AnalyticsMatch
 from src.services.team import service as team_service
-from src.services.tournament import service as tournament_service
-from src.services.encounter import service as encounter_service
 
 from . import service
-from ...core.logging import logger
 
 COEF_NOVICE_FIRST = 1 / 0.15
 COEF_NOVICE_SECOND = 1 / 0.11
@@ -49,8 +45,35 @@ async def get_data_frame(session: AsyncSession) -> pd.DataFrame:
     return df
 
 
+async def create_players_shifts_is_not_exists(session: AsyncSession, tournament_id: int) -> None:
+    df = await get_data_frame(session)
+    players = await service.get_players_by_tournament_id(session, tournament_id)
+    players_ids = [player.player_id for player in players]
+    final_df = df[df["tournament_id"] == tournament_id]
+    final_df = final_df.replace({np.nan: None})
+
+    for _, row in final_df.iterrows():
+        if row["player_id"] not in players_ids:
+            shift_one = row["cost"] - row["previous_cost"] if row["previous_cost"] else None
+            shift_two = row["previous_cost"] - row["pre-previous_cost"] if row["pre-previous_cost"] else None
+
+            analytics_item = models.AnalyticsPlayer(
+                tournament_id=row["tournament_id"],
+                player_id=row["player_id"],
+                wins=row["wins"],
+                losses=row["losses"],
+                shift_one=shift_one,
+                shift_two=shift_two,
+                shift=0,
+            )
+            session.add(analytics_item)
+
+    await session.commit()
+
+
 async def get_analytics(session: AsyncSession, tournament_id: int):
     df = await get_data_frame(session)
+    algorithm = await service.get_algorithm(session, "Points")
 
     for id_role in df["id_role"].unique():
         rows = df[df["id_role"] == id_role]
@@ -81,31 +104,22 @@ async def get_analytics(session: AsyncSession, tournament_id: int):
     final_df = final_df.replace({np.nan: None})
 
     await session.execute(
-        sa.delete(models.TournamentAnalytics).where(
+        sa.delete(models.AnalyticsShift).where(
             sa.and_(
-                models.TournamentAnalytics.tournament_id == tournament_id,
-                models.TournamentAnalytics.algorithm == "points",
+                models.AnalyticsShift.tournament_id == tournament_id,
+                models.AnalyticsShift.algorithm_id == algorithm.id
             )
         )
     )
     await session.commit()
+    await create_players_shifts_is_not_exists(session, tournament_id)
 
     for _, row in final_df.iterrows():
-        analytics_item = models.TournamentAnalytics(
-            algorithm="points",
+        analytics_item = models.AnalyticsShift(
+            algorithm_id=algorithm.id,
             tournament_id=row["tournament_id"],
-            team_id=row["team_id"],
             player_id=row["player_id"],
-            wins=row["wins"],
-            losses=row["losses"],
-            shift_one=row["cost"] - row["previous_cost"]
-            if row["previous_cost"]
-            else None,
-            shift_two=row["previous_cost"] - row["pre-previous_cost"]
-            if row["pre-previous_cost"]
-            else None,
-            shift=0,
-            calculated_shift=round(row["shift"], 2),
+            shift=round(row["shift"], 2),
         )
         session.add(analytics_item)
     await session.commit()
@@ -148,13 +162,12 @@ def prepare_openskill_data(
 
         for player in [*encounter.home_team.players, *encounter.away_team.players]:
             id_role = get_id_role(player)
-            rows = df[df["id_role"] == id_role]
             player_rating = players_rating.get(id_role)
             if player_rating is None:
                 players_rating[id_role] = get_player_rating(pl, player)
-            else:
-                if player.is_newcomer_role is False and player.rank != df[(df["id_role"] == id_role) & (df["tournament_id"] == encounter.tournament_id)]["previous_cost"].values[0]:
-                    players_rating[id_role] = get_player_rating(pl, player)
+            # else:
+            #     if player.is_newcomer_role is False and player.rank != df[(df["id_role"] == id_role) & (df["tournament_id"] == encounter.tournament_id)]["previous_cost"].values[0]:
+            #         players_rating[id_role] = get_player_rating(pl, player)
 
             # if id_role not in players_rating:
             #     players_rating[id_role] = get_player_rating(pl, player)
@@ -200,49 +213,43 @@ def rank_to_div(cost: int | float) -> float:
 async def get_analytics_openskill(session: AsyncSession, tournament_id: int) -> None:
     matches = await service.get_matches(session, tournament_id-10, tournament_id)
     teams = await team_service.get_by_tournament(session, tournament_id, ["players", "players.user"])
+    algorithm = await service.get_algorithm(session, "Open Skill")
     df = await get_data_frame(session)
-
-    final_df = df[df["tournament_id"] == tournament_id]
-    final_df = final_df.replace({np.nan: None})
     pl = get_plackett_luce()
     agents, players_rating, ttt_matches = prepare_openskill_data(df, pl, teams, matches)
 
     await session.execute(
-        sa.delete(models.TournamentAnalytics).where(
+        sa.delete(models.AnalyticsShift).where(
             sa.and_(
-                models.TournamentAnalytics.tournament_id == tournament_id,
-                models.TournamentAnalytics.algorithm == "openskill"
+                models.AnalyticsShift.tournament_id == tournament_id,
+                models.AnalyticsShift.algorithm_id == algorithm.id
             )
         )
     )
     await session.commit()
+    await create_players_shifts_is_not_exists(session, tournament_id)
+
+    final_df = df[df["tournament_id"] == tournament_id]
+    final_df = final_df.replace({np.nan: None})
 
     for _, row in final_df.iterrows():
-        analytics_item = models.TournamentAnalytics(
-            algorithm="openskill",
+        analytics_item = models.AnalyticsShift(
+            algorithm_id=algorithm.id,
             tournament_id=row["tournament_id"],
-            team_id=row["team_id"],
             player_id=row["player_id"],
-            wins=row["wins"],
-            losses=row["losses"],
-            shift_one=row["cost"] - row["previous_cost"]
-            if row["previous_cost"]
-            else None,
-            shift_two=row["previous_cost"] - row["pre-previous_cost"]
-            if row["pre-previous_cost"]
-            else None,
-            shift=0,
-            calculated_shift=round(row["div"] - rank_to_div(players_rating[row["id_role"]].mu), 2),
+            shift=round(row["div"] - rank_to_div(players_rating[row["id_role"]].mu), 2),
         )
         session.add(analytics_item)
     await session.commit()
 
 
 async def get_predictions_openskill(session: AsyncSession, tournament_id: int) -> None:
+    df = await get_data_frame(session)
     matches = await service.get_matches(session, tournament_id - 10, tournament_id-1)
     teams = await team_service.get_by_tournament(session, tournament_id, ["players", "players.user"])
+    algorithm = await service.get_algorithm(session, "Open Skill")
     pl = get_plackett_luce()
-    agents, players_rating, ttt_matches = prepare_openskill_data(pl, teams, matches)
+    agents, players_rating, ttt_matches = prepare_openskill_data(df, pl, teams, matches)
     predicted_teams: list[tuple[str, list[PlackettLuceRating]]] = []
 
     for team in teams:
@@ -250,6 +257,7 @@ async def get_predictions_openskill(session: AsyncSession, tournament_id: int) -
         predicted_teams.append((team.name, team_players))
 
     predicted = pl.predict_rank([p_team[1] for p_team in predicted_teams])
+
     for team_data, predict in zip(predicted_teams, predicted):
         team: models.Team | None = None
         for t in teams:
@@ -258,8 +266,8 @@ async def get_predictions_openskill(session: AsyncSession, tournament_id: int) -
                 break
 
         session.add(
-            models.TournamentPrediction(
-                algorithm="openskill",
+            models.AnalyticsPredictions(
+                algorithm_id=algorithm.id,
                 tournament_id=tournament_id,
                 team_id=team.id,
                 predicted_place=predict[0]
