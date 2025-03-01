@@ -20,13 +20,7 @@ import {
   NavigationMenuTrigger
 } from "@/components/ui/navigation-menu";
 import { cn } from "@/lib/utils";
-import {
-  OrganizationSwitcher,
-  SignedIn,
-  SignedOut,
-  SignInButton,
-  UserButton
-} from "@clerk/nextjs";
+import { OrganizationSwitcher, SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/nextjs";
 
 const tournament_components: { title: string; href: string; description: string }[] = [
   {
@@ -164,7 +158,7 @@ const Header = () => {
                 width="24"
                 height="24"
               />
-              <SignInButton  mode={"modal"}/>
+              <SignInButton mode={"modal"} />
             </Button>
           </SignedOut>
           <SignedIn>

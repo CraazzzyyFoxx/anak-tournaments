@@ -18,10 +18,10 @@ from src.services.analytics import flows as analytics_flows
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     async with db.async_session_maker() as session:
+        pass
         # for index in range(21, 46+1):
-        #      await analytics_flows.get_analytics_openskill(session,  index)
-        # pass
-        await analytics_flows.get_analytics_openskill(session, 46)
+        #       await analytics_flows.get_analytics_openskill(session,  index)
+        # await analytics_flows.get_analytics_openskill(session, 46)
         # await analytics_flows.get_predictions_openskill(session, 46)
     logger.info("Application... Online!")
     yield

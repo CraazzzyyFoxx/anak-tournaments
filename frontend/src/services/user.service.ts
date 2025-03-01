@@ -13,12 +13,10 @@ import { AchievementRarity } from "@/types/achievement.types";
 import { customFetch } from "@/lib/custom_fetch";
 
 export default class userService {
-  static async getAll(
-    params: SearchPaginationParams
-  ): Promise<PaginatedResponse<User>> {
+  static async getAll(params: SearchPaginationParams): Promise<PaginatedResponse<User>> {
     return customFetch("users", {
       query: {
-        ...params,
+        ...params
       }
     }).then((res) => res.json());
   }

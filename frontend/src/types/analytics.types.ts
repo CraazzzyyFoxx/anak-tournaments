@@ -1,5 +1,10 @@
 import { Player, Team } from "@/types/team.types";
 
+export interface AlgorithmAnalytics {
+  id: number;
+  name: string;
+}
+
 export interface PlayerAnalytics extends Player {
   move_1: number;
   move_2: number;

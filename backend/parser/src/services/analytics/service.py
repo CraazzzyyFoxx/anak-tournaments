@@ -111,3 +111,21 @@ async def get_matches(
     )
     result = await session.scalars(query)
     return result.unique().all()  # type: ignore
+
+
+async def get_algorithm(session: AsyncSession, name: str) -> models.AnalyticsAlgorithm:
+    query = sa.select(models.AnalyticsAlgorithm).where(models.AnalyticsAlgorithm.name == name)
+    result = await session.execute(query)
+    return result.scalar_one()  # type: ignore
+
+
+async def get_players_by_tournament_id(
+        session: AsyncSession, tournament_id: int
+) -> typing.Sequence[models.AnalyticsPlayer]:
+    query = (
+        sa.select(models.AnalyticsPlayer)
+        .join(models.Player, models.AnalyticsPlayer.player_id == models.Player.id)
+        .where(models.AnalyticsPlayer.tournament_id == tournament_id)
+    )
+    result = await session.execute(query)
+    return result.scalars().all()  # type: ignore

@@ -3,7 +3,6 @@
 import React, { Suspense, useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import tournamentService from "@/services/tournament.service";
 import { Team } from "@/types/team.types";
 import {
   Select,
@@ -26,29 +25,20 @@ import {
 } from "@/components/ui/table";
 import { Card } from "@/components/ui/card";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
-import { useAuth } from "@clerk/nextjs";
-import { customFetch } from "@/lib/custom_fetch";
 import RanksPage from "@/app/tournaments/analytics/components/RanksPage";
+import tournamentService from "@/services/tournament.service";
+import analyticsService from "@/services/analytics.service";
 
 const AnalyticsPage = () => {
-  const { getToken } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  // useEffect(() => {
-  //   getToken().then((token) => {
-  //     customFetch("http://192.168.1.62:8082/api/v1/users/test/protected", {token });
-  //   })
-  // }, []);
-
-  // const [sortBy, setSortBy] = useState<"placement" | "group" | "avg_sr">("avg_sr");
-  // const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [activeTournamentId, setActiveTournamentId] = useState<number | null>(null);
   const [previousElement, setPreviousElement] = useState<HTMLElement | null>(null);
+  const [algorithm, setAlgorithm] = useState<number | null>(null);
   const [selectedTeam, setSelectedTeam] = useState<string>("");
   const [activeTab, setActiveTab] = useState<string>("overview");
-  const [algorithm, setAlgorithm] = useState<string>("points");
 
   const {
     data: tournamentsData,
@@ -58,23 +48,38 @@ const AnalyticsPage = () => {
     queryKey: ["tournaments"],
     queryFn: () => tournamentService.getAll(false)
   });
+  const { data: algorithmData, isSuccess: isSuccessAlgorithm } = useQuery({
+    queryKey: ["analytics", "algorithms"],
+    queryFn: () => analyticsService.getAlgorithms()
+  });
   const { data: analytics, isLoading: teamsLoading } = useQuery({
-    queryKey: ["tournaments", "analytics", activeTournamentId, algorithm],
+    queryKey: ["analytics", activeTournamentId, algorithm],
     // @ts-ignore
-    queryFn: () => tournamentService.getAnalytics(activeTournamentId, algorithm),
-    enabled: !!activeTournamentId
+    queryFn: () => analyticsService.getAnalytics(activeTournamentId, algorithm),
+    enabled: !!activeTournamentId && !!algorithm
   });
 
   useEffect(() => {
     const newSearchParams = new URLSearchParams(searchParams);
     setActiveTournamentId(Number(newSearchParams.get("tournamentId")));
+    setAlgorithm(Number(newSearchParams.get("algorithm")));
     setActiveTab(newSearchParams.get("tab") || "overview");
-    setAlgorithm(newSearchParams.get("algorithm") || "points");
     if (!newSearchParams.has("tournamentId") && isSuccessTournaments) {
       newSearchParams.set("tournamentId", String(tournamentsData?.results[0].id));
       router.push(`${pathname}?${newSearchParams.toString()}`);
     }
-  }, [pathname, router, searchParams, tournamentsData?.results, isSuccessTournaments]);
+    if (!newSearchParams.has("algorithm") && isSuccessAlgorithm) {
+      newSearchParams.set("algorithm", String(algorithmData?.results[0].id));
+      router.push(`${pathname}?${newSearchParams.toString()}`);
+    }
+  }, [
+    pathname,
+    router,
+    searchParams,
+    tournamentsData?.results,
+    isSuccessTournaments,
+    algorithmData?.results
+  ]);
 
   useEffect(() => {
     setSelectedTeam("");
@@ -103,7 +108,7 @@ const AnalyticsPage = () => {
     const newSearchParams = new URLSearchParams(searchParams);
     newSearchParams.set("algorithm", String(newAlgorithm));
     router.push(`${pathname}?${newSearchParams.toString()}`);
-    setAlgorithm(newAlgorithm);
+    setAlgorithm(Number(newAlgorithm));
   };
 
   const scrollToTeam = (team: Team) => {
@@ -159,14 +164,17 @@ const AnalyticsPage = () => {
             </SelectGroup>
           </SelectContent>
         </Select>
-        <Select value={algorithm} onValueChange={(value) => pushAlgorithm(value)}>
+        <Select value={algorithm?.toString()} onValueChange={(value) => pushAlgorithm(value)}>
           <SelectTrigger className="xs:w-full md:w-[250px]">
             <SelectValue placeholder="Select a algorithm" />
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
-              <SelectItem value="points">Points</SelectItem>
-              <SelectItem value="openskill">Open Skill</SelectItem>
+              {algorithmData?.results.map((item) => (
+                <SelectItem key={item.id} value={item.id.toString()}>
+                  {item.name}
+                </SelectItem>
+              ))}
             </SelectGroup>
           </SelectContent>
         </Select>
