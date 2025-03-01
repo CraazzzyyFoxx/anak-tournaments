@@ -97,7 +97,7 @@ async def get_analytics(
             cache_teams_wins[team.id] = analytics.wins
 
     avg_team_cost = round(
-        sum([t.avg_sr for t in cache_teams.values()]) / len(cache_teams)
+        sum([t.avg_sr for t in cache_teams.values()]) / max(len(cache_teams), 1)
     )
 
     for team_id, team in cache_teams.items():
