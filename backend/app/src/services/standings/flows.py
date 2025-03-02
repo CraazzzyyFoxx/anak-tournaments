@@ -1,3 +1,5 @@
+import typing
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models, schemas
@@ -7,6 +9,18 @@ from src.services.team import flows as team_flows
 from src.services.tournament import flows as tournament_flows
 
 from . import service
+
+
+def sort_matches(
+    matches: typing.Sequence[schemas.EncounterRead],
+) -> list[schemas.EncounterRead]:
+    max_abs_round = max(abs(match.round) for match in matches)
+
+    def sort_key(match):
+        final_flag = 1 if abs(match.round) == max_abs_round else 0
+        return final_flag, abs(match.round), 0 if match.round > 0 else 1
+
+    return sorted(matches, key=sort_key)
 
 
 async def to_pydantic(
@@ -48,7 +62,7 @@ async def to_pydantic(
         team=team,
         group=group,
         tournament=tournament,
-        matches_history=matches_history,
+        matches_history=sort_matches(matches_history),
     )
 
 
