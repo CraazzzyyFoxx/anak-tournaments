@@ -173,9 +173,9 @@ const UserHeroes = ({ heroes }: { heroes: HeroWithUserStats[] }) => {
                     <TableHead className="text-center text-lg">Name</TableHead>
                     <TableHead className="text-center text-lg">Overall</TableHead>
                     <TableHead className="text-center text-lg">Best Result</TableHead>
-                    <TableHead className="text-center text-lg">Avg. for 10 min</TableHead>
+                    <TableHead className="text-center text-lg">Avg.</TableHead>
                     <TableHead className="text-center text-lg">Best All</TableHead>
-                    <TableHead className="text-center text-lg">Best Avg. over 10</TableHead>
+                    <TableHead className="text-center text-lg">All avg.</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

@@ -18,7 +18,7 @@ export const TournamentStatus = ({ isFinished }: { isFinished: boolean }) => {
             : "bg-yellow-100 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-100"
         }
       >
-        {isFinished ? "Finished" : "In progress"}
+        {isFinished ? "Finished" : "Ongoing"}
       </Badge>
     </div>
   );
