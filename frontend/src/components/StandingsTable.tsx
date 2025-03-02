@@ -109,15 +109,13 @@ const StandingsTable = ({ standings, is_groups }: StandingTableProps) => {
                   <TableCell className="text-center">{standing.draw}</TableCell>
                   <TableCell className="text-center">{standing.lose}</TableCell>
                   <TableCell className="flex gap-2">
-                    {standing.matches_history
-                      .sort((a, b) => a.round - b.round)
-                      ?.map((encounter) => (
-                        <StandingEncounterCard
-                          key={encounter.id}
-                          team_id={standing.team_id}
-                          encounter={encounter}
-                        />
-                      ))}
+                    {standing.matches_history?.map((encounter) => (
+                      <StandingEncounterCard
+                        key={encounter.id}
+                        team_id={standing.team_id}
+                        encounter={encounter}
+                      />
+                    ))}
                   </TableCell>
                 </>
               )}

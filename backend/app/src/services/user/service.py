@@ -581,12 +581,12 @@ async def get_statistics_by_heroes(
             sa.and_(
                 models.MatchStatistics.user_id == user_id,
                 models.MatchStatistics.round == 0,
+                models.MatchStatistics.hero_id.isnot(None),
             )
         )
         .group_by(
             models.MatchStatistics.name,
             models.Hero.id,
-            models.MatchStatistics.hero_id,
             user_match.c.encounter_id,
             user_match.c.map_name,
             user_match.c.map_image_path,
@@ -698,7 +698,6 @@ async def get_statistics_by_heroes_all_values(
         .group_by(
             models.MatchStatistics.name,
             models.Hero.id,
-            models.MatchStatistics.hero_id,
             all_max_encounter_filtered.c.encounter_id,
             all_max_encounter_filtered.c.map_name,
             all_max_encounter_filtered.c.map_image_path,

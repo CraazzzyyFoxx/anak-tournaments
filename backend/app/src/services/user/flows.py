@@ -520,6 +520,8 @@ async def get_heroes(
             cache[hero_id][name].avg_10_all = round(value_avg_10, 2)
 
     for hero_id, stats in cache.items():
+        if stats[enums.LogStatsName.Eliminations].overall == 0:
+            continue
         payload.append(
             schemas.HeroWithUserStats(
                 hero=cache_hero[hero_id],
