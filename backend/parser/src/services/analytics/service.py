@@ -77,7 +77,7 @@ async def get_analytics(
         )
         .where(
             models.Tournament.id >= 21,
-            models.Tournament.is_league.is_(False),
+            # models.Tournament.is_league.is_(False),
             models.Player.is_substitution.is_(False),
         )
     )

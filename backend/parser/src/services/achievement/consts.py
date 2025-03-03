@@ -628,6 +628,12 @@ standing_achievements: list[schemas.AchievementCreate] = [
         description_ru="Добраться до финала, пройдя по всей нижней сетке.",
         description_en="Get to the final by going through the entire lower bracket.",
     ),
+    schemas.AchievementCreate(
+        name="Забаланшенные",
+        slug="well-balanced",
+        description_ru="Сыграть все матчи в группе в ничью.",
+        description_en="Play all matches in the group in a draw.",
+    ),
 ]
 
 match_achievements: list[schemas.AchievementCreate] = [

@@ -373,6 +373,11 @@ async def calculate_mystery_heroes_achievements(session: AsyncSession) -> None:
         await service.calculate_mystery_heroes_achievements(session, tournament)
 
 
+async def calculate_well_balanced_achievements(session: AsyncSession) -> None:
+    for tournament in await tournament_service.get_all(session):
+        await service.calculate_well_balanced_achievements(session, tournament)
+
+
 async def calculate_achievements(session: AsyncSession) -> None:
     await service.bulk_initial_create_achievements(session)
 

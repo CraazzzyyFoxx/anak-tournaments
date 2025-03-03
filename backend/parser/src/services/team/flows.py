@@ -316,7 +316,7 @@ async def bulk_create_from_balancer(
 
 
 def format_team_name(name: str, mapper: dict[str, str] | None) -> str:
-    new_name = name
+    new_name = name.split("#")[0]
     if mapper:
         new_name = mapper.get(name, name)
 
