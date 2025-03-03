@@ -763,7 +763,7 @@ async def calculate_well_balanced_achievements(session: AsyncSession, tournament
             sa.and_(
                 models.Player.tournament_id == tournament.id,
                 models.Standing.draw == 5,
-                models.Standing.buchholz.is_(None)
+                models.Standing.buchholz.isnot(None)
             )
         )
     )
