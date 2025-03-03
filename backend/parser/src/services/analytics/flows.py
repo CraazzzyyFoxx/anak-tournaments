@@ -3,6 +3,7 @@ import typing
 import numpy as np
 import pandas as pd
 import sqlalchemy as sa
+from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from openskill.models import PlackettLuce, PlackettLuceRating
 
@@ -150,12 +151,6 @@ def prepare_openskill_data(
     players_rating: dict[str, PlackettLuceRating] = {}
     ttt_matches: list[AnalyticsMatch] = []
 
-    # for team in teams:
-    #     for player in team.players:
-    #         id_role = get_id_role(player)
-    #         if id_role not in players_rating:
-    #             players_rating[id_role] = get_player_rating(pl, player)
-
     for encounter in encounters:
         home_team = list(map(lambda p: get_id_role(p), encounter.home_team.players))
         away_team = list(map(lambda p: get_id_role(p), encounter.away_team.players))
@@ -166,8 +161,10 @@ def prepare_openskill_data(
             if player_rating is None:
                 players_rating[id_role] = get_player_rating(pl, player)
             # else:
-            #     if player.is_newcomer_role is False and player.rank != df[(df["id_role"] == id_role) & (df["tournament_id"] == encounter.tournament_id)]["previous_cost"].values[0]:
-            #         players_rating[id_role] = get_player_rating(pl, player)
+            #     if player.is_newcomer_role is False:
+            #         values = df[(df["id_role"] == id_role)]["previous_cost"].values
+            #         if values.any() and player.rank != values[-1]:
+            #             players_rating[id_role] = get_player_rating(pl, player)
 
             # if id_role not in players_rating:
             #     players_rating[id_role] = get_player_rating(pl, player)
@@ -187,6 +184,12 @@ def prepare_openskill_data(
             away_score=encounter.away_score,
             time=encounter.tournament.start_date,
         ))
+
+    for team in teams:
+        for player in team.players:
+            id_role = get_id_role(player)
+            if id_role not in players_rating:
+                players_rating[id_role] = get_player_rating(pl, player)
 
     for encounter in ttt_matches:
         home_team = [players_rating[i] for i in encounter.home_players]
@@ -245,7 +248,7 @@ async def get_analytics_openskill(session: AsyncSession, tournament_id: int) -> 
 
 async def get_predictions_openskill(session: AsyncSession, tournament_id: int) -> None:
     df = await get_data_frame(session)
-    matches = await service.get_matches(session, tournament_id - 10, tournament_id-1)
+    matches = await service.get_matches(session, tournament_id - 10, tournament_id)
     teams = await team_service.get_by_tournament(session, tournament_id, ["players", "players.user"])
     algorithm = await service.get_algorithm(session, "Open Skill")
     pl = get_plackett_luce()
@@ -257,6 +260,16 @@ async def get_predictions_openskill(session: AsyncSession, tournament_id: int) -
         predicted_teams.append((team.name, team_players))
 
     predicted = pl.predict_rank([p_team[1] for p_team in predicted_teams])
+
+    await session.execute(
+        sa.delete(models.AnalyticsPredictions).where(
+            sa.and_(
+                models.AnalyticsPredictions.tournament_id == tournament_id,
+                models.AnalyticsPredictions.algorithm_id == algorithm.id
+            )
+        )
+    )
+    await session.commit()
 
     for team_data, predict in zip(predicted_teams, predicted):
         team: models.Team | None = None

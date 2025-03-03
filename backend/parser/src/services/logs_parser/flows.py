@@ -1036,4 +1036,7 @@ async def process_match_log(
     decoded_lines = [line.decode() for line in data.split(b"\n") if line]
 
     processor = MatchLogProcessor(tournament, filename.split("/")[-1], decoded_lines)
-    await processor.start(session, is_raise=is_raise)
+    try:
+        await processor.start(session, is_raise=is_raise)
+    except Exception as e:
+        logger.exception(e)

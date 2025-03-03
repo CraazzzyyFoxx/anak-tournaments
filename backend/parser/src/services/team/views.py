@@ -1,5 +1,6 @@
 import orjson
 from fastapi import APIRouter, Depends, UploadFile
+from loguru import logger
 
 from src import schemas
 from src.core import db, enums

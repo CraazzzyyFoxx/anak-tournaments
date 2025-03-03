@@ -58,7 +58,13 @@ async def _create_encounter_from_challonge(
     tournament: models.Tournament,
     group_id: int,
     match: schemas.ChallongeMatch,
-) -> models.Encounter:
+) -> models.Encounter | None:
+    if match.state == "pending":
+        logger.info(
+            f"Encounter [name={match.id}] is pending. Skipping..."
+        )
+        return None
+
     home_team = await team_flows.get_by_tournament_challonge_id(
         session, tournament.id, match.player1_id, []
     )
@@ -72,10 +78,10 @@ async def _create_encounter_from_challonge(
     name = f"{home_team.name} vs {away_team.name}"
     existed = await service.get_by_challonge_id(session, match.id, [])
     if existed:
-        logger.info(
-            f"Encounter [name={existed.name}] already exists in tournament "
-            f"[id={tournament.id} number={tournament.number}]. Skipping..."
-        )
+        existed.home_score = home_score
+        existed.away_score = away_score
+        existed.status = enums.EncounterStatus(match.state)
+        await session.commit()
         return existed
     match_db = await service.create(
         session,
@@ -137,8 +143,8 @@ async def bulk_create_for_from_challonge(session: AsyncSession) -> None:
         await bulk_create_for_tournament_from_challonge(session, tournament.id)
 
 
-def create_match(
-    session: Session,
+async def create_match(
+    session: AsyncSession,
     encounter: models.Encounter,
     *,
     time: int,
@@ -149,7 +155,7 @@ def create_match(
     home_score: int,
     away_score: int,
 ) -> models.Match:
-    match = service.get_match_by_encounter_and_map(session, encounter.id, map.id, [])
+    match = await service.get_match_by_encounter_and_map(session, encounter.id, map.id, [])
     if match:
         raise errors.ApiHTTPException(
             status_code=400,
@@ -160,7 +166,7 @@ def create_match(
                 )
             ],
         )
-    return service.create_match(
+    return await service.create_match(
         session,
         encounter=encounter,
         time=time,

@@ -49,10 +49,10 @@ class AppConfig(BaseSettings):
     s3_endpoint_url: str
     s3_bucket_name: str
 
-    proxy_ip: str | None
-    proxy_port: int | None
-    proxy_username: str | None
-    proxy_password: str | None
+    proxy_ip: str | None = None
+    proxy_port: int | None = None
+    proxy_username: str | None = None
+    proxy_password: str | None = None
 
     @property
     def db_url_asyncpg(self):

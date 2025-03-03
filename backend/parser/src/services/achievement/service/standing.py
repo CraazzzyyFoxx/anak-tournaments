@@ -746,3 +746,32 @@ async def calculate_lower_bracket_run_achievement(
     logger.info(
         f"Achievement 'i-killed-i-stole': assigned to {len(user_ids)} users in tournament {tournament.name}."
     )
+
+
+async def calculate_well_balanced_achievements(session: AsyncSession, tournament: models.Tournament) -> None:
+    achievement = await crud.get_achievement_or_log_error(session, "well-balanced")
+    if not achievement:
+        return
+
+    await crud.delete_user_achievements(session, achievement, tournament.id)
+
+    query = (
+        sa.select(models.Player.user_id)
+        .join(models.Team, models.Player.team_id == models.Team.id)
+        .join(models.Standing, models.Team.id == models.Standing.team_id)
+        .where(
+            sa.and_(
+                models.Player.tournament_id == tournament.id,
+                models.Standing.draw == 5,
+                models.Standing.buchholz.isnot(None)
+            )
+        )
+    )
+
+    result = await session.execute(query)
+    user_ids = result.scalars().all()
+    await crud.create_user_achievements(session, achievement, user_ids, tournament.id)
+    await session.commit()
+    logger.info(
+        f"Achievement 'well-balanced' created for tournament {tournament.name} for {len(user_ids)} users."
+    )
