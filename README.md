@@ -25,8 +25,8 @@
 > The backend is built with FastAPI and provides the core API functionality, including data retrieval, caching, and processing.
 > You can explore the backend API documentation using the following links:
 >
->Redoc Documentation: https://aqt.craazzzyyfoxx.me/api/redoc
->Swagger UI: https://aqt.craazzzyyfoxx.me/api/docs
+>Redoc Documentation: https://aqt.craazzzyyfoxx.me/api/v1/redoc
+>Swagger UI: https://aqt.craazzzyyfoxx.me/api/v1/docs
 
 **Frontend**
 > The frontend is built with Next.js and provides a user-friendly interface for interacting with the AQT API.
