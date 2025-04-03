@@ -62,7 +62,7 @@ const UserMenu = () => {
             <span>Profile</span>
           </DropdownMenuItem>
           {
-            userMemberships.count || 0 > 0 && (
+            (userMemberships.count || 0) > 0 && (
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger>
                   <Building />
