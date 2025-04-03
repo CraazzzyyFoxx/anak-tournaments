@@ -143,6 +143,37 @@ async def get_by_battle_tag(
     return await to_pydantic(session, user, entities)
 
 
+async def get_by_discord(
+    session: AsyncSession, discord: str, entities: list[str]
+) -> schemas.UserRead:
+    """
+    Retrieves a `User` model instance by its Discord ID and converts it to a `UserRead` schema.
+
+    Args:
+        session: An SQLAlchemy `AsyncSession` for database interaction.
+        discord: The Discord ID of the user to retrieve.
+        entities: A list of strings representing the names of related entities to include.
+
+    Returns:
+        A `UserRead` schema instance.
+
+    Raises:
+        errors.ApiHTTPException: If the user is not found.
+    """
+    user = await service.get_by_discord(session, discord, entities)
+    if not user:
+        raise errors.ApiHTTPException(
+            status_code=400,
+            detail=[
+                errors.ApiExc(
+                    code="not_found", msg=f"User with discord {discord} not found."
+                )
+            ],
+        )
+    return await to_pydantic(session, user, entities)
+
+
+
 async def get_all(
     session: AsyncSession, params: pagination.PaginationSortSearchParams
 ) -> pagination.Paginated[schemas.UserRead]:
@@ -163,6 +194,26 @@ async def get_all(
         total=total,
         results=[await to_pydantic(session, user, params.entities) for user in users],
     )
+
+
+async def search_by_name(
+    session: AsyncSession, name: str, fields: list[str]
+) -> list[schemas.UserSearch]:
+    """
+    Searches for a user by name and converts the result to a `UserRead` schema.
+
+    Args:
+        session: An SQLAlchemy `AsyncSession` for database interaction.
+        name: The name of the user to search for.
+        fields: A list of strings representing the names of related entities to include.
+
+    Returns:
+        A `UserSearch` schema instance.
+    """
+    users = await service.search_by_name(session, name, fields)
+    return [
+        schemas.UserSearch(id=user.user_id, name=user.battle_tag) for user in users
+    ]
 
 
 async def get_read(

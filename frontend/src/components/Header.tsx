@@ -20,7 +20,8 @@ import {
   NavigationMenuTrigger
 } from "@/components/ui/navigation-menu";
 import { cn } from "@/lib/utils";
-import { OrganizationSwitcher, SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/nextjs";
+import { OrganizationSwitcher, SignedIn, SignedOut, SignInButton } from "@clerk/nextjs";
+import UserMenu from "@/components/UserMenu";
 
 const tournament_components: { title: string; href: string; description: string }[] = [
   {
@@ -144,13 +145,13 @@ const Header = () => {
           </nav>
         </SheetContent>
       </Sheet>
-      <div className="flex w-full items-center gap-4 md:ml-auto md:gap-2 lg:gap-4">
+      <div className="flex w-full items-center md:ml-auto gap-4 lg:gap-4">
         <div className="ml-auto flex-1 sm:flex-initial">
           <UserSearch />
         </div>
         <div className="text-white">
           <SignedOut>
-            <Button className="bg-[#5865f2] text-white text-md hover:bg-[#5865f2]">
+            <Button className="bg-[#5865f2] text-white hover:bg-[#5865f2] text-base">
               <Image
                 className="text-white"
                 src="/discord-white.svg"
@@ -162,8 +163,7 @@ const Header = () => {
             </Button>
           </SignedOut>
           <SignedIn>
-            <OrganizationSwitcher />
-            <UserButton />
+            <UserMenu/>
           </SignedIn>
         </div>
       </div>

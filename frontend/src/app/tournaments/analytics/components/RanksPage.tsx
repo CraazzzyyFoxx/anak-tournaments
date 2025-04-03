@@ -24,7 +24,7 @@ interface Tournament {
 const ranks: Tournament[] = [
   {
     name: "New Era x3",
-    tournament: "Tournament 33",
+    tournament: "Tournament 32",
     ranks: [
       {
         rank: "Чемпион1 - ГМ2",
@@ -170,7 +170,7 @@ const ranks: Tournament[] = [
   },
   {
     name: "New Era x4",
-    tournament: "Tournament 32",
+    tournament: "Tournament 33",
     ranks: [
       {
         rank: "Чемпион1 - ГМ2",
@@ -321,7 +321,7 @@ const RanksPage = () => {
     <div className="grid gap-8 grid-cols-3">
       {ranks.map((tournament, index) => (
         <Card key={`tournament-${index}`}>
-          <div className="flex gap-4 justify-center py-3.5">
+          <div className="flex gap-4 px-12 py-3.5">
             <h3>{tournament.tournament}</h3>
             <h2>{tournament.name}</h2>
           </div>
@@ -336,7 +336,7 @@ const RanksPage = () => {
             <TableBody>
               {tournament.ranks.map((rank, rank_index) => (
                 <TableRow key={`rank-${index}-${rank_index}`}>
-                  <TableCell className="font-medium">{rank.rank}</TableCell>
+                  <TableCell className="font-medium text-right">{rank.rank}</TableCell>
                   <TableCell className="text-center">{rank.damage}</TableCell>
                   <TableCell className="text-center">{rank.support}</TableCell>
                 </TableRow>

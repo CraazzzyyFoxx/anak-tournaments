@@ -3,7 +3,7 @@ import {
   User,
   UserBestTeammate,
   UserMapRead,
-  UserProfile,
+  UserProfile, MinimizedUser,
   UserTournament,
   UserTournamentWithStats
 } from "@/types/user.types";
@@ -27,7 +27,6 @@ export default class userService {
       }
     }).then((res) => res.json());
   }
-
   static async getUserProfile(id: number): Promise<UserProfile> {
     return customFetch(`users/${id}/profile`).then((res) => res.json());
   }
@@ -94,6 +93,14 @@ export default class userService {
         per_page: 5,
         sort: "winrate",
         order: "desc"
+      }
+    }).then((res) => res.json());
+  }
+  static async searchUsers(query: string): Promise<MinimizedUser[]> {
+    return customFetch(`users/search`, {
+      query: {
+        query: query,
+        fields: ["battle_tag"],
       }
     }).then((res) => res.json());
   }

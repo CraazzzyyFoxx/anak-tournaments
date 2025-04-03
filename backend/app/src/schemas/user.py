@@ -18,6 +18,7 @@ __all__ = (
     "HeroWithUserStats",
     "HeroStatBest",
     "UserBestTeammate",
+    "UserSearch",
 )
 
 from src.schemas import MapRead
@@ -137,3 +138,8 @@ class UserBestTeammate(BaseModel):
     tournaments: int
     winrate: float
     stats: dict[enums.LogStatsName, float | None]
+
+
+class UserSearch(BaseModel):
+    id: int
+    name: str

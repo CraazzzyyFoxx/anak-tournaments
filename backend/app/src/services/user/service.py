@@ -127,6 +127,33 @@ async def get_all(
     return result.unique().scalars().all(), result_total.scalar_one()
 
 
+async def search_by_name(
+    session: AsyncSession, query: str, fields: list[str]
+) -> typing.Sequence[models.UserBattleTag]:
+    """
+    Retrieves a `UserBattleTag` model instance by its name, optionally including related entities.
+
+    Args:
+        session: An SQLAlchemy `AsyncSession` for database interaction.
+        query: The name of the user to retrieve.
+        fields: A list of strings representing the fields to search by.
+
+    Returns:
+        A `UserBattleTag` model instance if found, otherwise `None`.
+    """
+    search_query = f"%{query}%"
+    columns = [models.UserBattleTag.depth_get_column(field.split(".")) for field in fields]
+    query = (
+        sa.select(models.UserBattleTag)
+        .where(
+            sa.or_(*[column.ilike(search_query) for column in columns])
+        )
+        .limit(10)
+    )
+    result = await session.scalars(query)
+    return result.unique().all()
+
+
 async def find_by_battle_tag(
     session: AsyncSession, battle_tag: str, entities: list[str]
 ) -> models.User | None:
@@ -176,6 +203,28 @@ async def find_by_battle_tag(
         return await get(session, user.id, entities)
 
     return None
+
+
+async def get_by_discord(session: AsyncSession, discord: str, entities: list[str]) -> models.User | None:
+    """
+    Retrieves a `User` model instance by its Discord ID.
+
+    Args:
+        session: An SQLAlchemy `AsyncSession` for database interaction.
+        discord: The Discord ID of the user to retrieve.
+        entities: A list of strings representing the names of related entities to include.
+
+    Returns:
+        A `User` model instance if found, otherwise `None`.
+    """
+    query = (
+        sa.select(models.User)
+        .options(*user_entities(entities))
+        .join(models.UserDiscord, models.User.id == models.UserDiscord.user_id)
+        .where(models.UserDiscord.name == discord)
+    )
+    result = await session.scalars(query)
+    return result.unique().first()
 
 
 async def get_overall_statistics(

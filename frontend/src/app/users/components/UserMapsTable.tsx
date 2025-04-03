@@ -58,7 +58,7 @@ const columns: ColumnDef<UserMapRead>[] = [
         <div className="flex gap-2 justify-self-start min-w-64">
           {row.getValue<HeroPlaytime[]>("heroes").map((hero) => {
             return (
-              <Avatar key={`hero-${hero}`}>
+              <Avatar key={`hero-${hero.hero.id}`}>
                 <AvatarImage src={hero.hero.image_path} asChild>
                   <Image src={hero.hero.image_path} alt="Hero" width={128} height={128} />
                 </AvatarImage>
@@ -80,15 +80,14 @@ const columns: ColumnDef<UserMapRead>[] = [
             variant="ghost"
             onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
           >
-            Win rate
+            Win ratio
             <ArrowUpDown className="ml-2 h-4 w-4" />
           </Button>
         </div>
       );
     },
     cell: ({ row }) => {
-      // @ts-ignore
-      const winRate = (row.getValue("win_rate") * 100).toFixed(0);
+      const winRate = (row.getValue<number>("win_rate") * 100).toFixed(0);
       return (
         <div
           className="flex justify-center"

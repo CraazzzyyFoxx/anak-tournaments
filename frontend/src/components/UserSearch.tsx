@@ -6,8 +6,7 @@ import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useDebounce } from "use-debounce";
 import userService from "@/services/user.service";
-import { SortDirection } from "@/types/pagination.types";
-import { User } from "@/types/user.types";
+import { MinimizedUser } from "@/types/user.types";
 import {
   Command,
   CommandEmpty,
@@ -19,24 +18,16 @@ import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
 
 const UserSearch = () => {
   const [isOpen, setIsOpen] = React.useState<boolean>(false);
-  const [searchData, setSearchData] = useState<User[]>([]);
+  const [searchData, setSearchData] = useState<MinimizedUser[]>([]);
   const [searchValue, setSearchValue] = useState<string>("");
   const [debouncedSearchValue] = useDebounce(searchValue, 300);
   const { push } = useRouter();
 
   useEffect(() => {
     userService
-      .getAll({
-        page: 1,
-        per_page: 10,
-        fields: ["name"],
-        order: SortDirection.desc,
-        sort: "similarity:name",
-        query: debouncedSearchValue,
-        entities: []
-      })
+      .searchUsers(debouncedSearchValue)
       .then((r) => {
-        setSearchData(r.results);
+        setSearchData(r);
       });
   }, [debouncedSearchValue]);
 

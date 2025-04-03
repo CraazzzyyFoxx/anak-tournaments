@@ -12,7 +12,6 @@ from src.services.encounter import flows as encounter_flows
 from src.services.map import flows as map_flows
 
 from . import flows
-from ...core.clerk import get_current_user
 
 router = APIRouter(prefix="/users", tags=[enums.RouteTag.USER])
 
@@ -36,13 +35,27 @@ async def get_all(
 
 
 @router.get(
+    path="/search",
+    response_model=list[schemas.UserSearch],
+    description="Search for a list of users based on search parameters. ",
+    summary="Search for users",
+)
+async def search_by_name(
+    query: str = Query(default=""),
+    fields: list[str] = Query([]),
+    session=Depends(db.get_async_session),
+):
+    return await flows.search_by_name(session, query, fields)
+
+
+@router.get(
     path="/{name}",
     response_model=schemas.UserRead,
-    description="Search for a given player by using its username or BattleTag (with # replaced by -). "
+    description="Search for a given player by using its discord or BattleTag (with # replaced by -). "
     "If you don't find the player by using the name, please try with the BattleTag. "
     "You should be able to find the associated player_id to use in order to request career data. "
-    "Available entities: **discord, battle_tag, twitch.**"
-    f"**Cache TTL: {config.settings.users_cache_ttl / 60} minutes.**",
+    "Available entities: **discord, battle_tag, twitch."
+    f"Cache TTL: {config.settings.users_cache_ttl / 60} minutes.**",
     summary="Get user by name",
 )
 @cache(
@@ -56,9 +69,11 @@ async def get_by_name(
     entities: list[str] = Query([]),
 ):
     name = name.replace("-", "#")
-    user = await flows.get_by_battle_tag(session, name, entities)
+    if "#" in name:
+        user = await flows.get_by_battle_tag(session, name, entities)
+    else:
+        user = await flows.get_by_discord(session, name, entities)
     return user
-
 
 @router.get(
     path="/{id}/profile",
