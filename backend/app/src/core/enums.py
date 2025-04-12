@@ -17,6 +17,7 @@ class RouteTag(StrEnum):
     MAP = "🗺️ Map"
     GAMEMODE = "🎮 Gamemode"
     UTILITY = "🔧 Utility"
+    ANALYTICS = "📈 Analytics"
 
 
 class HeroClass(StrEnum):

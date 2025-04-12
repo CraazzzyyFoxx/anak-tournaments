@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src import models, schemas
 from src.core import errors, pagination
 from src.services.team import flows as team_flows
+from src.services.user import flows as user_flows
 
 from . import service
 
@@ -136,11 +137,9 @@ async def get_analytics(
 
 
 async def change_shift(
-    session: AsyncSession, team_id: int, player_id: int, shift: int
+    session: AsyncSession, player_id: int, shift: int
 ) -> schemas.PlayerAnalytics:
-    analytics, calculated_shift = await service.change_shift(
-        session, team_id, player_id, shift
-    )
+    analytics, calculated_shift = await service.change_shift(session, player_id, shift)
     player = await team_flows.get_player(session, player_id, [])
     return schemas.PlayerAnalytics(
         **(await team_flows.to_pydantic_player(session, player, [])).model_dump(),
@@ -149,3 +148,45 @@ async def change_shift(
         points=calculated_shift.shift,
         shift=analytics.shift,
     )
+
+
+async def get_streaks(
+    session: AsyncSession, tournament_id: int
+) -> list[schemas.PlayerStreak]:
+    cache_pos: dict[str, list[int]] = {}
+    cache_users: dict[str, schemas.UserRead] = {}
+    output: list[schemas.PlayerStreak] = []
+    streaks = await service.get_streaks(session, tournament_id)
+
+    for user, role, place in streaks:
+        cache_users.setdefault(
+            f"{user.id}-{role}", await user_flows.to_pydantic(session, user, [])
+        )
+        cache_pos.setdefault(f"{user.id}-{role}", [])
+        if len(cache_pos[f"{user.id}-{role}"]) < 3:
+            if user.name == "Ocelot#21795":
+                print(f"User: {user.name}, Role: {role}, Place: {place}")
+            cache_pos[f"{user.id}-{role}"].append(place)
+
+    for key, positions in cache_pos.items():
+        if len(positions) < 2:
+            continue
+        user_id, role = key.split("-")
+        user = cache_users[key]
+        current_position = positions[0]
+        previous_position = positions[1] if len(positions) > 1 else None
+        pre_previous_position = positions[2] if len(positions) > 2 else None
+        sum_position = sum([p for p in positions if p is not None])
+
+        output.append(
+            schemas.PlayerStreak(
+                user=user,
+                role=role,
+                sum_position=sum_position,
+                current_position=current_position,
+                previous_position=previous_position,
+                pre_previous_position=pre_previous_position,
+            )
+        )
+
+    return sorted(output, key=lambda x: (x.sum_position, x.user.name))

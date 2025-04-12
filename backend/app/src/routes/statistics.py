@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends
 from src import schemas
 from src.core import db, enums, pagination
 
-from . import flows
+from src.services.statistics import flows as statistics_flows
 
 router = APIRouter(prefix="/statistics", tags=[enums.RouteTag.STATISTICS])
 
@@ -22,7 +22,7 @@ async def get_most_champions(
     ] = Depends(),
     session=Depends(db.get_async_session),
 ):
-    return await flows.get_most_champions(
+    return await statistics_flows.get_most_champions(
         session, pagination.PaginationSortParams.from_query_params(params)
     )
 
@@ -39,7 +39,7 @@ async def get_player_winrate(
     ] = Depends(),
     session=Depends(db.get_async_session),
 ):
-    return await flows.get_to_winrate_players(
+    return await statistics_flows.get_to_winrate_players(
         session, pagination.PaginationSortParams.from_query_params(params)
     )
 
@@ -56,6 +56,6 @@ async def get_top_won_maps_players(
     ] = Depends(),
     session=Depends(db.get_async_session),
 ):
-    return await flows.get_to_won_players(
+    return await statistics_flows.get_to_won_players(
         session, pagination.PaginationSortParams.from_query_params(params)
     )

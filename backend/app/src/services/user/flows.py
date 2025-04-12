@@ -173,7 +173,6 @@ async def get_by_discord(
     return await to_pydantic(session, user, entities)
 
 
-
 async def get_all(
     session: AsyncSession, params: pagination.PaginationSortSearchParams
 ) -> pagination.Paginated[schemas.UserRead]:
@@ -211,9 +210,7 @@ async def search_by_name(
         A `UserSearch` schema instance.
     """
     users = await service.search_by_name(session, name, fields)
-    return [
-        schemas.UserSearch(id=user.user_id, name=user.battle_tag) for user in users
-    ]
+    return [schemas.UserSearch(id=user.user_id, name=user.battle_tag) for user in users]
 
 
 async def get_read(

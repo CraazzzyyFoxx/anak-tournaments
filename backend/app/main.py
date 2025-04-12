@@ -11,7 +11,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
-from src import api
+from src.routes import router
 from src.core import config
 from src.core.logging import logger
 from src.middlewares.exception import ExceptionMiddleware
@@ -43,7 +43,7 @@ app = FastAPI(
     exception_handlers=exception_handlers,
     root_path=config.settings.api_v1_str,
 )
-app.include_router(api.router)
+app.include_router(router)
 app.add_middleware(CacheDeleteMiddleware)
 app.add_middleware(CacheEtagMiddleware)
 app.add_middleware(CacheRequestControlMiddleware)

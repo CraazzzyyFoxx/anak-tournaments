@@ -11,7 +11,7 @@ from src.core import config, db, enums, pagination
 from src.services.encounter import flows as encounter_flows
 from src.services.map import flows as map_flows
 
-from . import flows
+from src.services.user import flows as user_flows
 
 router = APIRouter(prefix="/users", tags=[enums.RouteTag.USER])
 
@@ -29,7 +29,7 @@ async def get_all(
     ] = Depends(),
     session=Depends(db.get_async_session),
 ):
-    return await flows.get_all(
+    return await user_flows.get_all(
         session, pagination.PaginationSortSearchParams.from_query_params(params)
     )
 
@@ -45,7 +45,7 @@ async def search_by_name(
     fields: list[str] = Query([]),
     session=Depends(db.get_async_session),
 ):
-    return await flows.search_by_name(session, query, fields)
+    return await user_flows.search_by_name(session, query, fields)
 
 
 @router.get(
@@ -58,22 +58,18 @@ async def search_by_name(
     f"Cache TTL: {config.settings.users_cache_ttl / 60} minutes.**",
     summary="Get user by name",
 )
-@cache(
-    ttl=cache_control_ttl(default=config.settings.users_cache_ttl),
-    key="fastapi:{request.url.path}/{request.query_params}",
-)
 async def get_by_name(
-    request: Request,
     name: str,
     session: AsyncSession = Depends(db.get_async_session),
     entities: list[str] = Query([]),
 ):
     name = name.replace("-", "#")
     if "#" in name:
-        user = await flows.get_by_battle_tag(session, name, entities)
+        user = await user_flows.get_by_battle_tag(session, name, entities)
     else:
-        user = await flows.get_by_discord(session, name, entities)
+        user = await user_flows.get_by_discord(session, name, entities)
     return user
+
 
 @router.get(
     path="/{id}/profile",
@@ -86,7 +82,7 @@ async def get_by_name(
     key="fastapi:{request.url.path}",
 )
 async def get_profile(request: Request, id: int, session=Depends(db.get_async_session)):
-    profile = await flows.get_profile(session, id)
+    profile = await user_flows.get_profile(session, id)
     return profile
 
 
@@ -103,7 +99,7 @@ async def get_profile(request: Request, id: int, session=Depends(db.get_async_se
 async def get_tournaments(
     request: Request, id: int, session: AsyncSession = Depends(db.get_async_session)
 ):
-    tournaments = await flows.get_tournaments(session, id)
+    tournaments = await user_flows.get_tournaments(session, id)
     return tournaments
 
 
@@ -123,7 +119,7 @@ async def get_tournament(
     tournament_id: int,
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    tournament = await flows.get_tournament_with_stats(session, id, tournament_id)
+    tournament = await user_flows.get_tournament_with_stats(session, id, tournament_id)
     return tournament
 
 
@@ -204,7 +200,7 @@ async def get_heroes(
     params: pagination.PaginationQueryParams = Depends(),
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    heroes = await flows.get_heroes(
+    heroes = await user_flows.get_heroes(
         session, id, pagination.PaginationParams.from_query_params(params)
     )
     return heroes
@@ -228,7 +224,7 @@ async def get_teammates(
     ] = Depends(),
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    teammates = await flows.get_best_teammates(
+    teammates = await user_flows.get_best_teammates(
         session, id, pagination.PaginationSortParams.from_query_params(params)
     )
     return teammates

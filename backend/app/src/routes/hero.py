@@ -8,8 +8,7 @@ from starlette.requests import Request
 
 from src import schemas
 from src.core import config, db, enums, pagination
-
-from . import flows
+from src.services.hero import flows as hero_flows
 
 router = APIRouter(prefix="/heroes", tags=[enums.RouteTag.HERO])
 
@@ -20,16 +19,11 @@ router = APIRouter(prefix="/heroes", tags=[enums.RouteTag.HERO])
     description=f"Retrieve details of a specific hero by its ID. **Cache TTL:** {config.settings.heroes_cache_ttl} minutes.",
     summary="Get hero by ID",
 )
-@cache(
-    ttl=cache_control_ttl(default=config.settings.encounters_cache_ttl),
-    key="fastapi:{request.url.path}/{request.query_params}",
-)
 async def get_hero(
-    request: Request,
     id: int,
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    return await flows.get(session, id)
+    return await hero_flows.get(session, id)
 
 
 @router.get(
@@ -45,7 +39,7 @@ async def get_all_heroes(
     ] = Depends(),
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    return await flows.get_all(
+    return await hero_flows.get_all(
         session, pagination.PaginationSortSearchParams.from_query_params(params)
     )
 
@@ -65,6 +59,6 @@ async def get_statistics(
     params: schemas.HeroPlaytimeQueryPaginationParams = Depends(),
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    return await flows.get_playtime(
+    return await hero_flows.get_playtime(
         session, schemas.HeroPlaytimePaginationParams.from_query_params(params)
     )

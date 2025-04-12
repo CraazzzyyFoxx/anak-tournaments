@@ -1,14 +1,12 @@
 import typing
 
-from cashews import cache
-from cashews.contrib.fastapi import cache_control_ttl
 from fastapi import APIRouter, Depends, Query
 from starlette.requests import Request
 
 from src import schemas
-from src.core import config, db, enums, pagination
+from src.core import db, enums, pagination
 
-from . import flows
+from src.services.map import flows as map_flows
 
 router = APIRouter(prefix="/maps", tags=[enums.RouteTag.MAP])
 
@@ -26,7 +24,7 @@ async def get_all(
     ] = Depends(),
     session=Depends(db.get_async_session),
 ):
-    return await flows.get_all(
+    return await map_flows.get_all(
         session, pagination.PaginationSortSearchParams.from_query_params(params)
     )
 
@@ -39,14 +37,10 @@ async def get_all(
     "**Cache TTL: 24 hours.**",
     summary="Get map by ID",
 )
-@cache(
-    ttl=cache_control_ttl(default=config.settings.maps_cache_ttl),
-    key="fastapi:{request.url.path}/{request.query_params}",
-)
 async def get_by_id(
     request: Request,
     id: int,
     session=Depends(db.get_async_session),
     entities: list[str] = Query([]),
 ):
-    return await flows.get(session, id, entities)
+    return await map_flows.get(session, id, entities)

@@ -32,6 +32,7 @@ dependencies = [
     "sqlalchemy>=2.0.37",
     "sqlalchemy-utils>=0.41.2",
     "trueskillthroughtime>=1.1.0",
+    "twitchapi>=4.4.0",
     "uvicorn>=0.34.0",
     "uvloop; platform_system == 'Linux'",
 ]

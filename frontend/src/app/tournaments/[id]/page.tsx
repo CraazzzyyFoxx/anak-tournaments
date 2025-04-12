@@ -15,6 +15,7 @@ import TournamentTeamsPage, {
 import TournamentEncountersPage from "@/app/tournaments/[id]/pages/TournamentEncountersPage";
 import TournamentHeroPlaytimePage from "@/app/tournaments/[id]/pages/TournamentHeroPlaytimePage";
 import { Badge } from "@/components/ui/badge";
+import { Metadata } from "next";
 
 const items = [
   // {
@@ -48,6 +49,27 @@ const items = [
     tab: "standings"
   }
 ];
+
+
+export async function generateMetadata(props: {
+  params: Promise<{ id: number }>;
+}): Promise<Metadata> {
+  const params = await props.params;
+  const tournament = await tournamentService.get(params.id);
+
+  return {
+    title: `${tournament.name} Overview | AQT`,
+    description: `${tournament.name} Overview | on AQT.`,
+    openGraph: {
+      title: `${tournament.name} Overview | AQT.`,
+      description: `Overview for ${tournament.name} on AQT.`,
+      url: "https://aqt.craazzzyyfoxx.me",
+      type: "website",
+      siteName: "AQT",
+      locale: "en_US"
+    }
+  };
+}
 
 const TournamentPage = async ({
   params,

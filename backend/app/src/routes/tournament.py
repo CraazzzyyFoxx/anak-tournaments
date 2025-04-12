@@ -1,19 +1,14 @@
-import typing
-
 from cashews import cache
 from cashews.contrib.fastapi import cache_control_ttl
-from fastapi import APIRouter, Depends, Query, Body, HTTPException
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 
 from src import schemas
 from src.core import config, db, enums, pagination
 from src.services.standings import flows as standings_flows
+from src.services.tournament import flows as tournament_flows
 
-from . import flows
-from ...core.clerk import get_current_user
-from ...core.logging import logger
-from ...schemas.clerk import ClerkUser
 
 router = APIRouter(prefix="/tournaments", tags=[enums.RouteTag.TOURNAMENT])
 
@@ -37,7 +32,7 @@ async def get_one(
     entities: list[str] = Query([]),
     session=Depends(db.get_async_session),
 ):
-    return await flows.get_read(session, id, entities)
+    return await tournament_flows.get_read(session, id, entities)
 
 
 @router.get(
@@ -59,7 +54,7 @@ async def get_standings(
     entities: list[str] = Query([]),
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    tournament = await flows.get(session, id, [])
+    tournament = await tournament_flows.get(session, id, [])
     return await standings_flows.get_by_tournament(session, tournament, entities)
 
 
@@ -73,7 +68,7 @@ async def get_all_tournaments(
     params: schemas.TournamentPaginationSortSearchQueryParams = Depends(),
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    return await flows.get_all(
+    return await tournament_flows.get_all(
         session, schemas.TournamentPaginationSortSearchParams.from_query_params(params)
     )
 
@@ -92,7 +87,7 @@ async def get_statistics(
     request: Request,
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    return await flows.get_history_tournaments(session)
+    return await tournament_flows.get_history_tournaments(session)
 
 
 @router.get(
@@ -109,7 +104,7 @@ async def get_avg_div(
     request: Request,
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    return await flows.get_avg_divisions_tournaments(session)
+    return await tournament_flows.get_avg_divisions_tournaments(session)
 
 
 @router.get(
@@ -126,7 +121,7 @@ async def get_most_players(
     request: Request,
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    return await flows.get_tournaments_overall(session)
+    return await tournament_flows.get_tournaments_overall(session)
 
 
 @router.get(
@@ -143,4 +138,4 @@ async def get_owal_standings(
     request: Request,
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    return await flows.get_owal_standings(session)
+    return await tournament_flows.get_owal_standings(session)

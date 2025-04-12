@@ -7,8 +7,7 @@ from starlette.requests import Request
 
 from src import schemas
 from src.core import config, db, enums, pagination
-
-from . import flows
+from src.services.team import flows as team_flows
 
 router = APIRouter(prefix="/teams", tags=[enums.RouteTag.TEAMS])
 
@@ -32,7 +31,7 @@ async def get_one(
     entities: list[str] = Query([]),
     session=Depends(db.get_async_session),
 ):
-    return await flows.get_read(session, id, entities)
+    return await team_flows.get_read(session, id, entities)
 
 
 @router.get(
@@ -49,6 +48,6 @@ async def get_all(
     ] = Depends(),
     session=Depends(db.get_async_session),
 ):
-    return await flows.get_all(
+    return await team_flows.get_all(
         session, schemas.TeamFilterParams.from_query_params(params)
     )

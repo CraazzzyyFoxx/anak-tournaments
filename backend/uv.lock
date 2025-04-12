@@ -143,6 +143,7 @@ dependencies = [
     { name = "sqlalchemy" },
     { name = "sqlalchemy-utils" },
     { name = "trueskillthroughtime" },
+    { name = "twitchapi" },
     { name = "uvicorn" },
     { name = "uvloop", marker = "sys_platform == 'linux'" },
 ]
@@ -186,6 +187,7 @@ requires-dist = [
     { name = "sqlalchemy", specifier = ">=2.0.37" },
     { name = "sqlalchemy-utils", specifier = ">=0.41.2" },
     { name = "trueskillthroughtime", specifier = ">=1.1.0" },
+    { name = "twitchapi", specifier = ">=4.4.0" },
     { name = "uvicorn", specifier = ">=0.34.0" },
     { name = "uvloop", marker = "sys_platform == 'linux'" },
 ]
@@ -507,6 +509,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/48/ce/13508a1ec3f8bb981ae4ca79ea40384becc868bfae97fd1c942bb3a001b1/email_validator-2.2.0.tar.gz", hash = "sha256:cb690f344c617a714f22e66ae771445a1ceb46821152df8e165c5f9a364582b7", size = 48967 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d7/ee/bf0adb559ad3c786f12bcbc9296b3f5675f529199bef03e2df281fa1fadb/email_validator-2.2.0-py3-none-any.whl", hash = "sha256:561977c2d73ce3611850a06fa56b414621e0c8faa9d66f2611407d87465da631", size = 33521 },
+]
+
+[[package]]
+name = "enum-tools"
+version = "0.12.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pygments" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/94/06/55dfd19df0386a2a90d325dba67b0b5ba0b879a4bdac9cd225c22f6736d8/enum_tools-0.12.0.tar.gz", hash = "sha256:13ceb9376a4c5f574a1e7c5f9c8eb7f3d3fbfbb361cc18a738df1a58dfefd460", size = 18931 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/75/fc/cc600677fe58519352ae5fe9367d05d0054faa47e8c57ef50a1bb9c77b0e/enum_tools-0.12.0-py3-none-any.whl", hash = "sha256:d69b019f193c7b850b17d9ce18440db7ed62381571409af80ccc08c5218b340a", size = 22356 },
 ]
 
 [[package]]
@@ -1614,6 +1629,21 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/2d/96/6178541805becf65c0bdbc53a144ffc42a099853555806b3673164d6b09d/trueskillthroughtime-1.1.0.tar.gz", hash = "sha256:3b06fad64e4351ce747f60acffb7ea980685b4fe4597891ebb759956a1a82a32", size = 17912 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d4/53/57839ac1d72d13ae5f513602c9903c0541187bcb7498c4ba95d925c76e52/trueskillthroughtime-1.1.0-py3-none-any.whl", hash = "sha256:948a44e5df901eba1ee595feb5c0d45c541d91f99fa20234a2bf55958bb4251d", size = 13580 },
+]
+
+[[package]]
+name = "twitchapi"
+version = "4.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiohttp" },
+    { name = "enum-tools" },
+    { name = "python-dateutil" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b7/c4/7f1ad6826501efdbd4cd599b7554e5e6e547607e45bce7250f2cfaaee4c5/twitchapi-4.4.0.tar.gz", hash = "sha256:4aa005972b72b7d254f01bf8cdc1a98986c6c0c007808e2c0235f1b2a54cfe47", size = 115171 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e9/b0/3041e012e59747990ec54d957ddeef1c6ca0a6120e2cecb4d6c07e573caa/twitchAPI-4.4.0-py3-none-any.whl", hash = "sha256:087939a4891a447aee5d1ab564da8ad3a984b580b0708ab9c59afd93b9a3d5da", size = 120579 },
 ]
 
 [[package]]

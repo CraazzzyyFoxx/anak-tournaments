@@ -57,7 +57,7 @@ async def get_analytics(
 
 
 async def change_shift(
-    session: AsyncSession, team_id: int, player_id: int, shift: int
+    session: AsyncSession, player_id: int, shift: int
 ) -> tuple[models.AnalyticsPlayer, models.AnalyticsShift]:
     query = (
         sa.select(models.AnalyticsPlayer, models.AnalyticsShift)
@@ -78,3 +78,39 @@ async def change_shift(
     session.add(analytics)
     await session.commit()
     return analytics, calculated_shift
+
+
+async def get_streaks(
+    session: AsyncSession, tournament_id: int
+) -> typing.Sequence[tuple[models.User, int, str, int]]:
+    subquery = (
+        sa.select(
+            models.Player.user_id,
+            models.Player.role,
+            models.Standing.overall_position,
+        )
+        .join(models.Standing, models.Standing.team_id == models.Player.team_id)
+        .where(
+            sa.and_(
+                models.Player.tournament_id <= tournament_id,
+            )
+        )
+        .order_by(models.Player.tournament_id.desc())
+    ).subquery()
+
+    query = (
+        sa.select(
+            models.User,
+            subquery.c.role,
+            subquery.c.overall_position,
+        )
+        .select_from(models.Player)
+        .join(subquery, subquery.c.user_id == models.Player.user_id)
+        .join(models.User, models.User.id == subquery.c.user_id)
+        .where(
+            models.Player.tournament_id == tournament_id,
+        )
+    )
+
+    result = await session.execute(query)
+    return result.all()

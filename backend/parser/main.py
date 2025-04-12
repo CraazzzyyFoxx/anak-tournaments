@@ -20,12 +20,12 @@ from src.services.achievement import flows as achievement_flows
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     async with db.async_session_maker() as session:
-        await achievement_flows.calculate_achievements(session)
+        # await achievement_flows.calculate_achievements(session)
         pass
         # for index in range(44, 47+1):
         #     await analytics_flows.get_analytics(session,  index)
         # await analytics_flows.get_analytics(session, 47)
-        # await analytics_flows.get_analytics_openskill(session, 47)
+        await analytics_flows.get_analytics(session, 46)
         # await analytics_flows.get_predictions_openskill(session, 47)
     logger.info("Application... Online!")
     yield

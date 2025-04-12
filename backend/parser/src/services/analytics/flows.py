@@ -36,13 +36,15 @@ async def get_data_frame(session: AsyncSession) -> pd.DataFrame:
                 "losses": row[4],
                 "previous_cost": row[5],
                 "pre-previous_cost": row[6],
+                "previous_div": row[7],
+                "pre-previous_div": row[8],
                 "shift": 0,
             }
             for row in data
         ]
     )
 
-    df["is_changed"] = df["previous_cost"] != df["cost"]
+    df["is_changed"] = df["previous_div"] != df["div"]
     return df
 
 

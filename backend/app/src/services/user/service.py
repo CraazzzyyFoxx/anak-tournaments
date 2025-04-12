@@ -142,12 +142,12 @@ async def search_by_name(
         A `UserBattleTag` model instance if found, otherwise `None`.
     """
     search_query = f"%{query}%"
-    columns = [models.UserBattleTag.depth_get_column(field.split(".")) for field in fields]
+    columns = [
+        models.UserBattleTag.depth_get_column(field.split(".")) for field in fields
+    ]
     query = (
         sa.select(models.UserBattleTag)
-        .where(
-            sa.or_(*[column.ilike(search_query) for column in columns])
-        )
+        .where(sa.or_(*[column.ilike(search_query) for column in columns]))
         .limit(10)
     )
     result = await session.scalars(query)
@@ -205,7 +205,9 @@ async def find_by_battle_tag(
     return None
 
 
-async def get_by_discord(session: AsyncSession, discord: str, entities: list[str]) -> models.User | None:
+async def get_by_discord(
+    session: AsyncSession, discord: str, entities: list[str]
+) -> models.User | None:
     """
     Retrieves a `User` model instance by its Discord ID.
 

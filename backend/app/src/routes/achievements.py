@@ -9,7 +9,7 @@ from starlette.requests import Request
 from src import schemas
 from src.core import config, db, enums, pagination
 
-from . import flows
+from src.services.achievements import flows as achievements_flows
 
 router = APIRouter(prefix="/achievements", tags=[enums.RouteTag.ACHIEVEMENTS])
 
@@ -31,7 +31,7 @@ async def get_all(
         ]
     ] = Depends(),
 ):
-    return await flows.get_all(
+    return await achievements_flows.get_all(
         session, pagination.PaginationSortParams.from_query_params(params)
     )
 
@@ -45,17 +45,12 @@ async def get_all(
     f"Cache TTL: {config.settings.achievements_cache_ttl / 60} minutes.",
     summary="Get achievement by ID",
 )
-@cache(
-    ttl=cache_control_ttl(default=config.settings.achievements_cache_ttl),
-    key="fastapi:{request.url.path}/{request.query_params}",
-)
 async def get(
-    request: Request,
     id: int,
     entities: list[str] = Query([]),
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    return await flows.get(session, id, entities)
+    return await achievements_flows.get(session, id, entities)
 
 
 @router.get(
@@ -69,7 +64,7 @@ async def get_users_achievement(
     params: pagination.PaginationQueryParams = Depends(),
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    return await flows.get_achievement_users(
+    return await achievements_flows.get_achievement_users(
         session, id, pagination.PaginationParams.from_query_params(params)
     )
 
@@ -94,4 +89,4 @@ async def get_user_achievements(
     entities: list[str] = Query([]),
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    return await flows.get_user_achievements(session, user_id, entities)
+    return await achievements_flows.get_user_achievements(session, user_id, entities)

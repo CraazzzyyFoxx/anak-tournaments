@@ -1,12 +1,15 @@
 from pydantic import BaseModel
 
 from src.schemas import PlayerRead, TeamRead, BaseRead
+from src.schemas.user_base import UserRead
 
 __all__ = (
     "PlayerAnalytics",
     "TeamAnalytics",
     "TournamentAnalytics",
     "AnalyticsAlgorithmRead",
+    "PlayerStreak",
+    "PlayerShiftUpdate",
 )
 
 
@@ -31,3 +34,18 @@ class TeamAnalytics(TeamRead):
 class TournamentAnalytics(BaseModel):
     teams: list[TeamAnalytics]
     teams_wins: dict[int, int]
+
+
+class PlayerStreak(BaseModel):
+    user: UserRead
+    role: str
+    sum_position: int
+    current_position: int
+    previous_position: int | None
+    pre_previous_position: int | None
+
+
+class PlayerShiftUpdate(BaseModel):
+    team_id: int
+    player_id: int
+    shift: int

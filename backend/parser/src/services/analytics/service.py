@@ -9,7 +9,7 @@ from src import models
 async def get_analytics(
     session: AsyncSession,
 ) -> typing.Sequence[
-    tuple[models.Team, models.Player, models.Tournament, int, int, int, int, float]
+    tuple[models.Team, models.Player, models.Tournament, int, int, int, int, int, int]
 ]:
     pph = (
         sa.select(
@@ -54,6 +54,14 @@ async def get_analytics(
                 partition_by=(models.Player.user_id, models.Player.role),
                 order_by=models.Tournament.id,
             ),
+            sa.func.lag(models.Player.div, 1).over(
+                partition_by=(models.Player.user_id, models.Player.role),
+                order_by=models.Tournament.id,
+            ),
+            sa.func.lag(models.Player.div, 2).over(
+                partition_by=(models.Player.user_id, models.Player.role),
+                order_by=models.Tournament.id,
+            ),
         )
         .join(models.Player, models.Team.id == models.Player.team_id)
         .join(models.Tournament, models.Player.tournament_id == models.Tournament.id)
@@ -77,7 +85,7 @@ async def get_analytics(
         )
         .where(
             models.Tournament.id >= 21,
-            # models.Tournament.is_league.is_(False),
+            models.Tournament.is_league.is_(False),
             models.Player.is_substitution.is_(False),
         )
     )
