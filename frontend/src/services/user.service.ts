@@ -32,14 +32,19 @@ export default class userService {
   }
   static async getUserTournament(
     id: number,
-    tournamentId: number
+    tournamentId: number | null
   ): Promise<UserTournamentWithStats | null> {
     return customFetch(`users/${id}/tournaments/${tournamentId}`).then((res) => {
       if (res.status === 200) {
         return res.json();
       }
       return null;
-    });
+    }).catch(
+      (error) => {
+        console.error("Error fetching user tournament data:", error);
+        return null;
+      }
+    );
   }
   static async getUserTournaments(id: number): Promise<UserTournament[]> {
     return customFetch(`users/${id}/tournaments`).then((res) => res.json());

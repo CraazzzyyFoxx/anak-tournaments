@@ -66,7 +66,7 @@ export default async function UserPage({
   const user = await userService.getUserByName(params.slug);
   const profile = await userService.getUserProfile(user.id);
 
-  if (!searchParams.tournamentId) {
+  if (!searchParams.tournamentId && profile.tournaments.length > 0) {
     searchParamsObj.set("tournamentId", profile.tournaments[0].id.toString());
     searchParamsChanged = true;
   }
