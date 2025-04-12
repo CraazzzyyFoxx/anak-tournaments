@@ -22,10 +22,6 @@ router = APIRouter(prefix="/tournaments", tags=[enums.RouteTag.TOURNAMENT])
     f"**Cache TTL: {config.settings.tournaments_cache_ttl / 60} minutes.**",
     summary="Get tournament by ID",
 )
-@cache(
-    ttl=cache_control_ttl(default=config.settings.tournaments_cache_ttl),
-    key="fastapi:{request.url.path}/{request.query_params}",
-)
 async def get_one(
     request: Request,
     id: int,
@@ -43,10 +39,6 @@ async def get_one(
     "Available entities: **tournament**, **group**, **team**."
     f"**Cache TTL: {config.settings.tournaments_cache_ttl / 60} minutes.**",
     summary="Get tournament standings by ID",
-)
-@cache(
-    ttl=cache_control_ttl(default=config.settings.tournaments_cache_ttl),
-    key="fastapi:{request.url.path}/{request.query_params}",
 )
 async def get_standings(
     request: Request,
