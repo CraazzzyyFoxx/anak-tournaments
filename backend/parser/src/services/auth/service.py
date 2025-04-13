@@ -20,6 +20,10 @@ async def authenticate(credentials: OAuth2PasswordRequestForm) -> bool:
 async def verify_access_token(token: str | None) -> bool:
     if token is None:
         return False
+
+    if token == config.app.access_token_service:
+        return True
+
     try:
         data = utils.decode_jwt(
             token,
@@ -27,7 +31,7 @@ async def verify_access_token(token: str | None) -> bool:
             ["aqt_parser"],
         )
         email = data["sub"]  # noqa
-    except jwt.PyJWTError:
+    except (jwt.PyJWTError, KeyError):
         return False
 
     return True

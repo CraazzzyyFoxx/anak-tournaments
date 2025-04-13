@@ -7,8 +7,6 @@ from . import flows
 
 
 async def bulk_create(session: AsyncSession) -> None:
-    tournaments, count = await tournament_service.get_all(
-        session, params=pagination.PaginationParams(per_page=-1)
-    )
+    tournaments = await tournament_service.get_all(session)
     for tournament in tournaments:
         await flows.bulk_create_for_tournament(session, tournament.id)

@@ -37,7 +37,7 @@ class Settings(BaseSettings):
 
     redis_url: RedisDsn
 
-    users_cache_ttl: int = 60 * 60
+    users_cache_ttl: int = 60 * 5
     tournaments_cache_ttl: int = 24 * 60 * 60
     gamemodes_cache_ttl: int = 24 * 60 * 60
     maps_cache_ttl: int = 24 * 60 * 60

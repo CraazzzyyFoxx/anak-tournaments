@@ -28,11 +28,11 @@ class AppConfig(BaseSettings):
     log_level: str = "info"
     logs_root_path: str = f"{Path.cwd()}/logs"
     logs_celery_root_path: str = f"{Path.cwd()}/logs/celery"
-    sentry_dsn: str | None = None
 
     superuser_email: EmailStr
     superuser_password: str
     access_token_secret: str
+    access_token_service: str
 
     # Postgres
     postgres_user: str
@@ -71,12 +71,8 @@ class AppConfig(BaseSettings):
         return f"postgresql+psycopg://{url}"
 
     @property
-    def celery_broker_url(self):
+    def broker_url(self):
         return f"{self.redis_url}/0"
-
-    @property
-    def celery_result_backend(self):
-        return f"{self.redis_url}/1"
 
 
 app = AppConfig()

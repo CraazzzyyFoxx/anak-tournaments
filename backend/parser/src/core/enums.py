@@ -12,6 +12,7 @@ class RouteTag(StrEnum):
     USER = "👤 User"
     LOGS = "📜 Logs"
     CHALLONGE = "🏆 Challonge"
+    ANALYTICS = "📊 Analytics"
 
 
 class HeroClass(StrEnum):

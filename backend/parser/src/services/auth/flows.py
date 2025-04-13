@@ -25,7 +25,7 @@ def _current_user():
             raise errors.ApiHTTPException(
                 status_code=401,
                 detail=[
-                    errors.ApiException(msg="Missing Permissions", code="unauthorized")
+                    errors.ApiExc(msg="Missing Permissions", code="unauthorized")
                 ],
             )
         return user

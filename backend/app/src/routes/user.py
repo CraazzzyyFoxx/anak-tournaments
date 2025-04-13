@@ -93,7 +93,7 @@ async def get_profile(request: Request, id: int, session=Depends(db.get_async_se
     summary="Get user tournaments",
 )
 @cache(
-    ttl=cache_control_ttl(default=config.settings.tournaments_cache_ttl),
+    ttl=cache_control_ttl(default=config.settings.users_cache_ttl),
     key="fastapi:{request.url.path}",
 )
 async def get_tournaments(
@@ -110,7 +110,7 @@ async def get_tournaments(
     summary="Get user tournament details",
 )
 @cache(
-    ttl=cache_control_ttl(default=config.settings.tournaments_cache_ttl),
+    ttl=cache_control_ttl(default=config.settings.users_cache_ttl),
     key="fastapi:{request.url.path}",
 )
 async def get_tournament(
@@ -130,7 +130,7 @@ async def get_tournament(
     summary="Get user maps",
 )
 @cache(
-    ttl=cache_control_ttl(default=config.settings.maps_cache_ttl),
+    ttl=cache_control_ttl(default=config.settings.users_cache_ttl),
     key="fastapi:{request.url.path}/{request.query_params}",
 )
 async def get_maps(
@@ -191,7 +191,7 @@ async def get_encounters(
     summary="Get user heroes",
 )
 @cache(
-    ttl=cache_control_ttl(default=config.settings.heroes_cache_ttl),
+    ttl=cache_control_ttl(default=config.settings.users_cache_ttl),
     key="fastapi:{request.url.path}:{request.query_params}",
 )
 async def get_heroes(
@@ -213,7 +213,7 @@ async def get_heroes(
     summary="Get user best teammates",
 )
 @cache(
-    ttl=cache_control_ttl(default=config.settings.teams_cache_ttl),
+    ttl=cache_control_ttl(default=config.settings.users_cache_ttl),
     key="fastapi:{request.url.path}/{request.query_params}",
 )
 async def get_teammates(

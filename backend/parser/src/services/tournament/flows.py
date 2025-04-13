@@ -171,38 +171,38 @@ async def create_with_groups(
     number: int,
     challonge_slug: str,
 ) -> models.Tournament:
-    # if await service.get_by_number(session, number, []) is not None:
-    #     raise errors.ApiHTTPException(
-    #         status_code=400,
-    #         detail=[
-    #             errors.ApiExc(
-    #                 code="tournament_exists",
-    #                 msg="Tournament with this number already exists",
-    #             )
-    #         ],
-    #     )
-    #
+    if await service.get_by_number(session, number, []) is not None:
+        raise errors.ApiHTTPException(
+            status_code=400,
+            detail=[
+                errors.ApiExc(
+                    code="tournament_exists",
+                    msg="Tournament with this number already exists",
+                )
+            ],
+        )
+
     challonge_tournament = await challonge_service.fetch_tournament(challonge_slug)
-    # if challonge_tournament.grand_finals_modifier is None:
-    #     raise errors.ApiHTTPException(
-    #         status_code=400,
-    #         detail=[
-    #             errors.ApiExc(
-    #                 code="invalid_tournament",
-    #                 msg="Tournament does not have group stage",
-    #             )
-    #         ],
-    #     )
-    # tournament = await service.create(
-    #     session,
-    #     number=number,
-    #     is_league=False,
-    #     name=challonge_tournament.name,
-    #     description=challonge_tournament.description,
-    #     challonge_id=challonge_tournament.id,
-    #     challonge_slug=challonge_tournament.url,
-    # )
-    tournament = await service.get(session, 47, [])
+    if challonge_tournament.grand_finals_modifier is None:
+        raise errors.ApiHTTPException(
+            status_code=400,
+            detail=[
+                errors.ApiExc(
+                    code="invalid_tournament",
+                    msg="Tournament does not have group stage",
+                )
+            ],
+        )
+    tournament = await service.create(
+        session,
+        number=number,
+        is_league=False,
+        name=challonge_tournament.name,
+        description=challonge_tournament.description,
+        challonge_id=challonge_tournament.id,
+        challonge_slug=challonge_tournament.url,
+    )
+    tournament = await service.get(session, tournament.id, [])
     return await create_groups(session, tournament, challonge_tournament)
 
 

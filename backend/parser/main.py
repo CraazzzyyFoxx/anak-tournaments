@@ -5,7 +5,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
-from src import api
+from src import routes
 from src.core import config, db
 from src.core.logging import logger
 from src.middlewares.exception import ExceptionMiddleware
@@ -20,13 +20,12 @@ from src.services.achievement import flows as achievement_flows
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     async with db.async_session_maker() as session:
-        # await achievement_flows.calculate_achievements(session)
         pass
         # for index in range(44, 47+1):
         #     await analytics_flows.get_analytics(session,  index)
-        # await analytics_flows.get_analytics(session, 47)
-        # await analytics_flows.get_analytics(session, 46)
-        # await analytics_flows.get_predictions_openskill(session, 47)
+        # await analytics_flows.get_analytics(session, 48)
+        # await analytics_flows.get_analytics_openskill(session, 48)
+        # await analytics_flows.get_predictions_openskill(session, 48)
     logger.info("Application... Online!")
     yield
 
@@ -55,7 +54,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(api.router)
+app.include_router(routes.router)
 
 
 @app.exception_handler(RequestValidationError)

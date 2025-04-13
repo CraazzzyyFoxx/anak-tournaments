@@ -28,7 +28,7 @@ async def get_by_tournament(
     query = (
         sa.select(models.Standing)
         .options(*standing_entities(entities))
-        .where(models.Standing.tournament_id == tournament.id)
+        .where(sa.and_(models.Standing.tournament_id == tournament.id))
     )
     result = await session.execute(query)
     standings = result.scalars().all()
@@ -38,7 +38,7 @@ async def get_by_tournament(
 
 async def delete_by_tournament(session: AsyncSession, tournament_id: int) -> None:
     query = sa.delete(models.Standing).where(
-        models.Standing.tournament_id == tournament_id
+        sa.and_(models.Standing.tournament_id == tournament_id)
     )
     await session.execute(query)
     await session.commit()
@@ -431,6 +431,10 @@ async def calculate_for_tournament(
         encounters = await encounter_service.get_by_tournament_group_id(
             session, tournament.id, group.id, []
         )
+        if not encounters:
+            logger.warning(f"No encounters found for group {group.id} in tournament {tournament.id}")
+            continue
+
         encounters = sort_matches(encounters)
         logger.info(f"Processing group {group.id} with {len(encounters)} encounters")
         if group.is_groups:

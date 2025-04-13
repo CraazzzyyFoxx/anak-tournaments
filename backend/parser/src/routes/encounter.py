@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core import db, enums
 from src.services.auth import flows as auth_flows
 
-from . import flows
+from src.services.encounter import flows as encounter_flows
 
 router = APIRouter(
     prefix="/encounter",
@@ -17,7 +17,7 @@ router = APIRouter(
 async def bulk_create_from_challonge(
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    await flows.bulk_create_for_from_challonge(session)
+    await encounter_flows.bulk_create_for_from_challonge(session)
     return {"message": "Encounters creation started"}
 
 
@@ -27,5 +27,5 @@ async def create_from_challonge(
     skip_finals: bool = False,  # Thanks 4 tournament
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    await flows.bulk_create_for_tournament_from_challonge(session, tournament_id)
+    await encounter_flows.bulk_create_for_tournament_from_challonge(session, tournament_id)
     return {"message": "Encounters created successfully"}

@@ -10,7 +10,7 @@ def clean_str(s):
 # мы берем только часть 1mN_mp8DUmw6SbxABCOyRpmCuo7ccWqI-u8sa_MY7FKE , которая между /d/ и /edit#gid=1807279519
 # и вставляем ее в ссылку между https://docs.google.com/spreadsheets/d/ и /export?format=csv
 #                             прямо вот тут   /                                            /  вот между скобок в ссылке ниже и ебашь
-url = 'https://docs.google.com/spreadsheets/d/1fb1oA2fJ4-jpG6Xh7OtOfMbGQ1cDXyGj4eGsFfBgeQY/export?format=csv'
+url = 'https://docs.google.com/spreadsheets/d/1qqmMHUugph8TBoZ00Wto2q8E5fqsC_DAJIFH03JDZXA/export?format=csv'
 
 # Чтение данных в DataFrame
 

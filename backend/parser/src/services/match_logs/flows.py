@@ -1040,3 +1040,14 @@ async def process_match_log(
         await processor.start(session, is_raise=is_raise)
     except Exception as e:
         logger.exception(e)
+
+
+async def make_tournament_folder(
+    session: AsyncSession, tournament: models.Tournament, filename: str
+) -> None:
+    tournament_folder = f"{tournament.id}/{filename}"
+    if not await s3_service.async_client.check_folder(tournament_folder):
+        await s3_service.async_client.create_folder(tournament_folder)
+        logger.info(f"Folder {tournament_folder} created in S3")
+    else:
+        logger.info(f"Folder {tournament_folder} already exists in S3")

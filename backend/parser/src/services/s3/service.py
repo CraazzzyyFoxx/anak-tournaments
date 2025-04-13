@@ -63,5 +63,26 @@ class S3AsyncClient:
             logger.exception(f"Error getting log by filename: {e}")
             return ""
 
+    async def upload_log(self, tournament_id: int, filename: str, data: bytes) -> bool:
+        object_key = f"logs/{tournament_id}/{filename}"
+        folder_key = f"logs/{tournament_id}/"
+
+        try:
+            async with self.get_client() as _client:
+                try:
+                    await _client.head_object(Bucket=self.bucket_name, Key=folder_key)
+                except ClientError as e:
+                    if e.response["Error"]["Code"] == "404":
+                        await _client.put_object(Bucket=self.bucket_name, Key=folder_key)
+                    else:
+                        raise
+
+                await _client.put_object(Bucket=self.bucket_name, Key=object_key, Body=data)
+
+                logger.info(f"Uploaded file to {object_key}")
+                return True
+        except ClientError as e:
+            logger.exception(f"Error uploading log: {e}")
+            return False
 
 async_client = S3AsyncClient(bucket_name=config.app.s3_bucket_name)

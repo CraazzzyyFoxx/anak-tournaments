@@ -581,9 +581,7 @@ async def get_heroes(
         page=params.page,
         per_page=params.per_page,
         total=len(payload),
-        results=payload[
-            params.per_page * (params.page - 1) : params.per_page * params.page
-        ],
+        results=params.paginate_data(payload),
     )
 
 

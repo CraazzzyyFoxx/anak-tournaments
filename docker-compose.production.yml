@@ -123,6 +123,30 @@ services:
     networks:
       - traefik-public
 
+  discord:
+    image: registry.craazzzyyfoxx.me/aqt-discord:latest
+    container_name: aqt-discord
+    build:
+      context: ./backend
+      args:
+        APP_PATH: discord
+    command: python main.py
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT}
+      - PROJECT_URL=${PROJECT_URL}
+      - REDIS_URL=${REDIS_URL}
+      - DISCORD_TOKEN=${DISCORD_BOT_TOKEN}
+      - DISCORD_CHANNEL_ID=${DISCORD_CHANNEL_ID}
+      - DISCORD_GUILD_ID=${DISCORD_GUILD_ID}
+      - API_URL=${API_URL}
+      - ACCESS_TOKEN_SERVICE=${ACCESS_TOKEN_SERVICE}
+    depends_on:
+      - redis
+    volumes:
+      - ./logs/discord:/logs
+    networks:
+      - traefik-public
+
   frontend:
     image: registry.craazzzyyfoxx.me/frontend:latest
     container_name: aqt-frontend

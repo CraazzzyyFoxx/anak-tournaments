@@ -558,17 +558,14 @@ async def get_statistics_by_heroes(
         5. The average value of the statistic (per 10 minutes).
         6. A dictionary containing metadata about the best performance (e.g., encounter ID, map name, tournament name).
     """
-    # Создаём alias для таблицы статистики, который будем использовать в подзапросах проверки HeroPlayTime
     hero_playtime_stat = sa.alias(models.MatchStatistics)
-
-    # CTE для выбора лучшего результата (максимального значения) по каждой паре "герой/статистика"
     best_result_cte = (
         sa.select(
             models.MatchStatistics.hero_id,
             models.MatchStatistics.name,
             models.Match.encounter_id,
             models.Map.name.label("map_name"),
-            models.Map.image_path.label("map_link"),  # Здесь используем image_path как ссылку на карту
+            models.Map.image_path.label("map_link"),
             models.Tournament.name.label("tournament_name"),
             models.MatchStatistics.value,
             sa.func.row_number()
@@ -590,7 +587,6 @@ async def get_statistics_by_heroes(
                 models.MatchStatistics.user_id == user_id,
                 models.MatchStatistics.round == 0,
                 models.MatchStatistics.hero_id.isnot(None),
-                # Ограничиваем до матчей, где для данного героя есть запись "HeroPlayTime" с value > 60
                 sa.exists(
                     sa.select(1)
                     .select_from(hero_playtime_stat)
@@ -607,7 +603,6 @@ async def get_statistics_by_heroes(
         .cte("best_result_cte")
     )
 
-    # Основной запрос для агрегации статистики по героям и типам статистики
     query = (
         sa.select(
             models.MatchStatistics.name,
@@ -641,7 +636,6 @@ async def get_statistics_by_heroes(
                 models.MatchStatistics.user_id == user_id,
                 models.MatchStatistics.round == 0,
                 models.MatchStatistics.hero_id.isnot(None),
-                # Применяем условие для каждого матча: должна существовать запись "HeroPlayTime" с value > 60
                 sa.exists(
                     sa.select(1)
                     .select_from(hero_playtime_stat)
@@ -824,38 +818,28 @@ async def get_best_teammates(
             - The number of tournaments played together.
             - The average performance statistic.
             - The average KDA statistic.
-        2. The total count of best teammates.
+        2. The total count of the best teammates.
     """
     OuterPlayer = sa.orm.aliased(models.Player)
 
-    home_score_case = sa.case(
-        (
-            sa.and_(
-                models.Encounter.home_team_id == OuterPlayer.team_id,
+    winrate_sum = sa.func.sum(
+        sa.case(
+            (
+                sa.and_(models.Encounter.home_team_id == OuterPlayer.team_id),
                 models.Encounter.home_score,
-            )
-        ),
-        else_=models.Encounter.away_score,
-    )
-    away_score_case = sa.case(
-        (
-            sa.and_(
-                models.Encounter.home_team_id == OuterPlayer.team_id,
+            ),
+            (
+                sa.and_(models.Encounter.away_team_id == OuterPlayer.team_id),
                 models.Encounter.away_score,
-            )
-        ),
-        else_=models.Encounter.home_score,
-    )
+            ),
+        )
+    ) / (sa.func.sum(models.Encounter.home_score) + sa.func.sum(models.Encounter.away_score))
 
-    winrate_sum = sa.func.sum(home_score_case) / (
-        sa.func.sum(home_score_case) + sa.func.sum(away_score_case)
-    )
 
     count_subquery = (
-        sa.select(models.User.id.label("user_id"))
+        sa.select(OuterPlayer.user_id)
         .select_from(models.Player)
         .join(OuterPlayer, OuterPlayer.team_id == models.Player.team_id)
-        .join(models.User, models.User.id == OuterPlayer.user_id)
         .join(
             models.Encounter,
             sa.or_(
@@ -868,21 +852,46 @@ async def get_best_teammates(
                 models.Player.user_id == user_id,
                 models.Player.is_substitution.is_(False),
                 OuterPlayer.is_substitution.is_(False),
-                models.User.id != user_id,
+                OuterPlayer.user_id != user_id,
             )
         )
-        .group_by(models.User.id)
+        .group_by(OuterPlayer.user_id)
         .having(sa.func.count(sa.distinct(models.Encounter.tournament_id)) > 1)
         .subquery("filtered_users")
     )
 
     count_query = sa.select(sa.func.count(sa.distinct(count_subquery.c.user_id)))
 
-    query = (
+    winrate_query = (
         sa.select(
-            models.User,
+            OuterPlayer.user_id,
             winrate_sum.label("winrate"),
             sa.func.count(sa.distinct(OuterPlayer.tournament_id)).label("tournaments"),
+        )
+        .select_from(models.Player)
+        .join(OuterPlayer, OuterPlayer.team_id == models.Player.team_id)
+        .join(
+            models.Encounter,
+            sa.or_(
+                models.Encounter.home_team_id == OuterPlayer.team_id,
+                models.Encounter.away_team_id == OuterPlayer.team_id,
+            ),
+        )
+        .where(
+            sa.and_(
+                models.Player.user_id == user_id,
+                models.Player.is_substitution.is_(False),
+                OuterPlayer.is_substitution.is_(False),
+                OuterPlayer.user_id != user_id,
+            )
+        )
+        .group_by(OuterPlayer.user_id)
+        .having(sa.func.count(sa.distinct(OuterPlayer.tournament_id)) > 1)
+    ).cte("winrate_query")
+
+    stats_query = (
+        sa.select(
+            OuterPlayer.user_id,
             sa.func.avg(
                 sa.case(
                     (
@@ -909,7 +918,6 @@ async def get_best_teammates(
         )
         .select_from(models.Player)
         .join(OuterPlayer, OuterPlayer.team_id == models.Player.team_id)
-        .join(models.User, models.User.id == OuterPlayer.user_id)
         .join(
             models.Encounter,
             sa.or_(
@@ -937,8 +945,21 @@ async def get_best_teammates(
                 OuterPlayer.user_id != user_id,
             )
         )
-        .group_by(models.User.id)
+        .group_by(OuterPlayer.user_id)
         .having(sa.func.count(sa.distinct(OuterPlayer.tournament_id)) > 1)
+    ).cte("stats_query")
+
+    query = (
+        sa.select(
+            models.User,
+            winrate_query.c.winrate,
+            winrate_query.c.tournaments,
+            stats_query.c.performance,
+            stats_query.c.kda,
+        )
+        .select_from(winrate_query)
+        .join(models.User, models.User.id == winrate_query.c.user_id)
+        .join(stats_query, stats_query.c.user_id == winrate_query.c.user_id)
     )
 
     query = params.apply_pagination_sort(query)

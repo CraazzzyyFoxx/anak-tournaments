@@ -4,7 +4,7 @@ from src import schemas
 from src.core import db, enums
 from src.services.auth import flows as auth_flows
 
-from . import flows
+from src.services.standings import flows as standing_flows
 
 router = APIRouter(
     prefix="/standing",
@@ -19,9 +19,9 @@ async def create_from_tournament(
     rewrite: bool = False,
     session=Depends(db.get_async_session),
 ):
-    return await flows.bulk_create_for_tournament(session, tournament_id, rewrite)
+    return await standing_flows.bulk_create_for_tournament(session, tournament_id, rewrite)
 
 
 @router.post(path="/create/bulk")
 async def bulk_create_from_tournament(session=Depends(db.get_async_session)):
-    return await flows.bulk_create(session)
+    return await standing_flows.bulk_create(session)
