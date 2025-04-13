@@ -116,6 +116,7 @@ services:
       - S3_SECRET_KEY=${S3_SECRET_KEY}
       - S3_ENDPOINT_URL=${S3_ENDPOINT_URL}
       - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - ACCESS_TOKEN_SERVICE=${ACCESS_TOKEN_SERVICE}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
