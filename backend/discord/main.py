@@ -14,7 +14,7 @@ intents.message_content = True
 intents.reactions = True
 
 client = discord.Client(intents=intents)
-broker = RedisBroker(settings.redis_url.unicode_string())
+broker = RedisBroker(settings.broker_url)
 httpx_client = httpx.AsyncClient(
     base_url=settings.api_url,
     headers={"Authorization": f"Bearer {settings.access_token_service}"},

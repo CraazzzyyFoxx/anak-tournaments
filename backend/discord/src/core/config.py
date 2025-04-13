@@ -24,5 +24,9 @@ class Settings(BaseSettings):
 
     access_token_service: str
 
+    @property
+    def broker_url(self):
+        return f"{self.redis_url}/0"
+
 
 settings = Settings()
