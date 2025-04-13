@@ -558,13 +558,17 @@ async def get_statistics_by_heroes(
         5. The average value of the statistic (per 10 minutes).
         6. A dictionary containing metadata about the best performance (e.g., encounter ID, map name, tournament name).
     """
-    user_match = (
+    # Создаём alias для таблицы статистики, который будем использовать в подзапросах проверки HeroPlayTime
+    hero_playtime_stat = sa.alias(models.MatchStatistics)
+
+    # CTE для выбора лучшего результата (максимального значения) по каждой паре "герой/статистика"
+    best_result_cte = (
         sa.select(
             models.MatchStatistics.hero_id,
             models.MatchStatistics.name,
             models.Match.encounter_id,
             models.Map.name.label("map_name"),
-            models.Map.image_path.label("map_image_path"),
+            models.Map.image_path.label("map_link"),  # Здесь используем image_path как ссылку на карту
             models.Tournament.name.label("tournament_name"),
             models.MatchStatistics.value,
             sa.func.row_number()
@@ -586,46 +590,50 @@ async def get_statistics_by_heroes(
                 models.MatchStatistics.user_id == user_id,
                 models.MatchStatistics.round == 0,
                 models.MatchStatistics.hero_id.isnot(None),
+                # Ограничиваем до матчей, где для данного героя есть запись "HeroPlayTime" с value > 60
+                sa.exists(
+                    sa.select(1)
+                    .select_from(hero_playtime_stat)
+                    .where(
+                        hero_playtime_stat.c.match_id == models.MatchStatistics.match_id,
+                        hero_playtime_stat.c.user_id == user_id,
+                        hero_playtime_stat.c.hero_id == models.MatchStatistics.hero_id,
+                        hero_playtime_stat.c.name == enums.LogStatsName.HeroTimePlayed,
+                        hero_playtime_stat.c.value > 60,
+                    )
+                ),
             )
         )
-        .order_by(
-            models.MatchStatistics.hero_id,
-            models.MatchStatistics.value.desc(),
-            models.MatchStatistics.name,
-        )
-        .cte("user_match_encounter")
+        .cte("best_result_cte")
     )
 
-    user_query = (
+    # Основной запрос для агрегации статистики по героям и типам статистики
+    query = (
         sa.select(
             models.MatchStatistics.name,
             models.Hero,
             sa.func.sum(models.MatchStatistics.value).label("total_value"),
             sa.func.max(models.MatchStatistics.value).label("max_value"),
             (
-                sa.func.sum(models.MatchStatistics.value)
-                / sa.func.sum(models.Match.time)
-                * 600
-            ).label("avg"),
+                    sa.func.sum(models.MatchStatistics.value)
+                    / sa.func.sum(models.Match.time)
+                    * 600
+            ).label("avg_per_10min"),
             sa.func.jsonb_build_object(
-                "encounter_id",
-                user_match.c.encounter_id,
-                "map_name",
-                user_match.c.map_name,
-                "map_image_path",
-                user_match.c.map_image_path,
-                "tournament_name",
-                user_match.c.tournament_name,
-            ),
+                "encounter_id", best_result_cte.c.encounter_id,
+                "map_name", best_result_cte.c.map_name,
+                "map_image_path", best_result_cte.c.map_link,
+                "tournament_name", best_result_cte.c.tournament_name,
+            ).label("best_metadata"),
         )
         .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
         .join(models.Hero, models.Hero.id == models.MatchStatistics.hero_id)
         .outerjoin(
-            user_match,
+            best_result_cte,
             sa.and_(
-                user_match.c.hero_id == models.MatchStatistics.hero_id,
-                user_match.c.name == models.MatchStatistics.name,
-                user_match.c.row_num == 1,
+                best_result_cte.c.hero_id == models.MatchStatistics.hero_id,
+                best_result_cte.c.name == models.MatchStatistics.name,
+                best_result_cte.c.row_num == 1,
             ),
         )
         .where(
@@ -633,21 +641,31 @@ async def get_statistics_by_heroes(
                 models.MatchStatistics.user_id == user_id,
                 models.MatchStatistics.round == 0,
                 models.MatchStatistics.hero_id.isnot(None),
+                # Применяем условие для каждого матча: должна существовать запись "HeroPlayTime" с value > 60
+                sa.exists(
+                    sa.select(1)
+                    .select_from(hero_playtime_stat)
+                    .where(
+                        hero_playtime_stat.c.match_id == models.MatchStatistics.match_id,
+                        hero_playtime_stat.c.user_id == user_id,
+                        hero_playtime_stat.c.hero_id == models.MatchStatistics.hero_id,
+                        hero_playtime_stat.c.name == enums.LogStatsName.HeroTimePlayed,
+                        hero_playtime_stat.c.value > 60,
+                    )
+                ),
             )
         )
         .group_by(
             models.MatchStatistics.name,
             models.Hero.id,
-            user_match.c.encounter_id,
-            user_match.c.map_name,
-            user_match.c.map_image_path,
-            user_match.c.tournament_name,
+            best_result_cte.c.encounter_id,
+            best_result_cte.c.map_name,
+            best_result_cte.c.map_link,
+            best_result_cte.c.tournament_name,
         )
     )
-    # user_query = params.apply_sort(user_query, models.Hero)
 
-    result = await session.execute(user_query)
-
+    result = await session.execute(query)
     return result.all()
 
 
@@ -669,6 +687,9 @@ async def get_statistics_by_heroes_all_values(
         4. The average value of the statistic (per 10 minutes).
         5. A dictionary containing metadata about the best performance (e.g., encounter ID, map name, tournament name, username).
     """
+    # Alias для подзапроса проверки времени игры на герое в каждом матче.
+    hero_playtime_stat = sa.alias(models.MatchStatistics)
+
     all_max_encounter_filtered = (
         sa.select(
             models.MatchStatistics.hero_id,
@@ -699,6 +720,17 @@ async def get_statistics_by_heroes_all_values(
                 models.MatchStatistics.round == 0,
                 models.MatchStatistics.value > 0,
                 models.MatchStatistics.hero_id.isnot(None),
+                sa.exists(
+                    sa.select(1)
+                    .select_from(hero_playtime_stat)
+                    .where(
+                        hero_playtime_stat.c.match_id == models.MatchStatistics.match_id,
+                        hero_playtime_stat.c.user_id == models.MatchStatistics.user_id,
+                        hero_playtime_stat.c.hero_id == models.MatchStatistics.hero_id,
+                        hero_playtime_stat.c.name == enums.LogStatsName.HeroTimePlayed,
+                        hero_playtime_stat.c.value > 60,
+                    )
+                ),
             )
         )
         .order_by(
@@ -716,24 +748,19 @@ async def get_statistics_by_heroes_all_values(
             models.Hero.id,
             sa.func.max(models.MatchStatistics.value).label("max_value"),
             (
-                sa.func.sum(models.MatchStatistics.value)
-                / sa.func.sum(models.Match.time)
-                * 600
+                    sa.func.sum(models.MatchStatistics.value)
+                    / sa.func.sum(models.Match.time)
+                    * 600
             ).label("avg"),
             sa.func.jsonb_build_object(
-                "encounter_id",
-                all_max_encounter_filtered.c.encounter_id,
-                "map_name",
-                all_max_encounter_filtered.c.map_name,
-                "map_image_path",
-                all_max_encounter_filtered.c.map_image_path,
-                "tournament_name",
-                all_max_encounter_filtered.c.tournament_name,
-                "username",
-                all_max_encounter_filtered.c.username,
-            ),
+                "encounter_id", all_max_encounter_filtered.c.encounter_id,
+                "map_name", all_max_encounter_filtered.c.map_name,
+                "map_image_path", all_max_encounter_filtered.c.map_image_path,
+                "tournament_name", all_max_encounter_filtered.c.tournament_name,
+                "username", all_max_encounter_filtered.c.username,
+            ).label("metadata")
         )
-        .join(models.Match, sa.and_(models.Match.id == models.MatchStatistics.match_id))
+        .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
         .join(models.Hero, models.Hero.id == models.MatchStatistics.hero_id)
         .outerjoin(
             all_max_encounter_filtered,
@@ -744,7 +771,21 @@ async def get_statistics_by_heroes_all_values(
             ),
         )
         .where(
-            sa.and_(models.MatchStatistics.round == 0, models.MatchStatistics.value > 0)
+            sa.and_(
+                models.MatchStatistics.round == 0,
+                models.MatchStatistics.value > 0,
+                sa.exists(
+                    sa.select(1)
+                    .select_from(hero_playtime_stat)
+                    .where(
+                        hero_playtime_stat.c.match_id == models.MatchStatistics.match_id,
+                        hero_playtime_stat.c.user_id == models.MatchStatistics.user_id,
+                        hero_playtime_stat.c.hero_id == models.MatchStatistics.hero_id,
+                        hero_playtime_stat.c.name == enums.LogStatsName.HeroTimePlayed,
+                        hero_playtime_stat.c.value > 60,
+                    )
+                ),
+            )
         )
         .group_by(
             models.MatchStatistics.name,
@@ -757,6 +798,7 @@ async def get_statistics_by_heroes_all_values(
         )
         .order_by(models.Hero.id)
     )
+
     result_all = await session.execute(all_query)
     return result_all.all()
 

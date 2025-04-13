@@ -86,6 +86,7 @@ const UserHeroes = ({ heroes }: { heroes: HeroWithUserStats[] }) => {
       ),
     [heroes]
   );
+  console.log(sortedHeroes);
 
   const heroesItems = sortedHeroes.map((hero) => {
     return {

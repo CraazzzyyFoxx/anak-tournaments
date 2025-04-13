@@ -79,7 +79,7 @@ class PaginationParams:
         offset = (self.page - 1) * self.per_page
         return query.offset(offset).limit(self.per_page)
 
-    def paginate_data(self, data: Sequence[Any]) -> Sequence[Any]:
+    def paginate_data(self, data: list[Any]) -> list[Any]:
         if self.per_page == -1:
             return data
         offset = (self.page - 1) * self.per_page
