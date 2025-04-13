@@ -89,13 +89,13 @@ services:
         APP_PATH: parser
     depends_on:
       - redis
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik-public
-      - traefik.constraint-label=traefik-public
-      - traefik.http.services.backend-http.loadbalancer.server.port=8081
-      - traefik.http.routers.backend-http.rule=PathPrefix(`/parser`)
-      - traefik.http.routers.backend-http.entrypoints=http
+#    labels:
+#      - traefik.enable=true
+#      - traefik.docker.network=traefik-public
+#      - traefik.constraint-label=traefik-public
+#      - traefik.http.services.backend-http.loadbalancer.server.port=8081
+#      - traefik.http.routers.backend-http.rule=PathPrefix(`/parser`)
+#      - traefik.http.routers.backend-http.entrypoints=http
     command: uvicorn main:app --host 0.0.0.0 --port 8081 --loop uvloop
     environment:
       - ENVIRONMENT=${ENVIRONMENT}
