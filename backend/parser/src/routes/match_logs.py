@@ -18,7 +18,7 @@ router = APIRouter(
     tags=[enums.RouteTag.LOGS],
     dependencies=[Depends(auth_flows.current_user)],
 )
-task_router = RedisRouter(config.app.broker_url, logger=logger)
+task_router = RedisRouter(config.settings.broker_url, logger=logger)
 publisher = task_router.publisher(PROCESS_MATCH_LOGS_TOPIC, title="Logs")
 
 
@@ -32,29 +32,21 @@ async def process_all_logs(session=Depends(db.get_async_session)):
     tournaments = await tournaments_service.get_all(session)
     for tournament in tournaments:
         if tournament.id > 20:
-            await task_router.broker.publish(
-                {"tournament_id": tournament.id}, PROCESS_TOURNAMENT_LOGS_TOPIC
-            )
+            await task_router.broker.publish({"tournament_id": tournament.id}, PROCESS_TOURNAMENT_LOGS_TOPIC)
     return {"message": "Processing all logs for all tournaments"}
 
 
 @router.get("/{tournament_id}")
-async def get_tournament_logs(
-    tournament_id: int, session=Depends(db.get_async_session)
-):
+async def get_tournament_logs(tournament_id: int, session=Depends(db.get_async_session)):
     tournament = await tournaments_flows.get(session, tournament_id, [])
     logs = await s3_service.async_client.get_logs_by_tournament(tournament.id)
     return {"tournament": tournament.name, "logs": logs}
 
 
 @router.post("/{tournament_id}")
-async def process_tournament_logs(
-    tournament_id: int, session=Depends(db.get_async_session)
-):
+async def process_tournament_logs(tournament_id: int, session=Depends(db.get_async_session)):
     tournament = await tournaments_flows.get(session, tournament_id, [])
-    await task_router.broker.publish(
-        {"tournament_id": tournament.id}, PROCESS_TOURNAMENT_LOGS_TOPIC
-    )
+    await task_router.broker.publish({"tournament_id": tournament.id}, PROCESS_TOURNAMENT_LOGS_TOPIC)
     return {"message": f"Processing all logs for tournament '{tournament.name}'"}
 
 
@@ -72,9 +64,7 @@ async def process_logs_async(tournament_id: int, file: UploadFile, session=Depen
 
 
 @router.post("/{tournament_id}/discord")
-async def process_logs_discord(
-    tournament_id: int, session=Depends(db.get_async_session)
-):
+async def process_logs_discord(tournament_id: int, session=Depends(db.get_async_session)):
     tournament = await tournaments_flows.get(session, tournament_id, [])
     await task_router.broker.publish({"action": "process_all"}, channel="discord_commands")
     return {"message": f"Processing all logs for tournament '{tournament.name}'"}
@@ -82,7 +72,10 @@ async def process_logs_discord(
 
 @router.post("/{tournament_id}/discord/{channel_id}/{message_id}")
 async def process_logs_discord(
-    tournament_id: int, channel_id: int, message_id: int, session=Depends(db.get_async_session)
+    tournament_id: int,
+    channel_id: int,
+    message_id: int,
+    session=Depends(db.get_async_session),
 ):
     tournament = await tournaments_flows.get(session, tournament_id, [])
     await task_router.broker.publish(
@@ -91,16 +84,14 @@ async def process_logs_discord(
             "channel_id": channel_id,
             "message_id": message_id,
         },
-        channel="discord_commands"
+        channel="discord_commands",
     )
     return {"message": f"Processing message {message_id} in channel {channel_id} for tournament '{tournament.name}'"}
 
 
 @router.post("/{tournament_id}/{filename}")
 async def process_logs_async(tournament_id: int, filename: str):
-    await task_router.broker.publish(
-        {"tournament_id": tournament_id, "filename": filename}, PROCESS_MATCH_LOGS_TOPIC
-    )
+    await task_router.broker.publish({"tournament_id": tournament_id, "filename": filename}, PROCESS_MATCH_LOGS_TOPIC)
     return {"message": f"Async processing initiated for file '{filename}'"}
 
 

@@ -10,9 +10,7 @@ from src.core import enums, utils
 from src.services.user import service as user_service
 
 
-def team_entities(
-    in_entities: list[str], child: typing.Any | None = None
-) -> list[_AbstractLoad]:
+def team_entities(in_entities: list[str], child: typing.Any | None = None) -> list[_AbstractLoad]:
     entities: list[_AbstractLoad] = []
 
     if "tournament" in in_entities:
@@ -24,28 +22,18 @@ def team_entities(
         if "user" in players_entities:
             user_entity = utils.join_entity(players_entity, models.Player.user)
             entities.append(user_entity)
-            entities.extend(
-                user_service.user_entities(
-                    utils.prepare_entities(players_entities, "user"), user_entity
-                )
-            )
+            entities.extend(user_service.user_entities(utils.prepare_entities(players_entities, "user"), user_entity))
     if "captain" in in_entities:
         captain_entity = utils.join_entity(child, models.Team.captain)
         entities.append(captain_entity)
-        entities.extend(
-            user_service.user_entities(
-                utils.prepare_entities(in_entities, "captain"), captain_entity
-            )
-        )
+        entities.extend(user_service.user_entities(utils.prepare_entities(in_entities, "captain"), captain_entity))
     if "placement" in in_entities:
         entities.append(utils.join_entity(child, models.Team.standings))
 
     return entities
 
 
-def player_entities(
-    entities_in: list[str], child: typing.Any | None = None
-) -> list[_AbstractLoad]:
+def player_entities(entities_in: list[str], child: typing.Any | None = None) -> list[_AbstractLoad]:
     entities = []
 
     if "user" in entities_in:
@@ -55,21 +43,13 @@ def player_entities(
     if "team" in entities_in:
         team_entity = utils.join_entity(child, models.Player.team)
         entities.append(team_entity)
-        entities.extend(
-            team_entities(utils.prepare_entities(entities_in, "team"), team_entity)
-        )
+        entities.extend(team_entities(utils.prepare_entities(entities_in, "team"), team_entity))
 
     return entities
 
 
-async def get(
-    session: AsyncSession, team_id: int, entities: list[str]
-) -> models.Team | None:
-    query = (
-        sa.select(models.Team)
-        .where(sa.and_(models.Team.id == team_id))
-        .options(*team_entities(entities))
-    )
+async def get(session: AsyncSession, team_id: int, entities: list[str]) -> models.Team | None:
+    query = sa.select(models.Team).where(sa.and_(models.Team.id == team_id)).options(*team_entities(entities))
     result = await session.execute(query)
     return result.scalars().first()
 
@@ -94,11 +74,7 @@ async def get_by_name_and_tournament(
 async def get_by_tournament(
     session: AsyncSession, tournament_id: int, entities: list[str]
 ) -> typing.Sequence[models.Team]:
-    query = (
-        sa.select(models.Team)
-        .filter_by(tournament_id=tournament_id)
-        .options(*team_entities(entities))
-    )
+    query = sa.select(models.Team).filter_by(tournament_id=tournament_id).options(*team_entities(entities))
     result = await session.execute(query)
     return result.unique().scalars().all()
 
@@ -141,7 +117,7 @@ async def get_by_captain_tournament(
     return result.scalars().first()
 
 
-async def get_by_players_tournament(
+async def get_by_players_by_ids_tournament(
     session: AsyncSession,
     players_ids: list[int],
     tournament: models.Tournament,
@@ -165,6 +141,18 @@ async def get_by_players_tournament(
     return result.scalars().first()
 
 
+async def get_players_tournament(
+    session: AsyncSession, tournament_id: int, entities: list[str]
+) -> typing.Sequence[models.Player]:
+    query = (
+        sa.select(models.Player)
+        .options(*player_entities(entities))
+        .where(models.Player.tournament_id == tournament_id, models.Player.is_substitution.is_(False))
+    )
+    result = await session.execute(query)
+    return result.unique().scalars().all()
+
+
 async def get_player_by_user_and_tournament(
     session: AsyncSession, user_id: int, tournament_id: int, entities: list[str]
 ) -> models.Player | None:
@@ -179,14 +167,16 @@ async def get_player_by_user_and_tournament(
         )
     )
     result = await session.execute(query)
-    return result.scalars().first()
+    return result.scalar()
 
 
 async def get_player_by_team_and_user(
     session: AsyncSession, team_id: int, user_id: int, entities: list[str]
 ) -> models.Player | None:
-    query = sa.select(models.Player).where(
-        sa.and_(models.Player.user_id == user_id, models.Player.team_id == team_id)
+    query = (
+        sa.select(models.Player)
+        .options(*player_entities(entities))
+        .where(sa.and_(models.Player.user_id == user_id, models.Player.team_id == team_id))
     )
     result = await session.execute(query)
     return result.unique().scalars().first()
@@ -196,9 +186,7 @@ async def get_player_by_user(
     session: AsyncSession, user_id: int, entities: list[str]
 ) -> typing.Sequence[models.Player]:
     query = (
-        sa.select(models.Player)
-        .where(sa.and_(models.Player.user_id == user_id))
-        .options(*player_entities(entities))
+        sa.select(models.Player).where(sa.and_(models.Player.user_id == user_id)).options(*player_entities(entities))
     )
     result = await session.execute(query)
     return result.unique().scalars().all()

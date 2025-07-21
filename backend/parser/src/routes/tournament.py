@@ -1,3 +1,5 @@
+from datetime import datetime, date
+
 from fastapi import APIRouter, Depends, Query
 
 from src import schemas
@@ -17,12 +19,14 @@ router = APIRouter(
 async def create(
     number: int,
     is_league: bool,
+    start_date: date,
+    end_date: date,
     playoffs_challonge_slug: str,
     groups_challonge_slugs: list[str] = Query([]),
     session=Depends(db.get_async_session),
 ):
     tournament = await tournament_flows.create(
-        session, number, is_league, groups_challonge_slugs, playoffs_challonge_slug
+        session, number, is_league, start_date, end_date, groups_challonge_slugs, playoffs_challonge_slug
     )
     return await tournament_flows.to_pydantic(session, tournament, [])
 

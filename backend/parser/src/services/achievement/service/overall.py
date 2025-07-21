@@ -26,11 +26,7 @@ async def calculate_welcome_to_club_achievements(session: AsyncSession) -> None:
 
 
 async def calculate_captain_jack_sparrow_achievements(session: AsyncSession) -> None:
-    if not (
-        achievement := await crud.get_achievement_or_log_error(
-            session, "captain-jack-sparrow"
-        )
-    ):
+    if not (achievement := await crud.get_achievement_or_log_error(session, "captain-jack-sparrow")):
         return
 
     await crud.delete_user_achievements(session, achievement)
@@ -82,15 +78,11 @@ async def calculate_player_winrate_achievements(
     user_ids = result.scalars().all()
     await crud.create_user_achievements(session, achievement, user_ids)
     await session.commit()
-    logger.info(
-        f"Achievements '{slug}' assigned successfully to {len(user_ids)} users."
-    )
+    logger.info(f"Achievements '{slug}' assigned successfully to {len(user_ids)} users.")
 
 
 async def calculate_best_player_winrate_achievements(session: AsyncSession) -> None:
-    await calculate_player_winrate_achievements(
-        session=session, slug="best-player-winrate", descending=True, limit=20
-    )
+    await calculate_player_winrate_achievements(session=session, slug="best-player-winrate", descending=True, limit=20)
 
 
 async def calculate_worst_player_winrate_achievements(session: AsyncSession) -> None:
@@ -139,9 +131,7 @@ async def calculate_wins_achievement(
             sa.func.row_number()
             .over(
                 partition_by=(models.Standing.team_id, models.Standing.tournament_id),
-                order_by=(
-                    sa.case((models.Standing.buchholz.is_(None), 1), else_=0).desc()
-                ),
+                order_by=(sa.case((models.Standing.buchholz.is_(None), 1), else_=0).desc()),
             )
             .label("rn"),
         )
@@ -181,14 +171,10 @@ async def calculate_wins_achievement(
     )
 
     if required_position:
-        query = query.where(
-            sa.and_(only_best_standing.c.overall_position == required_position)
-        )
+        query = query.where(sa.and_(only_best_standing.c.overall_position == required_position))
 
     if count_by == "win":
-        query = query.join(
-            crud.encounter_query, crud.encounter_query.c.id == models.Player.id
-        )
+        query = query.join(crud.encounter_query, crud.encounter_query.c.id == models.Player.id)
 
     result = await session.execute(query)
     user_ids = result.all()
@@ -202,14 +188,10 @@ async def calculate_wins_achievement(
             )
             session.add(user_achievement)
     else:
-        await crud.create_user_achievements(
-            session, achievement, [user_id[0] for user_id in user_ids]
-        )
+        await crud.create_user_achievements(session, achievement, [user_id[0] for user_id in user_ids])
 
     await session.commit()
-    logger.info(
-        f"Achievements '{slug}' created successfully for {len(user_ids)} users."
-    )
+    logger.info(f"Achievements '{slug}' created successfully for {len(user_ids)} users.")
 
 
 async def calculate_honor_and_glory_achievements(session: AsyncSession) -> None:
@@ -340,11 +322,7 @@ async def calculate_old_achievements(session: AsyncSession) -> None:
     query = (
         sa.select(models.Player.user_id.distinct())
         .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
-        .where(
-            sa.and_(
-                models.Tournament.is_league.is_(False), models.Tournament.number <= 18
-            )
-        )
+        .where(sa.and_(models.Tournament.is_league.is_(False), models.Tournament.number <= 18))
     )
 
     result = await session.execute(query)
@@ -355,9 +333,7 @@ async def calculate_old_achievements(session: AsyncSession) -> None:
 
 
 async def calculate_young_blood_achievements(session: AsyncSession) -> None:
-    if not (
-        achievement := await crud.get_achievement_or_log_error(session, "young-blood")
-    ):
+    if not (achievement := await crud.get_achievement_or_log_error(session, "young-blood")):
         return
 
     await crud.delete_user_achievements(session, achievement)
@@ -365,11 +341,7 @@ async def calculate_young_blood_achievements(session: AsyncSession) -> None:
     query = (
         sa.select(models.Player.user_id.distinct())
         .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
-        .where(
-            sa.and_(
-                models.Tournament.is_league.is_(False), models.Tournament.number > 18
-            )
-        )
+        .where(sa.and_(models.Tournament.is_league.is_(False), models.Tournament.number > 18))
     )
 
     result = await session.execute(query)
@@ -380,11 +352,7 @@ async def calculate_young_blood_achievements(session: AsyncSession) -> None:
 
 
 async def calculate_backyard_cyber_athlete_achievements(session: AsyncSession) -> None:
-    if not (
-        achievement := await crud.get_achievement_or_log_error(
-            session, "backyard-cyber-athlete"
-        )
-    ):
+    if not (achievement := await crud.get_achievement_or_log_error(session, "backyard-cyber-athlete")):
         return
 
     await crud.delete_user_achievements(session, achievement)
@@ -406,9 +374,7 @@ async def calculate_backyard_cyber_athlete_achievements(session: AsyncSession) -
 
 
 async def calculate_its_genetics_achievements(session: AsyncSession) -> None:
-    achievement = await session.scalar(
-        sa.select(models.Achievement).filter_by(slug="its-genetics")
-    )
+    achievement = await session.scalar(sa.select(models.Achievement).filter_by(slug="its-genetics"))
     if not achievement:
         logger.error("Achievement Its genetics not found. Aborting...")
         return
@@ -468,9 +434,7 @@ async def calculate_best_in_logs(
     time_value = sa.func.sum(
         sa.case(
             (
-                sa.and_(
-                    models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed
-                ),
+                sa.and_(models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed),
                 models.MatchStatistics.value,
             ),
             else_=0,
@@ -485,9 +449,7 @@ async def calculate_best_in_logs(
         .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
         .where(
             sa.and_(
-                models.MatchStatistics.name.in_(
-                    [log_stat_name, enums.LogStatsName.HeroTimePlayed]
-                ),
+                models.MatchStatistics.name.in_([log_stat_name, enums.LogStatsName.HeroTimePlayed]),
                 models.Encounter.tournament_id == tournament.id,
                 models.MatchStatistics.round == 0,
                 models.MatchStatistics.hero_id.is_(None),
@@ -507,14 +469,10 @@ async def calculate_best_in_logs(
 
     await crud.create_user_achievements(session, achievement, [user_id], tournament.id)
     await session.commit()
-    logger.info(
-        f"Achievements '{achievement_slug}' created successfully for 1 user(s)."
-    )
+    logger.info(f"Achievements '{achievement_slug}' created successfully for 1 user(s).")
 
 
-async def calculate_ill_definitely_survive_achievements(
-    session: AsyncSession, tournament: models.Tournament
-) -> None:
+async def calculate_ill_definitely_survive_achievements(session: AsyncSession, tournament: models.Tournament) -> None:
     await calculate_best_in_logs(
         session,
         "ill-definitely-survive",
@@ -524,9 +482,7 @@ async def calculate_ill_definitely_survive_achievements(
     )
 
 
-async def calculate_killer_machine_achievements(
-    session: AsyncSession, tournament: models.Tournament
-) -> None:
+async def calculate_killer_machine_achievements(session: AsyncSession, tournament: models.Tournament) -> None:
     await calculate_best_in_logs(
         session,
         "killer-machine",
@@ -536,9 +492,7 @@ async def calculate_killer_machine_achievements(
     )
 
 
-async def calculate_just_shoot_in_the_head_achievements(
-    session: AsyncSession, tournament: models.Tournament
-) -> None:
+async def calculate_just_shoot_in_the_head_achievements(session: AsyncSession, tournament: models.Tournament) -> None:
     await calculate_best_in_logs(
         session,
         "just-shoot-in-the-head",
@@ -548,9 +502,7 @@ async def calculate_just_shoot_in_the_head_achievements(
     )
 
 
-async def calculate_poop_forever_achievements(
-    session: AsyncSession, tournament: models.Tournament
-) -> None:
+async def calculate_poop_forever_achievements(session: AsyncSession, tournament: models.Tournament) -> None:
     await calculate_best_in_logs(
         session,
         "poop_forever",
@@ -560,9 +512,7 @@ async def calculate_poop_forever_achievements(
     )
 
 
-async def calculate_one_shot_one_kill_achievements(
-    session: AsyncSession, tournament: models.Tournament
-) -> None:
+async def calculate_one_shot_one_kill_achievements(session: AsyncSession, tournament: models.Tournament) -> None:
     await calculate_best_in_logs(
         session,
         "one-shot-one-kill",
@@ -595,9 +545,7 @@ async def calculate_sum_in_logs(
             )
         )
         .group_by(models.MatchStatistics.user_id)
-        .having(
-            crud.operators[operator](sa.func.sum(models.MatchStatistics.value), value)
-        )
+        .having(crud.operators[operator](sa.func.sum(models.MatchStatistics.value), value))
     )
 
     result = await session.execute(query)
@@ -609,12 +557,8 @@ async def calculate_sum_in_logs(
 
     await crud.create_user_achievements(session, achievement, user_ids)
     await session.commit()
-    logger.info(
-        f"Achievements '{achievement_slug}' created successfully for {len(user_ids)} users."
-    )
+    logger.info(f"Achievements '{achievement_slug}' created successfully for {len(user_ids)} users.")
 
 
 async def create_space_created_achievements(session: AsyncSession) -> None:
-    await calculate_sum_in_logs(
-        session, "space-created", enums.LogStatsName.Deaths, ">=", 1000
-    )
+    await calculate_sum_in_logs(session, "space-created", enums.LogStatsName.Deaths, ">=", 1000)

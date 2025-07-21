@@ -271,6 +271,12 @@ heroes_achievements: list[schemas.AchievementCreate] = [
         description_ru="За всю историю логов сыграть минимум на 20 разных героях.",
         description_en="Play at least 20 different heroes in the history of logs.",
     ),
+    schemas.AchievementCreate(
+        name="Bounty Hunter",
+        slug="freya",
+        description_ru="Иметь лучшее K/D на Фрейе за турнир",
+        description_en="Have the best K/D as Freja during the tournament",
+    )
 ]
 
 overall_achievements: list[schemas.AchievementCreate] = [

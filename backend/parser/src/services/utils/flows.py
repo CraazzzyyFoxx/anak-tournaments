@@ -21,9 +21,7 @@ async def merge_users_with_dasha_users(session: AsyncSession, payload: list) -> 
         )
 
         user_searched = await user_service.find_by_csv(session, user_csv)
-        user = await user_service.get(
-            session, user_searched.id, ["battle_tag", "discord", "twitch"]
-        )
+        user = await user_service.get(session, user_searched.id, ["battle_tag", "discord", "twitch"])
 
         if user:
             logger.info(f"User with battle tag {user_mg.battle_tag} already exists.")
@@ -34,15 +32,11 @@ async def merge_users_with_dasha_users(session: AsyncSession, payload: list) -> 
                 discord=user_mg.discord,
                 twitch=user_mg.twitch,
             )
-            user = await user_service.get(
-                session, created_user.id, ["battle_tag", "discord", "twitch"]
-            )
+            user = await user_service.get(session, created_user.id, ["battle_tag", "discord", "twitch"])
 
             logger.info(f"User with battle tag {user_mg.battle_tag} created.")
 
-        await user_flows.create_or_ignore_battle_tags(
-            session, user, user_mg.battle_tags
-        )
+        await user_flows.create_or_ignore_battle_tags(session, user, user_mg.battle_tags)
         await user_flows.create_or_ignore_discords(session, user, user_mg.discords)
         await user_flows.create_or_ignore_twitches(session, user, user_mg.twitches)
 
@@ -54,6 +48,4 @@ async def create_teams_from_dasha(session: AsyncSession) -> None:
     teams = await service.transform_dasha_teams_to_normal(teams_raw)
 
     for tournament_id, tournament_teams in teams.items():
-        await team_flows.bulk_create_from_balancer(
-            session, tournament_id, tournament_teams
-        )
+        await team_flows.bulk_create_from_balancer(session, tournament_id, tournament_teams)

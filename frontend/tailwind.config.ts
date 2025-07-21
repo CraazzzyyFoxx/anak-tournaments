@@ -34,10 +34,10 @@ const config = {
         ring: "hsl(var(--ring))",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
-        "group-a": "#86efac", // green-300 в HEX
-        "group-b": "#fef08a", // yellow-200 в HEX
-        "group-c": "#93c5fd", // blue-300 в HEX
-        "group-d": "#c084fc", // purple-400 в HEX
+        "group-a": "#86efac", // green-300 in HEX
+        "group-b": "#fef08a", // yellow-200 in HEX
+        "group-c": "#93c5fd", // blue-300 in HEX
+        "group-d": "#c084fc", // purple-400 in HEX
         firstPlaceBg: "#cbb765",
         TopPlaceText: "#121009",
         secondPlaceBg: "#99b0cc",

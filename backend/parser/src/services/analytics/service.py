@@ -8,9 +8,7 @@ from src import models
 
 async def get_analytics(
     session: AsyncSession,
-) -> typing.Sequence[
-    tuple[models.Team, models.Player, models.Tournament, int, int, int, int, int, int]
-]:
+) -> typing.Sequence[tuple[models.Team, models.Player, models.Tournament, int, int, int, int, int, int]]:
     pph = (
         sa.select(
             models.Player.user_id,
@@ -94,11 +92,7 @@ async def get_analytics(
     return result.all()  # type: ignore
 
 
-async def get_matches(
-    session: AsyncSession,
-    start_range: int,
-    end_range: int
-) -> typing.Sequence[models.Encounter]:
+async def get_matches(session: AsyncSession, start_range: int, end_range: int) -> typing.Sequence[models.Encounter]:
     query = (
         sa.select(models.Encounter)
         .options(
@@ -106,8 +100,12 @@ async def get_matches(
             sa.orm.joinedload(models.Encounter.away_team),
             sa.orm.joinedload(models.Encounter.home_team).joinedload(models.Team.players),
             sa.orm.joinedload(models.Encounter.away_team).joinedload(models.Team.players),
-            sa.orm.joinedload(models.Encounter.home_team).joinedload(models.Team.players).joinedload(models.Player.user),
-            sa.orm.joinedload(models.Encounter.away_team).joinedload(models.Team.players).joinedload(models.Player.user),
+            sa.orm.joinedload(models.Encounter.home_team)
+            .joinedload(models.Team.players)
+            .joinedload(models.Player.user),
+            sa.orm.joinedload(models.Encounter.away_team)
+            .joinedload(models.Team.players)
+            .joinedload(models.Player.user),
             sa.orm.joinedload(models.Encounter.tournament),
         )
         .join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
@@ -128,7 +126,7 @@ async def get_algorithm(session: AsyncSession, name: str) -> models.AnalyticsAlg
 
 
 async def get_players_by_tournament_id(
-        session: AsyncSession, tournament_id: int
+    session: AsyncSession, tournament_id: int
 ) -> typing.Sequence[models.AnalyticsPlayer]:
     query = (
         sa.select(models.AnalyticsPlayer)

@@ -37,9 +37,7 @@ async def get_by_tournament(
 
 
 async def delete_by_tournament(session: AsyncSession, tournament_id: int) -> None:
-    query = sa.delete(models.Standing).where(
-        sa.and_(models.Standing.tournament_id == tournament_id)
-    )
+    query = sa.delete(models.Standing).where(sa.and_(models.Standing.tournament_id == tournament_id))
     await session.execute(query)
     await session.commit()
     logger.info(f"Deleted standings for tournament {tournament_id}")
@@ -52,9 +50,7 @@ def calculate_median_buchholz_and_tb_for_teams_in_group(
     tb_scores: dict[int, int] = {}
 
     for player in players_in.values():
-        opponent_scores = sorted(
-            [players_in[opponent_id].points for opponent_id in player.opponents]
-        )
+        opponent_scores = sorted([players_in[opponent_id].points for opponent_id in player.opponents])
         logger.debug(f"Player {player.id} raw opponent scores: {opponent_scores}")
 
         if len(opponent_scores) > 2:
@@ -159,17 +155,12 @@ def prepare_teams_for_playoffs_double_elimination(
     encounters: typing.Sequence[models.Encounter],
 ) -> list[schemas.StandingTeamDataWithRanking]:
     logger.info("Preparing teams for double elimination playoffs")
-    participants = list(
-        {match.home_team_id for match in encounters} | {match.away_team_id for match in encounters}
-    )
+    participants = list({match.home_team_id for match in encounters} | {match.away_team_id for match in encounters})
     data: dict[int, dict[str, float | int]] = {
-        participant: {"win": 0, "lose": 0, "placement": 0}
-        for participant in participants
+        participant: {"win": 0, "lose": 0, "placement": 0} for participant in participants
     }
 
-    last_game = sorted(
-        [e for e in encounters if e.round > 0], key=lambda x: x.round, reverse=True
-    )[0]
+    last_game = sorted([e for e in encounters if e.round > 0], key=lambda x: x.round, reverse=True)[0]
     if last_game.home_score > last_game.away_score:
         data[last_game.home_team_id]["placement"] = 1
         data[last_game.away_team_id]["placement"] = 2
@@ -229,13 +220,10 @@ def prepare_teams_for_playoffs_single_elimination(
     encounters: typing.Sequence[models.Encounter],
 ) -> list[schemas.StandingTeamDataWithRanking]:
     logger.info("Preparing teams for single elimination playoffs")
-    participants = list(
-        {m.home_team_id for m in encounters} | {m.away_team_id for m in encounters}
-    )
+    participants = list({m.home_team_id for m in encounters} | {m.away_team_id for m in encounters})
 
     data: dict[int, dict[str, float | int]] = {
-        participant: {"win": 0, "lose": 0, "placement": 0}
-        for participant in participants
+        participant: {"win": 0, "lose": 0, "placement": 0} for participant in participants
     }
 
     round_of_loss: dict[int, int | None] = {team: None for team in participants}
@@ -383,9 +371,7 @@ def calculate_for_playoffs(
     return standings
 
 
-async def calculate_overall_positions(
-    standings: list[models.Standing], has_playoffs: bool
-) -> list[models.Standing]:
+async def calculate_overall_positions(standings: list[models.Standing], has_playoffs: bool) -> list[models.Standing]:
     logger.info("Calculating overall positions")
     min_position = len(standings)
     if has_playoffs:
@@ -411,7 +397,9 @@ async def calculate_overall_positions(
     return final_standings
 
 
-def sort_matches(matches: typing.Sequence[models.Encounter]) -> typing.Sequence[models.Encounter]:
+def sort_matches(
+    matches: typing.Sequence[models.Encounter],
+) -> typing.Sequence[models.Encounter]:
     max_abs_round = max(abs(match.round) for match in matches)
 
     def sort_key(match):
@@ -428,9 +416,7 @@ async def calculate_for_tournament(
     has_playoffs = any(not group.is_groups for group in tournament.groups)
     overall_standings: list[models.Standing] = []
     for group in tournament.groups:
-        encounters = await encounter_service.get_by_tournament_group_id(
-            session, tournament.id, group.id, []
-        )
+        encounters = await encounter_service.get_by_tournament_group_id(session, tournament.id, group.id, [])
         if not encounters:
             logger.warning(f"No encounters found for group {group.id} in tournament {tournament.id}")
             continue

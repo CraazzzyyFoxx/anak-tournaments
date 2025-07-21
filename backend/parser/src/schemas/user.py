@@ -16,7 +16,7 @@ __all__ = (
 class UserCSV(BaseModel):
     battle_tag: str
     discord: str | None
-    twitch: str
+    twitch: str | None
     smurfs: list[str]
 
 

@@ -357,9 +357,7 @@ async def get_tournaments(
     encounters_cache: dict[int, dict[int, models.Encounter]] = {}
     matches_cache: dict[int, dict[int, list[schemas.MatchReadWithUserStats]]] = {}
     matches = await encounter_service.get_by_user_with_teams(session, user.id, ["map"])
-    placements = await team_service.get_team_count_by_tournament_bulk(
-        session, tournaments_ids
-    )
+    placements = await team_service.get_team_count_by_tournament_bulk(session, tournaments_ids)
 
     for team, encounter, match, performance, heroes in matches:
         encounters.setdefault(team.id, [])
@@ -369,9 +367,7 @@ async def get_tournaments(
         matches_cache[team.id].setdefault(encounter.id, [])
 
         if match:
-            match_read_ = await encounter_flows.to_pydantic_match(
-                session, match, ["map"]
-            )
+            match_read_ = await encounter_flows.to_pydantic_match(session, match, ["map"])
             match_read = schemas.MatchReadWithUserStats(
                 **match_read_.model_dump(),
                 performance=performance,

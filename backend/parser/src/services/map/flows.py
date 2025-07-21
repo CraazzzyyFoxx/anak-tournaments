@@ -8,9 +8,7 @@ from src.services.gamemode import service as gamemode_service
 from . import service
 
 
-async def to_pydantic(
-    session: AsyncSession, map: models.Map, entities: list[str]
-) -> schemas.MapRead:
+async def to_pydantic(session: AsyncSession, map: models.Map, entities: list[str]) -> schemas.MapRead:
     gamemode: schemas.GamemodeRead | None = None
     if "gamemode" in entities:
         gamemode = schemas.GamemodeRead(**map.gamemode.to_dict())
@@ -21,18 +19,14 @@ async def to_pydantic(
 
 
 async def fetch_maps(gamemode: models.Gamemode) -> list[schemas.OverfastMap]:
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"https://overfast.craazzzyyfoxx.me/maps?gamemode={gamemode.slug}"
-        )
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.get(f"https://overfast.craazzzyyfoxx.me/maps?gamemode={gamemode.slug}")
         response.raise_for_status()
 
     return [schemas.OverfastMap.model_validate(map) for map in response.json()]
 
 
-async def get_by_name_and_gamemode(
-    session: AsyncSession, name: str, gamemode: str
-) -> models.Map:
+async def get_by_name_and_gamemode(session: AsyncSession, name: str, gamemode: str) -> models.Map:
     map = await service.get_by_name_and_gamemode(session, name, gamemode)
     if not map:
         raise errors.ApiHTTPException(
@@ -48,9 +42,7 @@ async def get_by_name_and_gamemode(
 
 
 async def initial_create(session: AsyncSession) -> None:
-    gamemodes, total = await gamemode_service.get_all(
-        session, params=pagination.PaginationParams(per_page=-1, page=1)
-    )
+    gamemodes, total = await gamemode_service.get_all(session, params=pagination.PaginationParams(per_page=-1, page=1))
     for gamemode in gamemodes:
         maps = await fetch_maps(gamemode)
         for map in maps:

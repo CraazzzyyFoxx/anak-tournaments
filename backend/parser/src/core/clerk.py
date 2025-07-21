@@ -33,7 +33,10 @@ async def get_jwks(force_refresh: bool = False) -> dict:
             logger.debug("JWKS retrieved from cache.")
             return cached_jwks
 
+    # If data is not in cache or a refresh is forced,
+    # use a lock to ensure only one request performs the update.
     async with jwks_cache_lock:
+        # Double-check inside the lock in case another request already updated the cache while we were waiting.
         if not force_refresh:
             cached_jwks = jwks_cache.get("jwks")
             if cached_jwks:
@@ -62,12 +65,15 @@ async def get_public_key(kid: str):
     """
     logger.debug(f"Searching for public key with kid: {kid}")
 
+    # First attempt: find the key in the current (possibly cached) set
     jwks = await get_jwks()
     for key in jwks["keys"]:
         if key["kid"] == kid:
             logger.success(f"Found public key for kid: {kid}")
             return jwk.construct(key)
 
+    # If key is not found, it might be due to key rotation.
+    # Force a cache refresh and search again.
     logger.warning(f"Key with kid '{kid}' not found. Forcing JWKS cache refresh.")
     jwks = await get_jwks(force_refresh=True)
     for key in jwks["keys"]:
@@ -75,11 +81,15 @@ async def get_public_key(kid: str):
             logger.success(f"Found public key for kid: {kid} (after refresh).")
             return jwk.construct(key)
 
+    # If the key is still not found after a refresh, the token is genuinely invalid.
     logger.error(f"Public key with kid '{kid}' not found even after refreshing JWKS.")
     raise HTTPException(status_code=401, detail="Invalid token: public key not found.")
 
 
 async def decode_token(token: str) -> dict:
+    """
+    Asynchronously decodes and validates a JWT token.
+    """
     logger.info("Attempting to decode JWT token.")
     try:
         headers = jwt.get_unverified_headers(token)
@@ -113,8 +123,11 @@ async def decode_token(token: str) -> dict:
 
 
 async def get_current_user(
-        request: Request, token: Annotated[HTTPAuthorizationCredentials, Depends(security)]
+    request: Request, token: Annotated[HTTPAuthorizationCredentials, Depends(security)]
 ) -> ClerkUser:
+    """
+    FastAPI dependency to authenticate a user by token, now fully asynchronous and cached.
+    """
     logger.info("Authenticating user via Bearer token...")
     try:
         credentials = token.credentials

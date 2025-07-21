@@ -10,9 +10,9 @@ from src.core import config
 class S3AsyncClient:
     def __init__(self, bucket_name: str):
         self.config = {
-            "aws_access_key_id": config.app.s3_access_key,
-            "aws_secret_access_key": config.app.s3_secret_key,
-            "endpoint_url": config.app.s3_endpoint_url,
+            "aws_access_key_id": config.settings.s3_access_key,
+            "aws_secret_access_key": config.settings.s3_secret_key,
+            "endpoint_url": config.settings.s3_endpoint_url,
         }
         self.bucket_name = bucket_name
         self.session = get_async_session()
@@ -25,9 +25,7 @@ class S3AsyncClient:
     async def get_logs_by_tournament(self, tournament_id: int) -> list[str]:
         try:
             async with self.get_client() as _client:
-                response = await _client.list_objects(
-                    Bucket=self.bucket_name, Prefix=f"logs/{tournament_id}/"
-                )
+                response = await _client.list_objects(Bucket=self.bucket_name, Prefix=f"logs/{tournament_id}/")
                 if "Contents" not in response:
                     return []
                 return [content["Key"] for content in response["Contents"]]
@@ -44,19 +42,13 @@ class S3AsyncClient:
                 try:
                     await _client.head_object(Bucket=self.bucket_name, Key=filename)
                 except ClientError as e:
-                    if (
-                        e.response["Error"]["Code"] == "404"
-                    ):  # Specific handling of NoSuchKey
-                        logger.error(
-                            f"File '{filename}' does not exist in bucket '{self.bucket_name}'."
-                        )
+                    if e.response["Error"]["Code"] == "404":  # Specific handling of NoSuchKey
+                        logger.error(f"File '{filename}' does not exist in bucket '{self.bucket_name}'.")
                         return ""
                     else:
                         raise
 
-                response = await _client.get_object(
-                    Bucket=self.bucket_name, Key=filename
-                )
+                response = await _client.get_object(Bucket=self.bucket_name, Key=filename)
                 return await response["Body"].read()
         except ClientError as e:
             # Catch-all for other ClientErrors
@@ -85,4 +77,5 @@ class S3AsyncClient:
             logger.exception(f"Error uploading log: {e}")
             return False
 
-async_client = S3AsyncClient(bucket_name=config.app.s3_bucket_name)
+
+async_client = S3AsyncClient(bucket_name=config.settings.s3_bucket_name)

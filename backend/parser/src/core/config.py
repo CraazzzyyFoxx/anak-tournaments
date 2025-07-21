@@ -75,4 +75,4 @@ class AppConfig(BaseSettings):
         return f"{self.redis_url}/0"
 
 
-app = AppConfig()
+settings = AppConfig()

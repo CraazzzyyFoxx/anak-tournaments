@@ -3,9 +3,8 @@ from datetime import datetime
 from pydantic import BaseModel
 
 
-__all__ = (
-    "AnalyticsMatch",
-)
+__all__ = ("AnalyticsMatch",)
+
 
 class AnalyticsMatch(BaseModel):
     tournament_id: int

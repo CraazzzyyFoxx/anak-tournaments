@@ -21,17 +21,15 @@ class InterceptHandler(logging.Handler):
             frame = frame.f_back
             depth += 1
 
-        logger.opt(depth=depth, exception=record.exc_info).log(
-            level, record.getMessage()
-        )
+        logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
 
 
 class APILogger:
     @classmethod
     def make_logger(cls):
         return cls.customize_logging(
-            Path(f"{config.app.logs_root_path}/access.log"),
-            level=config.app.log_level,
+            Path(f"{config.settings.logs_root_path}/access.log"),
+            level=config.settings.log_level,
             rotation="1 day",
             retention="1 year",
             compression="gz",

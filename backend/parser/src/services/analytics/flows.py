@@ -84,24 +84,16 @@ async def get_analytics(session: AsyncSession, tournament_id: int):
         for index, row in rows.iterrows():
             if is_novice:
                 if row["is_changed"]:
-                    df.at[index, "shift"] = (
-                        row["wins"] - row["losses"]
-                    ) / COEF_NOVICE_FIRST
+                    df.at[index, "shift"] = (row["wins"] - row["losses"]) / COEF_NOVICE_FIRST
                     is_novice = False
                 else:
-                    df.at[index, "shift"] = (
-                        row["wins"] - row["losses"]
-                    ) / COEF_NOVICE_SECOND
+                    df.at[index, "shift"] = (row["wins"] - row["losses"]) / COEF_NOVICE_SECOND
             else:
                 df.at[index, "shift"] = (row["wins"] - row["losses"]) / COEF_REGULAR
                 if row["is_changed"]:
-                    df.at[index, "shift"] += (
-                        row["wins"] - row["losses"]
-                    ) / COEF_REGULAR
+                    df.at[index, "shift"] += (row["wins"] - row["losses"]) / COEF_REGULAR
                 else:
-                    df.at[index, "shift"] += df.at[
-                        rows.index[rows.index.get_loc(index) - 1], "shift"
-                    ]
+                    df.at[index, "shift"] += df.at[rows.index[rows.index.get_loc(index) - 1], "shift"]
 
     final_df = df[df["tournament_id"] == tournament_id]
     final_df = final_df.replace({np.nan: None})
@@ -110,7 +102,7 @@ async def get_analytics(session: AsyncSession, tournament_id: int):
         sa.delete(models.AnalyticsShift).where(
             sa.and_(
                 models.AnalyticsShift.tournament_id == tournament_id,
-                models.AnalyticsShift.algorithm_id == algorithm.id
+                models.AnalyticsShift.algorithm_id == algorithm.id,
             )
         )
     )
@@ -130,6 +122,7 @@ async def get_analytics(session: AsyncSession, tournament_id: int):
 
 def get_plackett_luce():
     return PlackettLuce(mu=mu, sigma=mu / 6, beta=mu / 2.75, tau=mu / 300.0, balance=True)
+
 
 def get_id_role(player: models.Player) -> str:
     return f"{player.user_id}-{player.role}"
@@ -174,18 +167,20 @@ def prepare_openskill_data(
         agents = agents.union(set(home_team))
         agents = agents.union(set(away_team))
 
-        ttt_matches.append(AnalyticsMatch(
-            tournament_id=encounter.tournament_id,
-            home_team_id=encounter.home_team_id,
-            home_team_name=encounter.home_team.name,
-            away_team_id=encounter.away_team_id,
-            away_team_name=encounter.away_team.name,
-            home_players=home_team,
-            away_players=away_team,
-            home_score=encounter.home_score,
-            away_score=encounter.away_score,
-            time=encounter.tournament.start_date,
-        ))
+        ttt_matches.append(
+            AnalyticsMatch(
+                tournament_id=encounter.tournament_id,
+                home_team_id=encounter.home_team_id,
+                home_team_name=encounter.home_team.name,
+                away_team_id=encounter.away_team_id,
+                away_team_name=encounter.away_team.name,
+                home_players=home_team,
+                away_players=away_team,
+                home_score=encounter.home_score,
+                away_score=encounter.away_score,
+                time=encounter.tournament.start_date,
+            )
+        )
 
     for team in teams:
         for player in team.players:
@@ -205,7 +200,6 @@ def prepare_openskill_data(
         for id_role in range(len(encounter.away_players)):
             players_rating[encounter.away_players[id_role]] = rated_away_team[id_role]
 
-
     return agents, players_rating, ttt_matches
 
 
@@ -216,7 +210,7 @@ def rank_to_div(cost: int | float) -> float:
 
 
 async def get_analytics_openskill(session: AsyncSession, tournament_id: int) -> None:
-    matches = await service.get_matches(session, tournament_id-10, tournament_id)
+    matches = await service.get_matches(session, tournament_id - 10, tournament_id)
     teams = await team_service.get_by_tournament(session, tournament_id, ["players", "players.user"])
     algorithm = await service.get_algorithm(session, "Open Skill")
     df = await get_data_frame(session)
@@ -227,7 +221,7 @@ async def get_analytics_openskill(session: AsyncSession, tournament_id: int) -> 
         sa.delete(models.AnalyticsShift).where(
             sa.and_(
                 models.AnalyticsShift.tournament_id == tournament_id,
-                models.AnalyticsShift.algorithm_id == algorithm.id
+                models.AnalyticsShift.algorithm_id == algorithm.id,
             )
         )
     )
@@ -267,7 +261,7 @@ async def get_predictions_openskill(session: AsyncSession, tournament_id: int) -
         sa.delete(models.AnalyticsPredictions).where(
             sa.and_(
                 models.AnalyticsPredictions.tournament_id == tournament_id,
-                models.AnalyticsPredictions.algorithm_id == algorithm.id
+                models.AnalyticsPredictions.algorithm_id == algorithm.id,
             )
         )
     )
@@ -285,7 +279,7 @@ async def get_predictions_openskill(session: AsyncSession, tournament_id: int) -
                 algorithm_id=algorithm.id,
                 tournament_id=tournament_id,
                 team_id=team.id,
-                predicted_place=predict[0]
+                predicted_place=predict[0],
             )
         )
 

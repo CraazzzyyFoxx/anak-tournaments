@@ -37,12 +37,20 @@ const UserHeader = ({ profile, user }: UserHeaderProps) => {
           <p className="text-muted-foreground text-sm">{battle_tags.join(" ")}</p>
         </div>
         <div className="pt-1 flex xs1:flex-row xs:flex-col xs1:gap-4">
-          <div className="flex flex-row gap-2">
-            <div>
-              <Image src={"/twitch.png"} width={28} height={28} alt="Twitch" />
+          {user.twitch.length > 0 ? (
+            <div className="flex flex-row gap-2">
+              <div>
+                <Image src={"/twitch.png"} width={28} height={28} alt="Twitch" />
+              </div>
+              {user.twitch.length > 0 ? (
+                <p className="leading-7">{user.twitch[0].name}</p>
+              ) : (
+                <></>
+              )}
             </div>
-            <p className="leading-7">{user.twitch[0].name}</p>
-          </div>
+          ) : (
+            <></>
+          )}
           {user.discord.length > 0 ? (
             <div className="flex flex-row gap-2">
               <div>

@@ -9,12 +9,8 @@ from src.services.hero import service as hero_service
 from . import crud
 
 
-async def create_hero_kd_achievements(
-    session: AsyncSession, tournament: models.Tournament
-) -> None:
-    heroes, total_heroes = await hero_service.get_all(
-        session, pagination.PaginationParams(per_page=-1)
-    )
+async def create_hero_kd_achievements(session: AsyncSession, tournament: models.Tournament) -> None:
+    heroes, total_heroes = await hero_service.get_all(session, pagination.PaginationParams(per_page=-1))
 
     for hero in heroes:
         achievement = await crud.get_achievement_or_log_error(session, slug=hero.slug)
@@ -43,9 +39,7 @@ async def create_hero_kd_achievements(
                 sa.func.avg(
                     sa.case(
                         (
-                            sa.and_(
-                                models.MatchStatistics.name == enums.LogStatsName.KD
-                            ),
+                            sa.and_(models.MatchStatistics.name == enums.LogStatsName.KD),
                             models.MatchStatistics.value,
                         ),
                         else_=None,
@@ -63,16 +57,12 @@ async def create_hero_kd_achievements(
                     models.Encounter.tournament_id == tournament.id,
                     models.MatchStatistics.hero_id == hero.id,
                     models.MatchStatistics.round == 0,
-                    models.MatchStatistics.name.in_(
-                        [enums.LogStatsName.KD, enums.LogStatsName.HeroTimePlayed]
-                    ),
+                    models.MatchStatistics.name.in_([enums.LogStatsName.KD, enums.LogStatsName.HeroTimePlayed]),
                     sa.exists(
                         sa.select(time_condition_subq.c.match_id).where(
                             sa.and_(
-                                time_condition_subq.c.match_id
-                                == models.MatchStatistics.match_id,
-                                time_condition_subq.c.user_id
-                                == models.MatchStatistics.user_id,
+                                time_condition_subq.c.match_id == models.MatchStatistics.match_id,
+                                time_condition_subq.c.user_id == models.MatchStatistics.user_id,
                             )
                         )
                     ),
@@ -84,10 +74,7 @@ async def create_hero_kd_achievements(
                     sa.func.sum(
                         sa.case(
                             (
-                                sa.and_(
-                                    models.MatchStatistics.name
-                                    == enums.LogStatsName.HeroTimePlayed
-                                ),
+                                sa.and_(models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed),
                                 models.MatchStatistics.value,
                             ),
                             else_=None,
@@ -103,9 +90,7 @@ async def create_hero_kd_achievements(
         user = result.first()
 
         if not user:
-            logger.warning(
-                f"User with best K/D for hero {hero.slug} not found. Skipping..."
-            )
+            logger.warning(f"User with best K/D for hero {hero.slug} not found. Skipping...")
             continue
 
         user_achievement = models.AchievementUser(
@@ -115,9 +100,7 @@ async def create_hero_kd_achievements(
         session.add(user_achievement)
 
     await session.commit()
-    logger.info(
-        f"Achievements for heroes K/D in tournament {tournament.name} created successfully"
-    )
+    logger.info(f"Achievements for heroes K/D in tournament {tournament.name} created successfully")
 
 
 base_query_conditions = sa.and_(
@@ -128,9 +111,7 @@ base_query_conditions = sa.and_(
 )
 
 
-async def calculate_freak_achievements(
-    session: AsyncSession, tournament: models.Tournament
-) -> None:
+async def calculate_freak_achievements(session: AsyncSession, tournament: models.Tournament) -> None:
     achievement = await crud.get_achievement_or_log_error(session, "freak")
     if not achievement:
         return
@@ -141,19 +122,13 @@ async def calculate_freak_achievements(
         sa.select(sa.func.sum(models.MatchStatistics.value))
         .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
         .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-        .where(
-            sa.and_(
-                base_query_conditions, models.Encounter.tournament_id == tournament.id
-            )
-        )
+        .where(sa.and_(base_query_conditions, models.Encounter.tournament_id == tournament.id))
     )
     total_time_result = await session.execute(total_time_query)
     total_time = total_time_result.scalar() or 0
 
     if total_time <= 0:
-        logger.info(
-            f"No HeroTimePlayed found for tournament {tournament.name}. No freak achievements awarded."
-        )
+        logger.info(f"No HeroTimePlayed found for tournament {tournament.name}. No freak achievements awarded.")
         return
 
     hero_time_subq = (
@@ -169,9 +144,7 @@ async def calculate_freak_achievements(
     )
 
     rare_heroes_subq = (
-        sa.select(hero_time_subq.c.hero_id)
-        .where(hero_time_subq.c.hero_sum < 0.001 * total_time)
-        .subquery()
+        sa.select(hero_time_subq.c.hero_id).where(hero_time_subq.c.hero_sum < 0.001 * total_time).subquery()
     )
 
     user_query = (
@@ -191,22 +164,16 @@ async def calculate_freak_achievements(
     user_result = await session.execute(user_query)
     user_ids = [row[0] for row in user_result.fetchall()]
     if not user_ids:
-        logger.info(
-            f"No users found who played sub-0.1% pickrate heroes in {tournament.name}."
-        )
+        logger.info(f"No users found who played sub-0.1% pickrate heroes in {tournament.name}.")
         return
 
     await crud.create_user_achievements(session, achievement, user_ids)
 
     await session.commit()
-    logger.info(
-        f"Achievements 'freak' created for {len(user_ids)} users in tournament '{tournament.name}'."
-    )
+    logger.info(f"Achievements 'freak' created for {len(user_ids)} users in tournament '{tournament.name}'.")
 
 
-async def calculate_mystery_heroes_achievements(
-    session: AsyncSession, tournament
-) -> None:
+async def calculate_mystery_heroes_achievements(session: AsyncSession, tournament) -> None:
     achievement = await crud.get_achievement_or_log_error(session, "mystery-heroes")
     if not achievement:
         return
@@ -217,11 +184,7 @@ async def calculate_mystery_heroes_achievements(
         sa.select(models.MatchStatistics.user_id)
         .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
         .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-        .where(
-            sa.and_(
-                base_query_conditions, models.Encounter.tournament_id == tournament.id
-            )
-        )
+        .where(sa.and_(base_query_conditions, models.Encounter.tournament_id == tournament.id))
         .group_by(models.MatchStatistics.user_id)
         .having(sa.func.count(models.MatchStatistics.hero_id.distinct()) >= 7)
     )
@@ -231,9 +194,7 @@ async def calculate_mystery_heroes_achievements(
     await crud.create_user_achievements(session, achievement, users_ids, tournament.id)
     await session.commit()
 
-    logger.info(
-        f"Achievements 'mystery-heroes' created for {len(users_ids)} users in tournament '{tournament.name}'"
-    )
+    logger.info(f"Achievements 'mystery-heroes' created for {len(users_ids)} users in tournament '{tournament.name}'")
 
 
 async def create_swiss_knife_achievements(session: AsyncSession) -> None:
@@ -263,6 +224,4 @@ async def create_swiss_knife_achievements(session: AsyncSession) -> None:
         await crud.create_user_achievements(session, achievement, [user_id])
 
     await session.commit()
-    logger.info(
-        f"Achievements 'swiss-knife' created for {len(users_ids)} users in tournament"
-    )
+    logger.info(f"Achievements 'swiss-knife' created for {len(users_ids)} users in tournament")

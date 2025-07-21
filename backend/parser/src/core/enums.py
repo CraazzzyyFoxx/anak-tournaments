@@ -180,6 +180,7 @@ map_name_dict = {
     "King's Row": "King’s Row",
     "King's Row (Winter)": "King’s Row",
     "Lijiang Tower (Lunar New Year)": "Lijiang Tower",
+    "Башня Лицзян (Лунный Новый год)": "Lijiang Tower",
     "Circuit royal": "Circuit Royal",
     "Айхенвальд": "Eichenwalde",
     "Антарктический полуостров": "Antarctic Peninsula",
@@ -212,6 +213,7 @@ map_name_dict = {
     "Рунасапи": "Runasapi",
     "Ханаока": "Hanaoka",
     "Трон Анубиса": "Throne of Anubis",
+    "Атлус": "Aatlis"
 }
 
 
@@ -257,4 +259,7 @@ hero_translation = {
     "Бастион": "Bastion",
     "Юнона": "Juno",
     "Азарт": "Hazard",
+    "Фрейя": "Freya",
+    "Freja": "Freya"
+
 }

@@ -39,9 +39,7 @@ class SortOrder(Enum):
     DESC = "desc"
 
 
-def apply_search(
-    model: type[db.Base], query: sa.Select, query_str: str, fields: list[str]
-) -> sa.Select:
+def apply_search(model: type[db.Base], query: sa.Select, query_str: str, fields: list[str]) -> sa.Select:
     columns = [model.depth_get_column(field.split(".")) for field in fields]
     search_query = f"%{query_str}%"
     return query.where(sa.or_(*[column.ilike(search_query) for column in columns]))
@@ -67,9 +65,7 @@ class PaginationParams:
     def from_query_params(cls, query_params: PaginationQueryParams):
         return cls(**query_params.model_dump())
 
-    def apply_sort(
-        self, query: sa.Select, model: type[db.Base] | None = None
-    ) -> sa.Select:
+    def apply_sort(self, query: sa.Select, model: type[db.Base] | None = None) -> sa.Select:
         if model:
             if self.order == SortOrder.DESC:
                 order_by = model.depth_get_column(self.sort.split(".")).desc()
@@ -84,9 +80,7 @@ class PaginationParams:
 
             return query.order_by(order_by)
 
-    def apply_pagination_sort(
-        self, query: sa.Select, model: type[db.Base] | None = None
-    ) -> sa.Select:
+    def apply_pagination_sort(self, query: sa.Select, model: type[db.Base] | None = None) -> sa.Select:
         if self.per_page == -1:
             return self.apply_sort(query, model)
         offset = (self.page - 1) * self.per_page
@@ -121,9 +115,7 @@ class SearchPaginationParams(PaginationParams):
     def apply_sort(self, query: sa.Select, model: type[db.Base]) -> sa.Select:
         if self.sort.startswith("similarity"):
             sort = self.sort.split(":")[1]
-            column = sa.func.word_similarity(
-                model.depth_get_column(sort.split(".")), self.query
-            )
+            column = sa.func.word_similarity(model.depth_get_column(sort.split(".")), self.query)
             if sort == "asc":
                 order_by = column.asc()
             else:

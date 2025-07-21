@@ -62,9 +62,7 @@ class TimeStampIntegerMixin(Base):
     __abstract__ = True
 
     id: Mapped[int] = mapped_column(BigInteger(), primary_key=True, sort_order=-1000)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), sort_order=-999, default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), sort_order=-999, default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, sort_order=-998, onupdate=func.now()
     )
@@ -73,25 +71,17 @@ class TimeStampIntegerMixin(Base):
 class TimeStampUUIDMixin(Base):
     __abstract__ = True
 
-    id: Mapped[str] = mapped_column(
-        Uuid(), primary_key=True, server_default=func.gen_random_uuid(), index=True
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), sort_order=-999, default=func.now()
-    )
+    id: Mapped[str] = mapped_column(Uuid(), primary_key=True, server_default=func.gen_random_uuid(), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), sort_order=-999, default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, sort_order=-998, onupdate=func.now()
     )
 
 
-async_engine = create_async_engine(
-    url=config.app.db_url_asyncpg, pool_size=50, max_overflow=25
-)
-engine = create_engine(url=config.app.db_url)
+async_engine = create_async_engine(url=config.settings.db_url_asyncpg, pool_size=50, max_overflow=25)
+engine = create_engine(url=config.settings.db_url)
 session_maker = sessionmaker(engine, class_=Session, expire_on_commit=False)
-async_session_maker = async_sessionmaker(
-    async_engine, class_=AsyncSession, expire_on_commit=False
-)
+async_session_maker = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
 
 
 async def get_async_session() -> AsyncGenerator[AsyncSession, None]:

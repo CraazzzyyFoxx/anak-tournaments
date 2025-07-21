@@ -10,7 +10,7 @@ from src.core import config
 
 from . import flows
 
-battle_tag_validator = re.compile(config.app.battle_tag_regex, re.UNICODE)
+battle_tag_validator = re.compile(config.settings.battle_tag_regex, re.UNICODE)
 
 
 async def create_or_update_player_from_csv(
@@ -25,16 +25,15 @@ async def create_or_update_player_from_csv(
     delimiter: str = ",",
     has_discord: bool = True,
     has_smurf: bool = True,
+    has_twitch: bool = True,
 ) -> None:
     with open(file_path, encoding="utf-8") as r_file:
         file_reader = csv.reader(r_file, delimiter=delimiter)
         for index, row in enumerate(file_reader, 0):
             if index < start_row:
                 continue
-            battle_tag = (
-                row[battle_tag_row].strip().replace(" #", "#").replace("# ", "#")
-            )
-            twitch = row[twitch_row].strip()
+            battle_tag = row[battle_tag_row].strip().replace(" #", "#").replace("# ", "#")
+            twitch = row[twitch_row].strip() if has_twitch else None
             discord = row[discord_row].strip() if has_discord else None
             smurfs = row[smurf_row] if has_smurf else ""
 
@@ -46,6 +45,11 @@ async def create_or_update_player_from_csv(
                     smurfs=battle_tag_validator.findall(smurfs),
                 )
             except (IndexError, ValidationError):
+                logger.error(
+                    f"Invalid data in row {index + 1} of {file_path}: "
+                    f"Battle Tag: {battle_tag}, Discord: {discord}, "
+                    f"Twitch: {twitch}, Smurfs: {smurfs}"
+                )
                 continue
 
             await flows.create(session, payload)

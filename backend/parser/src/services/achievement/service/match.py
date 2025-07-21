@@ -54,40 +54,26 @@ async def find_match_by_criteria(
         user_ids = [player.user_id for player in players]
 
         counter += len(user_ids)
-        await crud.create_user_achievements(
-            session, achievement, user_ids, tournament.id, match.id
-        )
+        await crud.create_user_achievements(session, achievement, user_ids, tournament.id, match.id)
 
     await session.commit()
 
-    logger.info(
-        f"Achievements '{achievement_slug}' in {tournament.name} created successfully for {counter} user(s)."
-    )
+    logger.info(f"Achievements '{achievement_slug}' in {tournament.name} created successfully for {counter} user(s).")
 
 
-async def calculate_balanced_achievements(
-    session: AsyncSession, tournament: models.Tournament
-) -> None:
+async def calculate_balanced_achievements(session: AsyncSession, tournament: models.Tournament) -> None:
     await find_match_by_criteria(session, "balanced", tournament, "closeness", "==", 0)
 
 
-async def calculate_hard_game_achievements(
-    session: AsyncSession, tournament: models.Tournament
-) -> None:
+async def calculate_hard_game_achievements(session: AsyncSession, tournament: models.Tournament) -> None:
     await find_match_by_criteria(session, "hard_game", tournament, "closeness", "==", 1)
 
 
-async def calculate_7_years_in_azkaban_achievements(
-    session: AsyncSession, tournament: models.Tournament
-) -> None:
-    await find_match_by_criteria(
-        session, "7_years_in_azkaban", tournament, "time", ">=", 25 * 60
-    )
+async def calculate_7_years_in_azkaban_achievements(session: AsyncSession, tournament: models.Tournament) -> None:
+    await find_match_by_criteria(session, "7_years_in_azkaban", tournament, "time", ">=", 25 * 60)
 
 
-async def calculate_fast_game_achievements(
-    session: AsyncSession, tournament: models.Tournament
-) -> None:
+async def calculate_fast_game_achievements(session: AsyncSession, tournament: models.Tournament) -> None:
     await find_match_by_criteria(session, "fast", tournament, "time", "<=", 5 * 60)
 
 
@@ -158,9 +144,7 @@ async def find_match_by_stats_criteria(
 
     # Optionally ensure the user’s team won (join with Team)
     if win_required:
-        query = query.join(
-            models.Team, models.Team.id == models.MatchStatistics.team_id
-        ).where(
+        query = query.join(models.Team, models.Team.id == models.MatchStatistics.team_id).where(
             sa.or_(
                 sa.and_(
                     models.Encounter.home_team_id == models.Team.id,
@@ -176,9 +160,7 @@ async def find_match_by_stats_criteria(
     sum_expr = sa.func.sum(models.MatchStatistics.value)
     having_expr = crud.operators[operator_str](sum_expr, value)
     query = query.having(having_expr)
-    query = query.group_by(
-        models.MatchStatistics.match_id, models.MatchStatistics.user_id
-    )
+    query = query.group_by(models.MatchStatistics.match_id, models.MatchStatistics.user_id)
 
     result = await session.execute(query)
     rows = result.all()
@@ -186,9 +168,7 @@ async def find_match_by_stats_criteria(
     counter = 0
     for user_id, match_id in rows:
         counter += 1
-        await crud.create_user_achievements(
-            session, achievement, [user_id], tournament.id, match_id
-        )
+        await crud.create_user_achievements(session, achievement, [user_id], tournament.id, match_id)
 
     await session.commit()
 
@@ -198,9 +178,7 @@ async def find_match_by_stats_criteria(
     )
 
 
-async def calculate_friendly_achievements(
-    session: AsyncSession, tournament: models.Tournament
-) -> None:
+async def calculate_friendly_achievements(session: AsyncSession, tournament: models.Tournament) -> None:
     await find_match_by_stats_criteria(
         session,
         "friendly",
@@ -211,9 +189,7 @@ async def calculate_friendly_achievements(
     )
 
 
-async def calculate_boris_dick_achievements(
-    session: AsyncSession, tournament: models.Tournament
-) -> None:
+async def calculate_boris_dick_achievements(session: AsyncSession, tournament: models.Tournament) -> None:
     await find_match_by_stats_criteria(
         session,
         "boris_dick",
@@ -225,9 +201,7 @@ async def calculate_boris_dick_achievements(
     )
 
 
-async def calculate_just_dont_fuck_around_achievements(
-    session: AsyncSession, tournament: models.Tournament
-) -> None:
+async def calculate_just_dont_fuck_around_achievements(session: AsyncSession, tournament: models.Tournament) -> None:
     await find_match_by_stats_criteria(
         session,
         "just_dont_fuck_around",
@@ -238,12 +212,8 @@ async def calculate_just_dont_fuck_around_achievements(
     )
 
 
-async def calculate_john_wick_achievements(
-    session: AsyncSession, tournament: models.Tournament
-) -> None:
-    await find_match_by_stats_criteria(
-        session, "john_wick", tournament, enums.LogStatsName.Eliminations, ">=", 60
-    )
+async def calculate_john_wick_achievements(session: AsyncSession, tournament: models.Tournament) -> None:
+    await find_match_by_stats_criteria(session, "john_wick", tournament, enums.LogStatsName.Eliminations, ">=", 60)
 
 
 async def calculate_the_shift_factory_is_done_achievements(
@@ -259,9 +229,7 @@ async def calculate_the_shift_factory_is_done_achievements(
     )
 
 
-async def calculate_shooting_and_screaming_achievements(
-    session: AsyncSession, tournament: models.Tournament
-) -> None:
+async def calculate_shooting_and_screaming_achievements(session: AsyncSession, tournament: models.Tournament) -> None:
     await find_match_by_stats_criteria(
         session,
         "shooting_and_screaming",
@@ -272,17 +240,11 @@ async def calculate_shooting_and_screaming_achievements(
     )
 
 
-async def calculate_fiasko_achievements(
-    session: AsyncSession, tournament: models.Tournament
-) -> None:
-    await find_match_by_stats_criteria(
-        session, "fiasko", tournament, enums.LogStatsName.EnvironmentalDeaths, ">=", 3
-    )
+async def calculate_fiasko_achievements(session: AsyncSession, tournament: models.Tournament) -> None:
+    await find_match_by_stats_criteria(session, "fiasko", tournament, enums.LogStatsName.EnvironmentalDeaths, ">=", 3)
 
 
-async def calculate_boop_master_achievements(
-    session: AsyncSession, tournament: models.Tournament
-) -> None:
+async def calculate_boop_master_achievements(session: AsyncSession, tournament: models.Tournament) -> None:
     await find_match_by_stats_criteria(
         session,
         "boop_master",
@@ -293,9 +255,7 @@ async def calculate_boop_master_achievements(
     )
 
 
-async def calculate_bullet_is_not_stupid_achievements(
-    session: AsyncSession, tournament: models.Tournament
-) -> None:
+async def calculate_bullet_is_not_stupid_achievements(session: AsyncSession, tournament: models.Tournament) -> None:
     await find_match_by_stats_criteria(
         session,
         "bullet-is-not-stupid",

@@ -13,13 +13,10 @@ __all__ = (
 )
 
 
-
 class AnalyticsPlayer(db.TimeStampIntegerMixin):
     __tablename__ = "analytics_tournament"
 
-    tournament_id: Mapped[int] = mapped_column(
-        ForeignKey(Tournament.id, ondelete="CASCADE")
-    )
+    tournament_id: Mapped[int] = mapped_column(ForeignKey(Tournament.id, ondelete="CASCADE"))
     player_id: Mapped[int] = mapped_column(ForeignKey(Player.id, ondelete="CASCADE"))
     wins: Mapped[int] = mapped_column()
     losses: Mapped[int] = mapped_column()
@@ -40,9 +37,7 @@ class AnalyticsAlgorithm(db.TimeStampIntegerMixin):
 class AnalyticsShift(db.TimeStampIntegerMixin):
     __tablename__ = "analytics_shifts"
 
-    tournament_id: Mapped[int] = mapped_column(
-        ForeignKey(Tournament.id, ondelete="CASCADE")
-    )
+    tournament_id: Mapped[int] = mapped_column(ForeignKey(Tournament.id, ondelete="CASCADE"))
     algorithm_id: Mapped[int] = mapped_column(ForeignKey(AnalyticsAlgorithm.id, ondelete="CASCADE"))
     player_id: Mapped[int] = mapped_column(ForeignKey(Player.id, ondelete="CASCADE"))
     shift: Mapped[float] = mapped_column()
@@ -54,10 +49,7 @@ class AnalyticsShift(db.TimeStampIntegerMixin):
 class AnalyticsPredictions(db.TimeStampIntegerMixin):
     __tablename__ = "analytics_predictions"
 
-
-    tournament_id: Mapped[int] = mapped_column(
-        ForeignKey(Tournament.id, ondelete="CASCADE")
-    )
+    tournament_id: Mapped[int] = mapped_column(ForeignKey(Tournament.id, ondelete="CASCADE"))
     algorithm_id: Mapped[int] = mapped_column(ForeignKey(AnalyticsAlgorithm.id, ondelete="CASCADE"))
     team_id: Mapped[int] = mapped_column(ForeignKey(Team.id, ondelete="CASCADE"))
     predicted_place: Mapped[int] = mapped_column()

@@ -1,3 +1,5 @@
+from datetime import date
+
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,8 +16,7 @@ async def to_pydantic(
     groups: list[schemas.TournamentGroupRead] = []
     if "groups" in entities:
         groups = [
-            schemas.TournamentGroupRead.model_validate(group, from_attributes=True)
-            for group in tournament.groups
+            schemas.TournamentGroupRead.model_validate(group, from_attributes=True) for group in tournament.groups
         ]
     return schemas.TournamentRead(
         id=tournament.id,
@@ -60,16 +61,12 @@ async def get(session: AsyncSession, id: int, entities: list[str]) -> models.Tou
     return tournament
 
 
-async def get_read(
-    session: AsyncSession, id: int, entities: list[str]
-) -> schemas.TournamentRead:
+async def get_read(session: AsyncSession, id: int, entities: list[str]) -> schemas.TournamentRead:
     tournament = await get(session, id, entities)
     return await to_pydantic(session, tournament, entities)
 
 
-async def get_by_number(
-    session: AsyncSession, number: int, entities: list[str]
-) -> models.Tournament:
+async def get_by_number(session: AsyncSession, number: int, entities: list[str]) -> models.Tournament:
     tournament = await service.get_by_number(session, number, entities)
     if tournament is None:
         raise errors.ApiHTTPException(
@@ -87,9 +84,7 @@ async def get_by_number(
 async def get_by_number_and_league(
     session: AsyncSession, number: int, is_league: bool, entities: list[str]
 ) -> models.Tournament:
-    tournament = await service.get_by_number_and_league(
-        session, number, is_league, entities
-    )
+    tournament = await service.get_by_number_and_league(session, number, is_league, entities)
     if tournament is None:
         raise errors.ApiHTTPException(
             status_code=404,
@@ -103,9 +98,7 @@ async def get_by_number_and_league(
     return tournament
 
 
-async def get_by_name(
-    session: AsyncSession, name: str, entities: list[str]
-) -> models.Tournament:
+async def get_by_name(session: AsyncSession, name: str, entities: list[str]) -> models.Tournament:
     tournament = await service.get_by_name(session, name, entities)
     if tournament is None:
         raise errors.ApiHTTPException(
@@ -210,13 +203,12 @@ async def create(
     session: AsyncSession,
     number: int,
     is_league: bool,
+    start_date: date,
+    end_date: date,
     groups_challonge_slugs: list[str],
     playoffs_challonge_slug: str,
 ) -> models.Tournament:
-    if (
-        await service.get_by_number_and_league(session, number, is_league, [])
-        is not None
-    ):
+    if await service.get_by_number_and_league(session, number, is_league, []) is not None:
         raise errors.ApiHTTPException(
             status_code=400,
             detail=[
@@ -245,9 +237,7 @@ async def create(
             challonge_id=challonge_tournament.id,
         )
 
-    challonge_tournament = await challonge_service.fetch_tournament(
-        playoffs_challonge_slug
-    )
+    challonge_tournament = await challonge_service.fetch_tournament(playoffs_challonge_slug)
     await service.create_group(
         session,
         tournament,

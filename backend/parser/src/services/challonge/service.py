@@ -3,9 +3,9 @@ from httpx import AsyncClient, BasicAuth, Proxy
 from src import schemas
 from src.core import config, errors
 
-if config.app.proxy_ip:
+if config.settings.proxy_ip:
     proxy_conf = Proxy(
-        url=f"http://{config.app.proxy_username}:{config.app.proxy_password}@{config.app.proxy_ip}:{config.app.proxy_port}"
+        url=f"http://{config.settings.proxy_username}:{config.settings.proxy_password}@{config.settings.proxy_ip}:{config.settings.proxy_port}"
     )
 else:
     proxy_conf = None
@@ -14,7 +14,8 @@ else:
 challonge_client = AsyncClient(
     base_url="https://api.challonge.com/v1/",
     auth=BasicAuth(
-        username=config.app.challonge_username, password=config.app.challonge_api_key
+        username=config.settings.challonge_username,
+        password=config.settings.challonge_api_key,
     ),
     proxy=proxy_conf,
     timeout=15,
@@ -50,10 +51,7 @@ async def fetch_participants(tournament_id: int) -> list[schemas.ChallongePartic
                 )
             ],
         )
-    return [
-        schemas.ChallongeParticipant.model_validate(participant["participant"])
-        for participant in data
-    ]
+    return [schemas.ChallongeParticipant.model_validate(participant["participant"]) for participant in data]
 
 
 async def fetch_matches(tournament_id: int) -> list[schemas.ChallongeMatch]:

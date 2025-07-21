@@ -14,6 +14,9 @@ from . import service
 def sort_matches(
     matches: typing.Sequence[schemas.EncounterRead],
 ) -> list[schemas.EncounterRead]:
+    if not matches:
+        return []
+
     max_abs_round = max(abs(match.round) for match in matches)
 
     def sort_key(match):

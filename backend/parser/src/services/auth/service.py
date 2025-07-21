@@ -7,12 +7,12 @@ from . import utils
 
 
 async def authenticate(credentials: OAuth2PasswordRequestForm) -> bool:
-    if credentials.username.lower() != config.app.superuser_email:
+    if credentials.username.lower() != config.settings.superuser_email:
         utils.hash_password(credentials.password)
         return False
 
     verified, updated_password_hash = utils.verify_and_update_password(
-        credentials.password, config.app.superuser_password
+        credentials.password, config.settings.superuser_password
     )
     return verified
 
@@ -21,13 +21,13 @@ async def verify_access_token(token: str | None) -> bool:
     if token is None:
         return False
 
-    if token == config.app.access_token_service:
+    if token == config.settings.access_token_service:
         return True
 
     try:
         data = utils.decode_jwt(
             token,
-            config.app.access_token_secret,
+            config.settings.access_token_secret,
             ["aqt_parser"],
         )
         email = data["sub"]  # noqa
@@ -39,10 +39,8 @@ async def verify_access_token(token: str | None) -> bool:
 
 async def create_access_token() -> str:
     token_data = {
-        "sub": config.app.superuser_email,
+        "sub": config.settings.superuser_email,
         "aud": "aqt_parser",
     }
-    access_token = utils.generate_jwt(
-        token_data, config.app.access_token_secret, 24 * 3600 * 7
-    )
+    access_token = utils.generate_jwt(token_data, config.settings.access_token_secret, 24 * 3600 * 7)
     return access_token

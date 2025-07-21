@@ -24,14 +24,10 @@ router = APIRouter(prefix="/users", tags=[enums.RouteTag.USER])
     summary="Search for users",
 )
 async def get_all(
-    params: pagination.PaginationSortSearchQueryParams[
-        typing.Literal["id", "name", "similarity:name"]
-    ] = Depends(),
+    params: pagination.PaginationSortSearchQueryParams[typing.Literal["id", "name", "similarity:name"]] = Depends(),
     session=Depends(db.get_async_session),
 ):
-    return await user_flows.get_all(
-        session, pagination.PaginationSortSearchParams.from_query_params(params)
-    )
+    return await user_flows.get_all(session, pagination.PaginationSortSearchParams.from_query_params(params))
 
 
 @router.get(

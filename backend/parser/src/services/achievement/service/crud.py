@@ -71,9 +71,7 @@ async def get_or_create_achievement_if_not_exists(
     description_en: str,
     hero_id: int | None = None,
 ) -> models.Achievement:
-    achievement_db = await session.scalar(
-        sa.select(models.Achievement).filter_by(slug=slug)
-    )
+    achievement_db = await session.scalar(sa.select(models.Achievement).filter_by(slug=slug))
     if achievement_db:
         logger.info(f"Achievement '{slug}' already exist. Skipping creation...")
         return achievement_db
@@ -108,12 +106,8 @@ async def bulk_initial_create_achievements(session: AsyncSession) -> None:
         )
 
 
-async def get_achievement_or_log_error(
-    session: AsyncSession, slug: str
-) -> models.Achievement | None:
-    achievement = await session.scalar(
-        sa.select(models.Achievement).filter_by(slug=slug)
-    )
+async def get_achievement_or_log_error(session: AsyncSession, slug: str) -> models.Achievement | None:
+    achievement = await session.scalar(sa.select(models.Achievement).filter_by(slug=slug))
     if not achievement:
         logger.error(f"Achievement '{slug}' not found. Aborting...")
         return None
@@ -125,13 +119,9 @@ async def delete_user_achievements(
     achievement: models.Achievement,
     tournament_id: int | None = None,
 ) -> None:
-    stmt = sa.delete(models.AchievementUser).where(
-        sa.and_(models.AchievementUser.achievement_id == achievement.id)
-    )
+    stmt = sa.delete(models.AchievementUser).where(sa.and_(models.AchievementUser.achievement_id == achievement.id))
     if tournament_id is not None:
-        stmt = stmt.where(
-            sa.and_(models.AchievementUser.tournament_id == tournament_id)
-        )
+        stmt = stmt.where(sa.and_(models.AchievementUser.tournament_id == tournament_id))
 
     await session.execute(stmt)
 

@@ -1,4 +1,5 @@
 import typing
+from datetime import datetime
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,22 +10,16 @@ from src import models
 from src.core import utils
 
 
-def tournament_entities(
-    in_entities: list[str], child: typing.Any | None = None
-) -> list[_AbstractLoad]:
+def tournament_entities(in_entities: list[str], child: typing.Any | None = None) -> list[_AbstractLoad]:
     entities = []
     if "groups" in in_entities:
         entities.append(utils.join_entity(child, models.Tournament.groups))
     return entities
 
 
-async def get(
-    session: AsyncSession, id: int, entities: list[str]
-) -> models.Tournament | None:
+async def get(session: AsyncSession, id: int, entities: list[str]) -> models.Tournament | None:
     query = (
-        sa.select(models.Tournament)
-        .where(sa.and_(models.Tournament.id == id))
-        .options(*tournament_entities(entities))
+        sa.select(models.Tournament).where(sa.and_(models.Tournament.id == id)).options(*tournament_entities(entities))
     )
     result = await session.execute(query)
     return result.unique().scalars().first()
@@ -42,9 +37,7 @@ def get_all_sync(session: Session) -> typing.Sequence[models.Tournament]:
     return result.scalars().all()
 
 
-async def get_by_number(
-    session: AsyncSession, number: int, entities: list[str]
-) -> models.Tournament | None:
+async def get_by_number(session: AsyncSession, number: int, entities: list[str]) -> models.Tournament | None:
     query = (
         sa.select(models.Tournament)
         .where(sa.and_(models.Tournament.number == number))
@@ -71,9 +64,7 @@ async def get_by_number_and_league(
     return result.unique().scalars().first()
 
 
-async def get_by_name(
-    session: AsyncSession, name: str, entities: list[str]
-) -> models.Tournament | None:
+async def get_by_name(session: AsyncSession, name: str, entities: list[str]) -> models.Tournament | None:
     query = (
         sa.select(models.Tournament)
         .where(sa.and_(models.Tournament.name == name))
@@ -92,6 +83,8 @@ async def create(
     description: str | None = None,
     challonge_id: int | None = None,
     challonge_slug: str | None = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
 ) -> models.Tournament:
     tournament = models.Tournament(
         number=number,
@@ -100,6 +93,8 @@ async def create(
         description=description,
         challonge_id=challonge_id,
         challonge_slug=challonge_slug,
+        start_date=start_date,
+        end_date=end_date
     )
     session.add(tournament)
     await session.commit()

@@ -13,17 +13,13 @@ from src.services.team import service as team_service
 from src.services.tournament import service as tournament_service
 
 
-def encounter_entities(
-    in_entities: list[str], child: typing.Any | None = None
-) -> list[_AbstractLoad]:
+def encounter_entities(in_entities: list[str], child: typing.Any | None = None) -> list[_AbstractLoad]:
     entities = []
     if "tournament" in in_entities:
         tournament_entity = utils.join_entity(child, models.Encounter.tournament)
         entities.append(tournament_entity)
         entities.extend(
-            tournament_service.tournament_entities(
-                utils.prepare_entities(in_entities, "tournament"), tournament_entity
-            )
+            tournament_service.tournament_entities(utils.prepare_entities(in_entities, "tournament"), tournament_entity)
         )
     if "tournament_group" in in_entities:
         entities.append(utils.join_entity(child, models.Encounter.tournament_group))
@@ -34,31 +30,17 @@ def encounter_entities(
         away_team_entity = utils.join_entity(child, models.Encounter.away_team)
         entities.append(home_team_entity)
         entities.append(away_team_entity)
-        entities.extend(
-            team_service.team_entities(
-                utils.prepare_entities(in_entities, "teams"), home_team_entity
-            )
-        )
-        entities.extend(
-            team_service.team_entities(
-                utils.prepare_entities(in_entities, "teams"), away_team_entity
-            )
-        )
+        entities.extend(team_service.team_entities(utils.prepare_entities(in_entities, "teams"), home_team_entity))
+        entities.extend(team_service.team_entities(utils.prepare_entities(in_entities, "teams"), away_team_entity))
     if "matches" in in_entities:
         matches_entity = utils.join_entity(child, models.Encounter.matches)
         entities.append(matches_entity)
-        entities.extend(
-            match_entities(
-                utils.prepare_entities(in_entities, "matches"), matches_entity
-            )
-        )
+        entities.extend(match_entities(utils.prepare_entities(in_entities, "matches"), matches_entity))
 
     return entities
 
 
-def match_entities(
-    in_entities: list[str], child: typing.Any | None = None
-) -> list[_AbstractLoad]:
+def match_entities(in_entities: list[str], child: typing.Any | None = None) -> list[_AbstractLoad]:
     entities = []
 
     if "teams" in in_entities:
@@ -66,34 +48,20 @@ def match_entities(
         away_team_entity = utils.join_entity(child, models.Match.away_team)
         entities.append(home_team_entity)
         entities.append(away_team_entity)
-        entities.extend(
-            team_service.team_entities(
-                utils.prepare_entities(in_entities, "teams"), home_team_entity
-            )
-        )
-        entities.extend(
-            team_service.team_entities(
-                utils.prepare_entities(in_entities, "teams"), away_team_entity
-            )
-        )
+        entities.extend(team_service.team_entities(utils.prepare_entities(in_entities, "teams"), home_team_entity))
+        entities.extend(team_service.team_entities(utils.prepare_entities(in_entities, "teams"), away_team_entity))
     if "encounter" in in_entities:
         entities.append(utils.join_entity(child, models.Match.encounter))
     if "map" in in_entities:
         map_entity = utils.join_entity(child, models.Match.map)
         entities.append(map_entity)
-        entities.extend(
-            map_service.map_entities(
-                utils.prepare_entities(in_entities, "map"), map_entity
-            )
-        )
+        entities.extend(map_service.map_entities(utils.prepare_entities(in_entities, "map"), map_entity))
     return entities
 
 
 def join_encounter_entities(query: sa.Select, in_entities: list[str]) -> sa.Select:
     if "tournament" in in_entities:
-        query = query.join(
-            models.Tournament, models.Encounter.tournament_id == models.Tournament.id
-        )
+        query = query.join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
     if "group" in in_entities:
         query = query.join(
             models.TournamentGroup,
@@ -103,9 +71,7 @@ def join_encounter_entities(query: sa.Select, in_entities: list[str]) -> sa.Sele
     return query
 
 
-async def get_by_challonge_id(
-    session: AsyncSession, challonge_id: int, entities: list[str]
-) -> models.Encounter | None:
+async def get_by_challonge_id(session: AsyncSession, challonge_id: int, entities: list[str]) -> models.Encounter | None:
     query = (
         sa.select(models.Encounter)
         .options(*encounter_entities(entities))
@@ -154,11 +120,7 @@ async def get_match_by_encounter_and_map(
 ) -> models.Match | None:
     query = (
         sa.select(models.Match)
-        .where(
-            sa.and_(
-                models.Match.encounter_id == encounter_id, models.Match.map_id == map_id
-            )
-        )
+        .where(sa.and_(models.Match.encounter_id == encounter_id, models.Match.map_id == map_id))
         .options(*match_entities(entities))
     )
     result = await session.execute(query)
@@ -223,9 +185,7 @@ def get_by_teams_sync(
     return result.scalars().first()
 
 
-async def get_by_team(
-    session: AsyncSession, team_id: int, entities: list[str]
-) -> typing.Sequence[models.Encounter]:
+async def get_by_team(session: AsyncSession, team_id: int, entities: list[str]) -> typing.Sequence[models.Encounter]:
     query = (
         sa.select(models.Encounter)
         .options(*encounter_entities(entities))
