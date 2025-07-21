@@ -1,6 +1,5 @@
 services:
   redis:
-    container_name: aqt-redis
     image: 'redis/redis-stack:latest'
     restart: unless-stopped
     volumes:
@@ -9,7 +8,6 @@ services:
       - app-network
 
   nginx:
-    container_name: aqt-nginx
     image: nginx:latest
     ports:
       - "${APP_PORT}:80"
@@ -25,7 +23,6 @@ services:
 
   backend:
     image: "registry.craazzzyyfoxx.me/aqt-backend:latest"
-    container_name: aqt-backend
     build:
       context: ./backend
       args:
@@ -55,7 +52,6 @@ services:
 
   parser:
     image: registry.craazzzyyfoxx.me/aqt-parser:latest
-    container_name: aqt-parser
     build:
       context: ./backend
       args:
@@ -92,7 +88,6 @@ services:
 
   discord:
     image: registry.craazzzyyfoxx.me/aqt-discord:latest
-    container_name: aqt-discord
     build:
       context: ./backend
       args:
@@ -116,7 +111,6 @@ services:
 
   frontend:
     image: registry.craazzzyyfoxx.me/frontend:latest
-    container_name: aqt-frontend
     build:
       context: ./frontend
       dockerfile: prod.Dockerfile
