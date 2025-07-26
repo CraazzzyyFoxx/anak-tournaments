@@ -332,7 +332,7 @@ async def get_owal_days(session: AsyncSession) -> typing.Sequence[models.Tournam
         .where(
             sa.and_(
                 models.Tournament.is_league.is_(True),
-                models.Tournament.name.startswith("OWAL Season 2"),
+                models.Tournament.name.startswith("OWAL Season 3"),
             )
         )
         .order_by(models.Tournament.start_date)
