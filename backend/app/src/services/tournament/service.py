@@ -307,7 +307,7 @@ async def get_owal_standings(
         .where(
             sa.and_(
                 models.Tournament.is_league.is_(True),
-                models.Tournament.name.startswith("OWAL Season 2"),
+                models.Tournament.name.startswith("OWAL Season 3"),
                 models.Player.is_substitution.is_(False),
                 models.Tournament.is_finished.is_(True),
             )
