@@ -160,7 +160,7 @@ async def get_maps(
     summary="Get user encounters",
 )
 @cache(
-    ttl=cache_control_ttl(default=config.settings.encounters_cache_ttl),
+    ttl=cache_control_ttl(default=config.settings.users_cache_ttl),
     key="fastapi:{request.url.path}/{request.query_params}",
 )
 async def get_encounters(

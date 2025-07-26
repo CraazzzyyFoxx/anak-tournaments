@@ -119,12 +119,8 @@ async def get_most_players(
 @router.get(
     path="/owal/results",
     response_model=schemas.OwalStandings,
-    description=f"Retrieve OWAL tournament standings. Cache TTL: {config.settings.tournaments_cache_ttl / 60} minutes.",
+    description=f"Retrieve OWAL tournament standings.",
     summary="Get OWAL standings",
-)
-@cache(
-    ttl=cache_control_ttl(default=config.settings.tournaments_cache_ttl),
-    key="fastapi:{request.url.path}/{request.query_params}",
 )
 async def get_owal_standings(
     request: Request,
