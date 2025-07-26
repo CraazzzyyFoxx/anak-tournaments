@@ -51,10 +51,10 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
   const router = useRouter();
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = React.useState("");
-  const [pagination, setPagination] = React.useState<PaginationState>({
-    pageIndex: 0,
-    pageSize: 15
-  });
+  // const [pagination, setPagination] = React.useState<PaginationState>({
+  //   pageIndex: 0,
+  //   pageSize: 15
+  // });
 
   const days_columns: ColumnDef<OwalStanding>[] = data.days.map((day) => ({
     accessorFn: (row) => (row.days[day.id.toString()] ? row.days[day.id.toString()].points : "-"),
@@ -176,14 +176,14 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
     data: data.standings,
     columns,
     getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
+    // getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     rowCount: data.standings.length,
     onSortingChange: setSorting,
     state: {
       sorting,
-      pagination,
+      // pagination,
       globalFilter
     },
     onGlobalFilterChange: setGlobalFilter,
@@ -282,15 +282,15 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
         </Card>
         <ScrollBar orientation="horizontal" />
       </ScrollArea>
-      <PaginationControlled
-        totalCount={data.standings.length}
-        pageSize={pagination.pageSize}
-        page={pagination.pageIndex + 1}
-        onSetPage={(newPage) => {
-          table.setPageIndex(newPage);
-          setPagination((prev) => ({ ...prev, pageIndex: newPage - 1 }));
-        }}
-      />
+      {/*<PaginationControlled*/}
+      {/*  totalCount={data.standings.length}*/}
+      {/*  pageSize={pagination.pageSize}*/}
+      {/*  page={pagination.pageIndex + 1}*/}
+      {/*  onSetPage={(newPage) => {*/}
+      {/*    table.setPageIndex(newPage);*/}
+      {/*    setPagination((prev) => ({ ...prev, pageIndex: newPage - 1 }));*/}
+      {/*  }}*/}
+      {/*/>*/}
     </div>
   );
 };
