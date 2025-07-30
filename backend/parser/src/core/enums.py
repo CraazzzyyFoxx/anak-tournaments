@@ -259,7 +259,7 @@ hero_translation = {
     "Бастион": "Bastion",
     "Юнона": "Juno",
     "Азарт": "Hazard",
-    "Фрейя": "Freya",
-    "Freja": "Freya"
+    "Фрейя": "Freja",
+    "Freya": "Freja"
 
 }

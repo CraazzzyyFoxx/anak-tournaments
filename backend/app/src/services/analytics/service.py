@@ -17,7 +17,9 @@ async def get_algorithms(
 
 async def get_algorithm(session: AsyncSession, id: int) -> models.AnalyticsAlgorithm:
     query = sa.select(models.AnalyticsAlgorithm).where(
-        models.AnalyticsAlgorithm.id == id
+        sa.and_(
+            models.AnalyticsAlgorithm.id == id
+        )
     )
     result = await session.execute(query)
     return result.scalars().first()
@@ -49,11 +51,13 @@ async def get_analytics(
             ),
         )
         .where(
-            models.Team.tournament_id == tournament_id,
+            sa.and_(
+                models.Team.tournament_id == tournament_id,
+            )
         )
     )
     result = await session.execute(query)
-    return result.unique().all()
+    return result.unique().all()  # type: ignore
 
 
 async def change_shift(
@@ -108,7 +112,9 @@ async def get_streaks(
         .join(subquery, subquery.c.user_id == models.Player.user_id)
         .join(models.User, models.User.id == subquery.c.user_id)
         .where(
-            models.Player.tournament_id == tournament_id,
+            sa.and_(
+                models.Player.tournament_id == tournament_id,
+            )
         )
     )
 

@@ -83,6 +83,7 @@ async def process_logs_discord(
             "action": "process_message",
             "channel_id": channel_id,
             "message_id": message_id,
+            "tournament_id": tournament.id,
         },
         channel="discord_commands",
     )
@@ -90,14 +91,14 @@ async def process_logs_discord(
 
 
 @router.post("/{tournament_id}/{filename}")
-async def process_logs_async(tournament_id: int, filename: str):
-    await task_router.broker.publish({"tournament_id": tournament_id, "filename": filename}, PROCESS_MATCH_LOGS_TOPIC)
-    return {"message": f"Async processing initiated for file '{filename}'"}
+async def process_match_log(tournament_id: int, filename: str, session=Depends(db.get_async_session)):
+    await logs_flows.process_match_log(session, tournament_id, filename, is_raise=True)
+    return
 
 
 @publisher
 @task_router.subscriber(PROCESS_MATCH_LOGS_TOPIC)
-async def process_match_log(tournament_id: int, filename: str):
+async def process_match_log_async(tournament_id: int, filename: str):
     async with db.async_session_maker() as session:
         await logs_flows.process_match_log(session, tournament_id, filename, is_raise=True)
 

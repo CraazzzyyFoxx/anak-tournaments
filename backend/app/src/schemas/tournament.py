@@ -16,6 +16,7 @@ __all__ = (
     "OwalStandings",
     "TournamentPaginationSortSearchQueryParams",
     "TournamentPaginationSortSearchParams",
+    "LeaguePlayerStack",
 )
 
 
@@ -84,3 +85,10 @@ class TournamentPaginationSortSearchQueryParams(
 @dataclass
 class TournamentPaginationSortSearchParams(pagination.PaginationSortSearchParams):
     is_league: bool | None = None
+
+
+class LeaguePlayerStack(BaseModel):
+    user_1: UserRead
+    user_2: UserRead
+    games: int
+    avg_position: float

@@ -452,10 +452,8 @@ async def get_all_encounters(
         total_query = params.apply_search(total_query, models.Encounter)
 
     if params.tournament_id:
-        query = query.where(models.Encounter.tournament_id == params.tournament_id)
-        total_query = total_query.where(
-            models.Encounter.tournament_id == params.tournament_id
-        )
+        query = query.where(sa.and_(models.Encounter.tournament_id == params.tournament_id))
+        total_query = total_query.where(sa.and_(models.Encounter.tournament_id == params.tournament_id))
 
     query = params.apply_pagination_sort(query)
 

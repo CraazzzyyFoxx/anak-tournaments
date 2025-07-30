@@ -199,7 +199,7 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
         <Input
           value={globalFilter}
           onChange={(e) => setGlobalFilter(e.target.value)}
-          placeholder="Search..."
+          placeholder="Search user..."
         />
       </div>
       <ScrollArea>

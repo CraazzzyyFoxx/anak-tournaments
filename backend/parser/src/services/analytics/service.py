@@ -19,7 +19,7 @@ async def get_analytics(
         )
         .join(models.Encounter, models.Player.team_id == models.Encounter.home_team_id)
         .join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
-        .where(models.Tournament.id >= 21, models.Tournament.is_league.is_(False))
+        .where(models.Tournament.id >= 1, models.Tournament.is_league.is_(False))
         .group_by(models.Player.user_id, models.Player.role, models.Player.team_id)
     ).cte("player_points_home")
 
@@ -33,7 +33,7 @@ async def get_analytics(
         )
         .join(models.Encounter, models.Player.team_id == models.Encounter.away_team_id)
         .join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
-        .where(models.Tournament.id >= 21, models.Tournament.is_league.is_(False))
+        .where(models.Tournament.id >= 1, models.Tournament.is_league.is_(False))
         .group_by(models.Player.user_id, models.Player.role, models.Player.team_id)
     ).cte("player_points_away")
 
@@ -82,7 +82,7 @@ async def get_analytics(
             isouter=True,
         )
         .where(
-            models.Tournament.id >= 21,
+            models.Tournament.id >= 1,
             models.Tournament.is_league.is_(False),
             models.Player.is_substitution.is_(False),
         )
@@ -111,7 +111,7 @@ async def get_matches(session: AsyncSession, start_range: int, end_range: int) -
         .join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
         .where(
             models.Encounter.tournament_id.between(start_range, end_range),
-            # models.Tournament.is_league.is_(False),
+            models.Tournament.is_league.is_(False),
         )
         .order_by(models.Encounter.tournament_id, models.Encounter.id)
     )

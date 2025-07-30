@@ -1,5 +1,5 @@
 import { PaginatedResponse } from "@/types/pagination.types";
-import { OwalStandings, Standings, Tournament } from "@/types/tournament.types";
+import { OwalStack, OwalStandings, Standings, Tournament } from "@/types/tournament.types";
 import { customFetch } from "@/lib/custom_fetch";
 import { PlayerAnalytics, TournamentAnalytics } from "@/types/analytics.types";
 
@@ -17,7 +17,10 @@ export default class tournamentService {
     }).then((response) => response.json());
   }
   static async getOwalStandings(): Promise<OwalStandings> {
-    return customFetch(`tournaments/owal/results`).then((response) => response.json());
+    return customFetch(`tournaments/league/results`).then((response) => response.json());
+  }
+  static async getOwalStacks(): Promise<OwalStack[]> {
+    return customFetch(`tournaments/league/stacks`).then((response) => response.json());
   }
   static async get(id: number): Promise<Tournament> {
     return customFetch(`tournaments/${id}`, {

@@ -1,4 +1,6 @@
 import typing
+from collections import defaultdict
+from itertools import combinations
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -350,6 +352,7 @@ async def get_bulk_tournament(
     Args:
         session: An SQLAlchemy `AsyncSession` for database interaction.
         tournaments_ids: A list of tournament IDs to retrieve.
+        entities: A list of strings representing the names of related entities to include.
 
     Returns:
         A sequence of `Tournament` model instances.
@@ -361,3 +364,50 @@ async def get_bulk_tournament(
     )
     result = await session.execute(query)
     return result.scalars().all()
+
+
+async def get_league_player_stacks(session: AsyncSession) -> tuple[
+    defaultdict[tuple[int, int], list[models.Player]],
+    defaultdict[tuple[int, int], list[models.Player]],
+    dict[tuple[int, int], models.Standing]
+]:
+    players = (await session.execute(
+        sa.select(models.Player)
+        .join(models.Team)
+        .join(models.Tournament)
+        .where(models.Tournament.name.startswith("OWAL Season 3"))
+        .options(
+            sa.orm.joinedload(models.Player.user),
+            sa.orm.joinedload(models.Player.team),
+            sa.orm.joinedload(models.Player.tournament)
+        )
+    )).scalars().all()
+
+
+    team_tournament_players = defaultdict(list)
+    for player in players:
+        key = (player.team_id, player.tournament_id)
+        team_tournament_players[key].append(player)
+
+
+    stacks = defaultdict(list)
+    for (team_id, tournament_id), team_players in team_tournament_players.items():
+        for player1, player2 in combinations(team_players, 2):
+            stack_key = tuple(sorted([player1.user_id, player2.user_id]))
+            stacks[stack_key].append((team_id, tournament_id))
+
+    team_tournament_ids = {(team_id, tournament_id) for stack in stacks.values() for team_id, tournament_id in stack}
+    standings = (await session.execute(
+        sa.select(models.Standing)
+        .where(sa.and_(
+            models.Standing.team_id.in_([tt[0] for tt in team_tournament_ids]),
+            models.Standing.tournament_id.in_([tt[1] for tt in team_tournament_ids])
+        ))
+        .options(
+            sa.orm.joinedload(models.Standing.team),
+            sa.orm.joinedload(models.Standing.tournament)
+        )
+    )).scalars().all()
+
+    standings_dict = {(s.team_id, s.tournament_id): s for s in standings}
+    return stacks, team_tournament_players, standings_dict

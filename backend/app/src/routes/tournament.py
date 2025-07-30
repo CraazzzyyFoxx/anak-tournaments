@@ -117,7 +117,7 @@ async def get_most_players(
 
 
 @router.get(
-    path="/owal/results",
+    path="/league/results",
     response_model=schemas.OwalStandings,
     description=f"Retrieve OWAL tournament standings.",
     summary="Get OWAL standings",
@@ -127,3 +127,15 @@ async def get_owal_standings(
     session: AsyncSession = Depends(db.get_async_session),
 ):
     return await tournament_flows.get_owal_standings(session)
+
+
+@router.get(
+    path="/league/stacks",
+    response_model=list[schemas.LeaguePlayerStack],
+    description=f"Retrieve OWAL tournament player stacks.",
+    summary="Get OWAL player stacks",
+)
+async def get_owal_player_stacks(
+    session: AsyncSession = Depends(db.get_async_session),
+):
+    return await tournament_flows.get_league_player_stacks(session)

@@ -80,3 +80,10 @@ export interface Standings {
   group: TournamentGroup | null;
   matches_history: Encounter[];
 }
+
+export interface OwalStack {
+  user_1: User;
+  user_2: User;
+  games: number;
+  avg_position: number;
+}

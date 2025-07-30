@@ -794,7 +794,7 @@ async def get_statistics_by_heroes_all_values(
     )
 
     result_all = await session.execute(all_query)
-    return result_all.all()
+    return result_all.all()  # type: ignore
 
 
 async def get_best_teammates(
