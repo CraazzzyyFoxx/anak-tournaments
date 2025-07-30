@@ -13,7 +13,7 @@ const OwalPage = async () => {
     <div>
       <Tabs defaultValue="standings">
         <TabsList className="grid grid-cols-2 w-[400px] mb-4">
-          <TabsTrigger value="standings">Overview</TabsTrigger>
+          <TabsTrigger value="standings">Standings</TabsTrigger>
           <TabsTrigger value="stacks">Stacks</TabsTrigger>
         </TabsList>
         <TabsContent value="standings">

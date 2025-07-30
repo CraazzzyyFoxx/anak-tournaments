@@ -15,9 +15,7 @@ import {
   flexRender,
   getCoreRowModel,
   getFilteredRowModel,
-  getPaginationRowModel,
   getSortedRowModel,
-  PaginationState,
   SortingState,
   useReactTable
 } from "@tanstack/react-table";
@@ -25,10 +23,10 @@ import { useRouter } from "next/navigation";
 import { getWinrateColor } from "@/utils/colors";
 import { Button } from "@/components/ui/button";
 import { ArrowUpDown } from "lucide-react";
-import { PaginationControlled } from "@/components/ui/pagination-with-links";
 import { CardContent, Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { DataTableSortButton } from "@/components/DataTableSortButton";
 
 const getDayColor = (points: number) => {
   let color = {};
@@ -49,16 +47,21 @@ const getDayColor = (points: number) => {
 
 const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
   const router = useRouter();
-  const [sorting, setSorting] = React.useState<SortingState>([]);
+  const [sorting, setSorting] = React.useState<SortingState>([
+    {
+      id: "place",
+      desc: false
+    }
+  ]);
   const [globalFilter, setGlobalFilter] = React.useState("");
-  // const [pagination, setPagination] = React.useState<PaginationState>({
-  //   pageIndex: 0,
-  //   pageSize: 15
-  // });
 
   const days_columns: ColumnDef<OwalStanding>[] = data.days.map((day) => ({
     accessorFn: (row) => (row.days[day.id.toString()] ? row.days[day.id.toString()].points : "-"),
-    header: day.name.split(" | ")[1],
+    header: ({ column }) => {
+      return (
+       <DataTableSortButton column={column} label={day.name.split(" | ")[1]}/>
+      );
+    },
     id: `day_${day.id}`
   }));
 
@@ -66,15 +69,7 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
     {
       accessorKey: "place",
       header: ({ column }) => {
-        return (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          >
-            Place
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
-        );
+        return <DataTableSortButton column={column} label={"Place"}/>
       },
       id: "place",
       accessorFn: (row) => row.place
@@ -85,8 +80,7 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
       header: "Player",
       cell: ({ row }) => {
         return (
-          // @ts-ignore
-          <div className="text-right">{row.getValue("userName").split("#")[0]}</div>
+          <div className="text-right">{row.getValue<string>("userName").split("#")[0]}</div>
         );
       }
     },
@@ -96,25 +90,23 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
       header: "Role",
       cell: ({ row }) => {
         return (
-          // @ts-ignore
-          <div className="text-right">{row.getValue("role")}</div>
+          <div className="text-right">{row.getValue<string>("role")}</div>
         );
       }
     },
     ...days_columns,
     {
       accessorKey: "count_days",
-      header: "Days Played",
+      header: "Played",
       id: "count_days",
-      cell: ({ row }) => <div>{row.getValue("count_days")}</div>
+      cell: ({ row }) => <div>{row.getValue<number>("count_days")}</div>
     },
     {
       accessorKey: "best_3_days",
       id: "best_3_days",
       header: "TOTAL (best 3 days)",
       cell: ({ row }) => {
-        // @ts-ignore
-        return <div>{row.getValue("best_3_days").toFixed(2)}</div>;
+        return <div>{row.getValue<number>("best_3_days").toFixed(2)}</div>;
       }
     },
     {
@@ -122,8 +114,7 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
       header: "Average",
       id: "avg_points",
       cell: ({ row }) => {
-        // @ts-ignore
-        return <div>{row.getValue("avg_points").toFixed(2)}</div>;
+        return <div>{row.getValue<number>("avg_points").toFixed(2)}</div>;
       }
     },
     {
@@ -131,7 +122,7 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
       header: "W",
       id: "wins",
       cell: ({ row }) => {
-        return <div className="text-green-400">{row.getValue("wins")}</div>;
+        return <div className="text-green-400">{row.getValue<number>("wins")}</div>;
       }
     },
     {
@@ -139,7 +130,7 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
       header: "L",
       id: "losses",
       cell: ({ row }) => {
-        return <div className="text-red-400">{row.getValue("losses")}</div>;
+        return <div className="text-red-400">{row.getValue<number>("losses")}</div>;
       }
     },
     {
@@ -147,7 +138,7 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
       header: "D",
       id: "draws",
       cell: ({ row }) => {
-        return <div className="text-gray-400">{row.getValue("draws")}</div>;
+        return <div className="text-gray-400">{row.getValue<number>("draws")}</div>;
       }
     },
     {
@@ -155,18 +146,11 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
       id: "win_rate",
       header: ({ column }) => {
         return (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          >
-            Winrate
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
+          <DataTableSortButton column={column} label={"Win ratio"}/>
         );
       },
       cell: ({ row }) => {
-        // @ts-ignore
-        const winrate: number = row.getValue("win_rate");
+        const winrate = row.getValue<number>("win_rate");
         return <div style={{ color: getWinrateColor(winrate) }}>{(winrate * 100).toFixed(2)}%</div>;
       }
     }
@@ -176,20 +160,17 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
     data: data.standings,
     columns,
     getCoreRowModel: getCoreRowModel(),
-    // getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     rowCount: data.standings.length,
     onSortingChange: setSorting,
     state: {
       sorting,
-      // pagination,
       globalFilter
     },
     onGlobalFilterChange: setGlobalFilter,
     globalFilterFn: (row, columnId, filterValue) => {
-      // @ts-ignore
-      return row.getValue("userName").toLowerCase().includes(filterValue.toLowerCase());
+      return row.getValue<string>("userName").toLowerCase().includes(filterValue.toLowerCase());
     }
   });
 
@@ -228,19 +209,16 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
                       key={row.id}
                       data-state={row.getIsSelected() && "selected"}
                       onClick={() => {
-                        // @ts-ignore
-                        router.push(`/users/${row.getValue("userName").replace("#", "-")}`);
+                        router.push(`/users/${row.getValue<string>("userName").replace("#", "-")}`);
                       }}
                     >
                       {row.getVisibleCells().map((cell) => {
-                        // @ts-ignore
                         if (
                           cell.column.columnDef.header &&
                           cell.column?.columnDef?.id?.startsWith("day") &&
                           cell.column.columnDef.id !== "place"
                         ) {
                           return (
-                            // @ts-ignore
                             <TableCell
                               key={cell.id}
                               className="text-center"
