@@ -12,7 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
 from src.routes import router
-from src.core import config
+from src.core import config, db
 from src.core.logging import logger
 from src.middlewares.exception import ExceptionMiddleware
 from src.middlewares.time import TimeMiddleware
