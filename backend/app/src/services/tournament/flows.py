@@ -1,3 +1,4 @@
+import statistics
 from itertools import groupby
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -340,3 +341,44 @@ async def get_owal_standings(session: AsyncSession) -> schemas.OwalStandings:
         days=[await to_pydantic(session, day, []) for day in days_tournament],
         standings=standings_output,
     )
+
+
+async def get_league_player_stacks(
+        session: AsyncSession) -> list[schemas.LeaguePlayerStack]:
+    stacks, team_tournament_players, standings_dict = await service.get_league_player_stacks(session)
+
+    stack_results = []
+    for (player1_id, player2_id), team_tournaments in stacks.items():
+        positions = []
+        for team_id, tournament_id in team_tournaments:
+            standing = standings_dict.get((team_id, tournament_id))
+            if standing and standing.overall_position:
+                positions.append(standing.overall_position)
+
+        if positions and len(team_tournaments) > 1:
+            avg_position = statistics.mean(positions)
+            games_together = len(team_tournaments)
+
+            player1, player2 = None, None
+            for players in team_tournament_players.values():
+                for p in players:
+                    if p.user_id == player1_id:
+                        player1 = p
+                    elif p.user_id == player2_id:
+                        player2 = p
+                    if player1 and player2:
+                        break
+                if player1 and player2:
+                    break
+
+            stack_results.append(schemas.LeaguePlayerStack(
+                user_1=await user_flows.to_pydantic(session, player1.user, []),
+                user_2=await user_flows.to_pydantic(session, player2.user, []),
+                games=games_together,
+                avg_position=round(avg_position, 2)
+            ))
+
+
+    stack_results.sort(key=lambda x: x.avg_position)
+
+    return stack_results
