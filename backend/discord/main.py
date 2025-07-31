@@ -21,8 +21,10 @@ httpx_client = httpx.AsyncClient(
     timeout=httpx.Timeout(10, read=10),
 )
 
+TOURNAMENT_ID = 51
 
-async def process_attachment(attachment: discord.Attachment) -> bool:
+
+async def process_attachment(tournament_id: int, attachment: discord.Attachment) -> bool:
     try:
         response = await httpx_client.get(attachment.url)
         response.raise_for_status()
@@ -31,10 +33,10 @@ async def process_attachment(attachment: discord.Attachment) -> bool:
             "file": (attachment.filename, response.content, attachment.content_type)
         }
 
-        upload_response = await httpx_client.post("logs/48/upload", files=files)
+        upload_response = await httpx_client.post(f"logs/{tournament_id}/upload", files=files)
         if upload_response.status_code == 200:
             logger.info(f"✅ {attachment.filename} uploaded")
-            process_response = await httpx_client.post(f"logs/48/{attachment.filename}")
+            process_response = await httpx_client.post(f"logs/{tournament_id}/{attachment.filename}")
             if process_response.status_code == 200:
                 logger.info(f"✅ {attachment.filename} processed")
                 return True
@@ -51,23 +53,27 @@ async def process_attachment(attachment: discord.Attachment) -> bool:
     except httpx.HTTPError as e:
         logger.info(f"❌ HTTP error: {e}")
         return False
+    except discord.Forbidden:
+        logger.info("❌ Bot does not have permission to react to the message.")
+        return False
 
 
-async def process_message(message: discord.Message) -> None:
-    if message.attachments:
-        for attachment in message.attachments:
-            state = await process_attachment(attachment)
-            if state:
-                await message.add_reaction("✅")
-                await message.remove_reaction("❌", client.user)
-                logger.info(f"✅ {attachment.filename} processed")
-            else:
-                await message.add_reaction("❌")
-                await message.remove_reaction("✅", client.user)
-                logger.info(f"❌ {attachment.filename} failed to process")
+async def process_message(tournament_id: int, message: discord.Message) -> None:
+    states: list[bool] = []
+    try:
+        if message.attachments:
+            for attachment in message.attachments:
+                state = await process_attachment(tournament_id, attachment)
+                states.append(state)
+        if all(states):
+            await message.add_reaction("✅")
+        else:
+            await message.add_reaction("❌")
+    except discord.Forbidden:
+        logger.info("❌ Bot does not have permission to react to the message.")
 
 
-async def process_all_messages():
+async def process_all_messages(tournament_id: int) -> None:
     logger.info("🔍 Starting to process all messages in the channel...")
     channel = client.get_channel(settings.discord_channel_id)
     if not channel:
@@ -75,22 +81,27 @@ async def process_all_messages():
         return
 
     async for message in channel.history(limit=None):
-        await process_message(message)
+        await process_message(tournament_id, message)
 
 
 @broker.subscriber("discord_commands")
 async def handle_command(cmd: dict):
     if cmd.get("action") == "process_all":
+        tournament_id = cmd.get("tournament_id")
+        if not tournament_id:
+            logger.info("❌ No tournament ID provided for process_all command.")
+            return
         logger.info("🚀 Command from FastStream: process_all")
-        await process_all_messages()
+        await process_all_messages(tournament_id)
     elif cmd.get("action") == "process_message":
         logger.info("🚀 Command from FastStream: process_message")
         message_id = cmd.get("message_id")
         channel_id = cmd.get("channel_id")
+        tournament_id = cmd.get("tournament_id")
         channel = client.get_channel(channel_id)
         if channel:
             message = await channel.fetch_message(message_id)
-            await process_message(message)
+            await process_message(tournament_id, message)
         else:
             logger.info(f"❌ Channel with ID {channel_id} not found.")
 
@@ -102,7 +113,7 @@ async def on_message(message: discord.Message):
 
     if message.attachments:
         for attachment in message.attachments:
-            state = await process_attachment(attachment)
+            state = await process_attachment(TOURNAMENT_ID, attachment)
             if state:
                 await message.add_reaction("✅")
             else:

@@ -513,8 +513,8 @@ team_achievements: list[schemas.AchievementCreate] = [
     schemas.AchievementCreate(
         name="Хил платно",
         slug="heal_for_a_fee",
-        description_ru="Заролиться в команду с двумя хилами.",
-        description_en="Roll into a team with two healers.",
+        description_ru="Заролиться в команду с двумя лайт хилами.",
+        description_en="Roll into a team with two light healers.",
     ),
     schemas.AchievementCreate(
         name="Киберкотлета с пюрешкой",

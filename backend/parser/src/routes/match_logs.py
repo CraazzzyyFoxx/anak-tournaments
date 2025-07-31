@@ -93,7 +93,7 @@ async def process_logs_discord(
 @router.post("/{tournament_id}/{filename}")
 async def process_match_log(tournament_id: int, filename: str, session=Depends(db.get_async_session)):
     await logs_flows.process_match_log(session, tournament_id, filename, is_raise=True)
-    return
+    return {"message": f"Match log '{filename}' for tournament {tournament_id} processed successfully."}
 
 
 @publisher

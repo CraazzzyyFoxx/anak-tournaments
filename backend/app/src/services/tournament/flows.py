@@ -292,6 +292,7 @@ async def get_owal_standings(session: AsyncSession) -> schemas.OwalStandings:
         cache[user.id][player.role][tournament.id] = schemas.OwalStandingDay(
             team=team.name,
             role=player.role,
+            division=player.div,
             points=standing.win + standing.draw * 0.5 + standing.buchholz * 0.01,
             wins=standing.win,
             draws=standing.draw,
@@ -308,10 +309,12 @@ async def get_owal_standings(session: AsyncSession) -> schemas.OwalStandings:
             user = user_cache[user_id]
             days = days_dict.values()
             avg_win_rate = sum(day.win_rate for day in days) / len(days)
+            last_day = days_dict[max(days_dict.keys())]
             standings_output.append(
                 schemas.OwalStanding(
                     user=await user_flows.to_pydantic(session, user, []),
                     role=role,
+                    division=last_day.division,
                     days=days_dict,
                     count_days=len(days),
                     place=0,

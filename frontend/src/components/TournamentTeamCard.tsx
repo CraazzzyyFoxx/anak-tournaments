@@ -17,6 +17,7 @@ import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { TypographyH4 } from "@/components/ui/typography";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import PlayerDivisionIcon from "@/components/PlayerDivisionIcon";
 
 export const TournamentTeamCardSkeleton = () => {
   return <Skeleton className="w-[450px] h-[425px] rounded-xl"></Skeleton>;
@@ -54,14 +55,7 @@ export const TournamentTeamTable = ({ players }: { players: Player[] }) => {
                   <PlayerName player={player} includeSpecialization={true} />
                 </TableCell>
                 <TableCell>
-                  <div className="flex justify-center">
-                    <Image
-                      src={`/divisions/${player.division}.png`}
-                      alt="Division"
-                      width={36}
-                      height={36}
-                    />
-                  </div>
+                  <PlayerDivisionIcon division={player.division}/>
                 </TableCell>
                 <TableCell>
                   <div className="flex justify-center">

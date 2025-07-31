@@ -45,6 +45,7 @@ export interface OwalStandingDay {
 export interface OwalStanding {
   user: User;
   role: string;
+  division: number;
   days: Record<string, OwalStandingDay>;
   count_days: number;
   place: number;

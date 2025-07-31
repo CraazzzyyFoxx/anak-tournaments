@@ -46,6 +46,7 @@ class TournamentRead(BaseRead):
 class OwalStandingDay(BaseModel):
     team: str
     role: enums.HeroClass
+    division: int
     points: float
     wins: int
     draws: int
@@ -56,6 +57,7 @@ class OwalStandingDay(BaseModel):
 class OwalStanding(BaseModel):
     user: UserRead
     role: enums.HeroClass
+    division: int
     days: dict[int, OwalStandingDay]
     count_days: int
     place: int

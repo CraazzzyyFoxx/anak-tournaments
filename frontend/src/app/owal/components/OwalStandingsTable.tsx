@@ -27,6 +27,7 @@ import { CardContent, Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { DataTableSortButton } from "@/components/DataTableSortButton";
+import PlayerDivisionIcon from "@/components/PlayerDivisionIcon";
 
 const getDayColor = (points: number) => {
   let color = {};
@@ -91,6 +92,16 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
       cell: ({ row }) => {
         return (
           <div className="text-right">{row.getValue<string>("role")}</div>
+        );
+      }
+    },
+    {
+      accessorKey: "division",
+      id: "division",
+      header: "Division",
+      cell: ({ row }) => {
+        return (
+          <PlayerDivisionIcon division={row.getValue<number>("division")} width={32} height={32} />
         );
       }
     },
@@ -202,7 +213,7 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
                   </TableRow>
                 ))}
               </TableHeader>
-              <TableBody>
+              <TableBody className="text-lg">
                 {table.getRowModel().rows?.length ? (
                   table.getRowModel().rows.map((row) => (
                     <TableRow
