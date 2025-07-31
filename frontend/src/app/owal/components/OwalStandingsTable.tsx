@@ -213,7 +213,7 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
                   </TableRow>
                 ))}
               </TableHeader>
-              <TableBody className="text-lg">
+              <TableBody className="">
                 {table.getRowModel().rows?.length ? (
                   table.getRowModel().rows.map((row) => (
                     <TableRow
