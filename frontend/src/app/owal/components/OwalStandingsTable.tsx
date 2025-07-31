@@ -21,8 +21,6 @@ import {
 } from "@tanstack/react-table";
 import { useRouter } from "next/navigation";
 import { getWinrateColor } from "@/utils/colors";
-import { Button } from "@/components/ui/button";
-import { ArrowUpDown } from "lucide-react";
 import { CardContent, Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
@@ -117,7 +115,7 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
       id: "best_3_days",
       header: "TOTAL (best 3 days)",
       cell: ({ row }) => {
-        return <div>{row.getValue<number>("best_3_days").toFixed(2)}</div>;
+        return <div>{row.getValue<number>("best_3_days").toFixed(3)}</div>;
       }
     },
     {
@@ -125,7 +123,7 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
       header: "Average",
       id: "avg_points",
       cell: ({ row }) => {
-        return <div>{row.getValue<number>("avg_points").toFixed(2)}</div>;
+        return <div>{row.getValue<number>("avg_points").toFixed(3)}</div>;
       }
     },
     {
@@ -271,15 +269,6 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
         </Card>
         <ScrollBar orientation="horizontal" />
       </ScrollArea>
-      {/*<PaginationControlled*/}
-      {/*  totalCount={data.standings.length}*/}
-      {/*  pageSize={pagination.pageSize}*/}
-      {/*  page={pagination.pageIndex + 1}*/}
-      {/*  onSetPage={(newPage) => {*/}
-      {/*    table.setPageIndex(newPage);*/}
-      {/*    setPagination((prev) => ({ ...prev, pageIndex: newPage - 1 }));*/}
-      {/*  }}*/}
-      {/*/>*/}
     </div>
   );
 };
