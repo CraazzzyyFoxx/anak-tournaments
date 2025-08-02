@@ -24,6 +24,9 @@ broker = RedisBroker(settings.broker_url)
 httpx_client = httpx.AsyncClient(
     base_url=settings.parser_url,
     headers={"Authorization": f"Bearer {settings.access_token_service}"},
+    proxy=httpx.Proxy(
+        url=proxy_conf,
+    ),
     timeout=httpx.Timeout(10, read=10),
 )
 
