@@ -13,7 +13,13 @@ intents.messages = True
 intents.message_content = True
 intents.reactions = True
 
-client = discord.Client(intents=intents)
+if settings.proxy_ip:
+    proxy_conf = f"http://{settings.proxy_username}:{settings.proxy_password}@{settings.proxy_ip}:{settings.proxy_port}"
+else:
+    proxy_conf = None
+
+
+client = discord.Client(intents=intents, proxy=proxy_conf)
 broker = RedisBroker(settings.broker_url)
 httpx_client = httpx.AsyncClient(
     base_url=settings.parser_url,

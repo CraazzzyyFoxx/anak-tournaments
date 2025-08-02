@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     parser_url: str
     tournament_id: int
 
+    proxy_ip: str | None = None
+    proxy_port: int | None = None
+    proxy_username: str | None = None
+    proxy_password: str | None = None
+
     access_token_service: str
 
     @property
