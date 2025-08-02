@@ -53,6 +53,7 @@ app = FastAPI(
     debug=True if config.settings.environment == "development" else False,
     docs_url="/docs",
     redoc_url="/redoc",
+    root_path="/parser/v1",
 )
 app.add_middleware(ExceptionMiddleware)
 app.add_middleware(TimeMiddleware)
