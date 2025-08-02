@@ -71,8 +71,10 @@ async def process_message(tournament_id: int, message: discord.Message) -> None:
                 states.append(state)
         if all(states):
             await message.add_reaction("✅")
+            await message.remove_reaction("❌", client.user)
         else:
             await message.add_reaction("❌")
+            await message.remove_reaction("✅", client.user)
     except discord.Forbidden:
         logger.info("❌ Bot does not have permission to react to the message.")
 
