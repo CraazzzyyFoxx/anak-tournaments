@@ -16,12 +16,10 @@ intents.reactions = True
 client = discord.Client(intents=intents)
 broker = RedisBroker(settings.broker_url)
 httpx_client = httpx.AsyncClient(
-    base_url=settings.api_url,
+    base_url=settings.parser_url,
     headers={"Authorization": f"Bearer {settings.access_token_service}"},
     timeout=httpx.Timeout(10, read=10),
 )
-
-TOURNAMENT_ID = 51
 
 
 async def process_attachment(tournament_id: int, attachment: discord.Attachment) -> bool:
@@ -113,7 +111,7 @@ async def on_message(message: discord.Message):
 
     if message.attachments:
         for attachment in message.attachments:
-            state = await process_attachment(TOURNAMENT_ID, attachment)
+            state = await process_attachment(settings.tournament_id, attachment)
             if state:
                 await message.add_reaction("✅")
             else:

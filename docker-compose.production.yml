@@ -77,6 +77,10 @@ services:
       - S3_ENDPOINT_URL=${S3_ENDPOINT_URL}
       - S3_BUCKET_NAME=${S3_BUCKET_NAME}
       - ACCESS_TOKEN_SERVICE=${ACCESS_TOKEN_SERVICE}
+      - PROXY_URL=${PROXY_URL}
+      - PROXY_PORT=${PROXY_PORT}
+      - PROXY_USERNAME=${PROXY_USERNAME}
+      - PROXY_PASSWORD=${PROXY_PASSWORD}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -102,6 +106,10 @@ services:
       - DISCORD_GUILD_ID=${DISCORD_GUILD_ID}
       - API_URL=${API_URL}
       - ACCESS_TOKEN_SERVICE=${ACCESS_TOKEN_SERVICE}
+      - PROXY_URL=${PROXY_URL}
+      - PROXY_PORT=${PROXY_PORT}
+      - PROXY_USERNAME=${PROXY_USERNAME}
+      - PROXY_PASSWORD=${PROXY_PASSWORD}
     depends_on:
       - redis
     volumes:

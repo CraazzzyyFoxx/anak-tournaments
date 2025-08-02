@@ -29,7 +29,7 @@ async def lifespan(_: FastAPI):
         # await map_flows.initial_create(session)
         # await hero_flows.initial_create(session)
         # await balancer_service.get_balance(session)
-        await achievement_flows.calculate_achievements(session)
+        # await achievement_flows.calculate_achievements(session)
         # for index in range(44, 47+1):
         #     await analytics_flows.get_analytics(session,  index)
         # await analytics_flows.get_analytics(session, 49)
@@ -51,7 +51,7 @@ app = FastAPI(
     lifespan=lifespan,
     default_response_class=ORJSONResponse,
     debug=True if config.settings.environment == "development" else False,
-    docs_url="/docs" if config.settings.environment == "development" else None,
+    docs_url="/docs",
     redoc_url="/redoc",
 )
 app.add_middleware(ExceptionMiddleware)

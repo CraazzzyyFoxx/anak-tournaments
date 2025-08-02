@@ -20,7 +20,8 @@ class Settings(BaseSettings):
     discord_token: str
     discord_channel_id: int
     discord_guild_id: int
-    api_url: str
+    parser_url: str
+    tournament_id: int
 
     access_token_service: str
 
