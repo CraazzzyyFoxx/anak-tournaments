@@ -43,111 +43,106 @@ async def delete_by_tournament(session: AsyncSession, tournament_id: int) -> Non
     logger.info(f"Deleted standings for tournament {tournament_id}")
 
 
-def calculate_median_buchholz_and_tb_for_teams_in_group(
-    players_in: dict[int, schemas.StandingTeamData],
-) -> list[schemas.StandingTeamDataWithBuchholzTB]:
+def calculate_median_buchholz_for_teams_in_group(
+        players_in: dict[int, schemas.StandingTeamData],
+) -> dict[int, float]:
     median_buchholz_scores: dict[int, float] = {}
-    tb_scores: dict[int, int] = {}
 
     for player in players_in.values():
-        opponent_scores = sorted([players_in[opponent_id].points for opponent_id in player.opponents])
+        opponent_scores = [players_in[opponent_id].points for opponent_id in player.opponents]
         logger.debug(f"Player {player.id} raw opponent scores: {opponent_scores}")
 
         if len(opponent_scores) > 2:
-            trimmed_scores = opponent_scores[1:-1]  # Remove the highest and lowest scores
-            logger.debug(f"Player {player.id} trimmed scores: {trimmed_scores}")
+            sorted_scores = sorted(opponent_scores)
+            trimmed_scores = sorted_scores[1:-1]
+            logger.debug(f"Player {player.id} trimmed scores (best/worst removed): {trimmed_scores}")
+            median_buchholz_scores[player.id] = sum(trimmed_scores)
         else:
             trimmed_scores = opponent_scores
+            median_buchholz_scores[player.id] = sum(trimmed_scores)
 
-        median_buchholz_scores[player.id] = sum(trimmed_scores)
         logger.debug(f"Player {player.id} median buchholz score: {median_buchholz_scores[player.id]}")
 
-    # Calculate TB (number of match wins against tied opponents)
-    points_to_players = {}
-    for player in players_in.values():
-        points_to_players.setdefault(player.points, []).append(player.id)
-
-    for players_with_same_points in points_to_players.values():
-        for player_id in players_with_same_points:
-            tb = sum(
-                1
-                for opponent_id in players_in[player_id].opponents
-                if players_in[opponent_id].points == players_in[player_id].points
-                and players_in[player_id].wins > players_in[opponent_id].wins
-            )
-            tb_scores[player_id] = tb
-            logger.debug(f"Player {player_id} TB score: {tb}")
-
-    players: list[schemas.StandingTeamDataWithBuchholzTB] = []
-    for player in players_in.values():
-        players.append(
-            schemas.StandingTeamDataWithBuchholzTB(
-                id=player.id,
-                wins=player.wins,
-                draws=player.draws,
-                loses=player.loses,
-                points=player.points,
-                opponents=player.opponents,
-                buchholz=median_buchholz_scores[player.id],
-                matches=player.matches,
-                tb=tb_scores.get(player.id, 0),
-            )
-        )
-
-    return players
+    return median_buchholz_scores
 
 
 def prepare_teams_for_groups(
-    encounters: typing.Sequence[models.Encounter],
+        encounters: typing.Sequence[models.Encounter],
 ) -> list[schemas.StandingTeamDataWithBuchholzTB]:
     team_cache: dict[int, schemas.StandingTeamData] = {}
-    for encounter in encounters:
-        if encounter.home_team_id not in team_cache:
-            team_cache[encounter.home_team_id] = schemas.StandingTeamData(
-                id=encounter.home_team_id,
-                wins=0,
-                draws=0,
-                loses=0,
-                points=0,
-                opponents=[],
-                matches=0,
-            )
-        if encounter.away_team_id not in team_cache:
-            team_cache[encounter.away_team_id] = schemas.StandingTeamData(
-                id=encounter.away_team_id,
-                wins=0,
-                draws=0,
-                loses=0,
-                points=0,
-                opponents=[],
-                matches=0,
-            )
 
-        team_cache[encounter.home_team_id].matches += 1
-        team_cache[encounter.away_team_id].matches += 1
+    for encounter in encounters:
+        for team_id in (encounter.home_team_id, encounter.away_team_id):
+            if team_id not in team_cache:
+                team_cache[team_id] = schemas.StandingTeamData(
+                    id=team_id, wins=0, draws=0, loses=0, points=0, opponents=[], matches=0,
+                )
+
+        home_team = team_cache[encounter.home_team_id]
+        away_team = team_cache[encounter.away_team_id]
+
+        home_team.matches += 1
+        away_team.matches += 1
+        home_team.opponents.append(away_team.id)
+        away_team.opponents.append(home_team.id)
 
         if encounter.home_score > encounter.away_score:
-            team_cache[encounter.home_team_id].wins += 1
-            team_cache[encounter.away_team_id].loses += 1
-            team_cache[encounter.home_team_id].points += 1
+            home_team.wins += 1
+            home_team.points += 1
+            away_team.loses += 1
         elif encounter.home_score < encounter.away_score:
-            team_cache[encounter.away_team_id].wins += 1
-            team_cache[encounter.home_team_id].loses += 1
-            team_cache[encounter.away_team_id].points += 1
+            away_team.wins += 1
+            away_team.points += 1
+            home_team.loses += 1
         else:
-            team_cache[encounter.home_team_id].draws += 1
-            team_cache[encounter.away_team_id].draws += 1
-            team_cache[encounter.home_team_id].points += 0.5
-            team_cache[encounter.away_team_id].points += 0.5
-
-        team_cache[encounter.home_team_id].opponents.append(encounter.away_team_id)
-        team_cache[encounter.away_team_id].opponents.append(encounter.home_team_id)
+            home_team.draws += 1
+            home_team.points += 0.5
+            away_team.draws += 1
+            away_team.points += 0.5
 
     logger.debug(f"Team cache after processing encounters: {team_cache}")
 
-    teams = calculate_median_buchholz_and_tb_for_teams_in_group(team_cache)
+    buchholz_scores = calculate_median_buchholz_for_teams_in_group(team_cache)
+    tb_scores: dict[int, int] = {team_id: 0 for team_id in team_cache}
+    points_to_players: dict[float, list[int]] = {}
+
+    for player in team_cache.values():
+        points_to_players.setdefault(player.points, []).append(player.id)
+
+    for group_ids in points_to_players.values():
+        if len(group_ids) < 2: continue
+
+        for encounter in encounters:
+            p1_id, p2_id = encounter.home_team_id, encounter.away_team_id
+
+            if p1_id in group_ids and p2_id in group_ids:
+                if encounter.home_score > encounter.away_score:
+                    tb_scores[p1_id] += 1
+                elif encounter.home_score < encounter.away_score:
+                    tb_scores[p2_id] += 1
+
+    for player_id, tb in tb_scores.items():
+        logger.debug(f"Player {player_id} TB score (head-to-head wins): {tb}")
+
+    teams: list[schemas.StandingTeamDataWithBuchholzTB] = []
+    for player_data in team_cache.values():
+        teams.append(
+            schemas.StandingTeamDataWithBuchholzTB(
+                id=player_data.id,
+                wins=player_data.wins,
+                draws=player_data.draws,
+                loses=player_data.loses,
+                points=player_data.points,
+                opponents=player_data.opponents,
+                matches=player_data.matches,
+                buchholz=buchholz_scores.get(player_data.id, 0.0),
+                tb=tb_scores.get(player_data.id, 0),
+            )
+        )
+
     sorted_teams = sorted(teams, key=lambda x: (x.points, x.tb, x.buchholz), reverse=True)
-    logger.info("Prepared teams for groups with sorted order based on points, TB, and Buchholz")
+    logger.info("Prepared teams for groups with sorted order based on points, TB, and Median-Buchholz")
+
     return sorted_teams
 
 
