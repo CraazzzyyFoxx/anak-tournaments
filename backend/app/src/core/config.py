@@ -37,15 +37,15 @@ class Settings(BaseSettings):
 
     redis_url: RedisDsn
 
-    users_cache_ttl: int = 60 * 5
-    tournaments_cache_ttl: int = 24 * 60 * 60
-    gamemodes_cache_ttl: int = 24 * 60 * 60
-    maps_cache_ttl: int = 24 * 60 * 60
-    heroes_cache_ttl: int = 24 * 60 * 60
-    statistics_cache_ttl: int = 24 * 60 * 60
-    teams_cache_ttl: int = 24 * 60 * 60
-    encounters_cache_ttl: int = 24 * 60 * 60
-    achievements_cache_ttl: int = 24 * 60 * 60
+    users_cache_ttl: int = 60
+    tournaments_cache_ttl: int = 60 * 5
+    gamemodes_cache_ttl: int = 60 * 5
+    maps_cache_ttl: int = 60 * 5
+    heroes_cache_ttl: int = 60 * 5
+    statistics_cache_ttl: int = 60 * 5
+    teams_cache_ttl: int = 60 * 5
+    encounters_cache_ttl: int = 60 * 5
+    achievements_cache_ttl: int = 60 * 5
 
     clerk_secret_key: str
     clerk_jwks_url: str
