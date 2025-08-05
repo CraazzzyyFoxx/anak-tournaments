@@ -172,38 +172,39 @@ export const UserTournamentsTable = ({ tournaments }: { tournaments: UserTournam
   const searchParams = useSearchParams();
   const [selectedTournamentId, setSelectedTournamentId] = React.useState<string | null>(null);
 
-  const newTournaments: any[] = useMemo(() => {
-    const newTournaments: UserTournament[] = [];
-    const cache: Map<string, UserTournament[]> = new Map<string, UserTournament[]>();
+  const newTournaments: (UserTournament | UserTournament[])[] = useMemo(() => {
+    const result: (UserTournament | UserTournament[])[] = [];
+    let currentLeague: UserTournament[] = [];
     let leagueNameFlag = "";
 
     tournaments.forEach((tournament) => {
       if (tournament.is_league) {
         const leagueName = tournament.name.split(" | ")[0];
-        leagueNameFlag = leagueName;
 
-        if (!cache.has(leagueName)) {
-          cache.set(leagueName, []);
+        if (leagueNameFlag && leagueNameFlag !== leagueName) {
+          result.push(currentLeague);
+          currentLeague = [];
         }
-        // @ts-ignore
-        cache.get(leagueName).push(tournament);
+
+        leagueNameFlag = leagueName;
+        currentLeague.push(tournament);
       } else {
-        if (leagueNameFlag) {
-          const leagueTournaments = cache.get(leagueNameFlag);
-          if (leagueTournaments) {
-            // @ts-ignore
-            newTournaments.push(leagueTournaments.reverse());
-            cache.delete(leagueNameFlag);
-          }
+        if (currentLeague.length > 0) {
+          result.push(currentLeague);
+          currentLeague = [];
           leagueNameFlag = "";
         }
-
-        newTournaments.push(tournament);
+        result.push(tournament);
       }
     });
 
-    return newTournaments;
+    if (currentLeague.length > 0) {
+      result.push(currentLeague);
+    }
+
+    return result;
   }, [tournaments]);
+
 
   useEffect(() => {
     if (searchParams) {
