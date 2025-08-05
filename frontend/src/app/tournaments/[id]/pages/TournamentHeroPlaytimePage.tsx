@@ -7,7 +7,7 @@ import { Tournament } from "@/types/tournament.types";
 import heroService from "@/services/hero.service";
 
 const TournamentHeroPlaytimePage = async ({ tournament }: { tournament: Tournament }) => {
-  const stats = await heroService.getHeroPlaytime(1, 10, "all", tournament.id);
+  const stats = await heroService.getHeroPlaytime(1, 20, "all", tournament.id);
 
   return (
     <Card>
@@ -17,7 +17,7 @@ const TournamentHeroPlaytimePage = async ({ tournament }: { tournament: Tourname
           <TypographyH4>Most played heroes</TypographyH4>
         </div>
       </CardHeader>
-      <div className="flex-1 px-2 pb-4 max-w-[840px]">
+      <div className="px-2 pb-4">
         <HeroPlaytimeChart heroes={stats.results} />
       </div>
     </Card>

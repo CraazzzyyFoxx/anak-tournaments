@@ -61,7 +61,7 @@ const HeroPlaytimeChart = ({ heroes }: HeroPlaytimeChartProps) => {
 
   return (
     <ChartContainer config={chartConfig}>
-      <ResponsiveContainer width={"100%"} height={"100%"}>
+      <ResponsiveContainer width={"100%"} height={heroes.length * 64 }>
         <BarChart
           accessibilityLayer
           data={chartData}
