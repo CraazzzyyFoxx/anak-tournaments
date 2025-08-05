@@ -200,7 +200,8 @@ class MatchLogProcessor:
 
                 if user_found:
                     logger.info(
-                        f"User [id={user_found.id} name={user_found.name}] found by battle name {player} in team {team_name}"
+                        f"User [id={user_found.id} name={user_found.name}] "
+                        f"found by battle name {player} in team {team_name}"
                     )
                 else:
                     logger.error(f"User not found by battle name {player} in team {team_name}")
@@ -288,7 +289,8 @@ class MatchLogProcessor:
 
             if resolved_player_in_team:
                 logger.info(
-                    f"Player [id={resolved_player_in_team.id} name={resolved_player_in_team.name}] found for battle name '{battle_name_log}' in team '{team.name}'"
+                    f"Player [id={resolved_player_in_team.id} name={resolved_player_in_team.name}] "
+                    f"found for battle name '{battle_name_log}' in team '{team.name}'"
                 )
             else:
                 logger.error(f"Player object not found for battle name '{battle_name_log}' in team '{team.name}'")
@@ -829,7 +831,8 @@ class MatchLogProcessor:
             and len(players_found_in_roster_map) < expected_roster_size
         ):
             logger.warning(
-                f"Potential substitution for team {team_db.name}. Log has {len(users_who_played_map)} users, roster matched {len(players_found_in_roster_map)}."
+                f"Potential substitution for team {team_db.name}. "
+                f"Log has {len(users_who_played_map)} users, roster matched {len(players_found_in_roster_map)}."
             )
 
             roster_player_user_ids_found_in_log = {p.user_id for p in players_found_in_roster_map.values()}
@@ -849,7 +852,8 @@ class MatchLogProcessor:
 
             if missing_roster_player and substitute_user and substitute_log_name:
                 logger.info(
-                    f"Identified substitution: {substitute_user.name} (log: {substitute_log_name}) for {missing_roster_player.name} in team {team_db.name}."
+                    f"Identified substitution: {substitute_user.name} "
+                    f"(log: {substitute_log_name}) for {missing_roster_player.name} in team {team_db.name}."
                 )
                 existing_sub_player = await team_service.get_player_by_team_and_user(
                     session, team_db.id, substitute_user.id, []
@@ -878,7 +882,9 @@ class MatchLogProcessor:
 
         if len(final_players_map) < expected_roster_size and len(unmatched_log_names) > 0:
             logger.warning(
-                f"Potential battle_name change for team {team_db.name}. Matched {len(final_players_map)}, expected {expected_roster_size}, unmatched log names: {unmatched_log_names}."
+                f"Potential battle_name change for team {team_db.name}. "
+                f"Matched {len(final_players_map)}, expected {expected_roster_size}, "
+                f"unmatched log names: {unmatched_log_names}."
             )
 
             roster_players_in_log_user_ids = {p.user_id for p in final_players_map.values()}
@@ -890,7 +896,9 @@ class MatchLogProcessor:
                 player_who_changed_name = missing_roster_players_from_log[0]
                 new_battle_name_from_log = unmatched_log_names[0]
                 logger.info(
-                    f"Player {player_who_changed_name.name} (User ID: {player_who_changed_name.user_id}) likely changed battle_name to '{new_battle_name_from_log}'."
+                    f"Player {player_who_changed_name.name} "
+                    f"(User ID: {player_who_changed_name.user_id}) "
+                    f"likely changed battle_name to '{new_battle_name_from_log}'."
                 )
 
                 user_to_update = player_who_changed_name.user or await user_service.get(
@@ -915,7 +923,8 @@ class MatchLogProcessor:
                     )
             else:
                 logger.warning(
-                    f"Ambiguous situation for battle_name change in team {team_db.name}. Could not resolve automatically."
+                    f"Ambiguous situation for battle_name change in team {team_db.name}. "
+                    f"Could not resolve automatically."
                 )
 
         current_team_player_ids = {p.id for p in team_db.players}
@@ -926,7 +935,8 @@ class MatchLogProcessor:
         }
         if len(final_players_map_verified) != len(final_players_map):
             logger.error(
-                f"Team {team_db.name} player map verification failed after collision fix. Some players might not belong to the team."
+                f"Team {team_db.name} player map verification failed after collision fix. "
+                f"Some players might not belong to the team."
             )
 
         return team_db, final_players_map_verified
@@ -999,8 +1009,10 @@ async def process_closeness(session: AsyncSession, payload: list[str]):
 
         logger.info(f"Tournament {tournament.name} found [id={tournament.id}]")
         logger.info(f"Home team name: {home_team_name}, away team name: {away_team_name}")
-        home_team = await team_service.get_by_name_and_tournament(session, tournament.id, home_team_name.strip(), [])
-        away_team = await team_service.get_by_name_and_tournament(session, tournament.id, away_team_name.strip(), [])
+        home_team = await team_service.get_by_name_and_tournament(
+            session, tournament.id, home_team_name.strip(), [])
+        away_team = await team_service.get_by_name_and_tournament(
+            session, tournament.id, away_team_name.strip(), [])
 
         if not home_team or not away_team:
             logger.error(f"Home team {home_team_name} or away team {away_team_name} not found")

@@ -184,17 +184,18 @@ async def get_user_achievements(
                 and achievement.tournament_id
                 not in cache[achievement.achievement_id].tournaments
             ):
-                cache[achievement.achievement_id].tournaments_ids.append(
-                    achievement.tournament_id
-                )
+                cache[achievement.achievement_id].tournaments_ids.append(achievement.tournament_id)
             if (
                 achievement.match_id
                 and achievement.match_id
                 not in cache[achievement.achievement_id].matches_ids
             ):
-                cache[achievement.achievement_id].matches_ids.append(
-                    achievement.match_id
-                )
+                cache[achievement.achievement_id].matches_ids.append(achievement.match_id)
+
+    # Sort tournaments and matches IDs for each achievement
+    for achievement in cache.values():
+        achievement.tournaments_ids.sort()
+        achievement.matches_ids.sort()
 
     if "tournaments" in entities:
         for achievement in cache.values():

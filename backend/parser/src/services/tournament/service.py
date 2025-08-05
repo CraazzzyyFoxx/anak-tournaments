@@ -3,14 +3,14 @@ from datetime import datetime
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
-from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from src import models
 from src.core import utils
 
 
-def tournament_entities(in_entities: list[str], child: typing.Any | None = None) -> list[_AbstractLoad]:
+def tournament_entities(
+        in_entities: list[str], child: typing.Any | None = None
+) -> list[sa.orm.strategy_options._AbstractLoad]:
     entities = []
     if "groups" in in_entities:
         entities.append(utils.join_entity(child, models.Tournament.groups))
@@ -25,16 +25,26 @@ async def get(session: AsyncSession, id: int, entities: list[str]) -> models.Tou
     return result.unique().scalars().first()
 
 
-async def get_all(session: AsyncSession) -> typing.Sequence[models.Tournament]:
-    query = sa.select(models.Tournament).order_by(models.Tournament.id.asc())
+async def get_all(
+    session: AsyncSession,
+    is_league: bool | None = None,
+    is_finished: bool | None = None,
+    entities: list[str] | None = None
+) -> typing.Sequence[models.Tournament]:
+    query = (
+        sa.select(models.Tournament)
+        .options(*tournament_entities(entities or []))
+        .order_by(models.Tournament.id.asc())
+    )
+
+    if is_league is not None:
+        query = query.where(models.Tournament.is_league.is_(is_league))
+    if is_finished is not None:
+        query = query.where(models.Tournament.is_finished.is_(is_finished))
+
+
     result = await session.execute(query)
-    return result.scalars().all()
-
-
-def get_all_sync(session: Session) -> typing.Sequence[models.Tournament]:
-    query = sa.select(models.Tournament).order_by(models.Tournament.id.asc())
-    result = session.execute(query)
-    return result.scalars().all()
+    return result.unique().scalars().all()
 
 
 async def get_by_number(session: AsyncSession, number: int, entities: list[str]) -> models.Tournament | None:

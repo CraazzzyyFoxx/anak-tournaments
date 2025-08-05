@@ -9,8 +9,14 @@ from src.services.hero import service as hero_service
 from . import crud
 
 
+MIN_MATCH_PLAYTIME_SEC = 60
+TOTAL_MIN_PLAYTIME_SEC = 600
+MIN_QUALIFYING_MATCHES = 3
+
+
 async def create_hero_kd_achievements(session: AsyncSession, tournament: models.Tournament) -> None:
-    heroes, total_heroes = await hero_service.get_all(session, pagination.PaginationParams(per_page=-1))
+    logger.info(f"Starting to create hero K/D achievements for tournament '{tournament.name}'...")
+    heroes, _ = await hero_service.get_all(session, pagination.PaginationParams(per_page=-1))
 
     for hero in heroes:
         achievement = await crud.get_achievement_or_log_error(session, slug=hero.slug)
@@ -19,88 +25,81 @@ async def create_hero_kd_achievements(session: AsyncSession, tournament: models.
 
         await crud.delete_user_achievements(session, achievement, tournament.id)
 
-        time_condition_subq = (
-            sa.select(models.MatchStatistics.match_id, models.MatchStatistics.user_id)
-            .where(
-                sa.and_(
-                    models.MatchStatistics.hero_id == hero.id,
-                    models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed,
-                    models.MatchStatistics.value >= 60,
-                    models.MatchStatistics.round == 0,
-                )
-            )
-            .group_by(models.MatchStatistics.match_id, models.MatchStatistics.user_id)
-            .subquery()
-        )
-
-        query = (
+        base_stats_cte = (
             sa.select(
                 models.MatchStatistics.user_id,
-                sa.func.avg(
-                    sa.case(
-                        (
-                            sa.and_(models.MatchStatistics.name == enums.LogStatsName.KD),
-                            models.MatchStatistics.value,
-                        ),
-                        else_=None,
-                    )
-                ).label("avg_kd"),
+                models.MatchStatistics.match_id,
+                models.MatchStatistics.name,
+                models.MatchStatistics.value,
             )
-            .select_from(models.Encounter)
-            .join(models.Match, models.Encounter.id == models.Match.encounter_id)
-            .join(
-                models.MatchStatistics,
-                models.MatchStatistics.match_id == models.Match.id,
-            )
+            .join(models.Match, models.MatchStatistics.match_id == models.Match.id)
+            .join(models.Encounter, models.Match.encounter_id == models.Encounter.id)
             .where(
                 sa.and_(
                     models.Encounter.tournament_id == tournament.id,
                     models.MatchStatistics.hero_id == hero.id,
                     models.MatchStatistics.round == 0,
                     models.MatchStatistics.name.in_([enums.LogStatsName.KD, enums.LogStatsName.HeroTimePlayed]),
-                    sa.exists(
-                        sa.select(time_condition_subq.c.match_id).where(
-                            sa.and_(
-                                time_condition_subq.c.match_id == models.MatchStatistics.match_id,
-                                time_condition_subq.c.user_id == models.MatchStatistics.user_id,
-                            )
-                        )
-                    ),
                 )
             )
-            .group_by(models.MatchStatistics.user_id)
+            .cte("base_stats_cte")
+        )
+
+        user_match_stats_cte = (
+            sa.select(
+                base_stats_cte.c.user_id,
+                base_stats_cte.c.match_id,
+                sa.func.sum(
+                    sa.case((base_stats_cte.c.name == enums.LogStatsName.KD, base_stats_cte.c.value), else_=None)
+                ).label("kd"),
+                sa.func.sum(
+                    sa.case(
+                        (base_stats_cte.c.name == enums.LogStatsName.HeroTimePlayed, base_stats_cte.c.value), else_=None
+                    )
+                ).label("time_played"),
+            )
+            .group_by(base_stats_cte.c.user_id, base_stats_cte.c.match_id)
+            .cte("user_match_stats_cte")
+        )
+
+        query = (
+            sa.select(
+                models.User,
+                sa.func.avg(user_match_stats_cte.c.kd).label("avg_kd"),
+            )
+            .join(models.User, models.User.id == user_match_stats_cte.c.user_id)
+            .where(
+                sa.and_(
+                    user_match_stats_cte.c.time_played >= MIN_MATCH_PLAYTIME_SEC,
+                    user_match_stats_cte.c.kd.isnot(None),
+                )
+            )
+            .group_by(models.User.id)
             .having(
                 sa.and_(
-                    sa.func.sum(
-                        sa.case(
-                            (
-                                sa.and_(models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed),
-                                models.MatchStatistics.value,
-                            ),
-                            else_=None,
-                        )
-                    )
-                    > 600
+                    sa.func.sum(user_match_stats_cte.c.time_played) >= TOTAL_MIN_PLAYTIME_SEC,
+                    sa.func.count("*") >= MIN_QUALIFYING_MATCHES
                 )
             )
             .order_by(sa.desc("avg_kd"))
+            .limit(1)
         )
 
         result = await session.execute(query)
-        user = result.first()
-
-        if not user:
-            logger.warning(f"User with best K/D for hero {hero.slug} not found. Skipping...")
+        top_user = result.first()
+        if not top_user:
+            logger.warning(f"No qualifying user found for hero K/D achievement on '{hero.slug}'. Skipping.")
             continue
-
         user_achievement = models.AchievementUser(
-            user_id=user[0], achievement_id=achievement.id, tournament_id=tournament.id
+            user_id=top_user[0].id,
+            achievement_id=achievement.id,
+            tournament_id=tournament.id,
         )
-
         session.add(user_achievement)
+        logger.info(f"Achievement for '{hero.slug}' K/D granted to user [ID={top_user[0].id} name={top_user[0].name}].")
 
     await session.commit()
-    logger.info(f"Achievements for heroes K/D in tournament {tournament.name} created successfully")
+    logger.info(f"Hero K/D achievements for tournament '{tournament.name}' created successfully.")
 
 
 base_query_conditions = sa.and_(
