@@ -24,7 +24,7 @@ publisher = task_router.publisher(PROCESS_MATCH_LOGS_TOPIC, title="Logs")
 
 def decode_file_lines(uploaded_file: UploadFile) -> bytes:
     file_lines = uploaded_file.file.readlines()
-    return "\n".join([line.decode() for line in file_lines]).encode("utf-8")
+    return "".join([line.decode() for line in file_lines]).encode("utf-8")
 
 
 @router.post("/")
