@@ -309,7 +309,7 @@ async def get_owal_standings(
         .where(
             sa.and_(
                 models.Tournament.is_league.is_(True),
-                models.Tournament.name.startswith("OWAL Season 2"),
+                models.Tournament.name.startswith("OWAL Season 3"),
                 models.Player.is_substitution.is_(False),
                 models.Tournament.is_finished.is_(True),
             )
@@ -334,7 +334,7 @@ async def get_owal_days(session: AsyncSession) -> typing.Sequence[models.Tournam
         .where(
             sa.and_(
                 models.Tournament.is_league.is_(True),
-                models.Tournament.name.startswith("OWAL Season 2"),
+                models.Tournament.name.startswith("OWAL Season 3"),
             )
         )
         .order_by(models.Tournament.start_date)
@@ -375,7 +375,7 @@ async def get_league_player_stacks(session: AsyncSession) -> tuple[
         sa.select(models.Player)
         .join(models.Team)
         .join(models.Tournament)
-        .where(models.Tournament.name.startswith("OWAL Season 2"))
+        .where(models.Tournament.name.startswith("OWAL Season 3"))
         .options(
             sa.orm.joinedload(models.Player.user),
             sa.orm.joinedload(models.Player.team),
