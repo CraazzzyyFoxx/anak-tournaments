@@ -213,7 +213,8 @@ map_name_dict = {
     "Рунасапи": "Runasapi",
     "Ханаока": "Hanaoka",
     "Трон Анубиса": "Throne of Anubis",
-    "Атлус": "Aatlis"
+    "Атлус": "Aatlis",
+    "Айхенвальд (Хеллоуин)": "Eichenwalde",
 }
 
 
