@@ -28,12 +28,12 @@ import { DataTableSortButton } from "@/components/DataTableSortButton";
 import PlayerDivisionIcon from "@/components/PlayerDivisionIcon";
 
 const getDayColor = (points: number) => {
-  let color = {};
+  let color = {} as React.CSSProperties;
   if (points < 1.71) {
     color = { backgroundColor: "#f56565", color: "#121009" };
   }
   if (points > 3) {
-    color = { backgroundColor: "#a86243" };
+    color = { backgroundColor: "#a86243" } as React.CSSProperties;
     if (points > 4) {
       color = { backgroundColor: "#99b0cc", color: "#121009" };
     }
@@ -55,20 +55,37 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
   const [globalFilter, setGlobalFilter] = React.useState("");
 
   const days_columns: ColumnDef<OwalStanding>[] = data.days.map((day) => ({
-    accessorFn: (row) => (row.days[day.id.toString()] ? row.days[day.id.toString()].points : "-"),
-    header: ({ column }) => {
+    id: `day_${day.id}`,
+    accessorFn: (row) =>
+      row.days[day.id.toString()] ? row.days[day.id.toString()].points : "-",
+    header: ({ column }) => (
+      <DataTableSortButton column={column} label={day.name.split(" | ")[1]} />
+    ),
+    cell: ({ row, getValue }) => {
+      const value = getValue<number | string>();
+      if (value === "-") return <div>-</div>;
+
+      const dayData = row.original.days[day.id.toString()] as
+        | { points?: number; division?: number }
+        | undefined;
+      const dayDivision = dayData?.division ?? undefined;
+
       return (
-       <DataTableSortButton column={column} label={day.name.split(" | ")[1]}/>
+        <div className="flex items-center justify-center gap-2">
+          <span>{value as number}</span>
+          {typeof dayDivision === "number" && (
+            <PlayerDivisionIcon division={dayDivision} width={24} height={24} />
+          )}
+        </div>
       );
-    },
-    id: `day_${day.id}`
+    }
   }));
 
   const columns: ColumnDef<OwalStanding>[] = [
     {
       accessorKey: "place",
       header: ({ column }) => {
-        return <DataTableSortButton column={column} label={"Place"}/>
+        return <DataTableSortButton column={column} label={"Place"} />;
       },
       id: "place",
       accessorFn: (row) => row.place
@@ -88,9 +105,7 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
       id: "role",
       header: "Role",
       cell: ({ row }) => {
-        return (
-          <div className="text-right">{row.getValue<string>("role")}</div>
-        );
+        return <div className="text-right">{row.getValue<string>("role")}</div>;
       }
     },
     {
@@ -99,7 +114,11 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
       header: "Division",
       cell: ({ row }) => {
         return (
-          <PlayerDivisionIcon division={row.getValue<number>("division")} width={32} height={32} />
+          <PlayerDivisionIcon
+            division={row.getValue<number>("division")}
+            width={32}
+            height={32}
+          />
         );
       }
     },
@@ -154,13 +173,15 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
       accessorKey: "win_rate",
       id: "win_rate",
       header: ({ column }) => {
-        return (
-          <DataTableSortButton column={column} label={"Win ratio"}/>
-        );
+        return <DataTableSortButton column={column} label={"Win ratio"} />;
       },
       cell: ({ row }) => {
         const winrate = row.getValue<number>("win_rate");
-        return <div style={{ color: getWinrateColor(winrate) }}>{(winrate * 100).toFixed(2)}%</div>;
+        return (
+          <div style={{ color: getWinrateColor(winrate) }}>
+            {(winrate * 100).toFixed(2)}%
+          </div>
+        );
       }
     }
   ];
@@ -179,7 +200,10 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
     },
     onGlobalFilterChange: setGlobalFilter,
     globalFilterFn: (row, columnId, filterValue) => {
-      return row.getValue<string>("userName").toLowerCase().includes(filterValue.toLowerCase());
+      return row
+        .getValue<string>("userName")
+        .toLowerCase()
+        .includes(filterValue.toLowerCase());
     }
   });
 
@@ -204,7 +228,10 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
                         <TableHead className="text-center" key={header.id}>
                           {header.isPlaceholder
                             ? null
-                            : flexRender(header.column.columnDef.header, header.getContext())}
+                            : flexRender(
+                              header.column.columnDef.header,
+                              header.getContext()
+                            )}
                         </TableHead>
                       );
                     })}
@@ -218,7 +245,11 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
                       key={row.id}
                       data-state={row.getIsSelected() && "selected"}
                       onClick={() => {
-                        router.push(`/users/${row.getValue<string>("userName").replace("#", "-")}`);
+                        router.push(
+                          `/users/${row
+                            .getValue<string>("userName")
+                            .replace("#", "-")}`
+                        );
                       }}
                     >
                       {row.getVisibleCells().map((cell) => {
@@ -231,9 +262,13 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
                             <TableCell
                               key={cell.id}
                               className="text-center"
+                              // getDayColor expects a number; when value is '-', it becomes NaN and returns default style
                               style={getDayColor(cell?.getValue() as number)}
                             >
-                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                              {flexRender(
+                                cell.column.columnDef.cell,
+                                cell.getContext()
+                              )}
                             </TableCell>
                           );
                         }
@@ -244,7 +279,10 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
                         ) {
                           return (
                             <TableCell key={cell.id} className="text-center bg-gray-800">
-                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                              {flexRender(
+                                cell.column.columnDef.cell,
+                                cell.getContext()
+                              )}
                             </TableCell>
                           );
                         }

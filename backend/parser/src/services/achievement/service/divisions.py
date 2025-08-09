@@ -155,7 +155,6 @@ async def calculate_my_drill_will_pierce_the_sky_achievements(
         sa.select(models.Player.user_id)
         .select_from(models.Player)
         .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
-        .where(sa.and_(models.Tournament.is_league.is_(False)))
         .group_by(models.Player.user_id, models.Player.role)
         .having(sa.func.max(models.Player.div) - sa.func.min(models.Player.div) >= 10)
     )
