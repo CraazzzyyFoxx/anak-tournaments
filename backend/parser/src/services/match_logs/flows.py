@@ -129,10 +129,11 @@ class MatchLogProcessor:
         row_data = match_end_events.iloc[0]["data"]  # Assuming one MatchEnd
         return float(match_end_events.iloc[0]["time"]), int(row_data[1]), int(row_data[2])
 
-    def validate(self, is_raise: bool) -> bool:
+    async def validate(self, is_raise: bool) -> bool:
         if self._get_rows(enums.LogEventType.MatchEnd).empty:
             msg = f"Match log {self.filename} in tournament {self.tournament.name} is not finished"
             logger.error(msg)
+            await s3_service.async_client.delete_log(self.tournament.id, self.filename)
             if is_raise:
                 raise errors.ApiHTTPException(
                     status_code=400,
@@ -231,6 +232,7 @@ class MatchLogProcessor:
                     return team_db
 
         player_names_str = ", ".join([name for name, _ in players])
+        await s3_service.async_client.delete_log(self.tournament.id, self.filename)
         raise errors.ApiHTTPException(
             status_code=400,
             detail=[

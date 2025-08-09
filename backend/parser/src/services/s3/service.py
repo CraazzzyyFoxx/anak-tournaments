@@ -75,6 +75,17 @@ class S3AsyncClient:
             logger.exception(f"Error uploading log: {e}")
             return False
 
+    async def delete_log(self, tournament_id: int, filename: str) -> bool:
+        object_key = f"logs/{tournament_id}/{filename}"
+        try:
+            async with self.get_client() as _client:
+                await _client.delete_object(Bucket=self.bucket_name, Key=object_key)
+                logger.info(f"Deleted log {object_key}")
+                return True
+        except ClientError as e:
+            logger.exception(f"Error deleting log: {e}")
+            return False
+
     async def get_tournament_teams(self, tournament_id: int) -> list[str]:
         return await self._get_list_objects(f"{tournament_id}/teams/")
 
