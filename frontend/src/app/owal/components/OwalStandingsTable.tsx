@@ -28,6 +28,7 @@ import { DataTableSortButton } from "@/components/DataTableSortButton";
 import PlayerDivisionIcon from "@/components/PlayerDivisionIcon";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import Link from "next/link";
 
 
 const getDayColor = (points: number) => {
@@ -101,7 +102,11 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
       header: "Player",
       cell: ({ row }) => {
         return (
-          <div className="text-right">{row.getValue<string>("userName").split("#")[0]}</div>
+          <div className="text-right">
+            <Link href={`/users/${row.getValue<string>("userName").replace("#", "-")}`}>
+              {row.getValue<string>("userName").split("#")[0]}
+            </Link>
+          </div>
         );
       }
     },
@@ -266,13 +271,6 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
                     <TableRow
                       key={row.id}
                       data-state={row.getIsSelected() && "selected"}
-                      onClick={() => {
-                        router.push(
-                          `/users/${row
-                            .getValue<string>("userName")
-                            .replace("#", "-")}`
-                        );
-                      }}
                     >
                       {row.getVisibleCells().map((cell) => {
                         if (
