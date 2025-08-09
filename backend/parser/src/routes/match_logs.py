@@ -66,7 +66,7 @@ async def process_logs_async(tournament_id: int, file: UploadFile, session=Depen
 @router.post("/{tournament_id}/discord")
 async def process_logs_discord(tournament_id: int, session=Depends(db.get_async_session)):
     tournament = await tournaments_flows.get(session, tournament_id, [])
-    await task_router.broker.publish({"action": "process_all"}, channel="discord_commands")
+    await task_router.broker.publish({"action": "process_all"}, queue="discord_commands")
     return {"message": f"Processing all logs for tournament '{tournament.name}'"}
 
 
@@ -85,7 +85,7 @@ async def process_logs_discord(
             "message_id": message_id,
             "tournament_id": tournament.id,
         },
-        channel="discord_commands",
+        queue="discord_commands",
     )
     return {"message": f"Processing message {message_id} in channel {channel_id} for tournament '{tournament.name}'"}
 

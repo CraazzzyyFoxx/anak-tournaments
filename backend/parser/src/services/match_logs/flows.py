@@ -1042,7 +1042,8 @@ async def process_match_log(session: AsyncSession, tournament_id: int, filename:
         await processor.start(session, is_raise=is_raise)
     except Exception as e:
         logger.exception(e)
-        raise e
+        if is_raise:
+            raise e
 
 
 async def make_tournament_folder(session: AsyncSession, tournament: models.Tournament, filename: str) -> None:
