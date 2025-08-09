@@ -54,6 +54,8 @@ class AppConfig(BaseSettings):
     proxy_username: str | None = None
     proxy_password: str | None = None
 
+    rabbitmq_url: str | None = None
+
     @property
     def db_url_asyncpg(self):
         url = (
@@ -72,7 +74,7 @@ class AppConfig(BaseSettings):
 
     @property
     def broker_url(self):
-        return f"{self.redis_url}/0"
+        return self.rabbitmq_url
 
 
 settings = AppConfig()

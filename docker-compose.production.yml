@@ -7,6 +7,27 @@ services:
     networks:
       - app-network
 
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    restart: unless-stopped
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
+      # опционально: единый cookie для кластера
+      # - RABBITMQ_ERLANG_COOKIE=${RABBITMQ_ERLANG_COOKIE}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - app-network
+
   nginx:
     image: nginx:latest
     ports:
@@ -43,10 +64,12 @@ services:
       - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
       - CLERK_JWKS_URL=${CLERK_JWKS_URL}
       - CLERK_ISSUER=${CLERK_ISSUER}
+      - RABBITMQ_URL=${RABBITMQ_URL}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
       - redis
+      - rabbitmq
     networks:
       - app-network
 
@@ -56,7 +79,7 @@ services:
       context: ./backend
       args:
         APP_PATH: parser
-    command: uvicorn main:app --host 0.0.0.0 --port 8081 --loop uvloop
+    command: uvicorn main:app --host 0.0.0.0 --port 8081 --loop uvloop  --workers 4
     environment:
       - ENVIRONMENT=${ENVIRONMENT}
       - PROJECT_URL=${PROJECT_URL}
@@ -81,12 +104,14 @@ services:
       - PROXY_PORT=${PROXY_PORT}
       - PROXY_USERNAME=${PROXY_USERNAME}
       - PROXY_PASSWORD=${PROXY_PASSWORD}
+      - RABBITMQ_URL=${RABBITMQ_URL}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./logs/parser:/logs
     depends_on:
       - redis
+      - rabbitmq
     networks:
       - app-network
 
@@ -111,8 +136,10 @@ services:
       - PROXY_USERNAME=${PROXY_USERNAME}
       - PROXY_PASSWORD=${PROXY_PASSWORD}
       - TOURNAMENT_ID=${TOURNAMENT_ID}
+      - RABBITMQ_URL=${RABBITMQ_URL}
     depends_on:
       - redis
+      - rabbitmq
     volumes:
       - ./logs/discord:/logs
     networks:
@@ -138,6 +165,7 @@ services:
 
 volumes:
   redis-data:
+  rabbitmq-data:
 
 networks:
   app-network:

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
-from faststream.redis.fastapi import RedisRouter
+from faststream.rabbit.fastapi import RabbitRouter
 from loguru import logger
 
 from src.core import config, db, enums
@@ -18,7 +18,7 @@ router = APIRouter(
     tags=[enums.RouteTag.LOGS],
     dependencies=[Depends(auth_flows.current_user)],
 )
-task_router = RedisRouter(config.settings.broker_url, logger=logger)
+task_router = RabbitRouter(config.settings.broker_url, logger=logger)
 publisher = task_router.publisher(PROCESS_MATCH_LOGS_TOPIC, title="Logs")
 
 
