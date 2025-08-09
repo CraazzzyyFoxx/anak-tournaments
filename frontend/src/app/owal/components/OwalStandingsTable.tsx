@@ -26,6 +26,9 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { DataTableSortButton } from "@/components/DataTableSortButton";
 import PlayerDivisionIcon from "@/components/PlayerDivisionIcon";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+
 
 const getDayColor = (points: number) => {
   let color = {} as React.CSSProperties;
@@ -53,6 +56,8 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
     }
   ]);
   const [globalFilter, setGlobalFilter] = React.useState("");
+  const [show3Plus, setShow3Plus] = React.useState(false);
+
 
   const days_columns: ColumnDef<OwalStanding>[] = data.days.map((day) => ({
     id: `day_${day.id}`,
@@ -186,13 +191,19 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
     }
   ];
 
+  const standingsData = React.useMemo(
+    () => (show3Plus ? data.standings.filter((s) => s.count_days >= 3) : data.standings),
+    [show3Plus, data.standings]
+  );
+
+
   const table = useReactTable({
-    data: data.standings,
+    data: standingsData,
     columns,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    rowCount: data.standings.length,
+    rowCount: standingsData.length,
     onSortingChange: setSorting,
     state: {
       sorting,
@@ -209,12 +220,23 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
 
   return (
     <div className="flex flex-col gap-8">
-      <div className="sm:w-[300px] md:w-[200px] lg:w-[300px]">
-        <Input
-          value={globalFilter}
-          onChange={(e) => setGlobalFilter(e.target.value)}
-          placeholder="Search user..."
-        />
+      <div className="flex items-center gap-4 flex-wrap">
+        <div className="sm:w-[300px] md:w-[200px] lg:w-[300px]">
+          <Input
+            value={globalFilter}
+            onChange={(e) => setGlobalFilter(e.target.value)}
+            placeholder="Search user..."
+          />
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Checkbox
+            id="only3plus"
+            checked={show3Plus}
+            onCheckedChange={(v) => setShow3Plus(v === true)}
+          />
+          <Label htmlFor="only3plus">Only 3+ days</Label>
+        </div>
       </div>
       <ScrollArea>
         <Card>
