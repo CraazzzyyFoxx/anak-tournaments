@@ -19,7 +19,6 @@ import {
   SortingState,
   useReactTable
 } from "@tanstack/react-table";
-import { useRouter } from "next/navigation";
 import { getWinrateColor } from "@/utils/colors";
 import { CardContent, Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -49,7 +48,6 @@ const getDayColor = (points: number) => {
 };
 
 const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
-  const router = useRouter();
   const [sorting, setSorting] = React.useState<SortingState>([
     {
       id: "place",
@@ -87,114 +85,118 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
     }
   }));
 
-  const columns: ColumnDef<OwalStanding>[] = [
-    {
-      accessorKey: "place",
-      header: ({ column }) => {
-        return <DataTableSortButton column={column} label={"Place"} />;
+  const columns = React.useMemo<ColumnDef<OwalStanding>[]>(
+    () => [
+      {
+        accessorKey: "place",
+        header: ({ column }) => {
+          return <DataTableSortButton column={column} label={"Place"} />;
+        },
+        id: "place",
+        accessorFn: (row) => row.place
       },
-      id: "place",
-      accessorFn: (row) => row.place
-    },
-    {
-      accessorKey: "user.name",
-      id: "userName",
-      header: "Player",
-      cell: ({ row }) => {
-        return (
-          <div className="text-right">
-            <Link href={`/users/${row.getValue<string>("userName").replace("#", "-")}`}>
-              {row.getValue<string>("userName").split("#")[0]}
-            </Link>
-          </div>
-        );
-      }
-    },
-    {
-      accessorKey: "role",
-      id: "role",
-      header: "Role",
-      cell: ({ row }) => {
-        return <div className="text-right">{row.getValue<string>("role")}</div>;
-      }
-    },
-    {
-      accessorKey: "division",
-      id: "division",
-      header: "Division",
-      cell: ({ row }) => {
-        return (
-          <PlayerDivisionIcon
-            division={row.getValue<number>("division")}
-            width={32}
-            height={32}
-          />
-        );
-      }
-    },
-    ...days_columns,
-    {
-      accessorKey: "count_days",
-      header: "Played",
-      id: "count_days",
-      cell: ({ row }) => <div>{row.getValue<number>("count_days")}</div>
-    },
-    {
-      accessorKey: "best_3_days",
-      id: "best_3_days",
-      header: "TOTAL (best 3 days)",
-      cell: ({ row }) => {
-        return <div>{row.getValue<number>("best_3_days").toFixed(3)}</div>;
-      }
-    },
-    {
-      accessorKey: "avg_points",
-      header: "Average",
-      id: "avg_points",
-      cell: ({ row }) => {
-        return <div>{row.getValue<number>("avg_points").toFixed(3)}</div>;
-      }
-    },
-    {
-      accessorKey: "wins",
-      header: "W",
-      id: "wins",
-      cell: ({ row }) => {
-        return <div className="text-green-400">{row.getValue<number>("wins")}</div>;
-      }
-    },
-    {
-      accessorKey: "losses",
-      header: "L",
-      id: "losses",
-      cell: ({ row }) => {
-        return <div className="text-red-400">{row.getValue<number>("losses")}</div>;
-      }
-    },
-    {
-      accessorKey: "draws",
-      header: "D",
-      id: "draws",
-      cell: ({ row }) => {
-        return <div className="text-gray-400">{row.getValue<number>("draws")}</div>;
-      }
-    },
-    {
-      accessorKey: "win_rate",
-      id: "win_rate",
-      header: ({ column }) => {
-        return <DataTableSortButton column={column} label={"Win ratio"} />;
+      {
+        accessorKey: "user.name",
+        id: "userName",
+        header: "Player",
+        cell: ({ row }) => {
+          return (
+            <div className="text-right">
+              <Link href={`/users/${row.getValue<string>("userName").replace("#", "-")}`}>
+                {row.getValue<string>("userName").split("#")[0]}
+              </Link>
+            </div>
+          );
+        }
       },
-      cell: ({ row }) => {
-        const winrate = row.getValue<number>("win_rate");
-        return (
-          <div style={{ color: getWinrateColor(winrate) }}>
-            {(winrate * 100).toFixed(2)}%
-          </div>
-        );
+      {
+        accessorKey: "role",
+        id: "role",
+        header: "Role",
+        cell: ({ row }) => {
+          return <div className="text-right">{row.getValue<string>("role")}</div>;
+        }
+      },
+      {
+        accessorKey: "division",
+        id: "division",
+        header: "Division",
+        cell: ({ row }) => {
+          return (
+            <PlayerDivisionIcon
+              division={row.getValue<number>("division")}
+              width={32}
+              height={32}
+            />
+          );
+        }
+      },
+      ...days_columns,
+      {
+        accessorKey: "count_days",
+        header: "Played",
+        id: "count_days",
+        cell: ({ row }) => <div>{row.getValue<number>("count_days")}</div>
+      },
+      {
+        accessorKey: "best_3_days",
+        id: "best_3_days",
+        header: "TOTAL (best 3 days)",
+        cell: ({ row }) => {
+          return <div>{row.getValue<number>("best_3_days").toFixed(3)}</div>;
+        }
+      },
+      {
+        accessorKey: "avg_points",
+        header: "Average",
+        id: "avg_points",
+        cell: ({ row }) => {
+          return <div>{row.getValue<number>("avg_points").toFixed(3)}</div>;
+        }
+      },
+      {
+        accessorKey: "wins",
+        header: "W",
+        id: "wins",
+        cell: ({ row }) => {
+          return <div className="text-green-400">{row.getValue<number>("wins")}</div>;
+        }
+      },
+      {
+        accessorKey: "losses",
+        header: "L",
+        id: "losses",
+        cell: ({ row }) => {
+          return <div className="text-red-400">{row.getValue<number>("losses")}</div>;
+        }
+      },
+      {
+        accessorKey: "draws",
+        header: "D",
+        id: "draws",
+        cell: ({ row }) => {
+          return <div className="text-gray-400">{row.getValue<number>("draws")}</div>;
+        }
+      },
+      {
+        accessorKey: "win_rate",
+        id: "win_rate",
+        header: ({ column }) => {
+          return <DataTableSortButton column={column} label={"Win ratio"} />;
+        },
+        cell: ({ row }) => {
+          const winrate = row.getValue<number>("win_rate");
+          return (
+            <div style={{ color: getWinrateColor(winrate) }}>
+              {(winrate * 100).toFixed(2)}%
+            </div>
+          );
+        }
       }
-    }
-  ];
+    ],
+    []
+  )
+
 
   const standingsData = React.useMemo(
     () => (show3Plus ? data.standings.filter((s) => s.count_days >= 3) : data.standings),
