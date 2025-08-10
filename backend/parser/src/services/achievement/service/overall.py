@@ -273,7 +273,7 @@ async def calculate_just_shooting_achievements(session: AsyncSession) -> None:
     await calculate_wins_achievement(
         session,
         slug="just-shooting",
-        required_value=0.9,
+        required_value=0.89,
         required_position=1,
         operator_str=">=",
         count_by="win",
