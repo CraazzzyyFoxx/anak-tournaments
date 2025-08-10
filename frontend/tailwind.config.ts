@@ -25,7 +25,7 @@ const config = {
       lg: "1024px",
       xl: "1280px",
       "2xl": "1400px",
-      "3xl": "1600px"
+      "3xl": "1620px"
     },
     extend: {
       colors: {
@@ -124,7 +124,7 @@ const config = {
         "accordion-up": "accordion-up 0.2s ease-out"
       },
       maxWidth: {
-        "screen-3xl": "1600px"
+        "screen-3xl": "1620px"
       }
     }
   },
