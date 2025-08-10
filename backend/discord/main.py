@@ -138,8 +138,8 @@ async def main():
     await broker.connect()
 
     try:
-        await client.start(settings.discord_token)
         await broker.start()
+        await client.start(settings.discord_token)
     finally:
         await client.close()
         await broker.close()
