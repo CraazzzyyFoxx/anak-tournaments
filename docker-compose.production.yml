@@ -83,7 +83,7 @@ services:
       context: ./backend
       args:
         APP_PATH: parser
-    command: uvicorn main:app --host 0.0.0.0 --port 8081 --loop uvloop  --workers 4
+    command: uvicorn main:app --host 0.0.0.0 --port 8081 --loop uvloop
     environment:
       - ENVIRONMENT=${ENVIRONMENT}
       - PROJECT_URL=${PROJECT_URL}
