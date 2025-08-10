@@ -2,7 +2,7 @@ import discord
 import httpx
 import asyncio
 
-from faststream.redis import RedisBroker
+from faststream.rabbit import RabbitBroker
 
 from src.core.config import settings
 from src.core.logging import logger
@@ -20,7 +20,7 @@ else:
 
 
 client = discord.Client(intents=intents, proxy=proxy_conf)
-broker = RedisBroker(settings.broker_url)
+broker = RabbitBroker(settings.broker_url)
 httpx_client = httpx.AsyncClient(
     base_url=settings.parser_url,
     headers={"Authorization": f"Bearer {settings.access_token_service}"},
