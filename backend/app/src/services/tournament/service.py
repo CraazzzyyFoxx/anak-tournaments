@@ -29,6 +29,25 @@ def tournament_entities(
     return entities
 
 
+def league_entities(
+    in_entities: list[str], child: typing.Any | None = None
+) -> list[_AbstractLoad]:
+    """
+    Constructs a list of SQLAlchemy load options for querying related entities of a `League` model.
+
+    Args:
+        in_entities: A list of strings representing the names of related entities to load.
+        child: An optional SQLAlchemy relationship or join entity to chain the load options.
+
+    Returns:
+        A list of SQLAlchemy load options (`_AbstractLoad`) for the specified entities.
+    """
+    entities = []
+    if "tournaments" in in_entities:
+        entities.append(utils.join_entity(child, models.League.tournaments))
+    return entities
+
+
 async def get(
     session: AsyncSession, id: int, entities: list[str]
 ) -> models.Tournament | None:
@@ -411,3 +430,24 @@ async def get_league_player_stacks(session: AsyncSession) -> tuple[
 
     standings_dict = {(s.team_id, s.tournament_id): s for s in standings}
     return stacks, team_tournament_players, standings_dict
+
+
+async def get_leagues(
+    session: AsyncSession, entities: list[str]
+) -> typing.Sequence[models.League]:
+    """
+    Retrieves all league tournaments.
+
+    Args:
+        session: An SQLAlchemy `AsyncSession` for database interaction.
+        entities: A list of strings representing the names of related entities to include.
+
+    Returns:
+        A sequence of `League` model instances that are leagues.
+    """
+    query = (
+        sa.select(models.League)
+        .options(*league_entities(entities))
+    )
+    result = await session.execute(query)
+    return result.unique().scalars().all()

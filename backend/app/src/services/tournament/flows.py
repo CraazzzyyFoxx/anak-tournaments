@@ -385,3 +385,28 @@ async def get_league_player_stacks(
     stack_results.sort(key=lambda x: x.avg_position)
 
     return stack_results
+
+
+async def get_leagues(
+    session: AsyncSession, params: schemas.TournamentPaginationSortSearchParams
+) -> pagination.Paginated[schemas.LeagueRead]:
+    """
+    Retrieves a paginated list of leagues and converts them to `LeagueRead` schemas.
+
+    Args:
+        session: An SQLAlchemy `AsyncSession` for database interaction.
+        params: An instance of `SearchPaginationParams` containing pagination and filtering parameters.
+
+    Returns:
+        A `Paginated` instance containing `LeagueRead` schemas.
+    """
+    results, total = await service.get_leagues(session, params)
+    return pagination.Paginated(
+        results=[
+            schemas.LeagueRead.model_validate(result, from_attributes=True)
+            for result in results
+        ],
+        total=total,
+        per_page=params.per_page,
+        page=params.page,
+    )

@@ -17,6 +17,7 @@ __all__ = (
     "TournamentPaginationSortSearchQueryParams",
     "TournamentPaginationSortSearchParams",
     "LeaguePlayerStack",
+    "LeagueRead",
 )
 
 
@@ -94,3 +95,14 @@ class LeaguePlayerStack(BaseModel):
     user_2: UserRead
     games: int
     avg_position: float
+
+
+class LeagueRead(BaseRead):
+    name: str
+    number: int | None
+    description: str | None
+    is_finished: bool
+    start_date: datetime | None
+    end_date: datetime | None
+
+    tournaments: list[TournamentRead] | None = None

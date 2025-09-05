@@ -13,6 +13,7 @@ if typing.TYPE_CHECKING:
 __all__ = (
     "Tournament",
     "TournamentGroup",
+    "League",
 )
 
 
@@ -24,6 +25,7 @@ class Tournament(db.TimeStampIntegerMixin):
     description: Mapped[str | None] = mapped_column(String(), nullable=True)
     challonge_id: Mapped[int | None] = mapped_column(Integer(), nullable=True)
     challonge_slug: Mapped[str | None] = mapped_column(String(), nullable=True)
+    league_id: Mapped[int | None] = mapped_column(ForeignKey("league.id"), nullable=True)
     is_league: Mapped[bool] = mapped_column(
         Boolean(), default=False, server_default="false", nullable=False
     )
@@ -54,3 +56,23 @@ class TournamentGroup(db.TimeStampIntegerMixin):
     challonge_slug: Mapped[str | None] = mapped_column(String(), nullable=True)
 
     tournament: Mapped[Tournament] = relationship(back_populates="groups")
+
+
+class League(db.TimeStampIntegerMixin):
+    __tablename__ = "league"
+
+    name = mapped_column(String(), nullable=False)
+    number = mapped_column(Integer(), nullable=True)
+    description = mapped_column(String(), nullable=True)
+    is_finished = mapped_column(
+        Boolean(), default=False, server_default="false", nullable=False
+    )
+    start_date = mapped_column(db.DateTime(timezone=True), nullable=True)
+    end_date = mapped_column(db.DateTime(timezone=True), nullable=True)
+
+    tournaments: Mapped[list[Tournament]] = relationship(
+        "Tournament",
+        back_populates="league",
+        cascade="all, delete-orphan",
+        uselist=True,
+    )
