@@ -700,7 +700,7 @@ class MatchLogProcessor:
                 )
             return None
 
-        if not self.validate(is_raise=is_raise):
+        if not await self.validate(is_raise=is_raise):
             return None
         await self._preload_data(session)
         (home_team_tuple, away_team_tuple) = await self.process_teams(session)
