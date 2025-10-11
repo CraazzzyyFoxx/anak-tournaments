@@ -49,13 +49,13 @@ async def process_attachment(tournament_id: int, attachment: discord.Attachment)
                 return True
             else:
                 logger.info(
-                    f"❌ Error processing {attachment.filename}: {process_response.status_code}"
+                    f"❌ Error processing {attachment.filename}: {process_response.status_code} - {process_response.text}"
                 )
                 return False
 
         else:
             logger.info(
-                f"❌ Error uploading {attachment.filename}: {upload_response.status_code}"
+                f"❌ Error uploading {attachment.filename}: {upload_response.status_code} - {upload_response.text}"
             )
     except httpx.HTTPError as e:
         logger.info(f"❌ HTTP error: {e}")
