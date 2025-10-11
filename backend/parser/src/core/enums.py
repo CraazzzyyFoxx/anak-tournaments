@@ -261,6 +261,6 @@ hero_translation = {
     "Юнона": "Juno",
     "Азарт": "Hazard",
     "Фрейя": "Freja",
-    "Freya": "Freja"
-
+    "Freya": "Freja",
+    "У Ян": "Weyang",
 }
