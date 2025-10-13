@@ -46,10 +46,18 @@ async def initial_create(session: AsyncSession) -> None:
     for gamemode in gamemodes:
         maps = await fetch_maps(gamemode)
         for map in maps:
-            if not await service.get_by_name(session, map.name):
+            map_db = await service.get_by_name(session, map.name)
+            if not map_db:
                 await service.create(
                     session,
                     gamemode=gamemode,
+                    name=map.name,
+                    image_path=map.screenshot,
+                )
+            else:
+                await service.update(
+                    session,
+                    map_db,
                     name=map.name,
                     image_path=map.screenshot,
                 )

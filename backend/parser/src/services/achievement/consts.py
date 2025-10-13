@@ -276,6 +276,12 @@ heroes_achievements: list[schemas.AchievementCreate] = [
         slug="freya",
         description_ru="Иметь лучшее K/D на Фрейе за турнир",
         description_en="Have the best K/D as Freja during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name='Водник',
+        slug='wuyang',
+        description_ru='Иметь лучшее K/D на У Ян за турнир',
+        description_en='Have the best K/D as Wuyang during the tournament',
     )
 ]
 

@@ -69,3 +69,22 @@ async def create(
     session.add(gamemode)
     await session.commit()
     return gamemode
+
+
+async def update(
+    session: AsyncSession,
+    map: models.Map,
+    *,
+    gamemode: models.Gamemode | None = None,
+    name: str | None = None,
+    image_path: str | None = None,
+) -> models.Map:
+    if gamemode is not None:
+        map.gamemode_id = gamemode.id
+    if name is not None:
+        map.name = name
+    if image_path is not None:
+        map.image_path = image_path
+    session.add(map)
+    await session.commit()
+    return map
