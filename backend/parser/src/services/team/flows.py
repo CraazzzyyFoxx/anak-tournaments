@@ -295,7 +295,7 @@ def format_team_name(name: str, mapper: dict[str, str] | None) -> str:
     if "#" in new_name:
         new_name = new_name.split("#")[0]
 
-    if "Team " in new_name:
+    if "Team" in new_name:
         new_name = new_name.replace("Team ", "").strip()
 
     return new_name
