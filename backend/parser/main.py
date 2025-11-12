@@ -29,12 +29,12 @@ async def lifespan(_: FastAPI):
         # await map_flows.initial_create(session)
         # await hero_flows.initial_create(session)
         # await balancer_service.get_balance(session)
-        await achievement_flows.calculate_achievements(session)
+        # await achievement_flows.calculate_achievements(session)
         # for index in range(44, 47+1):
         #     await analytics_flows.get_analytics(session,  index)
-        await analytics_flows.get_analytics(session, 2)
-        await analytics_flows.get_analytics_openskill(session, 2)
-        await analytics_flows.get_predictions_openskill(session, 2)
+        # await analytics_flows.get_analytics(session, 2)
+        # await analytics_flows.get_analytics_openskill(session, 2)
+        # await analytics_flows.get_predictions_openskill(session, 2)
         pass
     logger.info("Application... Online!")
     yield

@@ -15,9 +15,6 @@ services:
       - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
       # опционально: единый cookie для кластера
       # - RABBITMQ_ERLANG_COOKIE=${RABBITMQ_ERLANG_COOKIE}
-    ports:
-      - "5672:5672"
-      - "15672:15672"
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
     healthcheck:
