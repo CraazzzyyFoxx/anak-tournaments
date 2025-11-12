@@ -30,7 +30,7 @@ async def bulk_create_users_from_csv(
     return await user_flows.bulk_create_users_from_csv(
         session,
         data.filename,
-        text,
+        text.decode("utf-8"),
         start_row,
         battle_tag_row=battle_tag_row,
         discord_row=discord_row,

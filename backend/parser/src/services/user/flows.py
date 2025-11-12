@@ -120,7 +120,7 @@ async def create(session: AsyncSession, data_in: schemas.UserCSV) -> models.User
 async def bulk_create_users_from_csv(
     session: AsyncSession,
     filename: str,
-    data: bytes,
+    data: str,
     start_row: int = 0,
     *,
     battle_tag_row: int,
