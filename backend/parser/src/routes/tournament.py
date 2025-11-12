@@ -40,4 +40,6 @@ async def create_with_groups(
     end_date: date,
     session=Depends(db.get_async_session),
 ):
-    return await tournament_flows.create_with_groups(session, number, challonge_slug)
+    return await tournament_flows.create_with_groups(
+        session, number, is_league, start_date, end_date, challonge_slug
+    )
