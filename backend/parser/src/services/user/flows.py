@@ -1,9 +1,17 @@
+import csv
+import re
+
+from loguru import logger
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models, schemas
-from src.core import errors
+from src.core import errors, config
 
 from . import service
+
+
+battle_tag_validator = re.compile(config.settings.battle_tag_regex, re.UNICODE)
 
 
 async def get(session: AsyncSession, user_id: int, entities: list[str]) -> models.User:
@@ -107,3 +115,45 @@ async def create(session: AsyncSession, data_in: schemas.UserCSV) -> models.User
                 await service.update_discord(session, discord_names[data_in.discord], name=data_in.discord)
 
     return await service.get(session, user.id, ["battle_tag", "twitch", "discord"])  # type: ignore
+
+
+async def bulk_create_users_from_csv(
+    session: AsyncSession,
+    filename: str,
+    data: bytes,
+    start_row: int = 0,
+    *,
+    battle_tag_row: int,
+    discord_row: int,
+    twitch_row: int,
+    smurf_row: int,
+    delimiter: str = ",",
+    has_discord: bool = True,
+    has_smurf: bool = True,
+    has_twitch: bool = True,
+) -> None:
+    file_reader = csv.reader(data, delimiter=delimiter)
+    for index, row in enumerate(file_reader, 0):
+        if index < start_row:
+            continue
+        battle_tag = row[battle_tag_row].strip().replace(" #", "#").replace("# ", "#")
+        twitch = row[twitch_row].strip() if has_twitch else None
+        discord = row[discord_row].strip() if has_discord else None
+        smurfs = row[smurf_row] if has_smurf else ""
+
+        try:
+            payload = schemas.UserCSV(
+                battle_tag=battle_tag_validator.findall(battle_tag)[0],
+                discord=discord,
+                twitch=twitch,
+                smurfs=battle_tag_validator.findall(smurfs),
+            )
+        except (IndexError, ValidationError):
+            logger.error(
+                f"Invalid data in row {index + 1} of {filename}: "
+                f"Battle Tag: {battle_tag}, Discord: {discord}, "
+                f"Twitch: {twitch}, Smurfs: {smurfs}"
+            )
+            continue
+
+        await create(session, payload)
