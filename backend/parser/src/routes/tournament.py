@@ -35,6 +35,9 @@ async def create(
 async def create_with_groups(
     number: int,
     challonge_slug: str,
+    is_league: bool,
+    start_date: date,
+    end_date: date,
     session=Depends(db.get_async_session),
 ):
     return await tournament_flows.create_with_groups(session, number, challonge_slug)

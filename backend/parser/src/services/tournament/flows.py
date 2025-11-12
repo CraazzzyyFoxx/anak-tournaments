@@ -162,6 +162,9 @@ async def create_groups(
 async def create_with_groups(
     session: AsyncSession,
     number: int,
+    is_league: bool,
+    start_date: date,
+    end_date: date,
     challonge_slug: str,
 ) -> models.Tournament:
     if await service.get_by_number(session, number, []) is not None:
@@ -189,11 +192,13 @@ async def create_with_groups(
     tournament = await service.create(
         session,
         number=number,
-        is_league=False,
+        is_league=is_league,
         name=challonge_tournament.name,
         description=challonge_tournament.description,
         challonge_id=challonge_tournament.id,
         challonge_slug=challonge_tournament.url,
+        start_date=start_date,
+        end_date=end_date,
     )
     tournament = await service.get(session, tournament.id, [])
     return await create_groups(session, tournament, challonge_tournament)
@@ -224,6 +229,8 @@ async def create(
         number=number,
         name=f"Турнир Сабов Anakq #{number}",
         is_league=is_league,
+        start_date=start_date,
+        end_date=end_date,
     )
 
     for sym_index, slug in enumerate(groups_challonge_slugs, start=65):

@@ -1,5 +1,5 @@
 import typing
-from datetime import datetime
+from datetime import datetime, date
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -93,8 +93,8 @@ async def create(
     description: str | None = None,
     challonge_id: int | None = None,
     challonge_slug: str | None = None,
-    start_date: datetime | None = None,
-    end_date: datetime | None = None,
+    start_date: datetime | date | None = None,
+    end_date: datetime | date | None = None,
 ) -> models.Tournament:
     tournament = models.Tournament(
         number=number,
