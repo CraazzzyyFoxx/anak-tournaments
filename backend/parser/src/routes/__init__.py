@@ -9,6 +9,7 @@ from src.routes.standing import router as standings_router
 from src.routes.team import router as team_router
 from src.routes.tournament import router as tournament_router
 from src.routes.analytics import router as analytics_router
+from src.routes.user import router as user_router
 
 router = APIRouter()
 router.include_router(auth_router)
@@ -20,3 +21,5 @@ router.include_router(logs_router)
 router.include_router(logs_task_router)
 router.include_router(challonge_router)
 router.include_router(analytics_router)
+router.include_router(user_router)
+
