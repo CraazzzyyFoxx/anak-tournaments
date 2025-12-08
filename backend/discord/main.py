@@ -1,17 +1,27 @@
+"""
+Discord Bot for collecting match logs from channels
+Monitors configured channels and processes log files in real-time
+"""
 import discord
 import httpx
 import asyncio
+from datetime import datetime, timedelta
+from typing import Dict, Set
 
-from faststream.rabbit import RabbitBroker
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
 from src.core.logging import logger
+from src.core.db import async_session_maker
+from shared.models import Tournament, TournamentDiscordChannel
 
 
 intents = discord.Intents.default()
 intents.messages = True
 intents.message_content = True
 intents.reactions = True
+intents.guilds = True
 
 if settings.proxy_ip:
     proxy_conf = f"http://{settings.proxy_username}:{settings.proxy_password}@{settings.proxy_ip}:{settings.proxy_port}"
@@ -20,129 +30,286 @@ else:
 
 
 client = discord.Client(intents=intents, proxy=proxy_conf)
-broker = RabbitBroker(settings.broker_url)
-httpx_client = httpx.AsyncClient(
-    base_url=settings.parser_url,
-    headers={"Authorization": f"Bearer {settings.access_token_service}"},
-    proxy=httpx.Proxy(
-        url=proxy_conf,
-    ),
-    timeout=httpx.Timeout(10, read=10),
-)
+
+# Cache for active tournaments and their channels
+active_channels: Dict[int, int] = {}  # channel_id -> tournament_id
+processing_messages: Set[int] = set()  # message IDs being processed
 
 
-async def process_attachment(tournament_id: int, attachment: discord.Attachment) -> bool:
+async def get_httpx_client() -> httpx.AsyncClient:
+    """Create HTTP client for parser service"""
+    return httpx.AsyncClient(
+        base_url=settings.parser_url,
+        headers={"Authorization": f"Bearer {settings.access_token_service}"},
+        proxy=httpx.Proxy(url=proxy_conf) if proxy_conf else None,
+        timeout=httpx.Timeout(30, read=60),
+    )
+
+
+async def load_active_channels():
+    """Load active tournament channels from database"""
+    global active_channels
+    
+    async with async_session_maker() as session:
+        # Get tournaments that are not finished or finished less than 1 day ago
+        one_day_ago = datetime.utcnow() - timedelta(days=1)
+        
+        result = await session.execute(
+            select(TournamentDiscordChannel, Tournament)
+            .join(Tournament, TournamentDiscordChannel.tournament_id == Tournament.id)
+            .where(
+                TournamentDiscordChannel.is_active == True,
+                (
+                    (Tournament.is_finished == False) |
+                    (
+                        (Tournament.is_finished == True) &
+                        (Tournament.end_date != None) &
+                        (Tournament.end_date >= one_day_ago)
+                    )
+                )
+            )
+        )
+        
+        new_channels = {}
+        for discord_channel, tournament in result:
+            new_channels[discord_channel.channel_id] = tournament.id
+            logger.info(
+                f"📌 Monitoring channel {discord_channel.channel_id} "
+                f"for tournament #{tournament.number} - {tournament.name}"
+            )
+        
+        active_channels = new_channels
+        logger.success(f"✅ Loaded {len(active_channels)} active channels")
+
+
+async def process_attachment(
+    tournament_id: int,
+    attachment: discord.Attachment,
+    http_client: httpx.AsyncClient
+) -> bool:
+    """
+    Download and process a single attachment
+    Returns True if successful
+    """
     try:
-        response = await httpx_client.get(attachment.url)
+        logger.info(f"📥 Downloading {attachment.filename} for tournament {tournament_id}")
+        
+        # Download file from Discord
+        response = await http_client.get(attachment.url)
         response.raise_for_status()
 
+        # Upload to parser service
         files = {
             "file": (attachment.filename, response.content, attachment.content_type)
         }
 
-        upload_response = await httpx_client.post(f"logs/{tournament_id}/upload", files=files)
-        if upload_response.status_code == 200:
-            logger.info(f"✅ {attachment.filename} uploaded")
-            process_response = await httpx_client.post(f"logs/{tournament_id}/{attachment.filename}")
-            if process_response.status_code == 200:
-                logger.info(f"✅ {attachment.filename} processed")
-                return True
-            else:
-                logger.info(
-                    f"❌ Error processing {attachment.filename}: {process_response.status_code} - {process_response.text}"
-                )
-                return False
-
-        else:
-            logger.info(
-                f"❌ Error uploading {attachment.filename}: {upload_response.status_code} - {upload_response.text}"
+        upload_response = await http_client.post(
+            f"logs/{tournament_id}/upload",
+            files=files
+        )
+        
+        if upload_response.status_code != 200:
+            logger.error(
+                f"❌ Upload failed for {attachment.filename}: "
+                f"{upload_response.status_code} - {upload_response.text}"
             )
+            return False
+            
+        logger.success(f"✅ {attachment.filename} uploaded")
+
+        # Process the uploaded file
+        process_response = await http_client.post(
+            f"logs/{tournament_id}/{attachment.filename}"
+        )
+        
+        if process_response.status_code != 200:
+            logger.error(
+                f"❌ Processing failed for {attachment.filename}: "
+                f"{process_response.status_code} - {process_response.text}"
+            )
+            return False
+            
+        logger.success(f"✅ {attachment.filename} processed successfully")
+        return True
+
     except httpx.HTTPError as e:
-        logger.info(f"❌ HTTP error: {e}")
+        logger.error(f"❌ HTTP error processing {attachment.filename}: {e}")
         return False
-    except discord.Forbidden:
-        logger.info("❌ Bot does not have permission to react to the message.")
+    except Exception as e:
+        logger.error(f"❌ Unexpected error processing {attachment.filename}: {e}")
         return False
 
 
-async def process_message(tournament_id: int, message: discord.Message) -> None:
-    states: list[bool] = []
+async def process_message(message: discord.Message, tournament_id: int) -> None:
+    """
+    Process a single message and its attachments
+    Adds reactions to indicate status
+    """
+    if message.id in processing_messages:
+        return  # Already processing
+    
+    if not message.attachments:
+        return  # No attachments to process
+    
+    processing_messages.add(message.id)
+    
     try:
-        if message.attachments:
+        results = []
+        async with await get_httpx_client() as http_client:
             for attachment in message.attachments:
-                state = await process_attachment(tournament_id, attachment)
-                states.append(state)
-        if all(states):
-            await message.add_reaction("✅")
-            await message.remove_reaction("❌", client.user)
-        else:
-            await message.add_reaction("❌")
-            await message.remove_reaction("✅", client.user)
-    except discord.Forbidden:
-        logger.info("❌ Bot does not have permission to react to the message.")
-
-
-async def process_all_messages(tournament_id: int) -> None:
-    logger.info("🔍 Starting to process all messages in the channel...")
-    channel = client.get_channel(settings.discord_channel_id)
-    if not channel:
-        logger.info("❌ Channel not found.")
-        return
-
-    async for message in channel.history(limit=None):
-        await process_message(tournament_id, message)
-
-
-@broker.subscriber("discord_commands")
-async def handle_command(cmd: dict):
-    if cmd.get("action") == "process_all":
-        tournament_id = cmd.get("tournament_id")
-        if not tournament_id:
-            logger.info("❌ No tournament ID provided for process_all command.")
+                # Only process log files
+                if attachment.filename.lower().endswith(('.txt', '.log', '.json')):
+                    success = await process_attachment(tournament_id, attachment, http_client)
+                    results.append(success)
+                else:
+                    logger.info(f"⏭️ Skipping non-log file: {attachment.filename}")
+        
+        if not results:
             return
-        logger.info("🚀 Command from FastStream: process_all")
-        await process_all_messages(tournament_id)
-    elif cmd.get("action") == "process_message":
-        logger.info("🚀 Command from FastStream: process_message")
-        message_id = cmd.get("message_id")
-        channel_id = cmd.get("channel_id")
-        tournament_id = cmd.get("tournament_id")
-        channel = client.get_channel(channel_id)
-        if channel:
-            message = await channel.fetch_message(message_id)
-            await process_message(tournament_id, message)
-        else:
-            logger.info(f"❌ Channel with ID {channel_id} not found.")
-
-
-@client.event
-async def on_message(message: discord.Message):
-    if message.channel.id != settings.discord_channel_id:
-        return
-
-    if message.attachments:
-        for attachment in message.attachments:
-            state = await process_attachment(settings.tournament_id, attachment)
-            if state:
+        
+        # Update reactions based on results
+        try:
+            if all(results):
                 await message.add_reaction("✅")
+                try:
+                    await message.remove_reaction("❌", client.user)
+                except discord.NotFound:
+                    pass
             else:
                 await message.add_reaction("❌")
+                try:
+                    await message.remove_reaction("✅", client.user)
+                except discord.NotFound:
+                    pass
+        except discord.Forbidden:
+            logger.warning("⚠️ Bot doesn't have permission to add reactions")
+        except discord.HTTPException as e:
+            logger.warning(f"⚠️ Failed to add reaction: {e}")
+            
+    finally:
+        processing_messages.discard(message.id)
+
+
+async def process_channel_history(channel_id: int, tournament_id: int, limit: int = 100):
+    """
+    Process recent message history in a channel
+    Used when bot starts or channel is newly added
+    """
+    try:
+        channel = client.get_channel(channel_id)
+        if not channel:
+            logger.error(f"❌ Channel {channel_id} not found")
+            return
+        
+        logger.info(f"🔍 Processing last {limit} messages in channel {channel_id}")
+        
+        processed = 0
+        async for message in channel.history(limit=limit):
+            if message.attachments:
+                await process_message(message, tournament_id)
+                processed += 1
+        
+        logger.success(f"✅ Processed {processed} messages with attachments")
+        
+    except discord.Forbidden:
+        logger.error(f"❌ No permission to read channel {channel_id}")
+    except Exception as e:
+        logger.error(f"❌ Error processing channel history: {e}")
+
+
+async def channel_monitor_task():
+    """
+    Background task to periodically reload active channels
+    Runs every 5 minutes
+    """
+    await client.wait_until_ready()
+    
+    while not client.is_closed():
+        try:
+            await load_active_channels()
+        except Exception as e:
+            logger.error(f"❌ Error reloading channels: {e}")
+        
+        await asyncio.sleep(300)  # 5 minutes
 
 
 @client.event
 async def on_ready():
-    logger.info(f"✅ Bot started as {client.user}")
+    """Bot is ready and connected"""
+    logger.success(f"✅ Bot started as {client.user}")
+    logger.info(f"📡 Connected to {len(client.guilds)} guilds")
+    
+    # Load active channels
+    await load_active_channels()
+    
+    # Process recent history for all active channels
+    for channel_id, tournament_id in active_channels.items():
+        await process_channel_history(channel_id, tournament_id, limit=50)
+    
+    # Start background monitor task
+    client.loop.create_task(channel_monitor_task())
+
+
+@client.event
+async def on_message(message: discord.Message):
+    """Handle new messages in monitored channels"""
+    # Ignore bot's own messages
+    if message.author == client.user:
+        return
+    
+    # Check if this channel is being monitored
+    tournament_id = active_channels.get(message.channel.id)
+    if not tournament_id:
+        return
+    
+    # Process message attachments
+    if message.attachments:
+        logger.info(
+            f"📨 New message in monitored channel from {message.author.name} "
+            f"with {len(message.attachments)} attachment(s)"
+        )
+        await process_message(message, tournament_id)
+
+
+@client.event
+async def on_message_edit(before: discord.Message, after: discord.Message):
+    """Handle message edits (in case attachments were added)"""
+    # Check if this channel is being monitored
+    tournament_id = active_channels.get(after.channel.id)
+    if not tournament_id:
+        return
+    
+    # Check if attachments were added
+    if len(after.attachments) > len(before.attachments):
+        logger.info(f"📝 Message edited with new attachments")
+        await process_message(after, tournament_id)
+
+
+@client.event
+async def on_guild_join(guild: discord.Guild):
+    """Bot joined a new guild"""
+    logger.info(f"🎉 Joined new guild: {guild.name} (ID: {guild.id})")
+
+
+@client.event
+async def on_guild_remove(guild: discord.Guild):
+    """Bot removed from guild"""
+    logger.warning(f"👋 Removed from guild: {guild.name} (ID: {guild.id})")
 
 
 async def main():
-    await broker.connect()
-
+    """Main entry point"""
     try:
-        await broker.start()
+        logger.info("🚀 Starting Discord Log Collection Bot...")
         await client.start(settings.discord_token)
+    except KeyboardInterrupt:
+        logger.info("⏸️ Shutting down bot...")
+    except Exception as e:
+        logger.error(f"❌ Fatal error: {e}")
     finally:
         await client.close()
-        await broker.close()
+        logger.info("👋 Bot stopped")
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())

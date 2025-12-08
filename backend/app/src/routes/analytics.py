@@ -4,9 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 
-from src import schemas
-from src.schemas.clerk import ClerkUser
-from src.core import config, db, enums, pagination, clerk
+from src import schemas, models
+from src.core import config, db, enums, pagination, auth
 
 from src.services.analytics import flows as analytics_flows
 
@@ -66,12 +65,9 @@ async def get_analytics(
 )
 async def change_shift(
     data: schemas.PlayerShiftUpdate,
-    user: ClerkUser = Depends(clerk.get_current_user),
+    current_user: models.AuthUser = Depends(auth.get_current_superuser),
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    if "org:admin" != user.role:
-        raise HTTPException(status_code=403, detail="Not enough permissions")
-
     return await analytics_flows.change_shift(session, data.player_id, data.shift)
 
 

@@ -1,19 +1,17 @@
 from collections.abc import AsyncGenerator
-from datetime import datetime
 
-from sqlalchemy import BigInteger, ColumnCollection, DateTime, Uuid, create_engine, func
+from sqlalchemy import ColumnCollection, create_engine
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
+
+# Import base classes from shared library
+from shared.core.db import Base, TimeStampIntegerMixin, TimeStampUUIDMixin, DateTime
 
 from src.core import config, errors
 
 
-class Base(DeclarativeBase):
-    entity_name: str = "unknown"
-
-    def to_dict(self):
-        return {c.name: getattr(self, c.name, None) for c in self.__table__.columns}
-
+# Extend Base with parser-specific methods
+class ParserBase(Base):
     @classmethod
     def get_column(cls, column_name: str) -> ColumnCollection:
         if column_name not in {c.name for c in cls.__table__.columns}:
@@ -56,26 +54,6 @@ class Base(DeclarativeBase):
             result[mapper.class_.entity_name] = mapper.class_
 
         return result
-
-
-class TimeStampIntegerMixin(Base):
-    __abstract__ = True
-
-    id: Mapped[int] = mapped_column(BigInteger(), primary_key=True, sort_order=-1000)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), sort_order=-999, default=func.now())
-    updated_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True, sort_order=-998, onupdate=func.now()
-    )
-
-
-class TimeStampUUIDMixin(Base):
-    __abstract__ = True
-
-    id: Mapped[str] = mapped_column(Uuid(), primary_key=True, server_default=func.gen_random_uuid(), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), sort_order=-999, default=func.now())
-    updated_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True, sort_order=-998, onupdate=func.now()
-    )
 
 
 async_engine = create_async_engine(url=config.settings.db_url_asyncpg, pool_size=50, max_overflow=25)
