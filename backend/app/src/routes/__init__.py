@@ -1,6 +1,5 @@
 from fastapi import APIRouter
 
-from src.routes.auth import router as auth_router
 from src.routes.achievements import router as achievements_router
 from src.routes.encounter import router as encounter_router
 from src.routes.match import router as match_router
@@ -15,7 +14,6 @@ from src.routes.utils import router as utils_router
 from src.routes.analytics import router as analytics_router
 
 router = APIRouter()
-router.include_router(auth_router)
 router.include_router(user_router)
 router.include_router(tournament_router)
 router.include_router(team_router)

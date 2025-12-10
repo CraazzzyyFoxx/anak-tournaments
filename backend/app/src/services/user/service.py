@@ -681,7 +681,6 @@ async def get_statistics_by_heroes_all_values(
         4. The average value of the statistic (per 10 minutes).
         5. A dictionary containing metadata about the best performance (e.g., encounter ID, map name, tournament name, username).
     """
-    # Alias для подзапроса проверки времени игры на герое в каждом матче.
     hero_playtime_stat = sa.alias(models.MatchStatistics)
 
     all_max_encounter_filtered = (

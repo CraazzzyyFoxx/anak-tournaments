@@ -2,8 +2,7 @@ from sqlalchemy import Float, ForeignKey, Integer, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db
-from shared.Tournament import Tournament, TournamentGroup
-from shared.Team import Team
+from shared.models import Tournament, TournamentGroup, Team
 
 __all__ = ("Standing",)
 

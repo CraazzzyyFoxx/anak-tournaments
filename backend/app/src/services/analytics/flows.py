@@ -2,10 +2,10 @@ import math
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src import models, schemas
-from src.core import errors, pagination
-from src.services.team import flows as team_flows
-from src.services.user import flows as user_flows
+from app.src import models, schemas
+from app.src.core import errors, pagination
+from app.src.services.team import flows as team_flows
+from app.src.services.user import flows as user_flows
 
 from . import service
 

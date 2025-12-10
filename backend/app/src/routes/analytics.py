@@ -4,10 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 
-from src import schemas, models
-from src.core import config, db, enums, pagination, auth
+from app.src import schemas, models
+from app.src.core import config, db, enums, pagination, auth
 
-from src.services.analytics import flows as analytics_flows
+from app.src.services.analytics import flows as analytics_flows
 
 router = APIRouter(prefix="/analytics", tags=[enums.RouteTag.ANALYTICS])
 

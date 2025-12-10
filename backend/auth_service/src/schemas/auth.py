@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, EmailStr, Field, field_validator
 import re
 
@@ -76,7 +78,7 @@ class AuthUser(BaseModel):
     is_active: bool
     is_superuser: bool
     is_verified: bool
-    created_at: str
+    created_at: datetime
     updated_at: str | None = None
 
     class Config:

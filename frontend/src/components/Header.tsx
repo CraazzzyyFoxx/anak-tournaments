@@ -150,21 +150,15 @@ const Header = () => {
           <UserSearch />
         </div>
         <div className="text-white">
-          <SignedOut>
-            <Button className="bg-[#5865f2] text-white hover:bg-[#5865f2] text-base">
-              <Image
-                className="text-white"
-                src="/discord-white.svg"
-                alt="discord"
-                width="24"
-                height="24"
-              />
-              <SignInButton mode={"modal"} />
-            </Button>
-          </SignedOut>
-          <SignedIn>
-            <UserMenu/>
-          </SignedIn>
+          <Button className="bg-[#5865f2] text-white hover:bg-[#5865f2] text-base">
+            <Image
+              className="text-white"
+              src="/discord-white.svg"
+              alt="discord"
+              width="24"
+              height="24"
+            />
+          </Button>
         </div>
       </div>
     </header>

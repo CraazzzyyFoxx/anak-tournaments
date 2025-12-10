@@ -22,13 +22,12 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8001
     API_V1_STR: str = "/api/v1"
-    
-    # Database (shared with main app)
-    POSTGRES_HOST: str = "localhost"
-    POSTGRES_PORT: int = 5432
-    POSTGRES_DB: str = "anak_tournaments"
-    POSTGRES_USER: str = "postgres"
-    POSTGRES_PASSWORD: str = "postgres"
+
+    POSTGRES_HOST: str
+    POSTGRES_PORT: int
+    POSTGRES_DB: str
+    POSTGRES_USER: str
+    POSTGRES_PASSWORD: str
 
     # JWT Authentication
     JWT_SECRET_KEY: str = Field(default="your-secret-key-change-in-production-min-32-chars")
@@ -63,7 +62,7 @@ class Settings(BaseSettings):
             f"{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@"
             f"{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
         )
-        return f"postgresql://{url}"
+        return f"postgresql+psycopg://{url}"
 
 
 settings = Settings()

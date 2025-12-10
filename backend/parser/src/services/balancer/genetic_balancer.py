@@ -19,21 +19,14 @@ class Config:
     MUTATION_STRENGTH = 3
 
     # === ВЕСА (Бизнес-логика) ===
-    # 1. Равенство команд (чтобы средний рейтинг команд был близким)
     MMR_DIFF_WEIGHT = 3.0
-
-    # 2. Общий комфорт (среднее по больнице)
     DISCOMFORT_WEIGHT = 0.25
-
-    # [NEW] 3. Внутрикомандный баланс (Consistency)
-    # Штраф, если в одной команде играют Грандмастер и Бронза.
-    # Чем выше вес, тем "ровнее" будут игроки внутри одной команды.
     INTRA_TEAM_VAR_WEIGHT = 0.8
-
-    # [NEW] 4. Справедливость (Fairness)
-    # Огромный штраф за "жертву". Алгоритм будет изо всех сил стараться избегать ситуации,
-    # когда один человек страдает (дискомфорт 1000+), даже если это выгодно для среднего значения.
     MAX_DISCOMFORT_WEIGHT = 1.0
+
+    # Настройки отображения
+    CARDS_PER_ROW = 3  # Сколько карточек в одной строке
+    CARD_WIDTH = 40  # Ширина одной карточки в символах
 
     # Стратегии
     USE_CAPTAINS = True
@@ -53,15 +46,11 @@ class Player:
         self.is_captain = False
         self._max_rating = max(ratings.values()) if ratings else 0
 
-        # Кэшируем дискомфорт
         self.discomfort_map = {}
         for role in Config.MASK.keys():
             if role in preferences:
-                # 0 за топ-1 роль, 100 за топ-2 и т.д.
                 self.discomfort_map[role] = preferences.index(role) * 100
             else:
-                # Если роль не в предпочтениях, но есть рейтинг -> штраф 1000
-                # Если рейтинга нет -> штраф 5000 (недопустимо)
                 self.discomfort_map[role] = 1000 if role in ratings else 5000
 
     @property
@@ -78,11 +67,10 @@ class Player:
         return self.discomfort_map.get(current_role, 5000)
 
     def __repr__(self):
-        return f"{self.name}{' [C]' if self.is_captain else ''}"
+        return f"{self.name}"
 
 
 class Team:
-    # Добавили _cached_intra_std (разброс внутри) и _cached_max_pain (макс боль)
     __slots__ = ('id', 'roster', '_cached_mmr', '_cached_discomfort',
                  '_cached_intra_std', '_cached_max_pain', '_is_dirty')
 
@@ -117,49 +105,29 @@ class Team:
         self._is_dirty = True
 
     def calculate_stats(self):
-        """
-        Пересчитывает все метрики команды.
-        Включает пункты 3 и 5: разброс скилла внутри и поиск самого "несчастного" игрока.
-        """
-        if not self._is_dirty:
-            return
+        if not self._is_dirty: return
 
         total_rating = 0
         count = 0
         total_pain = 0
-
-        # Для пункта 3: Собираем все рейтинги игроков команды в кучу
         all_ratings = []
-        # Для пункта 5: Ищем максимальный дискомфорт в этой команде
         max_pain_in_team = 0
 
         for role, players in self.roster.items():
             for p in players:
                 r = p.get_rating(role)
                 d = p.get_discomfort(role)
-
                 total_rating += r
                 total_pain += d
                 count += 1
-
                 all_ratings.append(r)
                 if d > max_pain_in_team:
                     max_pain_in_team = d
 
-        # Базовые метрики
         self._cached_mmr = total_rating / count if count > 0 else 0
         self._cached_discomfort = total_pain
-
-        # [NEW] Пункт 3: Разброс внутри команды
-        # Если игроков > 1, считаем стандартное отклонение. Иначе 0.
-        if len(all_ratings) > 1:
-            self._cached_intra_std = statistics.stdev(all_ratings)
-        else:
-            self._cached_intra_std = 0.0
-
-        # [NEW] Пункт 5: Максимальная боль одного игрока
+        self._cached_intra_std = statistics.stdev(all_ratings) if len(all_ratings) > 1 else 0.0
         self._cached_max_pain = max_pain_in_team
-
         self._is_dirty = False
 
     @property
@@ -184,61 +152,39 @@ class Team:
 
     def is_full(self) -> bool:
         for role, needed in Config.MASK.items():
-            if len(self.roster.get(role, [])) < needed:
-                return False
+            if len(self.roster.get(role, [])) < needed: return False
         return True
 
 
-# --- 3. Логика GA (Функция Стоимости) ---
+# --- 3. Логика GA ---
 
 def calculate_cost(teams: List[Team]) -> float:
-    """
-    Вычисляет "штраф" для текущего распределения команд.
-    Меньше = Лучше.
-    """
     mmrs = []
     total_avg_discomfort = 0
     total_intra_std = 0
     global_max_pain = 0
 
     for t in teams:
-        # При обращении к свойствам происходит ленивый пересчет (если нужно)
         mmrs.append(t.mmr)
-
-        # Суммируем общий дискомфорт (чтобы делить на кол-во команд потом)
         total_avg_discomfort += t.discomfort
-
-        # [NEW] Пункт 3: Накапливаем разброс внутри команд
         total_intra_std += t.intra_std
-
-        # [NEW] Пункт 5: Ищем самого страдающего игрока во всем турнире
         if t.max_pain > global_max_pain:
             global_max_pain = t.max_pain
 
-    # 1. Разброс среднего MMR МЕЖДУ командами
-    if len(mmrs) < 2:
-        inter_team_std = 0
-    else:
-        inter_team_std = statistics.stdev(mmrs)
-
-    # 2. Средний дискомфорт на команду
+    inter_team_std = statistics.stdev(mmrs) if len(mmrs) > 1 else 0
     avg_discomfort = total_avg_discomfort / len(teams)
-
-    # 3. Средний разброс ВНУТРИ команд
     avg_intra_std = total_intra_std / len(teams)
 
-    # === ИТОГОВАЯ ФОРМУЛА ===
     cost = (
-            (inter_team_std * Config.MMR_DIFF_WEIGHT) +  # Баланс сил команд
-            (avg_discomfort * Config.DISCOMFORT_WEIGHT) +  # Общее удобство
-            (avg_intra_std * Config.INTRA_TEAM_VAR_WEIGHT) +  # Ровность состава внутри (Пункт 3)
-            (global_max_pain * Config.MAX_DISCOMFORT_WEIGHT)  # Защита "жертвы" (Пункт 5)
+            (inter_team_std * Config.MMR_DIFF_WEIGHT) +
+            (avg_discomfort * Config.DISCOMFORT_WEIGHT) +
+            (avg_intra_std * Config.INTRA_TEAM_VAR_WEIGHT) +
+            (global_max_pain * Config.MAX_DISCOMFORT_WEIGHT)
     )
-
     return cost
 
 
-# --- 4. Вспомогательные функции (Загрузка, Генерация) ---
+# --- 4. Утилиты ---
 
 def parse_player_node(uuid: str, data: dict) -> Optional[Player]:
     try:
@@ -251,26 +197,21 @@ def parse_player_node(uuid: str, data: dict) -> Optional[Player]:
             if not stats.get('isActive', False): continue
             rank = stats.get('rank', 0)
             if rank <= 0: continue
-
             algo_role = Config.ROLE_MAPPING.get(json_role)
             if not algo_role or algo_role not in Config.MASK: continue
-
             ratings[algo_role] = rank
             priority = stats.get('priority', 99)
             role_priorities.append((priority, algo_role))
 
         if not ratings: return None
-
         role_priorities.sort(key=lambda x: x[0])
         preferences = [r for _, r in role_priorities]
-
         return Player(name, ratings, preferences, uuid)
     except Exception:
         return None
 
 
 def load_players(file_path: str) -> List[Player]:
-    # ... (логика загрузки та же, что и раньше) ...
     players_list = []
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
@@ -307,18 +248,15 @@ def create_random_solution(players: List[Player], num_teams: int) -> List[Team]:
     random.shuffle(captains)
     random.shuffle(pool)
 
-    # 1. Рассадка капитанов
     if Config.USE_CAPTAINS:
         for team in teams:
             if not captains: break
             cap = captains.pop()
             assigned = False
-            # Пробуем приоритетную роль
             for role in cap.preferences:
                 if role in Config.MASK and team.add_player(role, cap):
                     assigned = True;
                     break
-            # Пробуем любую роль
             if not assigned:
                 for role in Config.MASK:
                     if cap.can_play(role) and team.add_player(role, cap):
@@ -328,7 +266,6 @@ def create_random_solution(players: List[Player], num_teams: int) -> List[Team]:
         pool.extend(captains)
         random.shuffle(pool)
 
-    # 2. Заполнение остальных
     for role, count in Config.MASK.items():
         if count == 0: continue
         candidates = [p for p in pool if p.can_play(role)]
@@ -350,7 +287,6 @@ def mutate(teams: List[Team]) -> List[Team]:
 
     for _ in range(Config.MUTATION_STRENGTH):
         if random.random() < 0.7:
-            # Swap между командами
             t1_idx, t2_idx = random.sample(range(len(new_teams_list)), 2)
             t1, t2 = new_teams_list[t1_idx], new_teams_list[t2_idx]
             role = random.choice(available_roles)
@@ -362,7 +298,6 @@ def mutate(teams: List[Team]) -> List[Team]:
                 t1.replace_player(role, idx1, p2)
                 t2.replace_player(role, idx2, p1)
         else:
-            # Swap внутри команды
             t = random.choice(new_teams_list)
             if len(available_roles) < 2: continue
             r1, r2 = random.sample(available_roles, 2)
@@ -385,8 +320,6 @@ class GeneticOptimizer:
     def run(self):
         start_time = time.time()
         print("Инициализация...")
-
-        # Init population
         attempts = 0
         while len(self.population) < Config.POPULATION_SIZE and attempts < Config.POPULATION_SIZE * 10:
             sol = create_random_solution(self.players, self.num_teams)
@@ -396,7 +329,6 @@ class GeneticOptimizer:
 
         if not self.population: raise ValueError("Не удалось собрать команды!")
 
-        # Clone if needed
         while len(self.population) < Config.POPULATION_SIZE:
             c, t = random.choice(self.population)
             self.population.append((c, [x.copy() for x in t]))
@@ -408,12 +340,10 @@ class GeneticOptimizer:
             self.population.sort(key=lambda x: x[0])
             if gen % 50 == 0:
                 print(f"Gen {gen:03d} | Cost: {self.population[0][0]:.2f}")
-
             if self.population[0][0] <= 0.1: break
-
             new_pop = self.population[:elite_count]
             while len(new_pop) < Config.POPULATION_SIZE:
-                parents = random.sample(self.population[:50], 2)  # Выбор из топ-50
+                parents = random.sample(self.population[:50], 2)
                 _, p_teams = min(parents, key=lambda x: x[0])
                 child = mutate(p_teams)
                 new_pop.append((calculate_cost(child), child))
@@ -424,7 +354,100 @@ class GeneticOptimizer:
         return self.population[0][1]
 
 
-# --- 5. Запуск ---
+# --- 5. Функция Вывода КАРТОЧКАМИ (GRID VIEW) ---
+
+def render_team_card(team: Team, width: int) -> List[str]:
+    """Генерирует список строк для одной карточки команды"""
+    lines = []
+
+    # Границы
+    border = "+" + "-" * (width - 2) + "+"
+
+    # 1. Заголовок
+    # TEAM #1 (Avg: 2500 Var: 150)
+    title_text = f"TEAM #{team.id}"
+    stats_text = f"Avg:{team.mmr:.0f} Var:{team.intra_std:.0f}"
+
+    lines.append(border)
+    lines.append(f"| {title_text:<{width - 4}} |")
+    lines.append(f"| {stats_text:^{width - 4}} |")
+    lines.append(border)
+
+    # 2. Состав по ролям
+    sorted_roles = sorted(Config.MASK.keys())
+
+    for role in sorted_roles:
+        count = Config.MASK[role]
+        if count == 0: continue
+
+        # Заголовок роли: [ DPS ]------
+        role_header = f" [{role}]"
+        padding_len = width - 2 - len(role_header) - 1
+        lines.append(f"|{role_header}{'-' * padding_len} |")
+
+        # Игроки
+        if role in team.roster:
+            for p in team.roster[role]:
+                # Значки
+                cap = "👑" if p.is_captain else ""
+                disc = p.get_discomfort(role)
+                if disc == 0:
+                    heart = "❤️"
+                elif disc >= 1000:
+                    heart = "💔"
+                else:
+                    heart = "💛"
+
+                rating = p.get_rating(role)
+
+                # Формируем строку: 2500 👑❤️ Nickname
+                # Считаем место под имя
+                # 2 (граница) + 4 (рейт) + 1 + 2 (иконки) + 1 + Name + 2 (граница) = width
+                # Name = width - 12
+                name_max_len = width - 13
+                p_name = (p.name[:name_max_len - 2] + "..") if len(p.name) > name_max_len else p.name
+
+                content = f"{rating:<4} {cap}{heart} {p_name}"
+                # Добиваем пробелами. Учитываем, что эмодзи иногда ломают длину в консоли,
+                # поэтому используем чуть больший запас, если нужно, или просто ljust.
+                # Простой ljust считает символы, эмодзи = 1 символ.
+
+                # Хак выравнивания: считаем реальную длину без учета эмодзи и добавляем пробелы вручную
+                lines.append(f"| {content:<{width - 4}} |")
+
+    lines.append(border)
+    return lines
+
+
+def print_teams_as_grid(teams: List[Team]):
+    """Печатает команды по N штук в ряд"""
+    cols = Config.CARDS_PER_ROW
+    card_w = Config.CARD_WIDTH
+
+    # Разбиваем на чанки (строки сетки)
+    for i in range(0, len(teams), cols):
+        chunk = teams[i: i + cols]
+
+        # Рендерим карточки для текущего ряда
+        rendered_cards = [render_team_card(t, card_w) for t in chunk]
+
+        # Определяем высоту ряда (максимальную среди карточек)
+        max_height = max(len(rc) for rc in rendered_cards)
+
+        # Печатаем построчно
+        print("\n")  # Отступ между рядами
+        for line_idx in range(max_height):
+            row_str = ""
+            for card_lines in rendered_cards:
+                # Берем строку карточки или пробелы, если карточка кончилась
+                if line_idx < len(card_lines):
+                    row_str += card_lines[line_idx] + "  "  # 2 пробела между карточками
+                else:
+                    row_str += " " * card_w + "  "
+            print(row_str)
+
+
+# --- 6. Запуск ---
 
 if __name__ == "__main__":
     FILENAME = "tournament_39.json"  # <--- Укажите ваш файл
@@ -437,6 +460,7 @@ if __name__ == "__main__":
     num_teams = len(valid_players) // players_per_team if players_per_team > 0 else 0
 
     print(f"Игроков: {len(valid_players)}. Команд: {num_teams}")
+    print(f"Сетка: {Config.CARDS_PER_ROW} команды в ряд")
 
     if num_teams > 0:
         if Config.USE_CAPTAINS: assign_captains(valid_players, num_teams)
@@ -444,32 +468,16 @@ if __name__ == "__main__":
         try:
             result = opt.run()
 
-            print("\n" + "=" * 60)
-            print(" РЕЗУЛЬТАТЫ ")
-            print("=" * 60)
+            # ВЫЗОВ НОВОЙ ФУНКЦИИ ВЫВОДА (СЕТКА)
+            print_teams_as_grid(result)
 
-            all_mmrs = []
-            for t in result:
-                all_mmrs.append(t.mmr)
-                # Вывод
-                max_pain_alert = "⚠️ ВЫСОКИЙ ДИСКОМФОРТ" if t.max_pain >= 1000 else ""
-
-                print(f"\nTEAM #{t.id} | Avg: {t.mmr:.0f} | Внутри-разброс: {t.intra_std:.1f} | {max_pain_alert}")
-
-                for role in Config.MASK:
-                    if Config.MASK[role] == 0: continue
-                    print(f"  [{role}]")
-                    for p in t.roster[role]:
-                        icon = "👑" if p.is_captain else "  "
-                        # Отображение дискомфорта
-                        disc = p.get_discomfort(role)
-                        heart = "❤️" if disc == 0 else ("💔" if disc >= 1000 else "💛")
-
-                        print(f"    {p.get_rating(role):<4} {icon} {heart} {p.name} (Pain: {disc})")
-
-            print("-" * 60)
+            # Статистика внизу
+            all_mmrs = [t.mmr for t in result]
             if len(all_mmrs) > 1:
-                print(f"Разброс между командами (StDev): {statistics.stdev(all_mmrs):.2f}")
+                print(f"\nСтатистика турнира:")
+                print(f"  Средний MMR: {statistics.mean(all_mmrs):.0f}")
+                print(f"  Разброс MMR (StDev): {statistics.stdev(all_mmrs):.2f}")
+                print(f"  Легенда: 👑=Кэп, ❤️=Мейн, 💛=Офф-роль, 💔=Нет рейта")
 
         except ValueError as e:
             print(e)

@@ -3,9 +3,25 @@ import sys
 from logging.config import fileConfig
 
 from alembic import context
-from src.core import db
-from src.core.config import settings
-from src.models import *  # noqa
+from dotenv import load_dotenv
+from sqlalchemy import create_engine, pool
+
+from shared.core import db
+from shared.models import *  # noqa
+
+
+
+load_dotenv()
+
+DATABASE_URL = os.environ.get("DATABASE_URL")
+DB_USER = os.environ.get("POSTGRES_USER")
+DB_PASSWORD = os.environ.get("POSTGRES_PASSWORD")
+DB_HOST = os.environ.get("POSTGRES_HOST")
+DB_PORT = os.environ.get("POSTGRES_PORT")
+DB_NAME = os.environ.get("POSTGRES_DB")
+
+if not DATABASE_URL:
+    DATABASE_URL = f"postgresql+psycopg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 sys.path.append(os.path.join(sys.path[0], "src"))
 
@@ -13,7 +29,7 @@ sys.path.append(os.path.join(sys.path[0], "src"))
 # access to the values within the .ini file in use.
 config = context.config
 config.set_main_option(
-    "sqlalchemy.url", settings.db_url_asyncpg + "?async_fallback=True"
+    "sqlalchemy.url", DATABASE_URL + "?async_fallback=True"
 )
 
 # Interpret the config file for Python logging.
@@ -57,17 +73,19 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
-def run_migrations_online() -> None:
-    """Run migrations in 'online' mode.
+def run_migrations_online():
+    """Run migrations in 'online' mode."""
 
-    In this scenario we need to create an Engine
-    and associate a connection with the context.
-
-    """
-    connectable = db.engine
+    connectable = create_engine(
+        DATABASE_URL,
+        poolclass=pool.NullPool,
+    )
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata
+        )
 
         with context.begin_transaction():
             context.run_migrations()

@@ -1,7 +1,7 @@
 import typing
 from pathlib import Path
 
-from pydantic import RedisDsn
+from pydantic import RedisDsn, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -46,17 +46,6 @@ class Settings(BaseSettings):
     teams_cache_ttl: int = 60 * 5
     encounters_cache_ttl: int = 60 * 5
     achievements_cache_ttl: int = 60 * 5
-
-    # Clerk settings (deprecated, use JWT auth instead)
-    clerk_secret_key: str = ""
-    clerk_jwks_url: str = ""
-    clerk_issuer: str = ""
-
-    # JWT Authentication settings
-    jwt_secret_key: str = Field(..., min_length=32)
-    jwt_algorithm: str = "HS256"
-    jwt_access_token_expire_minutes: int = 30
-    jwt_refresh_token_expire_days: int = 30
 
     @property
     def db_url_asyncpg(self):

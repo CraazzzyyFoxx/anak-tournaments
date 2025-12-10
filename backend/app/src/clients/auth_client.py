@@ -4,13 +4,13 @@ HTTP client for auth-service
 import httpx
 from fastapi import HTTPException, status
 
-from src.core.logging import logger
+from app.src.core.logging import logger
 
 
 class AuthClient:
     """Client for authentication service"""
     
-    def __init__(self, base_url: str = "http://localhost:8001"):
+    def __init__(self, base_url: str = "http://localhost:8080"):
         self.base_url = base_url
         
     async def validate_token(self, token: str) -> dict | None:

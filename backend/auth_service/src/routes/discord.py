@@ -7,11 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from src.core import db
-from src.core.logging import logger
-from src import schemas, models
-from src.services import auth_service
-from src.services.discord_service import DiscordOAuthService
+from auth_service.src.core import db
+from auth_service.src.core.logging import logger
+from auth_service.src import schemas, models
+from auth_service.src.services import auth_service
+from auth_service.src.services.discord_service import DiscordOAuthService
 
 router = APIRouter(prefix="/auth/discord", tags=["Discord OAuth"])
 

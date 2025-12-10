@@ -7,10 +7,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 
-from src.core import db
-from src.core.logging import logger
-from src import schemas, models
-from src.services import auth_service
+from auth_service.src.core import db
+from auth_service.src.core.logging import logger
+from auth_service.src import schemas, models
+from auth_service.src.services import auth_service
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 

@@ -46,6 +46,5 @@ class PlayerStreak(BaseModel):
 
 
 class PlayerShiftUpdate(BaseModel):
-    team_id: int
     player_id: int
     shift: int

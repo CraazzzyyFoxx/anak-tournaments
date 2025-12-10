@@ -10,52 +10,6 @@ from shared.core.db import Base, TimeStampIntegerMixin, TimeStampUUIDMixin, Date
 from src.core import config, errors
 
 
-# Extend Base with parser-specific methods
-class ParserBase(Base):
-    @classmethod
-    def get_column(cls, column_name: str) -> ColumnCollection:
-        if column_name not in {c.name for c in cls.__table__.columns}:
-            raise errors.ApiHTTPException(
-                status_code=400,
-                detail=[errors.ApiExc(code="invalid_column", msg="Invalid column")],
-            )
-        return {c.name: c for c in cls.__table__.columns}[column_name]
-
-    @classmethod
-    def depth_get_column(cls, column_name: list[str]) -> ColumnCollection:
-        if len(column_name) > 2:
-            raise errors.ApiHTTPException(
-                status_code=400,
-                detail=[errors.ApiExc(code="invalid_column", msg="Invalid column")],
-            )
-
-        if len(column_name) == 1:
-            return cls.get_column(column_name[0])
-
-        try:
-            field = cls.__getattribute__(cls, column_name[0])
-            entity = field.entity
-            if column_name[1] not in {c.name for c in entity.columns}:
-                raise errors.ApiHTTPException(
-                    status_code=400,
-                    detail=[errors.ApiExc(code="invalid_column", msg="Invalid column")],
-                )
-            return {c.name: c for c in entity.columns}[column_name[1]]
-        except (IndexError, KeyError):
-            raise errors.ApiHTTPException(
-                status_code=400,
-                detail=[errors.ApiExc(code="invalid_column", msg="Invalid column")],
-            )
-
-    @classmethod
-    def get_tables(cls) -> dict[str, "Base"]:
-        result: dict[str, "Base"] = {}
-        for mapper in cls._sa_registry.mappers:
-            result[mapper.class_.entity_name] = mapper.class_
-
-        return result
-
-
 async_engine = create_async_engine(url=config.settings.db_url_asyncpg, pool_size=50, max_overflow=25)
 engine = create_engine(url=config.settings.db_url)
 session_maker = sessionmaker(engine, class_=Session, expire_on_commit=False)

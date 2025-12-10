@@ -16,7 +16,6 @@ import Image from "next/image";
 import { Card, CardContent } from "@/components/ui/card";
 import { TypographyH4 } from "@/components/ui/typography";
 import { TournamentTeamCardSkeleton } from "@/components/TournamentTeamCard";
-import { useAuth } from "@clerk/nextjs";
 import {
   Dialog,
   DialogContent,
@@ -41,20 +40,17 @@ const ChangeDivisionModal = ({
   setOpen: (open: boolean) => void;
 }) => {
   const [division, setDivision] = React.useState(player.shift);
-  const { getToken } = useAuth();
   const queryClient = useQueryClient();
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setOpen(false);
 
-    getToken().then((token) => {
-      // @ts-ignore
-      analyticsService.patchPlayerShift(player.team_id, player.id, division, token).then(() => {
-        setOpen(false);
-        queryClient.invalidateQueries({ queryKey: ["analytics"] }).then();
-      });
+    analyticsService.patchPlayerShift(player.team_id, player.id, division, "").then(() => {
+      setOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["analytics"] }).then();
     });
+
   };
 
   return (
@@ -139,7 +135,6 @@ const TournamentPlayerRow = ({
 };
 
 export const TournamentTeamTable = ({ players }: { players: PlayerAnalytics[] }) => {
-  const { orgRole } = useAuth();
   // @ts-ignore
   const sortedPlayers: PlayerAnalytics[] = useMemo(() => {
     return sortTeamPlayers(players);
@@ -160,7 +155,7 @@ export const TournamentTeamTable = ({ players }: { players: PlayerAnalytics[] })
         </TableHeader>
         <TableBody>
           {sortedPlayers.map((player) => (
-            <TournamentPlayerRow key={player.id} player={player} orgRole={orgRole} />
+            <TournamentPlayerRow key={player.id} player={player} orgRole={""} />
           ))}
         </TableBody>
       </Table>

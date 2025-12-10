@@ -34,29 +34,24 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <ClerkProvider
-      appearance={{
-        baseTheme: dark,
-      }}>
-      <html lang="en" className="h-full">
-        <body className={cn(inter.className, "h-full")}>
-          <GoogleAnalytics gaId="G-6TYE0K6SQM" />
-          <ThemeProvider attribute="class" defaultTheme="dark" disableTransitionOnChange>
-            <Providers>
-              <div className="w-full max-w-screen-3xl mt-6 mx-auto px-10 h-full">
-                <Header />
-                <div className="flex w-full flex-col min-h-[95%]">
-                  <main className="flex flex-1 flex-col gap-4 pt-4 md:gap-8 md:pt-8 ">
-                    {children}
-                  </main>
-                </div>
-                <Separator className="mt-8" />
-                <Footer />
+    <html lang="en" className="h-full">
+      <body className={cn(inter.className, "h-full")}>
+        <GoogleAnalytics gaId="G-6TYE0K6SQM" />
+        <ThemeProvider attribute="class" defaultTheme="dark" disableTransitionOnChange>
+          <Providers>
+            <div className="w-full max-w-screen-3xl mt-6 mx-auto px-10 h-full">
+              <Header />
+              <div className="flex w-full flex-col min-h-[95%]">
+                <main className="flex flex-1 flex-col gap-4 pt-4 md:gap-8 md:pt-8 ">
+                  {children}
+                </main>
               </div>
-            </Providers>
-          </ThemeProvider>
-        </body>
-      </html>
-    </ClerkProvider>
+              <Separator className="mt-8" />
+              <Footer />
+            </div>
+          </Providers>
+        </ThemeProvider>
+      </body>
+    </html>
   );
 }
