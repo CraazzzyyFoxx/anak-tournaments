@@ -46,6 +46,7 @@ class HeroPlaytimeQueryPaginationParams(pagination.PaginationSortQueryParams):
 @dataclass
 class HeroPlaytimePaginationParams(pagination.PaginationSortParams):
     user_id: int | typing.Literal["all"] = "all"
+    role: enums.HeroRole | typing.Literal["all"] = "all"
     tournament_id: int | None = None
 
 

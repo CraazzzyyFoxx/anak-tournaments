@@ -1,7 +1,7 @@
 import typing
 from pathlib import Path
 
-from pydantic import RedisDsn, Field
+from pydantic import RedisDsn
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     project_url: str
     battle_tag_regex: str = r"([\w0-9]{2,12}#[0-9]{4,})"
     api_v1_str: str = "/api/v1"
+
+    # Auth Service
+    auth_service_url: str = "http://localhost:8080"
 
     cors_origins: list[str] = []
 

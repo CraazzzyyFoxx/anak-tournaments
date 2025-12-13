@@ -1,0 +1,87 @@
+# docker-compose.override.yml
+# This file is automatically merged with docker-compose.yml in development
+# Use it to override settings for local development
+
+services:
+  backend:
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+    volumes:
+      # Mount source for hot reload
+      - ./backend/app-service:/app
+      - ./backend/shared:/app/shared
+
+  auth:
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+    volumes:
+      - ./backend/auth-service:/app
+      - ./backend/shared:/app/shared
+
+  parser:
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+    volumes:
+      - ./backend/parser-service:/app
+      - ./backend/shared:/app/shared
+
+  discord:
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+    volumes:
+      - ./backend/discord-service:/app
+      - ./backend/shared:/app/shared
+
+  twitch:
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+    volumes:
+      - ./backend/twitch-service:/app
+      - ./backend/shared:/app/shared
+
+  balancer:
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+    volumes:
+      - ./backend/balancer-service:/app
+      - ./backend/shared:/app/shared
+
+  frontend:
+    environment:
+      - NODE_ENV=development
+    volumes:
+      # Mount source for Next.js hot reload
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+
+  # Optional: Add pgAdmin for database management
+  # pgadmin:
+  #   image: dpage/pgadmin4:latest
+  #   container_name: aqt-pgadmin
+  #   environment:
+  #     - PGADMIN_DEFAULT_EMAIL=admin@admin.com
+  #     - PGADMIN_DEFAULT_PASSWORD=admin
+  #   ports:
+  #     - "5050:80"
+  #   networks:
+  #     - traefik-public
+
+  # Optional: Add Redis Commander for Redis management
+  # redis-commander:
+  #   image: rediscommander/redis-commander:latest
+  #   container_name: aqt-redis-commander
+  #   environment:
+  #     - REDIS_HOSTS=local:redis:6379
+  #   ports:
+  #     - "8081:8081"
+  #   depends_on:
+  #     - redis
+  #   networks:
+  #     - traefik-public

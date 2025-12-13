@@ -2,6 +2,11 @@ FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1
 
+# Install system dependencies for health checks
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app/
 
 # Install uv
@@ -31,13 +36,25 @@ ENV PYTHONPATH=/app
 
 ARG APP_PATH
 
+# Copy shared dependencies first (for model sharing across services)
+COPY ./shared /app/shared
+
+# Copy scripts and configuration
 COPY ./scripts /app/scripts
 COPY ./pyproject.toml ./uv.lock /app/
 COPY ./README.md /app/
-COPY ./$APP_PATH .
 
+# Copy the specific service code
+COPY ./${APP_PATH}-service /app/
 
 # Sync the project
 # Ref: https://docs.astral.sh/uv/guides/integration/docker/#intermediate-layers
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync
+
+# Create logs directory
+RUN mkdir -p /logs
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD python -c "import sys; sys.exit(0)"

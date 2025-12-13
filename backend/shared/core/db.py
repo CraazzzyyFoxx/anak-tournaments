@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, Uuid, func, ColumnCollection
+from sqlalchemy import BigInteger, DateTime, Uuid, func, ColumnCollection, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from shared.core import errors

@@ -1,14 +1,16 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
-from sqlalchemy import Boolean, ForeignKey, String, Text, BigInteger
+from sqlalchemy import Boolean, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db
 
 if TYPE_CHECKING:
     from shared.models.user import User
+    from shared.models.rbac import Role
+    from shared.models.oauth import OAuthConnection
 
-__all__ = ("AuthUser", "RefreshToken", "AuthUserDiscord", "AuthUserPlayer")
+__all__ = ("AuthUser", "RefreshToken", "AuthUserPlayer")
 
 
 class AuthUser(db.TimeStampIntegerMixin):
@@ -31,15 +33,47 @@ class AuthUser(db.TimeStampIntegerMixin):
     refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
-    discord_accounts: Mapped[list["AuthUserDiscord"]] = relationship(
-        back_populates="auth_user", cascade="all, delete-orphan"
-    )
     player_links: Mapped[list["AuthUserPlayer"]] = relationship(
         back_populates="auth_user", cascade="all, delete-orphan"
+    )
+    roles: Mapped[list["Role"]] = relationship(
+        secondary="user_roles",
+        back_populates="users",
+        lazy="selectin"
+    )
+    oauth_connections: Mapped[list["OAuthConnection"]] = relationship(
+        back_populates="auth_user",
+        cascade="all, delete-orphan",
+        lazy="selectin"
     )
 
     def __repr__(self):
         return f"<AuthUser id={self.id} email={self.email}>"
+    
+    def has_permission(self, resource: str, action: str) -> bool:
+        """Check if user has a specific permission"""
+        if self.is_superuser:
+            return True
+        
+        for role in self.roles:
+            for permission in role.permissions:
+                if permission.resource == resource and permission.action == action:
+                    return True
+                # Wildcard permissions
+                if permission.resource == "*" and permission.action == action:
+                    return True
+                if permission.resource == resource and permission.action == "*":
+                    return True
+                if permission.resource == "*" and permission.action == "*":
+                    return True
+        
+        return False
+    
+    def has_role(self, role_name: str) -> bool:
+        """Check if user has a specific role"""
+        if self.is_superuser:
+            return True
+        return any(role.name == role_name for role in self.roles)
 
 
 class RefreshToken(db.TimeStampIntegerMixin):
@@ -60,28 +94,6 @@ class RefreshToken(db.TimeStampIntegerMixin):
 
     def __repr__(self):
         return f"<RefreshToken id={self.id} user_id={self.user_id}>"
-
-
-class AuthUserDiscord(db.TimeStampIntegerMixin):
-    """Discord OAuth connection for auth users"""
-    __tablename__ = "auth_user_discord"
-
-    auth_user_id: Mapped[int] = mapped_column(ForeignKey("auth_user.id", ondelete="CASCADE"), nullable=False)
-    discord_id: Mapped[int] = mapped_column(BigInteger(), unique=True, index=True, nullable=False)
-    discord_username: Mapped[str] = mapped_column(String(100), nullable=False)
-    discord_discriminator: Mapped[str | None] = mapped_column(String(10), nullable=True)
-    discord_avatar: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    discord_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    
-    access_token: Mapped[str | None] = mapped_column(Text(), nullable=True)
-    refresh_token: Mapped[str | None] = mapped_column(Text(), nullable=True)
-    token_expires_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True), nullable=True)
-
-    # Relations
-    auth_user: Mapped["AuthUser"] = relationship(back_populates="discord_accounts")
-
-    def __repr__(self):
-        return f"<AuthUserDiscord id={self.id} discord_id={self.discord_id} username={self.discord_username}>"
 
 
 class AuthUserPlayer(db.TimeStampIntegerMixin):
