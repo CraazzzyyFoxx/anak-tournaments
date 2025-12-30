@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { authService } from "@/services/auth.service";
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL;
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "/";
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -10,7 +10,7 @@ export async function GET(request: Request) {
 
   // Validate and sanitize the next parameter
   // Only allow relative paths or same-origin URLs to prevent open redirect
-  let next = "/";
+  let next = SITE_URL;
   if (nextParam) {
     try {
       const nextUrl = new URL(nextParam, origin);
@@ -25,7 +25,7 @@ export async function GET(request: Request) {
       }
     }
   } else if (SITE_URL) {
-    next = "/";
+    next = SITE_URL;
   }
 
   try {
@@ -39,7 +39,7 @@ export async function GET(request: Request) {
       httpOnly: true,
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",
-      path: "/",
+      path: SITE_URL,
       maxAge: 10 * 60
     });
 
@@ -47,7 +47,7 @@ export async function GET(request: Request) {
       httpOnly: true,
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",
-      path: "/",
+      path: SITE_URL,
       maxAge: 10 * 60
     });
 
