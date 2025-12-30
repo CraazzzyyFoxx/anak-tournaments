@@ -36,6 +36,8 @@ app = FastAPI(
     default_response_class=ORJSONResponse,
     version="1.0.0",
     lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc",
     root_path="/api/auth"
 )
 
