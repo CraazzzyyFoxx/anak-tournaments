@@ -121,6 +121,8 @@ services:
       - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID}
       - DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET}
       - DISCORD_REDIRECT_URI=${DISCORD_REDIRECT_URI}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       redis:
         condition: service_started
@@ -301,6 +303,8 @@ services:
       - POSTGRES_PORT=${POSTGRES_PORT}
       - ACCESS_TOKEN_SERVICE=${ACCESS_TOKEN_SERVICE}
       - RABBITMQ_URL=${RABBITMQ_URL}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       redis:
         condition: service_started
