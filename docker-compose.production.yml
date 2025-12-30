@@ -28,6 +28,8 @@ services:
     restart: always
     environment:
       - KONG_DATABASE=off
+      - KONG_MEM_CACHE_SIZE=64m
+      - KONG_NGINX_WORKER_PROCESSES=2
       - KONG_DECLARATIVE_CONFIG=/kong/kong.yml
       - KONG_PROXY_LISTEN=0.0.0.0:8000
       - KONG_ADMIN_LISTEN=off
@@ -47,8 +49,8 @@ services:
         condition: service_healthy
       balancer:
         condition: service_healthy
-#      frontend:
-#        condition: service_healthy
+      frontend:
+        condition: service_healthy
     networks:
       - app-network
     healthcheck:
