@@ -12,7 +12,7 @@ from src.core.logging import logger
 from src import schemas, models
 from src.services import auth_service
 
-router = APIRouter(prefix="/auth/player", tags=["Player Linking"])
+router = APIRouter(prefix="/player", tags=["Player Linking"])
 
 
 @router.post("/link", response_model=schemas.PlayerLinkResponse, status_code=status.HTTP_201_CREATED)

@@ -14,7 +14,7 @@ from src.core.logging import logger
 from src.services import auth_service
 from src.services.oauth_service import OAuthService
 
-router = APIRouter(prefix="/auth/oauth", tags=["OAuth"])
+router = APIRouter(prefix="/oauth", tags=["OAuth"])
 
 
 @router.get("/{provider}/url", response_model=schemas.OAuthURL)

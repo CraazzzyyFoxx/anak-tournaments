@@ -12,7 +12,7 @@ from src.core.logging import logger
 from src import schemas, models
 from src.services import auth_service
 
-router = APIRouter(prefix="/auth", tags=["Authentication"])
+router = APIRouter(prefix="", tags=["Authentication"])
 
 
 @router.post("/register", response_model=schemas.AuthUser, status_code=status.HTTP_201_CREATED)
