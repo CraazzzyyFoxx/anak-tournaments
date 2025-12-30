@@ -5,6 +5,7 @@ import secrets
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone, UTC
 from typing import Any
+from urllib.parse import urlencode
 
 import httpx
 from fastapi import HTTPException, status
@@ -54,8 +55,8 @@ class DiscordOAuthProvider(OAuthProviderBase):
             "scope": "identify email",
             "state": state,
         }
-        param_str = "&".join(f"{k}={v}" for k, v in params.items())
-        return f"{settings.DISCORD_OAUTH_URL}?{param_str}"
+        # Use urlencode to properly encode all parameters including redirect_uri
+        return f"{settings.DISCORD_OAUTH_URL}?{urlencode(params)}"
 
     async def exchange_code(self, code: str) -> dict[str, Any]:
         """Exchange Discord authorization code for access token"""
@@ -306,11 +307,9 @@ class OAuthService:
             avatar_url=oauth_info.avatar_url,
             access_token=token_data["access_token"],
             refresh_token=token_data.get("refresh_token"),
-            provider_data=oauth_info.raw_data
+            provider_data=oauth_info.raw_data,
+            token_expires_at=datetime.now(UTC) + timedelta(seconds=token_data["expires_in"]) if "expires_in" in token_data else None
         )
-
-        if "expires_in" in token_data:
-            oauth_conn.token_expires_at = datetime.utcnow() + timedelta(seconds=token_data["expires_in"])
 
         session.add(oauth_conn)
         await session.commit()

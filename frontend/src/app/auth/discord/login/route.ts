@@ -5,30 +5,57 @@ import { authService } from "@/services/auth.service";
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL;
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const next = searchParams.get("next") || (SITE_URL ? `${SITE_URL}/` : "/");
+  const { searchParams, origin } = new URL(request.url);
+  const nextParam = searchParams.get("next");
 
-  const { url, state } = await authService.getDiscordOAuthUrl();
+  // Validate and sanitize the next parameter
+  // Only allow relative paths or same-origin URLs to prevent open redirect
+  let next = "/";
+  if (nextParam) {
+    try {
+      const nextUrl = new URL(nextParam, origin);
+      // Only use the path if it's same-origin
+      if (nextUrl.origin === origin) {
+        next = nextUrl.pathname + nextUrl.search;
+      }
+    } catch {
+      // If nextParam is a relative path, use it directly
+      if (nextParam.startsWith("/")) {
+        next = nextParam;
+      }
+    }
+  } else if (SITE_URL) {
+    next = "/";
+  }
 
-  // Touch cookies() so Next treats this route as dynamic.
-  await cookies();
+  try {
+    const { url, state } = await authService.getDiscordOAuthUrl();
 
-  const response = NextResponse.redirect(url);
-  response.cookies.set("aqt_oauth_state", state, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 10 * 60
-  });
+    // Touch cookies() so Next treats this route as dynamic.
+    await cookies();
 
-  response.cookies.set("aqt_post_login_redirect", next, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 10 * 60
-  });
+    const response = NextResponse.redirect(url);
+    response.cookies.set("aqt_oauth_state", state, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 10 * 60
+    });
 
-  return response;
+    response.cookies.set("aqt_post_login_redirect", next, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 10 * 60
+    });
+
+    return response;
+  } catch (err) {
+    console.error("Failed to get Discord OAuth URL:", err);
+    // Redirect to home with error
+    const errorUrl = new URL("/?auth_error=oauth_init_failed", request.url);
+    return NextResponse.redirect(errorUrl);
+  }
 }
