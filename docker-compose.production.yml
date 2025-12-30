@@ -168,6 +168,7 @@ services:
       - PROXY_USERNAME=${PROXY_USERNAME}
       - PROXY_PASSWORD=${PROXY_PASSWORD}
       - RABBITMQ_URL=${RABBITMQ_URL}
+      - SERVICE_USER_ID=${SERVICE_USER_ID}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
