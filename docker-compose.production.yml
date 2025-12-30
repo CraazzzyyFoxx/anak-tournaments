@@ -63,7 +63,7 @@ services:
       context: ./backend
       args:
         APP_PATH: app
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2 --loop uvloop
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers ${WORKERS_BACKEND} --loop uvloop
     volumes:
       - ./logs/backend:/logs
     environment:
@@ -100,7 +100,7 @@ services:
       context: ./backend
       args:
         APP_PATH: auth
-    command: uvicorn main:app --host 0.0.0.0 --port 8001 --loop uvloop
+    command: uvicorn main:app --host 0.0.0.0 --port 8001 --workers ${WORKERS_AUTH} --loop uvloop
     environment:
       - ENVIRONMENT=${ENVIRONMENT}
       - PORT=8001
@@ -144,7 +144,7 @@ services:
       context: ./backend
       args:
         APP_PATH: parser
-    command: uvicorn main:app --host 0.0.0.0 --port 8002 --workers 2 --loop uvloop
+    command: uvicorn main:app --host 0.0.0.0 --port 8002 --workers ${WORKERS_PARSER} --loop uvloop
     environment:
       - ENVIRONMENT=${ENVIRONMENT}
       - PORT=8002
@@ -286,7 +286,7 @@ services:
       context: ./backend
       args:
         APP_PATH: balancer
-    command: uvicorn main:app --host 0.0.0.0 --port 8003 --loop uvloop
+    command: uvicorn main:app --host 0.0.0.0 --port 8003 --workers ${WORKERS_BALANCER} --loop uvloop
     environment:
       - ENVIRONMENT=${ENVIRONMENT}
       - PORT=8003
