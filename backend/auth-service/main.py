@@ -36,7 +36,7 @@ app = FastAPI(
     default_response_class=ORJSONResponse,
     version="1.0.0",
     lifespan=lifespan,
-    root_path="/auth"
+    root_path="/api/auth"
 )
 
 app.add_middleware(

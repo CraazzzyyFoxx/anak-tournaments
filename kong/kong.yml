@@ -8,7 +8,7 @@ services:
       - name: auth-api
         paths:
           - /api/auth
-        strip_path: true
+        strip_path: false
         preserve_host: true
 
   - name: parser
@@ -17,7 +17,7 @@ services:
       - name: parser-api
         paths:
           - /api/parser
-        strip_path: true
+        strip_path: false
         preserve_host: true
 
   - name: balancer
@@ -26,7 +26,7 @@ services:
       - name: balancer-api
         paths:
           - /api/balancer
-        strip_path: true
+        strip_path: false
         preserve_host: true
 
   - name: backend
