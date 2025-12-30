@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import Cookies from "js-cookie";
 
 export type AuthProfile = {
   username: string;
@@ -31,12 +32,15 @@ export const useAuthProfileStore = create<AuthProfileState>((set, get) => ({
 
     set({ status: "loading", error: undefined });
 
+    const accessToken = Cookies.get("aqt_access_token");
+
     try {
       const res = await fetch("/api/auth/me", {
         method: "GET",
         credentials: "include",
         headers: {
-          Accept: "application/json"
+          Accept: "application/json",
+          ...(accessToken && { Authorization: `Bearer ${accessToken}` })
         }
       });
 
