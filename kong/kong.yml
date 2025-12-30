@@ -3,7 +3,7 @@ _transform: true
 
 services:
   - name: auth
-    url: http://auth:8001/auth
+    url: http://auth:8001
     routes:
       - name: auth-api
         paths:
