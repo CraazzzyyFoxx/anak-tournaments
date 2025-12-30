@@ -92,7 +92,7 @@ class AuthUser(BaseModel):
     is_verified: bool
     roles: list[str] = []  # List of role names
     created_at: datetime
-    updated_at: str | None = None
+    updated_at: datetime | None = None
 
     class Config:
         from_attributes = True
