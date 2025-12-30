@@ -33,13 +33,13 @@ class AlgorithmConfig(BaseSettings):
     
     # Genetic Algorithm parameters
     POPULATION_SIZE: int = Field(
-        default=200,
+        default=400,
         ge=10,
         le=1000,
         description="Population size for genetic algorithm"
     )
     GENERATIONS: int = Field(
-        default=750,
+        default=1200,
         ge=10,
         le=5000,
         description="Number of generations to evolve"
@@ -65,17 +65,17 @@ class AlgorithmConfig(BaseSettings):
     
     # Cost function weights
     MMR_DIFF_WEIGHT: float = Field(
-        default=3.0,
+        default=3.5,
         ge=0.0,
         description="Weight for MMR difference between teams (higher = more balanced teams)"
     )
     DISCOMFORT_WEIGHT: float = Field(
-        default=0.6,
+        default=0.8,
         ge=0.0,
         description="Weight for player role discomfort (higher = better role matching)"
     )
     INTRA_TEAM_VAR_WEIGHT: float = Field(
-        default=0.8,
+        default=1.2,
         ge=0.0,
         description="Weight for variance within teams (higher = more consistent team members)"
     )
@@ -144,25 +144,7 @@ class Settings(BaseSettings):
         le=65535,
         description="Port for balancer service"
     )
-    
-    # API configuration
-    API_V1_STR: str = Field(
-        default="/api/v1",
-        description="API v1 prefix"
-    )
-    DOCS_URL: str = Field(
-        default="/docs",
-        description="Swagger UI documentation URL"
-    )
-    REDOC_URL: str = Field(
-        default="/redoc",
-        description="ReDoc documentation URL"
-    )
-    OPENAPI_URL: str = Field(
-        default="/openapi.json",
-        description="OpenAPI schema URL"
-    )
-    
+
     # CORS configuration
     CORS_ORIGINS: list[str] = Field(
         default_factory=lambda: ["http://localhost:3000", "http://localhost:8000"],
@@ -193,20 +175,6 @@ class Settings(BaseSettings):
     LOG_FORMAT: str = Field(
         default="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
         description="Log format string for loguru"
-    )
-    
-    # Performance settings
-    MAX_WORKERS: int = Field(
-        default=4,
-        ge=1,
-        le=32,
-        description="Maximum number of worker threads for balancing operations"
-    )
-    REQUEST_TIMEOUT: int = Field(
-        default=300,
-        ge=10,
-        le=600,
-        description="Maximum request timeout in seconds"
     )
     
     @field_validator("LOG_LEVEL")

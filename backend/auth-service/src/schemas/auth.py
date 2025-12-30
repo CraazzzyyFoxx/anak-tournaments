@@ -86,6 +86,7 @@ class AuthUser(BaseModel):
     username: str
     first_name: str | None = None
     last_name: str | None = None
+    avatar_url: str | None = None
     is_active: bool
     is_superuser: bool
     is_verified: bool

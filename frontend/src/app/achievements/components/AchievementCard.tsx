@@ -21,7 +21,7 @@ const AchievementCard = ({ achievement }: { achievement: Achievement }) => {
         fill={true}
         quality={100}
       />
-      <div className="absolute inset-0 bg-black bg-opacity-20 transition duration-300 group-hover:bg-opacity-60" />
+      {/*<div className="absolute inset-0 bg-black bg-opacity-20 transition duration-300 group-hover:bg-opacity-60" />*/}
       <div className="absolute top-2 right-2 bg-black bg-opacity-50 text-white text-xs rounded px-2 py-1 z-10">
         {(achievement.rarity * 100).toFixed(2)}%
       </div>

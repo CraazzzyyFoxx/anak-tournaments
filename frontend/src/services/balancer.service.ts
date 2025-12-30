@@ -9,7 +9,7 @@ export default class balancerService {
 
     const response = await fetch(`${BALANCER_API_URL}/api/v1/balancer/balance`, {
       method: "POST",
-      body: formData,
+      body: formData
     });
 
     if (!response.ok) {

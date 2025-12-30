@@ -157,7 +157,7 @@ const MatchesPage = () => {
           <SelectTrigger className="w-[250px]">
             <SelectValue placeholder="Select a tournemnt" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="max-[500px]">
             <SelectGroup>
               {tournamentsData?.results.map((item) => (
                 <SelectItem key={item.id} value={item.id.toString()}>

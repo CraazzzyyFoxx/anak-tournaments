@@ -4,7 +4,6 @@ import OwalStandingsTable from "@/app/owal/components/OwalStandingsTable";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import OwalStacksTable from "./components/OwalStacksTable";
 
-
 const OwalPage = async () => {
   const data = await tournamentService.getOwalStandings();
   const stacks = await tournamentService.getOwalStacks();

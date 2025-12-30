@@ -9,7 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     """Application settings"""
-    
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -23,7 +23,6 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     HOST: str = "localhost"
     PORT: int = 8001
-    API_V1_STR: str = "/api/v1"
 
     POSTGRES_HOST: str
     POSTGRES_PORT: int
@@ -50,7 +49,7 @@ class Settings(BaseSettings):
 
     log_level: str = "info"
     logs_root_path: str = f"{Path.cwd()}/logs"
-    
+
     # Proxy (optional)
     proxy_ip: str | None = None
     proxy_port: int | None = None

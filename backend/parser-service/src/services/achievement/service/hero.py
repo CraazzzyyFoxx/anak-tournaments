@@ -115,7 +115,7 @@ async def calculate_freak_achievements(session: AsyncSession, tournament: models
     if not achievement:
         return
 
-    await crud.delete_user_achievements(session, achievement)
+    await crud.delete_user_achievements(session, achievement, tournament.id)
 
     total_time_query = (
         sa.select(sa.func.sum(models.MatchStatistics.value))
@@ -166,7 +166,7 @@ async def calculate_freak_achievements(session: AsyncSession, tournament: models
         logger.info(f"No users found who played sub-0.1% pickrate heroes in {tournament.name}.")
         return
 
-    await crud.create_user_achievements(session, achievement, user_ids)
+    await crud.create_user_achievements(session, achievement, user_ids, tournament.id)
 
     await session.commit()
     logger.info(f"Achievements 'freak' created for {len(user_ids)} users in tournament '{tournament.name}'.")

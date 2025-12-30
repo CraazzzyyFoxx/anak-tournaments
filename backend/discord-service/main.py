@@ -2,7 +2,10 @@ import discord
 import httpx
 import asyncio
 from datetime import datetime, timedelta, UTC
-from typing import Dict, Set
+from typing import Any, Dict, Set
+
+from faststream.rabbit import RabbitBroker
+from faststream.rabbit.annotations import RabbitMessage
 
 from sqlalchemy import select
 
@@ -26,6 +29,9 @@ else:
 
 client = discord.Client(intents=intents, proxy=PROXY_CONF)
 
+DISCORD_COMMANDS_QUEUE = "discord_commands"
+rabbit_broker: RabbitBroker | None = None
+
 # Cache for active tournaments and their channels
 active_channels: Dict[int, int] = {}  # channel_id -> tournament_id
 processing_messages: Set[int] = set()  # message IDs being processed
@@ -39,6 +45,29 @@ async def get_httpx_client(destination: str = 'internal') -> httpx.AsyncClient:
         proxy=httpx.Proxy(url=PROXY_CONF) if PROXY_CONF and destination != "internal" else None,
         timeout=httpx.Timeout(30, read=60),
     )
+
+
+async def get_tournament_discord_channels(tournament_id: int) -> list[int]:
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(TournamentDiscordChannel.channel_id).where(
+                TournamentDiscordChannel.tournament_id == tournament_id,
+                TournamentDiscordChannel.is_active == True,
+            )
+        )
+        return list(result.scalars().all())
+
+
+async def get_text_channel(channel_id: int):
+    channel = client.get_channel(channel_id)
+    if channel is not None:
+        return channel
+    try:
+        return await client.fetch_channel(channel_id)
+    except discord.NotFound:
+        return None
+    except discord.Forbidden:
+        return None
 
 
 async def load_active_channels():
@@ -193,13 +222,13 @@ async def process_message(message: discord.Message, tournament_id: int) -> None:
         processing_messages.discard(message.id)
 
 
-async def process_channel_history(channel_id: int, tournament_id: int, limit: int = 100):
+async def process_channel_history(channel_id: int, tournament_id: int, limit: int = 10):
     """
     Process recent message history in a channel
     Used when bot starts or channel is newly added
     """
     try:
-        channel = client.get_channel(channel_id)
+        channel = await get_text_channel(channel_id)
         if not channel:
             logger.error(f"❌ Channel {channel_id} not found")
             return
@@ -218,6 +247,98 @@ async def process_channel_history(channel_id: int, tournament_id: int, limit: in
         logger.error(f"❌ No permission to read channel {channel_id}")
     except Exception as e:
         logger.error(f"❌ Error processing channel history: {e}")
+
+
+def register_rabbit_handlers(broker: RabbitBroker) -> None:
+    @broker.subscriber(DISCORD_COMMANDS_QUEUE)
+    async def handle_discord_command(body: dict[str, Any], msg: RabbitMessage):
+        await client.wait_until_ready()
+
+        try:
+            action = body.get("action")
+            if action not in {"process_all", "process_message"}:
+                logger.error(f"❌ Unknown discord command action: {action}")
+                await msg.reject()
+                return
+
+            if action == "process_all":
+                tournament_id = int(body["tournament_id"])
+                channel_ids = await get_tournament_discord_channels(tournament_id)
+                if not channel_ids:
+                    logger.warning(f"⚠️ No active Discord channels found for tournament {tournament_id}")
+                    await msg.ack()
+                    return
+
+                logger.info(
+                    f"📩 RabbitMQ command: process_all for tournament {tournament_id} "
+                    f"({len(channel_ids)} channel(s))"
+                )
+                for channel_id in channel_ids:
+                    await process_channel_history(channel_id, tournament_id, limit=500)
+
+                await msg.ack()
+                return
+
+            # process_message
+            tournament_id = int(body["tournament_id"])
+            channel_id = int(body["channel_id"])
+            message_id = int(body["message_id"])
+
+            channel = await get_text_channel(channel_id)
+            if channel is None:
+                logger.error(f"❌ Channel {channel_id} not found for message fetch")
+                await msg.reject()
+                return
+
+            try:
+                fetched_message = await channel.fetch_message(message_id)  # type: ignore[attr-defined]
+            except discord.NotFound:
+                logger.warning(f"⚠️ Message {message_id} not found in channel {channel_id}")
+                await msg.reject()
+                return
+            except discord.Forbidden:
+                logger.error(f"❌ No permission to fetch message {message_id} in channel {channel_id}")
+                await msg.reject()
+                return
+
+            logger.info(
+                f"📩 RabbitMQ command: process_message channel={channel_id} message={message_id} "
+                f"tournament={tournament_id}"
+            )
+            await process_message(fetched_message, tournament_id)
+            await msg.ack()
+
+        except KeyError as e:
+            logger.error(f"❌ Malformed discord command payload, missing: {e}")
+            await msg.reject()
+        except ValueError as e:
+            logger.error(f"❌ Invalid discord command payload: {e}")
+            await msg.reject()
+        except Exception as e:
+            logger.error(f"❌ Error handling discord command: {e}")
+            await msg.nack()
+
+
+async def start_rabbitmq_listener() -> None:
+    global rabbit_broker
+    if not settings.broker_url:
+        logger.info("ℹ️ RABBITMQ_URL not set; RabbitMQ listener disabled")
+        return
+
+    rabbit_broker = RabbitBroker(settings.broker_url, logger=logger)
+    register_rabbit_handlers(rabbit_broker)
+    await rabbit_broker.start()
+    logger.success(f"✅ RabbitMQ listener started (queue='{DISCORD_COMMANDS_QUEUE}')")
+
+
+async def stop_rabbitmq_listener() -> None:
+    global rabbit_broker
+    if rabbit_broker is None:
+        return
+    try:
+        await rabbit_broker.close()
+    finally:
+        rabbit_broker = None
 
 
 async def channel_monitor_task():
@@ -304,12 +425,14 @@ async def main():
     """Main entry point"""
     try:
         logger.info("🚀 Starting Discord Log Collection Bot...")
+        await start_rabbitmq_listener()
         await client.start(settings.discord_token)
     except KeyboardInterrupt:
         logger.info("⏸️ Shutting down bot...")
     except Exception as e:
         logger.error(f"❌ Fatal error: {e}")
     finally:
+        await stop_rabbitmq_listener()
         await client.close()
         logger.info("👋 Bot stopped")
 

@@ -1,6 +1,8 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import schemas
+from src.core import errors
+from src.services.tournament import flows as tournament_flows
 from src.services.tournament import service as tournament_service
 
 from . import service
@@ -18,7 +20,7 @@ function_hero_map: dict[str, schemas.AchievementFunction] = {
     ),
     "swiss-knife": schemas.AchievementFunction(
         slug="swiss-knife",
-        tournament_required=True,
+        tournament_required=False,
         function=service.create_swiss_knife_achievements,
     ),
 }
@@ -117,27 +119,27 @@ function_overall_map: dict[str, schemas.AchievementFunction] = {
     ),
     "ill-definitely-survive": schemas.AchievementFunction(
         slug="ill-definitely-survive",
-        tournament_required=False,
+        tournament_required=True,
         function=service.calculate_ill_definitely_survive_achievements,
     ),
     "killer-machine": schemas.AchievementFunction(
         slug="killer-machine",
-        tournament_required=False,
+        tournament_required=True,
         function=service.calculate_killer_machine_achievements,
     ),
     "just-shoot-in-the-head": schemas.AchievementFunction(
         slug="just-shoot-in-the-head",
-        tournament_required=False,
+        tournament_required=True,
         function=service.calculate_just_shoot_in_the_head_achievements,
     ),
     "poop-forever": schemas.AchievementFunction(
         slug="poop-forever",
-        tournament_required=False,
+        tournament_required=True,
         function=service.calculate_poop_forever_achievements,
     ),
     "one-shot-one-kill": schemas.AchievementFunction(
         slug="one-shot-one-kill",
-        tournament_required=False,
+        tournament_required=True,
         function=service.calculate_one_shot_one_kill_achievements,
     ),
     "space-created": schemas.AchievementFunction(
@@ -440,3 +442,74 @@ async def calculate_achievements(session: AsyncSession) -> None:
     # await service.create_swiss_knife_achievements(session)
     #
     # await calculate_well_balanced_achievements(session)
+
+
+async def calculate_registered_achievements(
+    session: AsyncSession,
+    *,
+    tournament_id: int | None,
+    slugs: list[str] | None = None,
+    ensure_created: bool = True,
+) -> list[str]:
+    """Calculate achievements via a stable registry.
+
+    - If `tournament_id` is provided, tournament-scoped achievement functions run only for that tournament.
+    - If `tournament_id` is omitted, tournament-scoped achievement functions run for all tournaments.
+    - If `slugs` is omitted, all registered functions are executed.
+    """
+
+    if ensure_created:
+        await service.bulk_initial_create_achievements(session)
+
+    registry: dict[str, schemas.AchievementFunction] = {
+        **function_overall_map,
+        **function_hero_map,
+        "hero-kd": schemas.AchievementFunction(
+            slug="hero-kd",
+            tournament_required=True,
+            function=service.create_hero_kd_achievements,
+        ),
+    }
+
+    slugs_to_run = slugs or list(registry.keys())
+
+    unknown = sorted(set(slugs_to_run) - set(registry.keys()))
+    if unknown:
+        raise errors.ApiHTTPException(
+            status_code=400,
+            detail=[
+                errors.ApiExc(
+                    code="unknown_achievement_slug",
+                    msg=f"Unknown achievement slugs: {', '.join(unknown)}",
+                )
+            ],
+        )
+
+    tournament = None
+    if tournament_id is not None:
+        tournament = await tournament_flows.get(session, tournament_id, [])
+
+    executed: list[str] = []
+    for slug in slugs_to_run:
+        fn = registry[slug]
+
+        if not fn.tournament_required:
+            await fn.function(session)
+            executed.append(slug)
+            continue
+
+        if tournament is not None:
+            await fn.function(session, tournament)
+            executed.append(slug)
+            continue
+
+        tournaments = (
+            await tournament_service.get_all(session, is_finished=True)
+            if slug == "hero-kd"
+            else await tournament_service.get_all(session)
+        )
+        for t in tournaments:
+            await fn.function(session, t)
+        executed.append(slug)
+
+    return executed

@@ -10,10 +10,10 @@ interface DataTableSortButtonProps<TData> {
 }
 
 export function DataTableSortButton<TData>({
-                                             column,
-                                             label,
-                                             className,
-                                           }: DataTableSortButtonProps<TData>) {
+  column,
+  label,
+  className
+}: DataTableSortButtonProps<TData>) {
   return (
     <div className="flex flex-row items-center gap-1">
       {label}
@@ -23,18 +23,17 @@ export function DataTableSortButton<TData>({
         className={cn("px-1 text-left", className)}
         onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
       >
-        {
-          column.getIsSorted() === false ?
-            <ArrowUpDown className="h-4 w-4" />
-            :
-            <ArrowUp
-              className={cn(
-                "h-4 w-4 transition-transform",
-                column.getIsSorted() === "asc" && "rotate-180",
-                column.getIsSorted() === "desc" && "rotate-0"
-              )}
-            />
-        }
+        {column.getIsSorted() === false ? (
+          <ArrowUpDown className="h-4 w-4" />
+        ) : (
+          <ArrowUp
+            className={cn(
+              "h-4 w-4 transition-transform",
+              column.getIsSorted() === "asc" && "rotate-180",
+              column.getIsSorted() === "desc" && "rotate-0"
+            )}
+          />
+        )}
       </Button>
     </div>
   );

@@ -13,11 +13,6 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}
       - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
-      # опционально: единый cookie для кластера
-      # - RABBITMQ_ERLANG_COOKIE=${RABBITMQ_ERLANG_COOKIE}
-    ports:
-      - "5672:5672"       # RabbitMQ main port
-      - "15672:15672"     # RabbitMQ management UI
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
     healthcheck:
@@ -28,38 +23,39 @@ services:
     networks:
       - app-network
 
-  nginx:
-    image: nginx:latest
-    ports:
-      - "${APP_PORT}:80"
+  kong:
+    image: kong:3.7
     restart: always
-    ulimits:
-      nofile:
-        soft: 200000
-        hard: 200000
+    environment:
+      - KONG_DATABASE=off
+      - KONG_DECLARATIVE_CONFIG=/kong/kong.yml
+      - KONG_PROXY_LISTEN=0.0.0.0:8000
+      - KONG_ADMIN_LISTEN=off
+      - KONG_ADMIN_GUI_LISTEN=off
+      - KONG_STATUS_LISTEN=0.0.0.0:8100
+      - KONG_LOG_LEVEL=${KONG_LOG_LEVEL:-notice}
+    ports:
+      - "${APP_PORT}:8000"
     volumes:
-      - ./conf/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./kong/kong.yml:/kong/kong.yml:ro
     depends_on:
       backend:
         condition: service_healthy
       auth:
         condition: service_healthy
-      frontend:
-        condition: service_healthy
       parser:
-        condition: service_healthy
-      twitch:
         condition: service_healthy
       balancer:
         condition: service_healthy
+#      frontend:
+#        condition: service_healthy
     networks:
       - app-network
     healthcheck:
-      test: ["CMD", "nginx", "-t"]
-      interval: 30s
+      test: ["CMD", "kong", "health"]
+      interval: 10s
       timeout: 10s
-      retries: 3
-      start_period: 20s
+      retries: 10
 
   backend:
     image: "registry.craazzzyyfoxx.me/aqt-backend:latest"
@@ -67,11 +63,12 @@ services:
       context: ./backend
       args:
         APP_PATH: app
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4 --loop uvloop
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2 --loop uvloop
     volumes:
       - ./logs/backend:/logs
     environment:
       - ENVIRONMENT=${ENVIRONMENT}
+      - PORT=8000
       - PROJECT_URL=${PROJECT_URL}
       - REDIS_URL=${REDIS_URL}
       - CORS_ORIGINS=${CORS_ORIGINS}
@@ -97,24 +94,16 @@ services:
       retries: 3
       start_period: 40s
     restart: always
-    deploy:
-      resources:
-        limits:
-          cpus: '2'
-          memory: 2G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
-
   auth:
     image: registry.craazzzyyfoxx.me/aqt-auth:latest
     build:
       context: ./backend
       args:
         APP_PATH: auth
-    command: uvicorn main:app --host 0.0.0.0 --port 8001 --workers 2 --loop uvloop
+    command: uvicorn main:app --host 0.0.0.0 --port 8001 --loop uvloop
     environment:
       - ENVIRONMENT=${ENVIRONMENT}
+      - PORT=8001
       - PROJECT_URL=${PROJECT_URL}
       - REDIS_URL=${REDIS_URL}
       - CORS_ORIGINS=${CORS_ORIGINS}
@@ -123,11 +112,15 @@ services:
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_HOST=${POSTGRES_HOST}
       - POSTGRES_PORT=${POSTGRES_PORT}
-      - ACCESS_TOKEN_SECRET=${ACCESS_TOKEN_SECRET}
-      - REFRESH_TOKEN_SECRET=${REFRESH_TOKEN_SECRET}
-      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}
-      - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - JWT_ALGORITHM=${JWT_ALGORITHM}
+      - JWT_ACCESS_TOKEN_EXPIRE_MINUTES=${JWT_ACCESS_TOKEN_EXPIRE_MINUTES}
+      - JWT_REFRESH_TOKEN_EXPIRE_DAYS=${JWT_REFRESH_TOKEN_EXPIRE_DAYS}
+      - ACCESS_TOKEN_SERVICE=${ACCESS_TOKEN_SERVICE}
       - RABBITMQ_URL=${RABBITMQ_URL}
+      - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID}
+      - DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET}
+      - DISCORD_REDIRECT_URI=${DISCORD_REDIRECT_URI}
     depends_on:
       redis:
         condition: service_started
@@ -144,14 +137,6 @@ services:
       retries: 3
       start_period: 40s
     restart: always
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 1G
-        reservations:
-          cpus: '0.25'
-          memory: 256M
 
   parser:
     image: registry.craazzzyyfoxx.me/aqt-parser:latest
@@ -159,15 +144,13 @@ services:
       context: ./backend
       args:
         APP_PATH: parser
-    command: uvicorn main:app --host 0.0.0.0 --port 8081 --workers 2 --loop uvloop
+    command: uvicorn main:app --host 0.0.0.0 --port 8002 --workers 2 --loop uvloop
     environment:
       - ENVIRONMENT=${ENVIRONMENT}
+      - PORT=8002
       - PROJECT_URL=${PROJECT_URL}
       - REDIS_URL=${REDIS_URL}
       - CORS_ORIGINS=${CORS_ORIGINS}
-      - SUPERUSER_EMAIL=${SUPERUSER_EMAIL}
-      - SUPERUSER_PASSWORD=${SUPERUSER_PASSWORD}
-      - ACCESS_TOKEN_SECRET=${ACCESS_TOKEN_SECRET}
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
@@ -199,20 +182,12 @@ services:
     networks:
       - app-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
     restart: always
-    deploy:
-      resources:
-        limits:
-          cpus: '1.5'
-          memory: 1.5G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
 
   discord:
     image: registry.craazzzyyfoxx.me/aqt-discord:latest
@@ -226,16 +201,18 @@ services:
       - PROJECT_URL=${PROJECT_URL}
       - REDIS_URL=${REDIS_URL}
       - DISCORD_TOKEN=${DISCORD_TOKEN}
-      - DISCORD_CHANNEL_ID=${DISCORD_CHANNEL_ID}
-      - DISCORD_GUILD_ID=${DISCORD_GUILD_ID}
       - PARSER_URL=${PARSER_URL}
       - ACCESS_TOKEN_SERVICE=${ACCESS_TOKEN_SERVICE}
       - PROXY_IP=${PROXY_IP}
       - PROXY_PORT=${PROXY_PORT}
       - PROXY_USERNAME=${PROXY_USERNAME}
       - PROXY_PASSWORD=${PROXY_PASSWORD}
-      - TOURNAMENT_ID=${TOURNAMENT_ID}
       - RABBITMQ_URL=${RABBITMQ_URL}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
     depends_on:
       redis:
         condition: service_started
@@ -254,62 +231,54 @@ services:
       retries: 3
       start_period: 40s
     restart: always
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 1G
-        reservations:
-          cpus: '0.25'
-          memory: 256M
 
-  twitch:
-    image: registry.craazzzyyfoxx.me/aqt-twitch:latest
-    build:
-      context: ./backend
-      args:
-        APP_PATH: twitch
-    command: uvicorn main:app --host 0.0.0.0 --port 8082 --workers 2 --loop uvloop
-    environment:
-      - ENVIRONMENT=${ENVIRONMENT}
-      - PROJECT_URL=${PROJECT_URL}
-      - REDIS_URL=${REDIS_URL}
-      - CORS_ORIGINS=${CORS_ORIGINS}
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_HOST=${POSTGRES_HOST}
-      - POSTGRES_PORT=${POSTGRES_PORT}
-      - TWITCH_CLIENT_ID=${TWITCH_CLIENT_ID}
-      - TWITCH_CLIENT_SECRET=${TWITCH_CLIENT_SECRET}
-      - ACCESS_TOKEN_SERVICE=${ACCESS_TOKEN_SERVICE}
-      - RABBITMQ_URL=${RABBITMQ_URL}
-    depends_on:
-      redis:
-        condition: service_started
-      rabbitmq:
-        condition: service_healthy
-      auth:
-        condition: service_healthy
-    volumes:
-      - ./logs/twitch:/logs
-    networks:
-      - app-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    restart: always
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 1G
-        reservations:
-          cpus: '0.25'
-          memory: 256M
+#  twitch:
+#    image: registry.craazzzyyfoxx.me/aqt-twitch:latest
+#    build:
+#      context: ./backend
+#      args:
+#        APP_PATH: twitch
+#    command: uvicorn main:app --host 0.0.0.0 --port 8082 --workers 2 --loop uvloop
+#    environment:
+#      - ENVIRONMENT=${ENVIRONMENT}
+#      - PROJECT_URL=${PROJECT_URL}
+#      - REDIS_URL=${REDIS_URL}
+#      - CORS_ORIGINS=${CORS_ORIGINS}
+#      - POSTGRES_USER=${POSTGRES_USER}
+#      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+#      - POSTGRES_DB=${POSTGRES_DB}
+#      - POSTGRES_HOST=${POSTGRES_HOST}
+#      - POSTGRES_PORT=${POSTGRES_PORT}
+#      - TWITCH_CLIENT_ID=${TWITCH_CLIENT_ID}
+#      - TWITCH_CLIENT_SECRET=${TWITCH_CLIENT_SECRET}
+#      - ACCESS_TOKEN_SERVICE=${ACCESS_TOKEN_SERVICE}
+#      - RABBITMQ_URL=${RABBITMQ_URL}
+#    depends_on:
+#      redis:
+#        condition: service_started
+#      rabbitmq:
+#        condition: service_healthy
+#      auth:
+#        condition: service_healthy
+#    volumes:
+#      - ./logs/twitch:/logs
+#    networks:
+#      - app-network
+#    healthcheck:
+#      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
+#      interval: 30s
+#      timeout: 10s
+#      retries: 3
+#      start_period: 40s
+#    restart: always
+#    deploy:
+#      resources:
+#        limits:
+#          cpus: '1'
+#          memory: 1G
+#        reservations:
+#          cpus: '0.25'
+#          memory: 256M
 
   balancer:
     image: registry.craazzzyyfoxx.me/aqt-balancer:latest
@@ -317,9 +286,10 @@ services:
       context: ./backend
       args:
         APP_PATH: balancer
-    command: uvicorn main:app --host 0.0.0.0 --port 8083 --workers 2 --loop uvloop
+    command: uvicorn main:app --host 0.0.0.0 --port 8003 --loop uvloop
     environment:
       - ENVIRONMENT=${ENVIRONMENT}
+      - PORT=8003
       - PROJECT_URL=${PROJECT_URL}
       - REDIS_URL=${REDIS_URL}
       - CORS_ORIGINS=${CORS_ORIGINS}
@@ -342,20 +312,12 @@ services:
     networks:
       - app-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
     restart: always
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 1G
-        reservations:
-          cpus: '0.25'
-          memory: 256M
 
   frontend:
     image: registry.craazzzyyfoxx.me/frontend:latest
@@ -365,9 +327,12 @@ services:
       args:
         NEXT_API_URL: ${NEXT_API_URL}
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
-        CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
+        NEXT_PUBLIC_AUTH_SERVICE_URL: ${NEXT_PUBLIC_AUTH_SERVICE_URL}
         NEXT_PUBLIC_CACHE_POLICY: ${NEXT_PUBLIC_CACHE_POLICY}
+        NEXT_PUBLIC_SITE_NAME: ${NEXT_PUBLIC_SITE_NAME}
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL}
+        NEXT_PUBLIC_SITE_ICON: ${NEXT_PUBLIC_SITE_ICON}
+        NEXT_PUBLIC_SITE_FAVICON: ${NEXT_PUBLIC_SITE_FAVICON}
     depends_on:
       backend:
         condition: service_healthy
@@ -375,6 +340,8 @@ services:
         condition: service_healthy
     volumes:
       - ./logs/frontend:/logs
+      # Optional: override the browser favicon at runtime
+      # - ./conf/favicon.ico:/app/public/favicon.ico:ro
     networks:
       - app-network
     healthcheck:
@@ -384,14 +351,6 @@ services:
       retries: 3
       start_period: 60s
     restart: always
-    deploy:
-      resources:
-        limits:
-          cpus: '1.5'
-          memory: 1.5G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
 
 volumes:
   redis-data:

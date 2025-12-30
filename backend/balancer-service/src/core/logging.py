@@ -11,7 +11,7 @@ class InterceptHandler(logging.Handler):
     def emit(self, record):
         # Get corresponding Loguru level if it exists.
         try:
-            level = logger.level(record.levelname).name
+            level = loguru_logger.level(record.levelname).name
         except ValueError:
             level = record.levelno
 
@@ -21,7 +21,7 @@ class InterceptHandler(logging.Handler):
             frame = frame.f_back
             depth += 1
 
-        logger.opt(depth=depth, exception=record.exc_info).log(
+        loguru_logger.opt(depth=depth, exception=record.exc_info).log(
             level, record.getMessage()
         )
 
@@ -70,20 +70,33 @@ class APILogger:
             level=level.upper(),
             format=log_format,
         )
-        logging.basicConfig(handlers=[InterceptHandler()], level=0)
+
+        intercept_handler = InterceptHandler()
+
+        # Route standard `logging` through Loguru exactly once.
+        # `force=True` prevents stacking handlers when modules are reloaded.
+        logging.basicConfig(handlers=[intercept_handler], level=0, force=True)
+
+        # Let these loggers bubble up to root (handled by intercept_handler).
         for _log in (
             "uvicorn",
-            "uvicorn.access",
+            "uvicorn.error",
+            "uvicorn.server",
+            "uvicorn.lifespan",
+            "uvicorn.lifespan.on",
             "fastapi",
             "celery",
             "sqlalchemy.engine.Engine",
-            "websockets.legacy.server",
         ):
             _logger = logging.getLogger(_log)
-            _logger.handlers = [InterceptHandler()]
+            _logger.handlers = []
+            _logger.propagate = True
+
+        # Suppress access logs (we already log requests via TimeMiddleware).
         for _log in ("uvicorn.access", "websockets.legacy.server"):
             _logger = logging.getLogger(_log)
             _logger.handlers = []
+            _logger.propagate = False
         return loguru_logger
 
 

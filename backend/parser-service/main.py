@@ -1,10 +1,13 @@
 from contextlib import asynccontextmanager
+from datetime import datetime, UTC
 
 from fastapi import FastAPI
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
+
+from shared.schemas import HealthCheckResponse
 from src import routes
 from src.core import config, db
 from src.core.logging import logger
@@ -17,7 +20,9 @@ from starlette.requests import Request
 async def lifespan(_: FastAPI):
     async with db.async_session_maker() as session:
         pass
-    logger.info("Application... Online!")
+    logger.info(f"Starting {config.settings.project_name} - Parser Service...")
+    logger.info(f"Environment: {config.settings.environment}")
+    logger.info(f"Port: {config.settings.port}")
     yield
 
 
@@ -48,6 +53,16 @@ app.add_middleware(
 
 app.include_router(routes.router)
 
+@app.get("/health")
+async def health_check() -> HealthCheckResponse:
+    """Health check endpoint"""
+    return HealthCheckResponse(
+        status="ok",
+        service="parser-service",
+        timestamp=int(datetime.now(UTC).timestamp()),
+        version=config.settings.version,
+    )
+
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(_: Request, exc: RequestValidationError):
@@ -70,5 +85,7 @@ if __name__ == "__main__":
         "main:app",
         host=config.settings.host,
         port=config.settings.port,
+        log_config=None,
+        access_log=False,
         # reload=config.ENVIRONMENT == "development"
     )

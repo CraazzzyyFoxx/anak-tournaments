@@ -5,6 +5,7 @@ import { Metadata } from "next";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import EncounterMatch from "@/app/encounters/[id]/components/EncounterMatch";
 import { Swords } from "lucide-react";
+import { SITE_NAME } from "@/config/site";
 
 export async function generateMetadata(props: {
   params: Promise<{ id: number }>;
@@ -13,14 +14,14 @@ export async function generateMetadata(props: {
   const encounter = await encounterService.getEncounter(params.id);
 
   return {
-    title: `${encounter.home_team.name} vs ${encounter.away_team.name} | AQT`,
-    description: `Overview for ${encounter.home_team.name} vs ${encounter.away_team.name} on AQT.`,
+    title: `${encounter.home_team.name} vs ${encounter.away_team.name} | ${SITE_NAME}`,
+    description: `Overview for ${encounter.home_team.name} vs ${encounter.away_team.name} on ${SITE_NAME}.`,
     openGraph: {
-      title: `${encounter.home_team.name} vs ${encounter.away_team.name} | AQT`,
-      description: `Overview for ${encounter.home_team.name} vs ${encounter.away_team.name} on AQT.`,
+      title: `${encounter.home_team.name} vs ${encounter.away_team.name} | ${SITE_NAME}`,
+      description: `Overview for ${encounter.home_team.name} vs ${encounter.away_team.name} on ${SITE_NAME}.`,
       url: "https://aqt.craazzzyyfoxx.me",
       type: "website",
-      siteName: "AQT",
+      siteName: SITE_NAME,
       locale: "en_US"
     }
   };

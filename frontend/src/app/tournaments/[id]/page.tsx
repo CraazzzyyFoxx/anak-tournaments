@@ -50,12 +50,12 @@ const items = [
   }
 ];
 
-
 export async function generateMetadata(props: {
-  params: Promise<{ id: number }>;
+  params: Promise<{ id: string }>;
 }): Promise<Metadata> {
   const params = await props.params;
-  const tournament = await tournamentService.get(params.id);
+  const tournamentId = Number(params.id);
+  const tournament = await tournamentService.get(tournamentId);
 
   return {
     title: `${tournament.name} Overview | AQT`,
@@ -71,26 +71,33 @@ export async function generateMetadata(props: {
   };
 }
 
-const TournamentPage = async ({
-  params,
-  searchParams
-}: {
-  params: { id: string };
-  searchParams: {
-    tab: string;
-    tournamentId: string;
-    page: string;
-    selectedTournamentId: string;
-    search: string;
-  };
-}) => {
-  let activeTab = searchParams.tab as string;
-  const searchParamsObj = new URLSearchParams(searchParams);
+type TournamentPageProps = {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{
+    tab?: string;
+    tournamentId?: string;
+    page?: string;
+    selectedTournamentId?: string;
+    search?: string;
+  }>;
+};
+
+const TournamentPage = async ({ params, searchParams }: TournamentPageProps) => {
+  const resolvedParams = await params;
+  const resolvedSearchParams = await searchParams;
+
+  let activeTab = resolvedSearchParams.tab ?? "teams";
+  const searchParamsObj = new URLSearchParams();
+  for (const [key, value] of Object.entries(resolvedSearchParams)) {
+    if (typeof value === "string") {
+      searchParamsObj.set(key, value);
+    }
+  }
   let searchParamsChanged = false;
 
-  const tournamentId = Number(params.id);
-  const page = parseInt(searchParams.page) || 1;
-  const search = searchParams.search || "";
+  const tournamentId = Number(resolvedParams.id);
+  const page = Number.parseInt(resolvedSearchParams.page ?? "1", 10) || 1;
+  const search = resolvedSearchParams.search ?? "";
   const tournament = await tournamentService.get(tournamentId);
 
   if (!["teams", "matches", "heroes", "standings"].includes(activeTab)) {
@@ -100,7 +107,7 @@ const TournamentPage = async ({
   }
 
   if (searchParamsChanged) {
-    redirect(`/tournaments/${params.id}?${searchParamsObj.toString()}`);
+    redirect(`/tournaments/${resolvedParams.id}?${searchParamsObj.toString()}`);
   }
 
   const start_date = dayjs(new Date(tournament.start_date)).format("MMM DD, YYYY");

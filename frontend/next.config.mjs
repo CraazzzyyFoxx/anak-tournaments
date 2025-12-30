@@ -2,6 +2,7 @@
 const nextConfig = {
   output: "standalone",
   images: {
+    qualities: [25, 50, 75, 100],
     remotePatterns: [
       {
         protocol: 'https',
@@ -18,6 +19,12 @@ const nextConfig = {
       {
         protocol: 'https',
         hostname: 'img.clerk.com',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'cdn.discordapp.com',
         port: '',
         pathname: '/**',
       }

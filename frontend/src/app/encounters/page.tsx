@@ -4,11 +4,17 @@ import encounterService from "@/services/encounter.service";
 import EncountersTable from "@/components/EncountersTable";
 import { Suspense } from "react";
 
-export default async function EncountersPage({ searchParams }: { searchParams: URLSearchParams }) {
-  // @ts-ignore
-  const page = parseInt(searchParams.page) || 1;
-  // @ts-ignore
-  const search = searchParams.search || "";
+type EncountersPageProps = {
+  searchParams: Promise<{
+    page?: string;
+    search?: string;
+  }>;
+};
+
+export default async function EncountersPage({ searchParams }: EncountersPageProps) {
+  const resolvedSearchParams = await searchParams;
+  const page = Number.parseInt(resolvedSearchParams.page ?? "1", 10) || 1;
+  const search = resolvedSearchParams.search ?? "";
   const data = await encounterService.getAll(page, search);
 
   return (

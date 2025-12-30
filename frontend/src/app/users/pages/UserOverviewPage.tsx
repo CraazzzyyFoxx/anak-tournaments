@@ -16,7 +16,7 @@ import UserBestTeammates from "@/app/users/components/UserBestTeammates";
 export interface OverviewPageProps {
   profile: UserProfile;
   user: User;
-  tournamentId: number;
+  tournamentId?: number;
 }
 
 export const UserOverviewPageSkeleton = () => {
@@ -38,7 +38,7 @@ export const UserOverviewPageSkeleton = () => {
                 <TypographyH4>Most played heroes</TypographyH4>
               </div>
             </CardHeader>
-            <Skeleton className="p-0 pb-4 h-[412px]" />
+            <Skeleton className="p-0 pb-4 h-103" />
           </Card>
         </div>
       </div>
@@ -47,7 +47,10 @@ export const UserOverviewPageSkeleton = () => {
 };
 
 const UserOverviewPage = async ({ profile, tournamentId, user }: OverviewPageProps) => {
-  const tournament = await userService.getUserTournament(user.id, tournamentId);
+  const resolvedTournamentId = tournamentId ?? profile.tournaments[0]?.id;
+  const tournament = resolvedTournamentId
+    ? await userService.getUserTournament(user.id, resolvedTournamentId)
+    : null;
   const teammates = await userService.getUserBestTeammates(user.id);
 
   return (
@@ -68,7 +71,7 @@ const UserOverviewPage = async ({ profile, tournamentId, user }: OverviewPagePro
                 <TypographyH4>Most played heroes</TypographyH4>
               </div>
             </CardHeader>
-            <div className="flex-1 px-2 pb-4 max-w-[840px]">
+            <div className="flex-1 px-2 pb-4 max-w-210">
               <HeroPlaytimeChart heroes={profile.hero_statistics} />
             </div>
           </Card>

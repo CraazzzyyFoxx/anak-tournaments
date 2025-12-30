@@ -88,7 +88,7 @@ const TournamentsDivisionChart = ({ data }: { data: TournamentDivisionStatistics
             <ChartTooltip
               content={
                 <ChartTooltipContent
-                  className="w-[150px]"
+                  className="w-37.5"
                   labelFormatter={(value) => {
                     return `Tournament ${value}`;
                   }}

@@ -17,7 +17,7 @@ const BalancerPage = () => {
     mutationFn: (file: File) => balancerService.balanceTeams(file),
     onSuccess: () => {
       console.log("Teams balanced successfully");
-    },
+    }
   });
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {

@@ -22,8 +22,6 @@ import { useRouter } from "next/navigation";
 import { CardContent, Card } from "@/components/ui/card";
 import Link from "next/link";
 
-
-
 const OwalStandingsTable = ({ data }: { data: OwalStack[] }) => {
   const columns: ColumnDef<OwalStack>[] = [
     {
@@ -31,9 +29,15 @@ const OwalStandingsTable = ({ data }: { data: OwalStack[] }) => {
       id: "userName1",
       header: "Player One",
       cell: ({ row }) => {
+        const userName = row.getValue<string>("userName1");
+
         return (
-          // @ts-ignore
-          <Link href={`/users/${row.getValue("userName1").replace("#", "-")}`} className="text-left">{row.getValue("userName1").split("#")[0]}</Link>
+          <Link
+            href={`/users/${userName.replace("#", "-")}`}
+            className="text-left"
+          >
+            {userName.split("#")[0]}
+          </Link>
         );
       }
     },
@@ -42,9 +46,15 @@ const OwalStandingsTable = ({ data }: { data: OwalStack[] }) => {
       id: "userName2",
       header: "Player Two",
       cell: ({ row }) => {
+        const userName = row.getValue<string>("userName2");
+
         return (
-          // @ts-ignore
-          <Link href={`/users/${row.getValue("userName2").replace("#", "-")}`} className="text-left">{row.getValue("userName2").split("#")[0]}</Link>
+          <Link
+            href={`/users/${userName.replace("#", "-")}`}
+            className="text-left"
+          >
+            {userName.split("#")[0]}
+          </Link>
         );
       }
     },
@@ -59,10 +69,10 @@ const OwalStandingsTable = ({ data }: { data: OwalStack[] }) => {
       header: "Average Placement",
       id: "avg_position",
       cell: ({ row }) => {
-        // @ts-ignore
-        return <div>{row.getValue("avg_position").toFixed(2)}</div>;
+        const avgPosition = row.getValue<number>("avg_position");
+        return <div>{avgPosition.toFixed(2)}</div>;
       }
-    },
+    }
   ];
 
   const table = useReactTable({
@@ -71,68 +81,65 @@ const OwalStandingsTable = ({ data }: { data: OwalStack[] }) => {
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    rowCount: data.length,
+    rowCount: data.length
   });
 
   return (
-      <Card className="w-[800px]">
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              {table.getHeaderGroups().map((headerGroup) => (
-                <TableRow key={headerGroup.id}>
-                  {headerGroup.headers.map((header) => {
-                    return (
-                      <TableHead className="text-center" key={header.id}>
-                        {header.isPlaceholder
-                          ? null
-                          : flexRender(header.column.columnDef.header, header.getContext())}
-                      </TableHead>
-                    );
-                  })}
-                </TableRow>
-              ))}
-            </TableHeader>
-            <TableBody>
-              {table.getRowModel().rows?.length ? (
-                table.getRowModel().rows.map((row) => (
-                  <TableRow
-                    key={row.id}
-                    data-state={row.getIsSelected() && "selected"}
-                  >
-                    {row.getVisibleCells().map((cell) => {
-                      // @ts-ignore
-                      if (
-                        cell.column.columnDef.header &&
-                        cell.column?.columnDef?.id?.startsWith("day") &&
-                        cell.column.columnDef.id !== "place"
-                      ) {
-                        return (
-                          // @ts-ignore
-                          <TableCell key={cell.id} className="text-center">
-                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                          </TableCell>
-                        );
-                      }
+    <Card className="w-[800px]">
+      <CardContent className="p-0">
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => {
+                  return (
+                    <TableHead className="text-center" key={header.id}>
+                      {header.isPlaceholder
+                        ? null
+                        : flexRender(header.column.columnDef.header, header.getContext())}
+                    </TableHead>
+                  );
+                })}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows?.length ? (
+              table.getRowModel().rows.map((row) => (
+                <TableRow key={row.id} data-state={row.getIsSelected() && "selected"}>
+                  {row.getVisibleCells().map((cell) => {
+                    // @ts-ignore
+                    if (
+                      cell.column.columnDef.header &&
+                      cell.column?.columnDef?.id?.startsWith("day") &&
+                      cell.column.columnDef.id !== "place"
+                    ) {
                       return (
-                        <TableCell className="text-center" key={cell.id}>
+                        // @ts-ignore
+                        <TableCell key={cell.id} className="text-center">
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
                         </TableCell>
                       );
-                    })}
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={columns.length} className="h-24 text-center">
-                    No results.
-                  </TableCell>
+                    }
+                    return (
+                      <TableCell className="text-center" key={cell.id}>
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </TableCell>
+                    );
+                  })}
                 </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={columns.length} className="h-24 text-center">
+                  No results.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
   );
 };
 

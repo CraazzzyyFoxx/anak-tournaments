@@ -249,6 +249,12 @@ class OAuthService:
             )
             auth_user = result.scalar_one()
 
+            # Keep primary avatar in sync (used by /auth/me)
+            if oauth_info.avatar_url and auth_user.avatar_url != oauth_info.avatar_url:
+                auth_user.avatar_url = oauth_info.avatar_url
+                await session.commit()
+                await session.refresh(auth_user)
+
             logger.info(f"Existing {oauth_info.provider} user logged in: {oauth_info.username}")
             return auth_user
 

@@ -23,17 +23,24 @@ class Settings(BaseSettings):
     access_token_service: str
 
     # Database (shared with main app)
-    postgres_host: str = "localhost"
-    postgres_port: int = 5432
-    postgres_db: str = "anak_tournaments"
-    postgres_user: str = "postgres"
-    postgres_password: str = "postgres"
+    postgres_host: str
+    postgres_port: int
+    postgres_db: str
+    postgres_user: str
+    postgres_password: str
 
     # Proxy (optional)
     proxy_ip: str | None = None
     proxy_port: int | None = None
     proxy_username: str | None = None
     proxy_password: str | None = None
+
+    # RabbitMQ (optional)
+    rabbitmq_url: str | None = None
+
+    @property
+    def broker_url(self) -> str | None:
+        return self.rabbitmq_url
 
     @property
     def db_url_asyncpg(self):

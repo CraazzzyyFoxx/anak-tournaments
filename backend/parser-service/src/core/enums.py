@@ -19,6 +19,7 @@ class RouteTag(StrEnum):
     LOGS = " Logs"
     CHALLONGE = " Challonge"
     ANALYTICS = " Analytics"
+    ACHIEVEMENT = " Achievement"
 
 
 game_mode_dict = {

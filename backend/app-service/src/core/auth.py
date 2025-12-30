@@ -11,9 +11,9 @@ from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.src import models
-from app.src.clients.auth_client import auth_client
-from app.src.core import db
+from src import models
+from src.clients.auth_client import auth_client
+from src.core import db
 
 security = HTTPBearer()
 

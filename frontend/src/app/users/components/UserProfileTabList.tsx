@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback } from "react";
+import React, { useCallback, useTransition } from "react";
 import { TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
@@ -9,14 +9,17 @@ const UserProfileTabList = () => {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const [, startTransition] = useTransition();
 
   const navToTab = useCallback(
     (tab: string) => {
       const newSearchParams = new URLSearchParams(searchParams || undefined);
       newSearchParams.set("tab", tab);
-      router.push(`${pathname}?${newSearchParams.toString()}`);
+      startTransition(() => {
+        router.push(`${pathname}?${newSearchParams.toString()}`);
+      });
     },
-    [searchParams, pathname]
+    [searchParams, pathname, router, startTransition]
   );
 
   return (

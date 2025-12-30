@@ -3,7 +3,8 @@ import {
   User,
   UserBestTeammate,
   UserMapRead,
-  UserProfile, MinimizedUser,
+  UserProfile,
+  MinimizedUser,
   UserTournament,
   UserTournamentWithStats
 } from "@/types/user.types";
@@ -34,17 +35,17 @@ export default class userService {
     id: number,
     tournamentId: number | null
   ): Promise<UserTournamentWithStats | null> {
-    return customFetch(`users/${id}/tournaments/${tournamentId}`).then((res) => {
-      if (res.status === 200) {
-        return res.json();
-      }
-      return null;
-    }).catch(
-      (error) => {
+    return customFetch(`users/${id}/tournaments/${tournamentId}`)
+      .then((res) => {
+        if (res.status === 200) {
+          return res.json();
+        }
+        return null;
+      })
+      .catch((error) => {
         console.error("Error fetching user tournament data:", error);
         return null;
-      }
-    );
+      });
   }
   static async getUserTournaments(id: number): Promise<UserTournament[]> {
     return customFetch(`users/${id}/tournaments`).then((res) => res.json());
@@ -105,7 +106,7 @@ export default class userService {
     return customFetch(`users/search`, {
       query: {
         query: query,
-        fields: ["battle_tag"],
+        fields: ["battle_tag"]
       }
     }).then((res) => res.json());
   }

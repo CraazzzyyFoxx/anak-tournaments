@@ -29,7 +29,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
 
-
 const getDayColor = (points: number) => {
   let color = {} as React.CSSProperties;
   if (points < 1.71) {
@@ -57,11 +56,9 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
   const [globalFilter, setGlobalFilter] = React.useState("");
   const [show3Plus, setShow3Plus] = React.useState(false);
 
-
   const days_columns: ColumnDef<OwalStanding>[] = data.days.map((day) => ({
     id: `day_${day.id}`,
-    accessorFn: (row) =>
-      row.days[day.id.toString()] ? row.days[day.id.toString()].points : "-",
+    accessorFn: (row) => (row.days[day.id.toString()] ? row.days[day.id.toString()].points : "-"),
     header: ({ column }) => (
       <DataTableSortButton column={column} label={day.name.split(" | ")[1]} />
     ),
@@ -187,22 +184,18 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
         cell: ({ row }) => {
           const winrate = row.getValue<number>("win_rate");
           return (
-            <div style={{ color: getWinrateColor(winrate) }}>
-              {(winrate * 100).toFixed(2)}%
-            </div>
+            <div style={{ color: getWinrateColor(winrate) }}>{(winrate * 100).toFixed(2)}%</div>
           );
         }
       }
     ],
     []
-  )
-
+  );
 
   const standingsData = React.useMemo(
     () => (show3Plus ? data.standings.filter((s) => s.count_days >= 3) : data.standings),
     [show3Plus, data.standings]
   );
-
 
   const table = useReactTable({
     data: standingsData,
@@ -218,10 +211,7 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
     },
     onGlobalFilterChange: setGlobalFilter,
     globalFilterFn: (row, columnId, filterValue) => {
-      return row
-        .getValue<string>("userName")
-        .toLowerCase()
-        .includes(filterValue.toLowerCase());
+      return row.getValue<string>("userName").toLowerCase().includes(filterValue.toLowerCase());
     }
   });
 
@@ -257,10 +247,7 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
                         <TableHead className="text-center" key={header.id}>
                           {header.isPlaceholder
                             ? null
-                            : flexRender(
-                              header.column.columnDef.header,
-                              header.getContext()
-                            )}
+                            : flexRender(header.column.columnDef.header, header.getContext())}
                         </TableHead>
                       );
                     })}
@@ -270,10 +257,7 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
               <TableBody className="">
                 {table.getRowModel().rows?.length ? (
                   table.getRowModel().rows.map((row) => (
-                    <TableRow
-                      key={row.id}
-                      data-state={row.getIsSelected() && "selected"}
-                    >
+                    <TableRow key={row.id} data-state={row.getIsSelected() && "selected"}>
                       {row.getVisibleCells().map((cell) => {
                         if (
                           cell.column.columnDef.header &&
@@ -287,10 +271,7 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
                               // getDayColor expects a number; when value is '-', it becomes NaN and returns default style
                               style={getDayColor(cell?.getValue() as number)}
                             >
-                              {flexRender(
-                                cell.column.columnDef.cell,
-                                cell.getContext()
-                              )}
+                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
                             </TableCell>
                           );
                         }
@@ -301,10 +282,7 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
                         ) {
                           return (
                             <TableCell key={cell.id} className="text-center bg-gray-800">
-                              {flexRender(
-                                cell.column.columnDef.cell,
-                                cell.getContext()
-                              )}
+                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
                             </TableCell>
                           );
                         }

@@ -127,8 +127,7 @@ export interface UserBestTeammate {
   stats: Record<LogStatsName, number>;
 }
 
-
 export interface MinimizedUser {
-    id: number
-    name: string
+  id: number;
+  name: string;
 }

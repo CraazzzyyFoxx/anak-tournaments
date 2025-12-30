@@ -205,7 +205,6 @@ export const UserTournamentsTable = ({ tournaments }: { tournaments: UserTournam
     return result;
   }, [tournaments]);
 
-
   useEffect(() => {
     if (searchParams) {
       const newSearchParams = new URLSearchParams(searchParams);

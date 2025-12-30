@@ -1,16 +1,17 @@
 import type { Metadata } from "next";
 import React from "react";
+import { SITE_NAME } from "@/config/site";
 
 export const metadata: Metadata = {
-  title: "Statistics | AQT",
-  description: "View statistics on AQT.",
+  title: `Statistics | ${SITE_NAME}`,
+  description: `View statistics on ${SITE_NAME}.`,
   metadataBase: new URL("https://aqt.craazzzyyfoxx.me"),
   openGraph: {
-    title: `AQT`,
-    description: `View statistics on AQT.`,
+    title: `Statistics | ${SITE_NAME}`,
+    description: `View statistics on ${SITE_NAME}.`,
     url: "https://aqt.craazzzyyfoxx.me",
     type: "website",
-    siteName: "AQT",
+    siteName: SITE_NAME,
     locale: "en_US"
   }
 };

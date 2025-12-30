@@ -14,11 +14,14 @@ class Settings(BaseSettings):
 
     # Application
     project_name: str = "Anak Tournaments API"
-    project_version: str = "0.0.1"
+    version: str = "0.0.1"
     environment: typing.Literal["development", "production"] = "development"
     project_url: str
     battle_tag_regex: str = r"([\w0-9]{2,12}#[0-9]{4,})"
     api_v1_str: str = "/api/v1"
+    
+    host: str = "localhost"
+    port: int = 8000
 
     # Auth Service
     auth_service_url: str = "http://localhost:8080"

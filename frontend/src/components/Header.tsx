@@ -1,3 +1,5 @@
+"use client";
+
 import React from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -20,8 +22,9 @@ import {
   NavigationMenuTrigger
 } from "@/components/ui/navigation-menu";
 import { cn } from "@/lib/utils";
-import { OrganizationSwitcher, SignedIn, SignedOut, SignInButton } from "@clerk/nextjs";
+import { SITE_ICON, SITE_NAME } from "@/config/site";
 import UserMenu from "@/components/UserMenu";
+import { useAuthProfile } from "@/hooks/useAuthProfile";
 
 const tournament_components: { title: string; href: string; description: string }[] = [
   {
@@ -84,10 +87,15 @@ const components: Record<string, { title: string; href: string; description: str
 };
 
 const Header = () => {
+  const { user } = useAuthProfile();
+  const username = user?.username;
+  const avatarUrl = user?.avatarUrl;
+  const profileHref = username ? `/users/${username}` : "/users";
+
   return (
     <header className="sticky top-0 z-50 flex h-14 items-center bg-background gap-4 border-b px-4 md:px-6">
       <Link href={"/"}>
-        <Image src={"/logo.webp"} alt="AQT" width={40} height={40} />
+        <Image src={SITE_ICON} alt={SITE_NAME} width={40} height={40} />
       </Link>
       <NavigationMenu className="hidden md:flex">
         {Object.keys(components).map((title) => (
@@ -117,8 +125,8 @@ const Header = () => {
         <SheetContent side="left">
           <nav className="grid gap-2 text-lg font-medium">
             <Link href="#" className="flex items-center gap-2 text-lg font-semibold mb-4">
-              <Image src={"/logo.webp"} alt="Anak" width={32} height={32} />
-              <span className="sr-only">Anakq Tournaments</span>
+              <Image src={SITE_ICON} alt={SITE_NAME} width={32} height={32} />
+              <span className="sr-only">{SITE_NAME}</span>
             </Link>
             <Accordion type="single" collapsible className="w-full">
               {Object.entries(components).map(([category, items]) => (
@@ -149,17 +157,16 @@ const Header = () => {
         <div className="ml-auto flex-1 sm:flex-initial">
           <UserSearch />
         </div>
-        <div className="text-white">
-          <Button className="bg-[#5865f2] text-white hover:bg-[#5865f2] text-base">
-            <Image
-              className="text-white"
-              src="/discord-white.svg"
-              alt="discord"
-              width="24"
-              height="24"
-            />
+        {username ? (
+          <UserMenu username={username} avatarUrl={avatarUrl} profileHref={profileHref} />
+        ) : (
+          <Button asChild className="bg-[#5865f2] text-white hover:bg-[#5865f2] text-base">
+            <Link href="/auth/discord/login">
+              <Image src="/discord-white.svg" alt="discord" width="24" height="24" />
+              <span className="ml-2 hidden sm:inline">Login</span>
+            </Link>
           </Button>
-        </div>
+        )}
       </div>
     </header>
   );

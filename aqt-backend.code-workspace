@@ -4,7 +4,7 @@
             "path": "."
         },
         {
-            "path": "backend/app"
+            "path": "backend/app-service"
         },
         {
             "path": "backend/auth-service",

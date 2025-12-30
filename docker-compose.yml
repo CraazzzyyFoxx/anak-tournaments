@@ -1,46 +1,69 @@
 services:
   redis:
-    container_name: aqt-redis
     image: 'redis:latest'
-    restart: unless-stopped
     volumes:
       - redis-data:/data
-    networks:
-      - traefik-public
-
-  traeifk:
-    image: traefik:3.3
-    container_name: aqt-traefik
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
     ports:
-      - "${APP_PORT}:80"
-    command:
-      - --providers.docker
-      - --providers.docker.constraints=Label(`traefik.constraint-label`, `traefik-public`)
-      - --providers.docker.exposedbydefault=false
-      - --entrypoints.http.address=:80
-      - --accesslog
-      - --log
-      - --log.level=DEBUG
-      - --api
-      - --api.insecure=true
-    labels:
-      - traefik.enable=true
-      - traefik.constraint-label=traefik-public
+      - "6379:6379"
     networks:
-      - traefik-public
+      - app-network
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - app-network
+
+  kong:
+    image: kong:3.7
+    environment:
+      - KONG_DATABASE=off
+      - KONG_DECLARATIVE_CONFIG=/kong/kong.yml
+      - KONG_PROXY_LISTEN=0.0.0.0:8000
+      - KONG_ADMIN_LISTEN=0.0.0.0:8001
+      - KONG_STATUS_LISTEN=0.0.0.0:8100
+      - KONG_LOG_LEVEL=${KONG_LOG_LEVEL:-notice}
+    ports:
+      - "${APP_PORT}:8000"
+      - "${KONG_ADMIN_PORT:-8005}:8001"
+    volumes:
+      - ./kong/kong.yml:/kong/kong.yml:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+      auth:
+        condition: service_started
+      parser:
+        condition: service_started
+      balancer:
+        condition: service_started
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
 
   backend:
     image: "registry.craazzzyyfoxx.me/aqt-backend:latest"
-    container_name: aqt-backend
     build:
       context: ./backend
       args:
         APP_PATH: app
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --loop uvloop
+    ports:
+      - "8000:8000"
     environment:
       - ENVIRONMENT=${ENVIRONMENT}
+      - PORT=8000
       - PROJECT_URL=${PROJECT_URL}
       - REDIS_URL=${REDIS_URL}
       - CORS_ORIGINS=${CORS_ORIGINS}
@@ -49,6 +72,7 @@ services:
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_HOST=${POSTGRES_HOST}
       - POSTGRES_PORT=${POSTGRES_PORT}
+      - RABBITMQ_URL=${RABBITMQ_URL}
     develop:
       watch:
         - path: ./backend/app-service
@@ -59,41 +83,32 @@ services:
             - .venv
         - path: ./backend/pyproject.toml
           action: rebuild
-    depends_on:
-      redis:
-        condition: service_started
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik-public
-      - traefik.constraint-label=traefik-public
-      - traefik.http.routers.backend-http.rule=PathPrefix(`/api`)
-      - traefik.http.routers.backend-http.entrypoints=http
-      - traefik.http.services.backend-http.loadbalancer.server.port=8000
     volumes:
       - ./logs/backend:/logs
       - ./backend/htmlcov:/app/htmlcov
     networks:
-      - traefik-public
+      - app-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
-    restart: unless-stopped
 
   auth:
     image: registry.craazzzyyfoxx.me/aqt-auth:latest
-    container_name: aqt-auth
     build:
       context: ./backend
       args:
         APP_PATH: auth
     command: uvicorn main:app --host 0.0.0.0 --port 8001 --loop uvloop
+    ports:
+      - "8001:8001"
     environment:
       - ENVIRONMENT=${ENVIRONMENT}
+      - PORT=8001
       - PROJECT_URL=${PROJECT_URL}
       - REDIS_URL=${REDIS_URL}
       - CORS_ORIGINS=${CORS_ORIGINS}
@@ -102,17 +117,15 @@ services:
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_HOST=${POSTGRES_HOST}
       - POSTGRES_PORT=${POSTGRES_PORT}
-      - ACCESS_TOKEN_SECRET=${ACCESS_TOKEN_SECRET}
-      - REFRESH_TOKEN_SECRET=${REFRESH_TOKEN_SECRET}
-      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}
-      - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS}
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik-public
-      - traefik.constraint-label=traefik-public
-      - traefik.http.routers.auth-api-http.rule=PathPrefix(`/auth`)
-      - traefik.http.routers.auth-api-http.entrypoints=http
-      - traefik.http.services.auth-api-http.loadbalancer.server.port=8001
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - JWT_ALGORITHM=${JWT_ALGORITHM}
+      - JWT_ACCESS_TOKEN_EXPIRE_MINUTES=${JWT_ACCESS_TOKEN_EXPIRE_MINUTES}
+      - JWT_REFRESH_TOKEN_EXPIRE_DAYS=${JWT_REFRESH_TOKEN_EXPIRE_DAYS}
+      - ACCESS_TOKEN_SERVICE=${ACCESS_TOKEN_SERVICE}
+      - RABBITMQ_URL=${RABBITMQ_URL}
+      - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID}
+      - DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET}
+      - DISCORD_REDIRECT_URI=${DISCORD_REDIRECT_URI}
     develop:
       watch:
         - path: ./backend/auth-service
@@ -123,37 +136,26 @@ services:
             - .venv
         - path: ./backend/pyproject.toml
           action: rebuild
-    depends_on:
-      redis:
-        condition: service_started
     volumes:
       - ./logs/auth:/logs
     networks:
-      - traefik-public
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    restart: unless-stopped
+      - app-network
 
   parser:
     image: registry.craazzzyyfoxx.me/aqt-parser:latest
-    container_name: aqt-parser
     build:
       context: ./backend
       args:
         APP_PATH: parser
-    command: uvicorn main:app --host 0.0.0.0 --port 8081 --loop uvloop
+    command: uvicorn main:app --host 0.0.0.0 --port 8002 --loop uvloop
+    ports:
+      - "8002:8002"
     environment:
       - ENVIRONMENT=${ENVIRONMENT}
+      - PORT=8002
       - PROJECT_URL=${PROJECT_URL}
       - REDIS_URL=${REDIS_URL}
       - CORS_ORIGINS=${CORS_ORIGINS}
-      - SUPERUSER_EMAIL=${SUPERUSER_EMAIL}
-      - SUPERUSER_PASSWORD=${SUPERUSER_PASSWORD}
-      - ACCESS_TOKEN_SECRET=${ACCESS_TOKEN_SECRET}
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
@@ -165,17 +167,12 @@ services:
       - S3_SECRET_KEY=${S3_SECRET_KEY}
       - S3_ENDPOINT_URL=${S3_ENDPOINT_URL}
       - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - ACCESS_TOKEN_SERVICE=${ACCESS_TOKEN_SERVICE}
       - PROXY_IP=${PROXY_IP}
       - PROXY_PORT=${PROXY_PORT}
       - PROXY_USERNAME=${PROXY_USERNAME}
       - PROXY_PASSWORD=${PROXY_PASSWORD}
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik-public
-      - traefik.constraint-label=traefik-public
-      - traefik.http.routers.parser-api-http.rule=PathPrefix(`/parser`)
-      - traefik.http.routers.parser-api-http.entrypoints=http
-      - traefik.http.services.parser-api-http.loadbalancer.server.port=8081
+      - RABBITMQ_URL=${RABBITMQ_URL}
     develop:
       watch:
         - path: ./backend/parser-service
@@ -186,26 +183,13 @@ services:
             - .venv
         - path: ./backend/pyproject.toml
           action: rebuild
-    depends_on:
-      redis:
-        condition: service_started
-      auth:
-        condition: service_healthy
     volumes:
       - ./logs/parser:/logs
     networks:
-      - traefik-public
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    restart: unless-stopped
+      - app-network
 
   discord:
     image: registry.craazzzyyfoxx.me/aqt-discord:latest
-    container_name: aqt-discord
     build:
       context: ./backend
       args:
@@ -215,89 +199,34 @@ services:
       - ENVIRONMENT=${ENVIRONMENT}
       - PROJECT_URL=${PROJECT_URL}
       - REDIS_URL=${REDIS_URL}
-      - DISCORD_TOKEN=${DISCORD_BOT_TOKEN}
-      - DISCORD_CHANNEL_ID=${DISCORD_CHANNEL_ID}
-      - DISCORD_GUILD_ID=${DISCORD_GUILD_ID}
-      - API_URL=${API_URL}
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
       - PARSER_URL=${PARSER_URL}
       - ACCESS_TOKEN_SERVICE=${ACCESS_TOKEN_SERVICE}
       - PROXY_IP=${PROXY_IP}
       - PROXY_PORT=${PROXY_PORT}
       - PROXY_USERNAME=${PROXY_USERNAME}
       - PROXY_PASSWORD=${PROXY_PASSWORD}
-      - TOURNAMENT_ID=${TOURNAMENT_ID}
-    depends_on:
-      redis:
-        condition: service_started
-      parser:
-        condition: service_healthy
-    volumes:
-      - ./logs/discord:/logs
-    networks:
-      - traefik-public
-    healthcheck:
-      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    restart: unless-stopped
-
-  twitch:
-    image: registry.craazzzyyfoxx.me/aqt-twitch:latest
-    container_name: aqt-twitch
-    build:
-      context: ./backend
-      args:
-        APP_PATH: twitch
-    command: uvicorn main:app --host 0.0.0.0 --port 8082 --loop uvloop
-    environment:
-      - ENVIRONMENT=${ENVIRONMENT}
-      - PROJECT_URL=${PROJECT_URL}
-      - REDIS_URL=${REDIS_URL}
-      - CORS_ORIGINS=${CORS_ORIGINS}
+      - RABBITMQ_URL=${RABBITMQ_URL}
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_HOST=${POSTGRES_HOST}
       - POSTGRES_PORT=${POSTGRES_PORT}
-      - TWITCH_CLIENT_ID=${TWITCH_CLIENT_ID}
-      - TWITCH_CLIENT_SECRET=${TWITCH_CLIENT_SECRET}
-      - ACCESS_TOKEN_SERVICE=${ACCESS_TOKEN_SERVICE}
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik-public
-      - traefik.constraint-label=traefik-public
-      - traefik.http.routers.twitch-api-http.rule=PathPrefix(`/twitch`)
-      - traefik.http.routers.twitch-api-http.entrypoints=http
-      - traefik.http.services.twitch-api-http.loadbalancer.server.port=8082
-    depends_on:
-      redis:
-        condition: service_started
-      auth:
-        condition: service_healthy
     volumes:
-      - ./logs/twitch:/logs
+      - ./logs/discord:/logs
     networks:
-      - traefik-public
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    restart: unless-stopped
+      - app-network
 
   balancer:
     image: registry.craazzzyyfoxx.me/aqt-balancer:latest
-    container_name: aqt-balancer
     build:
       context: ./backend
       args:
         APP_PATH: balancer
-    command: uvicorn main:app --host 0.0.0.0 --port 8083 --loop uvloop
+    command: uvicorn main:app --host 0.0.0.0 --port 8003 --loop uvloop
     environment:
       - ENVIRONMENT=${ENVIRONMENT}
+      - PORT=8003
       - PROJECT_URL=${PROJECT_URL}
       - REDIS_URL=${REDIS_URL}
       - CORS_ORIGINS=${CORS_ORIGINS}
@@ -307,13 +236,6 @@ services:
       - POSTGRES_HOST=${POSTGRES_HOST}
       - POSTGRES_PORT=${POSTGRES_PORT}
       - ACCESS_TOKEN_SERVICE=${ACCESS_TOKEN_SERVICE}
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik-public
-      - traefik.constraint-label=traefik-public
-      - traefik.http.routers.balancer-api-http.rule=PathPrefix(`/balancer`)
-      - traefik.http.routers.balancer-api-http.entrypoints=http
-      - traefik.http.services.balancer-api-http.loadbalancer.server.port=8083
     depends_on:
       redis:
         condition: service_started
@@ -322,44 +244,41 @@ services:
     volumes:
       - ./logs/balancer:/logs
     networks:
-      - traefik-public
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    restart: unless-stopped
+      - app-network
 
-  frontend:
-    image: registry.craazzzyyfoxx.me/frontend:latest
-    container_name: aqt-frontend
-    depends_on:
-      - backend
-    build:
-      context: ./frontend
-      dockerfile: dev.Dockerfile
-    environment:
-      - NEXT_API_URL=${NEXT_API_URL}
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
-      - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
-      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
-      - NEXT_PUBLIC_CACHE_POLICY=${NEXT_PUBLIC_CACHE_POLICY}
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik-public
-      - traefik.constraint-label=traefik-public
-      - traefik.http.routers.frontend-http.rule=PathPrefix(`/`)
-      - traefik.http.routers.frontend-http.entrypoints=http
-      - traefik.http.services.frontend-http.loadbalancer.server.port=3000
-    volumes:
-      - ./logs/frontend:/logs
-    networks:
-      - traefik-public
+#  frontend:
+#    image: registry.craazzzyyfoxx.me/frontend:latest
+#    depends_on:
+#      backend:
+#        condition: service_healthy
+#    build:
+#      context: ./frontend
+#      dockerfile: dev.Dockerfile
+#
+#    environment:
+#      - ENVIRONMENT=${ENVIRONMENT}
+#      - PORT=8003
+#      - PROJECT_URL=${PROJECT_URL}
+#      - REDIS_URL=${REDIS_URL}
+#      - CORS_ORIGINS=${CORS_ORIGINS}
+#      - POSTGRES_USER=${POSTGRES_USER}
+#      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+#      - POSTGRES_DB=${POSTGRES_DB}
+#      - POSTGRES_HOST=${POSTGRES_HOST}
+#      - POSTGRES_PORT=${POSTGRES_PORT}
+#      - ACCESS_TOKEN_SERVICE=${ACCESS_TOKEN_SERVICE}
+#      - RABBITMQ_URL=${RABBITMQ_URL}
+#    volumes:
+#      - ./logs/frontend:/logs
+#      # Optional: override the browser favicon at runtime
+#      # - ./conf/favicon.ico:/app/public/favicon.ico:ro
+#    networks:
+#      - app-network
 
 volumes:
   redis-data:
+  rabbitmq-data:
 
 networks:
-  traefik-public:
+  app-network:
     external: false

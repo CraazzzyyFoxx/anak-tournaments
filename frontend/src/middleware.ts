@@ -1,12 +1,85 @@
-import { clerkMiddleware } from "@clerk/nextjs/server";
+import { NextRequest, NextResponse } from "next/server";
 
-export default clerkMiddleware();
+const AUTH_SERVICE_URL =
+  process.env.NEXT_PUBLIC_AUTH_SERVICE_URL?.replace(/\/$/, "") || "http://localhost:8001";
+
+function decodeJwtPayload(token: string): any | undefined {
+  const parts = token.split(".");
+  if (parts.length < 2) return undefined;
+
+  try {
+    const base64Url = parts[1];
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
+    const json = atob(padded);
+    return JSON.parse(json);
+  } catch {
+    return undefined;
+  }
+}
+
+function shouldRefresh(accessToken: string, skewMs = 60_000): boolean {
+  const payload = decodeJwtPayload(accessToken);
+  const expSeconds = payload?.exp;
+  if (typeof expSeconds !== "number") return false;
+
+  const expMs = expSeconds * 1000;
+  return expMs <= Date.now() + skewMs;
+}
+
+export async function middleware(request: NextRequest) {
+
+  const accessToken = request.cookies.get("aqt_access_token")?.value;
+  const refreshToken = request.cookies.get("aqt_refresh_token")?.value;
+
+  if (!accessToken && !refreshToken) {
+    return NextResponse.next();
+  }
+
+  if (!accessToken || shouldRefresh(accessToken)) {
+    try {
+      const res = await fetch(`${AUTH_SERVICE_URL}/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: refreshToken })
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error("Refresh Failed Body:", errorText);
+
+        const response = NextResponse.next();
+        response.cookies.delete("aqt_access_token");
+        response.cookies.delete("aqt_refresh_token");
+        return response;
+      }
+
+      const tokens = await res.json();
+
+      const response = NextResponse.next();
+      response.headers.set("Authorization", `Bearer ${tokens.access_token}`);
+
+      response.cookies.set("aqt_access_token", tokens.access_token, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+        maxAge: 25 * 60
+      });
+
+      return response;
+
+    } catch (e) {
+      console.error("Fetch Error:", e);
+      return NextResponse.next();
+    }
+  }
+
+  return NextResponse.next();
+}
 
 export const config = {
   matcher: [
-    // Skip Next.js internals and all static files, unless found in search params
-    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
-    // Always run for API routes
-    "/(api|trpc)(.*)"
+    "/((?!_next/static|_next/image|favicon.ico|auth/discord/login|auth/discord/callback|auth/logout|auth/refresh|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"
   ]
 };

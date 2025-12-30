@@ -99,7 +99,7 @@ const columns: ColumnDef<EncounterWithUserStats>[] = [
           {row.getValue<MatchWithUserStats[]>("mvp").map((match) => {
             return (
               <PerformanceBadgeWithTooltip
-                key={`performance-${row.getValue("id")}-${match.id}`}
+                key={`performance-${match.id}`}
                 match={match}
               />
             );

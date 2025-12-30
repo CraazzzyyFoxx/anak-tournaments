@@ -1,14 +1,11 @@
 import React from "react";
 import Image from "next/image";
 
-
 export interface PlayerDivisionIconProps {
   division: number;
   width?: number;
   height?: number;
 }
-
-
 
 const PlayerDivisionIcon = (data: PlayerDivisionIconProps) => {
   return (

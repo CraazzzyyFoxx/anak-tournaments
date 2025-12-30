@@ -50,7 +50,6 @@ const ChangeDivisionModal = ({
       setOpen(false);
       queryClient.invalidateQueries({ queryKey: ["analytics"] }).then();
     });
-
   };
 
   return (

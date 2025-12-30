@@ -30,9 +30,6 @@ app = FastAPI(
     description=config.DESCRIPTION,
     default_response_class=ORJSONResponse,
     version=config.VERSION,
-    docs_url=config.DOCS_URL,
-    redoc_url=config.REDOC_URL,
-    openapi_url=config.OPENAPI_URL,
     lifespan=lifespan
 )
 
@@ -67,5 +64,7 @@ if __name__ == "__main__":
         "main:app",
         host="0.0.0.0",
         port=config.PORT,
+        log_config=None,
+        access_log=False,
         # reload=config.ENVIRONMENT == "development"
     )

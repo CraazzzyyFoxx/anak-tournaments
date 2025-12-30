@@ -18,9 +18,8 @@ from src.middlewares.time import TimeMiddleware
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan events"""
-    logger.info(f"Starting {settings.PROJECT_NAME}...")
+    logger.info(f"Starting {settings.PROJECT_NAME} - Auth Service...")
     logger.info(f"Environment: {settings.ENVIRONMENT}")
-    logger.info(f"Database: {settings.POSTGRES_DB}")
     logger.info(f"Port: {settings.PORT}")
     
     # Initialize database connection
@@ -36,9 +35,6 @@ app = FastAPI(
     title=settings.PROJECT_NAME,
     default_response_class=ORJSONResponse,
     version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json",
     lifespan=lifespan
 )
 
@@ -82,5 +78,7 @@ if __name__ == "__main__":
         "main:app",
         host=settings.HOST,
         port=settings.PORT,
+        log_config=None,
+        access_log=False,
         # reload=config.ENVIRONMENT == "development"
     )

@@ -26,7 +26,7 @@ async def link_player(
     """
     logger.info(f"Linking player {link_data.player_id} to user {current_user.username}")
     
-    player_link = await DiscordOAuthService.link_player(
+    player_link = await models.DiscordOAuthService.link_player(
         session, current_user, link_data.player_id, link_data.is_primary
     )
     
@@ -60,7 +60,7 @@ async def unlink_player(
     Unlink game player from current auth user
     """
     logger.info(f"Unlinking player {player_id} from user {current_user.username}")
-    await DiscordOAuthService.unlink_player(session, current_user, player_id)
+    await models.DiscordOAuthService.unlink_player(session, current_user, player_id)
 
 
 @router.get("/linked", response_model=list[schemas.LinkedPlayer])
@@ -73,7 +73,7 @@ async def get_linked_players(
     """
     from shared.models.user import User
     
-    player_links = await DiscordOAuthService.get_linked_players(session, current_user)
+    player_links = await models.DiscordOAuthService.get_linked_players(session, current_user)
     
     result = []
     for link in player_links:

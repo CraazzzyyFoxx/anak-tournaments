@@ -24,11 +24,9 @@ const UserSearch = () => {
   const { push } = useRouter();
 
   useEffect(() => {
-    userService
-      .searchUsers(debouncedSearchValue)
-      .then((r) => {
-        setSearchData(r);
-      });
+    userService.searchUsers(debouncedSearchValue).then((r) => {
+      setSearchData(r);
+    });
   }, [debouncedSearchValue]);
 
   return (

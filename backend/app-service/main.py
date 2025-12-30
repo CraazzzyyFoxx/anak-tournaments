@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from datetime import datetime, UTC
 
 from cashews import cache
 from cashews.contrib.fastapi import (
@@ -11,6 +12,8 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
+
+from shared.schemas import HealthCheckResponse
 from src.routes import router
 from src.core import config, db
 from src.core.logging import logger
@@ -62,6 +65,16 @@ app.add_middleware(TimeMiddleware)
 cache.setup(config.settings.api_cache_url, prefix="fastapi:")
 cache.setup(config.settings.backend_cache_url, prefix="backend:")
 
+@app.get("/health")
+async def health_check() -> HealthCheckResponse:
+    """Health check endpoint"""
+    return HealthCheckResponse(
+        status="ok",
+        service="app-service",
+        timestamp=int(datetime.now(UTC).timestamp()),
+        version=config.settings.version,
+    )
+
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(_: Request, exc: RequestValidationError):
@@ -77,4 +90,16 @@ async def validation_exception_handler(_: Request, exc: RequestValidationError):
                 }
             ]
         },
+    )
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "main:app",
+        host=config.settings.host,
+        port=config.settings.port,
+        log_config=None,
+        access_log=False,
+        # reload=config.ENVIRONMENT == "development"
     )

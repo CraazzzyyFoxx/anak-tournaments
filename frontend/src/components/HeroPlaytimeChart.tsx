@@ -61,7 +61,7 @@ const HeroPlaytimeChart = ({ heroes }: HeroPlaytimeChartProps) => {
 
   return (
     <ChartContainer config={chartConfig}>
-      <ResponsiveContainer width={"100%"} height={heroes.length * 64 }>
+      <ResponsiveContainer width={"100%"} height={heroes.length * 64}>
         <BarChart
           accessibilityLayer
           data={chartData}
@@ -80,7 +80,11 @@ const HeroPlaytimeChart = ({ heroes }: HeroPlaytimeChartProps) => {
             tick={<CustomYAxisTick />}
           />
           <XAxis dataKey="value" type="number" hide />
-          <ChartTooltip content={<ChartTooltipContent className="w-[250px]" nameKey="value" />} />
+          <ChartTooltip
+            content={
+            <ChartTooltipContent className="w-[250px]" indicator="dot"/>
+          }
+          />
           <Bar dataKey="value" layout="vertical" radius={5} />
         </BarChart>
       </ResponsiveContainer>

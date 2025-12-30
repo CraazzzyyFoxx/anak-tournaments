@@ -13,10 +13,10 @@ interface PlayerCardProps {
 }
 
 const rank_to_div = (player: PlayerData) => {
-  let div = 20 - player.rating / 100 + 1
-  div = Math.max(div, 1)
-  return Math.round(div)
-}
+  let div = 20 - player.rating / 100 + 1;
+  div = Math.max(div, 1);
+  return Math.round(div);
+};
 
 const PlayerCard = ({ player, role }: PlayerCardProps) => {
   return (
@@ -33,9 +33,7 @@ const PlayerCard = ({ player, role }: PlayerCardProps) => {
           <div className="font-medium">{player.name}</div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             {player.discomfort > 0 && (
-              <span className="text-orange-600 dark:text-orange-400">
-                Offrole
-              </span>
+              <span className="text-orange-600 dark:text-orange-400">Offrole</span>
             )}
           </div>
         </div>
@@ -44,13 +42,11 @@ const PlayerCard = ({ player, role }: PlayerCardProps) => {
         {player.preferences.length > 0 && (
           <div className="flex items-center gap-1">
             <div className="flex flex-row items-center gap-1">
-              {
-                player.preferences.map((pref, index) => (
-                  <span key={index} className="flex flex-row">
-                    <PlayerRoleIcon role={pref} size={16}/>
-                  </span>
-                ))
-              }
+              {player.preferences.map((pref, index) => (
+                <span key={index} className="flex flex-row">
+                  <PlayerRoleIcon role={pref} size={16} />
+                </span>
+              ))}
             </div>
           </div>
         )}

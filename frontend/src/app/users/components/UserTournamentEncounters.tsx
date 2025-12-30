@@ -98,7 +98,7 @@ const UserTournamentEncounters = ({ tournament, team_id }: UserTournamentEncount
                       {encounter.matches.map((match) => {
                         return (
                           <PerformanceBadgeWithTooltip
-                            key={`performance-${encounter.id}-${match}`}
+                            key={`performance-${encounter.id}-${match.id}`}
                             match={match}
                           />
                         );

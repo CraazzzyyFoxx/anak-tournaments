@@ -47,7 +47,7 @@ dev-dependencies = [
 ]
 
 [tool.uv.workspace]
-members = ["app", "auth-service", "discord-service", "parser-service", "twitch-service", "balancer-service"]
+members = ["app-service", "auth-service", "discord-service", "parser-service", "twitch-service", "balancer-service"]
 
 [tool.mypy]
 strict = true

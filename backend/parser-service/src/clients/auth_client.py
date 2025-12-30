@@ -4,8 +4,8 @@ HTTP client for auth-service
 import httpx
 from fastapi import HTTPException, status
 
-from app.src.core.logging import logger
-from app.src.core.config import settings
+from src.core.logging import logger
+from src.core.config import settings
 
 
 class AuthClient:

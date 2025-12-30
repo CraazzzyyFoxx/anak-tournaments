@@ -42,11 +42,7 @@ const UserHeader = ({ profile, user }: UserHeaderProps) => {
               <div>
                 <Image src={"/twitch.png"} width={28} height={28} alt="Twitch" />
               </div>
-              {user.twitch.length > 0 ? (
-                <p className="leading-7">{user.twitch[0].name}</p>
-              ) : (
-                <></>
-              )}
+              {user.twitch.length > 0 ? <p className="leading-7">{user.twitch[0].name}</p> : <></>}
             </div>
           ) : (
             <></>

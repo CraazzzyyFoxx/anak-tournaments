@@ -11,16 +11,16 @@ This project uses a microservices architecture with Docker Compose for orchestra
 | Service | Port       | Description |
 |---------|------------|-------------|
 | **backend** | 8000       | Main API service - tournaments, teams, matches |
-| **auth** | 8080       | Authentication & authorization service |
-| **parser** | 8081       | Tournament data parsing service |
+| **auth** | 8001       | Authentication & authorization service |
+| **parser** | 8002       | Tournament data parsing service |
 | **discord** | -          | Discord bot service (no exposed port) |
-| **twitch** | 8082       | Twitch integration service |
-| **balancer** | 8083       | Team balancing service |
+| **twitch** | 8004       | Twitch integration service |
+| **balancer** | 8003       | Team balancing service |
 | **frontend** | 3000       | Next.js frontend application |
 | **redis** | 6379       | In-memory cache and session store |
 | **rabbitmq** | 5672/15672 | Message broker (production only) |
 | **traefik** | 80         | Reverse proxy (development) |
-| **nginx** | 80         | Reverse proxy (production) |
+| **kong** | 80 (via `APP_PORT`) | API Gateway (main entrypoint) |
 
 ### Service Dependencies
 
@@ -56,6 +56,14 @@ balancer -> redis, backend, (rabbitmq)
    PROJECT_URL=http://localhost
    APP_PORT=80
    ```
+
+  ### Kong (optional API Gateway)
+  Kong is the main entrypoint in this stack (it binds to `${APP_PORT}`).
+  ```env
+  # Optional: expose Kong Admin API on host (dev only recommended)
+  KONG_ADMIN_PORT=8005
+  KONG_LOG_LEVEL=notice
+  ```
 
    ### Database
    ```env
@@ -158,6 +166,14 @@ docker compose up -d backend auth redis frontend
 - **Twitch API**: http://localhost/twitch
 - **Balancer API**: http://localhost/balancer
 - **Traefik Dashboard**: http://localhost (with `--api.insecure=true`)
+
+### Accessing Kong (optional)
+
+- **Kong Proxy**: `http://localhost` (or `http://localhost:${APP_PORT}`)
+  - Example: `http://localhost/api/v1/docs`
+- **Kong Admin API (dev)**: `http://localhost:${KONG_ADMIN_PORT:-8005}`
+
+Kong routes are configured declaratively in [kong/kong.yml](kong/kong.yml).
 
 ## Production Deployment
 

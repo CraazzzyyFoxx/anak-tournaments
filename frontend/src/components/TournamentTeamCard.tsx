@@ -55,7 +55,7 @@ export const TournamentTeamTable = ({ players }: { players: Player[] }) => {
                   <PlayerName player={player} includeSpecialization={true} />
                 </TableCell>
                 <TableCell>
-                  <PlayerDivisionIcon division={player.division}/>
+                  <PlayerDivisionIcon division={player.division} />
                 </TableCell>
                 <TableCell>
                   <div className="flex justify-center">

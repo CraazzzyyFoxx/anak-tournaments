@@ -36,13 +36,13 @@ services:
       - ./backend/discord-service:/app
       - ./backend/shared:/app/shared
 
-  twitch:
-    environment:
-      - DEBUG=true
-      - LOG_LEVEL=DEBUG
-    volumes:
-      - ./backend/twitch-service:/app
-      - ./backend/shared:/app/shared
+#  twitch:
+#    environment:
+#      - DEBUG=true
+#      - LOG_LEVEL=DEBUG
+#    volumes:
+#      - ./backend/twitch-service:/app
+#      - ./backend/shared:/app/shared
 
   balancer:
     environment:
@@ -52,14 +52,14 @@ services:
       - ./backend/balancer-service:/app
       - ./backend/shared:/app/shared
 
-  frontend:
-    environment:
-      - NODE_ENV=development
-    volumes:
-      # Mount source for Next.js hot reload
-      - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
+#  frontend:
+#    environment:
+#      - NODE_ENV=development
+#    volumes:
+#      # Mount source for Next.js hot reload
+#      - ./frontend:/app
+#      - /app/node_modules
+#      - /app/.next
 
   # Optional: Add pgAdmin for database management
   # pgadmin:

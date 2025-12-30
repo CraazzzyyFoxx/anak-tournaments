@@ -70,7 +70,7 @@ async def _create_encounter_from_challonge(
     if existed:
         existed.home_score = home_score
         existed.away_score = away_score
-        existed.status = enums.EncounterStatus(match.state)
+        existed.status = enums.EncounterStatus(match.state if match.state != 'complete' else 'completed')
         await session.commit()
         return existed
     match_db = await service.create(
