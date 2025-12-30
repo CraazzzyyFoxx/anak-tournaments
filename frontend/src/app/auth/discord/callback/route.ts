@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { authService } from "@/services/auth.service";
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL;
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
 /**
  * Helper to create redirect response with cleaned up OAuth cookies
@@ -30,14 +30,14 @@ export async function GET(request: Request) {
   const cookieStore = await cookies();
   const expectedState = cookieStore.get("aqt_oauth_state")?.value;
   const postLoginRedirect =
-    cookieStore.get("aqt_post_login_redirect")?.value || (SITE_URL ? `${SITE_URL}/` : "/");
+    cookieStore.get("aqt_post_login_redirect")?.value || "/";
 
-  // Build base redirect URL for error cases
-  const baseRedirectUrl = new URL("/", request.url);
+  // Build base redirect URL for error cases - use SITE_URL to avoid 0.0.0.0 issues
+  const baseRedirectUrl = new URL("/", SITE_URL);
 
   // Handle OAuth error response from Discord (e.g., user denied access)
   if (error) {
-    const errorUrl = new URL(baseRedirectUrl);
+    const errorUrl = new URL("/", SITE_URL);
     errorUrl.searchParams.set("auth_error", error);
     if (errorDescription) {
       errorUrl.searchParams.set("auth_error_description", errorDescription);
@@ -47,7 +47,7 @@ export async function GET(request: Request) {
 
   // Validate required parameters and state
   if (!code || !state || !expectedState || state !== expectedState) {
-    const errorUrl = new URL(baseRedirectUrl);
+    const errorUrl = new URL("/", SITE_URL);
     errorUrl.searchParams.set("auth_error", "invalid_state");
     return createRedirectResponse(errorUrl);
   }
@@ -59,14 +59,14 @@ export async function GET(request: Request) {
     // Ensure postLoginRedirect is a valid relative path or same-origin URL
     let redirectUrl: URL;
     try {
-      redirectUrl = new URL(postLoginRedirect, request.url);
+      redirectUrl = new URL(postLoginRedirect, SITE_URL);
       // Security: only allow same-origin redirects
-      const requestOrigin = new URL(request.url).origin;
-      if (redirectUrl.origin !== requestOrigin) {
-        redirectUrl = new URL("/", request.url);
+      const siteOrigin = new URL(SITE_URL).origin;
+      if (redirectUrl.origin !== siteOrigin) {
+        redirectUrl = new URL("/", SITE_URL);
       }
     } catch {
-      redirectUrl = new URL("/", request.url);
+      redirectUrl = new URL("/", SITE_URL);
     }
 
     const response = createRedirectResponse(redirectUrl);
@@ -95,7 +95,7 @@ export async function GET(request: Request) {
     console.error("OAuth callback error:", err);
 
     // Redirect to home with error indication
-    const errorUrl = new URL(baseRedirectUrl);
+    const errorUrl = new URL("/", SITE_URL);
     errorUrl.searchParams.set("auth_error", "exchange_failed");
     return createRedirectResponse(errorUrl);
   }

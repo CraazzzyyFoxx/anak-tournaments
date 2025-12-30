@@ -15,6 +15,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { LogOut, UserIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useAuthProfileStore } from "@/stores/auth-profile.store";
 
 type UserMenuProps = {
   username: string;
@@ -25,7 +26,15 @@ type UserMenuProps = {
 
 const UserMenu = ({ username, avatarUrl, profileHref, logoutHref = "/auth/logout" }: UserMenuProps) => {
   const initials = username?.slice(0, 2).toUpperCase();
-  const { push } = useRouter()
+  const { push } = useRouter();
+  const clearAuth = useAuthProfileStore((s) => s.clear);
+
+  const handleLogout = () => {
+    // Clear auth store before redirecting
+    clearAuth();
+    // Use window.location for full page navigation to ensure cookies are properly handled
+    window.location.href = logoutHref;
+  };
 
   return (
     <DropdownMenu>
@@ -46,7 +55,7 @@ const UserMenu = ({ username, avatarUrl, profileHref, logoutHref = "/auth/logout
             <UserIcon />
             <span>Profile</span>
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => push("/auth/logout")}>
+          <DropdownMenuItem onClick={handleLogout}>
             <LogOut />
             <span>Logout</span>
           </DropdownMenuItem>
