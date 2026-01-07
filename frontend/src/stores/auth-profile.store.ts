@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import Cookies from "js-cookie";
+import { fetchWithAuth } from "@/lib/fetch-with-auth";
 
 export type AuthProfile = {
   username: string;
@@ -7,6 +7,15 @@ export type AuthProfile = {
 };
 
 export type AuthProfileStatus = "idle" | "loading" | "authenticated" | "anonymous" | "error";
+
+type AuthProfileState = {
+  status: AuthProfileStatus;
+  user?: AuthProfile;
+  error?: string;
+
+  fetchMe: (opts?: { force?: boolean }) => Promise<void>;
+  clear: () => void;
+};
 
 type AuthProfileState = {
   status: AuthProfileStatus;
@@ -32,17 +41,8 @@ export const useAuthProfileStore = create<AuthProfileState>((set, get) => ({
 
     set({ status: "loading", error: undefined });
 
-    const accessToken = Cookies.get("aqt_access_token");
-
     try {
-      const res = await fetch("/api/auth/me", {
-        method: "GET",
-        credentials: "include",
-        headers: {
-          Accept: "application/json",
-          ...(accessToken && { Authorization: `Bearer ${accessToken}` })
-        }
-      });
+      const res = await fetchWithAuth("/api/auth/me", { method: "GET" });
 
       if (res.status === 401) {
         set({ status: "anonymous", user: undefined, error: undefined });

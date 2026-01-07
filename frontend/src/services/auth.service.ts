@@ -1,4 +1,5 @@
 import type { AuthUser, LinkedPlayer, TokenPair } from "@/types/auth.types";
+import { fetchWithAuth } from "@/lib/fetch-with-auth";
 
 const AUTH_SERVICE_URL =
   process.env.NEXT_PUBLIC_AUTH_SERVICE_URL?.replace(/\/$/, "") || "http://localhost:8001";
@@ -23,6 +24,20 @@ async function authFetch(
   });
 }
 
+async function authFetchWithAuth(
+  path: string,
+  init?: RequestInit
+): Promise<Response> {
+  const url = `${AUTH_SERVICE_URL}${path.startsWith("/") ? "" : "/"}${path}`;
+  return fetchWithAuth(url, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...(init?.headers || {})
+    }
+  });
+}
+
 export const authService = {
   async getDiscordOAuthUrl(): Promise<OAuthUrlResponse> {
     const res = await authFetch("/auth/oauth/discord/url", { method: "GET" });
@@ -39,13 +54,13 @@ export const authService = {
     return res.json();
   },
 
-  async me(accessToken: string): Promise<AuthUser> {
-    const res = await authFetch("/auth/me", {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${accessToken}`
-      }
-    });
+  async me(accessToken?: string): Promise<AuthUser> {
+    const res = accessToken
+      ? await authFetch("/auth/me", {
+          method: "GET",
+          headers: { Authorization: `Bearer ${accessToken}` }
+        })
+      : await authFetchWithAuth("/auth/me", { method: "GET" });
     if (!res.ok) throw new Error("Failed to fetch current user");
     return res.json();
   },
@@ -59,25 +74,25 @@ export const authService = {
     return res.json();
   },
 
-  async getLinkedPlayers(accessToken: string): Promise<LinkedPlayer[]> {
-    const res = await authFetch("/auth/player/linked", {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${accessToken}`
-      }
-    });
+  async getLinkedPlayers(accessToken?: string): Promise<LinkedPlayer[]> {
+    const res = accessToken
+      ? await authFetch("/auth/player/linked", {
+          method: "GET",
+          headers: { Authorization: `Bearer ${accessToken}` }
+        })
+      : await authFetchWithAuth("/auth/player/linked", { method: "GET" });
     if (!res.ok) throw new Error("Failed to fetch linked players");
     return res.json();
   },
 
-  async logout(accessToken: string, refreshToken: string): Promise<void> {
-    const res = await authFetch("/auth/logout", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`
-      },
-      body: JSON.stringify({ refresh_token: refreshToken })
-    });
+  async logout(accessToken?: string, refreshToken?: string): Promise<void> {
+    const res = accessToken
+      ? await authFetch("/auth/logout", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${accessToken}` },
+          body: refreshToken ? JSON.stringify({ refresh_token: refreshToken }) : undefined
+        })
+      : await authFetchWithAuth("/auth/logout", { method: "POST" });
 
     // /auth/logout returns 204
     if (!res.ok && res.status !== 204) {

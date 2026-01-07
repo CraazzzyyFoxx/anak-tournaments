@@ -1,3 +1,5 @@
+import { getTokenFromCookies, refreshAccessToken } from "./auth-tokens";
+
 interface CustomOptions {
   query?: Record<string, any>;
   token?: string;
@@ -7,8 +9,6 @@ interface CustomOptions {
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL;
 export const cachePolicy = process.env.NEXT_PUBLIC_CACHE_POLICY;
-
-let refreshInFlight: Promise<string | undefined> | null = null;
 
 export const getCachePolicy = () => {
   switch (cachePolicy) {
@@ -24,53 +24,6 @@ export const getCachePolicy = () => {
       return "default";
   }
 };
-
-async function getTokenFromCookies(cookieName: string): Promise<string | undefined> {
-  if (typeof window === "undefined") {
-    try {
-      const { cookies } = await import("next/headers");
-      const cookieStore = await cookies();
-      return cookieStore.get(cookieName)?.value;
-    } catch {
-      return undefined;
-    }
-  }
-
-  try {
-    const Cookies = (await import("js-cookie")).default;
-    return Cookies.get(cookieName);
-  } catch {
-    return undefined;
-  }
-}
-
-async function refreshAccessToken(): Promise<string | undefined> {
-  // In SSR we rely on middleware to keep tokens fresh.
-  if (typeof window === "undefined") return undefined;
-
-  if (!refreshInFlight) {
-    refreshInFlight = (async () => {
-      try {
-        const res = await fetch("/auth/refresh", {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json"
-          }
-        });
-        if (!res.ok) return undefined;
-        const tokens = (await res.json()) as { access_token?: string };
-        return tokens.access_token;
-      } catch {
-        return undefined;
-      } finally {
-        refreshInFlight = null;
-      }
-    })();
-  }
-
-  return refreshInFlight;
-}
 
 export async function customFetch(url: string, options?: CustomOptions): Promise<Response> {
   const params = new URLSearchParams();
