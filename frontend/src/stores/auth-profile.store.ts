@@ -17,14 +17,6 @@ type AuthProfileState = {
   clear: () => void;
 };
 
-type AuthProfileState = {
-  status: AuthProfileStatus;
-  user?: AuthProfile;
-  error?: string;
-
-  fetchMe: (opts?: { force?: boolean }) => Promise<void>;
-  clear: () => void;
-};
 
 export const useAuthProfileStore = create<AuthProfileState>((set, get) => ({
   status: "idle",

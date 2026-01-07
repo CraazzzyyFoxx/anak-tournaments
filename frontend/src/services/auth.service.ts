@@ -26,7 +26,7 @@ async function authFetch(
 
 async function authFetchWithAuth(
   path: string,
-  init?: RequestInit
+  init?: Parameters<typeof fetch>[1]
 ): Promise<Response> {
   const url = `${AUTH_SERVICE_URL}${path.startsWith("/") ? "" : "/"}${path}`;
   return fetchWithAuth(url, {

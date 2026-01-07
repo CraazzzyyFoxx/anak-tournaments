@@ -2,7 +2,7 @@ import { getTokenFromCookies, refreshAccessToken } from "./auth-tokens";
 
 export async function fetchWithAuth(
   url: string,
-  options: RequestInit = {}
+  options: Parameters<typeof fetch>[1] = {}
 ): Promise<Response> {
   const accessToken = await getTokenFromCookies("aqt_access_token");
 
