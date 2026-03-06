@@ -89,7 +89,7 @@ const CompareMetricsCard = ({
   const heroGlowVars = isHeroScope ? getGlowVarsFromColor(heroDominantColor) : null;
 
   return (
-    <Card className="relative overflow-hidden min-h-125" style={heroGlowVars ?? undefined}>
+    <Card className="relative overflow-hidden min-h-125" style={heroGlowVars ? (heroGlowVars as React.CSSProperties) : undefined}>
       <GlassGlow />
 
       {isHeroScope && heroImagePath ? (

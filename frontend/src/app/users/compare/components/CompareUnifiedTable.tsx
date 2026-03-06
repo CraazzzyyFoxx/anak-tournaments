@@ -226,7 +226,7 @@ const CompareUnifiedTable = ({
   const rightLabel = isTargetBaseline ? baselineName : "Baseline";
 
   return (
-    <Card className="relative overflow-hidden" style={glowVars ?? undefined}>
+    <Card className="relative overflow-hidden" style={glowVars ? (glowVars as React.CSSProperties) : undefined}>
       <GlassGlow />
 
       <CardHeader className="relative pb-3">
