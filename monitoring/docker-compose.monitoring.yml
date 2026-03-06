@@ -56,6 +56,7 @@ services:
       - "--storage.path=/alertmanager"
     volumes:
       - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./secrets:/run/secrets:ro
       - alertmanager_data:/alertmanager
     ports:
       - "9093:9093"
@@ -80,7 +81,7 @@ services:
   # RabbitMQ exporter — exposes queue metrics for Prometheus
   # --------------------------------------------------------------------------
   rabbitmq-exporter:
-    image: kbudde/rabbitmq-exporter:v1.0.0-RC19
+    image: kbudde/rabbitmq-exporter:1.0.0-RC19
     container_name: rabbitmq-exporter
     restart: unless-stopped
     environment:

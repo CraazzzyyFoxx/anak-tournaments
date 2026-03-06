@@ -21,7 +21,7 @@ route:
 receivers:
   - name: discord
     discord_configs:
-      - webhook_url: "${DISCORD_WEBHOOK_URL}"
+      - webhook_url_file: /run/secrets/discord_webhook_url
         title: |
           {{ if eq .Status "firing" }}🔴{{ else }}✅{{ end }} [{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}
         message: |

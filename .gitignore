@@ -17,6 +17,9 @@ backend/env/*.env
 /app/.idea
 /parser/.idea
 logs/
+monitoring/secrets/*
+!monitoring/secrets/.gitkeep
+!monitoring/secrets/*.example
 .kombai/
 .ruff_cache/
 .claude/

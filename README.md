@@ -14,6 +14,7 @@
 
 * [✨ Live instance](#-live-instance)
 * [🐋 Docker development](#docker-development-breaking-change)
+* [📈 Monitoring](#-monitoring)
 * [👨‍💻 Technical details](#-technical-details)
 * [🙏 Credits](#-credits)
 * [📝 License](#-license)
@@ -114,6 +115,12 @@ docker compose --profile gateway --profile workers up -d --wait
 You can also use `make dev-up` and `make dev-up-full`.
 
 Quick migration commands are in `DOCKER_DEV_MIGRATION.md`.
+
+## 📈 Monitoring
+
+Monitoring deployment and operations are documented in `monitoring/README.md`.
+
+The monitoring stack includes Prometheus, Alertmanager, Grafana, Loki, Promtail, Redis Exporter, and RabbitMQ Exporter.
 
 ## Backend Development
 
