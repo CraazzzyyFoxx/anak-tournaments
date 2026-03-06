@@ -189,7 +189,7 @@ body, html {
   }
 
   .liquid-glass-panel {
-    background: hsl(var(--background) / 0.55);
+    background: hsl(var(--background) / 0.9);
     border-color: hsl(var(--border) / 0.65);
     box-shadow:
       0 1px 0 rgb(255 255 255 / 0.06) inset,
@@ -198,6 +198,7 @@ body, html {
 
   @supports (backdrop-filter: blur(10px)) {
     .liquid-glass-panel {
+      background: hsl(var(--background) / 0.55);
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
     }
