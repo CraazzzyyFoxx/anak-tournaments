@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.core import db
-from src.core.logging import logger
+from loguru import logger
 from src import schemas, models
 from src.services import auth_service
 from shared.models.rbac import Role, Permission

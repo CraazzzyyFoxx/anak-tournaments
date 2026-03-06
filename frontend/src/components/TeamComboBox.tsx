@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,10 +19,20 @@ export interface TeamComboBoxProps {
   teams: Team[];
   onSelect: (team: Team) => void;
   selectedTeam: string;
+  variant?: "default" | "glass";
 }
 
-const TeamComboBox = ({ teams, onSelect, selectedTeam }: TeamComboBoxProps) => {
-  const [open, setOpen] = React.useState(false);
+const TeamComboBox = ({ teams, onSelect, selectedTeam, variant = "default" }: TeamComboBoxProps) => {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const [contentWidth, setContentWidth] = useState<number | undefined>(undefined);
+
+  const isGlass = variant === "glass";
+
+  useEffect(() => {
+    if (!open) return;
+    setContentWidth(triggerRef.current?.offsetWidth);
+  }, [open]);
 
   const values: { label: string; value: string }[] = useMemo(() => {
     return teams.map((team) => ({
@@ -35,23 +45,35 @@ const TeamComboBox = ({ teams, onSelect, selectedTeam }: TeamComboBoxProps) => {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
+          ref={triggerRef}
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className="xs:w-full md:w-[250px] justify-between"
+          className={cn(
+            "h-10 xs:w-full md:w-[250px] justify-between",
+            isGlass &&
+              "bg-background/15 border-border/60 backdrop-blur-md hover:bg-background/20 hover:text-foreground",
+            isGlass && open && "bg-background/25 border-ring/40"
+          )}
         >
-          {selectedTeam
-            ? values.find((team) => team.value === selectedTeam)?.label
-            : "Find team..."}
-          <ChevronsUpDown className="opacity-50" />
+          <span className="min-w-0 truncate" title={selectedTeam || ""}>
+            {selectedTeam
+              ? values.find((team) => team.value === selectedTeam)?.label
+              : "Find team..."}
+          </span>
+          <ChevronsUpDown className="h-4 w-4 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[250px] p-0">
-        <Command>
+      <PopoverContent
+        align="start"
+        className={cn("p-0", isGlass && "liquid-glass-panel")}
+        style={contentWidth ? { width: `${contentWidth}px` } : undefined}
+      >
+        <Command className={cn(isGlass && "bg-transparent")}>
           <CommandInput placeholder="Search team..." />
           <CommandList>
             <CommandEmpty>No team found.</CommandEmpty>
-            <CommandGroup>
+            <CommandGroup heading="Teams">
               {values.map((team) => (
                 <CommandItem
                   key={team.value}
@@ -64,7 +86,7 @@ const TeamComboBox = ({ teams, onSelect, selectedTeam }: TeamComboBoxProps) => {
                   {team.label}
                   <Check
                     className={cn(
-                      "ml-auto",
+                      "ml-auto h-4 w-4",
                       selectedTeam === team.value ? "opacity-100" : "opacity-0"
                     )}
                   />

@@ -5,6 +5,7 @@ interface CustomOptions {
   token?: string;
   body?: Record<string, any>;
   method?: string;
+  signal?: AbortSignal;
 }
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL;
@@ -56,7 +57,10 @@ export async function customFetch(url: string, options?: CustomOptions): Promise
 
   const initialToken = options.token ?? (await getTokenFromCookies("aqt_access_token"));
 
-  const urlWithParams = `${API_URL}/${url}?${params.toString()}`;
+  // On the client, route through Next.js rewrite proxy (/api/v1/*) to avoid CORS.
+  // On the server, call the external API directly (server-to-server, no CORS).
+  const baseUrl = typeof window !== "undefined" ? "/api/v1" : API_URL;
+  const urlWithParams = `${baseUrl}/${url}?${params.toString()}`;
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json"
@@ -72,7 +76,8 @@ export async function customFetch(url: string, options?: CustomOptions): Promise
       cache: getCachePolicy(),
       headers: requestHeaders,
       body: JSON.stringify(options.body),
-      method: options.method || "GET"
+      method: options.method || "GET",
+      signal: options.signal
     });
   };
 

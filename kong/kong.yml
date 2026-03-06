@@ -22,6 +22,9 @@ services:
 
   - name: balancer
     url: http://balancer:8003
+    connect_timeout: 5000
+    read_timeout: 120000
+    write_timeout: 120000
     routes:
       - name: balancer-api
         paths:
@@ -46,5 +49,11 @@ services:
       - name: frontend-web
         paths:
           - /
+        strip_path: false
+        preserve_host: true
+      # BFF routes served by Next.js — must be more specific than /api to win
+      - name: frontend-api-account
+        paths:
+          - /api/account
         strip_path: false
         preserve_host: true

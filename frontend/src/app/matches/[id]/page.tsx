@@ -7,6 +7,8 @@ import MatchTeamTable from "@/app/matches/[id]/components/MatchTeamTable";
 import { Card, CardHeader } from "@/components/ui/card";
 import { SITE_NAME } from "@/config/site";
 
+export const dynamic = 'force-dynamic';
+
 export async function generateMetadata(props: {
   params: Promise<{ id: number }>;
 }): Promise<Metadata> {

@@ -1,6 +1,7 @@
 import discord
 import httpx
 import asyncio
+import time
 from datetime import datetime, timedelta, UTC
 from typing import Any, Dict, Set
 
@@ -8,11 +9,23 @@ from faststream.rabbit import RabbitBroker
 from faststream.rabbit.annotations import RabbitMessage
 
 from sqlalchemy import select
+from pydantic import ValidationError
 
 from src.core.config import settings
-from src.core.logging import logger
 from src.core.db import async_session_maker
+
+from shared.observability import setup_logging
+
+# Setup structured logging (replaces old src.core.logging)
+logger = setup_logging(
+    service_name="discord-service",
+    log_level=settings.log_level,
+    logs_root_path=settings.logs_root_path,
+    json_output=settings.json_logging,
+)
 from shared.models import Tournament, TournamentDiscordChannel
+from shared.schemas.events import DiscordCommandEvent
+from shared.messaging.config import DISCORD_COMMANDS_QUEUE
 
 
 intents = discord.Intents.default()
@@ -29,19 +42,66 @@ else:
 
 client = discord.Client(intents=intents, proxy=PROXY_CONF)
 
-DISCORD_COMMANDS_QUEUE = "discord_commands"
 rabbit_broker: RabbitBroker | None = None
 
 # Cache for active tournaments and their channels
 active_channels: Dict[int, int] = {}  # channel_id -> tournament_id
 processing_messages: Set[int] = set()  # message IDs being processed
 
+_service_token: str | None = None
+_service_token_expires_at: float = 0.0
+_service_token_lock = asyncio.Lock()
 
-async def get_httpx_client(destination: str = 'internal') -> httpx.AsyncClient:
+
+async def get_service_token() -> str:
+    """Get cached service token for internal calls."""
+    global _service_token, _service_token_expires_at
+
+    now = time.time()
+    if _service_token and now < (_service_token_expires_at - settings.service_token_skew_seconds):
+        return _service_token
+
+    async with _service_token_lock:
+        now = time.time()
+        if _service_token and now < (_service_token_expires_at - settings.service_token_skew_seconds):
+            return _service_token
+
+        async with httpx.AsyncClient(
+            base_url=settings.auth_service_url,
+            timeout=httpx.Timeout(5.0),
+        ) as client:
+            res = await client.post(
+                "/service/token",
+                json={
+                    "client_id": settings.service_client_id,
+                    "client_secret": settings.service_client_secret,
+                },
+            )
+
+        if res.status_code != 200:
+            logger.error(f"Failed to obtain service token (status={res.status_code})")
+            raise RuntimeError("Failed to obtain service token")
+
+        data = res.json()
+        token = data.get("access_token")
+        expires_in = int(data.get("expires_in", 300))
+        if not token:
+            raise RuntimeError("Invalid service token response")
+
+        _service_token = token
+        _service_token_expires_at = time.time() + expires_in
+        return token
+
+
+async def get_httpx_client(destination: str = "internal") -> httpx.AsyncClient:
     """Create HTTP client for parser service"""
+    headers: dict[str, str] = {}
+    if destination == "internal":
+        headers["Authorization"] = f"Bearer {await get_service_token()}"
+
     return httpx.AsyncClient(
         base_url=settings.parser_url,
-        headers={"Authorization": f"Bearer {settings.access_token_service}"},
+        headers=headers,
         proxy=httpx.Proxy(url=PROXY_CONF) if PROXY_CONF and destination != "internal" else None,
         timeout=httpx.Timeout(30, read=60),
     )
@@ -73,27 +133,27 @@ async def get_text_channel(channel_id: int):
 async def load_active_channels():
     """Load active tournament channels from database"""
     global active_channels
-    
+
     async with async_session_maker() as session:
         # Get tournaments that are not finished or finished less than 1 day ago
         one_day_ago = datetime.now(UTC) - timedelta(days=1)
-        
+
         result = await session.execute(
             select(TournamentDiscordChannel, Tournament)
             .join(Tournament, TournamentDiscordChannel.tournament_id == Tournament.id)
             .where(
                 TournamentDiscordChannel.is_active == True,
                 (
-                    (Tournament.is_finished == False) |
-                    (
-                        (Tournament.is_finished == True) &
-                        (Tournament.end_date != None) &
-                        (Tournament.end_date >= one_day_ago)
+                    (Tournament.is_finished == False)
+                    | (
+                        (Tournament.is_finished == True)
+                        & (Tournament.end_date != None)
+                        & (Tournament.end_date >= one_day_ago)
                     )
-                )
+                ),
             )
         )
-        
+
         new_channels = {}
         for discord_channel, tournament in result:
             new_channels[discord_channel.channel_id] = tournament.id
@@ -101,7 +161,7 @@ async def load_active_channels():
                 f"📌 Monitoring channel {discord_channel.channel_id} "
                 f"for tournament #{tournament.number} - {tournament.name}"
             )
-        
+
         active_channels = new_channels
         logger.success(f"✅ Loaded {len(active_channels)} active channels")
 
@@ -116,21 +176,16 @@ async def process_attachment(
     """
     try:
         logger.info(f"📥 Downloading {attachment.filename} for tournament {tournament_id}")
-        async with await get_httpx_client(destination='discord') as http_client:
+        async with await get_httpx_client(destination="discord") as http_client:
             # Download file from Discord
             response = await http_client.get(attachment.url)
             response.raise_for_status()
 
-        async with await get_httpx_client(destination='internal') as http_client:
+        async with await get_httpx_client(destination="internal") as http_client:
             # Upload to parser service
-            files = {
-                "file": (attachment.filename, response.content, attachment.content_type)
-            }
+            files = {"file": (attachment.filename, response.content, attachment.content_type)}
 
-            upload_response = await http_client.post(
-                f"logs/{tournament_id}/upload",
-                files=files
-            )
+            upload_response = await http_client.post(f"logs/{tournament_id}/upload", files=files)
 
             if upload_response.status_code != 200:
                 logger.error(
@@ -142,9 +197,7 @@ async def process_attachment(
             logger.success(f"✅ {attachment.filename} uploaded")
 
             # Process the uploaded file
-            process_response = await http_client.post(
-                f"logs/{tournament_id}/{attachment.filename}"
-            )
+            process_response = await http_client.post(f"logs/{tournament_id}/{attachment.filename}")
 
             if process_response.status_code == 400:
                 process_data = process_response.json()
@@ -161,7 +214,7 @@ async def process_attachment(
                     f"{process_response.status_code} - {process_response.text}"
                 )
                 return False
-            
+
         logger.success(f"✅ {attachment.filename} processed successfully")
         return True
 
@@ -180,25 +233,25 @@ async def process_message(message: discord.Message, tournament_id: int) -> None:
     """
     if message.id in processing_messages:
         return  # Already processing
-    
+
     if not message.attachments:
         return  # No attachments to process
-    
+
     processing_messages.add(message.id)
-    
+
     try:
         results = []
         for attachment in message.attachments:
             # Only process log files
-            if attachment.filename.lower().endswith(('.txt', '.log', '.json')):
+            if attachment.filename.lower().endswith((".txt", ".log", ".json")):
                 success = await process_attachment(tournament_id, attachment)
                 results.append(success)
             else:
                 logger.info(f"⏭️ Skipping non-log file: {attachment.filename}")
-        
+
         if not results:
             return
-        
+
         # Update reactions based on results
         try:
             if all(results):
@@ -217,7 +270,7 @@ async def process_message(message: discord.Message, tournament_id: int) -> None:
             logger.warning("⚠️ Bot doesn't have permission to add reactions")
         except discord.HTTPException as e:
             logger.warning(f"⚠️ Failed to add reaction: {e}")
-            
+
     finally:
         processing_messages.discard(message.id)
 
@@ -232,17 +285,17 @@ async def process_channel_history(channel_id: int, tournament_id: int, limit: in
         if not channel:
             logger.error(f"❌ Channel {channel_id} not found")
             return
-        
+
         logger.info(f"🔍 Processing last {limit} messages in channel {channel_id}")
-        
+
         processed = 0
         async for message in channel.history(limit=limit):
             if message.attachments:
                 await process_message(message, tournament_id)
                 processed += 1
-        
+
         logger.success(f"✅ Processed {processed} messages with attachments")
-        
+
     except discord.Forbidden:
         logger.error(f"❌ No permission to read channel {channel_id}")
     except Exception as e:
@@ -255,68 +308,65 @@ def register_rabbit_handlers(broker: RabbitBroker) -> None:
         await client.wait_until_ready()
 
         try:
-            action = body.get("action")
-            if action not in {"process_all", "process_message"}:
-                logger.error(f"❌ Unknown discord command action: {action}")
-                await msg.reject()
-                return
+            # Validate and parse the event using Pydantic
+            event = DiscordCommandEvent.model_validate(body)
 
-            if action == "process_all":
-                tournament_id = int(body["tournament_id"])
-                channel_ids = await get_tournament_discord_channels(tournament_id)
+        except ValidationError as e:
+            logger.error(f"❌ Invalid discord command payload: {e}")
+            await msg.reject()  # Send to DLQ
+            return
+
+        try:
+            if event.action == "process_all":
+                channel_ids = await get_tournament_discord_channels(event.tournament_id)
                 if not channel_ids:
-                    logger.warning(f"⚠️ No active Discord channels found for tournament {tournament_id}")
+                    logger.warning(f"⚠️ No active Discord channels found for tournament {event.tournament_id}")
                     await msg.ack()
                     return
 
                 logger.info(
-                    f"📩 RabbitMQ command: process_all for tournament {tournament_id} "
+                    f"📩 RabbitMQ command: process_all for tournament {event.tournament_id} "
                     f"({len(channel_ids)} channel(s))"
                 )
                 for channel_id in channel_ids:
-                    await process_channel_history(channel_id, tournament_id, limit=500)
+                    await process_channel_history(channel_id, event.tournament_id, limit=500)
 
                 await msg.ack()
                 return
 
-            # process_message
-            tournament_id = int(body["tournament_id"])
-            channel_id = int(body["channel_id"])
-            message_id = int(body["message_id"])
+            # process_message action
+            if event.channel_id is None or event.message_id is None:
+                logger.error("❌ channel_id and message_id required for process_message action")
+                await msg.reject()
+                return
 
-            channel = await get_text_channel(channel_id)
+            channel = await get_text_channel(event.channel_id)
             if channel is None:
-                logger.error(f"❌ Channel {channel_id} not found for message fetch")
+                logger.error(f"❌ Channel {event.channel_id} not found for message fetch")
                 await msg.reject()
                 return
 
             try:
-                fetched_message = await channel.fetch_message(message_id)  # type: ignore[attr-defined]
+                fetched_message = await channel.fetch_message(event.message_id)  # type: ignore[attr-defined]
             except discord.NotFound:
-                logger.warning(f"⚠️ Message {message_id} not found in channel {channel_id}")
+                logger.warning(f"⚠️ Message {event.message_id} not found in channel {event.channel_id}")
                 await msg.reject()
                 return
             except discord.Forbidden:
-                logger.error(f"❌ No permission to fetch message {message_id} in channel {channel_id}")
+                logger.error(f"❌ No permission to fetch message {event.message_id} in channel {event.channel_id}")
                 await msg.reject()
                 return
 
             logger.info(
-                f"📩 RabbitMQ command: process_message channel={channel_id} message={message_id} "
-                f"tournament={tournament_id}"
+                f"📩 RabbitMQ command: process_message channel={event.channel_id} message={event.message_id} "
+                f"tournament={event.tournament_id}"
             )
-            await process_message(fetched_message, tournament_id)
+            await process_message(fetched_message, event.tournament_id)
             await msg.ack()
 
-        except KeyError as e:
-            logger.error(f"❌ Malformed discord command payload, missing: {e}")
-            await msg.reject()
-        except ValueError as e:
-            logger.error(f"❌ Invalid discord command payload: {e}")
-            await msg.reject()
         except Exception as e:
             logger.error(f"❌ Error handling discord command: {e}")
-            await msg.nack()
+            await msg.nack()  # Requeue for retry
 
 
 async def start_rabbitmq_listener() -> None:
@@ -347,13 +397,13 @@ async def channel_monitor_task():
     Runs every 5 minutes
     """
     await client.wait_until_ready()
-    
+
     while not client.is_closed():
         try:
             await load_active_channels()
         except Exception as e:
             logger.error(f"❌ Error reloading channels: {e}")
-        
+
         await asyncio.sleep(300)  # 5 minutes
 
 
@@ -362,14 +412,14 @@ async def on_ready():
     """Bot is ready and connected"""
     logger.success(f"✅ Bot started as {client.user}")
     logger.info(f"📡 Connected to {len(client.guilds)} guilds")
-    
+
     # Load active channels
     await load_active_channels()
-    
+
     # Process recent history for all active channels
     for channel_id, tournament_id in active_channels.items():
         await process_channel_history(channel_id, tournament_id, limit=500)
-    
+
     # Start background monitor task
     client.loop.create_task(channel_monitor_task())
 
@@ -380,12 +430,12 @@ async def on_message(message: discord.Message):
     # Ignore bot's own messages
     if message.author == client.user:
         return
-    
+
     # Check if this channel is being monitored
     tournament_id = active_channels.get(message.channel.id)
     if not tournament_id:
         return
-    
+
     # Process message attachments
     if message.attachments:
         logger.info(
@@ -402,7 +452,7 @@ async def on_message_edit(before: discord.Message, after: discord.Message):
     tournament_id = active_channels.get(after.channel.id)
     if not tournament_id:
         return
-    
+
     # Check if attachments were added
     if len(after.attachments) > len(before.attachments):
         logger.info(f"📝 Message edited with new attachments")

@@ -55,7 +55,6 @@ export function PaginationWithLinks({
   page,
   pageSearchParam
 }: PaginationWithLinksProps) {
-  console.log(page);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -190,7 +189,7 @@ export function PaginationControlled({
   page,
   onSetPage
 }: PaginationControlledProps) {
-  const totalPageCount = Math.ceil(totalCount / pageSize) - 1;
+  const totalPageCount = Math.ceil(totalCount / pageSize);
 
   const renderPageNumbers = () => {
     const items: ReactNode[] = [];
@@ -200,7 +199,14 @@ export function PaginationControlled({
       for (let i = 1; i <= totalPageCount; i++) {
         items.push(
           <PaginationItem key={i}>
-            <PaginationLink href="#" onClick={() => onSetPage(i)} isActive={page === i}>
+            <PaginationLink
+              href="#"
+              onClick={(e) => {
+                e.preventDefault();
+                onSetPage(i);
+              }}
+              isActive={page === i}
+            >
               {i}
             </PaginationLink>
           </PaginationItem>
@@ -209,7 +215,14 @@ export function PaginationControlled({
     } else {
       items.push(
         <PaginationItem key={1}>
-          <PaginationLink href="#" onClick={() => onSetPage(1)} isActive={page === 1}>
+          <PaginationLink
+            href="#"
+            onClick={(e) => {
+              e.preventDefault();
+              onSetPage(1);
+            }}
+            isActive={page === 1}
+          >
             1
           </PaginationLink>
         </PaginationItem>
@@ -229,7 +242,14 @@ export function PaginationControlled({
       for (let i = start; i <= end; i++) {
         items.push(
           <PaginationItem key={i}>
-            <PaginationLink href="#" onClick={() => onSetPage(i)} isActive={page === i}>
+            <PaginationLink
+              href="#"
+              onClick={(e) => {
+                e.preventDefault();
+                onSetPage(i);
+              }}
+              isActive={page === i}
+            >
               {i}
             </PaginationLink>
           </PaginationItem>
@@ -248,7 +268,10 @@ export function PaginationControlled({
         <PaginationItem key={totalPageCount}>
           <PaginationLink
             href="#"
-            onClick={() => onSetPage(totalPageCount)}
+            onClick={(e) => {
+              e.preventDefault();
+              onSetPage(totalPageCount);
+            }}
             isActive={page === totalPageCount}
           >
             {totalPageCount}
@@ -276,7 +299,10 @@ export function PaginationControlled({
           <PaginationItem>
             <PaginationPrevious
               href="#"
-              onClick={() => onSetPage(Math.max(page - 1, 1))}
+              onClick={(e) => {
+                e.preventDefault();
+                onSetPage(Math.max(page - 1, 1));
+              }}
               aria-disabled={page === 1}
               tabIndex={page === 1 ? -1 : undefined}
               className={page === 1 ? "pointer-events-none opacity-50" : undefined}
@@ -286,7 +312,10 @@ export function PaginationControlled({
           <PaginationItem>
             <PaginationNext
               href="#"
-              onClick={() => onSetPage(Math.min(page + 1, totalPageCount))}
+              onClick={(e) => {
+                e.preventDefault();
+                onSetPage(Math.min(page + 1, totalPageCount));
+              }}
               aria-disabled={page === totalPageCount}
               tabIndex={page === totalPageCount ? -1 : undefined}
               className={page === totalPageCount ? "pointer-events-none opacity-50" : undefined}

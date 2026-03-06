@@ -31,27 +31,25 @@ dependencies = [
     "setuptools>=75.8.0",
     "sqlalchemy>=2.0.37",
     "sqlalchemy-utils>=0.41.2",
+    "tenacity>=9.0.0",
+    "opentelemetry-api>=1.27.0",
+    "opentelemetry-sdk>=1.27.0",
+    "opentelemetry-instrumentation-fastapi>=0.48b0",
+    "opentelemetry-instrumentation-httpx>=0.48b0",
+    "opentelemetry-instrumentation-sqlalchemy>=0.48b0",
+    "opentelemetry-exporter-otlp>=1.27.0",
+    "prometheus-fastapi-instrumentator>=7.0",
     "uvicorn>=0.34.0",
     "uvloop; platform_system == 'Linux'",
 ]
 
-
-[tool.uv]
-dev-dependencies = [
-    "pytest<8.0.0,>=7.4.3",
-    "mypy<2.0.0,>=1.8.0",
-    "ruff<1.0.0,>=0.2.2",
-    "pre-commit<4.0.0,>=3.6.2",
-    "types-passlib<2.0.0.0,>=1.7.7.20240106",
-    "coverage<8.0.0,>=7.4.3",
-]
 
 [tool.mypy]
 strict = true
 exclude = ["venv", ".venv", "alembic"]
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py313"
 line-length = 120
 exclude = ["alembic", "app/src/schemas/__init__.py", "app/src/models/__init__.py"]
 

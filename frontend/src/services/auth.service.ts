@@ -1,4 +1,4 @@
-import type { AuthUser, LinkedPlayer, TokenPair } from "@/types/auth.types";
+import type { AuthUser, LinkedPlayer, OAuthProviderAvailability, OAuthProviderName, TokenPair } from "@/types/auth.types";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
 
 const AUTH_SERVICE_URL =
@@ -39,34 +39,54 @@ async function authFetchWithAuth(
 }
 
 export const authService = {
-  async getDiscordOAuthUrl(): Promise<OAuthUrlResponse> {
-    const res = await authFetch("/auth/oauth/discord/url", { method: "GET" });
-    if (!res.ok) throw new Error("Failed to get Discord OAuth URL");
+  async getOAuthUrl(provider: OAuthProviderName): Promise<OAuthUrlResponse> {
+    const res = await authFetch(`/oauth/${provider}/url`, { method: "GET" });
+    if (!res.ok) throw new Error(`Failed to get ${provider} OAuth URL`);
     return res.json();
   },
 
-  async exchangeDiscordCode(code: string, state: string): Promise<TokenPair> {
+  async getAvailableOAuthProviders(): Promise<OAuthProviderAvailability[]> {
+    const res = await authFetch("/providers", { method: "GET" });
+    if (!res.ok) throw new Error("Failed to load available OAuth providers");
+    return res.json();
+  },
+
+  async exchangeOAuthCode(provider: OAuthProviderName, code: string, state: string): Promise<TokenPair> {
     const qs = new URLSearchParams({ code, state });
-    const res = await authFetch(`/auth/oauth/discord/callback?${qs.toString()}`, {
+    const res = await authFetch(`/oauth/${provider}/callback?${qs.toString()}`, {
       method: "GET"
     });
-    if (!res.ok) throw new Error("Failed to complete Discord OAuth");
+    if (!res.ok) throw new Error(`Failed to complete ${provider} OAuth`);
     return res.json();
+  },
+
+  async linkOAuth(provider: OAuthProviderName, code: string, state: string, accessToken: string): Promise<void> {
+    const res = await authFetch(`/oauth/${provider}/link`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      },
+      body: JSON.stringify({ code, state })
+    });
+
+    if (!res.ok) {
+      throw new Error(`Failed to link ${provider} OAuth account`);
+    }
   },
 
   async me(accessToken?: string): Promise<AuthUser> {
     const res = accessToken
-      ? await authFetch("/auth/me", {
+      ? await authFetch("/me", {
           method: "GET",
           headers: { Authorization: `Bearer ${accessToken}` }
         })
-      : await authFetchWithAuth("/auth/me", { method: "GET" });
+      : await authFetchWithAuth("/me", { method: "GET" });
     if (!res.ok) throw new Error("Failed to fetch current user");
     return res.json();
   },
 
   async refresh(refreshToken: string): Promise<TokenPair> {
-    const res = await authFetch("/auth/refresh", {
+    const res = await authFetch("/refresh", {
       method: "POST",
       body: JSON.stringify({ refresh_token: refreshToken })
     });
@@ -76,25 +96,25 @@ export const authService = {
 
   async getLinkedPlayers(accessToken?: string): Promise<LinkedPlayer[]> {
     const res = accessToken
-      ? await authFetch("/auth/player/linked", {
+      ? await authFetch("/player/linked", {
           method: "GET",
           headers: { Authorization: `Bearer ${accessToken}` }
         })
-      : await authFetchWithAuth("/auth/player/linked", { method: "GET" });
+      : await authFetchWithAuth("/player/linked", { method: "GET" });
     if (!res.ok) throw new Error("Failed to fetch linked players");
     return res.json();
   },
 
   async logout(accessToken?: string, refreshToken?: string): Promise<void> {
     const res = accessToken
-      ? await authFetch("/auth/logout", {
+      ? await authFetch("/logout", {
           method: "POST",
           headers: { Authorization: `Bearer ${accessToken}` },
           body: refreshToken ? JSON.stringify({ refresh_token: refreshToken }) : undefined
         })
-      : await authFetchWithAuth("/auth/logout", { method: "POST" });
+      : await authFetchWithAuth("/logout", { method: "POST" });
 
-    // /auth/logout returns 204
+    // /logout returns 204
     if (!res.ok && res.status !== 204) {
       throw new Error("Failed to logout");
     }

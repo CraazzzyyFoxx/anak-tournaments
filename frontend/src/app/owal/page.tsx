@@ -1,27 +1,21 @@
 import React from "react";
-import tournamentService from "@/services/tournament.service";
-import OwalStandingsTable from "@/app/owal/components/OwalStandingsTable";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import OwalStacksTable from "./components/OwalStacksTable";
+import OwalSeasonFilter from "./components/OwalSeasonFilter";
+import OwalPageTabs from "./components/OwalPageTabs";
+import { getOwalPageData, OwalPageSearchParams } from "./_data";
 
-const OwalPage = async () => {
-  const data = await tournamentService.getOwalStandings();
-  const stacks = await tournamentService.getOwalStacks();
+export const dynamic = "force-dynamic";
+
+type OwalPageProps = {
+  searchParams: Promise<OwalPageSearchParams>;
+};
+
+const OwalPage = async ({ searchParams }: OwalPageProps) => {
+  const { seasons, selectedSeason, standings, stacks } = await getOwalPageData(searchParams);
 
   return (
-    <div>
-      <Tabs defaultValue="standings">
-        <TabsList className="grid grid-cols-2 w-[400px] mb-4">
-          <TabsTrigger value="standings">Standings</TabsTrigger>
-          <TabsTrigger value="stacks">Stacks</TabsTrigger>
-        </TabsList>
-        <TabsContent value="standings">
-          <OwalStandingsTable data={data} />
-        </TabsContent>
-        <TabsContent value="stacks">
-          <OwalStacksTable data={stacks} />
-        </TabsContent>
-      </Tabs>
+    <div className="flex flex-col gap-4">
+      {selectedSeason ? <OwalSeasonFilter seasons={seasons} selectedSeason={selectedSeason} /> : null}
+      <OwalPageTabs standings={standings} stacks={stacks} />
     </div>
   );
 };

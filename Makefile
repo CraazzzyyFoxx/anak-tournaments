@@ -1,122 +1,153 @@
-.PHONY: help build up down restart logs ps clean build-prod up-prod down-prod logs-prod health migrate test
+.PHONY: help dev-build dev-up dev-up-full dev-down dev-restart dev-logs dev-ps dev-health dev-rebuild \
+	prod-build prod-up prod-down prod-logs migrate test clean \
+	build up down restart logs ps health build-prod up-prod down-prod logs-prod \
+	backend-logs auth-logs parser-logs frontend-logs discord-logs balancer-logs \
+	backend-restart auth-restart parser-restart frontend-restart \
+	monitoring-up monitoring-down monitoring-logs monitoring-ps \
+	backend-rebuild auth-rebuild parser-rebuild frontend-rebuild
 
-# Default target
+COMPOSE = docker compose
+PROD_COMPOSE = docker compose -f docker-compose.production.yml
+
 help:
 	@echo "Available commands:"
-	@echo "  make build         - Build development images"
-	@echo "  make up            - Start development services"
-	@echo "  make down          - Stop development services"
-	@echo "  make restart       - Restart development services"
-	@echo "  make logs          - View development logs"
-	@echo "  make ps            - List running containers"
-	@echo "  make clean         - Remove containers, volumes, and images"
+	@echo "  make dev-build      - Build dev images"
+	@echo "  make dev-up         - Start core dev stack (no workers, no gateway)"
+	@echo "  make dev-up-full    - Start dev stack with workers and Kong gateway"
+	@echo "  make dev-down       - Stop dev stack"
+	@echo "  make dev-logs       - Follow dev logs"
+	@echo "  make dev-ps         - Show dev services"
+	@echo "  make dev-health     - Show dev health status"
+	@echo "  make dev-rebuild    - Rebuild and restart core dev stack"
 	@echo ""
-	@echo "  make build-prod    - Build production images"
-	@echo "  make up-prod       - Start production services"
-	@echo "  make down-prod     - Stop production services"
-	@echo "  make logs-prod     - View production logs"
+	@echo "  make prod-build     - Build production images"
+	@echo "  make prod-up        - Start production stack"
+	@echo "  make prod-down      - Stop production stack"
+	@echo "  make prod-logs      - Follow production logs"
 	@echo ""
-	@echo "  make health        - Check service health"
-	@echo "  make migrate       - Run database migrations"
-	@echo "  make test          - Run tests in backend container"
+	@echo "  make migrate        - Run backend migrations"
+	@echo "  make test           - Run backend tests"
+	@echo "  make clean          - Remove compose resources"
 
-# Development commands
-build:
-	docker compose build
+dev-build:
+	$(COMPOSE) build
 
-up:
-	docker compose up -d
+dev-up:
+	$(COMPOSE) up -d --wait
 
-down:
-	docker compose down
+dev-up-full:
+	$(COMPOSE) --profile workers --profile gateway up -d --wait
 
-restart:
-	docker compose restart
+dev-down:
+	$(COMPOSE) down --remove-orphans
 
-logs:
-	docker compose logs -f
+dev-restart:
+	$(COMPOSE) restart
 
-ps:
-	docker compose ps
+dev-logs:
+	$(COMPOSE) logs -f
 
-# Production commands
-build-prod:
-	docker compose -f docker-compose.production.yml build
+dev-ps:
+	$(COMPOSE) ps
 
-up-prod:
-	docker compose -f docker-compose.production.yml up -d
+dev-health:
+	$(COMPOSE) ps --format "table {{.Service}}\t{{.State}}\t{{.Health}}"
 
-down-prod:
-	docker compose -f docker-compose.production.yml down
+dev-rebuild:
+	$(COMPOSE) up -d --build --wait
 
-logs-prod:
-	docker compose -f docker-compose.production.yml logs -f
+prod-build:
+	$(PROD_COMPOSE) build
 
-# Utility commands
-health:
-	@echo "Checking service health..."
-	@docker inspect --format='Backend: {{.State.Health.Status}}' aqt-backend 2>/dev/null || echo "Backend: not running"
-	@docker inspect --format='Auth: {{.State.Health.Status}}' aqt-auth 2>/dev/null || echo "Auth: not running"
-	@docker inspect --format='Parser: {{.State.Health.Status}}' aqt-parser 2>/dev/null || echo "Parser: not running"
-	@docker inspect --format='Frontend: {{.State.Health.Status}}' aqt-frontend 2>/dev/null || echo "Frontend: not running"
-	@docker inspect --format='Discord: {{.State.Health.Status}}' aqt-discord 2>/dev/null || echo "Discord: not running"
-	@docker inspect --format='Twitch: {{.State.Health.Status}}' aqt-twitch 2>/dev/null || echo "Twitch: not running"
-	@docker inspect --format='Balancer: {{.State.Health.Status}}' aqt-balancer 2>/dev/null || echo "Balancer: not running"
+prod-up:
+	$(PROD_COMPOSE) up -d --wait
+
+prod-down:
+	$(PROD_COMPOSE) down --remove-orphans
+
+prod-logs:
+	$(PROD_COMPOSE) logs -f
 
 migrate:
-	docker compose exec backend alembic upgrade head
+	$(COMPOSE) exec backend alembic upgrade head
 
 test:
-	docker compose exec backend pytest
+	$(COMPOSE) exec backend pytest
 
 clean:
-	docker compose down -v --rmi all
-	docker system prune -f
+	$(COMPOSE) down -v --remove-orphans
 
-# Service-specific commands
+# Backward-compatible aliases
+build: dev-build
+up: dev-up
+down: dev-down
+restart: dev-restart
+logs: dev-logs
+ps: dev-ps
+health: dev-health
+build-prod: prod-build
+up-prod: prod-up
+down-prod: prod-down
+logs-prod: prod-logs
+
 backend-logs:
-	docker compose logs -f backend
+	$(COMPOSE) logs -f backend
 
 auth-logs:
-	docker compose logs -f auth
+	$(COMPOSE) logs -f auth
 
 parser-logs:
-	docker compose logs -f parser
+	$(COMPOSE) logs -f parser
 
 frontend-logs:
-	docker compose logs -f frontend
+	$(COMPOSE) logs -f frontend
 
 discord-logs:
-	docker compose logs -f discord
-
-twitch-logs:
-	docker compose logs -f twitch
+	$(COMPOSE) logs -f discord
 
 balancer-logs:
-	docker compose logs -f balancer
+	$(COMPOSE) logs -f balancer
 
-# Restart individual services
 backend-restart:
-	docker compose restart backend
+	$(COMPOSE) restart backend
 
 auth-restart:
-	docker compose restart auth
+	$(COMPOSE) restart auth
 
 parser-restart:
-	docker compose restart parser
+	$(COMPOSE) restart parser
 
 frontend-restart:
-	docker compose restart frontend
+	$(COMPOSE) restart frontend
 
-# Rebuild individual services
 backend-rebuild:
-	docker compose up -d --build backend
+	$(COMPOSE) up -d --build --wait backend
 
 auth-rebuild:
-	docker compose up -d --build auth
+	$(COMPOSE) up -d --build --wait auth
 
 parser-rebuild:
-	docker compose up -d --build parser
+	$(COMPOSE) up -d --build --wait parser
 
 frontend-rebuild:
-	docker compose up -d --build frontend
+	$(COMPOSE) stop frontend && $(COMPOSE) rm -f frontend
+	-docker volume rm anak-tournaments_frontend-node-modules 2>/dev/null
+	-docker volume rm anak-tournaments_frontend-next 2>/dev/null
+	$(COMPOSE) up -d --build --wait frontend
+
+# ==============================================================================
+# Monitoring stack (Prometheus + Alertmanager + Loki + Promtail + Grafana)
+# ==============================================================================
+MONITORING_COMPOSE = docker compose -f monitoring/docker-compose.monitoring.yml
+
+monitoring-up:
+	$(MONITORING_COMPOSE) up -d
+
+monitoring-down:
+	$(MONITORING_COMPOSE) down
+
+monitoring-logs:
+	$(MONITORING_COMPOSE) logs -f
+
+monitoring-ps:
+	$(MONITORING_COMPOSE) ps

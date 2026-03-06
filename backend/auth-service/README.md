@@ -103,29 +103,31 @@ curl http://localhost:8001/health
 
 ### Аутентификация
 
-- `POST /auth/register` - Регистрация нового пользователя
-- `POST /auth/login` - Вход (получение токенов)
-- `POST /auth/refresh` - Обновление access токена
-- `POST /auth/logout` - Выход (отзыв токена)
-- `POST /auth/logout-all` - Выход со всех устройств
-- `GET /auth/me` - Получить текущего пользователя
-- `PATCH /auth/me` - Обновить профиль
-- `POST /auth/validate` - Валидировать токен (для других сервисов)
+- `POST /register` - Регистрация нового пользователя
+- `POST /login` - Вход (получение токенов)
+- `POST /refresh` - Обновление access токена
+- `POST /logout` - Выход (отзыв токена)
+- `POST /logout-all` - Выход со всех устройств
+- `POST /set-password` 🔒 - Установить/сменить пароль
+- `GET /me` - Получить текущего пользователя
+- `PATCH /me` - Обновить профиль
+- `POST /validate` - Валидировать токен (для других сервисов)
 
-### Discord OAuth
+### OAuth (Discord)
 
-- `GET /auth/discord/url` - Получить URL для авторизации Discord
-- `POST /auth/discord/callback` - Обработка callback от Discord
-- `POST /auth/discord/link` 🔒 - Привязать Discord к аккаунту
-- `DELETE /auth/discord/unlink` 🔒 - Отвязать Discord
-- `GET /auth/discord/info` 🔒 - Информация о привязанном Discord
+- `GET /oauth/discord/url` - Получить URL для авторизации Discord
+- `GET /oauth/discord/callback` - Обработка callback от Discord (GET версия)
+- `POST /oauth/discord/callback` - Обработка callback от Discord (POST версия)
+- `POST /oauth/discord/link` 🔒 - Привязать Discord к аккаунту
+- `DELETE /oauth/discord/unlink` 🔒 - Отвязать Discord
+- `GET /oauth/connections` 🔒 - Все OAuth-связки аккаунта
 
 ### Связывание игроков
 
-- `POST /auth/player/link` 🔒 - Привязать игрового персонажа
-- `DELETE /auth/player/unlink/{player_id}` 🔒 - Отвязать игрока
-- `GET /auth/player/linked` 🔒 - Список привязанных игроков
-- `PATCH /auth/player/linked/{player_id}/primary` 🔒 - Установить основного игрока
+- `POST /player/link` 🔒 - Привязать игрового персонажа
+- `DELETE /player/unlink/{player_id}` 🔒 - Отвязать игрока
+- `GET /player/linked` 🔒 - Список привязанных игроков
+- `PATCH /player/linked/{player_id}/primary` 🔒 - Установить основного игрока
 
 🔒 - требуется авторизация
 
@@ -133,7 +135,7 @@ curl http://localhost:8001/health
 
 ### Регистрация
 ```bash
-curl -X POST "http://localhost:8001/auth/register" \
+curl -X POST "http://localhost:8001/register" \
   -H "Content-Type: application/json" \
   -d '{
     "email": "user@example.com",
@@ -146,7 +148,7 @@ curl -X POST "http://localhost:8001/auth/register" \
 
 ### Вход
 ```bash
-curl -X POST "http://localhost:8001/auth/login" \
+curl -X POST "http://localhost:8001/login" \
   -H "Content-Type: application/json" \
   -d '{
     "email": "user@example.com",
@@ -165,13 +167,13 @@ curl -X POST "http://localhost:8001/auth/login" \
 
 ### Использование токена
 ```bash
-curl -X GET "http://localhost:8001/auth/me" \
+curl -X GET "http://localhost:8001/me" \
   -H "Authorization: Bearer eyJ..."
 ```
 
 ### Обновление токена
 ```bash
-curl -X POST "http://localhost:8001/auth/refresh" \
+curl -X POST "http://localhost:8001/refresh" \
   -H "Content-Type: application/json" \
   -d '{
     "refresh_token": "a1b2c3..."
@@ -180,7 +182,7 @@ curl -X POST "http://localhost:8001/auth/refresh" \
 
 ## Интеграция с другими сервисами
 
-Другие микросервисы могут валидировать токены через endpoint `/auth/validate`:
+Другие микросервисы могут валидировать токены через endpoint `/validate`:
 
 ```python
 import httpx
@@ -188,7 +190,7 @@ import httpx
 async def validate_token(token: str):
     async with httpx.AsyncClient() as client:
         response = await client.post(
-            "http://auth-service:8001/auth/validate",
+            "http://auth-service:8001/validate",
             headers={"Authorization": f"Bearer {token}"}
         )
         if response.status_code == 200:

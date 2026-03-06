@@ -7,6 +7,8 @@ export interface Hero {
   name: string;
   slug: string;
   image_path: string;
+  // Backend uses `type` (Tank/Damage/Support). Keep `role` for legacy callers.
+  type?: string;
   role: string;
   color: string;
 }
@@ -30,7 +32,7 @@ export interface HeroStat {
   overall: number;
   best: HeroBestStat;
   avg_10: number;
-  best_all: HeroBestStat;
+  best_all: HeroBestStat | null;
   avg_10_all: number;
 }
 

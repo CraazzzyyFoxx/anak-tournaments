@@ -11,23 +11,23 @@ export interface UserTournamentsProps {
 
 const UserOverviewLi = ({ label, value }: { label: string; value: string }) => {
   return (
-    <li className="flex items-center justify-between font-semibold">
-      <span className="text-muted-foreground">{label}</span>
-      <span>{value}</span>
+    <li className="flex items-baseline justify-between gap-4 py-1.5">
+      <span className="text-sm font-medium text-muted-foreground">{label}</span>
+      <span className="text-lg font-bold leading-6 tabular-nums">{value}</span>
     </li>
   );
 };
 
 export const UserOverviewSkeleton = () => {
   return (
-    <Card>
+    <Card className="lg:h-110 flex flex-col">
       <CardHeader>
         <div className="flex flex-row gap-2">
           <Boxes />
           <TypographyH4>Overview</TypographyH4>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex-1">
         <ul className="grid gap-2">
           <Skeleton className="h-5 w-60" />
           <Skeleton className="h-5 w-60" />
@@ -45,15 +45,15 @@ export const UserOverviewSkeleton = () => {
 
 const UserOverview = ({ profile }: UserTournamentsProps) => {
   return (
-    <Card>
+    <Card className="lg:h-110 flex flex-col">
       <CardHeader>
         <div className="flex flex-row gap-2">
           <Boxes />
           <TypographyH4>Overview</TypographyH4>
         </div>
       </CardHeader>
-      <CardContent>
-        <ul className="grid gap-1">
+      <CardContent className="flex-1">
+        <ul className="divide-y divide-border/40">
           <UserOverviewLi label="Tournaments" value={`${profile.tournaments_count}`} />
           <UserOverviewLi label="Tournaments Won" value={`${profile.tournaments_won}`} />
           <UserOverviewLi

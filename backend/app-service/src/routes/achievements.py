@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 
 from src import schemas
-from src.core import config, db, enums, pagination
+from src.core import config, db, enums, errors, pagination
 
 from src.services.achievements import flows as achievements_flows
 
@@ -26,14 +26,10 @@ router = APIRouter(prefix="/achievements", tags=[enums.RouteTag.ACHIEVEMENTS])
 async def get_all(
     session: AsyncSession = Depends(db.get_async_session),
     params: pagination.PaginationSortQueryParams[
-        typing.Literal[
-            "id", "name", "slug", "rarity", "similarity:name", "similarity:slug"
-        ]
+        typing.Literal["id", "name", "slug", "rarity", "similarity:name", "similarity:slug"]
     ] = Depends(),
 ):
-    return await achievements_flows.get_all(
-        session, pagination.PaginationSortParams.from_query_params(params)
-    )
+    return await achievements_flows.get_all(session, pagination.PaginationSortParams.from_query_params(params))
 
 
 @router.get(
@@ -87,6 +83,25 @@ async def get_user_achievements(
     request: Request,
     user_id: int,
     entities: list[str] = Query([]),
+    tournament_id: int | None = Query(None),
+    without_tournament: bool = Query(False),
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    return await achievements_flows.get_user_achievements(session, user_id, entities)
+    if tournament_id is not None and without_tournament:
+        raise errors.ApiHTTPException(
+            status_code=400,
+            detail=[
+                errors.ApiExc(
+                    code="invalid_request",
+                    msg="Use either tournament_id or without_tournament=true, not both.",
+                )
+            ],
+        )
+
+    return await achievements_flows.get_user_achievements(
+        session,
+        user_id,
+        entities,
+        tournament_id=tournament_id,
+        without_tournament=without_tournament,
+    )

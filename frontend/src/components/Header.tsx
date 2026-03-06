@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Menu } from "lucide-react";
+import { LogIn, Menu } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,6 +25,8 @@ import { cn } from "@/lib/utils";
 import { SITE_ICON, SITE_NAME } from "@/config/site";
 import UserMenu from "@/components/UserMenu";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
+import { usePermissions } from "@/hooks/usePermissions";
+import { useAuthModalStore } from "@/stores/auth-modal.store";
 
 const tournament_components: { title: string; href: string; description: string }[] = [
   {
@@ -80,14 +82,25 @@ const matches_components: { title: string; href: string; description: string }[]
   }
 ];
 
+const organizer_components: { title: string; href: string; description: string }[] = [
+  {
+    title: "Balancer",
+    href: "/balancer",
+    description: "Tool for balancing teams by player roles and ratings"
+  }
+];
+
 const components: Record<string, { title: string; href: string; description: string }[]> = {
   Tournaments: tournament_components,
   Users: users_components,
-  Matches: matches_components
+  Matches: matches_components,
+  Organizer: organizer_components
 };
 
 const Header = () => {
   const { user } = useAuthProfile();
+  const openAuthModal = useAuthModalStore((state) => state.open);
+  const { isOrganizer, isLoaded } = usePermissions();
   const username = user?.username;
   const avatarUrl = user?.avatarUrl;
   const profileHref = username ? `/users/${username}` : "/users";
@@ -98,22 +111,24 @@ const Header = () => {
         <Image src={SITE_ICON} alt={SITE_NAME} width={40} height={40} />
       </Link>
       <NavigationMenu className="hidden md:flex">
-        {Object.keys(components).map((title) => (
-          <NavigationMenuList key={title}>
-            <NavigationMenuItem>
-              <NavigationMenuTrigger>{title}</NavigationMenuTrigger>
-              <NavigationMenuContent>
-                <ul className="grid w-[400px] gap-3 p-4 md:w-[500px] md:grid-cols-2 lg:w-[600px] ">
-                  {components[title].map((component) => (
-                    <ListItem key={component.title} title={component.title} href={component.href}>
-                      {component.description}
-                    </ListItem>
-                  ))}
-                </ul>
-              </NavigationMenuContent>
-            </NavigationMenuItem>
-          </NavigationMenuList>
-        ))}
+        {Object.keys(components)
+          .filter((title) => title !== "Organizer" || (isLoaded && isOrganizer))
+          .map((title) => (
+            <NavigationMenuList key={title}>
+              <NavigationMenuItem>
+                <NavigationMenuTrigger>{title}</NavigationMenuTrigger>
+                <NavigationMenuContent>
+                  <ul className="grid w-[400px] gap-3 p-4 md:w-[500px] md:grid-cols-2 lg:w-[600px] ">
+                    {components[title].map((component) => (
+                      <ListItem key={component.title} title={component.title} href={component.href}>
+                        {component.description}
+                      </ListItem>
+                    ))}
+                  </ul>
+                </NavigationMenuContent>
+              </NavigationMenuItem>
+            </NavigationMenuList>
+          ))}
       </NavigationMenu>
       <Sheet>
         <SheetTrigger asChild>
@@ -129,26 +144,28 @@ const Header = () => {
               <span className="sr-only">{SITE_NAME}</span>
             </Link>
             <Accordion type="single" collapsible className="w-full">
-              {Object.entries(components).map(([category, items]) => (
-                <AccordionItem key={category} value={category}>
-                  <AccordionTrigger className="text-base hover:text-foreground">
-                    {category}
-                  </AccordionTrigger>
-                  <AccordionContent>
-                    <div className="grid gap-4 pl-4">
-                      {items.map((item) => (
-                        <Link
-                          key={item.title}
-                          href={item.href}
-                          className="text-muted-foreground hover:text-foreground text-sm"
-                        >
-                          {item.title}
-                        </Link>
-                      ))}
-                    </div>
-                  </AccordionContent>
-                </AccordionItem>
-              ))}
+              {Object.entries(components)
+                .filter(([category]) => category !== "Organizer" || (isLoaded && isOrganizer))
+                .map(([category, items]) => (
+                  <AccordionItem key={category} value={category}>
+                    <AccordionTrigger className="text-base hover:text-foreground">
+                      {category}
+                    </AccordionTrigger>
+                    <AccordionContent>
+                      <div className="grid gap-4 pl-4">
+                        {items.map((item) => (
+                          <Link
+                            key={item.title}
+                            href={item.href}
+                            className="text-muted-foreground hover:text-foreground text-sm"
+                          >
+                            {item.title}
+                          </Link>
+                        ))}
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+                ))}
             </Accordion>
           </nav>
         </SheetContent>
@@ -160,11 +177,9 @@ const Header = () => {
         {username ? (
           <UserMenu username={username} avatarUrl={avatarUrl} profileHref={profileHref} />
         ) : (
-          <Button asChild className="bg-[#5865f2] text-white hover:bg-[#5865f2] text-base">
-            <Link href="/auth/discord/login">
-              <Image src="/discord-white.svg" alt="discord" width="24" height="24" />
-              <span className="ml-2 hidden sm:inline">Login</span>
-            </Link>
+          <Button variant="outline" className="text-base" onClick={() => openAuthModal()}>
+            <LogIn className="h-5 w-5" />
+            <span className="hidden sm:inline">Login</span>
           </Button>
         )}
       </div>

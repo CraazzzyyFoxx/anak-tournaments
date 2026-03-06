@@ -1,6 +1,7 @@
 import typing
 from collections import defaultdict
 from itertools import combinations
+import re
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,9 +11,18 @@ from src import models, schemas
 from src.core import enums, utils
 
 
-def tournament_entities(
-    in_entities: list[str], child: typing.Any | None = None
-) -> list[_AbstractLoad]:
+OWAL_SEASON_PATTERN = re.compile(r"^OWAL Season (\d+)$")
+
+
+def _parse_owal_season_name(tournament_name: str) -> typing.Optional[tuple[int, str]]:
+    season_name = tournament_name.split(" | ", 1)[0].strip()
+    match = OWAL_SEASON_PATTERN.match(season_name)
+    if not match:
+        return None
+    return int(match.group(1)), season_name
+
+
+def tournament_entities(in_entities: list[str], child: typing.Any | None = None) -> list[_AbstractLoad]:
     """
     Constructs a list of SQLAlchemy load options for querying related entities of a `Tournament` model.
 
@@ -29,9 +39,7 @@ def tournament_entities(
     return entities
 
 
-async def get(
-    session: AsyncSession, id: int, entities: list[str]
-) -> models.Tournament | None:
+async def get(session: AsyncSession, id: int, entities: list[str]) -> models.Tournament | None:
     """
     Retrieves a `Tournament` model instance by its ID, optionally including related entities.
 
@@ -44,17 +52,13 @@ async def get(
         A `Tournament` model instance if found, otherwise `None`.
     """
     query = (
-        sa.select(models.Tournament)
-        .where(sa.and_(models.Tournament.id == id))
-        .options(*tournament_entities(entities))
+        sa.select(models.Tournament).where(sa.and_(models.Tournament.id == id)).options(*tournament_entities(entities))
     )
     result = await session.execute(query)
     return result.unique().scalars().first()
 
 
-async def get_group(
-    session: AsyncSession, id: int, entities: list[str]
-) -> models.TournamentGroup | None:
+async def get_group(session: AsyncSession, id: int, entities: list[str]) -> models.TournamentGroup | None:
     """
     Retrieves a `TournamentGroup` model instance by its ID.
 
@@ -66,9 +70,7 @@ async def get_group(
     Returns:
         A `TournamentGroup` model instance if found, otherwise `None`.
     """
-    query = sa.select(models.TournamentGroup).where(
-        sa.and_(models.TournamentGroup.id == id)
-    )
+    query = sa.select(models.TournamentGroup).where(sa.and_(models.TournamentGroup.id == id))
     result = await session.execute(query)
     return result.unique().scalars().first()
 
@@ -125,9 +127,7 @@ async def get_all(
 
     if params.is_league is not None:
         query = query.where(models.Tournament.is_league.is_(params.is_league))
-        total_query = total_query.where(
-            models.Tournament.is_league.is_(params.is_league)
-        )
+        total_query = total_query.where(models.Tournament.is_league.is_(params.is_league))
 
     result = await session.execute(query)
     total_result = await session.execute(total_query)
@@ -283,6 +283,7 @@ async def get_tournaments_overall(session: AsyncSession) -> tuple[int, int, int,
 
 async def get_owal_standings(
     session: AsyncSession,
+    season: str,
 ) -> typing.Sequence[tuple[models.User, models.Team, models.Tournament, models.Player]]:
     """
     Retrieves OWAL (Overwatch Anak League) standings.
@@ -309,7 +310,7 @@ async def get_owal_standings(
         .where(
             sa.and_(
                 models.Tournament.is_league.is_(True),
-                models.Tournament.name.startswith("OWAL Season 3"),
+                models.Tournament.name.startswith(season),
                 models.Player.is_substitution.is_(False),
                 models.Tournament.is_finished.is_(True),
             )
@@ -319,7 +320,7 @@ async def get_owal_standings(
     return result.unique().all()
 
 
-async def get_owal_days(session: AsyncSession) -> typing.Sequence[models.Tournament]:
+async def get_owal_days(session: AsyncSession, season: str) -> typing.Sequence[models.Tournament]:
     """
     Retrieves OWAL (Overwatch Anak League) days.
 
@@ -334,13 +335,33 @@ async def get_owal_days(session: AsyncSession) -> typing.Sequence[models.Tournam
         .where(
             sa.and_(
                 models.Tournament.is_league.is_(True),
-                models.Tournament.name.startswith("OWAL Season 3"),
+                models.Tournament.name.startswith(season),
             )
         )
         .order_by(models.Tournament.start_date)
     )
     result = await session.execute(query)
     return result.unique().scalars().all()
+
+
+async def get_owal_seasons(session: AsyncSession) -> list[str]:
+    query = sa.select(models.Tournament.name).where(
+        sa.and_(
+            models.Tournament.is_league.is_(True),
+            models.Tournament.name.startswith("OWAL Season "),
+        )
+    )
+    result = await session.execute(query)
+
+    unique_seasons: dict[int, str] = {}
+    for tournament_name in result.scalars().all():
+        parsed = _parse_owal_season_name(tournament_name)
+        if parsed is None:
+            continue
+        season_number, season_name = parsed
+        unique_seasons[season_number] = season_name
+
+    return [unique_seasons[season_number] for season_number in sorted(unique_seasons.keys(), reverse=True)]
 
 
 async def get_bulk_tournament(
@@ -366,29 +387,42 @@ async def get_bulk_tournament(
     return result.scalars().all()
 
 
-async def get_league_player_stacks(session: AsyncSession) -> tuple[
+async def get_league_player_stacks(
+    session: AsyncSession, season: str
+) -> tuple[
     defaultdict[tuple[int, int], list[models.Player]],
     defaultdict[tuple[int, int], list[models.Player]],
-    dict[tuple[int, int], models.Standing]
+    dict[tuple[int, int], models.Standing],
 ]:
-    players = (await session.execute(
-        sa.select(models.Player)
-        .join(models.Team)
-        .join(models.Tournament)
-        .where(models.Tournament.name.startswith("OWAL Season 3"))
-        .options(
-            sa.orm.joinedload(models.Player.user),
-            sa.orm.joinedload(models.Player.team),
-            sa.orm.joinedload(models.Player.tournament)
+    players = (
+        (
+            await session.execute(
+                sa.select(models.Player)
+                .join(models.Team)
+                .join(models.Tournament)
+                .where(
+                    sa.and_(
+                        models.Tournament.is_league.is_(True),
+                        models.Tournament.is_finished.is_(True),
+                        models.Tournament.name.startswith(season),
+                        models.Player.is_substitution.is_(False),
+                    )
+                )
+                .options(
+                    sa.orm.joinedload(models.Player.user),
+                    sa.orm.joinedload(models.Player.team),
+                    sa.orm.joinedload(models.Player.tournament),
+                )
+            )
         )
-    )).scalars().all()
-
+        .scalars()
+        .all()
+    )
 
     team_tournament_players = defaultdict(list)
     for player in players:
         key = (player.team_id, player.tournament_id)
         team_tournament_players[key].append(player)
-
 
     stacks = defaultdict(list)
     for (team_id, tournament_id), team_players in team_tournament_players.items():
@@ -397,17 +431,24 @@ async def get_league_player_stacks(session: AsyncSession) -> tuple[
             stacks[stack_key].append((team_id, tournament_id))
 
     team_tournament_ids = {(team_id, tournament_id) for stack in stacks.values() for team_id, tournament_id in stack}
-    standings = (await session.execute(
-        sa.select(models.Standing)
-        .where(sa.and_(
-            models.Standing.team_id.in_([tt[0] for tt in team_tournament_ids]),
-            models.Standing.tournament_id.in_([tt[1] for tt in team_tournament_ids])
-        ))
-        .options(
-            sa.orm.joinedload(models.Standing.team),
-            sa.orm.joinedload(models.Standing.tournament)
+
+    if not team_tournament_ids:
+        return stacks, team_tournament_players, {}
+
+    standings = (
+        (
+            await session.execute(
+                sa.select(models.Standing)
+                .where(sa.tuple_(models.Standing.team_id, models.Standing.tournament_id).in_(team_tournament_ids))
+                .options(
+                    sa.orm.joinedload(models.Standing.team),
+                    sa.orm.joinedload(models.Standing.tournament),
+                )
+            )
         )
-    )).scalars().all()
+        .scalars()
+        .all()
+    )
 
     standings_dict = {(s.team_id, s.tournament_id): s for s in standings}
     return stacks, team_tournament_players, standings_dict

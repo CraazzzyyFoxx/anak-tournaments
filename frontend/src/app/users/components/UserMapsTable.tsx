@@ -19,7 +19,7 @@ import { ArrowUpDown } from "lucide-react";
 import { getWinrateColor } from "@/utils/colors";
 import { TypographyH4 } from "@/components/ui/typography";
 import { PaginatedResponse } from "@/types/pagination.types";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { HeroPlaytime } from "@/types/hero.types";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -74,7 +74,7 @@ const columns: ColumnDef<UserMapRead>[] = [
     accessorKey: "win_rate",
     header: ({ column }) => {
       return (
-        <div className="flex justify-center">
+        <div className="flex w-full justify-center">
           <Button
             className="p-0 px-2"
             variant="ghost"
@@ -90,7 +90,7 @@ const columns: ColumnDef<UserMapRead>[] = [
       const winRate = (row.getValue<number>("win_rate") * 100).toFixed(0);
       return (
         <div
-          className="flex justify-center"
+          className="flex w-full justify-center"
           style={{ color: getWinrateColor(row.getValue("win_rate")) }}
         >
           <TypographyH4>{winRate}%</TypographyH4>
@@ -100,19 +100,19 @@ const columns: ColumnDef<UserMapRead>[] = [
   },
   {
     accessorKey: "win",
-    header: () => <div className="flex justify-center">Wins</div>,
+    header: () => <div className="flex w-full justify-center">Wins</div>,
     cell: ({ row }) => (
-      <div className="flex justify-center text-green-400">
+      <div className="flex w-full justify-center text-green-400">
         <TypographyH4>{row.getValue("win")}</TypographyH4>
       </div>
     )
   },
   {
     accessorKey: "loss",
-    header: () => <div className="flex justify-center">Losses</div>,
+    header: () => <div className="flex w-full justify-center">Losses</div>,
     cell: ({ row }) => {
       return (
-        <div className="flex justify-center text-red-400">
+        <div className="flex w-full justify-center text-red-400">
           <TypographyH4>{row.getValue("loss")}</TypographyH4>
         </div>
       );
@@ -120,10 +120,10 @@ const columns: ColumnDef<UserMapRead>[] = [
   },
   {
     accessorKey: "draw",
-    header: () => <div className="flex justify-center">Draws</div>,
+    header: () => <div className="flex w-full justify-center">Draws</div>,
     cell: ({ row }) => {
       return (
-        <div className="flex justify-center text-gray-400">
+        <div className="flex w-full justify-center text-gray-400">
           <TypographyH4>{row.getValue("draw")}</TypographyH4>
         </div>
       );
@@ -161,9 +161,11 @@ const UserMapsTable = ({ maps }: { maps: PaginatedResponse<UserMapRead> }) => {
     <>
       <ScrollArea>
         <Card className="w-full">
-          <div className="rounded-md border">
-            <TableComponent table={table} columns={columns} tableCellClassName={"p-0"} />
-          </div>
+          <CardContent className="p-0">
+            <div className="rounded-md border">
+              <TableComponent table={table} columns={columns} tableCellClassName={"p-0"} />
+            </div>
+          </CardContent>
         </Card>
         <ScrollBar orientation="horizontal" />
       </ScrollArea>

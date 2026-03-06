@@ -5,6 +5,9 @@ import { authService } from "@/services/auth.service";
 export type MeResponse = {
   username: string;
   avatar_url?: string | null;
+  roles: string[];
+  permissions: string[];
+  is_superuser: boolean;
 };
 
 export async function GET() {
@@ -19,7 +22,10 @@ export async function GET() {
     const me = await authService.me(accessToken);
     const payload: MeResponse = {
       username: me.username,
-      avatar_url: me.avatar_url ?? null
+      avatar_url: me.avatar_url ?? null,
+      roles: me.roles ?? [],
+      permissions: me.permissions ?? [],
+      is_superuser: me.is_superuser ?? false
     };
 
     return NextResponse.json(payload, { status: 200 });

@@ -2,27 +2,10 @@
 
 import React from "react";
 import { Tournament } from "@/types/tournament.types";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Badge } from "@/components/ui/badge";
-
-export const TournamentStatus = ({ isFinished }: { isFinished: boolean }) => {
-  return (
-    <div className="flex items-center space-x-2">
-      <span className="text-sm text-gray-600 dark:text-gray-400">Status:</span>
-      <Badge
-        className={
-          isFinished
-            ? "bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100"
-            : "bg-yellow-100 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-100"
-        }
-      >
-        {isFinished ? "Finished" : "Ongoing"}
-      </Badge>
-    </div>
-  );
-};
+import { Calendar, Users, ExternalLink } from "lucide-react";
+import { cn, formatDateRange } from "@/lib/utils";
 
 export const TournamentChallongeLink = ({ tournament }: { tournament: Tournament }) => {
   let slug = tournament.challonge_slug;
@@ -38,15 +21,40 @@ export const TournamentChallongeLink = ({ tournament }: { tournament: Tournament
   }
 
   return (
-    <div className="flex gap-2">
-      <p>Bracket link:</p>
-      <Link
-        className="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-        href={`https://challonge.com/${slug}`}
-      >
-        {slug}
-      </Link>
-    </div>
+    <Link
+      className="flex items-center gap-1 text-xs text-white/55 hover:text-white/80 transition-colors"
+      href={`https://challonge.com/${slug}`}
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      <ExternalLink className="w-3 h-3" />
+      <span>Bracket</span>
+    </Link>
+  );
+};
+
+export const TournamentChallongeLinkInline = ({ tournament }: { tournament: Tournament }) => {
+  let slug = tournament.challonge_slug;
+  const groups = tournament.groups.sort((a, b) => Number(a.is_groups) - Number(b.is_groups));
+
+  if (!slug) {
+    for (const group of groups) {
+      if (group.challonge_slug) {
+        slug = group.challonge_slug;
+        break;
+      }
+    }
+  }
+
+  return (
+    <Link
+      className="text-sm text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 transition-colors font-medium"
+      href={`https://challonge.com/${slug}`}
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      View Bracket
+    </Link>
   );
 };
 
@@ -54,37 +62,69 @@ const TournamentCard = ({ tournament }: { tournament: Tournament }) => {
   const router = useRouter();
 
   const onClick = (event: React.MouseEvent) => {
-    // Проверяем, был ли клик на ссылке
     const isLinkClicked = (event.target as HTMLElement).closest("a");
-    if (isLinkClicked) {
-      return; // Если клик был на ссылке, ничего не делаем
-    }
+    if (isLinkClicked) return;
     router.push(`/tournaments/${tournament.id}`);
   };
 
   return (
-    <Card
-      className="rounded-lg shadow-lg hover:shadow-xl transition-shadow duration-300"
+    <div
+      className={cn(
+        "group flex flex-col rounded-xl border border-white/[0.07] bg-white/[0.02] p-5 cursor-pointer",
+        "transition-colors duration-200 hover:bg-white/[0.045] hover:border-white/[0.13]",
+      )}
       onClick={onClick}
     >
-      <CardHeader>
-        <CardTitle className="text-xl font-bold text-gray-900 dark:text-white">
-          {tournament.name}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex items-center space-x-2">
-          <span className="text-sm text-gray-600 dark:text-gray-400">Participants:</span>
-          <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-100">
-            {tournament.participants_count}
-          </Badge>
+      {/* Tags row */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          {tournament.is_league && (
+            <span className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-400 border border-purple-500/20 tracking-wide uppercase">
+              League
+            </span>
+          )}
+          {!tournament.is_finished && (
+            <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-emerald-400 uppercase tracking-wide">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              Live
+            </span>
+          )}
         </div>
-        <TournamentStatus isFinished={tournament.is_finished} />
+        {!tournament.is_league && (
+          <span className="text-xs tabular-nums text-white/45">#{tournament.number}</span>
+        )}
+      </div>
+
+      {/* Title */}
+      <h3 className="text-sm font-semibold text-white leading-snug mb-3 line-clamp-2">
+        {tournament.name}
+      </h3>
+
+      {/* Meta */}
+      <div className="space-y-1.5 flex-1 mb-4">
+        <div className="flex items-center gap-2 text-xs text-white/60">
+          <Calendar className="w-3.5 h-3.5 shrink-0 text-white/40" />
+          <span>{formatDateRange(tournament.start_date, tournament.end_date)}</span>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-white/60">
+          <Users className="w-3.5 h-3.5 shrink-0 text-white/40" />
+          <span>{tournament.participants_count} participants</span>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="flex items-center justify-between pt-3 border-t border-white/[0.06]">
+        <span className={cn(
+          "text-xs font-medium",
+          tournament.is_finished ? "text-white/45" : "text-emerald-400"
+        )}>
+          {tournament.is_finished ? "Finished" : "Ongoing"}
+        </span>
         <div onClick={(e) => e.stopPropagation()}>
           <TournamentChallongeLink tournament={tournament} />
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 };
 

@@ -9,7 +9,6 @@ import { ChartConfig, ChartContainer } from "@/components/ui/chart";
 import { Label, Pie, PieChart } from "recharts";
 import { TypographyH4 } from "@/components/ui/typography";
 import { Tournament } from "@/types/tournament.types";
-import CustomSelect from "@/components/CustomSelect";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -168,7 +167,7 @@ const UserLastTournamentStatCardBar = ({ rank, total }: UserLastTournamentStatCa
 
   return (
     <div className="flex flex-col h-full">
-      <div className="relative h-[60px] w-[6px] rounded-full bg-muted">
+      <div className="relative h-15 w-1.5 rounded-full bg-muted">
         <div
           className="absolute bottom-0 h-full w-full rounded-full bg-primary"
           style={{ height: `${valuePercentage}%` }}
@@ -263,9 +262,9 @@ const UserLastTournamentCard = ({ tournament, tournaments }: UserLastTournamentP
   };
 
   return (
-    <Card className="w-full">
+    <Card className="w-full lg:h-110">
       <CardHeader className="flex lg:flex-row xs:flex-col lg:gap-10 xs:gap-4 lg:items-center">
-        <CardTitle className="flex flex-1 lg:flex-row xs:flex-col lg:gap-10 xs:gap-4 lg:items-centerlg:mx-2">
+        <CardTitle className="flex flex-1 lg:flex-row xs:flex-col lg:gap-10 xs:gap-4 lg:items-center lg:mx-2">
           <div className="flex flex-row items-center gap-2 scroll-m-20 text-xl font-semibold tracking-tight">
             <Box />
             <div className="flex flex-row gap-6">
@@ -284,10 +283,10 @@ const UserLastTournamentCard = ({ tournament, tournaments }: UserLastTournamentP
               value={tournament.id.toString()}
               onValueChange={(value) => onSelect(Number(value))}
             >
-              <SelectTrigger className="w-[220px]">
+              <SelectTrigger className="w-55">
                 <SelectValue placeholder="Select a fruit" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="liquid-glass-panel max-h-[min(var(--radix-select-content-available-height),20rem)]">
                 <SelectGroup>
                   {tournaments.map((tournament) => (
                     <SelectItem key={tournament.id} value={tournament.id.toString()}>

@@ -87,9 +87,7 @@ async def bulk_to_pydantic(
     return output
 
 
-async def get(
-    session: AsyncSession, achievement_id: int, entities: list[str]
-) -> schemas.AchievementRead:
+async def get(session: AsyncSession, achievement_id: int, entities: list[str]) -> schemas.AchievementRead:
     """
     Retrieves an achievement by its ID and converts it to a Pydantic schema.
 
@@ -146,6 +144,8 @@ async def get_user_achievements(
     session: AsyncSession,
     user_id: int,
     entities: list[str],
+    tournament_id: int | None = None,
+    without_tournament: bool = False,
 ) -> list[schemas.UserAchievementRead]:
     """
     Retrieves a list of achievements earned by a specific user and converts them to Pydantic schemas.
@@ -161,7 +161,12 @@ async def get_user_achievements(
     cache: dict[int, schemas.UserAchievementRead] = {}
 
     user = await user_flows.get(session, user_id, [])
-    achievements = await service.get_user(session, user)
+    achievements = await service.get_user(
+        session,
+        user,
+        tournament_id=tournament_id,
+        without_tournament=without_tournament,
+    )
 
     for achievement, rarity in achievements:
         if achievement.achievement_id not in cache:
@@ -169,9 +174,7 @@ async def get_user_achievements(
                 **achievement.achievement.to_dict(),
                 rarity=rarity,
                 count=1,
-                tournaments_ids=(
-                    [achievement.tournament_id] if achievement.tournament_id else []
-                ),
+                tournaments_ids=([achievement.tournament_id] if achievement.tournament_id else []),
                 matches_ids=[achievement.match_id] if achievement.match_id else [],
                 tournaments=[],
                 matches=[],
@@ -181,15 +184,10 @@ async def get_user_achievements(
             cache[achievement.achievement_id].count += 1
             if (
                 achievement.tournament_id
-                and achievement.tournament_id
-                not in cache[achievement.achievement_id].tournaments
+                and achievement.tournament_id not in cache[achievement.achievement_id].tournaments_ids
             ):
                 cache[achievement.achievement_id].tournaments_ids.append(achievement.tournament_id)
-            if (
-                achievement.match_id
-                and achievement.match_id
-                not in cache[achievement.achievement_id].matches_ids
-            ):
+            if achievement.match_id and achievement.match_id not in cache[achievement.achievement_id].matches_ids:
                 cache[achievement.achievement_id].matches_ids.append(achievement.match_id)
 
     # Sort tournaments and matches IDs for each achievement
@@ -201,18 +199,14 @@ async def get_user_achievements(
         for achievement in cache.values():
             if achievement.tournaments_ids:
                 for tournament_id in achievement.tournaments_ids:
-                    tournament = await tournament_flows.get_read(
-                        session, tournament_id, []
-                    )
+                    tournament = await tournament_flows.get_read(session, tournament_id, [])
                     achievement.tournaments.append(tournament)
 
     if "matches" in entities:
         for achievement in cache.values():
             if achievement.matches_ids:
                 for match_id in achievement.matches_ids:
-                    match = await encounter_flows.get_match(
-                        session, match_id, ["map", "teams"]
-                    )
+                    match = await encounter_flows.get_match(session, match_id, ["map", "teams"])
                     achievement.matches.append(match)
 
     return list(cache.values())
@@ -243,16 +237,10 @@ async def get_achievement_users(
         if last_match_id:
             matches_to_fetch.append(last_match_id)
 
-    tournaments = await tournament_service.get_bulk_tournament(
-        session, tournament_to_fetch, []
-    )
-    matches = await encounter_service.get_match_bulk(
-        session, matches_to_fetch, ["encounter"]
-    )
+    tournaments = await tournament_service.get_bulk_tournament(session, tournament_to_fetch, [])
+    matches = await encounter_service.get_match_bulk(session, matches_to_fetch, ["encounter"])
 
-    tournaments_map: dict[int, models.Tournament] = {
-        tournament.id: tournament for tournament in tournaments
-    }
+    tournaments_map: dict[int, models.Tournament] = {tournament.id: tournament for tournament in tournaments}
     matches_map: dict[int, models.Match] = {match.id: match for match in matches}
 
     for user, count, last_tournament_id, last_match_id in users:
@@ -267,14 +255,10 @@ async def get_achievement_users(
             schemas.AchievementEarned(
                 user=await user_flows.to_pydantic(session, user, []),
                 count=count,
-                last_tournament=await tournament_flows.to_pydantic(
-                    session, last_tournament, []
-                )
+                last_tournament=await tournament_flows.to_pydantic(session, last_tournament, [])
                 if last_tournament
                 else None,
-                last_match=await encounter_flows.to_pydantic_match(
-                    session, last_match, ["encounter"]
-                )
+                last_match=await encounter_flows.to_pydantic_match(session, last_match, ["encounter"])
                 if last_match
                 else None,
             )

@@ -4,6 +4,9 @@ import { fetchWithAuth } from "@/lib/fetch-with-auth";
 export type AuthProfile = {
   username: string;
   avatarUrl?: string | null;
+  roles: string[];
+  permissions: string[];
+  isSuperuser: boolean;
 };
 
 export type AuthProfileStatus = "idle" | "loading" | "authenticated" | "anonymous" | "error";
@@ -46,12 +49,21 @@ export const useAuthProfileStore = create<AuthProfileState>((set, get) => ({
         return;
       }
 
-      const data: { username: string; avatar_url?: string | null } = await res.json();
+      const data: {
+        username: string;
+        avatar_url?: string | null;
+        roles?: string[];
+        permissions?: string[];
+        is_superuser?: boolean;
+      } = await res.json();
       set({
         status: "authenticated",
         user: {
           username: data.username,
-          avatarUrl: data.avatar_url ?? null
+          avatarUrl: data.avatar_url ?? null,
+          roles: data.roles ?? [],
+          permissions: data.permissions ?? [],
+          isSuperuser: data.is_superuser ?? false
         },
         error: undefined
       });

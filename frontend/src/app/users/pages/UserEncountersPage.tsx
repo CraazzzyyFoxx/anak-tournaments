@@ -1,8 +1,10 @@
-import React, { Suspense } from "react";
+import React from "react";
+import dynamic from "next/dynamic";
 import userService from "@/services/user.service";
-import UserEncountersTable from "@/app/users/components/UserEncountersTable";
 import { User } from "@/types/user.types";
 import { Skeleton } from "@/components/ui/skeleton";
+
+const UserEncountersTable = dynamic(() => import("@/app/users/components/UserEncountersTable"));
 
 export const UserEncountersPageSkeleton = () => {
   return <Skeleton className="w-full h-[600px] rounded-xl" />;
@@ -11,9 +13,5 @@ export const UserEncountersPageSkeleton = () => {
 export const UserEncountersPage = async ({ user, page }: { user: User; page: number }) => {
   const encounters = await userService.getUserEncounters(user.id, page);
 
-  return (
-    <Suspense fallback={<UserEncountersPageSkeleton />}>
-      <UserEncountersTable encounters={encounters} InitialPage={page} />
-    </Suspense>
-  );
+  return <UserEncountersTable encounters={encounters} InitialPage={page} />;
 };

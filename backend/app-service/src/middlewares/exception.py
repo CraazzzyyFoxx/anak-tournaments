@@ -12,48 +12,58 @@ from src.core import config, errors
 
 
 class ExceptionMiddleware(BaseHTTPMiddleware):
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         try:
             response = await call_next(request)
         except RequestValidationError as e:
-            if config.settings.environment == "development":
-                logger.exception("What!?")
+            logger.warning(
+                "Request validation error",
+                exc_info=config.settings.environment == "development",
+            )
+            validation_errors = jsonable_encoder(
+                e.errors(),
+                exclude={"url", "ctx", "input"},
+            )
             response = ORJSONResponse(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 content={
                     "detail": [
                         {
-                            "msg": jsonable_encoder(
-                                e.errors(), exclude={"url", "type", "ctx"}
-                            ),
+                            "msg": validation_errors,
                             "code": "unprocessable_entity",
                         }
                     ]
                 },
             )
         except ValidationError as e:
-            logger.exception("What!?")
+            logger.exception("Pydantic model validation error (internal)")
+            validation_errors = jsonable_encoder(
+                e.errors(),
+                exclude={"url", "ctx", "input"},
+            )
             response = ORJSONResponse(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 content={
                     "detail": [
                         {
-                            "msg": e.errors(include_url=False),
+                            "msg": validation_errors,
                             "code": "unprocessable_entity",
                         }
                     ]
                 },
             )
         except errors.ApiHTTPException as e:
-            response = ORJSONResponse(
-                content={"detail": e.detail}, status_code=e.status_code
-            )
+            if e.status_code >= 500:
+                logger.error(f"ApiHTTPException {e.status_code}: {e.detail}")
+            else:
+                logger.bind(status_code=e.status_code).debug(f"ApiHTTPException: {e.detail}")
+            response = ORJSONResponse(content={"detail": e.detail}, status_code=e.status_code)
         except HTTPException as e:
-            response = ORJSONResponse(
-                content={"detail": [e.detail]}, status_code=e.status_code
-            )
+            if e.status_code >= 500:
+                logger.error(f"HTTPException {e.status_code}: {e.detail}")
+            else:
+                logger.bind(status_code=e.status_code).debug(f"HTTPException: {e.detail}")
+            response = ORJSONResponse(content={"detail": [e.detail]}, status_code=e.status_code)
         except Exception as e:
             logger.exception(e)
             response = ORJSONResponse(

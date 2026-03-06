@@ -2,6 +2,8 @@ import React from "react";
 import achievementsService from "@/services/achievements.service";
 import AchievementCard from "@/app/achievements/components/AchievementCard";
 
+export const dynamic = 'force-dynamic';
+
 const AchievementsPage = async () => {
   const achievements = await achievementsService.getAll(1, -1);
 

@@ -11,80 +11,47 @@ Team balancing service using genetic algorithm for optimal team distribution.
 
 ## API Endpoints
 
-### POST `/api/v1/balancer/balance`
+## Authorization
 
-Balance tournament teams based on player data.
+All balancer endpoints (except `/health`) require an access token and are restricted to users with one of these roles:
 
-**Request Body:**
-```json
-{
-  "data": {
-    "players": {
-      "player-uuid": {
-        "identity": {
-          "name": "PlayerName"
-        },
-        "stats": {
-          "classes": {
-            "dps": {
-              "isActive": true,
-              "rank": 2500,
-              "priority": 1
-            },
-            "support": {
-              "isActive": true,
-              "rank": 2300,
-              "priority": 2
-            }
-          }
-        }
-      }
-    }
-  },
-  "config": {
-    "POPULATION_SIZE": 200,
-    "GENERATIONS": 750,
-    "USE_CAPTAINS": true
-  }
-}
+- `admin`
+- `tournament_organizer`
+
+### POST `/api/balancer/jobs`
+
+Create async balancing job and return `job_id` immediately.
+
+**Request (multipart/form-data):**
+- `file` (required): JSON file with player data
+- `config` (optional): JSON string with balancing overrides
+
+```bash
+curl -X POST "http://localhost:8005/api/balancer/jobs" \
+  -H "Authorization: Bearer <access_token>" \
+  -F "file=@players.json" \
+  -F 'config={"MASK":{"Tank":1,"Damage":2,"Support":2},"POPULATION_SIZE":200,"GENERATIONS":750,"USE_CAPTAINS":true}'
 ```
 
-**Response:**
-```json
-{
-  "teams": [
-    {
-      "id": 1,
-      "avgMMR": 2450.5,
-      "variance": 120.3,
-      "totalDiscomfort": 200,
-      "maxDiscomfort": 100,
-      "roster": {
-        "DPS": [
-          {
-            "uuid": "player-uuid",
-            "name": "PlayerName",
-            "rating": 2500,
-            "discomfort": 0,
-            "isCaptain": true,
-            "preferences": ["DPS", "Support"],
-            "allRatings": {
-              "DPS": 2500,
-              "Support": 2300
-            }
-          }
-        ]
-      }
-    }
-  ],
-  "statistics": {
-    "averageMMR": 2450.5,
-    "mmrStdDev": 85.2,
-    "totalTeams": 6,
-    "playersPerTeam": 5
-  }
-}
-```
+### POST `/api/balancer/balance`
+
+Backward-compatible alias for `POST /api/balancer/jobs`. Returns async `job_id`.
+
+### GET `/api/balancer/jobs/{job_id}`
+
+Get job status (`queued`, `running`, `succeeded`, `failed`) with current stage and progress.
+
+### GET `/api/balancer/jobs/{job_id}/result`
+
+Get final balancing result when job is complete.
+
+### GET `/api/balancer/jobs/{job_id}/stream`
+
+SSE stream with live status updates and worker logs.
+
+### GET `/api/balancer/config`
+
+Returns runtime defaults, allowed limits, and available presets for frontend forms.
 
 ## Configuration
 
@@ -102,7 +69,7 @@ All balancing parameters can be customized by passing a `config` object in your 
 **Default Configuration:**
 ```json
 {
-  "MASK": {"DPS": 3, "Support": 2},
+  "MASK": {"Tank": 1, "Damage": 2, "Support": 2},
   "POPULATION_SIZE": 200,
   "GENERATIONS": 750,
   "ELITISM_RATE": 0.2,
@@ -140,6 +107,9 @@ All balancing parameters can be customized by passing a `config` object in your 
 ```bash
 # Development
 uvicorn main:app --reload --port 8005
+
+# Worker (async jobs)
+faststream run serve:app
 
 # Production
 uvicorn main:app --host 0.0.0.0 --port 8005

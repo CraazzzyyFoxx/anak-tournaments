@@ -8,9 +8,7 @@ from src import models
 from src.core import pagination, utils
 
 # Subquery to count distinct users (players)
-player_count_subq = (
-    sa.select(sa.func.count(models.Player.user_id.distinct()))
-).scalar_subquery()
+player_count_subq = (sa.select(sa.func.count(models.Player.user_id.distinct()))).scalar_subquery()
 
 
 def get_rarity_subq(achievement_id: int | None = None) -> sa.Subquery:
@@ -25,23 +23,16 @@ def get_rarity_subq(achievement_id: int | None = None) -> sa.Subquery:
     """
     rarity_subq = sa.select(
         models.AchievementUser.achievement_id,
-        (
-            sa.func.count(sa.distinct(models.AchievementUser.user_id))
-            / player_count_subq
-        ).label("rarity"),
+        (sa.func.count(sa.distinct(models.AchievementUser.user_id)) / player_count_subq).label("rarity"),
     ).group_by(models.AchievementUser.achievement_id)
 
     if achievement_id:
-        rarity_subq = rarity_subq.where(
-            sa.and_(models.AchievementUser.achievement_id == achievement_id)
-        )
+        rarity_subq = rarity_subq.where(sa.and_(models.AchievementUser.achievement_id == achievement_id))
 
     return rarity_subq.subquery()
 
 
-def achievement_entity(
-    in_entities: list[str], child: typing.Any | None = None
-) -> list[_AbstractLoad]:
+def achievement_entity(in_entities: list[str], child: typing.Any | None = None) -> list[_AbstractLoad]:
     """
     Generates a list of SQLAlchemy loading options for related entities (e.g., hero) of an achievement.
 
@@ -59,9 +50,7 @@ def achievement_entity(
     return entities
 
 
-async def get(
-    session: AsyncSession, id: int, entities: list[str]
-) -> tuple[models.Achievement, float] | None:
+async def get(session: AsyncSession, id: int, entities: list[str]) -> tuple[models.Achievement, float] | None:
     """
     Retrieves an achievement by its ID along with its rarity.
 
@@ -115,9 +104,7 @@ async def get_all(
     return results.all(), count.scalar()  # type: ignore
 
 
-async def get_count_users_achievements(
-    session: AsyncSession, achievements_ids: list[int]
-) -> dict[int, int]:
+async def get_count_users_achievements(session: AsyncSession, achievements_ids: list[int]) -> dict[int, int]:
     """
     Retrieves the count of users who have earned each achievement in a list of achievement IDs.
 
@@ -156,16 +143,14 @@ async def get_users_achievements(
     Returns:
         list[models.User]: A list of distinct User models associated with the given achievement.
     """
-    total_query = sa.select(
-        sa.func.count(sa.distinct(models.AchievementUser.user_id))
-    ).where(models.AchievementUser.achievement_id == achievement_id)
+    total_query = sa.select(sa.func.count(sa.distinct(models.AchievementUser.user_id))).where(
+        models.AchievementUser.achievement_id == achievement_id
+    )
     query = (
         sa.select(
             models.User,
             sa.func.count(models.AchievementUser.id).label("total"),
-            sa.func.max(models.AchievementUser.tournament_id).label(
-                "last_tournament_id"
-            ),
+            sa.func.max(models.AchievementUser.tournament_id).label("last_tournament_id"),
             sa.func.max(models.AchievementUser.match_id).label("last_match_id"),
         )
         .select_from(models.AchievementUser)
@@ -181,7 +166,10 @@ async def get_users_achievements(
 
 
 async def get_user(
-    session: AsyncSession, user: models.User
+    session: AsyncSession,
+    user: models.User,
+    tournament_id: int | None = None,
+    without_tournament: bool = False,
 ) -> typing.Sequence[tuple[models.AchievementUser, int]]:
     """
     Retrieves a list of achievements earned by a specific user along with their rarity.
@@ -196,10 +184,7 @@ async def get_user(
     rarity_subq = (
         sa.select(
             models.AchievementUser.achievement_id,
-            (
-                sa.func.count(sa.distinct(models.AchievementUser.user_id))
-                / player_count_subq
-            ).label("rarity"),
+            (sa.func.count(sa.distinct(models.AchievementUser.user_id)) / player_count_subq).label("rarity"),
         )
         .group_by(models.AchievementUser.achievement_id)
         .subquery()
@@ -215,6 +200,12 @@ async def get_user(
         .where(sa.and_(models.AchievementUser.user_id == user.id))
         .order_by(sa.asc(rarity_subq.c.rarity))
     )
+
+    if tournament_id is not None:
+        query = query.where(models.AchievementUser.tournament_id == tournament_id)
+
+    if without_tournament:
+        query = query.where(models.AchievementUser.tournament_id.is_(None))
 
     results = await session.execute(query)
 

@@ -2,6 +2,7 @@ import React, { useMemo } from "react";
 import { PlayerAnalytics, TeamAnalytics } from "@/types/analytics.types";
 import { sortTeamPlayers } from "@/utils/player";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
 import {
   Table,
   TableBody,
@@ -10,6 +11,7 @@ import {
   TableHeader,
   TableRow
 } from "@/components/ui/table";
+import { ArrowDown, ArrowUp } from "lucide-react";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import PlayerName from "@/components/PlayerName";
 import Image from "next/image";
@@ -29,6 +31,7 @@ import { Button } from "@/components/ui/button";
 
 import { useQueryClient } from "@tanstack/react-query";
 import analyticsService from "@/services/analytics.service";
+import { usePermissions } from "@/hooks/usePermissions";
 
 const ChangeDivisionModal = ({
   player,
@@ -46,7 +49,7 @@ const ChangeDivisionModal = ({
     e.preventDefault();
     setOpen(false);
 
-    analyticsService.patchPlayerShift(player.team_id, player.id, division, "").then(() => {
+    analyticsService.patchPlayerShift(player.team_id, player.id, division).then(() => {
       setOpen(false);
       queryClient.invalidateQueries({ queryKey: ["analytics"] }).then();
     });
@@ -81,55 +84,85 @@ const ChangeDivisionModal = ({
   );
 };
 
-const TournamentPlayerRow = ({
-  player,
-  orgRole
-}: {
-  player: PlayerAnalytics;
-  orgRole: string | null | undefined;
-}) => {
+const TournamentPlayerRow = ({ player }: { player: PlayerAnalytics }) => {
   const [open, setOpen] = React.useState(false);
+  const { hasAnyRole } = usePermissions();
+  const canEdit = hasAnyRole(["admin", "tournament_organizer", "moderator"]);
 
-  let color_shift = "text-center";
-  let color = "";
+  const pointsCellBase = "text-center tabular-nums";
 
-  if (player.points <= -1) color_shift = "text-center bg-green-400 text-black";
-  if (player.points >= 1) color_shift = "text-center bg-red-400 text-black";
+  const isNewPlayer = !!player.is_newcomer;
+  const isNewToRole = !isNewPlayer && !!player.is_newcomer_role;
 
-  if (player.is_newcomer_role) color = "bg-blue-400 hover:bg-blue-500";
-  if (player.is_newcomer) color = "bg-blue-700 hover:bg-blue-800";
+  const isHighPoints = player.points >= 1;
+  const isLowPoints = player.points <= -1;
+  const isExtremePoints = isHighPoints || isLowPoints;
 
-  const role = orgRole || "";
+  const rowTone = isNewPlayer
+    ? "bg-muted/40 hover:bg-muted/50"
+    : isNewToRole
+      ? "bg-muted/20 hover:bg-muted/30"
+      : "";
+
+  const rowTitle = isNewPlayer ? "New player" : isNewToRole ? "New to role" : undefined;
 
   return (
-    <TableRow className={color}>
-      <TableCell className="font-medium">
-        <PlayerRoleIcon role={player.role} size={22} />
-      </TableCell>
-      <TableCell>
-        <PlayerName player={player} includeSpecialization={false} excludeBadge={true} />
-      </TableCell>
-      <TableCell>
-        <div className="flex justify-center">
-          <Image src={`/divisions/${player.division}.png`} alt="Division" width={30} height={30} />
-        </div>
-      </TableCell>
-      <TableCell className="text-center">{player.move_2}</TableCell>
-      <TableCell className="text-center">{player.move_1}</TableCell>
-      <TableCell className={color_shift}>{player.points}</TableCell>
-      <>
-        {["org:moderator", "org:admin"].includes(role) ? (
-          <>
-            <TableCell onDoubleClick={() => setOpen(true)} className="text-center">
-              {player.shift}
-            </TableCell>
-            <ChangeDivisionModal player={player} open={open} setOpen={setOpen} />
-          </>
-        ) : (
-          <TableCell className="text-center">{player.shift}</TableCell>
-        )}
-      </>
-    </TableRow>
+    <>
+      <TableRow className={rowTone} title={rowTitle}>
+        <TableCell className="font-medium relative pl-4">
+          {isNewPlayer ? (
+            <span className="pointer-events-none absolute left-1 top-2 bottom-2 w-1.5 rounded-full bg-foreground/25" />
+          ) : isNewToRole ? (
+            <span className="pointer-events-none absolute left-1 top-2 bottom-2 flex items-stretch gap-[2px]">
+              <span className="w-[2px] rounded-full bg-foreground/20" />
+              <span className="w-[2px] rounded-full bg-foreground/20" />
+            </span>
+          ) : null}
+          <PlayerRoleIcon role={player.role} size={22} />
+        </TableCell>
+        <TableCell>
+          <PlayerName player={player} includeSpecialization={false} excludeBadge={true} />
+        </TableCell>
+        <TableCell>
+          <div className="flex justify-center">
+            <Image src={`/divisions/${player.division}.png`} alt="Division" width={30} height={30} />
+          </div>
+        </TableCell>
+        <TableCell className="text-center">{player.move_2}</TableCell>
+        <TableCell className="text-center">{player.move_1}</TableCell>
+        <TableCell className={pointsCellBase}>
+          {isExtremePoints ? (
+            <span
+              className={cn(
+                "inline-flex items-center justify-center gap-1 rounded-md border bg-muted/55 px-2 py-0.5 font-semibold",
+                isHighPoints
+                  ? "border-red-400/60"
+                  : isLowPoints
+                    ? "border-emerald-400/30"
+                    : "border-border/60"
+              )}
+              title={isHighPoints ? "High points" : "Low points"}
+            >
+              {isHighPoints ? (
+                <ArrowUp className="h-3.5 w-3.5 text-red-400" aria-hidden="true" />
+              ) : (
+                <ArrowDown className="h-3.5 w-3.5 text-emerald-300/80" aria-hidden="true" />
+              )}
+              <span>{isHighPoints ? `+${player.points}` : player.points}</span>
+            </span>
+          ) : (
+            player.points
+          )}
+        </TableCell>
+        <TableCell
+          onDoubleClick={canEdit ? () => setOpen(true) : undefined}
+          className={cn("text-center", canEdit && "cursor-pointer")}
+        >
+          {player.shift}
+        </TableCell>
+      </TableRow>
+      {canEdit && <ChangeDivisionModal player={player} open={open} setOpen={setOpen} />}
+    </>
   );
 };
 
@@ -154,7 +187,7 @@ export const TournamentTeamTable = ({ players }: { players: PlayerAnalytics[] })
         </TableHeader>
         <TableBody>
           {sortedPlayers.map((player) => (
-            <TournamentPlayerRow key={player.id} player={player} orgRole={""} />
+            <TournamentPlayerRow key={player.id} player={player} />
           ))}
         </TableBody>
       </Table>

@@ -1,3 +1,5 @@
+import typing
+
 from cashews import cache
 from cashews.contrib.fastapi import cache_control_ttl
 from fastapi import APIRouter, Depends, Query
@@ -117,15 +119,39 @@ async def get_most_players(
 
 
 @router.get(
+    path="/league/seasons",
+    response_model=list[str],
+    description=f"Retrieve available OWAL seasons. Cache TTL: {config.settings.tournaments_cache_ttl / 60} minutes.",
+    summary="Get OWAL seasons",
+)
+@cache(
+    ttl=cache_control_ttl(default=config.settings.tournaments_cache_ttl),
+    key="fastapi:{request.url.path}/{request.query_params}",
+)
+async def get_owal_seasons(
+    request: Request,
+    session: AsyncSession = Depends(db.get_async_session),
+):
+    return await tournament_flows.get_owal_seasons(session)
+
+
+@router.get(
     path="/league/results",
     response_model=schemas.OwalStandings,
     description=f"Retrieve OWAL tournament standings.",
     summary="Get OWAL standings",
 )
+@cache(
+    ttl=cache_control_ttl(default=config.settings.tournaments_cache_ttl),
+    key="fastapi:{request.url.path}/{request.query_params}",
+)
 async def get_owal_standings(
     request: Request,
+    season: typing.Optional[str] = Query(default=None),
     session: AsyncSession = Depends(db.get_async_session),
 ):
+    if season:
+        return await tournament_flows.get_owal_standings_by_season(session, season)
     return await tournament_flows.get_owal_standings(session)
 
 
@@ -135,7 +161,20 @@ async def get_owal_standings(
     description=f"Retrieve OWAL tournament player stacks.",
     summary="Get OWAL player stacks",
 )
+@cache(
+    ttl=cache_control_ttl(default=config.settings.tournaments_cache_ttl),
+    key="fastapi:{request.url.path}/{request.query_params}",
+)
 async def get_owal_player_stacks(
+    request: Request,
+    season: typing.Optional[str] = Query(default=None),
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    return await tournament_flows.get_league_player_stacks(session)
+    if not season:
+        seasons = await tournament_flows.get_owal_seasons(session)
+        season = seasons[0] if seasons else None
+
+    if not season:
+        return []
+
+    return await tournament_flows.get_league_player_stacks(session, season)

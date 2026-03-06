@@ -19,9 +19,9 @@ class TournamentStatistics(BaseModel):
 class DivisionStatistics(BaseModel):
     id: int
     number: int
-    tank_avg_div: float
-    damage_avg_div: float
-    support_avg_div: float
+    tank_avg_div: float | None
+    damage_avg_div: float | None
+    support_avg_div: float | None
 
 
 class PlayerStatistics(BaseModel):

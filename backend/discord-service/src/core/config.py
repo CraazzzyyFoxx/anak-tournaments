@@ -15,12 +15,23 @@ class Settings(BaseSettings):
     logs_root_path: str = f"{Path.cwd()}/logs"
     logs_celery_root_path: str = f"{Path.cwd()}/logs/discord"
 
+    # Observability
+    sentry_dsn: str | None = None
+    sentry_traces_sample_rate: float = 0.1
+    sentry_profiles_sample_rate: float = 0.1
+    json_logging: bool = True
+
     # Discord Bot
     discord_token: str
 
     # Parser Service
     parser_url: str
-    access_token_service: str
+
+    # Auth Service (service-to-service token)
+    auth_service_url: str = "http://auth:8001"
+    service_client_id: str
+    service_client_secret: str
+    service_token_skew_seconds: int = 30
 
     # Database (shared with main app)
     postgres_host: str

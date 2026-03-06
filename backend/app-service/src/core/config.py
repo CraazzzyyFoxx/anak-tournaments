@@ -24,15 +24,27 @@ class Settings(BaseSettings):
     port: int = 8000
 
     # Auth Service
-    auth_service_url: str = "http://localhost:8080"
+    auth_service_url: str = "http://auth:8001"
+    auth_service_timeout: float = 5.0
+    auth_service_max_retries: int = 2
+
+    # Circuit Breaker
+    circuit_breaker_failure_threshold: int = 5
+    circuit_breaker_recovery_timeout: float = 30.0
 
     cors_origins: list[str] = []
 
     # Logging
     log_level: str = "info"
     logs_root_path: str = f"{Path.cwd()}/logs"
-    logs_celery_root_path: str = f"{Path.cwd()}/logs/celery"
+
+    # Observability
     sentry_dsn: str | None = None
+    sentry_traces_sample_rate: float = 0.1  # 10% sampling (was 100%)
+    sentry_profiles_sample_rate: float = 0.1
+    otlp_endpoint: str | None = None  # e.g., "http://jaeger:4317"
+    tracing_enabled: bool = False
+    json_logging: bool = True  # True for production JSON logs
 
     # Postgres
     postgres_user: str

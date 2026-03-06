@@ -4,13 +4,11 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
-from src import models
+from src import models, schemas
 from src.core import pagination, utils
 
 
-def map_entities(
-    in_entities: list[str], child: typing.Any | None = None
-) -> list[_AbstractLoad]:
+def map_entities(in_entities: list[str], child: typing.Any | None = None) -> list[_AbstractLoad]:
     """
     Generates a list of SQLAlchemy loading options for related entities of a map.
 
@@ -45,9 +43,7 @@ async def get(session: AsyncSession, id: int, entities: list[str]) -> models.Map
     return result.scalar_one_or_none()
 
 
-async def get_by_name(
-    session: AsyncSession, name: str, entities: list[str]
-) -> models.Map | None:
+async def get_by_name(session: AsyncSession, name: str, entities: list[str]) -> models.Map | None:
     """
     Retrieves a map by its name.
 
@@ -59,18 +55,12 @@ async def get_by_name(
     Returns:
         models.Map | None: The Map object if found, otherwise None.
     """
-    query = (
-        sa.select(models.Map)
-        .where(sa.and_(models.Map.name == name))
-        .options(*map_entities(entities))
-    )
+    query = sa.select(models.Map).where(sa.and_(models.Map.name == name)).options(*map_entities(entities))
     result = await session.execute(query)
     return result.scalar_one_or_none()
 
 
-async def get_by_name_and_gamemode(
-    session: AsyncSession, name: str, gamemode: str
-) -> models.Map | None:
+async def get_by_name_and_gamemode(session: AsyncSession, name: str, gamemode: str) -> models.Map | None:
     """
     Retrieves a map by its name and associated gamemode.
 
@@ -116,8 +106,8 @@ async def get_all(
 
 
 async def get_top_maps(
-    session: AsyncSession, user_id: int, params: pagination.PaginationSortParams
-) -> tuple[typing.Sequence[tuple[models.Map, int, int, int, float]], int]:
+    session: AsyncSession, user_id: int, params: schemas.UserMapsSearchParams
+) -> tuple[typing.Sequence[tuple[models.Map, int, int, int, int, float]], int]:
     """
     Retrieves a paginated list of top maps for a specific user, including statistics.
 
@@ -143,29 +133,14 @@ async def get_top_maps(
     away_team_win = sa.case((home_team_score < away_team_score, 1), else_=0)
     draw = sa.case((home_team_score == away_team_score, 1), else_=0)
 
-    total_query = (
-        sa.select(sa.func.count(models.Match.map_id.distinct()))
-        .join(
-            models.Team,
-            sa.or_(
-                models.Team.id == models.Match.home_team_id,
-                models.Team.id == models.Match.away_team_id,
-            ),
-        )
-        .join(models.Player, models.Player.team_id == models.Team.id)
-        .where(sa.and_(models.Player.user_id == user_id))
-    )
-
-    subquery = (
+    subquery_query = (
         sa.select(
             models.Map.id.label("map_id"),
             sa.func.count(models.Match.id).label("count"),
             sa.func.sum(home_team_win).label("win"),
             sa.func.sum(away_team_win).label("loss"),
             sa.func.sum(draw).label("draw"),
-            (sa.func.sum(home_team_win) / sa.func.count(models.Match.id))
-            .cast(sa.Numeric(10, 2))
-            .label("winrate"),
+            (sa.func.sum(home_team_win) / sa.func.count(models.Match.id)).cast(sa.Numeric(10, 2)).label("winrate"),
         )
         .select_from(models.Match)
         .join(models.Map, models.Map.id == models.Match.map_id)
@@ -179,8 +154,21 @@ async def get_top_maps(
         .join(models.Player, models.Player.team_id == models.Team.id)
         .where(sa.and_(models.Player.user_id == user_id))
         .group_by(models.Map.id)
-        .subquery()
     )
+
+    if params.gamemode_id:
+        subquery_query = subquery_query.where(sa.and_(models.Map.gamemode_id == params.gamemode_id))
+
+    if params.query:
+        fields = params.fields if params.fields else ["name"]
+        subquery_query = pagination.apply_search(models.Map, subquery_query, params.query, fields)
+
+    if params.min_count:
+        subquery_query = subquery_query.having(sa.func.count(models.Match.id) >= params.min_count)
+
+    subquery = subquery_query.subquery("user_map_stats")
+
+    total_query = sa.select(sa.func.count()).select_from(subquery)
 
     query = (
         sa.select(
@@ -195,7 +183,11 @@ async def get_top_maps(
         .options(*map_entities(params.entities))
     )
 
-    query = params.apply_pagination_sort(query)
+    query = params.apply_sort(query)
+    if params.sort == "winrate":
+        query = query.order_by(subquery.c.count.desc())
+    query = query.order_by(models.Map.id.asc())
+    query = params.apply_pagination(query)
 
     result = await session.execute(query)
     result_total = await session.execute(total_query)

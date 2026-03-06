@@ -19,10 +19,10 @@ import {
   SortingState,
   useReactTable
 } from "@tanstack/react-table";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { getWinrateColor } from "@/utils/colors";
 import { CardContent, Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { DataTableSortButton } from "@/components/DataTableSortButton";
 import PlayerDivisionIcon from "@/components/PlayerDivisionIcon";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -47,6 +47,7 @@ const getDayColor = (points: number) => {
 };
 
 const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
+  const VIRTUALIZATION_THRESHOLD = 120;
   const [sorting, setSorting] = React.useState<SortingState>([
     {
       id: "place",
@@ -55,32 +56,37 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
   ]);
   const [globalFilter, setGlobalFilter] = React.useState("");
   const [show3Plus, setShow3Plus] = React.useState(false);
+  const parentRef = React.useRef<HTMLDivElement>(null);
 
-  const days_columns: ColumnDef<OwalStanding>[] = data.days.map((day) => ({
-    id: `day_${day.id}`,
-    accessorFn: (row) => (row.days[day.id.toString()] ? row.days[day.id.toString()].points : "-"),
-    header: ({ column }) => (
-      <DataTableSortButton column={column} label={day.name.split(" | ")[1]} />
-    ),
-    cell: ({ row, getValue }) => {
-      const value = getValue<number | string>();
-      if (value === "-") return <div>-</div>;
+  const days_columns = React.useMemo<ColumnDef<OwalStanding>[]>(
+    () =>
+      data.days.map((day) => ({
+        id: `day_${day.id}`,
+        accessorFn: (row) => (row.days[day.id.toString()] ? row.days[day.id.toString()].points : "-"),
+        header: ({ column }) => (
+          <DataTableSortButton column={column} label={day.name.split(" | ")[1]} />
+        ),
+        cell: ({ row, getValue }) => {
+          const value = getValue<number | string>();
+          if (value === "-") return <div>-</div>;
 
-      const dayData = row.original.days[day.id.toString()] as
-        | { points?: number; division?: number }
-        | undefined;
-      const dayDivision = dayData?.division ?? undefined;
+          const dayData = row.original.days[day.id.toString()] as
+            | { points?: number; division?: number }
+            | undefined;
+          const dayDivision = dayData?.division ?? undefined;
 
-      return (
-        <div className="flex items-center justify-center gap-2">
-          <span>{value as number}</span>
-          {typeof dayDivision === "number" && (
-            <PlayerDivisionIcon division={dayDivision} width={24} height={24} />
-          )}
-        </div>
-      );
-    }
-  }));
+          return (
+            <div className="flex items-center justify-center gap-2">
+              <span>{value as number}</span>
+              {typeof dayDivision === "number" && (
+                <PlayerDivisionIcon division={dayDivision} width={24} height={24} />
+              )}
+            </div>
+          );
+        }
+      })),
+    [data.days]
+  );
 
   const columns = React.useMemo<ColumnDef<OwalStanding>[]>(
     () => [
@@ -189,7 +195,7 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
         }
       }
     ],
-    []
+    [days_columns]
   );
 
   const standingsData = React.useMemo(
@@ -215,6 +221,22 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
     }
   });
 
+  const rows = table.getRowModel().rows;
+  const shouldVirtualize = rows.length > VIRTUALIZATION_THRESHOLD;
+
+  const rowVirtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 48,
+    overscan: 10
+  });
+
+  const virtualRows = shouldVirtualize ? rowVirtualizer.getVirtualItems() : [];
+  const totalSize = shouldVirtualize ? rowVirtualizer.getTotalSize() : 0;
+  const paddingTop = shouldVirtualize && virtualRows.length > 0 ? virtualRows[0].start : 0;
+  const paddingBottom =
+    shouldVirtualize && virtualRows.length > 0 ? totalSize - virtualRows[virtualRows.length - 1].end : 0;
+
   return (
     <div className="flex flex-col gap-8">
       <div className="flex items-center gap-4 flex-wrap">
@@ -235,7 +257,7 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
           <Label htmlFor="only3plus">Only 3+ days</Label>
         </div>
       </div>
-      <ScrollArea>
+      <div ref={parentRef} className="max-h-[70vh] overflow-auto">
         <Card>
           <CardContent className="p-0">
             <Table>
@@ -254,46 +276,64 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
                   </TableRow>
                 ))}
               </TableHeader>
-              <TableBody className="">
-                {table.getRowModel().rows?.length ? (
-                  table.getRowModel().rows.map((row) => (
-                    <TableRow key={row.id} data-state={row.getIsSelected() && "selected"}>
-                      {row.getVisibleCells().map((cell) => {
-                        if (
-                          cell.column.columnDef.header &&
-                          cell.column?.columnDef?.id?.startsWith("day") &&
-                          cell.column.columnDef.id !== "place"
-                        ) {
-                          return (
-                            <TableCell
-                              key={cell.id}
-                              className="text-center"
-                              // getDayColor expects a number; when value is '-', it becomes NaN and returns default style
-                              style={getDayColor(cell?.getValue() as number)}
-                            >
-                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                            </TableCell>
-                          );
-                        }
-                        // @ts-ignore
-                        if (
-                          cell.column.columnDef.header &&
-                          cell.column.columnDef.id == "best_3_days"
-                        ) {
-                          return (
-                            <TableCell key={cell.id} className="text-center bg-gray-800">
-                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                            </TableCell>
-                          );
-                        }
-                        return (
-                          <TableCell className="text-center" key={cell.id}>
-                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                          </TableCell>
-                        );
-                      })}
-                    </TableRow>
-                  ))
+              <TableBody>
+                {rows.length ? (
+                  <>
+                    {paddingTop > 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={columns.length} style={{ height: `${paddingTop}px` }} />
+                      </TableRow>
+                    ) : null}
+
+                    {(shouldVirtualize
+                      ? virtualRows.map((virtualRow) => rows[virtualRow.index])
+                      : rows
+                    ).map((row) => {
+                      return (
+                        <TableRow key={row.id} data-state={row.getIsSelected() && "selected"}>
+                          {row.getVisibleCells().map((cell) => {
+                            if (
+                              cell.column.columnDef.header &&
+                              cell.column?.columnDef?.id?.startsWith("day") &&
+                              cell.column.columnDef.id !== "place"
+                            ) {
+                              return (
+                                <TableCell
+                                  key={cell.id}
+                                  className="text-center"
+                                  style={getDayColor(cell?.getValue() as number)}
+                                >
+                                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                </TableCell>
+                              );
+                            }
+                            // @ts-ignore
+                            if (
+                              cell.column.columnDef.header &&
+                              cell.column.columnDef.id == "best_3_days"
+                            ) {
+                              return (
+                                <TableCell key={cell.id} className="bg-gray-800 text-center">
+                                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                </TableCell>
+                              );
+                            }
+                            return (
+                              <TableCell className="text-center" key={cell.id}>
+                                {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                              </TableCell>
+                            );
+                          })}
+                        </TableRow>
+                      );
+                    })}
+
+                    {paddingBottom > 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={columns.length} style={{ height: `${paddingBottom}px` }} />
+                      </TableRow>
+                    ) : null}
+                  </>
                 ) : (
                   <TableRow>
                     <TableCell colSpan={columns.length} className="h-24 text-center">
@@ -305,8 +345,7 @@ const OwalStandingsTable = ({ data }: { data: OwalStandings }) => {
             </Table>
           </CardContent>
         </Card>
-        <ScrollBar orientation="horizontal" />
-      </ScrollArea>
+      </div>
     </div>
   );
 };

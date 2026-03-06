@@ -31,49 +31,45 @@ const chartConfig = {
   }
 } satisfies ChartConfig;
 
+const normalizeDivision = (value: number | null): number | null => {
+  if (value === null || value <= 0) {
+    return null;
+  }
+  return value;
+};
+
 const TournamentsDivisionChart = ({ data }: { data: TournamentDivisionStatistics[] }) => {
   const chartData = useMemo(() => {
     return data.map((item) => {
       return {
         number: item.number.toString(),
-        tank_avg_div: item.tank_avg_div,
-        damage_avg_div: item.damage_avg_div,
-        support_avg_div: item.support_avg_div
+        tank_avg_div: normalizeDivision(item.tank_avg_div),
+        damage_avg_div: normalizeDivision(item.damage_avg_div),
+        support_avg_div: normalizeDivision(item.support_avg_div)
       };
     });
   }, [data]);
 
-  const minDivision = useMemo(() => {
-    let minDiv = 20;
-    for (const item of data || []) {
-      if (item.tank_avg_div < minDiv) {
-        minDiv = item.tank_avg_div;
+  const [minDivision, maxDivision] = useMemo(() => {
+    const values: number[] = [];
+    for (const item of chartData) {
+      if (item.tank_avg_div !== null) {
+        values.push(item.tank_avg_div);
       }
-      if (item.damage_avg_div < minDiv) {
-        minDiv = item.damage_avg_div;
+      if (item.damage_avg_div !== null) {
+        values.push(item.damage_avg_div);
       }
-      if (item.support_avg_div < minDiv) {
-        minDiv = item.support_avg_div;
+      if (item.support_avg_div !== null) {
+        values.push(item.support_avg_div);
       }
     }
-    return Number((minDiv - 1).toFixed(0));
-  }, [data]);
 
-  const maxDivision = useMemo(() => {
-    let maxDiv = 1;
-    for (const item of data || []) {
-      if (item.tank_avg_div > maxDiv) {
-        maxDiv = item.tank_avg_div;
-      }
-      if (item.damage_avg_div > maxDiv) {
-        maxDiv = item.damage_avg_div;
-      }
-      if (item.support_avg_div > maxDiv) {
-        maxDiv = item.support_avg_div;
-      }
+    if (values.length === 0) {
+      return [0, 1] as const;
     }
-    return Number((maxDiv + 1).toFixed());
-  }, [data]);
+
+    return [Math.floor(Math.min(...values) - 1), Math.ceil(Math.max(...values) + 1)] as const;
+  }, [chartData]);
 
   return (
     <Card>

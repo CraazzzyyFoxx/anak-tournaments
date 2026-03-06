@@ -32,8 +32,8 @@ const UserTournamentEncounters = ({ tournament, team_id }: UserTournamentEncount
           </TableRow>
           <TableBody>
             {tournament.encounters.map((encounter) => {
-              const heroes: string[] = [];
-              let color = "from-card";
+              const heroSet = new Set<string>();
+              let color = "from-transparent";
               if (
                 team_id == encounter.home_team_id &&
                 encounter.score.home > encounter.score.away
@@ -60,11 +60,11 @@ const UserTournamentEncounters = ({ tournament, team_id }: UserTournamentEncount
               }
               encounter.matches.forEach((match) => {
                 match.heroes.forEach((hero) => {
-                  if (!heroes.includes(hero.image_path)) {
-                    heroes.push(hero.image_path);
-                  }
+                  heroSet.add(hero.image_path);
                 });
               });
+
+              const heroes = Array.from(heroSet);
 
               return (
                 <TableRow
@@ -74,7 +74,7 @@ const UserTournamentEncounters = ({ tournament, team_id }: UserTournamentEncount
                   }}
                 >
                   <TableCell
-                    className={`w-[50px] z-0 transition-colors bg-gradient-to-r ${color} via-card to-card`}
+                    className={`w-[50px] z-0 transition-colors bg-gradient-to-r ${color} to-transparent to-65%`}
                   >
                     {encounter.name}
                   </TableCell>

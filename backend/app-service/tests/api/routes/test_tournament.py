@@ -63,27 +63,21 @@ def test_get_tournament_by_id(client: TestClient, tournament_id: int) -> None:
 
 
 def test_get_tournament_history(client: TestClient) -> None:
-    response = client.get(
-        f"{config.settings.api_v1_str}/tournaments/statistics/history"
-    )
+    response = client.get(f"{config.settings.api_v1_str}/tournaments/statistics/history")
     assert response.status_code == 200
     content = response.json()
     assert content
 
 
 def test_get_tournament_division(client: TestClient) -> None:
-    response = client.get(
-        f"{config.settings.api_v1_str}/tournaments/statistics/division"
-    )
+    response = client.get(f"{config.settings.api_v1_str}/tournaments/statistics/division")
     assert response.status_code == 200
     content = response.json()
     assert content
 
 
 def test_get_tournament_overall(client: TestClient) -> None:
-    response = client.get(
-        f"{config.settings.api_v1_str}/tournaments/statistics/overall"
-    )
+    response = client.get(f"{config.settings.api_v1_str}/tournaments/statistics/overall")
     assert response.status_code == 200
     content = response.json()
     assert content
@@ -106,9 +100,7 @@ def test_get_tournament_overall(client: TestClient) -> None:
         (2, ["group", "tournament", "team", "matches_history"]),
     ],
 )
-def test_get_tournament_standings(
-    client: TestClient, tournament_id: int, entities: list[str]
-) -> None:
+def test_get_tournament_standings(client: TestClient, tournament_id: int, entities: list[str]) -> None:
     response = client.get(
         f"{config.settings.api_v1_str}/tournaments/{tournament_id}/standings",
         params={"entities": entities},
@@ -119,7 +111,21 @@ def test_get_tournament_standings(
 
 
 def test_get_owal_standings(client: TestClient) -> None:
-    response = client.get(f"{config.settings.api_v1_str}/tournaments/owal/results")
+    response = client.get(f"{config.settings.api_v1_str}/tournaments/league/results")
     assert response.status_code == 200
     content = response.json()
     assert content
+
+
+def test_get_owal_seasons(client: TestClient) -> None:
+    response = client.get(f"{config.settings.api_v1_str}/tournaments/league/seasons")
+    assert response.status_code == 200
+    content = response.json()
+    assert isinstance(content, list)
+
+
+def test_get_owal_stacks(client: TestClient) -> None:
+    response = client.get(f"{config.settings.api_v1_str}/tournaments/league/stacks")
+    assert response.status_code == 200
+    content = response.json()
+    assert isinstance(content, list)

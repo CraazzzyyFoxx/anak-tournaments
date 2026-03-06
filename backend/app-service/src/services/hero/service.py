@@ -118,9 +118,7 @@ async def get_heroes_playtime(
 
     if params.tournament_id:
         playtime_cte = (
-            playtime_cte.join(
-                models.Match, models.Match.id == models.MatchStatistics.match_id
-            )
+            playtime_cte.join(models.Match, models.Match.id == models.MatchStatistics.match_id)
             .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
             .where(models.Encounter.tournament_id == params.tournament_id)
         )
@@ -128,17 +126,13 @@ async def get_heroes_playtime(
     playtime_cte = playtime_cte.cte("playtime_cte")
 
     overall_play_time_subquery = (
-        sa.select(
-            sa.func.sum(playtime_cte.c.playtime).label("total_playtime")
-        ).select_from(playtime_cte)
+        sa.select(sa.func.sum(playtime_cte.c.playtime).label("total_playtime")).select_from(playtime_cte)
     ).scalar_subquery()
 
     query = (
         sa.select(
             models.Hero,
-            (sa.func.sum(playtime_cte.c.playtime) / overall_play_time_subquery).label(
-                "playtime"
-            ),
+            (sa.func.sum(playtime_cte.c.playtime) / overall_play_time_subquery).label("playtime"),
         )
         .select_from(models.Hero)
         .join(playtime_cte, models.Hero.id == playtime_cte.c.hero_id)
@@ -206,10 +200,7 @@ async def get_heroes_playtime_by_maps(
         sa.select(
             models.Hero,
             models.Match.map_id,
-            (
-                sa.func.sum(models.MatchStatistics.value)
-                / overall_play_time_subquery.as_scalar()
-            ).label("playtime"),
+            (sa.func.sum(models.MatchStatistics.value) / overall_play_time_subquery.as_scalar()).label("playtime"),
         )
         .select_from(models.Hero)
         .join(
@@ -227,6 +218,135 @@ async def get_heroes_playtime_by_maps(
         .where(models.Match.map_id.in_(maps_ids))
         .group_by(models.Hero.id, models.Match.map_id)
         .order_by(sa.text("playtime DESC"))
+    )
+
+    result = await session.execute(query)
+    return result.all()  # type: ignore
+
+
+async def get_user_hero_stats_by_maps(
+    session: AsyncSession,
+    maps_ids: list[int],
+    user_id: int,
+    limit_per_map: int = 5,
+    min_seconds: float = 60,
+) -> typing.Sequence[tuple[models.Hero, int, int, int, int, int, float, float, float]]:
+    """Return top hero summaries per map for a given user.
+
+    This is designed for UX popovers: one query returns top N heroes per map with
+    per-map playtime share and a W/L/D record based on match score.
+
+    Notes:
+    - Counts games where the hero time-played stat exists for the match (round=0)
+      and is above `min_seconds`.
+    - Winrate is wins / games (draws count as games, but not wins).
+    """
+
+    if not maps_ids:
+        return []
+
+    hero_match = (
+        sa.select(
+            models.MatchStatistics.hero_id.label("hero_id"),
+            models.MatchStatistics.team_id.label("team_id"),
+            models.Match.id.label("match_id"),
+            models.Match.map_id.label("map_id"),
+            sa.func.sum(models.MatchStatistics.value).label("playtime_seconds"),
+        )
+        .select_from(models.MatchStatistics)
+        .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
+        .where(
+            sa.and_(
+                models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed,
+                models.MatchStatistics.value > min_seconds,
+                models.MatchStatistics.round == 0,
+                models.MatchStatistics.user_id == user_id,
+                models.MatchStatistics.hero_id.isnot(None),
+                models.Match.map_id.in_(maps_ids),
+            )
+        )
+        .group_by(
+            models.MatchStatistics.hero_id,
+            models.MatchStatistics.team_id,
+            models.Match.id,
+            models.Match.map_id,
+        )
+        .cte("hero_match")
+    )
+
+    team_score = sa.case(
+        (models.Match.home_team_id == hero_match.c.team_id, models.Match.home_score),
+        else_=models.Match.away_score,
+    )
+    opponent_score = sa.case(
+        (models.Match.home_team_id == hero_match.c.team_id, models.Match.away_score),
+        else_=models.Match.home_score,
+    )
+
+    win_case = sa.case((team_score > opponent_score, 1), else_=0)
+    loss_case = sa.case((team_score < opponent_score, 1), else_=0)
+    draw_case = sa.case((team_score == opponent_score, 1), else_=0)
+
+    hero_map_agg = (
+        sa.select(
+            hero_match.c.map_id.label("map_id"),
+            hero_match.c.hero_id.label("hero_id"),
+            sa.func.count(hero_match.c.match_id).label("games"),
+            sa.func.sum(win_case).label("win"),
+            sa.func.sum(loss_case).label("loss"),
+            sa.func.sum(draw_case).label("draw"),
+            (sa.func.sum(win_case) / sa.func.count(hero_match.c.match_id)).cast(sa.Numeric(10, 2)).label("win_rate"),
+            sa.func.sum(hero_match.c.playtime_seconds).label("playtime_seconds"),
+        )
+        .select_from(hero_match)
+        .join(models.Match, models.Match.id == hero_match.c.match_id)
+        .group_by(hero_match.c.map_id, hero_match.c.hero_id)
+        .cte("hero_map_agg")
+    )
+
+    total_playtime_per_map = sa.func.sum(hero_map_agg.c.playtime_seconds).over(partition_by=hero_map_agg.c.map_id)
+    playtime_share_on_map = (hero_map_agg.c.playtime_seconds / sa.func.nullif(total_playtime_per_map, 0)).label(
+        "playtime_share_on_map"
+    )
+
+    ranked = (
+        sa.select(
+            hero_map_agg.c.map_id,
+            hero_map_agg.c.hero_id,
+            hero_map_agg.c.games,
+            hero_map_agg.c.win,
+            hero_map_agg.c.loss,
+            hero_map_agg.c.draw,
+            hero_map_agg.c.win_rate,
+            hero_map_agg.c.playtime_seconds,
+            playtime_share_on_map,
+            sa.func.row_number()
+            .over(
+                partition_by=hero_map_agg.c.map_id,
+                order_by=hero_map_agg.c.playtime_seconds.desc(),
+            )
+            .label("rn"),
+        )
+        .select_from(hero_map_agg)
+        .subquery("hero_map_ranked")
+    )
+
+    query = (
+        sa.select(
+            models.Hero,
+            ranked.c.map_id,
+            ranked.c.games,
+            ranked.c.win,
+            ranked.c.loss,
+            ranked.c.draw,
+            ranked.c.win_rate,
+            ranked.c.playtime_seconds,
+            ranked.c.playtime_share_on_map,
+        )
+        .select_from(ranked)
+        .join(models.Hero, models.Hero.id == ranked.c.hero_id)
+        .where(ranked.c.rn <= limit_per_map)
+        .order_by(ranked.c.map_id, ranked.c.rn)
     )
 
     result = await session.execute(query)

@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import MatchTeamTable from "@/app/matches/[id]/components/MatchTeamTable";
 import Link from "next/link";
 import { ExternalLink } from "lucide-react";
+import MatchStatsChart from "@/app/encounters/[id]/components/MatchStatsChart";
 
 const EncounterMatch = async ({ match }: { match: Match }) => {
   const mapImagePath: string = match.map ? match.map?.image_path : "";
@@ -51,6 +52,13 @@ const EncounterMatch = async ({ match }: { match: Match }) => {
           matchRound={parseInt(key)}
           maxHeroes={maxHeroes[parseInt(key)]}
         />
+        <div className="px-4">
+          <MatchStatsChart 
+            homeTeam={data.home_team} 
+            awayTeam={data.away_team} 
+            matchRound={parseInt(key)} 
+          />
+        </div>
       </TabsContent>
     );
   });

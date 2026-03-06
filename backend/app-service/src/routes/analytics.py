@@ -35,9 +35,7 @@ async def get_all_tournaments(
     params: pagination.PaginationQueryParams = Depends(),
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    return await analytics_flows.get_algorithms(
-        session, pagination.PaginationParams.from_query_params(params)
-    )
+    return await analytics_flows.get_algorithms(session, pagination.PaginationParams.from_query_params(params))
 
 
 @router.get(
@@ -65,7 +63,7 @@ async def get_analytics(
 )
 async def change_shift(
     data: schemas.PlayerShiftUpdate,
-    current_user: models.AuthUser = Depends(auth.get_current_superuser),
+    current_user: models.AuthUser = Depends(auth.require_any_role("admin", "tournament_organizer", "moderator")),
     session: AsyncSession = Depends(db.get_async_session),
 ):
     return await analytics_flows.change_shift(session, data.player_id, data.shift)

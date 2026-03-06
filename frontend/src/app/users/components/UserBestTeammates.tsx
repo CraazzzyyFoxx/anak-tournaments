@@ -19,25 +19,32 @@ const UserBestTeammates = ({ teammates, className }: UserBestTeammatesProps) => 
           <TypographyH4>Best Teammates</TypographyH4>
         </div>
       </CardHeader>
-      <CardContent>
-        {teammates.map((teammate, index) => (
-          <div key={index} className="p-2">
-            <div className="flex flex-row justify-between">
+      <CardContent className="space-y-2">
+        {teammates.map((teammate) => (
+          <div
+            key={teammate.user.id}
+            className="rounded-lg p-3 transition-colors hover:bg-muted/30"
+          >
+            <div className="flex flex-row justify-between items-center">
               <PlayerName player={teammate.user} includeSpecialization={false} />
-              <p className="text-sm text-muted-foreground">{teammate.tournaments} times</p>
+              <p className="text-sm text-muted-foreground tabular-nums">
+                {teammate.tournaments} times
+              </p>
             </div>
             <div className="flex flex-row justify-between mt-1">
               <div>
                 <p className="text-xs text-muted-foreground font-semibold">KDA</p>
-                <p className="text-sm font-semibold text-s">{teammate.stats.kda}</p>
+                <p className="text-sm font-semibold tabular-nums">{teammate.stats.kda}</p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground font-semibold">MVP Score</p>
-                <p className="text-sm font-semibold text-center">{teammate.stats.performance}</p>
+                <p className="text-sm font-semibold text-center tabular-nums">
+                  {teammate.stats.performance}
+                </p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground font-semibold">Win ratio</p>
-                <p className="text-sm font-semibold text-center">
+                <p className="text-sm font-semibold text-center tabular-nums">
                   {(teammate.winrate * 100).toFixed(0)}%
                 </p>
               </div>

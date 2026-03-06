@@ -63,15 +63,15 @@ const columns: ColumnDef<EncounterWithUserStats>[] = [
     accessorKey: "matches",
     header: "Heroes",
     cell: ({ row }) => {
-      const heroes: string[] = [];
+      const heroSet = new Set<string>();
 
       row.getValue<MatchWithUserStats[]>("heroes").forEach((match) => {
         match.heroes.forEach((hero) => {
-          if (!heroes.includes(hero.image_path)) {
-            heroes.push(hero.image_path);
-          }
+          heroSet.add(hero.image_path);
         });
       });
+
+      const heroes = Array.from(heroSet);
 
       return (
         <div className="flex flex-row gap-2">
@@ -176,8 +176,16 @@ const UserEncountersTable = ({
                     <TableRow
                       key={row.original.id}
                       data-state={row.getIsSelected() && "selected"}
+                      tabIndex={0}
+                      className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                       onClick={() => {
                         router.push(`/encounters/${row.original.id}`);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          router.push(`/encounters/${row.original.id}`);
+                        }
                       }}
                     >
                       {row.getVisibleCells().map((cell) => (

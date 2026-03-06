@@ -38,15 +38,14 @@ export async function middleware(request: NextRequest) {
 
   if (!accessToken || shouldRefresh(accessToken)) {
     try {
-      const res = await fetch(`${AUTH_SERVICE_URL}/auth/refresh`, {
+      const res = await fetch(`${AUTH_SERVICE_URL}/refresh`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refresh_token: refreshToken })
       });
 
       if (!res.ok) {
-        const errorText = await res.text();
-        console.error("Refresh Failed Body:", errorText);
+        console.warn("Access token refresh failed", { status: res.status });
 
         const response = NextResponse.next();
         response.cookies.delete("aqt_access_token");
@@ -60,12 +59,22 @@ export async function middleware(request: NextRequest) {
       response.headers.set("Authorization", `Bearer ${tokens.access_token}`);
 
       response.cookies.set("aqt_access_token", tokens.access_token, {
-        httpOnly: true,
+        httpOnly: false,
         sameSite: "lax",
         secure: process.env.NODE_ENV === "production",
         path: "/",
         maxAge: 25 * 60
       });
+
+      if (tokens.refresh_token) {
+        response.cookies.set("aqt_refresh_token", tokens.refresh_token, {
+          httpOnly: true,
+          sameSite: "lax",
+          secure: process.env.NODE_ENV === "production",
+          path: "/",
+          maxAge: 30 * 24 * 60 * 60
+        });
+      }
 
       return response;
 
@@ -80,6 +89,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|auth/discord/login|auth/discord/callback|auth/logout|auth/refresh|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"
+    "/((?!_next/static|_next/image|favicon.ico|auth/discord/login|auth/twitch/login|auth/battlenet/login|auth/callback|auth/logout|auth/refresh|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"
   ]
 };

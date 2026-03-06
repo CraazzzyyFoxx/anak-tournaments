@@ -16,8 +16,10 @@ class ExceptionMiddleware(BaseHTTPMiddleware):
         try:
             response = await call_next(request)
         except RequestValidationError as e:
-            if config.settings.environment == "development":
-                logger.exception("What!?")
+            logger.warning(
+                "Request validation error",
+                exc_info=config.settings.environment == "development",
+            )
             response = ORJSONResponse(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 content={
@@ -30,7 +32,7 @@ class ExceptionMiddleware(BaseHTTPMiddleware):
                 },
             )
         except ValidationError as e:
-            logger.exception("What!?")
+            logger.exception("Pydantic model validation error (internal)")
             response = ORJSONResponse(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 content={
@@ -43,8 +45,16 @@ class ExceptionMiddleware(BaseHTTPMiddleware):
                 },
             )
         except errors.ApiHTTPException as e:
+            if e.status_code >= 500:
+                logger.error(f"ApiHTTPException {e.status_code}: {e.detail}")
+            else:
+                logger.bind(status_code=e.status_code).debug(f"ApiHTTPException: {e.detail}")
             response = ORJSONResponse(content={"detail": e.detail}, status_code=e.status_code)
         except HTTPException as e:
+            if e.status_code >= 500:
+                logger.error(f"HTTPException {e.status_code}: {e.detail}")
+            else:
+                logger.bind(status_code=e.status_code).debug(f"HTTPException: {e.detail}")
             response = ORJSONResponse(content={"detail": [e.detail]}, status_code=e.status_code)
         except Exception as e:
             logger.exception(e)

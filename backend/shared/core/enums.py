@@ -1,4 +1,7 @@
+from collections.abc import Mapping
 from enum import StrEnum
+from types import MappingProxyType
+from typing import Final, Literal
 
 
 class HeroClass(StrEnum):
@@ -80,6 +83,31 @@ class LogStatsName(StrEnum):
     FBE = "fbe"  # self calculated
     DamageFB = "damage_fb"  # self calculated
     Assists = "assists"  # self calculated
+
+
+StatDirection = Literal["asc", "desc"]
+
+
+_log_stats_default_direction: dict[LogStatsName, StatDirection] = dict.fromkeys(LogStatsName, "desc")
+_log_stats_default_direction.update(
+    {
+        LogStatsName.Deaths: "asc",
+        LogStatsName.DamageTaken: "asc",
+        LogStatsName.EnvironmentalDeaths: "asc",
+        LogStatsName.ShotsMissed: "asc",
+        LogStatsName.DamageFB: "asc",
+        LogStatsName.Performance: "asc",
+        LogStatsName.ShotsMissed: "asc",
+    }
+)
+
+LOG_STATS_DEFAULT_DIRECTION: Final[Mapping[LogStatsName, StatDirection]] = MappingProxyType(
+    _log_stats_default_direction
+)
+
+
+def is_ascending_stat(stat: LogStatsName) -> bool:
+    return LOG_STATS_DEFAULT_DIRECTION.get(stat, "desc") == "asc"
 
 
 class EncounterStatus(StrEnum):

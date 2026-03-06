@@ -6,6 +6,7 @@
     "react/prop-types": "off",
     "react/no-unknown-property": "off",
     "no-redeclare": "off",
-    "react-hooks/exhaustive-deps": "off"
+    "react-hooks/exhaustive-deps": "off",
+    "no-undef": "off"
   }
 }

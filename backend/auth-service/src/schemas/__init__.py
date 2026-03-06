@@ -1,9 +1,40 @@
-"""
-Schemas for auth service
-"""
-from .auth import *
-from .oauth import *
-from .rbac import *
+"""Schemas for auth service."""
+
+from .auth import (
+    AuthUser,
+    PasswordSetRequest,
+    RefreshTokenRequest,
+    ServiceToken,
+    ServiceTokenPayload,
+    ServiceTokenRequest,
+    Token,
+    TokenPayload,
+    UserLogin,
+    UserRegister,
+    UserUpdate,
+)
+from .oauth import (
+    LinkedPlayer,
+    OAuthCallbackRequest,
+    OAuthProvider,
+    OAuthProviderAvailability,
+    OAuthURL,
+    OAuthUserInfo,
+    PlayerLinkRequest,
+    PlayerLinkResponse,
+)
+from .rbac import (
+    PermissionBase,
+    PermissionCreate,
+    PermissionRead,
+    RoleBase,
+    RoleCreate,
+    RoleRead,
+    RoleUpdate,
+    RoleWithPermissions,
+    UserRoleAssign,
+    UserRoleRemove,
+)
 
 __all__ = [
     "UserRegister",
@@ -11,9 +42,14 @@ __all__ = [
     "Token",
     "TokenPayload",
     "RefreshTokenRequest",
+    "PasswordSetRequest",
+    "ServiceTokenRequest",
+    "ServiceToken",
+    "ServiceTokenPayload",
     "AuthUser",
     "UserUpdate",
     "OAuthProvider",
+    "OAuthProviderAvailability",
     "OAuthURL",
     "OAuthCallbackRequest",
     "OAuthUserInfo",

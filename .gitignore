@@ -9,9 +9,14 @@ node_modules/
 /blob-report/
 /playwright/.cache/
 .env
+backend/env/*.env
+!backend/env/*.env.example
 
 .coverage
 .coverage*
 /app/.idea
 /parser/.idea
 logs/
+.kombai/
+.ruff_cache/
+.claude/

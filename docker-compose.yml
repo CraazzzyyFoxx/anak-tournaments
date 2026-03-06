@@ -1,12 +1,33 @@
 services:
-  redis:
-    image: 'redis:latest'
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-aqt_db}
     volumes:
-      - redis-data:/data
-    ports:
-      - "6379:6379"
+      - postgres-data:/var/lib/postgresql/data
     networks:
       - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-aqt_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis/redis-stack:latest
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   rabbitmq:
     image: rabbitmq:3.13-management
@@ -20,9 +41,276 @@ services:
       - rabbitmq-data:/var/lib/rabbitmq
     networks:
       - app-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: registry.craazzzyyfoxx.me/aqt-backend:dev
+    build:
+      context: ./backend
+      args:
+        APP_PATH: app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --loop uvloop --reload --reload-dir /app/app-service --reload-dir /app/shared
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/env/common.env
+      - ./backend/env/app.env
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    develop:
+      watch:
+        - path: ./backend/pyproject.toml
+          action: rebuild
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./backend/app-service:/app/app-service
+      - ./backend/shared:/app/shared
+      - ./logs/backend:/logs
+      - ./backend/htmlcov:/app/htmlcov
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  auth:
+    image: registry.craazzzyyfoxx.me/aqt-auth:dev
+    build:
+      context: ./backend
+      args:
+        APP_PATH: auth
+    command: uvicorn main:app --host 0.0.0.0 --port 8001 --loop uvloop --reload --reload-dir /app/auth-service --reload-dir /app/shared
+    ports:
+      - "8001:8001"
+    env_file:
+      - ./backend/env/common.env
+      - ./backend/env/auth.env
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+      - 'SERVICE_CLIENTS=${SERVICE_CLIENTS:-{"discord-service":"dev-discord-service-secret"}}'
+      - 'SERVICE_SCOPES=${SERVICE_SCOPES:-{"discord-service":["parser:logs"]}}'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    develop:
+      watch:
+        - path: ./backend/pyproject.toml
+          action: rebuild
+    volumes:
+      - ./backend/auth-service:/app/auth-service
+      - ./backend/shared:/app/shared
+      - ./logs/auth:/logs
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/api/auth/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  parser:
+    image: registry.craazzzyyfoxx.me/aqt-parser:dev
+    build:
+      context: ./backend
+      args:
+        APP_PATH: parser
+    command: uvicorn main:app --host 0.0.0.0 --port 8002 --loop uvloop --reload --reload-dir /app/parser-service --reload-dir /app/shared
+    ports:
+      - "8002:8002"
+    env_file:
+      - ./backend/env/common.env
+      - ./backend/env/parser.env
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      auth:
+        condition: service_healthy
+    develop:
+      watch:
+        - path: ./backend/pyproject.toml
+          action: rebuild
+    volumes:
+      - ./backend/parser-service:/app/parser-service
+      - ./backend/shared:/app/shared
+      - ./logs/parser:/logs
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/api/parser/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  balancer:
+    image: registry.craazzzyyfoxx.me/aqt-balancer:dev
+    build:
+      context: ./backend
+      args:
+        APP_PATH: balancer
+    command: uvicorn main:app --host 0.0.0.0 --port 8003 --loop uvloop --reload --reload-dir /app/balancer-service --reload-dir /app/shared
+    ports:
+      - "8003:8003"
+    env_file:
+      - ./backend/env/common.env
+      - ./backend/env/balancer.env
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    volumes:
+      - ./backend/balancer-service:/app/balancer-service
+      - ./backend/shared:/app/shared
+      - ./logs/balancer:/logs
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  balancer-worker:
+    image: registry.craazzzyyfoxx.me/aqt-balancer:dev
+    profiles: ["workers"]
+    build:
+      context: ./backend
+      args:
+        APP_PATH: balancer
+    command: faststream run serve:app --reload --reload-dir /app/balancer-service --reload-dir /app/shared
+    env_file:
+      - ./backend/env/common.env
+      - ./backend/env/balancer.env
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      balancer:
+        condition: service_healthy
+    volumes:
+      - ./backend/balancer-service:/app/balancer-service
+      - ./backend/shared:/app/shared
+      - ./logs/balancer-worker:/logs
+    networks:
+      - app-network
+
+  discord:
+    image: registry.craazzzyyfoxx.me/aqt-discord:dev
+    profiles: ["workers"]
+    build:
+      context: ./backend
+      args:
+        APP_PATH: discord
+    command: watchfiles --filter python "python main.py" /app/discord-service /app/shared
+    env_file:
+      - ./backend/env/common.env
+      - ./backend/env/discord.env
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+      - SERVICE_CLIENT_ID=${DISCORD_SERVICE_CLIENT_ID:-discord-service}
+      - SERVICE_CLIENT_SECRET=${DISCORD_SERVICE_CLIENT_SECRET:-dev-discord-service-secret}
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      parser:
+        condition: service_healthy
+    volumes:
+      - ./backend/discord-service:/app/discord-service
+      - ./backend/shared:/app/shared
+      - ./logs/discord:/logs
+    networks:
+      - app-network
+
+  frontend:
+    image: registry.craazzzyyfoxx.me/frontend:dev
+    build:
+      context: ./frontend
+      dockerfile: dev.Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - WATCHPACK_POLLING=${WATCHPACK_POLLING:-true}
+      - CHOKIDAR_USEPOLLING=${CHOKIDAR_USEPOLLING:-true}
+      - CHOKIDAR_INTERVAL=${CHOKIDAR_INTERVAL:-1000}
+      - NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+      - NEXT_PUBLIC_AUTH_SERVICE_URL=${NEXT_PUBLIC_AUTH_SERVICE_URL}
+      - NEXT_PUBLIC_BALANCER_API_URL=${NEXT_PUBLIC_BALANCER_API_URL}
+      - NEXT_PUBLIC_SITE_NAME=${NEXT_PUBLIC_SITE_NAME}
+      - NEXT_PUBLIC_CACHE_POLICY=${NEXT_PUBLIC_CACHE_POLICY}
+      - NEXT_API_URL=${NEXT_API_URL}
+    depends_on:
+      backend:
+        condition: service_healthy
+      auth:
+        condition: service_healthy
+      parser:
+        condition: service_healthy
+      balancer:
+        condition: service_healthy
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
+      - frontend-next:/app/.next
+      - ./logs/frontend:/logs
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   kong:
     image: kong:3.7
+    profiles: ["gateway"]
     environment:
       - KONG_DATABASE=off
       - KONG_DECLARATIVE_CONFIG=/kong/kong.yml
@@ -39,11 +327,13 @@ services:
       backend:
         condition: service_healthy
       auth:
-        condition: service_started
+        condition: service_healthy
       parser:
-        condition: service_started
+        condition: service_healthy
       balancer:
-        condition: service_started
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
     networks:
       - app-network
     healthcheck:
@@ -52,233 +342,13 @@ services:
       timeout: 10s
       retries: 10
 
-  backend:
-    image: "registry.craazzzyyfoxx.me/aqt-backend:latest"
-    build:
-      context: ./backend
-      args:
-        APP_PATH: app
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --loop uvloop
-    ports:
-      - "8000:8000"
-    environment:
-      - ENVIRONMENT=${ENVIRONMENT}
-      - PORT=8000
-      - PROJECT_URL=${PROJECT_URL}
-      - REDIS_URL=${REDIS_URL}
-      - CORS_ORIGINS=${CORS_ORIGINS}
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_HOST=${POSTGRES_HOST}
-      - POSTGRES_PORT=${POSTGRES_PORT}
-      - RABBITMQ_URL=${RABBITMQ_URL}
-    develop:
-      watch:
-        - path: ./backend/app-service
-          action: sync
-          target: /app
-          ignore:
-            - ./backend/.venv
-            - .venv
-        - path: ./backend/pyproject.toml
-          action: rebuild
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    volumes:
-      - ./logs/backend:/logs
-      - ./backend/htmlcov:/app/htmlcov
-    networks:
-      - app-network
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
-  auth:
-    image: registry.craazzzyyfoxx.me/aqt-auth:latest
-    build:
-      context: ./backend
-      args:
-        APP_PATH: auth
-    command: uvicorn main:app --host 0.0.0.0 --port 8001 --loop uvloop
-    ports:
-      - "8001:8001"
-    environment:
-      - ENVIRONMENT=${ENVIRONMENT}
-      - PORT=8001
-      - PROJECT_URL=${PROJECT_URL}
-      - REDIS_URL=${REDIS_URL}
-      - CORS_ORIGINS=${CORS_ORIGINS}
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_HOST=${POSTGRES_HOST}
-      - POSTGRES_PORT=${POSTGRES_PORT}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
-      - JWT_ALGORITHM=${JWT_ALGORITHM}
-      - JWT_ACCESS_TOKEN_EXPIRE_MINUTES=${JWT_ACCESS_TOKEN_EXPIRE_MINUTES}
-      - JWT_REFRESH_TOKEN_EXPIRE_DAYS=${JWT_REFRESH_TOKEN_EXPIRE_DAYS}
-      - ACCESS_TOKEN_SERVICE=${ACCESS_TOKEN_SERVICE}
-      - RABBITMQ_URL=${RABBITMQ_URL}
-      - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID}
-      - DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET}
-      - DISCORD_REDIRECT_URI=${DISCORD_REDIRECT_URI}
-    develop:
-      watch:
-        - path: ./backend/auth-service
-          action: sync
-          target: /app
-          ignore:
-            - ./backend/.venv
-            - .venv
-        - path: ./backend/pyproject.toml
-          action: rebuild
-    volumes:
-      - ./logs/auth:/logs
-    networks:
-      - app-network
-
-  parser:
-    image: registry.craazzzyyfoxx.me/aqt-parser:latest
-    build:
-      context: ./backend
-      args:
-        APP_PATH: parser
-    command: uvicorn main:app --host 0.0.0.0 --port 8002 --loop uvloop
-    ports:
-      - "8002:8002"
-    environment:
-      - ENVIRONMENT=${ENVIRONMENT}
-      - PORT=8002
-      - PROJECT_URL=${PROJECT_URL}
-      - REDIS_URL=${REDIS_URL}
-      - CORS_ORIGINS=${CORS_ORIGINS}
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_HOST=${POSTGRES_HOST}
-      - POSTGRES_PORT=${POSTGRES_PORT}
-      - CHALLONGE_API_KEY=${CHALLONGE_API_KEY}
-      - CHALLONGE_USERNAME=${CHALLONGE_USERNAME}
-      - S3_ACCESS_KEY=${S3_ACCESS_KEY}
-      - S3_SECRET_KEY=${S3_SECRET_KEY}
-      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL}
-      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
-      - ACCESS_TOKEN_SERVICE=${ACCESS_TOKEN_SERVICE}
-      - PROXY_IP=${PROXY_IP}
-      - PROXY_PORT=${PROXY_PORT}
-      - PROXY_USERNAME=${PROXY_USERNAME}
-      - PROXY_PASSWORD=${PROXY_PASSWORD}
-      - RABBITMQ_URL=${RABBITMQ_URL}
-    develop:
-      watch:
-        - path: ./backend/parser-service
-          action: sync
-          target: /app
-          ignore:
-            - ./backend/.venv
-            - .venv
-        - path: ./backend/pyproject.toml
-          action: rebuild
-    volumes:
-      - ./logs/parser:/logs
-    networks:
-      - app-network
-
-  discord:
-    image: registry.craazzzyyfoxx.me/aqt-discord:latest
-    build:
-      context: ./backend
-      args:
-        APP_PATH: discord
-    command: python main.py
-    environment:
-      - ENVIRONMENT=${ENVIRONMENT}
-      - PROJECT_URL=${PROJECT_URL}
-      - REDIS_URL=${REDIS_URL}
-      - DISCORD_TOKEN=${DISCORD_TOKEN}
-      - PARSER_URL=${PARSER_URL}
-      - ACCESS_TOKEN_SERVICE=${ACCESS_TOKEN_SERVICE}
-      - PROXY_IP=${PROXY_IP}
-      - PROXY_PORT=${PROXY_PORT}
-      - PROXY_USERNAME=${PROXY_USERNAME}
-      - PROXY_PASSWORD=${PROXY_PASSWORD}
-      - RABBITMQ_URL=${RABBITMQ_URL}
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_HOST=${POSTGRES_HOST}
-      - POSTGRES_PORT=${POSTGRES_PORT}
-    volumes:
-      - ./logs/discord:/logs
-    networks:
-      - app-network
-
-  balancer:
-    image: registry.craazzzyyfoxx.me/aqt-balancer:latest
-    build:
-      context: ./backend
-      args:
-        APP_PATH: balancer
-    command: uvicorn main:app --host 0.0.0.0 --port 8003 --loop uvloop
-    environment:
-      - ENVIRONMENT=${ENVIRONMENT}
-      - PORT=8003
-      - PROJECT_URL=${PROJECT_URL}
-      - REDIS_URL=${REDIS_URL}
-      - CORS_ORIGINS=${CORS_ORIGINS}
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_HOST=${POSTGRES_HOST}
-      - POSTGRES_PORT=${POSTGRES_PORT}
-      - ACCESS_TOKEN_SERVICE=${ACCESS_TOKEN_SERVICE}
-    depends_on:
-      redis:
-        condition: service_started
-      backend:
-        condition: service_healthy
-    volumes:
-      - ./logs/balancer:/logs
-    networks:
-      - app-network
-
-#  frontend:
-#    image: registry.craazzzyyfoxx.me/frontend:latest
-#    depends_on:
-#      backend:
-#        condition: service_healthy
-#    build:
-#      context: ./frontend
-#      dockerfile: dev.Dockerfile
-#
-#    environment:
-#      - ENVIRONMENT=${ENVIRONMENT}
-#      - PORT=8003
-#      - PROJECT_URL=${PROJECT_URL}
-#      - REDIS_URL=${REDIS_URL}
-#      - CORS_ORIGINS=${CORS_ORIGINS}
-#      - POSTGRES_USER=${POSTGRES_USER}
-#      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-#      - POSTGRES_DB=${POSTGRES_DB}
-#      - POSTGRES_HOST=${POSTGRES_HOST}
-#      - POSTGRES_PORT=${POSTGRES_PORT}
-#      - ACCESS_TOKEN_SERVICE=${ACCESS_TOKEN_SERVICE}
-#      - RABBITMQ_URL=${RABBITMQ_URL}
-#    volumes:
-#      - ./logs/frontend:/logs
-#      # Optional: override the browser favicon at runtime
-#      # - ./conf/favicon.ico:/app/public/favicon.ico:ro
-#    networks:
-#      - app-network
-
 volumes:
+  postgres-data:
   redis-data:
   rabbitmq-data:
+  frontend-node-modules:
+  frontend-next:
 
 networks:
   app-network:
-    external: false
+    driver: bridge

@@ -1,20 +1,28 @@
 """
 Generic OAuth routes for multiple providers
 """
+
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from loguru import logger
 from shared.models.oauth import OAuthConnection
-from sqlalchemy import select, delete
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models, schemas
 from src.core import db
-from src.core.logging import logger
 from src.services import auth_service
 from src.services.oauth_service import OAuthService
 
 router = APIRouter(prefix="/oauth", tags=["OAuth"])
+
+
+@router.get("/providers", response_model=list[schemas.OAuthProviderAvailability])
+async def list_oauth_providers():
+    """List OAuth providers available in the current environment."""
+
+    return [schemas.OAuthProviderAvailability(provider=provider) for provider in OAuthService.get_available_providers()]
 
 
 @router.get("/{provider}/url", response_model=schemas.OAuthURL)
@@ -24,16 +32,11 @@ async def get_oauth_url(provider: str):
     """
     try:
         url, state = OAuthService.generate_oauth_url(provider)
-        return schemas.OAuthURL(
-            provider=schemas.OAuthProvider(provider),
-            url=url,
-            state=state
-        )
+        return schemas.OAuthURL(provider=schemas.OAuthProvider(provider), url=url, state=state)
+    except HTTPException:
+        raise
     except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid provider: {provider}"
-        ) from e
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid provider: {provider}") from e
 
 
 @router.get("/{provider}/callback", response_model=schemas.Token)
@@ -42,7 +45,7 @@ async def oauth_callback_get(
     code: str,
     state: str,
     request: Request,
-    session: Annotated[AsyncSession, Depends(db.get_async_session)]
+    session: Annotated[AsyncSession, Depends(db.get_async_session)],
 ):
     """
     Handle OAuth callback for any provider (GET version)
@@ -57,28 +60,25 @@ async def oauth_callback(
     provider: str,
     callback_data: schemas.OAuthCallbackRequest,
     request: Request,
-    session: Annotated[AsyncSession, Depends(db.get_async_session)]
+    session: Annotated[AsyncSession, Depends(db.get_async_session)],
 ):
     """
     Handle OAuth callback for any provider
     Exchange code for tokens and create/login user
     """
-    logger.info(f"{provider.title()} OAuth callback with state: {callback_data.state}")
+    logger.info(f"{provider.title()} OAuth callback")
 
     try:
+        OAuthService.validate_oauth_state(provider, callback_data.state)
+
         # Handle OAuth callback
-        auth_user, _ = await OAuthService.handle_callback(
-            session, provider, callback_data.code
-        )
+        auth_user, _ = await OAuthService.handle_callback(session, provider, callback_data.code)
 
         if not auth_user.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="User account is inactive"
-            )
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User account is inactive")
 
-        # Get user roles and permissions
-        roles, permissions = auth_service.AuthService.get_user_roles_and_permissions(auth_user)
+        # Get user roles and permissions (async-safe)
+        roles, permissions = await auth_service.AuthService.get_user_roles_and_permissions_db(session, auth_user.id)
 
         # Create JWT tokens with RBAC data
         access_token = auth_service.AuthService.create_access_token(
@@ -93,24 +93,18 @@ async def oauth_callback(
         )
 
         refresh_token = auth_service.AuthService.create_refresh_token()
-        await auth_service.AuthService.create_refresh_token_db(
-            session, auth_user.id, refresh_token, request
-        )
+        await auth_service.AuthService.create_refresh_token_db(session, auth_user.id, refresh_token, request)
 
         logger.success(f"User logged in via {provider}: {auth_user.username}")
 
-        return schemas.Token(
-            access_token=access_token,
-            refresh_token=refresh_token
-        )
+        return schemas.Token(access_token=access_token, refresh_token=refresh_token)
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"OAuth callback error for {provider}: {e}")
+        logger.exception(f"OAuth callback error for {provider}: {e!r}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"OAuth authentication failed for {provider}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"OAuth authentication failed for {provider}"
         ) from e
 
 
@@ -119,7 +113,7 @@ async def link_oauth_account(
     provider: str,
     callback_data: schemas.OAuthCallbackRequest,
     session: Annotated[AsyncSession, Depends(db.get_async_session)],
-    current_user: Annotated[models.AuthUser, Depends(auth_service.get_current_active_user)]
+    current_user: Annotated[models.AuthUser, Depends(auth_service.get_current_active_user)],
 ):
     """
     Link OAuth provider account to existing authenticated user
@@ -127,6 +121,8 @@ async def link_oauth_account(
     logger.info(f"Linking {provider} account for user: {current_user.username}")
 
     try:
+        OAuthService.validate_oauth_state(provider, callback_data.state)
+
         provider_impl = OAuthService.get_provider(provider)
 
         # Exchange code for token
@@ -136,40 +132,35 @@ async def link_oauth_account(
         oauth_user_info = await provider_impl.get_user_info(token_data["access_token"])
 
         # Link to current user
-        await OAuthService.link_oauth_to_existing_user(
-            session, current_user, oauth_user_info, token_data
-        )
+        await OAuthService.link_oauth_to_existing_user(session, current_user, oauth_user_info, token_data)
 
         logger.success(f"{provider.title()} linked to user: {current_user.username}")
 
         return {
             "message": f"{provider.title()} account linked successfully",
             "provider": provider,
-            "username": oauth_user_info.username
+            "username": oauth_user_info.username,
         }
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"OAuth link error for {provider}: {e}")
+        logger.exception(f"OAuth link error for {provider}: {e!r}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to link {provider} account"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to link {provider} account"
         ) from e
 
 
 @router.get("/connections", response_model=list[schemas.OAuthUserInfo])
 async def get_oauth_connections(
     session: Annotated[AsyncSession, Depends(db.get_async_session)],
-    current_user: Annotated[models.AuthUser, Depends(auth_service.get_current_active_user)]
+    current_user: Annotated[models.AuthUser, Depends(auth_service.get_current_active_user)],
 ):
     """
     Get all OAuth connections for current user
     """
 
-    result = await session.execute(
-        select(OAuthConnection).where(OAuthConnection.auth_user_id == current_user.id)
-    )
+    result = await session.execute(select(OAuthConnection).where(OAuthConnection.auth_user_id == current_user.id))
     connections = result.scalars().all()
 
     return [
@@ -180,7 +171,7 @@ async def get_oauth_connections(
             username=conn.username,
             display_name=conn.display_name,
             avatar_url=conn.avatar_url,
-            raw_data=conn.provider_data or {}
+            raw_data=conn.provider_data or {},
         )
         for conn in connections
     ]
@@ -190,7 +181,7 @@ async def get_oauth_connections(
 async def unlink_oauth_account(
     provider: str,
     session: Annotated[AsyncSession, Depends(db.get_async_session)],
-    current_user: Annotated[models.AuthUser, Depends(auth_service.get_current_active_user)]
+    current_user: Annotated[models.AuthUser, Depends(auth_service.get_current_active_user)],
 ):
     """
     Unlink OAuth provider from current user
@@ -199,30 +190,24 @@ async def unlink_oauth_account(
     # Check if user has a password (can't unlink if it's their only login method)
     if not current_user.hashed_password:
         # Count OAuth connections
-        result = await session.execute(
-            select(OAuthConnection).where(OAuthConnection.auth_user_id == current_user.id)
-        )
+        result = await session.execute(select(OAuthConnection).where(OAuthConnection.auth_user_id == current_user.id))
         connections_count = len(result.scalars().all())
 
         if connections_count <= 1:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cannot unlink last OAuth provider. Set a password first."
+                detail="Cannot unlink last OAuth provider. Set a password first.",
             )
 
     # Delete OAuth connection
     result = await session.execute(
         delete(OAuthConnection).where(
-            OAuthConnection.auth_user_id == current_user.id,
-            OAuthConnection.provider == provider
+            OAuthConnection.auth_user_id == current_user.id, OAuthConnection.provider == provider
         )
     )
 
     if result.rowcount == 0:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"{provider.title()} account not linked"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"{provider.title()} account not linked")
 
     await session.commit()
     logger.info(f"{provider.title()} unlinked from user: {current_user.username}")

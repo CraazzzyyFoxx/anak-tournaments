@@ -9,6 +9,7 @@ from src.core import enums, errors, pagination
 from src.services.encounter import flows as encounter_flows
 from src.services.encounter import service as encounter_service
 from src.services.hero import flows as hero_flows
+from src.services.map import flows as map_flows
 from src.services.statistics import service as statistics_service
 from src.services.team import flows as team_flows
 from src.services.team import service as team_service
@@ -23,18 +24,86 @@ tournament_stats = [
     enums.LogStatsName.Assists,
     enums.LogStatsName.KDA,
     enums.LogStatsName.DamageDelta,
-]
-
-
-tournament_stats_reverted = [
     enums.LogStatsName.Deaths,
     enums.LogStatsName.Performance,
 ]
 
+overview_hero_metrics_order = [
+    enums.LogStatsName.Eliminations,
+    enums.LogStatsName.FinalBlows,
+    enums.LogStatsName.HeroDamageDealt,
+    enums.LogStatsName.HealingDealt,
+]
 
-async def to_pydantic(
-    session: AsyncSession, user: models.User, entities: list[str]
-) -> schemas.UserRead:
+
+def _metric_direction_map() -> dict[str, bool]:
+    return {key: higher_is_better for key, _label, higher_is_better in service.COMPARE_METRIC_DEFINITIONS}
+
+
+def _metric_label_map() -> dict[str, str]:
+    return {key: label for key, label, _higher_is_better in service.COMPARE_METRIC_DEFINITIONS}
+
+
+def _build_baseline_average_row(rows: list[dict[str, typing.Any]]) -> dict[str, float | None]:
+    baseline: dict[str, float | None] = {}
+    for key, _label, _higher_is_better in service.COMPARE_METRIC_DEFINITIONS:
+        values = [row.get(key) for row in rows if row.get(key) is not None]
+        if not values:
+            baseline[key] = None
+        else:
+            baseline[key] = float(sum(float(value) for value in values) / len(values))
+    return baseline
+
+
+def _compute_rank_and_percentile(
+    rows: list[dict[str, typing.Any]],
+    key: str,
+    subject_value: float | int | None,
+    higher_is_better: bool,
+) -> tuple[int | None, float | None]:
+    if subject_value is None:
+        return None, None
+
+    values = [row.get(key) for row in rows if row.get(key) is not None]
+    if not values:
+        return None, None
+
+    if higher_is_better:
+        better_count = sum(1 for value in values if float(value) > float(subject_value))
+    else:
+        better_count = sum(1 for value in values if float(value) < float(subject_value))
+
+    rank = better_count + 1
+    total = len(values)
+    if total == 1:
+        percentile = 100.0
+    else:
+        percentile = ((total - rank) / (total - 1)) * 100
+
+    return rank, round(percentile, 2)
+
+
+def _compute_better_worse(
+    subject_value: float | int | None,
+    baseline_value: float | int | None,
+    higher_is_better: bool,
+) -> typing.Literal["better", "worse", "equal"] | None:
+    if subject_value is None or baseline_value is None:
+        return None
+
+    subject = float(subject_value)
+    baseline = float(baseline_value)
+
+    if subject == baseline:
+        return "equal"
+
+    if higher_is_better:
+        return "better" if subject > baseline else "worse"
+
+    return "better" if subject < baseline else "worse"
+
+
+async def to_pydantic(session: AsyncSession, user: models.User, entities: list[str]) -> schemas.UserRead:
     """
     Converts a `User` model instance to a Pydantic `UserRead` schema, optionally including related entities.
 
@@ -52,10 +121,7 @@ async def to_pydantic(
 
     unresolved = datetime(1, 1, 1, tzinfo=UTC)
     if "battle_tag" in entities:
-        battle_tags = [
-            schemas.UserBattleTagRead.model_validate(tag, from_attributes=True)
-            for tag in user.battle_tag
-        ]
+        battle_tags = [schemas.UserBattleTagRead.model_validate(tag, from_attributes=True) for tag in user.battle_tag]
     if "twitch" in entities:
         twitch = [
             schemas.UserTwitchRead.model_validate(twitch, from_attributes=True)
@@ -103,18 +169,12 @@ async def get(session: AsyncSession, user_id: int, entities: list[str]) -> model
     if not user:
         raise errors.ApiHTTPException(
             status_code=400,
-            detail=[
-                errors.ApiExc(
-                    code="not_found", msg=f"User with id {user_id} not found."
-                )
-            ],
+            detail=[errors.ApiExc(code="not_found", msg=f"User with id {user_id} not found.")],
         )
     return user
 
 
-async def get_by_battle_tag(
-    session: AsyncSession, battle_tag: str, entities: list[str]
-) -> schemas.UserRead:
+async def get_by_battle_tag(session: AsyncSession, battle_tag: str, entities: list[str]) -> schemas.UserRead:
     """
     Retrieves a `User` model instance by its battle tag and converts it to a `UserRead` schema.
 
@@ -143,9 +203,7 @@ async def get_by_battle_tag(
     return await to_pydantic(session, user, entities)
 
 
-async def get_by_discord(
-    session: AsyncSession, discord: str, entities: list[str]
-) -> schemas.UserRead:
+async def get_by_discord(session: AsyncSession, discord: str, entities: list[str]) -> schemas.UserRead:
     """
     Retrieves a `User` model instance by its Discord ID and converts it to a `UserRead` schema.
 
@@ -164,11 +222,7 @@ async def get_by_discord(
     if not user:
         raise errors.ApiHTTPException(
             status_code=400,
-            detail=[
-                errors.ApiExc(
-                    code="not_found", msg=f"User with discord {discord} not found."
-                )
-            ],
+            detail=[errors.ApiExc(code="not_found", msg=f"User with discord {discord} not found.")],
         )
     return await to_pydantic(session, user, entities)
 
@@ -195,9 +249,369 @@ async def get_all(
     )
 
 
-async def search_by_name(
-    session: AsyncSession, name: str, fields: list[str]
-) -> list[schemas.UserSearch]:
+async def get_overview(
+    session: AsyncSession,
+    params: schemas.UserOverviewParams,
+) -> pagination.Paginated[schemas.UserOverviewRow]:
+    if params.div_min is not None and params.div_max is not None and params.div_min > params.div_max:
+        raise errors.ApiHTTPException(
+            status_code=400,
+            detail=[
+                errors.ApiExc(
+                    code="invalid_filter",
+                    msg="div_min must be less than or equal to div_max.",
+                )
+            ],
+        )
+
+    users, total = await service.get_overview_users(session, params)
+    if not users:
+        return pagination.Paginated(
+            page=params.page,
+            per_page=params.per_page,
+            total=total,
+            results=[],
+        )
+
+    user_ids = [user.id for user in users]
+    roles_map = await service.get_overview_role_divisions(session, user_ids)
+    tournaments_count_map = await service.get_overview_tournaments_count(session, user_ids)
+    achievements_count_map = await service.get_overview_achievements_count(session, user_ids)
+    averages_map = await service.get_overview_averages(session, user_ids)
+    top_heroes_map = await service.get_overview_top_heroes(session, user_ids)
+    hero_metrics_map = await service.get_overview_top_hero_metrics(session, top_heroes_map)
+
+    rows: list[schemas.UserOverviewRow] = []
+    for user in users:
+        roles = [
+            schemas.UserOverviewRoleDivision(role=role, division=division)
+            for role, division in roles_map.get(user.id, [])
+        ]
+
+        top_heroes: list[schemas.UserOverviewHero] = []
+        for hero, playtime_seconds in top_heroes_map.get(user.id, []):
+            metrics_payload: list[schemas.UserOverviewHeroMetric] = []
+            metrics = hero_metrics_map.get((user.id, hero.id), {})
+            for metric_name in overview_hero_metrics_order:
+                metric_value = metrics.get(metric_name)
+                if metric_value is None:
+                    continue
+                metrics_payload.append(
+                    schemas.UserOverviewHeroMetric(
+                        name=metric_name,
+                        avg_10=round(metric_value, 2),
+                    )
+                )
+
+            top_heroes.append(
+                schemas.UserOverviewHero(
+                    hero=await hero_flows.to_pydantic(session, hero, []),
+                    playtime_seconds=round(playtime_seconds, 2),
+                    metrics=metrics_payload,
+                )
+            )
+
+        avg_placement, avg_playoff_placement, avg_group_placement, avg_closeness = averages_map.get(
+            user.id,
+            (None, None, None, None),
+        )
+
+        rows.append(
+            schemas.UserOverviewRow(
+                id=user.id,
+                name=user.name,
+                roles=roles,
+                top_heroes=top_heroes,
+                tournaments_count=tournaments_count_map.get(user.id, 0),
+                achievements_count=achievements_count_map.get(user.id, 0),
+                averages=schemas.UserOverviewAverages(
+                    avg_closeness=round(avg_closeness, 2) if avg_closeness is not None else None,
+                    avg_placement=round(avg_placement, 2) if avg_placement is not None else None,
+                    avg_playoff_placement=(
+                        round(avg_playoff_placement, 2) if avg_playoff_placement is not None else None
+                    ),
+                    avg_group_placement=round(avg_group_placement, 2) if avg_group_placement is not None else None,
+                ),
+            )
+        )
+
+    return pagination.Paginated(
+        page=params.page,
+        per_page=params.per_page,
+        total=total,
+        results=rows,
+    )
+
+
+async def get_compare(
+    session: AsyncSession,
+    id: int,
+    params: schemas.UserCompareParams,
+) -> schemas.UserCompareResponse:
+    if params.div_min is not None and params.div_max is not None and params.div_min > params.div_max:
+        raise errors.ApiHTTPException(
+            status_code=400,
+            detail=[errors.ApiExc(code="invalid_filter", msg="div_min must be less than or equal to div_max.")],
+        )
+
+    mode = params.baseline
+    resolved_role = params.role
+    resolved_div_min = params.div_min
+    resolved_div_max = params.div_max
+    compare_role = resolved_role if mode == "cohort" else None
+    compare_div_min = resolved_div_min if mode == "cohort" else None
+    compare_div_max = resolved_div_max if mode == "cohort" else None
+
+    if mode == "target_user" and not params.target_user_id:
+        raise errors.ApiHTTPException(
+            status_code=400,
+            detail=[errors.ApiExc(code="invalid_filter", msg="target_user_id is required for baseline=target_user.")],
+        )
+
+    subject = await get(session, id, [])
+
+    subject_rows = await service.get_compare_population(
+        session,
+        user_ids=[subject.id],
+        role=compare_role,
+        div_min=compare_div_min,
+        div_max=compare_div_max,
+    )
+    if not subject_rows:
+        raise errors.ApiHTTPException(
+            status_code=404,
+            detail=[errors.ApiExc(code="not_found", msg="Subject user has no stats for selected cohort filters.")],
+        )
+    subject_row = subject_rows[0]
+
+    baseline_target: schemas.UserCompareUser | None = None
+    sample_size = 0
+    population_rows: list[dict[str, typing.Any]] = []
+
+    if mode == "target_user":
+        target_user = await get(session, params.target_user_id, [])
+        target_rows = await service.get_compare_population(session, user_ids=[target_user.id])
+        if not target_rows:
+            raise errors.ApiHTTPException(
+                status_code=404,
+                detail=[errors.ApiExc(code="not_found", msg=f"User with id {target_user.id} not found.")],
+            )
+        baseline_row = target_rows[0]
+        sample_size = 1
+        baseline_target = schemas.UserCompareUser(id=target_user.id, name=target_user.name)
+    else:
+        population_rows = await service.get_compare_population(
+            session,
+            role=compare_role,
+            div_min=compare_div_min,
+            div_max=compare_div_max,
+        )
+        if not population_rows:
+            raise errors.ApiHTTPException(
+                status_code=404,
+                detail=[errors.ApiExc(code="not_found", msg="No users found for selected baseline filters.")],
+            )
+        baseline_row = _build_baseline_average_row(population_rows)
+        sample_size = len(population_rows)
+
+    labels = _metric_label_map()
+    directions = _metric_direction_map()
+
+    metrics: list[schemas.UserCompareMetric] = []
+    for key, _label, _higher_is_better in service.COMPARE_METRIC_DEFINITIONS:
+        subject_value = subject_row.get(key)
+        baseline_value = baseline_row.get(key)
+
+        delta = None
+        delta_percent = None
+        if subject_value is not None and baseline_value is not None:
+            delta = float(subject_value) - float(baseline_value)
+            if float(baseline_value) != 0:
+                delta_percent = (delta / abs(float(baseline_value))) * 100
+
+        rank = None
+        percentile = None
+        if mode != "target_user":
+            rank, percentile = _compute_rank_and_percentile(
+                population_rows,
+                key,
+                subject_value,
+                directions[key],
+            )
+
+        metrics.append(
+            schemas.UserCompareMetric(
+                key=key,
+                label=labels[key],
+                subject_value=subject_value,
+                baseline_value=baseline_value,
+                delta=round(delta, 4) if delta is not None else None,
+                delta_percent=round(delta_percent, 2) if delta_percent is not None else None,
+                better_worse=_compute_better_worse(subject_value, baseline_value, directions[key]),
+                higher_is_better=directions[key],
+                subject_rank=rank,
+                subject_percentile=percentile,
+            )
+        )
+
+    return schemas.UserCompareResponse(
+        subject=schemas.UserCompareUser(id=subject.id, name=subject.name),
+        baseline=schemas.UserCompareBaselineInfo(
+            mode=mode,
+            sample_size=sample_size,
+            target_user=baseline_target,
+            role=resolved_role if mode == "cohort" else None,
+            div_min=resolved_div_min if mode == "cohort" else None,
+            div_max=resolved_div_max if mode == "cohort" else None,
+        ),
+        metrics=metrics,
+    )
+
+
+async def get_hero_compare(
+    session: AsyncSession,
+    id: int,
+    params: schemas.UserHeroCompareParams,
+) -> schemas.UserHeroCompareResponse:
+    if params.div_min is not None and params.div_max is not None and params.div_min > params.div_max:
+        raise errors.ApiHTTPException(
+            status_code=400,
+            detail=[errors.ApiExc(code="invalid_filter", msg="div_min must be less than or equal to div_max.")],
+        )
+
+    mode = params.baseline
+    resolved_role = params.role
+    resolved_div_min = params.div_min
+    resolved_div_max = params.div_max
+    compare_role = resolved_role if mode == "cohort" else None
+    compare_div_min = resolved_div_min if mode == "cohort" else None
+    compare_div_max = resolved_div_max if mode == "cohort" else None
+
+    if mode == "target_user" and not params.target_user_id:
+        raise errors.ApiHTTPException(
+            status_code=400,
+            detail=[errors.ApiExc(code="invalid_filter", msg="target_user_id is required for baseline=target_user.")],
+        )
+
+    subject = await get(session, id, [])
+    target: schemas.UserCompareUser | None = None
+    baseline_target: schemas.UserCompareUser | None = None
+    sample_size = 0
+
+    requested_stats = [stat for stat in params.stats if stat != enums.LogStatsName.HeroTimePlayed]
+    if not requested_stats:
+        requested_stats = list(service.DEFAULT_HERO_COMPARE_STATS)
+
+    left_playtime, left_stats = await service.get_user_hero_compare_stats(
+        session,
+        user_id=subject.id,
+        hero_id=params.left_hero_id,
+        map_id=params.map_id,
+        stats=requested_stats,
+        role=compare_role,
+        div_min=compare_div_min,
+        div_max=compare_div_max,
+    )
+
+    if mode == "target_user":
+        target_model = await get(session, params.target_user_id, [])
+        right_playtime, right_stats = await service.get_user_hero_compare_stats(
+            session,
+            user_id=target_model.id,
+            hero_id=params.right_hero_id,
+            map_id=params.map_id,
+            stats=requested_stats,
+        )
+        target = schemas.UserCompareUser(id=target_model.id, name=target_model.name)
+        baseline_target = target
+        sample_size = 1
+    else:
+        population_users = await service.get_compare_population_users(
+            session,
+            role=compare_role,
+            div_min=compare_div_min,
+            div_max=compare_div_max,
+        )
+        if not population_users:
+            raise errors.ApiHTTPException(
+                status_code=404,
+                detail=[errors.ApiExc(code="not_found", msg="No users found for selected baseline filters.")],
+            )
+
+        population_user_ids = [user_id for user_id, _ in population_users]
+        baseline_playtime_by_user, baseline_stats_by_user = await service.get_users_hero_compare_stats(
+            session,
+            user_ids=population_user_ids,
+            hero_id=params.right_hero_id,
+            map_id=params.map_id,
+            stats=requested_stats,
+            role=compare_role,
+            div_min=compare_div_min,
+            div_max=compare_div_max,
+        )
+
+        sample_user_ids = [user_id for user_id, playtime in baseline_playtime_by_user.items() if playtime > 0]
+        if not sample_user_ids:
+            raise errors.ApiHTTPException(
+                status_code=404,
+                detail=[errors.ApiExc(code="not_found", msg="No users found for selected hero/map filters.")],
+            )
+
+        sample_size = len(sample_user_ids)
+        right_playtime = float(sum(baseline_playtime_by_user[user_id] for user_id in sample_user_ids) / sample_size)
+        right_stats = {
+            stat: float(
+                sum(baseline_stats_by_user.get((user_id, stat), 0.0) for user_id in sample_user_ids) / sample_size
+            )
+            for stat in requested_stats
+        }
+
+    metrics: list[schemas.UserHeroCompareMetric] = []
+    for stat in requested_stats:
+        left_value = float(left_stats.get(stat, 0.0))
+        right_value = float(right_stats.get(stat, 0.0))
+        delta = left_value - right_value
+        higher_is_better = not enums.is_ascending_stat(stat)
+        delta_percent = None
+        if right_value != 0:
+            delta_percent = (delta / abs(right_value)) * 100
+        metrics.append(
+            schemas.UserHeroCompareMetric(
+                stat=stat,
+                left_value=round(left_value, 2),
+                right_value=round(right_value, 2),
+                delta=round(delta, 2),
+                delta_percent=round(delta_percent, 2) if delta_percent is not None else None,
+                better_worse=_compute_better_worse(left_value, right_value, higher_is_better),
+                higher_is_better=higher_is_better,
+            )
+        )
+
+    left_hero = await hero_flows.get(session, params.left_hero_id) if params.left_hero_id else None
+    right_hero = await hero_flows.get(session, params.right_hero_id) if params.right_hero_id else None
+    map_value = await map_flows.get(session, params.map_id, []) if params.map_id else None
+
+    return schemas.UserHeroCompareResponse(
+        subject=schemas.UserCompareUser(id=subject.id, name=subject.name),
+        target=target,
+        baseline=schemas.UserCompareBaselineInfo(
+            mode=mode,
+            sample_size=sample_size,
+            target_user=baseline_target,
+            role=resolved_role if mode == "cohort" else None,
+            div_min=resolved_div_min if mode == "cohort" else None,
+            div_max=resolved_div_max if mode == "cohort" else None,
+        ),
+        subject_hero=left_hero,
+        target_hero=right_hero,
+        map=map_value,
+        left_playtime_seconds=round(left_playtime, 2),
+        right_playtime_seconds=round(right_playtime, 2),
+        metrics=metrics,
+    )
+
+
+async def search_by_name(session: AsyncSession, name: str, fields: list[str]) -> list[schemas.UserSearch]:
     """
     Searches for a user by name and converts the result to a `UserRead` schema.
 
@@ -213,9 +627,7 @@ async def search_by_name(
     return [schemas.UserSearch(id=user.user_id, name=user.battle_tag) for user in users]
 
 
-async def get_read(
-    session: AsyncSession, user_id: int, entities: list[str]
-) -> schemas.UserRead:
+async def get_read(session: AsyncSession, user_id: int, entities: list[str]) -> schemas.UserRead:
     """
     Retrieves a `User` model instance by its ID and converts it to a `UserRead` schema.
 
@@ -249,9 +661,7 @@ async def get_roles(session: AsyncSession, user_id: int) -> list[schemas.UserRol
             tournaments=len({division["tournament"] for division in division}),
             maps_won=maps_won,
             maps=maps_won + maps_lost,
-            division=sorted(division, key=lambda x: x["tournament"], reverse=True)[0][
-                "division"
-            ],
+            division=sorted(division, key=lambda x: x["tournament"], reverse=True)[0]["division"],
         )
         for role, maps_won, maps_lost, division in roles
     ]
@@ -276,17 +686,13 @@ async def get_profile(session: AsyncSession, id: int) -> schemas.UserProfile:
     roles = await get_roles(session, user.id)
     hero_statistics = await hero_flows.get_playtime(
         session,
-        schemas.HeroPlaytimePaginationParams(
-            user_id=user.id, sort="playtime", order="desc"
-        ),
+        schemas.HeroPlaytimePaginationParams(user_id=user.id, sort="playtime", order="desc"),
     )
 
-    teams, total_teams = await service.get_teams(
+    teams, _ = await service.get_teams(
         session,
         user.id,
-        params=pagination.PaginationSortParams(
-            page=1, per_page=-1, entities=["tournament", "placement"]
-        ),
+        params=pagination.PaginationSortParams(page=1, per_page=-1, entities=["tournament", "placement"]),
     )
 
     placements: list[int] = []
@@ -297,9 +703,7 @@ async def get_profile(session: AsyncSession, id: int) -> schemas.UserProfile:
     tournaments_won: int = 0
 
     for team in teams:
-        tournaments.append(
-            await tournament_flows.to_pydantic(session, team.tournament, [])
-        )
+        tournaments.append(await tournament_flows.to_pydantic(session, team.tournament, []))
 
         if team.tournament.is_league:
             continue
@@ -320,25 +724,17 @@ async def get_profile(session: AsyncSession, id: int) -> schemas.UserProfile:
         maps_total=matches_lose + matches_won,
         maps_won=matches_won,
         avg_placement=round(mean(placements), 2) if placements else None,
-        avg_playoff_placement=(
-            round(mean(placements_playoff), 2) if placements_playoff else None
-        ),
-        avg_group_placement=(
-            round(mean(placements_group), 2) if placements_group else None
-        ),
+        avg_playoff_placement=(round(mean(placements_playoff), 2) if placements_playoff else None),
+        avg_group_placement=(round(mean(placements_group), 2) if placements_group else None),
         avg_closeness=round(avg_closeness, 2) if avg_closeness else 0,
-        most_played_hero=(
-            hero_statistics.results[0].hero if hero_statistics.results else None
-        ),
+        most_played_hero=(hero_statistics.results[0].hero if hero_statistics.results else None),
         roles=roles,
         hero_statistics=hero_statistics.results,
         tournaments=sorted(tournaments, key=lambda x: x.id, reverse=True),
     )
 
 
-async def get_tournaments(
-    session: AsyncSession, id: int
-) -> list[schemas.UserTournament]:
+async def get_tournaments(session: AsyncSession, id: int) -> list[schemas.UserTournament]:
     """
     Retrieves a user's tournament history, including statistics and encounters.
 
@@ -390,9 +786,7 @@ async def get_tournaments(
         won: int = 0
         lost: int = 0
         draw: int = 0
-        placement: int | None = (
-            team.standings[0].overall_position if team.standings else None
-        )
+        placement: int | None = team.standings[0].overall_position if team.standings else None
 
         for player in team.players:
             if player.user_id == user.id:
@@ -412,10 +806,7 @@ async def get_tournaments(
             is_league=team.tournament.is_league,
             team_id=team.id,
             team=team.name,
-            players=[
-                await team_flows.to_pydantic_player(session, player, [])
-                for player in team.players
-            ],
+            players=[await team_flows.to_pydantic_player(session, player, []) for player in team.players],
             closeness=round(avg_closeness, 2) if avg_closeness else 0,
             maps_won=wins,
             maps_lost=losses,
@@ -426,7 +817,7 @@ async def get_tournaments(
             won=won,
             lost=lost,
             draw=draw,
-            encounters=encounters[team.id],
+            encounters=encounters.get(team.id, []),
         )
         output.append(tournament)
 
@@ -453,22 +844,14 @@ async def get_tournament_with_stats(
         session, user.id, tournament_id, ["team", "team.tournament", "team.placement"]
     )
     team = player.team
-    statistics = await service.get_tournament_stats_overall(
-        session, team.tournament, user.id
-    )
+    statistics = await service.get_tournament_stats_overall(session, team.tournament, user.id)
     last_playoff_placement: float | None = None
     last_group_placement: float | None = None
-    stats: dict[
-        enums.LogStatsName | typing.Literal["winrate"], schemas.UserTournamentStat
-    ] = {}
-    winrate = await statistics_service.get_tournament_winrate(
-        session, team.tournament, user.id
-    )
+    stats: dict[enums.LogStatsName | typing.Literal["winrate"], schemas.UserTournamentStat] = {}
+    winrate = await statistics_service.get_tournament_winrate(session, team.tournament, user.id)
 
     if winrate:
-        stats["winrate"] = schemas.UserTournamentStat(
-            value=winrate[1], rank=winrate[2], total=winrate[3]
-        )
+        stats["winrate"] = schemas.UserTournamentStat(value=winrate[1], rank=winrate[2], total=winrate[3])
     else:
         stats["winrate"] = schemas.UserTournamentStat(value=0, rank=0, total=0)
 
@@ -476,13 +859,13 @@ async def get_tournament_with_stats(
         session,
         team.tournament,
         user.id,
-        [*tournament_stats, *tournament_stats_reverted],
+        tournament_stats,
     ):
         if not values:
             continue
-        stat, user_id, value, rank_desc, rank_asc, total = values
+        stat, _user_id, value, rank_desc, rank_asc, total = values
 
-        rank = rank_desc if stat in tournament_stats else rank_asc
+        rank = rank_asc if enums.is_ascending_stat(stat) else rank_desc
 
         stats[stat] = schemas.UserTournamentStat(value=value, rank=rank, total=total)
 
@@ -509,7 +892,10 @@ async def get_tournament_with_stats(
 
 
 async def get_heroes(
-    session: AsyncSession, id: int, params: pagination.PaginationParams
+    session: AsyncSession,
+    id: int,
+    params: pagination.PaginationParams,
+    stats: list[enums.LogStatsName] | None = None,
 ) -> pagination.Paginated[schemas.HeroWithUserStats]:
     """
     Retrieves a user's hero statistics, including performance and comparisons with other users.
@@ -523,14 +909,22 @@ async def get_heroes(
         A list of `HeroWithUserStats` schemas representing the user's hero statistics.
     """
     user = await get(session, id, [])
-    user_stats = await service.get_statistics_by_heroes(session, user.id)
-    all_stats = await service.get_statistics_by_heroes_all_values(session)
+    requested_stats = set(stats or [])
+    stats_filter = list(requested_stats) if requested_stats else None
+
+    user_stats = await service.get_statistics_by_heroes(session, user.id, stats_filter)
+    if stats_filter:
+        all_stats = await service.get_statistics_by_heroes_all_values_filtered(session, stats_filter)
+    else:
+        all_stats = await service.get_statistics_by_heroes_all_values(session)
     payload: list[schemas.HeroWithUserStats] = []
 
     cache: dict[int, dict[enums.LogStatsName, schemas.HeroStat]] = {}
     cache_hero: dict[int, schemas.HeroRead] = {}
 
     for name, hero, value, value_best, value_avg_10, best_meta in user_stats:
+        if requested_stats and name not in requested_stats and name != enums.LogStatsName.HeroTimePlayed:
+            continue
         if hero.id not in cache_hero:
             cache_hero[hero.id] = await hero_flows.to_pydantic(session, hero, [])
         if hero.id not in cache:
@@ -552,6 +946,8 @@ async def get_heroes(
         )
 
     for name, hero_id, value_best, value_avg_10, best_meta in all_stats:
+        if requested_stats and name not in requested_stats:
+            continue
         if hero_id in cache:
             cache[hero_id][name].best_all = schemas.HeroStatBest(
                 encounter_id=best_meta["encounter_id"],
@@ -564,12 +960,22 @@ async def get_heroes(
             cache[hero_id][name].avg_10_all = round(value_avg_10, 2)
 
     for hero_id, stats in cache.items():
-        if stats[enums.LogStatsName.Eliminations].overall == 0:
+        # Filter out heroes without meaningful playtime. Previously we used
+        # eliminations == 0 which could hide valid support picks.
+        playtime_stat = stats.get(enums.LogStatsName.HeroTimePlayed)
+        if not playtime_stat or playtime_stat.overall <= 0:
             continue
+
+        hero_stats = list(stats.values())
+        if requested_stats:
+            hero_stats = [hero_stat for hero_stat in hero_stats if hero_stat.name in requested_stats]
+            if not hero_stats:
+                continue
+
         payload.append(
             schemas.HeroWithUserStats(
                 hero=cache_hero[hero_id],
-                stats=list(stats.values()),
+                stats=hero_stats,
             )
         )
 
@@ -608,9 +1014,7 @@ async def get_best_teammates(
                 winrate=round(winrate, 2),
                 tournaments=tournaments,
                 stats={
-                    enums.LogStatsName.Performance: (
-                        round(performance, 2) if performance else 0
-                    ),
+                    enums.LogStatsName.Performance: (round(performance, 2) if performance else 0),
                     enums.LogStatsName.KDA: round(kda, 2) if kda else 0,
                 },
             )

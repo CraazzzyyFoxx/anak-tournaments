@@ -1,46 +1,47 @@
 "use client";
 
-import React, { useCallback, useTransition } from "react";
+import React from "react";
 import { TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 
 const UserProfileTabList = () => {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const [, startTransition] = useTransition();
-
-  const navToTab = useCallback(
-    (tab: string) => {
-      const newSearchParams = new URLSearchParams(searchParams || undefined);
-      newSearchParams.set("tab", tab);
-      startTransition(() => {
-        router.push(`${pathname}?${newSearchParams.toString()}`);
-      });
-    },
-    [searchParams, pathname, router, startTransition]
-  );
-
   return (
-    <ScrollArea className="mb-8">
-      <TabsList className="grid w-[720px] grid-cols-6 mb-4">
-        <TabsTrigger value="overview" onClick={() => navToTab("overview")}>
+    <ScrollArea>
+      <TabsList className="h-11 w-max rounded-full bg-muted/40 p-1 gap-1">
+        <TabsTrigger
+          value="overview"
+          className="h-9 rounded-full px-4 data-[state=active]:bg-background/70 data-[state=active]:shadow-md"
+        >
           Overview
         </TabsTrigger>
-        <TabsTrigger value="tournaments" onClick={() => navToTab("tournaments")}>
+        <TabsTrigger
+          value="tournaments"
+          className="h-9 rounded-full px-4 data-[state=active]:bg-background/70 data-[state=active]:shadow-md"
+        >
           Tournaments
         </TabsTrigger>
-        <TabsTrigger value="matches" onClick={() => navToTab("matches")}>
+        <TabsTrigger
+          value="matches"
+          className="h-9 rounded-full px-4 data-[state=active]:bg-background/70 data-[state=active]:shadow-md"
+        >
           Matches
         </TabsTrigger>
-        <TabsTrigger value="heroes" onClick={() => navToTab("heroes")}>
+        <TabsTrigger
+          value="heroes"
+          className="h-9 rounded-full px-4 data-[state=active]:bg-background/70 data-[state=active]:shadow-md"
+        >
           Heroes
         </TabsTrigger>
-        <TabsTrigger value="maps" onClick={() => navToTab("maps")}>
+        <TabsTrigger
+          value="maps"
+          className="h-9 rounded-full px-4 data-[state=active]:bg-background/70 data-[state=active]:shadow-md"
+        >
           Maps
         </TabsTrigger>
-        <TabsTrigger value="achievements" onClick={() => navToTab("achievements")}>
+        <TabsTrigger
+          value="achievements"
+          className="h-9 rounded-full px-4 data-[state=active]:bg-background/70 data-[state=active]:shadow-md"
+        >
           Achievements
         </TabsTrigger>
       </TabsList>

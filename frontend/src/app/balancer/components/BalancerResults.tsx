@@ -1,7 +1,10 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
+import { Clipboard } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { BalanceResponse } from "@/types/balancer.types";
 import StatisticsCard from "@/components/StatisticsCard";
 import TeamCard from "./TeamCard";
@@ -11,7 +14,26 @@ interface BalancerResultsProps {
 }
 
 const BalancerResults = ({ results }: BalancerResultsProps) => {
-  const { teams, statistics } = results;
+  const { teams, statistics, appliedConfig } = results;
+  const [isConfigOpen, setIsConfigOpen] = useState(false);
+  const [copiedConfig, setCopiedConfig] = useState(false);
+
+  const handleCopyConfig = async () => {
+    if (!appliedConfig) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(appliedConfig, null, 2));
+      setCopiedConfig(true);
+
+      window.setTimeout(() => {
+        setCopiedConfig(false);
+      }, 1500);
+    } catch {
+      setCopiedConfig(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -35,6 +57,37 @@ const BalancerResults = ({ results }: BalancerResultsProps) => {
           ))}
         </div>
       </div>
+
+      {appliedConfig && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardTitle>Applied Config</CardTitle>
+            <Button variant="outline" size="sm" onClick={handleCopyConfig}>
+              <Clipboard className="h-3.5 w-3.5" />
+              {copiedConfig ? "Copied" : "Copy"}
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <Collapsible open={isConfigOpen} onOpenChange={setIsConfigOpen}>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground">
+                  Snapshot of the exact settings used for this balancing run.
+                </p>
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" size="sm" type="button">
+                    {isConfigOpen ? "Hide" : "Show"}
+                  </Button>
+                </CollapsibleTrigger>
+              </div>
+              <CollapsibleContent>
+                <pre className="overflow-x-auto rounded-md bg-muted p-3 text-xs">
+                  {JSON.stringify(appliedConfig, null, 2)}
+                </pre>
+              </CollapsibleContent>
+            </Collapsible>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };

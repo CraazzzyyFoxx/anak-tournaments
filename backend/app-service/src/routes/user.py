@@ -10,7 +10,6 @@ from src import schemas
 from src.core import config, db, enums, pagination
 from src.services.encounter import flows as encounter_flows
 from src.services.map import flows as map_flows
-
 from src.services.user import flows as user_flows
 
 router = APIRouter(prefix="/users", tags=[enums.RouteTag.USER])
@@ -42,6 +41,48 @@ async def search_by_name(
     session=Depends(db.get_async_session),
 ):
     return await user_flows.search_by_name(session, query, fields)
+
+
+@router.get(
+    path="/overview",
+    response_model=pagination.Paginated[schemas.UserOverviewRow],
+    description="Retrieve an enriched, paginated list of users for frontend list views. "
+    "Includes role divisions, top heroes with key metrics, tournaments/achievements counts and average results.",
+    summary="Get users overview",
+)
+async def get_overview(
+    params: schemas.UserOverviewQueryParams = Depends(),
+    session: AsyncSession = Depends(db.get_async_session),
+):
+    return await user_flows.get_overview(session, schemas.UserOverviewParams.from_query_params(params))
+
+
+@router.get(
+    path="/{id}/compare",
+    response_model=schemas.UserCompareResponse,
+    description="Compare one user against another user, global averages, or a rank cohort.",
+    summary="Compare user overview metrics",
+)
+async def get_compare(
+    id: int,
+    params: schemas.UserCompareQueryParams = Depends(),
+    session: AsyncSession = Depends(db.get_async_session),
+):
+    return await user_flows.get_compare(session, id, schemas.UserCompareParams.from_query_params(params))
+
+
+@router.get(
+    path="/{id}/compare/heroes",
+    response_model=schemas.UserHeroCompareResponse,
+    description="Compare hero-level average per-10 metrics against a target user, global baseline, or role/division cohort, with optional map filter.",
+    summary="Compare users by heroes",
+)
+async def get_hero_compare(
+    id: int,
+    params: schemas.UserHeroCompareQueryParams = Depends(),
+    session: AsyncSession = Depends(db.get_async_session),
+):
+    return await user_flows.get_hero_compare(session, id, schemas.UserHeroCompareParams.from_query_params(params))
 
 
 @router.get(
@@ -92,9 +133,7 @@ async def get_profile(request: Request, id: int, session=Depends(db.get_async_se
     ttl=cache_control_ttl(default=config.settings.users_cache_ttl),
     key="fastapi:{request.url.path}",
 )
-async def get_tournaments(
-    request: Request, id: int, session: AsyncSession = Depends(db.get_async_session)
-):
+async def get_tournaments(request: Request, id: int, session: AsyncSession = Depends(db.get_async_session)):
     tournaments = await user_flows.get_tournaments(session, id)
     return tournaments
 
@@ -122,7 +161,10 @@ async def get_tournament(
 @router.get(
     path="/{id}/maps",
     response_model=pagination.Paginated[schemas.UserMap],
-    description=f"Retrieve the most played maps for a user by ID, with pagination. **Cache TTL: {config.settings.users_cache_ttl / 60} minutes.**",
+    description=f"Retrieve the most played maps for a user by ID, with pagination and filtering. "
+    f"Supports search (`query`) and minimum sample size (`min_count`). "
+    f"Available entities: **gamemode, heroes, hero_stats**. "
+    f"**Cache TTL: {config.settings.users_cache_ttl / 60} minutes.**",
     summary="Get user maps",
 )
 @cache(
@@ -133,7 +175,7 @@ async def get_maps(
     request: Request,
     id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    params: pagination.PaginationSortQueryParams[
+    params: schemas.UserMapsSearchQueryParams[
         typing.Literal[
             "id",
             "count",
@@ -147,10 +189,43 @@ async def get_maps(
         ]
     ] = Depends(),
 ):
-    maps = await map_flows.get_top_user(
-        session, id, pagination.PaginationSortParams.from_query_params(params)
-    )
+    maps = await map_flows.get_top_user(session, id, schemas.UserMapsSearchParams.from_query_params(params))
     return maps
+
+
+@router.get(
+    path="/{id}/maps/summary",
+    response_model=schemas.UserMapsSummary,
+    description=f"Retrieve a summary (highlights and totals) for a user's maps. "
+    f"Uses the same filters as `/users/{{id}}/maps` but always evaluates the full dataset. "
+    f"Heavy entities like hero stats are ignored. "
+    f"**Cache TTL: {config.settings.users_cache_ttl / 60} minutes.**",
+    summary="Get user maps summary",
+)
+@cache(
+    ttl=cache_control_ttl(default=config.settings.users_cache_ttl),
+    key="fastapi:{request.url.path}/{request.query_params}",
+)
+async def get_maps_summary(
+    request: Request,
+    id: int,
+    session: AsyncSession = Depends(db.get_async_session),
+    params: schemas.UserMapsSearchQueryParams[
+        typing.Literal[
+            "id",
+            "count",
+            "win",
+            "loss",
+            "draw",
+            "winrate",
+            "gamemode_id",
+            "slug",
+            "name",
+        ]
+    ] = Depends(),
+):
+    summary = await map_flows.get_top_user_summary(session, id, schemas.UserMapsSearchParams.from_query_params(params))
+    return summary
 
 
 @router.get(
@@ -168,9 +243,7 @@ async def get_encounters(
     id: int,
     session: AsyncSession = Depends(db.get_async_session),
     params: pagination.PaginationSortQueryParams[
-        typing.Literal[
-            "id", "name", "home_team_id", "away_team_id", "closeness", "round"
-        ]
+        typing.Literal["id", "name", "home_team_id", "away_team_id", "closeness", "round"]
     ] = Depends(),
 ):
     encounters = await encounter_flows.get_encounters_by_user(
@@ -194,10 +267,14 @@ async def get_heroes(
     request: Request,
     id: int,
     params: pagination.PaginationQueryParams = Depends(),
+    stats: list[enums.LogStatsName] = Query([]),
     session: AsyncSession = Depends(db.get_async_session),
 ):
     heroes = await user_flows.get_heroes(
-        session, id, pagination.PaginationParams.from_query_params(params)
+        session,
+        id,
+        pagination.PaginationParams.from_query_params(params),
+        stats,
     )
     return heroes
 
@@ -215,9 +292,7 @@ async def get_heroes(
 async def get_teammates(
     request: Request,
     id: int,
-    params: pagination.PaginationSortQueryParams[
-        typing.Literal["id", "name", "winrate", "tournaments"]
-    ] = Depends(),
+    params: pagination.PaginationSortQueryParams[typing.Literal["id", "name", "winrate", "tournaments"]] = Depends(),
     session: AsyncSession = Depends(db.get_async_session),
 ):
     teammates = await user_flows.get_best_teammates(

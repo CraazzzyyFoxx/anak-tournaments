@@ -13,7 +13,7 @@ class ConfigPresets:
 
     # Default configuration
     DEFAULT: dict[str, Any] = {
-        "MASK": {"DPS": 3, "Support": 2},
+        "MASK": {"Tank": 1, "Damage": 2, "Support": 2},
         "POPULATION_SIZE": 200,
         "GENERATIONS": 750,
         "ELITISM_RATE": 0.2,
@@ -24,7 +24,7 @@ class ConfigPresets:
         "INTRA_TEAM_VAR_WEIGHT": 0.8,
         "MAX_DISCOMFORT_WEIGHT": 1.0,
         "USE_CAPTAINS": True,
-        "ROLE_MAPPING": {"tank": "Tank", "dps": "DPS", "support": "Support"}
+        "ROLE_MAPPING": {"tank": "Tank", "dps": "Damage", "damage": "Damage", "support": "Support"},
     }
 
     # Competitive tournament: prioritize fair matches
@@ -38,7 +38,7 @@ class ConfigPresets:
         "DISCOMFORT_WEIGHT": 0.2,
         "INTRA_TEAM_VAR_WEIGHT": 1.0,
         "MAX_DISCOMFORT_WEIGHT": 1.5,
-        "USE_CAPTAINS": True
+        "USE_CAPTAINS": True,
     }
 
     # Casual event: balance speed and satisfaction
@@ -52,7 +52,7 @@ class ConfigPresets:
         "DISCOMFORT_WEIGHT": 0.5,
         "INTRA_TEAM_VAR_WEIGHT": 0.5,
         "MAX_DISCOMFORT_WEIGHT": 0.8,
-        "USE_CAPTAINS": False
+        "USE_CAPTAINS": False,
     }
 
     # Quick draft: fast balancing
@@ -66,7 +66,7 @@ class ConfigPresets:
         "DISCOMFORT_WEIGHT": 0.25,
         "INTRA_TEAM_VAR_WEIGHT": 0.8,
         "MAX_DISCOMFORT_WEIGHT": 1.0,
-        "USE_CAPTAINS": False
+        "USE_CAPTAINS": False,
     }
 
     # Player preference priority: maximize role satisfaction
@@ -80,7 +80,7 @@ class ConfigPresets:
         "DISCOMFORT_WEIGHT": 1.0,
         "INTRA_TEAM_VAR_WEIGHT": 0.5,
         "MAX_DISCOMFORT_WEIGHT": 2.0,
-        "USE_CAPTAINS": True
+        "USE_CAPTAINS": True,
     }
 
     # High quality: slow but optimal
@@ -94,7 +94,7 @@ class ConfigPresets:
         "DISCOMFORT_WEIGHT": 0.3,
         "INTRA_TEAM_VAR_WEIGHT": 1.0,
         "MAX_DISCOMFORT_WEIGHT": 1.5,
-        "USE_CAPTAINS": True
+        "USE_CAPTAINS": True,
     }
 
 
@@ -106,7 +106,7 @@ class ConfigBuilder:
         Initialize config builder with optional preset
 
         Args:
-            preset: Name of preset to start from ('default', 'competitive', 
+            preset: Name of preset to start from ('default', 'competitive',
                    'casual', 'quick', 'preference_focused', 'high_quality')
         """
         self.config = {}
@@ -120,14 +120,14 @@ class ConfigBuilder:
         else:
             self.config = ConfigPresets.DEFAULT.copy()
 
-    def with_role_mask(self, mask: dict[str, int]) -> 'ConfigBuilder':
+    def with_role_mask(self, mask: dict[str, int]) -> "ConfigBuilder":
         """Set custom role mask"""
         if not mask or not any(v > 0 for v in mask.values()):
             raise ValueError("Role mask must have at least one role with count > 0")
         self.config["MASK"] = mask
         return self
 
-    def with_population(self, size: int, generations: int) -> 'ConfigBuilder':
+    def with_population(self, size: int, generations: int) -> "ConfigBuilder":
         """Set population size and generation count"""
         if not 10 <= size <= 1000:
             raise ValueError("Population size must be between 10 and 1000")
@@ -141,8 +141,8 @@ class ConfigBuilder:
         self,
         elitism_rate: float | None = None,
         mutation_rate: float | None = None,
-        mutation_strength: int | None = None
-    ) -> 'ConfigBuilder':
+        mutation_strength: int | None = None,
+    ) -> "ConfigBuilder":
         """Set genetic algorithm parameters"""
         if elitism_rate is not None:
             if not 0 <= elitism_rate <= 1:
@@ -166,8 +166,8 @@ class ConfigBuilder:
         mmr_diff: float | None = None,
         discomfort: float | None = None,
         intra_var: float | None = None,
-        max_discomfort: float | None = None
-    ) -> 'ConfigBuilder':
+        max_discomfort: float | None = None,
+    ) -> "ConfigBuilder":
         """Set cost function weights"""
         if mmr_diff is not None:
             if mmr_diff < 0:
@@ -191,12 +191,12 @@ class ConfigBuilder:
 
         return self
 
-    def with_captains(self, use_captains: bool) -> 'ConfigBuilder':
+    def with_captains(self, use_captains: bool) -> "ConfigBuilder":
         """Enable or disable captain assignment"""
         self.config["USE_CAPTAINS"] = use_captains
         return self
 
-    def with_role_mapping(self, mapping: dict[str, str]) -> 'ConfigBuilder':
+    def with_role_mapping(self, mapping: dict[str, str]) -> "ConfigBuilder":
         """Set custom role name mapping"""
         self.config["ROLE_MAPPING"] = mapping
         return self
@@ -213,28 +213,24 @@ if __name__ == "__main__":
     print("Competitive preset:", config1)
 
     # Example 2: Build custom config from scratch
-    config2 = (ConfigBuilder()
-               .with_population(300, 1000)
-               .with_weights(mmr_diff=4.0, discomfort=0.3)
-               .with_captains(True)
-               .build())
+    config2 = (
+        ConfigBuilder()
+        .with_population(300, 1000)
+        .with_weights(mmr_diff=4.0, discomfort=0.3)
+        .with_captains(True)
+        .build()
+    )
     print("\nCustom config:", config2)
 
     # Example 3: Start with preset and customize
-    config3 = (ConfigBuilder(preset='quick')
-               .with_weights(mmr_diff=5.0)
-               .with_population(100, 300)
-               .build())
+    config3 = ConfigBuilder(preset="quick").with_weights(mmr_diff=5.0).with_population(100, 300).build()
     print("\nCustomized quick preset:", config3)
 
     # Example 4: Custom roles
-    config4 = (ConfigBuilder()
-               .with_role_mask({"Tank": 1, "DPS": 2, "Support": 2})
-               .with_role_mapping({
-                   "tank": "Tank",
-                   "dps": "DPS",
-                   "support": "Support",
-                   "healer": "Support"
-               })
-               .build())
+    config4 = (
+        ConfigBuilder()
+        .with_role_mask({"Tank": 1, "Damage": 2, "Support": 2})
+        .with_role_mapping({"tank": "Tank", "dps": "Damage", "support": "Support", "healer": "Support"})
+        .build()
+    )
     print("\nCustom roles config:", config4)

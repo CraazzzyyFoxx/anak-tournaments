@@ -3,6 +3,8 @@ import Image from "next/image";
 import achievementsService from "@/services/achievements.service";
 import AchievementUsers from "@/app/achievements/[id]/components/AchiementUsers";
 
+export const dynamic = 'force-dynamic';
+
 const AchievementPage = async (props: { params: Promise<{ id: number }> }) => {
   const params = await props.params;
   const data = await achievementsService.getOne(params.id);

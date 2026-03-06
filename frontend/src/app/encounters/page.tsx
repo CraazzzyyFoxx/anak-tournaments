@@ -1,8 +1,7 @@
-import * as React from "react";
-
 import encounterService from "@/services/encounter.service";
 import EncountersTable from "@/components/EncountersTable";
-import { Suspense } from "react";
+
+const DEFAULT_PAGE = 1;
 
 type EncountersPageProps = {
   searchParams: Promise<{
@@ -11,15 +10,29 @@ type EncountersPageProps = {
   }>;
 };
 
-export default async function EncountersPage({ searchParams }: EncountersPageProps) {
-  const resolvedSearchParams = await searchParams;
-  const page = Number.parseInt(resolvedSearchParams.page ?? "1", 10) || 1;
-  const search = resolvedSearchParams.search ?? "";
+type ParsedSearchParams = {
+  page: number;
+  search: string;
+};
+
+function parseSearchParams(params: { page?: string; search?: string }): ParsedSearchParams {
+  const parsedPage = Number.parseInt(params.page ?? String(DEFAULT_PAGE), 10);
+  const page = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : DEFAULT_PAGE;
+
+  return {
+    page,
+    search: params.search ?? "",
+  };
+}
+
+async function EncountersContent({ page, search }: ParsedSearchParams) {
   const data = await encounterService.getAll(page, search);
 
-  return (
-    <Suspense>
-      <EncountersTable data={data} search={search} InitialPage={page} />
-    </Suspense>
-  );
+  return <EncountersTable data={data} search={search} InitialPage={page} />;
+}
+
+export default async function EncountersPage({ searchParams }: EncountersPageProps) {
+  const params = parseSearchParams(await searchParams);
+
+  return <EncountersContent page={params.page} search={params.search} />;
 }
