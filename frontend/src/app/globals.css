@@ -204,6 +204,16 @@ body, html {
     }
   }
 
+  .liquid-glass-surface {
+    background: hsl(var(--background) / 0.94);
+  }
+
+  @supports (backdrop-filter: blur(10px)) {
+    .liquid-glass-surface {
+      background: hsl(var(--background) / 0.82);
+    }
+  }
+
   .liquid-glass [data-ui="card"] {
     background:
       radial-gradient(900px circle at 12% 6%, rgb(var(--lg-a) / 0.10), transparent 56%),

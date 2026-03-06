@@ -69,7 +69,7 @@ const TeamComboBox = ({ teams, onSelect, selectedTeam, variant = "default" }: Te
         className={cn("p-0", isGlass && "liquid-glass-panel")}
         style={contentWidth ? { width: `${contentWidth}px` } : undefined}
       >
-        <Command className={cn(isGlass && "bg-transparent")}>
+        <Command className={cn(isGlass && "liquid-glass-surface")}>
           <CommandInput placeholder="Search team..." />
           <CommandList>
             <CommandEmpty>No team found.</CommandEmpty>

@@ -111,7 +111,7 @@ const UserSearchCombobox = ({
         className="liquid-glass-panel p-0"
         style={contentWidth ? { width: `${contentWidth}px` } : undefined}
       >
-        <Command className="bg-transparent">
+        <Command className="liquid-glass-surface">
           <CommandInput value={searchValue} onValueChange={setSearchValue} placeholder="Search user..." />
           <CommandList>
             <CommandEmpty>{emptyMessage}</CommandEmpty>
