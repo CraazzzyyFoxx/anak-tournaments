@@ -47,7 +47,9 @@ export default function RootLayout({
             <LoginModalTrigger />
           </Suspense>
           <AuthModal />
-          <AccountSettingsModal />
+          <Suspense fallback={null}>
+            <AccountSettingsModal />
+          </Suspense>
 
           <div className="w-full max-w-screen-3xl mt-6 mx-auto px-4 md:px-6 xl:px-10 h-full">
             <Header />

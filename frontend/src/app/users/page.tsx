@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useDebounce } from "use-debounce";
@@ -19,7 +19,7 @@ import {
   parseSortValue
 } from "./components/users-overview/utils";
 
-const UsersPage = () => {
+const UsersPageContent = () => {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -198,6 +198,14 @@ const UsersPage = () => {
         </Card>
       </div>
     </div>
+  );
+};
+
+const UsersPage = () => {
+  return (
+    <Suspense fallback={null}>
+      <UsersPageContent />
+    </Suspense>
   );
 };
 

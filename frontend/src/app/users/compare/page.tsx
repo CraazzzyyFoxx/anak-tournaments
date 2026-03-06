@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { Suspense, useEffect } from "react";
 import { Users } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
@@ -12,7 +12,7 @@ import CompareUnifiedTable from "@/app/users/compare/components/CompareUnifiedTa
 import { useUserCompareSearchParams } from "@/app/users/compare/hooks/useUserCompareSearchParams";
 import { useUserCompareData } from "@/app/users/compare/hooks/useUserCompareData";
 
-const Page = () => {
+const PageContent = () => {
   const compareParams = useUserCompareSearchParams();
 
   const {
@@ -144,6 +144,14 @@ const Page = () => {
         </Card>
       )}
     </div>
+  );
+};
+
+const Page = () => {
+  return (
+    <Suspense fallback={null}>
+      <PageContent />
+    </Suspense>
   );
 };
 
