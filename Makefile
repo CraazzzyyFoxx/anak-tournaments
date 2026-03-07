@@ -136,18 +136,18 @@ frontend-rebuild:
 	$(COMPOSE) up -d --build --wait frontend
 
 # ==============================================================================
-# Monitoring stack (Prometheus + Alertmanager + Loki + Promtail + Grafana)
+# Monitoring services in unified production stack
 # ==============================================================================
-MONITORING_COMPOSE = docker compose -f monitoring/docker-compose.monitoring.yml
+MONITORING_SERVICES = prometheus alertmanager grafana loki promtail redis-exporter rabbitmq-exporter
 
 monitoring-up:
-	$(MONITORING_COMPOSE) up -d
+	$(PROD_COMPOSE) up -d $(MONITORING_SERVICES)
 
 monitoring-down:
-	$(MONITORING_COMPOSE) down
+	$(PROD_COMPOSE) stop $(MONITORING_SERVICES)
 
 monitoring-logs:
-	$(MONITORING_COMPOSE) logs -f
+	$(PROD_COMPOSE) logs -f $(MONITORING_SERVICES)
 
 monitoring-ps:
-	$(MONITORING_COMPOSE) ps
+	$(PROD_COMPOSE) ps $(MONITORING_SERVICES)

@@ -1,8 +1,8 @@
 # Monitoring Deployment
 
-This document explains how to deploy the monitoring stack for Anak Tournaments on the same host as the application.
+This document explains how monitoring is deployed as part of the unified production stack for Anak Tournaments.
 
-The monitoring stack is defined in `monitoring/docker-compose.monitoring.yml` and includes:
+The monitoring services are orchestrated from `docker-compose.production.yml` and use configs stored in `monitoring/`.
 
 - Prometheus for metrics collection
 - Alertmanager for alert routing
@@ -18,10 +18,9 @@ Before starting the monitoring stack, make sure all of the following are true:
 
 1. Docker and Docker Compose are installed on the host.
 2. The application stack is already running on the same machine.
-3. The application created the shared Docker network `anak-tournaments_app-network`.
-4. The host log directories exist under `logs/`, because Promtail reads logs from there.
+3. The host log directories exist under `logs/`, because Promtail reads logs from there.
 
-Application logs are mounted from `../logs` into Promtail as `/var/log/app`.
+Application logs are mounted from `./logs` into Promtail as `/var/log/app` through `docker-compose.production.yml`.
 
 ## What the stack exposes
 
@@ -34,31 +33,11 @@ After deployment, the monitoring endpoints are available on the host:
 - Redis Exporter: `http://localhost:9121/metrics`
 - RabbitMQ Exporter: `http://localhost:9419/metrics`
 
-## 1. Start the application stack first
+## 1. Prepare the production stack
 
-The monitoring compose file connects to the external Docker network `anak-tournaments_app-network`, so the application stack must be running before monitoring starts.
+Monitoring now runs inside the same production Docker Compose stack as the application.
 
-For local development:
-
-```bash
-docker compose up -d --wait
-```
-
-For production:
-
-```bash
-docker compose -f docker-compose.production.yml up -d
-```
-
-Then confirm the shared network exists:
-
-```bash
-docker network ls
-```
-
-Look for `anak-tournaments_app-network`.
-
-If your deployment uses a different Compose project name or a different repository directory name, Docker may create a different network name. In that case, update `monitoring/docker-compose.monitoring.yml` so the external network name matches the real application network.
+The production compose file sets the project name to `overwatch-tournaments`, so all resources are created under one stack.
 
 ## 2. Prepare environment variables
 
@@ -83,10 +62,7 @@ cp monitoring/secrets/discord_webhook_url.example monitoring/secrets/discord_web
 
 Then replace the example value in `monitoring/secrets/discord_webhook_url` with the real Discord webhook URL.
 
-These variables are used by:
-
-- `monitoring/docker-compose.monitoring.yml` for Grafana admin credentials
-- `monitoring/docker-compose.monitoring.yml` for RabbitMQ exporter access
+These variables are used by `docker-compose.production.yml` for Grafana and RabbitMQ exporter configuration.
 
 If RabbitMQ in the application stack uses the values from `RABBITMQ_DEFAULT_USER` and `RABBITMQ_DEFAULT_PASS`, set `RABBITMQ_USER` and `RABBITMQ_PASSWORD` to the same credentials before starting monitoring.
 
@@ -108,30 +84,30 @@ The current Prometheus config is aligned with the application compose files and 
 - `parser:8002`
 - `balancer:8003`
 
-## 4. Start the monitoring stack
+## 4. Start monitoring services
 
 Validate the compose file:
 
 ```bash
-docker compose -f monitoring/docker-compose.monitoring.yml config
+docker compose -f docker-compose.production.yml config
 ```
 
 Pull the images:
 
 ```bash
-docker compose -f monitoring/docker-compose.monitoring.yml pull
+docker compose -f docker-compose.production.yml pull prometheus alertmanager grafana loki promtail redis-exporter rabbitmq-exporter
 ```
 
-Start the stack:
+Start only the monitoring services inside the unified production stack:
 
 ```bash
-docker compose -f monitoring/docker-compose.monitoring.yml up -d
+docker compose -f docker-compose.production.yml up -d prometheus alertmanager grafana loki promtail redis-exporter rabbitmq-exporter
 ```
 
 Check container status:
 
 ```bash
-docker compose -f monitoring/docker-compose.monitoring.yml ps
+docker compose -f docker-compose.production.yml ps prometheus alertmanager grafana loki promtail redis-exporter rabbitmq-exporter
 ```
 
 ## 5. Verify the deployment
@@ -139,7 +115,7 @@ docker compose -f monitoring/docker-compose.monitoring.yml ps
 Check logs if any service is restarting or unhealthy:
 
 ```bash
-docker compose -f monitoring/docker-compose.monitoring.yml logs -f prometheus alertmanager grafana loki promtail
+docker compose -f docker-compose.production.yml logs -f prometheus alertmanager grafana loki promtail
 ```
 
 Then verify each major component:
@@ -180,21 +156,21 @@ Promtail reads log files from `logs/**/*.log` through the mount defined in `moni
 Stop the monitoring stack:
 
 ```bash
-docker compose -f monitoring/docker-compose.monitoring.yml down
+docker compose -f docker-compose.production.yml stop prometheus alertmanager grafana loki promtail redis-exporter rabbitmq-exporter
 ```
 
 Restart the monitoring stack:
 
 ```bash
-docker compose -f monitoring/docker-compose.monitoring.yml restart
+docker compose -f docker-compose.production.yml restart prometheus alertmanager grafana loki promtail redis-exporter rabbitmq-exporter
 ```
 
 Restart a single service after a config change:
 
 ```bash
-docker compose -f monitoring/docker-compose.monitoring.yml restart prometheus
-docker compose -f monitoring/docker-compose.monitoring.yml restart grafana
-docker compose -f monitoring/docker-compose.monitoring.yml restart alertmanager
+docker compose -f docker-compose.production.yml restart prometheus
+docker compose -f docker-compose.production.yml restart grafana
+docker compose -f docker-compose.production.yml restart alertmanager
 ```
 
 ## Alerting setup note
@@ -205,15 +181,15 @@ This keeps the real webhook out of git while still allowing a static Alertmanage
 
 ## Troubleshooting
 
-### Monitoring stack fails with missing external network
+### Monitoring services fail to start
 
-Cause: the application stack is not running yet, or the network name is different.
+Cause: required application services are not running inside the unified production stack.
 
 Fix:
 
 1. Start the application first.
-2. Run `docker network ls`.
-3. Update `monitoring/docker-compose.monitoring.yml` if the actual network name is not `anak-tournaments_app-network`.
+2. Run `docker compose -f docker-compose.production.yml ps`.
+3. Ensure the required services are attached to `app-network` in the production compose file.
 
 ### Prometheus shows app targets as DOWN
 
@@ -253,11 +229,11 @@ Fix:
 
 1. Confirm that the repository contains fresh `.log` files under `logs/`.
 2. Confirm that `promtail` is running.
-3. Check `docker compose -f monitoring/docker-compose.monitoring.yml logs promtail`.
+3. Check `docker compose -f docker-compose.production.yml logs promtail`.
 
 ## Files involved in deployment
 
-- `monitoring/docker-compose.monitoring.yml` - monitoring stack definition
+- `docker-compose.production.yml` - unified production stack definition
 - `monitoring/prometheus/prometheus.yml` - Prometheus scrape jobs and alertmanager target
 - `monitoring/prometheus/rules/` - alert rules
 - `monitoring/alertmanager/alertmanager.yml` - alert routing

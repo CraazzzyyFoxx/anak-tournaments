@@ -1,11 +1,10 @@
 ---
-# Monitoring stack — Prometheus + Alertmanager + Loki + Promtail + Grafana
-# Deploy on the same machine as the application (shares the app network).
+# Legacy reference file.
+# Monitoring now runs from `docker-compose.production.yml` as part of the
+# unified `overwatch-tournaments` production stack.
 #
-# Usage:
-#   docker compose -f monitoring/docker-compose.monitoring.yml up -d
-#
-# Prerequisites: the main app stack must be running so the external network exists.
+# Keep this file only as a migration/reference snapshot until it is safe to
+# remove completely.
 
 networks:
   app-network:
