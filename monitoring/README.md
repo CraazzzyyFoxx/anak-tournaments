@@ -134,6 +134,10 @@ Expected datasources:
 - Prometheus -> `http://prometheus:9090`
 - Loki -> `http://loki:3100`
 
+Provisioned dashboards are placed in the Grafana folder `Anak Tournaments`, and the default home dashboard points to `Application Logs`.
+
+If Grafana was already started before this provisioning setup was introduced, existing dashboards may remain in `General` until they are re-imported or moved once. Fresh Grafana volumes pick up the folder and home dashboard automatically.
+
 ### Prometheus
 
 Open `http://localhost:9090/targets` and verify that targets are `UP`.
