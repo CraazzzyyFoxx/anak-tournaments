@@ -13,6 +13,7 @@ from src.routes.tournament import router as tournament_router
 from src.routes.analytics import router as analytics_router
 from src.routes.user import router as user_router
 from .achievement import router as achievement_router
+from .admin import admin_router
 
 router = APIRouter()
 router.include_router(tournament_router)
@@ -28,4 +29,5 @@ router.include_router(user_router)
 router.include_router(gamemode_router)
 router.include_router(hero_router)
 router.include_router(map_router)
+router.include_router(admin_router)
 

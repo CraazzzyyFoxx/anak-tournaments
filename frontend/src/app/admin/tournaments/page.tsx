@@ -1,0 +1,399 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { ColumnDef } from "@tanstack/react-table";
+import { Plus, Pencil, Trash2, CheckCircle, XCircle } from "lucide-react";
+import { AdminDataTable } from "@/components/admin/AdminDataTable";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
+import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
+import tournamentService from "@/services/tournament.service";
+import adminService from "@/services/admin.service";
+import { Tournament } from "@/types/tournament.types";
+import { TournamentCreateInput, TournamentUpdateInput } from "@/types/admin.types";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
+
+export default function TournamentsPage() {
+  const router = useRouter();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
+
+  // Form state
+  const [formData, setFormData] = useState<TournamentCreateInput | TournamentUpdateInput>({
+    name: "",
+    description: "",
+    is_league: false,
+    start_date: "",
+    end_date: ""
+  });
+
+  // Mutations
+  const createMutation = useMutation({
+    mutationFn: (data: TournamentCreateInput) => adminService.createTournament(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tournaments"] });
+      setCreateDialogOpen(false);
+      resetForm();
+      toast({ title: "Tournament created successfully" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: TournamentUpdateInput }) =>
+      adminService.updateTournament(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tournaments"] });
+      setEditDialogOpen(false);
+      setSelectedTournament(null);
+      resetForm();
+      toast({ title: "Tournament updated successfully" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => adminService.deleteTournament(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tournaments"] });
+      setDeleteDialogOpen(false);
+      setSelectedTournament(null);
+      toast({ title: "Tournament deleted successfully" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  });
+
+  const resetForm = () => {
+    setFormData({
+      name: "",
+      description: "",
+      is_league: false,
+      start_date: "",
+      end_date: ""
+    });
+  };
+
+  const handleCreate = () => {
+    setCreateDialogOpen(true);
+    resetForm();
+  };
+
+  const handleEdit = (tournament: Tournament) => {
+    setSelectedTournament(tournament);
+    setFormData({
+      name: tournament.name,
+      description: tournament.description || "",
+      is_finished: tournament.is_finished,
+      start_date: new Date(tournament.start_date).toISOString().split("T")[0],
+      end_date: new Date(tournament.end_date).toISOString().split("T")[0]
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleDelete = (tournament: Tournament) => {
+    setSelectedTournament(tournament);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleSubmitCreate = (e: React.FormEvent) => {
+    e.preventDefault();
+    createMutation.mutate(formData as TournamentCreateInput);
+  };
+
+  const handleSubmitUpdate = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (selectedTournament) {
+      updateMutation.mutate({
+        id: selectedTournament.id,
+        data: formData as TournamentUpdateInput
+      });
+    }
+  };
+
+  const handleConfirmDelete = () => {
+    if (selectedTournament) {
+      deleteMutation.mutate(selectedTournament.id);
+    }
+  };
+
+  const columns: ColumnDef<Tournament>[] = [
+    {
+      accessorKey: "number",
+      header: "#",
+      cell: ({ row }) => <div className="font-medium">{row.getValue("number") || "—"}</div>
+    },
+    {
+      accessorKey: "name",
+      header: "Name",
+      cell: ({ row }) => <div className="font-medium">{row.getValue("name")}</div>
+    },
+    {
+      accessorKey: "is_league",
+      header: "Type",
+      cell: ({ row }) => (
+        <Badge variant={row.getValue("is_league") ? "default" : "secondary"}>
+          {row.getValue("is_league") ? "League" : "Tournament"}
+        </Badge>
+      )
+    },
+    {
+      accessorKey: "is_finished",
+      header: "Status",
+      cell: ({ row }) =>
+        row.getValue("is_finished") ? (
+          <Badge variant="outline" className="gap-1">
+            <CheckCircle className="h-3 w-3" />
+            Finished
+          </Badge>
+        ) : (
+          <Badge variant="default" className="gap-1">
+            <XCircle className="h-3 w-3" />
+            Active
+          </Badge>
+        )
+    },
+    {
+      accessorKey: "start_date",
+      header: "Start Date",
+      cell: ({ row }) => new Date(row.getValue("start_date")).toLocaleDateString()
+    },
+    {
+      accessorKey: "end_date",
+      header: "End Date",
+      cell: ({ row }) => new Date(row.getValue("end_date")).toLocaleDateString()
+    },
+    {
+      id: "actions",
+      cell: ({ row }) => (
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="icon" onClick={() => handleEdit(row.original)}>
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => handleDelete(row.original)}
+            className="text-destructive"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      )
+    }
+  ];
+
+  return (
+    <div className="flex flex-col gap-6">
+      <AdminPageHeader
+        title="Tournaments"
+        description="Manage tournaments and their groups"
+        actions={
+          <Button onClick={handleCreate}>
+            <Plus className="mr-2 h-4 w-4" />
+            Create Tournament
+          </Button>
+        }
+      />
+
+      <AdminDataTable
+        queryKey={(page, search) => ["tournaments", page, search]}
+        queryFn={(page, search) =>
+          tournamentService.getAll(null).then((data) => ({
+            ...data,
+            results: search
+              ? data.results.filter((t) => t.name.toLowerCase().includes(search.toLowerCase()))
+              : data.results
+          }))
+        }
+        columns={columns}
+        searchPlaceholder="Search tournaments..."
+        emptyMessage="No tournaments found."
+        onRowClick={(row) => router.push(`/admin/tournaments/${row.original.id}`)}
+      />
+
+      {/* Create Dialog */}
+      <EntityFormDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        title="Create Tournament"
+        description="Create a new tournament"
+        onSubmit={handleSubmitCreate}
+        isSubmitting={createMutation.isPending}
+      >
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="name">Name *</Label>
+            <Input
+              id="name"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              required
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="number">Number</Label>
+            <Input
+              id="number"
+              type="number"
+              value={(formData as TournamentCreateInput).number || ""}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  number: e.target.value ? parseInt(e.target.value) : undefined
+                })
+              }
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="description">Description</Label>
+            <Textarea
+              id="description"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            />
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="is_league"
+              checked={(formData as TournamentCreateInput).is_league}
+              onCheckedChange={(checked) =>
+                setFormData({ ...formData, is_league: checked as boolean })
+              }
+            />
+            <Label htmlFor="is_league" className="cursor-pointer">
+              Is League
+            </Label>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="start_date">Start Date *</Label>
+              <Input
+                id="start_date"
+                type="date"
+                value={formData.start_date}
+                onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+                required
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="end_date">End Date *</Label>
+              <Input
+                id="end_date"
+                type="date"
+                value={formData.end_date}
+                onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
+                required
+              />
+            </div>
+          </div>
+        </div>
+      </EntityFormDialog>
+
+      {/* Edit Dialog */}
+      <EntityFormDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        title="Edit Tournament"
+        description="Update tournament details"
+        onSubmit={handleSubmitUpdate}
+        isSubmitting={updateMutation.isPending}
+      >
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="edit-name">Name</Label>
+            <Input
+              id="edit-name"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="edit-description">Description</Label>
+            <Textarea
+              id="edit-description"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            />
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="is_finished"
+              checked={(formData as TournamentUpdateInput).is_finished}
+              onCheckedChange={(checked) =>
+                setFormData({ ...formData, is_finished: checked as boolean })
+              }
+            />
+            <Label htmlFor="is_finished" className="cursor-pointer">
+              Is Finished
+            </Label>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="edit-start_date">Start Date</Label>
+              <Input
+                id="edit-start_date"
+                type="date"
+                value={formData.start_date}
+                onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="edit-end_date">End Date</Label>
+              <Input
+                id="edit-end_date"
+                type="date"
+                value={formData.end_date}
+                onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
+              />
+            </div>
+          </div>
+        </div>
+      </EntityFormDialog>
+
+      {/* Delete Dialog */}
+      <DeleteConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        onConfirm={handleConfirmDelete}
+        title="Delete Tournament"
+        description={`Are you sure you want to delete "${selectedTournament?.name}"? This action cannot be undone.`}
+        cascadeInfo={[
+          "All tournament groups",
+          "All teams in this tournament",
+          "All players in these teams",
+          "All encounters in this tournament",
+          "All standings data"
+        ]}
+        isDeleting={deleteMutation.isPending}
+      />
+    </div>
+  );
+}

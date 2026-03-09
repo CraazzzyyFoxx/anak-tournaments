@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import AuthModal from "@/components/AuthModal";
 import AccountSettingsModal from "@/components/AccountSettingsModal";
 import LoginModalTrigger from "@/components/LoginModalTrigger";
+import { Toaster } from "@/components/ui/toaster";
 import { Suspense } from "react";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -50,6 +51,7 @@ export default function RootLayout({
           <Suspense fallback={null}>
             <AccountSettingsModal />
           </Suspense>
+          <Toaster />
 
           <div className="w-full max-w-screen-3xl mt-6 mx-auto px-4 md:px-6 xl:px-10 h-full">
             <Header />
