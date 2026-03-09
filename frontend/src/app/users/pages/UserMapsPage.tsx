@@ -1,12 +1,12 @@
 import React from "react";
+import dynamic from "next/dynamic";
 
 import { User } from "@/types/user.types";
-import userService from "@/services/user.service";
-import UserMapsTable from "@/app/users/components/UserMapsTable";
 
-const UserMapsPage = async ({ user }: { user: User }) => {
-  const maps = await userService.getUserTopMaps(user.id);
-  return <UserMapsTable maps={maps} />;
+const UserMapsExplorer = dynamic(() => import("@/app/users/components/UserMapsExplorer"));
+
+const UserMapsPage = ({ user }: { user: User }) => {
+  return <UserMapsExplorer userId={user.id} />;
 };
 
 export default UserMapsPage;

@@ -1,10 +1,60 @@
 # Python
 __pycache__
-app.egg-info
 *.pyc
+*.pyo
+*.pyd
+.Python
+app.egg-info
 .mypy_cache
 .coverage
 htmlcov
 .pytest_cache
 .venv
+.ruff_cache
+*.py[cod]
+*$py.class
+
+# IDE
 .idea
+.vscode
+*.swp
+*.swo
+*~
+
+# Tests
+tests/
+.pytest_cache
+pytest.ini
+.coverage
+htmlcov/
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+!README.md
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+.env.*.local
+env/
+
+# Database
+*.db
+*.sqlite
+migrations/
+
+# Alembic
+alembic.ini

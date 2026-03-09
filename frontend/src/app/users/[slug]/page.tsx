@@ -1,10 +1,9 @@
-import React, { Suspense } from "react";
+import React, { Suspense, cache } from "react";
 import userService from "@/services/user.service";
 import UserHeader from "@/app/users/components/UserHeader";
-import { Tabs, TabsContent } from "@/components/ui/tabs";
+import { TabsContent } from "@/components/ui/tabs";
 import UserOverviewPage, { UserOverviewPageSkeleton } from "@/app/users/pages/UserOverviewPage";
 import UserMapsPage from "@/app/users/pages/UserMapsPage";
-import UserProfileTabList from "@/app/users/components/UserProfileTabList";
 import { redirect } from "next/navigation";
 import UserHeroesPage from "@/app/users/pages/UserHeroesPage";
 import {
@@ -17,6 +16,36 @@ import {
   UserTournamentsPageSkeleton
 } from "@/app/users/pages/UserTournamentsPage";
 import UserAchievementPage from "@/app/users/pages/UserAchievementPage";
+import { SITE_NAME } from "@/config/site";
+import { Skeleton } from "@/components/ui/skeleton";
+import UserTabsClient from "@/app/users/components/UserTabsClient";
+import UserLiquidGlassProvider from "@/app/users/components/UserLiquidGlassProvider";
+import UserHeaderSkeleton from "@/app/users/components/UserHeaderSkeleton";
+
+export const dynamic = "force-dynamic";
+
+const USER_TABS = ["overview", "tournaments", "matches", "heroes", "maps", "achievements"] as const;
+type UserTab = (typeof USER_TABS)[number];
+
+type UserPageSearchParams = {
+  tab?: string;
+  tournamentId?: string;
+  page?: string;
+  selectedTournamentId?: string;
+  achievementTournamentId?: string;
+};
+
+const isUserTab = (value: string): value is UserTab => {
+  return USER_TABS.includes(value as UserTab);
+};
+
+const toPositiveInt = (value: string | undefined, fallback: number) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return fallback;
+  }
+  return Math.floor(parsed);
+};
 
 export async function generateMetadata(props: {
   params: Promise<{ slug: string }>;
@@ -25,12 +54,12 @@ export async function generateMetadata(props: {
   const user = await userService.getUserByName(params.slug);
 
   return {
-    title: `${user.name} Overview | AQT`,
-    description: `Overview for ${user.name} on AQT.`,
+    title: `${user.name} Overview | ${SITE_NAME}`,
+    description: `Overview for ${user.name} on ${SITE_NAME}.`,
     openGraph: {
-      title: `${user.name} Overview | AQT.`,
-      description: `Overview for ${user.name} on AQT.`,
-      url: "https://aqt.craazzzyyfoxx.me",
+      title: `${user.name} Overview | on ${SITE_NAME}.`,
+      description: `Overview for ${user.name} on ${SITE_NAME}.`,
+      url: SITE_NAME,
       type: "website",
       siteName: "AQT",
       images: [
@@ -45,81 +74,167 @@ export async function generateMetadata(props: {
   };
 }
 
+const getUserAndProfile = cache(async (slug: string) => {
+  const user = await userService.getUserByName(slug);
+  const profile = await userService.getUserProfile(user.id);
+  return { user, profile };
+});
+
+type UserAndProfile = Awaited<ReturnType<typeof getUserAndProfile>>;
+
+const UserHeaderSection = async ({ userAndProfile }: { userAndProfile: Promise<UserAndProfile> }) => {
+  const { user, profile } = await userAndProfile;
+  return <UserHeader user={user} profile={profile} />;
+};
+
+const UserOverviewTab = async ({
+  userAndProfile,
+  tournamentId
+}: {
+  userAndProfile: Promise<UserAndProfile>;
+  tournamentId?: number;
+}) => {
+  const { user, profile } = await userAndProfile;
+  return <UserOverviewPage user={user} profile={profile} tournamentId={tournamentId} />;
+};
+
+const UserTournamentsTab = async ({ userAndProfile }: { userAndProfile: Promise<UserAndProfile> }) => {
+  const { user } = await userAndProfile;
+  return <UserTournamentsPage user={user} />;
+};
+
+const UserMatchesTab = async ({ userAndProfile, page }: { userAndProfile: Promise<UserAndProfile>; page: number }) => {
+  const { user } = await userAndProfile;
+  return <UserEncountersPage user={user} page={page} />;
+};
+
+const UserMapsTab = async ({ userAndProfile }: { userAndProfile: Promise<UserAndProfile> }) => {
+  const { user } = await userAndProfile;
+  return <UserMapsPage user={user} />;
+};
+
+const UserHeroesTab = async ({ userAndProfile }: { userAndProfile: Promise<UserAndProfile> }) => {
+  const { user } = await userAndProfile;
+  return <UserHeroesPage user={user} />;
+};
+
+const UserAchievementsTab = async ({
+  userAndProfile,
+  selectedTournamentId
+}: {
+  userAndProfile: Promise<UserAndProfile>;
+  selectedTournamentId?: string;
+}) => {
+  const { user } = await userAndProfile;
+  return <UserAchievementPage user={user} selectedTournamentId={selectedTournamentId} />;
+};
+
+const resolveTabContent = ({
+  activeTab,
+  userAndProfile,
+  tournamentId,
+  pageNumber,
+  achievementTournamentId
+}: {
+  activeTab: UserTab;
+  userAndProfile: Promise<UserAndProfile>;
+  tournamentId?: number;
+  pageNumber: number;
+  achievementTournamentId?: string;
+}) => {
+  switch (activeTab) {
+    case "overview":
+      return {
+        value: "overview",
+        fallback: <UserOverviewPageSkeleton />,
+        content: <UserOverviewTab userAndProfile={userAndProfile} tournamentId={tournamentId} />
+      };
+    case "tournaments":
+      return {
+        value: "tournaments",
+        fallback: <UserTournamentsPageSkeleton />,
+        content: <UserTournamentsTab userAndProfile={userAndProfile} />
+      };
+    case "matches":
+      return {
+        value: "matches",
+        fallback: <UserEncountersPageSkeleton />,
+        content: <UserMatchesTab userAndProfile={userAndProfile} page={pageNumber} />
+      };
+    case "maps":
+      return {
+        value: "maps",
+        fallback: <Skeleton className="min-h-150 w-full rounded-xl" />,
+        content: <UserMapsTab userAndProfile={userAndProfile} />
+      };
+    case "heroes":
+      return {
+        value: "heroes",
+        fallback: <Skeleton className="min-h-150 w-full rounded-xl" />,
+        content: <UserHeroesTab userAndProfile={userAndProfile} />
+      };
+    case "achievements":
+      return {
+        value: "achievements",
+        fallback: <Skeleton className="min-h-150 w-full rounded-xl" />,
+        content: (
+          <UserAchievementsTab
+            userAndProfile={userAndProfile}
+            selectedTournamentId={achievementTournamentId}
+          />
+        )
+      };
+  }
+};
+
 export default async function UserPage({
   params,
   searchParams
 }: {
-  params: { slug: string };
-  searchParams: { tab: string; tournamentId: string; page: string; selectedTournamentId: string };
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<UserPageSearchParams>;
 }) {
-  let activeTab = searchParams.tab as string;
-  const searchParamsObj = new URLSearchParams(searchParams);
-  let searchParamsChanged = false;
+  const resolvedParams = await params;
+  const resolvedSearchParams = await searchParams;
+  const userAndProfile = getUserAndProfile(resolvedParams.slug);
 
-  if (
-    !["overview", "tournaments", "matches", "heroes", "maps", "achievements"].includes(activeTab)
-  ) {
-    activeTab = "overview";
-    searchParamsObj.set("tab", activeTab);
-    searchParamsChanged = true;
-  }
-  const user = await userService.getUserByName(params.slug);
-  const profile = await userService.getUserProfile(user.id);
+  const requestedTab = resolvedSearchParams.tab ?? "overview";
+  const activeTab: UserTab = isUserTab(requestedTab) ? requestedTab : "overview";
 
-  if (!searchParams.tournamentId) {
-    searchParamsObj.set("tournamentId", profile.tournaments[0].id.toString());
-    searchParamsChanged = true;
-  }
-
-  if (!searchParams.page) {
-    searchParamsObj.set("page", "1");
-    searchParamsChanged = true;
+  if (!isUserTab(requestedTab)) {
+    const searchParamsObj = new URLSearchParams();
+    for (const [key, value] of Object.entries(resolvedSearchParams)) {
+      if (typeof value === "string") {
+        searchParamsObj.set(key, value);
+      }
+    }
+    searchParamsObj.set("tab", "overview");
+    redirect(`/users/${resolvedParams.slug}?${searchParamsObj.toString()}`);
   }
 
-  if (searchParamsChanged) {
-    redirect(`/users/${params.slug}?${searchParamsObj.toString()}`);
-  }
+  const tournamentId = toPositiveInt(resolvedSearchParams.tournamentId, 0) || undefined;
+  const pageNumber = toPositiveInt(resolvedSearchParams.page, 1);
+  const achievementTournamentId = resolvedSearchParams.achievementTournamentId;
+  const tabContent = resolveTabContent({
+    activeTab,
+    userAndProfile,
+    tournamentId,
+    pageNumber,
+    achievementTournamentId
+  });
 
   return (
-    <>
-      <UserHeader user={user} profile={profile} />
-      <Tabs defaultValue="overview" value={activeTab}>
-        <UserProfileTabList />
-        <Suspense fallback={<UserOverviewPageSkeleton />}>
-          <TabsContent value="overview">
-            <UserOverviewPage
-              user={user}
-              profile={profile}
-              tournamentId={Number(searchParams.tournamentId)}
-            />
+    <UserLiquidGlassProvider>
+      <Suspense fallback={<UserHeaderSkeleton />}>
+        <UserHeaderSection userAndProfile={userAndProfile} />
+      </Suspense>
+      <UserTabsClient activeTab={activeTab}>
+        <Suspense fallback={tabContent.fallback}>
+          <TabsContent value={tabContent.value} className="mt-0">
+            {tabContent.content}
           </TabsContent>
         </Suspense>
-        <Suspense fallback={<UserTournamentsPageSkeleton />}>
-          <TabsContent value="tournaments">
-            <UserTournamentsPage user={user} />
-          </TabsContent>
-        </Suspense>
-        <Suspense fallback={<UserEncountersPageSkeleton />}>
-          <TabsContent value="matches">
-            <UserEncountersPage user={user} page={Number(searchParams.page)} />
-          </TabsContent>
-        </Suspense>
-        <Suspense>
-          <TabsContent value="maps">
-            <UserMapsPage user={user} />
-          </TabsContent>
-        </Suspense>
-        <Suspense>
-          <TabsContent className="flex justify-center" value="heroes">
-            <UserHeroesPage user={user} />
-          </TabsContent>
-        </Suspense>
-        <Suspense>
-          <TabsContent className="flex justify-center" value="achievements">
-            <UserAchievementPage user={user} />
-          </TabsContent>
-        </Suspense>
-      </Tabs>
-    </>
+      </UserTabsClient>
+    </UserLiquidGlassProvider>
   );
 }

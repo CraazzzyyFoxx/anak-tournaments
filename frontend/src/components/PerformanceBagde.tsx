@@ -23,7 +23,7 @@ export const PerformanceBadgeWithTooltip = ({ match }: { match: MatchWithUserSta
     <Tooltip>
       <TooltipTrigger>
         <div
-          className={`inline-flex items-center rounded-xl border px-2.5 py-0.5 text-xs font-semibold ${bgColor} ${color}`}
+          className={`inline-flex items-center rounded-xl border px-2.5 py-0.5 text-xs font-semibold cursor-pointer ${bgColor} ${color}`}
         >
           <span>{match.performance}th</span>
         </div>

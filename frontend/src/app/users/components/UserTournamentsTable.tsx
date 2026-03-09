@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo } from "react";
 import Image from "next/image";
-import { Card, CardContent, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { UserTournament } from "@/types/user.types";
 import { Accordion, AccordionContent, AccordionItem } from "@/components/ui/accordion";
 import TournamentsIcon from "@/components/icons/TournamentsIcon";
@@ -47,39 +47,28 @@ export const UserTournamentStatsCard = ({ tournament }: { tournament: UserTourna
 };
 
 export const getTournamentColor = (tournament: UserTournament) => {
-  let color = "background";
-
-  if (!tournament.placement) return color;
-
-  if (tournament.id > 20) {
-    if (tournament.placement <= 13) {
-      color = "from-green-300";
-    }
-    if (tournament.placement == 1) {
-      color = "from-[#cbb765]";
-    }
-    if (tournament.placement == 2) {
-      color = "from-[#99b0cc]";
-    }
-    if (tournament.placement == 3) {
-      color = "from-[#a86243]";
-    }
-  } else {
-    if (tournament.placement <= 7) {
-      color = "from-green-300";
-    }
-    if (tournament.placement == 1) {
-      color = "from-[#cbb765]";
-    }
-    if (tournament.placement == 2) {
-      color = "from-[#99b0cc]";
-    }
-    if (tournament.placement == 3) {
-      color = "from-[#a86243]";
-    }
+  if (!tournament.placement) {
+    return "from-transparent";
   }
 
-  return color;
+  if (tournament.placement === 1) {
+    return "from-firstPlaceBg";
+  }
+
+  if (tournament.placement === 2) {
+    return "from-secondPlaceBg";
+  }
+
+  if (tournament.placement === 3) {
+    return "from-thirdPlaceBg";
+  }
+
+  const topThreshold = tournament.id > 20 ? 13 : 7;
+  if (tournament.placement <= topThreshold) {
+    return "from-green-300";
+  }
+
+  return "from-transparent";
 };
 
 export const UserTournamentHeader = ({ tournament }: { tournament: UserTournament }) => {
@@ -91,9 +80,9 @@ export const UserTournamentHeader = ({ tournament }: { tournament: UserTournamen
   return (
     <AccordionPrimitive.Header className="flex">
       <div
-        className={`bg-gradient-to-r ${getTournamentColor(tournament)} to-card md:min-w-80 xs:min-w-60`}
+        className={`bg-gradient-to-r ${getTournamentColor(tournament)} to-transparent md:min-w-80 xs:min-w-60`}
       />
-      <AccordionPrimitive.Trigger className="flex flex-1 items-center justify-between py-4 text-sm font-medium transition-all hover:underline [&[data-state=open]>svg]:rotate-180 md:-ml-80 xs:-ml-60">
+      <AccordionPrimitive.Trigger className="flex flex-1 items-center justify-between py-4 text-sm font-medium transition-all hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background [&[data-state=open]>svg]:rotate-180 md:-ml-80 xs:-ml-60">
         <div className="grid xs:grid-cols-2 sm:grid-cols-11 md:gap-4 xs:gap-1.5 items-center w-full fixed-columns min-h-10 xs:ml-8 md:ml-0">
           <div className="col-span-1">
             <h3 className="scroll-m-20 text-2xl font-semibold tracking-tight xs:text-left md:text-center">
@@ -132,7 +121,7 @@ export const UserTournamentLeagueHeader = ({ tournament }: { tournament: UserTou
 
   return (
     <AccordionPrimitive.Header className="flex">
-      <AccordionPrimitive.Trigger className="flex flex-1 items-center justify-between py-4 text-sm font-medium transition-all hover:underline [&[data-state=open]>svg]:rotate-180">
+      <AccordionPrimitive.Trigger className="flex flex-1 items-center justify-between py-4 text-sm font-medium transition-all hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background [&[data-state=open]>svg]:rotate-180">
         <div className="h-10">
           <div className="flex flex-row items-center gap-4">
             <h3 className="scroll-m-20 text-2xl font-semibold tracking-tight md:ml-10 xs:ml-8">
@@ -172,37 +161,37 @@ export const UserTournamentsTable = ({ tournaments }: { tournaments: UserTournam
   const searchParams = useSearchParams();
   const [selectedTournamentId, setSelectedTournamentId] = React.useState<string | null>(null);
 
-  const newTournaments: any[] = useMemo(() => {
-    const newTournaments: UserTournament[] = [];
-    const cache: Map<string, UserTournament[]> = new Map<string, UserTournament[]>();
+  const newTournaments: (UserTournament | UserTournament[])[] = useMemo(() => {
+    const result: (UserTournament | UserTournament[])[] = [];
+    let currentLeague: UserTournament[] = [];
     let leagueNameFlag = "";
 
     tournaments.forEach((tournament) => {
       if (tournament.is_league) {
         const leagueName = tournament.name.split(" | ")[0];
-        leagueNameFlag = leagueName;
 
-        if (!cache.has(leagueName)) {
-          cache.set(leagueName, []);
+        if (leagueNameFlag && leagueNameFlag !== leagueName) {
+          result.push(currentLeague);
+          currentLeague = [];
         }
-        // @ts-ignore
-        cache.get(leagueName).push(tournament);
+
+        leagueNameFlag = leagueName;
+        currentLeague.push(tournament);
       } else {
-        if (leagueNameFlag) {
-          const leagueTournaments = cache.get(leagueNameFlag);
-          if (leagueTournaments) {
-            // @ts-ignore
-            newTournaments.push(leagueTournaments.reverse());
-            cache.delete(leagueNameFlag);
-          }
+        if (currentLeague.length > 0) {
+          result.push(currentLeague);
+          currentLeague = [];
           leagueNameFlag = "";
         }
-
-        newTournaments.push(tournament);
+        result.push(tournament);
       }
     });
 
-    return newTournaments;
+    if (currentLeague.length > 0) {
+      result.push(currentLeague);
+    }
+
+    return result;
   }, [tournaments]);
 
   useEffect(() => {
@@ -222,10 +211,15 @@ export const UserTournamentsTable = ({ tournaments }: { tournaments: UserTournam
 
   return (
     <Card>
-      <CardTitle className="flex flex-row items-center gap-4 my-6 ml-8">
-        <TournamentsIcon />
-        <div className="scroll-m-20 text-xl font-semibold tracking-tight">Tournaments history</div>
-      </CardTitle>
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-3">
+          <TournamentsIcon />
+          <span className="text-xl">Tournaments history</span>
+        </CardTitle>
+        <CardDescription>
+          Placements, teams, and match breakdowns across tournament runs.
+        </CardDescription>
+      </CardHeader>
       <CardContent className="p-0">
         <Accordion
           type="single"

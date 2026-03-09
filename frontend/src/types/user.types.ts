@@ -118,6 +118,44 @@ export interface UserMapRead {
   loss: number;
   draw: number;
   win_rate: number;
+  heroes?: HeroPlaytime[];
+  hero_stats?: UserMapHeroStats[] | null;
+}
+
+export interface UserMapHeroStats {
+  hero: Hero;
+  games: number;
+  win: number;
+  loss: number;
+  draw: number;
+  win_rate: number;
+  playtime_seconds: number;
+  playtime_share_on_map: number;
+}
+
+export interface UserMapHighlight {
+  map: MapRead;
+  count: number;
+  win: number;
+  loss: number;
+  draw: number;
+  win_rate: number;
+}
+
+export interface UserMapsOverall {
+  total_maps: number;
+  total_games: number;
+  win: number;
+  loss: number;
+  draw: number;
+  win_rate: number;
+}
+
+export interface UserMapsSummary {
+  overall: UserMapsOverall;
+  most_played: UserMapHighlight | null;
+  best: UserMapHighlight | null;
+  worst: UserMapHighlight | null;
 }
 
 export interface UserBestTeammate {
@@ -125,4 +163,103 @@ export interface UserBestTeammate {
   tournaments: number;
   winrate: number;
   stats: Record<LogStatsName, number>;
+}
+
+export interface MinimizedUser {
+  id: number;
+  name: string;
+}
+
+export type UserRoleType = "Tank" | "Damage" | "Support";
+
+export interface UserOverviewRoleDivision {
+  role: UserRoleType;
+  division: number;
+}
+
+export interface UserOverviewHeroMetric {
+  name: LogStatsName;
+  avg_10: number;
+}
+
+export interface UserOverviewHero {
+  hero: Hero;
+  playtime_seconds: number;
+  metrics: UserOverviewHeroMetric[];
+}
+
+export interface UserOverviewAverages {
+  avg_closeness: number | null;
+  avg_placement: number | null;
+  avg_playoff_placement: number | null;
+  avg_group_placement: number | null;
+}
+
+export interface UserOverviewRow {
+  id: number;
+  name: string;
+  roles: UserOverviewRoleDivision[];
+  top_heroes: UserOverviewHero[];
+  tournaments_count: number;
+  achievements_count: number;
+  averages: UserOverviewAverages;
+}
+
+export type UserCompareBaselineMode = "target_user" | "global" | "cohort";
+
+export interface UserCompareUser {
+  id: number;
+  name: string;
+}
+
+export interface UserCompareBaselineInfo {
+  mode: UserCompareBaselineMode;
+  sample_size: number;
+  target_user: UserCompareUser | null;
+  role: UserRoleType | null;
+  div_min: number | null;
+  div_max: number | null;
+}
+
+export type UserCompareBetterWorse = "better" | "worse" | "equal";
+
+export interface UserCompareMetric {
+  key: string;
+  label: string;
+  subject_value: number | null;
+  baseline_value: number | null;
+  delta: number | null;
+  delta_percent: number | null;
+  better_worse: UserCompareBetterWorse | null;
+  higher_is_better: boolean;
+  subject_rank: number | null;
+  subject_percentile: number | null;
+}
+
+export interface UserCompareResponse {
+  subject: UserCompareUser;
+  baseline: UserCompareBaselineInfo;
+  metrics: UserCompareMetric[];
+}
+
+export interface UserHeroCompareMetric {
+  stat: LogStatsName;
+  left_value: number;
+  right_value: number;
+  delta: number;
+  delta_percent: number | null;
+  better_worse: UserCompareBetterWorse | null;
+  higher_is_better: boolean;
+}
+
+export interface UserHeroCompareResponse {
+  subject: UserCompareUser;
+  target: UserCompareUser | null;
+  baseline: UserCompareBaselineInfo;
+  subject_hero: Hero | null;
+  target_hero: Hero | null;
+  map: MapRead | null;
+  left_playtime_seconds: number;
+  right_playtime_seconds: number;
+  metrics: UserHeroCompareMetric[];
 }

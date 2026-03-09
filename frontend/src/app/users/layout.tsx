@@ -1,16 +1,17 @@
 import type { Metadata } from "next";
 import React from "react";
+import { SITE_NAME, SITE_URL, SITE_URL_OBJ } from "@/config/site";
 
 export const metadata: Metadata = {
-  title: "Users | AQT",
-  description: "View users on AQT.",
-  metadataBase: new URL("https://aqt.craazzzyyfoxx.me"),
+  title: `Users | ${SITE_NAME}`,
+  description: `View users on ${SITE_NAME}.`,
+  metadataBase: SITE_URL_OBJ,
   openGraph: {
-    title: `AQT`,
-    description: `View users on AQT.`,
-    url: "https://aqt.craazzzyyfoxx.me",
+    title: `Users | ${SITE_NAME}`,
+    description: `View users on ${SITE_NAME}.`,
+    url: SITE_URL,
     type: "website",
-    siteName: "AQT",
+    siteName: SITE_URL,
     locale: "en_US"
   }
 };

@@ -9,9 +9,9 @@ export interface TournamentStatistics {
 export interface TournamentDivisionStatistics {
   id: number;
   number: number;
-  tank_avg_div: number;
-  damage_avg_div: number;
-  support_avg_div: number;
+  tank_avg_div: number | null;
+  damage_avg_div: number | null;
+  support_avg_div: number | null;
 }
 
 export interface PlayerStatistics {

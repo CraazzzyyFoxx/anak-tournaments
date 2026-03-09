@@ -6,8 +6,7 @@ import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useDebounce } from "use-debounce";
 import userService from "@/services/user.service";
-import { SortDirection } from "@/types/pagination.types";
-import { User } from "@/types/user.types";
+import { MinimizedUser } from "@/types/user.types";
 import {
   Command,
   CommandEmpty,
@@ -19,25 +18,43 @@ import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
 
 const UserSearch = () => {
   const [isOpen, setIsOpen] = React.useState<boolean>(false);
-  const [searchData, setSearchData] = useState<User[]>([]);
+  const [searchData, setSearchData] = useState<MinimizedUser[]>([]);
   const [searchValue, setSearchValue] = useState<string>("");
   const [debouncedSearchValue] = useDebounce(searchValue, 300);
   const { push } = useRouter();
 
   useEffect(() => {
+    const query = debouncedSearchValue.trim();
+    if (query.length < 2) {
+      setSearchData([]);
+      return;
+    }
+
+    const controller = new AbortController();
+    let isActive = true;
+
     userService
-      .getAll({
-        page: 1,
-        per_page: 10,
-        fields: ["name"],
-        order: SortDirection.desc,
-        sort: "similarity:name",
-        query: debouncedSearchValue,
-        entities: []
-      })
+      .searchUsers(query, controller.signal)
       .then((r) => {
-        setSearchData(r.results);
+        if (!isActive) return;
+        setSearchData(r);
+      })
+      .catch((error: unknown) => {
+        const isAbortError =
+          typeof error === "object" &&
+          error !== null &&
+          "name" in error &&
+          (error as { name?: string }).name === "AbortError";
+
+        if (isAbortError) return;
+        console.error("Error searching users:", error);
+        if (isActive) setSearchData([]);
       });
+
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
   }, [debouncedSearchValue]);
 
   return (
@@ -62,19 +79,24 @@ const UserSearch = () => {
           className="sm:w-[300px] md:w-[200px] lg:w-[300px] p-0"
           onOpenAutoFocus={(e) => e.preventDefault()}
         >
-          <Command className="rounded-lg border shadow-md sm:w-[300px] md:w-[200px] lg:w-[300px]">
-            <CommandList>
-              <CommandEmpty>No results found.</CommandEmpty>
-              <CommandGroup>
-                {searchData.map((item) => (
-                  <CommandItem
-                    key={item.id}
-                    onSelect={(value) => {
-                      const formatedValue = value.replace("#", "-");
-                      setSearchValue("");
-                      push(`/users/${formatedValue}`);
-                    }}
-                  >
+            <Command className="rounded-lg border shadow-md sm:w-[300px] md:w-[200px] lg:w-[300px]">
+              <CommandList>
+                <CommandEmpty>
+                  {searchValue.trim().length < 2
+                    ? "Type at least 2 characters."
+                    : "No results found."}
+                </CommandEmpty>
+                <CommandGroup>
+                  {searchData.map((item) => (
+                    <CommandItem
+                      key={`${item.id}:${item.name}`}
+                      value={item.name}
+                      onSelect={(value) => {
+                        const formatedValue = value.replace("#", "-");
+                        setSearchValue("");
+                        push(`/users/${formatedValue}`);
+                      }}
+                    >
                     {item.name}
                   </CommandItem>
                 ))}

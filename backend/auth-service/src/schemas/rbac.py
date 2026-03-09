@@ -1,0 +1,93 @@
+"""
+RBAC (Role-Based Access Control) schemas
+"""
+from datetime import datetime
+from pydantic import BaseModel, Field
+
+__all__ = (
+    "PermissionBase",
+    "PermissionCreate",
+    "PermissionRead",
+    "RoleBase",
+    "RoleCreate",
+    "RoleUpdate",
+    "RoleRead",
+    "RoleWithPermissions",
+    "UserRoleAssign",
+    "UserRoleRemove",
+)
+
+
+# Permission Schemas
+class PermissionBase(BaseModel):
+    """Base permission schema"""
+    name: str = Field(..., description="Unique permission name", max_length=100)
+    resource: str = Field(..., description="Resource type (e.g., 'tournament', 'user')", max_length=100)
+    action: str = Field(..., description="Action type (e.g., 'create', 'read', 'update', 'delete')", max_length=50)
+    description: str | None = Field(None, description="Permission description")
+
+
+class PermissionCreate(PermissionBase):
+    """Schema for creating a permission"""
+    pass
+
+
+class PermissionRead(PermissionBase):
+    """Schema for reading a permission"""
+    id: int
+    created_at: datetime
+    updated_at: datetime | None = None
+
+    class Config:
+        from_attributes = True
+
+
+# Role Schemas
+class RoleBase(BaseModel):
+    """Base role schema"""
+    name: str = Field(..., description="Unique role name", max_length=100)
+    description: str | None = Field(None, description="Role description")
+
+
+class RoleCreate(RoleBase):
+    """Schema for creating a role"""
+    permission_ids: list[int] = Field(default_factory=list, description="List of permission IDs to assign")
+
+
+class RoleUpdate(BaseModel):
+    """Schema for updating a role"""
+    name: str | None = Field(None, max_length=100)
+    description: str | None = None
+    permission_ids: list[int] | None = Field(None, description="List of permission IDs to assign")
+
+
+class RoleRead(RoleBase):
+    """Schema for reading a role"""
+    id: int
+    is_system: bool
+    created_at: datetime
+    updated_at: datetime | None = None
+
+    class Config:
+        from_attributes = True
+
+
+class RoleWithPermissions(RoleRead):
+    """Schema for role with permissions"""
+    permissions: list[PermissionRead] = []
+
+    class Config:
+        from_attributes = True
+
+
+# User Role Assignment Schemas
+class UserRoleAssign(BaseModel):
+    """Schema for assigning role to user"""
+    user_id: int = Field(..., description="User ID")
+    role_id: int = Field(..., description="Role ID")
+
+
+class UserRoleRemove(BaseModel):
+    """Schema for removing role from user"""
+    user_id: int = Field(..., description="User ID")
+    role_id: int = Field(..., description="Role ID")

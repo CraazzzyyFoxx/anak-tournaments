@@ -26,59 +26,40 @@ Make sure your editor is using the correct Python virtual environment, with the 
 Modify or add SqlAlchemy models for data and SQL tables in `./backend/app/src/models.py`, API endpoints in `./backend/app/src/services/*/views.py`.
 
 
-## Docker Compose Override
+## Docker Compose (dev profiles)
 
-During development, you can change Docker Compose settings that will only affect the local development environment in the file `docker-compose.override.yml`.
+`docker-compose.override.yml` is no longer used.
 
-The changes to that file only affect the local development environment, not the production environment. So, you can add "temporary" changes that help the development workflow.
+Development behavior now lives directly in `docker-compose.yml`:
 
-For example, the directory with the backend code is synchronized in the Docker container, copying the code you change live to the directory inside the container. That allows you to test your changes right away, without having to build the Docker image again. It should only be done during development, for production, you should build the Docker image with a recent version of the backend code. But during development, it allows you to iterate very fast.
+- source folders are bind-mounted for live reload,
+- backend services run with `uvicorn --reload`,
+- local PostgreSQL is included by default,
+- optional components use Compose profiles.
 
-There is also a command override that runs `fastapi run --reload` instead of the default `fastapi run`. It starts a single server process (instead of multiple, as would be for production) and reloads the process whenever the code changes. Have in mind that if you have a syntax error and save the Python file, it will break and exit, and the container will stop. After that, you can restart the container by fixing the error and running again:
-
-```console
-$ docker compose watch
-```
-
-There is also a commented out `command` override, you can uncomment it and comment the default one. It makes the backend container run a process that does "nothing", but keeps the container alive. That allows you to get inside your running container and execute commands inside, for example a Python interpreter to test installed dependencies, or start the development server that reloads when it detects changes.
-
-To get inside the container with a `bash` session you can start the stack with:
+### Start core dev stack
 
 ```console
-$ docker compose watch
+$ docker compose up -d --wait
 ```
 
-and then in another terminal, `exec` inside the running container:
+### Start full dev stack (gateway + workers)
+
+```console
+$ docker compose --profile gateway --profile workers up -d --wait
+```
+
+### Enter a running backend container
 
 ```console
 $ docker compose exec backend bash
 ```
 
-You should see an output like:
+### Restart one backend service after env/dependency changes
 
 ```console
-root@7f2607af31c3:/app#
+$ docker compose up -d --build backend
 ```
-
-that means that you are in a `bash` session inside your container, as a `root` user, under the `/app` directory, this directory has another directory called "app" inside, that's where your code lives inside the container: `/app/app`.
-
-There you can use the `fastapi run --reload` command to run the debug live reloading server.
-
-```console
-$ fastapi run --reload app/main.py
-```
-
-...it will look like:
-
-```console
-root@7f2607af31c3:/app# fastapi run --reload app/main.py
-```
-
-and then hit enter. That runs the live reloading server that auto reloads when it detects code changes.
-
-Nevertheless, if it doesn't detect a change but a syntax error, it will just stop with an error. But as the container is still alive and you are in a Bash session, you can quickly restart it after fixing the error, running the same command ("up arrow" and "Enter").
-
-...this previous detail is what makes it useful to have the container alive doing nothing and then, in a Bash session, make it run the live reload server.
 
 ## Backend tests
 

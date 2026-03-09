@@ -5,6 +5,9 @@ import Image from "next/image";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import MatchTeamTable from "@/app/matches/[id]/components/MatchTeamTable";
 import { Card, CardHeader } from "@/components/ui/card";
+import { SITE_NAME } from "@/config/site";
+
+export const dynamic = 'force-dynamic';
 
 export async function generateMetadata(props: {
   params: Promise<{ id: number }>;
@@ -13,14 +16,14 @@ export async function generateMetadata(props: {
   const match = await encounterService.getMatch(params.id);
 
   return {
-    title: `${match.home_team.name} vs ${match.away_team.name} | AQT`,
-    description: `Overview for ${match.home_team.name} vs ${match.away_team.name} on AQT.`,
+    title: `${match.home_team.name} vs ${match.away_team.name} | ${SITE_NAME}`,
+    description: `Overview for ${match.home_team.name} vs ${match.away_team.name} on ${SITE_NAME}.`,
     openGraph: {
-      title: `${match.home_team.name} vs ${match.away_team.name} | AQT`,
-      description: `Overview for ${match.home_team.name} vs ${match.away_team.name} on AQT.`,
+      title: `${match.home_team.name} vs ${match.away_team.name} | ${SITE_NAME}`,
+      description: `Overview for ${match.home_team.name} vs ${match.away_team.name} on ${SITE_NAME}.`,
       url: "https://aqt.craazzzyyfoxx.me",
       type: "website",
-      siteName: "AQT",
+      siteName: SITE_NAME,
       images: [
         {
           url: match.map?.image_path || "",

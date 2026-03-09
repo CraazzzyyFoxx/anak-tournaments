@@ -7,7 +7,7 @@ import {
   TableHeader,
   TableRow
 } from "@/components/ui/table";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface TournamentRank {
   rank: string;
@@ -24,7 +24,7 @@ interface Tournament {
 const ranks: Tournament[] = [
   {
     name: "New Era x3",
-    tournament: "Tournament 33",
+    tournament: "Tournament 32",
     ranks: [
       {
         rank: "Чемпион1 - ГМ2",
@@ -170,7 +170,7 @@ const ranks: Tournament[] = [
   },
   {
     name: "New Era x4",
-    tournament: "Tournament 32",
+    tournament: "Tournament 33",
     ranks: [
       {
         rank: "Чемпион1 - ГМ2",
@@ -318,31 +318,40 @@ const ranks: Tournament[] = [
 
 const RanksPage = () => {
   return (
-    <div className="grid gap-8 grid-cols-3">
+    <div className="grid gap-4 md:gap-8 grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3">
       {ranks.map((tournament, index) => (
         <Card key={`tournament-${index}`}>
-          <div className="flex gap-4 justify-center py-3.5">
-            <h3>{tournament.tournament}</h3>
-            <h2>{tournament.name}</h2>
-          </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[180px]"></TableHead>
-                <TableHead className="text-center">Damage/Tank</TableHead>
-                <TableHead className="text-center">Support</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {tournament.ranks.map((rank, rank_index) => (
-                <TableRow key={`rank-${index}-${rank_index}`}>
-                  <TableCell className="font-medium">{rank.rank}</TableCell>
-                  <TableCell className="text-center">{rank.damage}</TableCell>
-                  <TableCell className="text-center">{rank.support}</TableCell>
+          <CardHeader className="space-y-1">
+            <CardTitle className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+              <span className="truncate" title={tournament.name}>
+                {tournament.name}
+              </span>
+              <span className="text-sm font-normal text-muted-foreground">
+                {tournament.tournament}
+              </span>
+            </CardTitle>
+            <CardDescription>Division shift values by rank (damage/tank vs support).</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[180px] text-right">Rank</TableHead>
+                  <TableHead className="text-center">Damage/Tank</TableHead>
+                  <TableHead className="text-center">Support</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {tournament.ranks.map((rank, rank_index) => (
+                  <TableRow key={`rank-${index}-${rank_index}`}>
+                    <TableCell className="font-medium text-right">{rank.rank}</TableCell>
+                    <TableCell className="text-center tabular-nums">{rank.damage}</TableCell>
+                    <TableCell className="text-center tabular-nums">{rank.support}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
         </Card>
       ))}
     </div>

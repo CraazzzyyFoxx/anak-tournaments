@@ -9,10 +9,18 @@ import {
   TableRow
 } from "@/components/ui/table";
 import Link from "next/link";
-import statisticsService from "@/services/statistics.service";
+import { PlayerStatistics } from "@/types/statistics.types";
 
-export default async function TopWinratePlayersTable() {
-  const players = await statisticsService.getTopWinratePlayers();
+export interface TopWinratePlayersTableProps {
+  players: PlayerStatistics[];
+}
+
+export default function TopWinratePlayersTable({ players }: TopWinratePlayersTableProps) {
+  const percentFormatter = new Intl.NumberFormat("en-US", {
+    style: "percent",
+    maximumFractionDigits: 1
+  });
+
   return (
     <Card>
       <CardHeader>
@@ -27,14 +35,26 @@ export default async function TopWinratePlayersTable() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {players.results.map((champion) => (
-              <TableRow key={champion.id}>
-                <TableCell className="font-medium">
-                  <Link href={`users/${champion.name.replace("#", "-")}`}>{champion.name}</Link>
+            {players.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={2} className="text-muted-foreground">
+                  No data
                 </TableCell>
-                <TableCell className="text-center">{champion.value * 100}%</TableCell>
               </TableRow>
-            ))}
+            ) : (
+              players.map((player) => (
+                <TableRow key={player.id}>
+                  <TableCell className="font-medium">
+                    <Link href={`/users/${player.name.replace("#", "-")}`}>{player.name}</Link>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {Number.isFinite(player.value)
+                      ? percentFormatter.format(player.value)
+                      : "-"}
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
           </TableBody>
         </Table>
       </CardContent>

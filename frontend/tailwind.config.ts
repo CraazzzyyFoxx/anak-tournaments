@@ -4,7 +4,7 @@ import type { Config } from "tailwindcss";
 import colors from "tailwindcss/colors";
 
 const config = {
-  darkMode: ["class"],
+  darkMode: "class",
   content: [
     "./pages/**/*.{ts,tsx}",
     "./components/**/*.{ts,tsx}",
@@ -25,7 +25,7 @@ const config = {
       lg: "1024px",
       xl: "1280px",
       "2xl": "1400px",
-      "3xl": "1500px"
+      "3xl": "1620px"
     },
     extend: {
       colors: {
@@ -34,10 +34,10 @@ const config = {
         ring: "hsl(var(--ring))",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
-        "group-a": "#86efac", // green-300 в HEX
-        "group-b": "#fef08a", // yellow-200 в HEX
-        "group-c": "#93c5fd", // blue-300 в HEX
-        "group-d": "#c084fc", // purple-400 в HEX
+        "group-a": "#86efac", // green-300 in HEX
+        "group-b": "#fef08a", // yellow-200 in HEX
+        "group-c": "#93c5fd", // blue-300 in HEX
+        "group-d": "#c084fc", // purple-400 in HEX
         firstPlaceBg: "#cbb765",
         TopPlaceText: "#121009",
         secondPlaceBg: "#99b0cc",
@@ -124,7 +124,7 @@ const config = {
         "accordion-up": "accordion-up 0.2s ease-out"
       },
       maxWidth: {
-        "screen-3xl": "1500px"
+        "screen-3xl": "1620px"
       }
     }
   },

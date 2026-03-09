@@ -10,10 +10,13 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
-import statisticsService from "@/services/statistics.service";
+import { PlayerStatistics } from "@/types/statistics.types";
 
-export default async function ChampionsTable() {
-  const champions = await statisticsService.getChampions();
+export interface ChampionsTableProps {
+  champions: PlayerStatistics[];
+}
+
+export default function ChampionsTable({ champions }: ChampionsTableProps) {
   return (
     <Card>
       <CardHeader>
@@ -28,14 +31,22 @@ export default async function ChampionsTable() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {champions.results.map((champion) => (
-              <TableRow key={champion.id}>
-                <TableCell className="font-medium">
-                  <Link href={`users/${champion.name.replace("#", "-")}`}>{champion.name}</Link>
+            {champions.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={2} className="text-muted-foreground">
+                  No data
                 </TableCell>
-                <TableCell className="text-center">{champion.value}</TableCell>
               </TableRow>
-            ))}
+            ) : (
+              champions.map((champion) => (
+                <TableRow key={champion.id}>
+                  <TableCell className="font-medium">
+                    <Link href={`/users/${champion.name.replace("#", "-")}`}>{champion.name}</Link>
+                  </TableCell>
+                  <TableCell className="text-center">{champion.value}</TableCell>
+                </TableRow>
+              ))
+            )}
           </TableBody>
         </Table>
       </CardContent>

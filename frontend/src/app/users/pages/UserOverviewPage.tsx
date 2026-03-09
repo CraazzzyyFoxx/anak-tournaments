@@ -6,17 +6,18 @@ import UserLastTournamentCard, {
 } from "@/app/users/components/UserLastTournamentCard";
 import { User, UserProfile } from "@/types/user.types";
 import HeroPlaytimeChart from "@/components/HeroPlaytimeChart";
-import { Card, CardHeader } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Star } from "lucide-react";
 import { TypographyH4 } from "@/components/ui/typography";
 import userService from "@/services/user.service";
 import { Skeleton } from "@/components/ui/skeleton";
 import UserBestTeammates from "@/app/users/components/UserBestTeammates";
+import UserRecentEncountersCard from "@/app/users/components/UserRecentEncountersCard";
 
 export interface OverviewPageProps {
   profile: UserProfile;
   user: User;
-  tournamentId: number;
+  tournamentId?: number;
 }
 
 export const UserOverviewPageSkeleton = () => {
@@ -38,7 +39,22 @@ export const UserOverviewPageSkeleton = () => {
                 <TypographyH4>Most played heroes</TypographyH4>
               </div>
             </CardHeader>
-            <Skeleton className="p-0 pb-4 h-[412px]" />
+            <CardContent className="p-0 pb-4">
+              <Skeleton className="h-90 w-full" />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <div className="flex flex-row justify-between items-center">
+                <Skeleton className="h-6 w-56" />
+                <Skeleton className="h-5 w-20" />
+              </div>
+              <Skeleton className="h-4 w-72" />
+            </CardHeader>
+            <CardContent className="p-0">
+              <Skeleton className="h-65 w-full" />
+            </CardContent>
           </Card>
         </div>
       </div>
@@ -47,8 +63,13 @@ export const UserOverviewPageSkeleton = () => {
 };
 
 const UserOverviewPage = async ({ profile, tournamentId, user }: OverviewPageProps) => {
-  const tournament = await userService.getUserTournament(user.id, tournamentId);
-  const teammates = await userService.getUserBestTeammates(user.id);
+  const resolvedTournamentId = tournamentId ?? profile.tournaments[0]?.id;
+  const tournamentPromise = resolvedTournamentId
+    ? userService.getUserTournament(user.id, resolvedTournamentId)
+    : Promise.resolve(null);
+  const teammatesPromise = userService.getUserBestTeammates(user.id);
+
+  const [tournament, teammates] = await Promise.all([tournamentPromise, teammatesPromise]);
 
   return (
     <div className="grid grid-cols-9 gap-8">
@@ -68,10 +89,13 @@ const UserOverviewPage = async ({ profile, tournamentId, user }: OverviewPagePro
                 <TypographyH4>Most played heroes</TypographyH4>
               </div>
             </CardHeader>
-            <div className="flex-1 px-2 pb-4 max-w-[840px]">
-              <HeroPlaytimeChart heroes={profile.hero_statistics} />
-            </div>
+            <CardContent className="p-0 pb-4">
+              <div className="px-2 w-full">
+                <HeroPlaytimeChart heroes={profile.hero_statistics} />
+              </div>
+            </CardContent>
           </Card>
+          <UserRecentEncountersCard userId={user.id} userName={user.name} limit={5} />
         </div>
       </div>
     </div>

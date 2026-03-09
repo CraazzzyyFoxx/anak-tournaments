@@ -1,0 +1,74 @@
+groups:
+  - name: redis
+    interval: 30s
+    rules:
+      # -----------------------------------------------------------------------
+      # Redis availability
+      # -----------------------------------------------------------------------
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis is down"
+          description: "Redis exporter cannot reach the Redis server. Caching and session storage are unavailable."
+
+      # -----------------------------------------------------------------------
+      # Memory
+      # -----------------------------------------------------------------------
+      - alert: RedisHighMemory
+        expr: |
+          redis_memory_used_bytes / redis_memory_max_bytes > 0.80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis memory usage is above 80%"
+          description: "Redis is using {{ $value | humanizePercentage }} of its configured maxmemory. Key evictions may occur soon."
+
+      - alert: RedisMemoryCritical
+        expr: |
+          redis_memory_used_bytes / redis_memory_max_bytes > 0.95
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis memory usage is above 95%"
+          description: "Redis is using {{ $value | humanizePercentage }} of maxmemory. Evictions are likely happening now."
+
+      # -----------------------------------------------------------------------
+      # Connections
+      # -----------------------------------------------------------------------
+      - alert: RedisHighConnections
+        expr: redis_connected_clients > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis has many connected clients"
+          description: "Redis has {{ $value }} connected clients. Check for connection leaks."
+
+      # -----------------------------------------------------------------------
+      # Key evictions
+      # -----------------------------------------------------------------------
+      - alert: RedisKeyEvictions
+        expr: increase(redis_evicted_keys_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis is evicting keys"
+          description: "Redis evicted {{ $value }} keys in the last 5 minutes. Memory may be insufficient."
+
+      # -----------------------------------------------------------------------
+      # Slow commands / blocked clients
+      # -----------------------------------------------------------------------
+      - alert: RedisBlockedClients
+        expr: redis_blocked_clients > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis has blocked clients"
+          description: "{{ $value }} clients are blocked on Redis commands (BLPOP, BRPOP, etc.)."

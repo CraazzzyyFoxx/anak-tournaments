@@ -1,0 +1,12 @@
+{
+    "venvPath": "backend",
+    "venv": ".venv",
+    "extraPaths": [
+        "backend",
+        "backend/app-service",
+        "backend/auth-service",
+        "backend/parser-service",
+        "backend/balancer-service",
+        "backend/discord-service"
+    ]
+}

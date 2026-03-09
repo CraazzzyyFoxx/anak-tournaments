@@ -14,8 +14,7 @@ export default class analyticsService {
   static async patchPlayerShift(
     teamId: number,
     playerId: number,
-    shift: number,
-    token: string
+    shift: number
   ): Promise<PlayerAnalytics> {
     return customFetch(`analytics/shift`, {
       method: "POST",
@@ -23,8 +22,7 @@ export default class analyticsService {
         team_id: teamId,
         player_id: playerId,
         shift: shift
-      },
-      token: token
+      }
     }).then((response) => response.json());
   }
   static async getAlgorithms(): Promise<PaginatedResponse<AlgorithmAnalytics>> {

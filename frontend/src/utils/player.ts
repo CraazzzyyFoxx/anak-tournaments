@@ -65,3 +65,10 @@ export const getPlayerImage = (profile: UserProfile, user: User) => {
   return `/avatar/${profile.most_played_hero.slug}.jpg`;
   // return profile.most_played_hero.image_path
 };
+
+export const getPlayerSlug = (battleTag: string | null | undefined) => {
+  if (!battleTag) {
+    return "";
+  }
+  return battleTag.replace("#", "-");
+};

@@ -1,0 +1,77 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    environment: production
+    project: anak-tournaments
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+rule_files:
+  - /etc/prometheus/rules/rabbitmq.yml
+  - /etc/prometheus/rules/redis.yml
+
+scrape_configs:
+  # --------------------------------------------------------------------------
+  # Redis
+  # --------------------------------------------------------------------------
+  - job_name: redis
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: redis
+
+  # --------------------------------------------------------------------------
+  # RabbitMQ
+  # --------------------------------------------------------------------------
+  - job_name: rabbitmq
+    static_configs:
+      - targets: ["rabbitmq-exporter:9419"]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: rabbitmq
+
+  # --------------------------------------------------------------------------
+  # FastAPI services — /metrics endpoint exposed by prometheus-fastapi-instrumentator
+  # --------------------------------------------------------------------------
+  - job_name: app-service
+    static_configs:
+      - targets: ["backend:8000"]
+    metrics_path: /metrics
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: app-service
+
+  - job_name: auth-service
+    static_configs:
+      - targets: ["auth:8001"]
+    metrics_path: /metrics
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: auth-service
+
+  - job_name: parser-service
+    static_configs:
+      - targets: ["parser:8002"]
+    metrics_path: /metrics
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: parser-service
+
+  - job_name: balancer-service
+    static_configs:
+      - targets: ["balancer:8003"]
+    metrics_path: /metrics
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: balancer-service

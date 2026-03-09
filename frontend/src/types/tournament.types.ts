@@ -45,6 +45,7 @@ export interface OwalStandingDay {
 export interface OwalStanding {
   user: User;
   role: string;
+  division: number;
   days: Record<string, OwalStandingDay>;
   count_days: number;
   place: number;
@@ -79,4 +80,11 @@ export interface Standings {
   tournament: Tournament | null;
   group: TournamentGroup | null;
   matches_history: Encounter[];
+}
+
+export interface OwalStack {
+  user_1: User;
+  user_2: User;
+  games: number;
+  avg_position: number;
 }

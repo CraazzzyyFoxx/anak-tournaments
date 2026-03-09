@@ -1,7 +1,18 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: "standalone",
+  // Only use standalone output in production builds
+  ...(process.env.NODE_ENV === 'production' && { output: "standalone" }),
+  async rewrites() {
+    const apiUrl = process.env.NEXT_API_URL ?? process.env.NEXT_PUBLIC_API_URL;
+    return [
+      {
+        source: "/api/v1/:path*",
+        destination: `${apiUrl}/:path*`,
+      },
+    ];
+  },
   images: {
+    qualities: [25, 50, 75, 100],
     remotePatterns: [
       {
         protocol: 'https',
@@ -15,9 +26,20 @@ const nextConfig = {
         port: '',
         pathname: '/static/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'img.clerk.com',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'cdn.discordapp.com',
+        port: '',
+        pathname: '/**',
+      }
     ],
   },
 };
-
 
 export default nextConfig;

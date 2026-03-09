@@ -1,0 +1,48 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+  log_level: warn
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # --------------------------------------------------------------------------
+  # Scrape all service log files from the mounted host logs directory.
+  # Expected layout: /var/log/app/<service-name>/<service-name>.log
+  # --------------------------------------------------------------------------
+  - job_name: app_services
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: app_services
+          __path__: /var/log/app/**/*.log
+
+    pipeline_stages:
+      # Parse the JSON log lines emitted by Loguru with serialize=True
+      - json:
+          expressions:
+            level: level
+            service: extra.service
+            message: text
+            correlation_id: extra.correlation_id
+            timestamp: record.time.timestamp
+
+      # Promote parsed fields to Loki labels
+      - labels:
+          level:
+          service:
+
+      # Use the log record's own timestamp (epoch float) as the Loki timestamp
+      - timestamp:
+          source: timestamp
+          format: Unix
+
+      # Drop health check poll noise from Loki to keep log volume down
+      - drop:
+          source: message
+          expression: "GET /health"

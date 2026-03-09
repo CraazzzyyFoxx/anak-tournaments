@@ -1,0 +1,12 @@
+# Import all models from shared library
+from shared.models.achievement import *
+from shared.models.analytics import *
+from shared.models.encounter import *
+from shared.models.gamemode import *
+from shared.models.hero import *
+from shared.models.map import *
+from shared.models.match import *
+from shared.models.standings import *
+from shared.models.team import *
+from shared.models.tournament import *
+from shared.models.user import *

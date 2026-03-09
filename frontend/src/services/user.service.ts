@@ -1,15 +1,23 @@
 import {
   EncounterWithUserStats,
+  UserCompareBaselineMode,
+  UserCompareResponse,
+  UserHeroCompareResponse,
   User,
   UserBestTeammate,
   UserMapRead,
+  UserMapsSummary,
+  UserOverviewRow,
   UserProfile,
+  MinimizedUser,
+  UserRoleType,
   UserTournament,
   UserTournamentWithStats
 } from "@/types/user.types";
 import { PaginatedResponse, SearchPaginationParams } from "@/types/pagination.types";
 import { HeroWithUserStats } from "@/types/hero.types";
 import { AchievementRarity } from "@/types/achievement.types";
+import { LogStatsName } from "@/types/stats.types";
 import { customFetch } from "@/lib/custom_fetch";
 
 export default class userService {
@@ -27,31 +35,80 @@ export default class userService {
       }
     }).then((res) => res.json());
   }
-
   static async getUserProfile(id: number): Promise<UserProfile> {
     return customFetch(`users/${id}/profile`).then((res) => res.json());
   }
   static async getUserTournament(
     id: number,
-    tournamentId: number
+    tournamentId: number | null
   ): Promise<UserTournamentWithStats | null> {
-    return customFetch(`users/${id}/tournaments/${tournamentId}`).then((res) => {
-      if (res.status === 200) {
-        return res.json();
-      }
-      return null;
-    });
+    return customFetch(`users/${id}/tournaments/${tournamentId}`)
+      .then((res) => {
+        if (res.status === 200) {
+          return res.json();
+        }
+        return null;
+      })
+      .catch((error) => {
+        console.error("Error fetching user tournament data:", error);
+        return null;
+      });
   }
   static async getUserTournaments(id: number): Promise<UserTournament[]> {
     return customFetch(`users/${id}/tournaments`).then((res) => res.json());
   }
-  static async getUserTopMaps(id: number): Promise<PaginatedResponse<UserMapRead>> {
+  static async getUserMaps(
+    id: number,
+    {
+      page = 1,
+      perPage = 15,
+      sort = "winrate",
+      order = "desc",
+      query = "",
+      minCount,
+      gamemodeId
+    }: {
+      page?: number;
+      perPage?: number;
+      sort?: string;
+      order?: string;
+      query?: string;
+      minCount?: number;
+      gamemodeId?: number | null;
+    } = {}
+  ): Promise<PaginatedResponse<UserMapRead>> {
+    const entities = ["gamemode", "hero_stats"];
+
     return customFetch(`users/${id}/maps`, {
       query: {
-        sort: "winrate",
-        order: "desc",
-        per_page: -1,
-        entities: ["heroes"]
+        page,
+        per_page: perPage,
+        sort,
+        order,
+        query,
+        fields: ["name"],
+        min_count: minCount,
+        gamemode_id: gamemodeId,
+        entities
+      }
+    }).then((res) => res.json());
+  }
+
+  static async getUserMapsSummary(
+    id: number,
+    {
+      query = "",
+      minCount,
+      gamemodeId
+    }: { query?: string; minCount?: number; gamemodeId?: number | null } = {}
+  ): Promise<UserMapsSummary> {
+    return customFetch(`users/${id}/maps/summary`, {
+      query: {
+        query,
+        fields: ["name"],
+        min_count: minCount,
+        gamemode_id: gamemodeId,
+        entities: ["gamemode"]
       }
     }).then((res) => res.json());
   }
@@ -72,19 +129,34 @@ export default class userService {
       }
     }).then((res) => res.json());
   }
-  static async getUserHeroes(id: number): Promise<PaginatedResponse<HeroWithUserStats>> {
+  static async getUserHeroes(
+    id: number,
+    stats?: LogStatsName[]
+  ): Promise<PaginatedResponse<HeroWithUserStats>> {
     return customFetch(`users/${id}/heroes`, {
       query: {
         per_page: -1,
         sort: "id",
-        order: "asc"
+        order: "asc",
+        stats
       }
     }).then((res) => res.json());
   }
-  static async getUserAchievements(id: number): Promise<AchievementRarity[]> {
+  static async getUserAchievements(
+    id: number,
+    {
+      tournamentId,
+      withoutTournament
+    }: {
+      tournamentId?: number;
+      withoutTournament?: boolean;
+    } = {}
+  ): Promise<AchievementRarity[]> {
     return customFetch(`achievements/user/${id}`, {
       query: {
-        entities: ["tournaments", "matches"]
+        entities: ["tournaments", "matches"],
+        tournament_id: tournamentId,
+        without_tournament: withoutTournament
       }
     }).then((res) => res.json());
   }
@@ -94,6 +166,115 @@ export default class userService {
         per_page: 5,
         sort: "winrate",
         order: "desc"
+      }
+    }).then((res) => res.json());
+  }
+  static async searchUsers(query: string, signal?: AbortSignal): Promise<MinimizedUser[]> {
+    return customFetch(`users/search`, {
+      query: {
+        query: query,
+        fields: ["battle_tag"]
+      },
+      signal
+    }).then((res) => res.json());
+  }
+
+  static async getUsersOverview({
+    page = 1,
+    perPage = 20,
+    sort = "name",
+    order = "asc",
+    query,
+    role,
+    divMin,
+    divMax
+  }: {
+    page?: number;
+    perPage?: number;
+    sort?: "id" | "name" | "tournaments_count" | "achievements_count" | "avg_placement";
+    order?: "asc" | "desc";
+    query?: string;
+    role?: UserRoleType;
+    divMin?: number;
+    divMax?: number;
+  } = {}): Promise<PaginatedResponse<UserOverviewRow>> {
+    return customFetch("users/overview", {
+      query: {
+        page,
+        per_page: perPage,
+        sort,
+        order,
+        query,
+        fields: ["name"],
+        role,
+        div_min: divMin,
+        div_max: divMax
+      }
+    }).then((res) => res.json());
+  }
+
+  static async getUserCompare(
+    userId: number,
+    {
+      baseline = "global",
+      targetUserId,
+      role,
+      divMin,
+      divMax
+    }: {
+      baseline?: UserCompareBaselineMode;
+      targetUserId?: number;
+      role?: UserRoleType;
+      divMin?: number;
+      divMax?: number;
+    } = {}
+  ): Promise<UserCompareResponse> {
+    return customFetch(`users/${userId}/compare`, {
+      query: {
+        baseline,
+        target_user_id: targetUserId,
+        role,
+        div_min: divMin,
+        div_max: divMax
+      }
+    }).then((res) => res.json());
+  }
+
+  static async getUserHeroCompare(
+    userId: number,
+    {
+      baseline = "global",
+      targetUserId,
+      leftHeroId,
+      rightHeroId,
+      mapId,
+      role,
+      divMin,
+      divMax,
+      stats
+    }: {
+      baseline?: UserCompareBaselineMode;
+      targetUserId?: number;
+      leftHeroId?: number;
+      rightHeroId?: number;
+      mapId?: number;
+      role?: UserRoleType;
+      divMin?: number;
+      divMax?: number;
+      stats?: LogStatsName[];
+    }
+  ): Promise<UserHeroCompareResponse> {
+    return customFetch(`users/${userId}/compare/heroes`, {
+      query: {
+        baseline,
+        target_user_id: targetUserId,
+        left_hero_id: leftHeroId,
+        right_hero_id: rightHeroId,
+        map_id: mapId,
+        role,
+        div_min: divMin,
+        div_max: divMax,
+        stats
       }
     }).then((res) => res.json());
   }

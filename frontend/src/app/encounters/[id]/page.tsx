@@ -4,7 +4,12 @@ import EncounterTeamCard from "@/app/encounters/[id]/components/EncounterTeamCar
 import { Metadata } from "next";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import EncounterMatch from "@/app/encounters/[id]/components/EncounterMatch";
-import { Swords } from "lucide-react";
+import { Swords, ArrowLeft } from "lucide-react";
+import { SITE_NAME } from "@/config/site";
+import { Button } from "@/components/ui/button";
+import Link from "next/link";
+
+export const dynamic = 'force-dynamic';
 
 export async function generateMetadata(props: {
   params: Promise<{ id: number }>;
@@ -13,14 +18,14 @@ export async function generateMetadata(props: {
   const encounter = await encounterService.getEncounter(params.id);
 
   return {
-    title: `${encounter.home_team.name} vs ${encounter.away_team.name} | AQT`,
-    description: `Overview for ${encounter.home_team.name} vs ${encounter.away_team.name} on AQT.`,
+    title: `${encounter.home_team.name} vs ${encounter.away_team.name} | ${SITE_NAME}`,
+    description: `Overview for ${encounter.home_team.name} vs ${encounter.away_team.name} on ${SITE_NAME}.`,
     openGraph: {
-      title: `${encounter.home_team.name} vs ${encounter.away_team.name} | AQT`,
-      description: `Overview for ${encounter.home_team.name} vs ${encounter.away_team.name} on AQT.`,
+      title: `${encounter.home_team.name} vs ${encounter.away_team.name} | ${SITE_NAME}`,
+      description: `Overview for ${encounter.home_team.name} vs ${encounter.away_team.name} on ${SITE_NAME}.`,
       url: "https://aqt.craazzzyyfoxx.me",
       type: "website",
-      siteName: "AQT",
+      siteName: SITE_NAME,
       locale: "en_US"
     }
   };
@@ -34,20 +39,28 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
       ? "Tie"
       : encounter.score.home > encounter.score.away
         ? "Winner"
-        : "Losser";
+        : "Loser";
   const awayTeamState =
     encounter.score.home === encounter.score.away
       ? "Tie"
       : encounter.score.home < encounter.score.away
         ? "Winner"
-        : "Losser";
+        : "Loser";
   let name = `${encounter.tournament.number}`;
   if (encounter.tournament.is_league) {
     name = encounter.tournament.name;
   }
 
   return (
-    <div>
+    <div className="flex flex-col gap-8">
+      <div>
+        <Button variant="outline" asChild>
+          <Link href="/encounters">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to encounters
+          </Link>
+        </Button>
+      </div>
       <Card>
         <CardContent className="flex flex-row gap-8 p-4">
           <div className="flex flex-row gap-4 items-center">

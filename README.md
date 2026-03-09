@@ -13,8 +13,8 @@
 ## Table of contents
 
 * [✨ Live instance](#-live-instance)
-* [🐋 Run for production](#-run-for-production)
-* [💽 Run as developer](#-run-as-developer)
+* [🐋 Docker development](#docker-development-breaking-change)
+* [📈 Monitoring](#-monitoring)
 * [👨‍💻 Technical details](#-technical-details)
 * [🙏 Credits](#-credits)
 * [📝 License](#-license)
@@ -84,6 +84,43 @@ Function Cache: This cache stores the results of specific functions, such as the
 * Statistics: 1 day
 * Matches: 1 day
 * Achievements: 1 day
+
+## Docker Development (Breaking Change)
+
+The local Docker workflow has changed and is now profile-driven.
+
+- `docker-compose.override.yml` has been removed.
+- Default dev startup (`docker compose up -d --wait`) now starts core services only.
+- Optional profiles:
+  - `gateway` for Kong (`docker compose --profile gateway up -d --wait`)
+  - `workers` for background services (`docker compose --profile workers up -d --wait`)
+- Local PostgreSQL is now part of the dev stack by default.
+
+### First-time setup
+
+1. Copy root env template: `.env.example` -> `.env`
+2. Copy backend env templates from `backend/env/*.env.example` to matching `.env` files
+3. Start core stack:
+
+```bash
+docker compose up -d --wait
+```
+
+4. Start full stack (gateway + workers), if needed:
+
+```bash
+docker compose --profile gateway --profile workers up -d --wait
+```
+
+You can also use `make dev-up` and `make dev-up-full`.
+
+Quick migration commands are in `DOCKER_DEV_MIGRATION.md`.
+
+## 📈 Monitoring
+
+Monitoring deployment and operations are documented in `monitoring/README.md`.
+
+The monitoring stack includes Prometheus, Alertmanager, Grafana, Loki, Promtail, Redis Exporter, and RabbitMQ Exporter.
 
 ## Backend Development
 

@@ -1,8 +1,11 @@
+import { getTokenFromCookies, refreshAccessToken } from "./auth-tokens";
+
 interface CustomOptions {
   query?: Record<string, any>;
   token?: string;
   body?: Record<string, any>;
   method?: string;
+  signal?: AbortSignal;
 }
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL;
@@ -46,25 +49,61 @@ export async function customFetch(url: string, options?: CustomOptions): Promise
     options = {};
   }
 
-  for (const key in options["query"]) {
-    appendParams(key, options["query"][key]);
+  if (options.query) {
+    for (const key in options.query) {
+      appendParams(key, options.query[key]);
+    }
   }
 
-  const urlWithParams = `${API_URL}/${url}?${params.toString()}`;
+  const initialToken = options.token ?? (await getTokenFromCookies("aqt_access_token"));
 
-  const response = await fetch(urlWithParams, {
-    cache: getCachePolicy(),
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${options.token}`
-    },
-    body: JSON.stringify(options.body),
-    method: options.method || "GET"
-  });
+  // On the client, route through Next.js rewrite proxy (/api/v1/*) to avoid CORS.
+  // On the server, call the external API directly (server-to-server, no CORS).
+  const baseUrl = typeof window !== "undefined" ? "/api/v1" : API_URL;
+  const urlWithParams = `${baseUrl}/${url}?${params.toString()}`;
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json"
+  };
+
+  const runRequest = async (tokenToUse?: string): Promise<Response> => {
+    const requestHeaders: Record<string, string> = { ...headers };
+    if (tokenToUse) {
+      requestHeaders.Authorization = `Bearer ${tokenToUse}`;
+    }
+
+    return fetch(urlWithParams, {
+      cache: getCachePolicy(),
+      headers: requestHeaders,
+      body: JSON.stringify(options.body),
+      method: options.method || "GET",
+      signal: options.signal
+    });
+  };
+
+  let response = await runRequest(initialToken);
+
+  // If the cookie-based access token is expired/invalid, try refreshing once.
+  if (
+    response.status === 401 &&
+    !options.token &&
+    typeof window !== "undefined"
+  ) {
+    const refreshedToken = await refreshAccessToken();
+    if (refreshedToken) {
+      response = await runRequest(refreshedToken);
+    }
+  }
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || "An error occurred");
+    let message = "An error occurred";
+    try {
+      const error = await response.json();
+      message = error?.message || message;
+    } catch {
+      // ignore non-JSON bodies
+    }
+    throw new Error(message);
   }
 
   return response;

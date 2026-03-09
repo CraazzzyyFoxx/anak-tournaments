@@ -9,9 +9,17 @@ node_modules/
 /blob-report/
 /playwright/.cache/
 .env
+backend/env/*.env
+!backend/env/*.env.example
 
 .coverage
 .coverage*
 /app/.idea
 /parser/.idea
 logs/
+monitoring/secrets/*
+!monitoring/secrets/.gitkeep
+!monitoring/secrets/*.example
+.kombai/
+.ruff_cache/
+.claude/

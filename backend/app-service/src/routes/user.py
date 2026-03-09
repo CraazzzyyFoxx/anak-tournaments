@@ -1,0 +1,301 @@
+import typing
+
+from cashews import cache
+from cashews.contrib.fastapi import cache_control_ttl
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.requests import Request
+
+from src import schemas
+from src.core import config, db, enums, pagination
+from src.services.encounter import flows as encounter_flows
+from src.services.map import flows as map_flows
+from src.services.user import flows as user_flows
+
+router = APIRouter(prefix="/users", tags=[enums.RouteTag.USER])
+
+
+@router.get(
+    path="",
+    response_model=pagination.Paginated[schemas.UserRead],
+    description="Retrieve a list of users based on search parameters. "
+    "Available entities: **discord, battle_tag, twitch.**",
+    summary="Search for users",
+)
+async def get_all(
+    params: pagination.PaginationSortSearchQueryParams[typing.Literal["id", "name", "similarity:name"]] = Depends(),
+    session=Depends(db.get_async_session),
+):
+    return await user_flows.get_all(session, pagination.PaginationSortSearchParams.from_query_params(params))
+
+
+@router.get(
+    path="/search",
+    response_model=list[schemas.UserSearch],
+    description="Search for a list of users based on search parameters. ",
+    summary="Search for users",
+)
+async def search_by_name(
+    query: str = Query(default=""),
+    fields: list[str] = Query([]),
+    session=Depends(db.get_async_session),
+):
+    return await user_flows.search_by_name(session, query, fields)
+
+
+@router.get(
+    path="/overview",
+    response_model=pagination.Paginated[schemas.UserOverviewRow],
+    description="Retrieve an enriched, paginated list of users for frontend list views. "
+    "Includes role divisions, top heroes with key metrics, tournaments/achievements counts and average results.",
+    summary="Get users overview",
+)
+async def get_overview(
+    params: schemas.UserOverviewQueryParams = Depends(),
+    session: AsyncSession = Depends(db.get_async_session),
+):
+    return await user_flows.get_overview(session, schemas.UserOverviewParams.from_query_params(params))
+
+
+@router.get(
+    path="/{id}/compare",
+    response_model=schemas.UserCompareResponse,
+    description="Compare one user against another user, global averages, or a rank cohort.",
+    summary="Compare user overview metrics",
+)
+async def get_compare(
+    id: int,
+    params: schemas.UserCompareQueryParams = Depends(),
+    session: AsyncSession = Depends(db.get_async_session),
+):
+    return await user_flows.get_compare(session, id, schemas.UserCompareParams.from_query_params(params))
+
+
+@router.get(
+    path="/{id}/compare/heroes",
+    response_model=schemas.UserHeroCompareResponse,
+    description="Compare hero-level average per-10 metrics against a target user, global baseline, or role/division cohort, with optional map filter.",
+    summary="Compare users by heroes",
+)
+async def get_hero_compare(
+    id: int,
+    params: schemas.UserHeroCompareQueryParams = Depends(),
+    session: AsyncSession = Depends(db.get_async_session),
+):
+    return await user_flows.get_hero_compare(session, id, schemas.UserHeroCompareParams.from_query_params(params))
+
+
+@router.get(
+    path="/{name}",
+    response_model=schemas.UserRead,
+    description="Search for a given player by using its discord or BattleTag (with # replaced by -). "
+    "If you don't find the player by using the name, please try with the BattleTag. "
+    "You should be able to find the associated player_id to use in order to request career data. "
+    "Available entities: **discord, battle_tag, twitch."
+    f"Cache TTL: {config.settings.users_cache_ttl / 60} minutes.**",
+    summary="Get user by name",
+)
+async def get_by_name(
+    name: str,
+    session: AsyncSession = Depends(db.get_async_session),
+    entities: list[str] = Query([]),
+):
+    name = name.replace("-", "#")
+    if "#" in name:
+        user = await user_flows.get_by_battle_tag(session, name, entities)
+    else:
+        user = await user_flows.get_by_discord(session, name, entities)
+    return user
+
+
+@router.get(
+    path="/{id}/profile",
+    response_model=schemas.UserProfile,
+    description=f"Retrieve the profile information of a user by ID. **Cache TTL: {config.settings.users_cache_ttl / 60} minutes.**",
+    summary="Get user profile",
+)
+@cache(
+    ttl=cache_control_ttl(default=config.settings.users_cache_ttl),
+    key="fastapi:{request.url.path}",
+)
+async def get_profile(request: Request, id: int, session=Depends(db.get_async_session)):
+    profile = await user_flows.get_profile(session, id)
+    return profile
+
+
+@router.get(
+    path="/{id}/tournaments",
+    response_model=list[schemas.UserTournament],
+    description=f"Retrieve the list of tournaments associated with a user by ID. **Cache TTL: {config.settings.users_cache_ttl / 60} minutes.**",
+    summary="Get user tournaments",
+)
+@cache(
+    ttl=cache_control_ttl(default=config.settings.users_cache_ttl),
+    key="fastapi:{request.url.path}",
+)
+async def get_tournaments(request: Request, id: int, session: AsyncSession = Depends(db.get_async_session)):
+    tournaments = await user_flows.get_tournaments(session, id)
+    return tournaments
+
+
+@router.get(
+    path="/{id}/tournaments/{tournament_id}",
+    response_model=schemas.UserTournamentWithStats,
+    description=f"Retrieve detailed statistics for a specific tournament associated with a user. **Cache TTL: {config.settings.users_cache_ttl / 60} minutes.**",
+    summary="Get user tournament details",
+)
+@cache(
+    ttl=cache_control_ttl(default=config.settings.users_cache_ttl),
+    key="fastapi:{request.url.path}",
+)
+async def get_tournament(
+    request: Request,
+    id: int,
+    tournament_id: int,
+    session: AsyncSession = Depends(db.get_async_session),
+):
+    tournament = await user_flows.get_tournament_with_stats(session, id, tournament_id)
+    return tournament
+
+
+@router.get(
+    path="/{id}/maps",
+    response_model=pagination.Paginated[schemas.UserMap],
+    description=f"Retrieve the most played maps for a user by ID, with pagination and filtering. "
+    f"Supports search (`query`) and minimum sample size (`min_count`). "
+    f"Available entities: **gamemode, heroes, hero_stats**. "
+    f"**Cache TTL: {config.settings.users_cache_ttl / 60} minutes.**",
+    summary="Get user maps",
+)
+@cache(
+    ttl=cache_control_ttl(default=config.settings.users_cache_ttl),
+    key="fastapi:{request.url.path}/{request.query_params}",
+)
+async def get_maps(
+    request: Request,
+    id: int,
+    session: AsyncSession = Depends(db.get_async_session),
+    params: schemas.UserMapsSearchQueryParams[
+        typing.Literal[
+            "id",
+            "count",
+            "win",
+            "loss",
+            "draw",
+            "winrate",
+            "gamemode_id",
+            "slug",
+            "name",
+        ]
+    ] = Depends(),
+):
+    maps = await map_flows.get_top_user(session, id, schemas.UserMapsSearchParams.from_query_params(params))
+    return maps
+
+
+@router.get(
+    path="/{id}/maps/summary",
+    response_model=schemas.UserMapsSummary,
+    description=f"Retrieve a summary (highlights and totals) for a user's maps. "
+    f"Uses the same filters as `/users/{{id}}/maps` but always evaluates the full dataset. "
+    f"Heavy entities like hero stats are ignored. "
+    f"**Cache TTL: {config.settings.users_cache_ttl / 60} minutes.**",
+    summary="Get user maps summary",
+)
+@cache(
+    ttl=cache_control_ttl(default=config.settings.users_cache_ttl),
+    key="fastapi:{request.url.path}/{request.query_params}",
+)
+async def get_maps_summary(
+    request: Request,
+    id: int,
+    session: AsyncSession = Depends(db.get_async_session),
+    params: schemas.UserMapsSearchQueryParams[
+        typing.Literal[
+            "id",
+            "count",
+            "win",
+            "loss",
+            "draw",
+            "winrate",
+            "gamemode_id",
+            "slug",
+            "name",
+        ]
+    ] = Depends(),
+):
+    summary = await map_flows.get_top_user_summary(session, id, schemas.UserMapsSearchParams.from_query_params(params))
+    return summary
+
+
+@router.get(
+    path="/{id}/encounters",
+    response_model=pagination.Paginated[schemas.EncounterReadWithUserStats],
+    description=f"Retrieve the encounters data for a user by ID, with pagination. **Cache TTL: {config.settings.users_cache_ttl / 60} minutes.**",
+    summary="Get user encounters",
+)
+@cache(
+    ttl=cache_control_ttl(default=config.settings.users_cache_ttl),
+    key="fastapi:{request.url.path}/{request.query_params}",
+)
+async def get_encounters(
+    request: Request,
+    id: int,
+    session: AsyncSession = Depends(db.get_async_session),
+    params: pagination.PaginationSortQueryParams[
+        typing.Literal["id", "name", "home_team_id", "away_team_id", "closeness", "round"]
+    ] = Depends(),
+):
+    encounters = await encounter_flows.get_encounters_by_user(
+        session, id, pagination.PaginationSortParams.from_query_params(params)
+    )
+    return encounters
+
+
+@router.get(
+    path="/{id}/heroes",
+    response_model=pagination.Paginated[schemas.HeroWithUserStats],
+    description="Retrieve the list of heroes associated with a user by ID, along with their stats."
+    f"**Cache TTL: {config.settings.users_cache_ttl / 60} minutes.**",
+    summary="Get user heroes",
+)
+@cache(
+    ttl=cache_control_ttl(default=config.settings.users_cache_ttl),
+    key="fastapi:{request.url.path}:{request.query_params}",
+)
+async def get_heroes(
+    request: Request,
+    id: int,
+    params: pagination.PaginationQueryParams = Depends(),
+    stats: list[enums.LogStatsName] = Query([]),
+    session: AsyncSession = Depends(db.get_async_session),
+):
+    heroes = await user_flows.get_heroes(
+        session,
+        id,
+        pagination.PaginationParams.from_query_params(params),
+        stats,
+    )
+    return heroes
+
+
+@router.get(
+    path="/{id}/teammates",
+    response_model=pagination.Paginated[schemas.UserBestTeammate],
+    description=f"Retrieve the list of teammates associated with a user by ID. **Cache TTL: {config.settings.users_cache_ttl / 60} minutes.**",
+    summary="Get user best teammates",
+)
+@cache(
+    ttl=cache_control_ttl(default=config.settings.users_cache_ttl),
+    key="fastapi:{request.url.path}/{request.query_params}",
+)
+async def get_teammates(
+    request: Request,
+    id: int,
+    params: pagination.PaginationSortQueryParams[typing.Literal["id", "name", "winrate", "tournaments"]] = Depends(),
+    session: AsyncSession = Depends(db.get_async_session),
+):
+    teammates = await user_flows.get_best_teammates(
+        session, id, pagination.PaginationSortParams.from_query_params(params)
+    )
+    return teammates

@@ -1,5 +1,5 @@
 import { PaginatedResponse } from "@/types/pagination.types";
-import { OwalStandings, Standings, Tournament } from "@/types/tournament.types";
+import { OwalStack, OwalStandings, Standings, Tournament } from "@/types/tournament.types";
 import { customFetch } from "@/lib/custom_fetch";
 import { PlayerAnalytics, TournamentAnalytics } from "@/types/analytics.types";
 
@@ -16,13 +16,29 @@ export default class tournamentService {
       }
     }).then((response) => response.json());
   }
-  static async getOwalStandings(): Promise<OwalStandings> {
-    return customFetch(`tournaments/owal/results`).then((response) => response.json());
+  static async getOwalSeasons(): Promise<string[]> {
+    return customFetch(`tournaments/league/seasons`).then((response) => response.json());
+  }
+
+  static async getOwalStandings(season?: string): Promise<OwalStandings> {
+    return customFetch(`tournaments/league/results`, {
+      query: {
+        season
+      }
+    }).then((response) => response.json());
+  }
+
+  static async getOwalStacks(season?: string): Promise<OwalStack[]> {
+    return customFetch(`tournaments/league/stacks`, {
+      query: {
+        season
+      }
+    }).then((response) => response.json());
   }
   static async get(id: number): Promise<Tournament> {
     return customFetch(`tournaments/${id}`, {
       query: {
-        entities: ["participants_count"]
+        entities: ["participants_count", "groups"]
       }
     }).then((response) => response.json());
   }

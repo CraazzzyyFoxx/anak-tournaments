@@ -1,13 +1,21 @@
 import React from "react";
-import tournamentService from "@/services/tournament.service";
-import OwalStandingsTable from "@/app/owal/components/OwalStandingsTable";
+import OwalSeasonFilter from "./components/OwalSeasonFilter";
+import OwalPageTabs from "./components/OwalPageTabs";
+import { getOwalPageData, OwalPageSearchParams } from "./_data";
 
-const OwalPage = async () => {
-  const data = await tournamentService.getOwalStandings();
+export const dynamic = "force-dynamic";
+
+type OwalPageProps = {
+  searchParams: Promise<OwalPageSearchParams>;
+};
+
+const OwalPage = async ({ searchParams }: OwalPageProps) => {
+  const { seasons, selectedSeason, standings, stacks } = await getOwalPageData(searchParams);
 
   return (
-    <div>
-      <OwalStandingsTable data={data} />
+    <div className="flex flex-col gap-4">
+      {selectedSeason ? <OwalSeasonFilter seasons={seasons} selectedSeason={selectedSeason} /> : null}
+      <OwalPageTabs standings={standings} stacks={stacks} />
     </div>
   );
 };

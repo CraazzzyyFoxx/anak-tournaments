@@ -1,0 +1,77 @@
+groups:
+  - name: rabbitmq
+    interval: 30s
+    rules:
+      # -----------------------------------------------------------------------
+      # RabbitMQ broker availability
+      # -----------------------------------------------------------------------
+      - alert: RabbitMQDown
+        expr: rabbitmq_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RabbitMQ is down"
+          description: "RabbitMQ exporter cannot reach the broker. No messages are being processed."
+
+      # -----------------------------------------------------------------------
+      # Dead Letter Queue accumulation
+      # -----------------------------------------------------------------------
+      - alert: RabbitMQDLQMessagesGrowing
+        expr: |
+          rabbitmq_queue_messages{queue=~".*\\.dlq"} > 0
+          and
+          increase(rabbitmq_queue_messages{queue=~".*\\.dlq"}[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DLQ {{ $labels.queue }} is accumulating messages"
+          description: "Dead letter queue {{ $labels.queue }} has {{ $value }} messages and is growing. Investigate failed message processing."
+
+      - alert: RabbitMQDLQMessagesHigh
+        expr: rabbitmq_queue_messages{queue=~".*\\.dlq"} > 50
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "DLQ {{ $labels.queue }} has too many messages"
+          description: "Dead letter queue {{ $labels.queue }} has {{ $value }} messages. Immediate investigation required."
+
+      # -----------------------------------------------------------------------
+      # Queue depth (regular queues)
+      # -----------------------------------------------------------------------
+      - alert: RabbitMQQueueDepthHigh
+        expr: |
+          rabbitmq_queue_messages{queue!~".*\\.dlq"} > 500
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Queue {{ $labels.queue }} depth is high"
+          description: "Queue {{ $labels.queue }} has {{ $value }} pending messages. Consumers may be falling behind."
+
+      - alert: RabbitMQQueueDepthCritical
+        expr: |
+          rabbitmq_queue_messages{queue!~".*\\.dlq"} > 2000
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Queue {{ $labels.queue }} depth is critical"
+          description: "Queue {{ $labels.queue }} has {{ $value }} pending messages. Service degradation likely."
+
+      # -----------------------------------------------------------------------
+      # Consumers missing
+      # -----------------------------------------------------------------------
+      - alert: RabbitMQConsumersMissing
+        expr: |
+          rabbitmq_queue_consumers{queue!~".*\\.dlq"} == 0
+          and
+          rabbitmq_queue_messages{queue!~".*\\.dlq"} > 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No consumers on queue {{ $labels.queue }}"
+          description: "Queue {{ $labels.queue }} has {{ $value }} messages but no active consumers. Messages will accumulate."
