@@ -1,7 +1,7 @@
 import React from "react";
 import { User } from "@/types/user.types";
 import userService from "@/services/user.service";
-import AchievementCard from "@/app/users/components/AchievementCard";
+import AchievementCard from "@/components/AchievementCard";
 import UserAchievementsFilter from "@/app/users/components/UserAchievementsFilter";
 import { Trophy } from "lucide-react";
 
@@ -48,9 +48,15 @@ const UserAchievementPage = async ({ user, selectedTournamentId }: UserAchieveme
     <div className="flex flex-col gap-4 w-full">
       <UserAchievementsFilter tournaments={profile.tournaments} selectedValue={selectValue} />
       {achievements.length > 0 ? (
-        <div className="grid 2xl:grid-cols-5 xl:grid-cols-4 lg:grid-cols-3 sm:grid-cols-2 gap-2.5 w-full">
+          <div className="grid 2xl:grid-cols-5 xl:grid-cols-4 lg:grid-cols-3 sm:grid-cols-2 gap-2.5 w-full">
           {achievements.map((achievement) => (
-            <AchievementCard key={achievement.id} achievement={achievement} />
+            <AchievementCard
+              key={achievement.id}
+              achievement={achievement}
+              href={`/achievements/${achievement.id}`}
+              descriptionLocale="ru"
+              showDetails
+            />
           ))}
         </div>
       ) : (
