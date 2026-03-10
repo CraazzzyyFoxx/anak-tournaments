@@ -27,6 +27,36 @@ import {
   SelectValue
 } from "@/components/ui/select";
 
+interface PlayerFormData {
+  name: string;
+  user_id: number;
+  team_id: number;
+  tournament_id: number;
+  role: string;
+  rank: number;
+  division: number;
+  is_primary: boolean;
+  is_secondary: boolean;
+  is_newcomer: boolean;
+  is_newcomer_role: boolean;
+  is_substitution: boolean;
+}
+
+const defaultFormData: PlayerFormData = {
+  name: "",
+  user_id: 0,
+  team_id: 0,
+  tournament_id: 0,
+  role: "dps",
+  rank: 0,
+  division: 0,
+  is_primary: false,
+  is_secondary: false,
+  is_newcomer: false,
+  is_newcomer_role: false,
+  is_substitution: false,
+};
+
 export default function PlayersPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -51,20 +81,7 @@ export default function PlayersPage() {
   });
 
   // Form state
-  const [formData, setFormData] = useState<PlayerCreateInput | PlayerUpdateInput>({
-    name: "",
-    user_id: 0,
-    team_id: 0,
-    tournament_id: 0,
-    role: "dps",
-    rank: 0,
-    div: 0,
-    primary: false,
-    secondary: false,
-    is_newcomer: false,
-    is_newcomer_role: false,
-    is_substitution: false
-  });
+  const [formData, setFormData] = useState<PlayerFormData>({ ...defaultFormData });
 
   // Mutations
   const createMutation = useMutation({
@@ -109,20 +126,7 @@ export default function PlayersPage() {
   });
 
   const resetForm = () => {
-    setFormData({
-      name: "",
-      user_id: 0,
-      team_id: 0,
-      tournament_id: selectedTournamentId || 0,
-      role: "dps",
-      rank: 0,
-      div: 0,
-      primary: false,
-      secondary: false,
-      is_newcomer: false,
-      is_newcomer_role: false,
-      is_substitution: false
-    });
+    setFormData({ ...defaultFormData, tournament_id: selectedTournamentId || 0 });
   };
 
   const handleCreate = () => {
@@ -133,15 +137,16 @@ export default function PlayersPage() {
   const handleEdit = (player: Player) => {
     setSelectedPlayer(player);
     setFormData({
+      ...defaultFormData,
       name: player.name,
       role: player.role,
       rank: player.rank,
-      div: player.division,
-      primary: player.primary,
-      secondary: player.secondary,
+      division: player.division,
+      is_primary: player.primary,
+      is_secondary: player.secondary,
       is_newcomer: player.is_newcomer,
       is_newcomer_role: player.is_newcomer_role,
-      is_substitution: player.is_substitution
+      is_substitution: player.is_substitution,
     });
     setEditDialogOpen(true);
   };
@@ -153,15 +158,17 @@ export default function PlayersPage() {
 
   const handleSubmitCreate = (e: React.FormEvent) => {
     e.preventDefault();
-    createMutation.mutate(formData as PlayerCreateInput);
+    const { name, tournament_id, ...rest } = formData;
+    createMutation.mutate(rest);
   };
 
   const handleSubmitUpdate = (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedPlayer) {
+      const { role, rank, division, is_primary, is_secondary, is_newcomer, is_newcomer_role, is_substitution } = formData;
       updateMutation.mutate({
         id: selectedPlayer.id,
-        data: formData as PlayerUpdateInput
+        data: { role, rank, division, is_primary, is_secondary, is_newcomer, is_newcomer_role, is_substitution },
       });
     }
   };
@@ -309,7 +316,7 @@ export default function PlayersPage() {
           <div>
             <Label htmlFor="team_id">Team *</Label>
             <Select
-              value={(formData as PlayerCreateInput).team_id?.toString()}
+              value={formData.team_id?.toString()}
               onValueChange={(value) => setFormData({ ...formData, team_id: parseInt(value) })}
             >
               <SelectTrigger>
@@ -329,7 +336,7 @@ export default function PlayersPage() {
             <Label htmlFor="name">Player Name *</Label>
             <Input
               id="name"
-              value={(formData as PlayerCreateInput).name}
+              value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               required
             />
@@ -340,7 +347,7 @@ export default function PlayersPage() {
             <Input
               id="user_id"
               type="number"
-              value={(formData as PlayerCreateInput).user_id}
+              value={formData.user_id}
               onChange={(e) =>
                 setFormData({ ...formData, user_id: parseInt(e.target.value) })
               }
@@ -351,7 +358,7 @@ export default function PlayersPage() {
           <div>
             <Label htmlFor="role">Role</Label>
             <Select
-              value={(formData as PlayerCreateInput).role || "dps"}
+              value={formData.role || "dps"}
               onValueChange={(value) => setFormData({ ...formData, role: value })}
             >
               <SelectTrigger>
@@ -371,7 +378,7 @@ export default function PlayersPage() {
               <Input
                 id="rank"
                 type="number"
-                value={(formData as PlayerCreateInput).rank}
+                value={formData.rank}
                 onChange={(e) => setFormData({ ...formData, rank: parseInt(e.target.value) })}
               />
             </div>
@@ -381,8 +388,8 @@ export default function PlayersPage() {
               <Input
                 id="div"
                 type="number"
-                value={(formData as PlayerCreateInput).div}
-                onChange={(e) => setFormData({ ...formData, div: parseInt(e.target.value) })}
+                value={formData.division}
+                onChange={(e) => setFormData({ ...formData, division: parseInt(e.target.value) })}
               />
             </div>
           </div>
@@ -390,26 +397,26 @@ export default function PlayersPage() {
           <div className="space-y-2">
             <div className="flex items-center space-x-2">
               <Checkbox
-                id="primary"
-                checked={(formData as PlayerCreateInput).primary}
+                id="is_primary"
+                checked={formData.is_primary}
                 onCheckedChange={(checked) =>
-                  setFormData({ ...formData, primary: checked as boolean })
+                  setFormData({ ...formData, is_primary: checked as boolean })
                 }
               />
-              <Label htmlFor="primary" className="cursor-pointer">
+              <Label htmlFor="is_primary" className="cursor-pointer">
                 Primary Role
               </Label>
             </div>
 
             <div className="flex items-center space-x-2">
               <Checkbox
-                id="secondary"
-                checked={(formData as PlayerCreateInput).secondary}
+                id="is_secondary"
+                checked={formData.is_secondary}
                 onCheckedChange={(checked) =>
-                  setFormData({ ...formData, secondary: checked as boolean })
+                  setFormData({ ...formData, is_secondary: checked as boolean })
                 }
               />
-              <Label htmlFor="secondary" className="cursor-pointer">
+              <Label htmlFor="is_secondary" className="cursor-pointer">
                 Secondary Role
               </Label>
             </div>
@@ -417,7 +424,7 @@ export default function PlayersPage() {
             <div className="flex items-center space-x-2">
               <Checkbox
                 id="is_newcomer"
-                checked={(formData as PlayerCreateInput).is_newcomer}
+                checked={formData.is_newcomer}
                 onCheckedChange={(checked) =>
                   setFormData({ ...formData, is_newcomer: checked as boolean })
                 }
@@ -430,7 +437,7 @@ export default function PlayersPage() {
             <div className="flex items-center space-x-2">
               <Checkbox
                 id="is_substitution"
-                checked={(formData as PlayerCreateInput).is_substitution}
+                checked={formData.is_substitution}
                 onCheckedChange={(checked) =>
                   setFormData({ ...formData, is_substitution: checked as boolean })
                 }
@@ -457,7 +464,7 @@ export default function PlayersPage() {
             <Label htmlFor="edit-name">Player Name</Label>
             <Input
               id="edit-name"
-              value={(formData as PlayerUpdateInput).name}
+              value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
             />
           </div>
@@ -465,7 +472,7 @@ export default function PlayersPage() {
           <div>
             <Label htmlFor="edit-role">Role</Label>
             <Select
-              value={(formData as PlayerUpdateInput).role || "dps"}
+              value={formData.role || "dps"}
               onValueChange={(value) => setFormData({ ...formData, role: value })}
             >
               <SelectTrigger>
@@ -485,7 +492,7 @@ export default function PlayersPage() {
               <Input
                 id="edit-rank"
                 type="number"
-                value={(formData as PlayerUpdateInput).rank}
+                value={formData.rank}
                 onChange={(e) => setFormData({ ...formData, rank: parseInt(e.target.value) })}
               />
             </div>
@@ -495,8 +502,8 @@ export default function PlayersPage() {
               <Input
                 id="edit-div"
                 type="number"
-                value={(formData as PlayerUpdateInput).div}
-                onChange={(e) => setFormData({ ...formData, div: parseInt(e.target.value) })}
+                value={formData.division}
+                onChange={(e) => setFormData({ ...formData, division: parseInt(e.target.value) })}
               />
             </div>
           </div>
@@ -504,26 +511,26 @@ export default function PlayersPage() {
           <div className="space-y-2">
             <div className="flex items-center space-x-2">
               <Checkbox
-                id="edit-primary"
-                checked={(formData as PlayerUpdateInput).primary}
+                id="edit-is_primary"
+                checked={formData.is_primary}
                 onCheckedChange={(checked) =>
-                  setFormData({ ...formData, primary: checked as boolean })
+                  setFormData({ ...formData, is_primary: checked as boolean })
                 }
               />
-              <Label htmlFor="edit-primary" className="cursor-pointer">
+              <Label htmlFor="edit-is_primary" className="cursor-pointer">
                 Primary Role
               </Label>
             </div>
 
             <div className="flex items-center space-x-2">
               <Checkbox
-                id="edit-secondary"
-                checked={(formData as PlayerUpdateInput).secondary}
+                id="edit-is_secondary"
+                checked={formData.is_secondary}
                 onCheckedChange={(checked) =>
-                  setFormData({ ...formData, secondary: checked as boolean })
+                  setFormData({ ...formData, is_secondary: checked as boolean })
                 }
               />
-              <Label htmlFor="edit-secondary" className="cursor-pointer">
+              <Label htmlFor="edit-is_secondary" className="cursor-pointer">
                 Secondary Role
               </Label>
             </div>
@@ -531,7 +538,7 @@ export default function PlayersPage() {
             <div className="flex items-center space-x-2">
               <Checkbox
                 id="edit-is_newcomer"
-                checked={(formData as PlayerUpdateInput).is_newcomer}
+                checked={formData.is_newcomer}
                 onCheckedChange={(checked) =>
                   setFormData({ ...formData, is_newcomer: checked as boolean })
                 }
@@ -544,7 +551,7 @@ export default function PlayersPage() {
             <div className="flex items-center space-x-2">
               <Checkbox
                 id="edit-is_substitution"
-                checked={(formData as PlayerUpdateInput).is_substitution}
+                checked={formData.is_substitution}
                 onCheckedChange={(checked) =>
                   setFormData({ ...formData, is_substitution: checked as boolean })
                 }

@@ -7,7 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from src import models
 from src.schemas.admin import map as admin_schemas
-
+from src.schemas import MapRead
 
 async def get_maps(
     session: AsyncSession,
@@ -17,8 +17,6 @@ async def get_maps(
     gamemode_id: int | None = None,
 ) -> dict:
     """Get paginated list of maps"""
-    from src.schemas import PaginatedResponse, MapRead
-
     query = select(models.Map).options(selectinload(models.Map.gamemode))
 
     # Apply search filter

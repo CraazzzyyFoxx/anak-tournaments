@@ -29,10 +29,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 
-import { adminService } from "@/services/admin.service";
-import type { Hero, HeroCreateInput, HeroUpdateInput } from "@/types/admin.types";
+import adminService from "@/services/admin.service";
+import type { Hero } from "@/types/hero.types";
+import type { HeroCreateInput, HeroUpdateInput } from "@/types/admin.types";
 
-const HERO_ROLES = ["tank", "damage", "support"];
+const HERO_ROLES = ["Tank", "Damage", "Support"];
 
 export default function HeroesAdminPage() {
   const queryClient = useQueryClient();
@@ -41,7 +42,7 @@ export default function HeroesAdminPage() {
   const [deletingHero, setDeletingHero] = useState<Hero | null>(null);
   const [formData, setFormData] = useState<HeroCreateInput | HeroUpdateInput>({
     name: "",
-    role: "damage",
+    role: "Damage",
     color: "#3b82f6",
   });
 
@@ -50,7 +51,7 @@ export default function HeroesAdminPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "heroes"] });
       setCreateDialogOpen(false);
-      setFormData({ name: "", role: "damage", color: "#3b82f6" });
+      setFormData({ name: "", role: "Damage", color: "#3b82f6" });
     },
   });
 
@@ -60,7 +61,7 @@ export default function HeroesAdminPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "heroes"] });
       setEditingHero(null);
-      setFormData({ name: "", role: "damage", color: "#3b82f6" });
+      setFormData({ name: "", role: "Damage", color: "#3b82f6" });
     },
   });
 
@@ -90,11 +91,11 @@ export default function HeroesAdminPage() {
 
   const getRoleBadgeColor = (role: string) => {
     switch (role) {
-      case "tank":
+      case "Tank":
         return "bg-blue-500/10 text-blue-500 border-blue-500/20";
-      case "damage":
+      case "Damage":
         return "bg-red-500/10 text-red-500 border-red-500/20";
-      case "support":
+      case "Support":
         return "bg-green-500/10 text-green-500 border-green-500/20";
       default:
         return "";
@@ -126,10 +127,10 @@ export default function HeroesAdminPage() {
       },
     },
     {
-      accessorKey: "role",
+      accessorKey: "type",
       header: "Role",
       cell: ({ row }) => {
-        const role = row.getValue("role") as string;
+        const role = row.getValue("type") as string;
         return (
           <Badge variant="outline" className={getRoleBadgeColor(role)}>
             {role}
@@ -177,7 +178,7 @@ export default function HeroesAdminPage() {
       <AdminPageHeader
         title="Heroes"
         description="Manage game heroes and their roles"
-        action={
+        actions={
           <div className="flex gap-2">
             <Button
               variant="outline"
@@ -196,8 +197,8 @@ export default function HeroesAdminPage() {
       />
 
       <AdminDataTable
-        queryKey={["admin", "heroes"]}
-        queryFn={(params) => adminService.getHeroes(params)}
+        queryKey={(page, search) => ["admin", "heroes", page, search]}
+        queryFn={(page, search) => adminService.getHeroes({ page, search })}
         columns={columns}
         searchPlaceholder="Search heroes..."
         emptyMessage="No heroes found."
@@ -278,7 +279,7 @@ export default function HeroesAdminPage() {
           onOpenChange={(open) => !open && setDeletingHero(null)}
           onConfirm={() => deleteMutation.mutate(deletingHero.id)}
           isDeleting={deleteMutation.isPending}
-          entityName={deletingHero.name}
+          title={`Delete ${deletingHero.name}?`}
         />
       )}
     </div>

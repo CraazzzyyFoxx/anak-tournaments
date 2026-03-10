@@ -9,6 +9,32 @@ from src import models
 from src.schemas.admin import tournament as admin_schemas
 
 
+async def create_tournament(session: AsyncSession, data: admin_schemas.TournamentCreate) -> models.Tournament:
+    """Create a new tournament"""
+    if data.number is not None:
+        result = await session.execute(
+            select(models.Tournament).where(
+                models.Tournament.number == data.number,
+                models.Tournament.is_league == data.is_league,
+            )
+        )
+        existing_tournament = result.scalar_one_or_none()
+
+        if existing_tournament:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Tournament with this number already exists",
+            )
+
+    tournament = models.Tournament(**data.model_dump())
+
+    session.add(tournament)
+    await session.commit()
+    await session.refresh(tournament)
+
+    return tournament
+
+
 async def update_tournament(
     session: AsyncSession, tournament_id: int, data: admin_schemas.TournamentUpdate
 ) -> models.Tournament:

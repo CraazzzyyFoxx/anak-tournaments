@@ -6,7 +6,7 @@ import { Encounter } from "@/types/encounter.types";
 import { User } from "@/types/user.types";
 import { Hero } from "@/types/hero.types";
 import { Gamemode } from "@/types/gamemode.types";
-import { Map } from "@/types/map.types";
+import { MapRead } from "@/types/map.types";
 import {
   TournamentCreateInput,
   TournamentUpdateInput,
@@ -42,7 +42,7 @@ class AdminService {
   // ─── Tournament CRUD ───────────────────────────────────────────────────────
 
   async createTournament(data: TournamentCreateInput): Promise<Tournament> {
-    const response = await parserFetch("tournament/create", {
+    const response = await parserFetch("admin/tournaments", {
       method: "POST",
       body: data
     });
@@ -474,7 +474,7 @@ class AdminService {
     per_page?: number;
     search?: string;
     gamemode_id?: number;
-  } = {}): Promise<PaginatedResponse<Map>> {
+  } = {}): Promise<PaginatedResponse<MapRead>> {
     const searchParams = new URLSearchParams();
     if (params.page) searchParams.append("page", params.page.toString());
     if (params.per_page) searchParams.append("per_page", params.per_page.toString());
@@ -485,7 +485,7 @@ class AdminService {
     return response.json();
   }
 
-  async createMap(data: MapCreateInput): Promise<Map> {
+  async createMap(data: MapCreateInput): Promise<MapRead> {
     const response = await parserFetch("admin/maps", {
       method: "POST",
       body: data
@@ -493,7 +493,7 @@ class AdminService {
     return response.json();
   }
 
-  async updateMap(id: number, data: MapUpdateInput): Promise<Map> {
+  async updateMap(id: number, data: MapUpdateInput): Promise<MapRead> {
     const response = await parserFetch(`admin/maps/${id}`, {
       method: "PATCH",
       body: data

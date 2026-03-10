@@ -6,13 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models
 from src.schemas.admin import gamemode as admin_schemas
-
+from src.schemas import GamemodeRead
 
 async def get_gamemodes(
     session: AsyncSession, page: int = 1, per_page: int = 50, search: str | None = None
 ) -> dict:
     """Get paginated list of gamemodes"""
-    from src.schemas import PaginatedResponse, GamemodeRead
 
     query = select(models.Gamemode)
 

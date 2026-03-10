@@ -26,6 +26,24 @@ import {
   SelectValue
 } from "@/components/ui/select";
 
+interface TeamFormData {
+  name: string;
+  balancer_name: string;
+  tournament_id: number;
+  captain_id: number;
+  avg_sr: number;
+  total_sr: number;
+}
+
+const defaultFormData: TeamFormData = {
+  name: "",
+  balancer_name: "",
+  tournament_id: 0,
+  captain_id: 0,
+  avg_sr: 0,
+  total_sr: 0,
+};
+
 export default function TeamsPage() {
   const router = useRouter();
   const { toast } = useToast();
@@ -44,14 +62,7 @@ export default function TeamsPage() {
   });
 
   // Form state
-  const [formData, setFormData] = useState<TeamCreateInput | TeamUpdateInput>({
-    name: "",
-    balancer_name: "",
-    tournament_id: 0,
-    captain_id: 0,
-    avg_sr: 0,
-    total_sr: 0
-  });
+  const [formData, setFormData] = useState<TeamFormData>({ ...defaultFormData });
 
   // Mutations
   const createMutation = useMutation({
@@ -96,14 +107,7 @@ export default function TeamsPage() {
   });
 
   const resetForm = () => {
-    setFormData({
-      name: "",
-      balancer_name: "",
-      tournament_id: selectedTournamentId || 0,
-      captain_id: 0,
-      avg_sr: 0,
-      total_sr: 0
-    });
+    setFormData({ ...defaultFormData, tournament_id: selectedTournamentId || 0 });
   };
 
   const handleCreate = () => {
@@ -114,10 +118,10 @@ export default function TeamsPage() {
   const handleEdit = (team: Team) => {
     setSelectedTeam(team);
     setFormData({
+      ...defaultFormData,
       name: team.name,
-      captain_id: team.captain_id,
       avg_sr: team.avg_sr,
-      total_sr: team.total_sr
+      total_sr: team.total_sr,
     });
     setEditDialogOpen(true);
   };
@@ -129,15 +133,17 @@ export default function TeamsPage() {
 
   const handleSubmitCreate = (e: React.FormEvent) => {
     e.preventDefault();
-    createMutation.mutate(formData as TeamCreateInput);
+    const { balancer_name, ...rest } = formData;
+    createMutation.mutate(rest);
   };
 
   const handleSubmitUpdate = (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedTeam) {
+      const { name, captain_id, avg_sr, total_sr } = formData;
       updateMutation.mutate({
         id: selectedTeam.id,
-        data: formData as TeamUpdateInput
+        data: { name, captain_id, avg_sr, total_sr },
       });
     }
   };
@@ -278,7 +284,7 @@ export default function TeamsPage() {
           <div>
             <Label htmlFor="tournament_id">Tournament *</Label>
             <Select
-              value={(formData as TeamCreateInput).tournament_id?.toString()}
+              value={formData.tournament_id?.toString()}
               onValueChange={(value) =>
                 setFormData({ ...formData, tournament_id: parseInt(value) })
               }
@@ -310,7 +316,7 @@ export default function TeamsPage() {
             <Label htmlFor="balancer_name">Balancer Name</Label>
             <Input
               id="balancer_name"
-              value={(formData as TeamCreateInput).balancer_name || ""}
+              value={formData.balancer_name || ""}
               onChange={(e) => setFormData({ ...formData, balancer_name: e.target.value })}
             />
           </div>
@@ -320,7 +326,7 @@ export default function TeamsPage() {
             <Input
               id="captain_id"
               type="number"
-              value={(formData as TeamCreateInput).captain_id}
+              value={formData.captain_id}
               onChange={(e) =>
                 setFormData({ ...formData, captain_id: parseInt(e.target.value) })
               }
@@ -335,7 +341,7 @@ export default function TeamsPage() {
                 id="avg_sr"
                 type="number"
                 step="0.1"
-                value={(formData as TeamCreateInput).avg_sr}
+                value={formData.avg_sr}
                 onChange={(e) =>
                   setFormData({ ...formData, avg_sr: parseFloat(e.target.value) })
                 }
@@ -347,7 +353,7 @@ export default function TeamsPage() {
               <Input
                 id="total_sr"
                 type="number"
-                value={(formData as TeamCreateInput).total_sr}
+                value={formData.total_sr}
                 onChange={(e) =>
                   setFormData({ ...formData, total_sr: parseInt(e.target.value) })
                 }
@@ -381,7 +387,7 @@ export default function TeamsPage() {
             <Input
               id="edit-captain_id"
               type="number"
-              value={(formData as TeamUpdateInput).captain_id}
+              value={formData.captain_id}
               onChange={(e) =>
                 setFormData({ ...formData, captain_id: parseInt(e.target.value) })
               }
@@ -395,7 +401,7 @@ export default function TeamsPage() {
                 id="edit-avg_sr"
                 type="number"
                 step="0.1"
-                value={(formData as TeamUpdateInput).avg_sr}
+                value={formData.avg_sr}
                 onChange={(e) =>
                   setFormData({ ...formData, avg_sr: parseFloat(e.target.value) })
                 }
@@ -407,7 +413,7 @@ export default function TeamsPage() {
               <Input
                 id="edit-total_sr"
                 type="number"
-                value={(formData as TeamUpdateInput).total_sr}
+                value={formData.total_sr}
                 onChange={(e) =>
                   setFormData({ ...formData, total_sr: parseInt(e.target.value) })
                 }

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ColumnDef } from "@tanstack/react-table";
 import { MoreHorizontal, Plus, Pencil, Trash2, UserPlus } from "lucide-react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
@@ -31,8 +31,9 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
-import { adminService } from "@/services/admin.service";
-import type { User, UserCreateInput, UserUpdateInput } from "@/types/admin.types";
+import adminService from "@/services/admin.service";
+import type { User, UserDiscord, UserBattleTag, UserTwitch } from "@/types/user.types";
+import type { UserCreateInput, UserUpdateInput } from "@/types/admin.types";
 
 interface IdentityManagementProps {
   user: User;
@@ -138,7 +139,7 @@ function IdentityManagement({ user, onClose }: IdentityManagementProps) {
               <CardDescription>Discord usernames</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {user.discord?.map((identity) => (
+              {user.discord?.map((identity: UserDiscord) => (
                 <div key={identity.id} className="flex items-center gap-2">
                   {editingDiscord === identity.id ? (
                     <>
@@ -216,7 +217,7 @@ function IdentityManagement({ user, onClose }: IdentityManagementProps) {
               <CardDescription>Battle.net tags (Name#1234)</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {user.battle_tag?.map((identity) => (
+              {user.battle_tag?.map((identity: UserBattleTag) => (
                 <div key={identity.id} className="flex items-center gap-2">
                   {editingBattleTag === identity.id ? (
                     <>
@@ -297,7 +298,7 @@ function IdentityManagement({ user, onClose }: IdentityManagementProps) {
               <CardDescription>Twitch usernames</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {user.twitch?.map((identity) => (
+              {user.twitch?.map((identity: UserTwitch) => (
                 <div key={identity.id} className="flex items-center gap-2">
                   {editingTwitch === identity.id ? (
                     <>
@@ -500,7 +501,7 @@ export default function UsersAdminPage() {
       <AdminPageHeader
         title="Users"
         description="Manage users and their identities (Discord, BattleTag, Twitch)"
-        action={
+        actions={
           <Button onClick={() => setCreateDialogOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Create User
@@ -509,12 +510,12 @@ export default function UsersAdminPage() {
       />
 
       <AdminDataTable
-        queryKey={["admin", "users"]}
-        queryFn={(params) => adminService.getUsers(params)}
+        queryKey={(page, search) => ["admin", "users", page, search]}
+        queryFn={(page, search) => adminService.getUsers({ page, search })}
         columns={columns}
         searchPlaceholder="Search users..."
         emptyMessage="No users found."
-        onRowClick={(user) => setManagingIdentities(user)}
+        onRowClick={(row) => setManagingIdentities(row.original)}
       />
 
       {/* Create/Edit Dialog */}
@@ -555,7 +556,7 @@ export default function UsersAdminPage() {
           onOpenChange={(open) => !open && setDeletingUser(null)}
           onConfirm={() => deleteMutation.mutate(deletingUser.id)}
           isDeleting={deleteMutation.isPending}
-          entityName={deletingUser.name}
+          title={`Delete ${deletingUser.name}?`}
           cascadeInfo={[
             "All Discord identities",
             "All BattleTag identities",

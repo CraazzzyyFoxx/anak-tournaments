@@ -159,6 +159,23 @@ export function AdminDataTable<TData>({
     rowCount: data.total ?? 0
   });
 
+  const handleRowClick = (event: React.MouseEvent<HTMLTableRowElement>, row: Row<TData>) => {
+    if (!onRowClick) {
+      return;
+    }
+
+    const target = event.target as HTMLElement;
+    const interactiveElement = target.closest(
+      "button, a, input, select, textarea, [role='button'], [role='link'], [data-radix-collection-item]"
+    );
+
+    if (interactiveElement) {
+      return;
+    }
+
+    onRowClick(row);
+  };
+
   return (
     <div className="flex flex-col gap-4">
       {/* Search and Actions */}
@@ -201,7 +218,7 @@ export function AdminDataTable<TData>({
                     key={row.id}
                     data-state={row.getIsSelected() && "selected"}
                     className={onRowClick ? "cursor-pointer" : ""}
-                    onClick={() => onRowClick?.(row)}
+                    onClick={(event) => handleRowClick(event, row)}
                   >
                     {row.getVisibleCells().map((cell) => (
                       <TableCell key={cell.id}>

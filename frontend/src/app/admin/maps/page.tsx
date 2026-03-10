@@ -29,16 +29,17 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 
-import { adminService } from "@/services/admin.service";
-import type { Map, MapCreateInput, MapUpdateInput } from "@/types/admin.types";
+import adminService from "@/services/admin.service";
+import type { MapRead } from "@/types/map.types";
+import type { MapCreateInput, MapUpdateInput } from "@/types/admin.types";
 import { customFetch } from "@/lib/custom_fetch";
 import type { Gamemode } from "@/types/gamemode.types";
 
 export default function MapsAdminPage() {
   const queryClient = useQueryClient();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [editingMap, setEditingMap] = useState<Map | null>(null);
-  const [deletingMap, setDeletingMap] = useState<Map | null>(null);
+  const [editingMap, setEditingMap] = useState<MapRead | null>(null);
+  const [deletingMap, setDeletingMap] = useState<MapRead | null>(null);
   const [formData, setFormData] = useState<MapCreateInput | MapUpdateInput>({
     name: "",
     gamemode_id: 0,
@@ -96,7 +97,7 @@ export default function MapsAdminPage() {
     }
   };
 
-  const columns: ColumnDef<Map>[] = [
+  const columns: ColumnDef<MapRead>[] = [
     {
       accessorKey: "id",
       header: "ID",
@@ -158,7 +159,7 @@ export default function MapsAdminPage() {
       <AdminPageHeader
         title="Maps"
         description="Manage game maps"
-        action={
+        actions={
           <div className="flex gap-2">
             <Button
               variant="outline"
@@ -179,8 +180,8 @@ export default function MapsAdminPage() {
       />
 
       <AdminDataTable
-        queryKey={["admin", "maps"]}
-        queryFn={(params) => adminService.getMaps(params)}
+        queryKey={(page, search) => ["admin", "maps", page, search]}
+        queryFn={(page, search) => adminService.getMaps({ page, search })}
         columns={columns}
         searchPlaceholder="Search maps..."
         emptyMessage="No maps found."
@@ -243,7 +244,7 @@ export default function MapsAdminPage() {
           onOpenChange={(open) => !open && setDeletingMap(null)}
           onConfirm={() => deleteMutation.mutate(deletingMap.id)}
           isDeleting={deleteMutation.isPending}
-          entityName={deletingMap.name}
+          title={`Delete ${deletingMap.name}?`}
         />
       )}
     </div>

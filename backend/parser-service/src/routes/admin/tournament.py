@@ -15,6 +15,17 @@ router = APIRouter(
 )
 
 
+@router.post("", response_model=schemas.TournamentRead)
+async def create_tournament(
+    data: admin_schemas.TournamentCreate,
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_any_role("admin", "tournament_organizer")),
+):
+    """Create a new tournament (admin/organizer only)"""
+    tournament = await admin_service.create_tournament(session, data)
+    return await tournament_flows.to_pydantic(session, tournament, ["groups"])
+
+
 @router.patch("/{tournament_id}", response_model=schemas.TournamentRead)
 async def update_tournament(
     tournament_id: int,

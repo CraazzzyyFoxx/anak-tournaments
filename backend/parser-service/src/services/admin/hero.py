@@ -5,6 +5,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models
+from src.core import pagination
+from src.schemas import HeroRead
 from src.schemas.admin import hero as admin_schemas
 
 
@@ -13,8 +15,6 @@ async def get_heroes(
     role: str | None = None
 ) -> dict:
     """Get paginated list of heroes"""
-    from src.schemas import PaginatedResponse, HeroRead
-
     query = select(models.Hero)
 
     # Apply search filter

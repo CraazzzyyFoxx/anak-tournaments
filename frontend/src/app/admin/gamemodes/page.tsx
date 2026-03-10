@@ -21,7 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-import { adminService } from "@/services/admin.service";
+import adminService from "@/services/admin.service";
 import type { Gamemode, GamemodeCreateInput, GamemodeUpdateInput } from "@/types/admin.types";
 
 export default function GamemodesAdminPage() {
@@ -129,7 +129,7 @@ export default function GamemodesAdminPage() {
       <AdminPageHeader
         title="Gamemodes"
         description="Manage game modes"
-        action={
+        actions={
           <div className="flex gap-2">
             <Button
               variant="outline"
@@ -150,8 +150,8 @@ export default function GamemodesAdminPage() {
       />
 
       <AdminDataTable
-        queryKey={["admin", "gamemodes"]}
-        queryFn={(params) => adminService.getGamemodes(params)}
+        queryKey={(page, search) => ["admin", "gamemodes", page, search]}
+        queryFn={(page, search) => adminService.getGamemodes({ page, search })}
         columns={columns}
         searchPlaceholder="Search gamemodes..."
         emptyMessage="No gamemodes found."
@@ -195,7 +195,7 @@ export default function GamemodesAdminPage() {
           onOpenChange={(open) => !open && setDeletingGamemode(null)}
           onConfirm={() => deleteMutation.mutate(deletingGamemode.id)}
           isDeleting={deleteMutation.isPending}
-          entityName={deletingGamemode.name}
+          title={`Delete ${deletingGamemode.name}?`}
           cascadeInfo={["All maps using this gamemode will also be affected"]}
         />
       )}

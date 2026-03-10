@@ -20,6 +20,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
+import { DatePicker } from "@/components/ui/date-picker";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 
 export default function TournamentsPage() {
   const router = useRouter();
@@ -287,29 +289,27 @@ export default function TournamentsPage() {
             </Label>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="start_date">Start Date *</Label>
-              <Input
+          <FieldGroup className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="start_date">Start Date *</FieldLabel>
+              <DatePicker
                 id="start_date"
-                type="date"
                 value={formData.start_date}
-                onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-                required
+                onChange={(value) => setFormData({ ...formData, start_date: value })}
+                placeholder="June 01, 2025"
               />
-            </div>
+            </Field>
 
-            <div>
-              <Label htmlFor="end_date">End Date *</Label>
-              <Input
+            <Field>
+              <FieldLabel htmlFor="end_date">End Date *</FieldLabel>
+              <DatePicker
                 id="end_date"
-                type="date"
                 value={formData.end_date}
-                onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
-                required
+                onChange={(value) => setFormData({ ...formData, end_date: value })}
+                placeholder="June 30, 2025"
               />
-            </div>
-          </div>
+            </Field>
+          </FieldGroup>
         </div>
       </EntityFormDialog>
 
@@ -354,27 +354,27 @@ export default function TournamentsPage() {
             </Label>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="edit-start_date">Start Date</Label>
-              <Input
+          <FieldGroup className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="edit-start_date">Start Date</FieldLabel>
+              <DatePicker
                 id="edit-start_date"
-                type="date"
                 value={formData.start_date}
-                onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+                onChange={(value) => setFormData({ ...formData, start_date: value })}
+                placeholder="June 01, 2025"
               />
-            </div>
+            </Field>
 
-            <div>
-              <Label htmlFor="edit-end_date">End Date</Label>
-              <Input
+            <Field>
+              <FieldLabel htmlFor="edit-end_date">End Date</FieldLabel>
+              <DatePicker
                 id="edit-end_date"
-                type="date"
                 value={formData.end_date}
-                onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
+                onChange={(value) => setFormData({ ...formData, end_date: value })}
+                placeholder="June 30, 2025"
               />
-            </div>
-          </div>
+            </Field>
+          </FieldGroup>
         </div>
       </EntityFormDialog>
 
