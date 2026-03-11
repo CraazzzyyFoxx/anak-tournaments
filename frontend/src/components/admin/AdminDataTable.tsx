@@ -25,6 +25,10 @@ import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { useQuery } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
+
+const ADMIN_ACTION_COLUMN_ID = "actions";
+const ADMIN_ACTION_COLUMN_MIN_WIDTH = 112;
 
 export interface AdminDataTableProps<TData> {
   // Data
@@ -163,6 +167,16 @@ export function AdminDataTable<TData>({
     rowCount: data.total ?? 0
   });
 
+  const getColumnStyle = (column: { id: string; getSize: () => number; columnDef: { size?: number } }) => {
+    const configuredSize = typeof column.columnDef.size === "number" ? column.getSize() : undefined;
+    const width =
+      column.id === ADMIN_ACTION_COLUMN_ID
+        ? Math.max(configuredSize ?? 0, ADMIN_ACTION_COLUMN_MIN_WIDTH)
+        : configuredSize;
+
+    return width ? { width, minWidth: width } : undefined;
+  };
+
   const handleRowClick = (event: React.MouseEvent<HTMLTableRowElement>, row: Row<TData>) => {
     if (!onRowClick) {
       return;
@@ -230,7 +244,7 @@ export function AdminDataTable<TData>({
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-border/70 bg-card/70 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 bg-gradient-to-r from-muted/35 via-muted/20 to-background/20 px-4 py-3 text-xs text-muted-foreground">
           <div className="flex items-center gap-2">
             {isRefreshing ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : null}
             <span>{isRefreshing ? "Refreshing data" : "Snapshot ready"}</span>
@@ -239,13 +253,26 @@ export function AdminDataTable<TData>({
         </div>
 
         <ScrollArea>
-          <Table>
+          <Table className="min-w-full border-separate border-spacing-0">
             <TableHeader>
               {table.getHeaderGroups().map((headerGroup) => (
-                <TableRow key={headerGroup.id}>
-                  {headerGroup.headers.map((header) => {
+                <TableRow key={headerGroup.id} className="border-border/60 hover:bg-transparent">
+                  {headerGroup.headers.map((header, index) => {
+                    const isActionColumn = header.column.id === ADMIN_ACTION_COLUMN_ID;
+                    const isFirstColumn = index === 0;
+                    const isLastColumn = index === headerGroup.headers.length - 1;
+
                     return (
-                      <TableHead key={header.id}>
+                      <TableHead
+                        key={header.id}
+                        className={cn(
+                          "h-11 border-b border-border/60 bg-muted/15 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/90",
+                          isFirstColumn && "pl-4 sm:pl-5",
+                          isLastColumn && "pr-4 sm:pr-5",
+                          isActionColumn ? "text-right" : "text-left"
+                        )}
+                        style={getColumnStyle(header.column)}
+                      >
                         {header.isPlaceholder
                           ? null
                           : flexRender(header.column.columnDef.header, header.getContext())}
@@ -261,16 +288,41 @@ export function AdminDataTable<TData>({
                   <TableRow
                     key={row.id}
                     data-state={row.getIsSelected() && "selected"}
-                    className={onRowClick ? "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" : ""}
+                    className={cn(
+                      "group border-border/50 bg-background/0 transition-colors duration-200 hover:bg-muted/20 data-[state=selected]:bg-muted/25",
+                      onRowClick &&
+                        "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-offset-2"
+                    )}
                     onClick={(event) => handleRowClick(event, row)}
                     onKeyDown={(event) => handleRowKeyDown(event, row)}
                     tabIndex={onRowClick ? 0 : undefined}
                   >
-                    {row.getVisibleCells().map((cell) => (
-                      <TableCell key={cell.id}>
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </TableCell>
-                    ))}
+                    {row.getVisibleCells().map((cell, index) => {
+                      const isActionColumn = cell.column.id === ADMIN_ACTION_COLUMN_ID;
+                      const isFirstColumn = index === 0;
+                      const isLastColumn = index === row.getVisibleCells().length - 1;
+
+                      return (
+                        <TableCell
+                          key={cell.id}
+                          className={cn(
+                            "py-3.5 align-middle",
+                            isFirstColumn && "pl-4 sm:pl-5",
+                            isLastColumn && "pr-4 sm:pr-5",
+                            isActionColumn && "whitespace-nowrap text-right"
+                          )}
+                          style={getColumnStyle(cell.column)}
+                        >
+                          {isActionColumn ? (
+                            <div className="flex w-full items-center justify-end">
+                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                            </div>
+                          ) : (
+                            flexRender(cell.column.columnDef.cell, cell.getContext())
+                          )}
+                        </TableCell>
+                      );
+                    })}
                   </TableRow>
                 ))
               ) : (

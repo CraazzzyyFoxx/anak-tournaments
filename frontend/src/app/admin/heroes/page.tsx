@@ -27,8 +27,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Badge } from "@/components/ui/badge";
 
+import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import adminService from "@/services/admin.service";
 import type { Hero } from "@/types/hero.types";
 import type { HeroCreateInput, HeroUpdateInput } from "@/types/admin.types";
@@ -40,7 +40,44 @@ const emptyHeroForm: HeroCreateInput = {
   name: "",
   role: "Damage",
   color: "#3b82f6",
+  image_path: "",
 };
+
+function getHeroRoleValue(hero: { role?: string | null; type?: string | null }): string {
+  return hero.type || hero.role || emptyHeroForm.role;
+}
+
+function HeroIconPreview({
+  imagePath,
+  name,
+  className,
+}: {
+  imagePath?: string | null;
+  name: string;
+  className: string;
+}) {
+  const fallbackLabel = (name.trim().charAt(0) || "?").toUpperCase();
+
+  if (!imagePath) {
+    return (
+      <div
+        aria-label={name ? `${name} icon placeholder` : "Hero icon placeholder"}
+        className={`${className} flex items-center justify-center rounded-full border border-dashed border-border/70 bg-muted/30 text-sm font-semibold text-muted-foreground`}
+      >
+        {fallbackLabel}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      role="img"
+      aria-label={name ? `${name} icon` : "Hero icon"}
+      className={`${className} rounded-full border border-border/70 bg-muted/20 bg-cover bg-center`}
+      style={{ backgroundImage: `url("${imagePath}")`, backgroundPosition: "center", backgroundSize: "cover" }}
+    />
+  );
+}
 
 function getHeroForm(hero: Hero | null): HeroCreateInput | HeroUpdateInput {
   if (!hero) {
@@ -49,8 +86,9 @@ function getHeroForm(hero: Hero | null): HeroCreateInput | HeroUpdateInput {
 
   return {
     name: hero.name,
-    role: hero.role,
+    role: getHeroRoleValue(hero),
     color: hero.color,
+    image_path: hero.image_path,
   };
 }
 
@@ -114,19 +152,6 @@ export default function HeroesAdminPage() {
   const formInitial = getHeroForm(editingHero);
   const isFormDirty = (createDialogOpen || !!editingHero) && hasUnsavedChanges(formData, formInitial);
 
-  const getRoleBadgeColor = (role: string) => {
-    switch (role) {
-      case "Tank":
-        return "bg-blue-500/10 text-blue-500 border-blue-500/20";
-      case "Damage":
-        return "bg-red-500/10 text-red-500 border-red-500/20";
-      case "Support":
-        return "bg-green-500/10 text-green-500 border-green-500/20";
-      default:
-        return "";
-    }
-  };
-
   const columns: ColumnDef<Hero>[] = [
     {
       accessorKey: "id",
@@ -134,13 +159,23 @@ export default function HeroesAdminPage() {
       size: 80,
     },
     {
+      id: "icon",
+      header: "Icon",
+      size: 88,
+      cell: ({ row }) => {
+        const hero = row.original;
+        return (
+          <div className="flex justify-center">
+            <HeroIconPreview imagePath={hero.image_path} name={hero.name} className="h-10 w-10" />
+          </div>
+        );
+      },
+    },
+    {
       accessorKey: "name",
       header: "Name",
       cell: ({ row }) => {
         const hero = row.original;
-        if (!canUpdate && !canDelete) {
-          return null;
-        }
         return (
           <div className="flex items-center gap-2">
             {hero.color && (
@@ -155,14 +190,17 @@ export default function HeroesAdminPage() {
       },
     },
     {
-      accessorKey: "type",
+      id: "role",
       header: "Role",
       cell: ({ row }) => {
-        const role = row.getValue("type") as string;
+        const role = getHeroRoleValue(row.original);
         return (
-          <Badge variant="outline" className={getRoleBadgeColor(role)}>
-            {role}
-          </Badge>
+          <div className="flex justify-center">
+            <div title={role}>
+              <PlayerRoleIcon role={role} size={22} />
+              <span className="sr-only">{role}</span>
+            </div>
+          </div>
         );
       },
     },
@@ -171,6 +209,10 @@ export default function HeroesAdminPage() {
       size: 50,
       cell: ({ row }) => {
         const hero = row.original;
+        if (!canUpdate && !canDelete) {
+          return null;
+        }
+
         return (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -181,15 +223,15 @@ export default function HeroesAdminPage() {
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>Actions</DropdownMenuLabel>
                {canUpdate ? (
-                 <DropdownMenuItem
-                   onClick={() => {
-                     updateMutation.reset();
-                     setEditingHero(hero);
-                     setFormData({ name: hero.name, role: hero.role, color: hero.color });
-                   }}
-                 >
-                   <Pencil className="mr-2 h-4 w-4" />
-                   Edit
+                  <DropdownMenuItem
+                    onClick={() => {
+                      updateMutation.reset();
+                      setEditingHero(hero);
+                      setFormData(getHeroForm(hero));
+                    }}
+                  >
+                    <Pencil className="mr-2 h-4 w-4" />
+                    Edit
                  </DropdownMenuItem>
                ) : null}
                {canUpdate && canDelete ? <DropdownMenuSeparator /> : null}
@@ -285,22 +327,53 @@ export default function HeroesAdminPage() {
           </div>
 
           <div className="space-y-2">
+            <Label htmlFor="image_path">Hero icon</Label>
+            <div className="flex items-start gap-3">
+              <HeroIconPreview
+                imagePath={formData.image_path}
+                name={formData.name || "Hero"}
+                className="h-16 w-16 shrink-0"
+              />
+              <div className="flex-1 space-y-2">
+                <Input
+                  id="image_path"
+                  type="url"
+                  value={formData.image_path || ""}
+                  onChange={(e) => setFormData({ ...formData, image_path: e.target.value })}
+                  placeholder="https://overfast.craazzzyyfoxx.me/static/heroes/ana.png"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Use a direct URL to the hero portrait shown in the admin table and user pages.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-2">
             <Label htmlFor="role">Role</Label>
-            <Select
-              value={formData.role}
-              onValueChange={(value) => setFormData({ ...formData, role: value })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select role" />
-              </SelectTrigger>
-              <SelectContent>
-                {HERO_ROLES.map((role) => (
-                  <SelectItem key={role} value={role}>
-                    {role}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-border/70 bg-muted/20">
+                <PlayerRoleIcon role={formData.role || emptyHeroForm.role} size={20} />
+              </div>
+              <Select
+                value={formData.role}
+                onValueChange={(value) => setFormData({ ...formData, role: value })}
+              >
+                <SelectTrigger className="flex-1">
+                  <SelectValue placeholder="Select role" />
+                </SelectTrigger>
+                <SelectContent>
+                  {HERO_ROLES.map((role) => (
+                    <SelectItem key={role} value={role}>
+                      <div className="flex items-center gap-2">
+                        <PlayerRoleIcon role={role} size={16} />
+                        <span>{role}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <div className="space-y-2">

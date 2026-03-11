@@ -34,6 +34,7 @@ import type { MapRead } from "@/types/map.types";
 import type { MapCreateInput, MapUpdateInput } from "@/types/admin.types";
 import { customFetch } from "@/lib/custom_fetch";
 import type { Gamemode } from "@/types/gamemode.types";
+import type { PaginatedResponse } from "@/types/pagination.types";
 import { usePermissions } from "@/hooks/usePermissions";
 import { hasUnsavedChanges } from "@/lib/form-change";
 
@@ -41,6 +42,38 @@ const emptyMapForm: MapCreateInput = {
   name: "",
   gamemode_id: 0,
 };
+
+function MapImagePreview({
+  imagePath,
+  name,
+  className,
+}: {
+  imagePath?: string | null;
+  name: string;
+  className: string;
+}) {
+  const fallbackLabel = (name.trim().charAt(0) || "?").toUpperCase();
+
+  if (!imagePath) {
+    return (
+      <div
+        aria-label={name ? `${name} image placeholder` : "Map image placeholder"}
+        className={`${className} flex items-center justify-center rounded-md border border-dashed border-border/70 bg-muted/30 text-sm font-semibold text-muted-foreground`}
+      >
+        {fallbackLabel}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      role="img"
+      aria-label={name ? `${name} image` : "Map image"}
+      className={`${className} rounded-md border border-border/70 bg-muted/20 bg-cover bg-center`}
+      style={{ backgroundImage: `url("${imagePath}")` }}
+    />
+  );
+}
 
 export default function MapsAdminPage() {
   const queryClient = useQueryClient();
@@ -61,7 +94,8 @@ export default function MapsAdminPage() {
     queryKey: ["gamemodes"],
     queryFn: async () => {
       const response = await customFetch("/gamemodes");
-      return response.json() as Promise<Gamemode[]>;
+      const data = (await response.json()) as PaginatedResponse<Gamemode>;
+      return data.results;
     },
   });
 
@@ -116,6 +150,19 @@ export default function MapsAdminPage() {
       accessorKey: "id",
       header: "ID",
       size: 80,
+    },
+    {
+      id: "image",
+      header: "Image",
+      size: 140,
+      cell: ({ row }) => {
+        const map = row.original;
+        return (
+          <div className="flex justify-center">
+            <MapImagePreview imagePath={map.image_path} name={map.name} className="h-12 w-24" />
+          </div>
+        );
+      },
     },
     {
       accessorKey: "name",

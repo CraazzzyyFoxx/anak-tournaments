@@ -1,53 +1,32 @@
 "use client";
 
-import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
+import type { CSSProperties, ReactNode } from "react";
+import { usePathname } from "next/navigation";
+
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
-import { AppPermission, usePermissions } from "@/hooks/usePermissions";
-import { Separator } from "@/components/ui/separator";
+import {
+  adminRoutePermissions,
+  getActiveAdminNavigation,
+  getVisibleAdminNavigationGroups,
+} from "@/components/admin/admin-navigation";
 import {
   Breadcrumb,
   BreadcrumbItem,
   BreadcrumbLink,
   BreadcrumbList,
   BreadcrumbPage,
-  BreadcrumbSeparator
+  BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import { usePathname } from "next/navigation";
-
-const overviewPermissions: AppPermission[] = [
-  "tournament.read",
-  "team.read",
-  "player.read",
-  "match.read",
-  "standing.read",
-  "user.read",
-  "hero.read",
-  "gamemode.read",
-  "map.read",
-  "analytics.read",
-];
-
-const routePermissions: Array<{ prefix: string; permissions: AppPermission[]; superuserOnly?: boolean }> = [
-  { prefix: "/admin/access", permissions: [], superuserOnly: true },
-  { prefix: "/admin/tournaments", permissions: ["tournament.read"] },
-  { prefix: "/admin/teams", permissions: ["team.read"] },
-  { prefix: "/admin/players", permissions: ["player.read"] },
-  { prefix: "/admin/encounters", permissions: ["match.read"] },
-  { prefix: "/admin/standings", permissions: ["standing.read"] },
-  { prefix: "/admin/users", permissions: ["user.read"] },
-  { prefix: "/admin/heroes", permissions: ["hero.read"] },
-  { prefix: "/admin/gamemodes", permissions: ["gamemode.read"] },
-  { prefix: "/admin/maps", permissions: ["map.read"] },
-  { prefix: "/admin/achievements", permissions: ["achievement.read"] },
-  { prefix: "/admin/settings", permissions: [], superuserOnly: true },
-  { prefix: "/admin", permissions: overviewPermissions },
-];
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { usePermissions } from "@/hooks/usePermissions";
 
 function LoadingState() {
   return (
     <div className="flex h-screen w-full items-center justify-center">
       <div className="text-center">
-        <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]" />
+        <div className="inline-block size-8 animate-spin rounded-full border-4 border-current border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]" />
         <p className="mt-4 text-muted-foreground">Loading...</p>
       </div>
     </div>
@@ -59,15 +38,22 @@ function UnauthorizedState() {
     <div className="flex h-screen w-full items-center justify-center">
       <div className="text-center">
         <h1 className="text-4xl font-bold">Unauthorized</h1>
-        <p className="mt-4 text-muted-foreground">
-          You do not have permission to access the admin panel.
-        </p>
+        <p className="mt-4 text-muted-foreground">You do not have permission to access the admin panel.</p>
         <p className="mt-2 text-sm text-muted-foreground">
           Please contact an administrator if you believe this is an error.
         </p>
       </div>
     </div>
   );
+}
+
+function formatBreadcrumbLabel(segment: string) {
+  const normalized = segment.replace(/-/g, " ");
+  if (/^\d+$/.test(normalized)) {
+    return "Details";
+  }
+
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }
 
 function AdminBreadcrumb() {
@@ -83,17 +69,13 @@ function AdminBreadcrumb() {
         {segments.slice(1).map((segment, index) => {
           const href = `/admin/${segments.slice(1, index + 2).join("/")}`;
           const isLast = index === segments.length - 2;
-          const title = segment.charAt(0).toUpperCase() + segment.slice(1);
+          const label = formatBreadcrumbLabel(segment);
 
           return (
-            <div key={segment} className="flex items-center gap-2">
+            <div key={`${segment}-${index}`} className="flex items-center gap-2">
               <BreadcrumbSeparator />
               <BreadcrumbItem>
-                {isLast ? (
-                  <BreadcrumbPage>{title}</BreadcrumbPage>
-                ) : (
-                  <BreadcrumbLink href={href}>{title}</BreadcrumbLink>
-                )}
+                {isLast ? <BreadcrumbPage>{label}</BreadcrumbPage> : <BreadcrumbLink href={href}>{label}</BreadcrumbLink>}
               </BreadcrumbItem>
             </div>
           );
@@ -103,16 +85,20 @@ function AdminBreadcrumb() {
   );
 }
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+const sidebarShellStyle = {
+  "--sidebar-width": "15.5rem",
+  "--sidebar-width-icon": "3.75rem",
+} as CSSProperties;
+
+export default function AdminLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { isLoaded, isAdmin, isOrganizer, isModerator, isSuperuser, hasAnyPermission } = usePermissions();
 
-  // Show loading state while auth is resolving
   if (!isLoaded) {
     return <LoadingState />;
   }
 
-  const matchingRoute = routePermissions.find((route) => pathname.startsWith(route.prefix));
+  const matchingRoute = adminRoutePermissions.find((route) => pathname.startsWith(route.prefix));
 
   let hasAccess = false;
   if (matchingRoute?.superuserOnly) {
@@ -123,21 +109,38 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     hasAccess = isSuperuser || isAdmin || isOrganizer || isModerator;
   }
 
-  // Redirect or show unauthorized if no access
   if (!hasAccess) {
     return <UnauthorizedState />;
   }
 
+  const visibleGroups = getVisibleAdminNavigationGroups(isSuperuser, hasAnyPermission);
+  const activeNavigation = getActiveAdminNavigation(pathname, visibleGroups);
+
   return (
-    <SidebarProvider>
+    <SidebarProvider className="admin-theme" defaultOpen style={sidebarShellStyle}>
       <AdminSidebar />
-      <SidebarInset>
-        <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
-          <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="mr-2 h-4" />
-          <AdminBreadcrumb />
+      <SidebarInset className="min-h-[calc(100svh-8rem)] bg-background/95 md:peer-data-[variant=inset]:border md:peer-data-[variant=inset]:border-border/50 md:peer-data-[variant=inset]:shadow-xl md:peer-data-[variant=inset]:shadow-black/10">
+        <header className="sticky top-0 z-20 flex h-[3.75rem] shrink-0 items-center gap-3 border-b border-border/50 bg-background/90 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/82 md:px-5">
+          <SidebarTrigger className="size-8 rounded-lg border border-border/60" />
+          <Separator orientation="vertical" className="hidden h-5 md:block" />
+
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline">{activeNavigation?.group.title ?? "Admin"}</Badge>
+              <span className="truncate text-sm font-medium text-foreground">{activeNavigation?.item.title ?? "Dashboard"}</span>
+              {activeNavigation?.item.superuserOnly ? <Badge variant="secondary">Restricted</Badge> : null}
+            </div>
+            <div className="mt-1 hidden text-muted-foreground md:block">
+              <AdminBreadcrumb />
+            </div>
+          </div>
+
+          <div className="hidden max-w-xs truncate text-sm text-muted-foreground 2xl:block">
+            {activeNavigation?.item.description ?? "Admin overview and operational health."}
+          </div>
         </header>
-        <div className="flex flex-1 flex-col gap-4 p-4">{children}</div>
+
+        <div className="flex flex-1 flex-col gap-5 p-4 md:p-5">{children}</div>
       </SidebarInset>
     </SidebarProvider>
   );

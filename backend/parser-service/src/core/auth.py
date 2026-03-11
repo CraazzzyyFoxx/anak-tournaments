@@ -6,22 +6,39 @@ Uses auth-service microservice for token validation with RBAC support
 from collections.abc import Callable
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 # Import from main module to use the singleton instance
 import main
 from src import models
 from src.core import db
 
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
+
+
+def _get_request_token(
+    token: HTTPAuthorizationCredentials | None,
+    request: Request,
+) -> str | None:
+    if token is not None:
+        return token.credentials
+
+    cookie_token = request.cookies.get("aqt_access_token")
+    if not cookie_token:
+        return None
+
+    cookie_token = cookie_token.removeprefix("Bearer ").strip()
+    return cookie_token or None
 
 
 async def get_current_user(
-    token: Annotated[HTTPAuthorizationCredentials, Depends(security)],
+    request: Request,
+    token: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
     session: Annotated[AsyncSession, Depends(db.get_async_session)],
 ) -> models.AuthUser:
     """Get current authenticated user from JWT token via auth-service"""
@@ -32,13 +49,20 @@ async def get_current_user(
     )
 
     try:
+        token_value = _get_request_token(token, request)
+        if not token_value:
+            raise credentials_exception
+
         # Validate token via auth-service using the shared client
-        payload = await main.auth_client.validate_token(token.credentials)
+        payload = await main.auth_client.validate_token(token_value)
 
         if not payload:
             raise credentials_exception
 
-        user_id: int | None = payload.get("sub")
+        try:
+            user_id = int(payload.get("sub"))
+        except (TypeError, ValueError) as exc:
+            raise credentials_exception from exc
 
         if not user_id:
             raise credentials_exception
@@ -50,7 +74,9 @@ async def get_current_user(
         raise credentials_exception from e
 
     # Fetch user from local database
-    result = await session.execute(select(models.AuthUser).where(models.AuthUser.id == user_id))
+    result = await session.execute(
+        select(models.AuthUser).options(selectinload(models.AuthUser.roles)).where(models.AuthUser.id == user_id)
+    )
     user = result.scalar_one_or_none()
 
     if user is None:
@@ -63,9 +89,18 @@ def require_service_scope(scope: str) -> Callable:
     """Dependency factory for requiring a service token scope."""
 
     async def scope_checker(
-        token: Annotated[HTTPAuthorizationCredentials, Depends(security)],
+        request: Request,
+        token: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
     ) -> dict:
-        payload = await main.auth_client.validate_service_token(token.credentials)
+        token_value = _get_request_token(token, request)
+        if not token_value:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not validate service credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        payload = await main.auth_client.validate_service_token(token_value)
         if not payload:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -89,10 +124,19 @@ def require_role_or_service_scope(role_name: str, scope: str) -> Callable:
     """Allow either an authenticated user with role OR a service token with scope."""
 
     async def checker(
-        token: Annotated[HTTPAuthorizationCredentials, Depends(security)],
+        request: Request,
+        token: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
         session: Annotated[AsyncSession, Depends(db.get_async_session)],
     ):
-        service_payload = await main.auth_client.validate_service_token(token.credentials)
+        token_value = _get_request_token(token, request)
+        if not token_value:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not validate credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        service_payload = await main.auth_client.validate_service_token(token_value)
         if service_payload:
             scopes = service_payload.get("scopes", [])
             if not isinstance(scopes, list) or scope not in scopes:
@@ -102,7 +146,7 @@ def require_role_or_service_scope(role_name: str, scope: str) -> Callable:
                 )
             return
 
-        user = await get_current_user(token=token, session=session)
+        user = await get_current_user(request=request, token=token, session=session)
         if not user.is_active:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

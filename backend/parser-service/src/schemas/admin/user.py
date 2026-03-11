@@ -1,4 +1,9 @@
-from pydantic import BaseModel
+import typing
+from dataclasses import dataclass
+
+from pydantic import BaseModel, Field
+
+from src.core import pagination
 
 __all__ = (
     "UserCreate",
@@ -9,6 +14,8 @@ __all__ = (
     "BattleTagIdentityUpdate",
     "TwitchIdentityCreate",
     "TwitchIdentityUpdate",
+    "UserListQueryParams",
+    "UserListParams",
 )
 
 
@@ -22,6 +29,20 @@ class UserUpdate(BaseModel):
     """Schema for updating a user"""
 
     name: str | None = None
+
+
+class UserListQueryParams(
+    pagination.PaginationSortQueryParams[typing.Literal["id", "name", "created_at", "updated_at"]]
+):
+    per_page: int = Field(default=50, ge=-1, le=100)
+    sort: typing.Literal["id", "name", "created_at", "updated_at"] = "id"
+    search: str | None = None
+
+
+@dataclass
+class UserListParams(pagination.PaginationSortParams):
+    per_page: int = 50
+    search: str | None = None
 
 
 # ─── Discord Identity ────────────────────────────────────────────────────────

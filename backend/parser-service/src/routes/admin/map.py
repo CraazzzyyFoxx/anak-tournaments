@@ -16,15 +16,15 @@ router = APIRouter(
 
 @router.get("", response_model=pagination.Paginated[schemas.MapRead])
 async def get_maps(
-    page: int = 1,
-    per_page: int = 50,
-    search: str | None = None,
-    gamemode_id: int | None = None,
+    params: admin_schemas.MapListQueryParams = Depends(),
     session: AsyncSession = Depends(db.get_async_session),
     user: models.AuthUser = Depends(auth.require_permission("map", "read")),
 ):
     """Get paginated list of maps (admin only)"""
-    maps_list = await admin_service.get_maps(session, page, per_page, search, gamemode_id)
+    maps_list = await admin_service.get_maps(
+        session,
+        admin_schemas.MapListParams.from_query_params(params),
+    )
     return maps_list
 
 

@@ -160,12 +160,14 @@ export interface HeroCreateInput {
   name: string;
   role: string;
   color?: string;
+  image_path?: string;
 }
 
 export interface HeroUpdateInput {
   name?: string;
   role?: string;
   color?: string;
+  image_path?: string;
 }
 
 // ─── Gamemode ────────────────────────────────────────────────────────────────

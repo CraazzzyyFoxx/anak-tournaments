@@ -42,7 +42,10 @@ async def get_by_name_and_gamemode(session: AsyncSession, name: str, gamemode: s
 
 
 async def initial_create(session: AsyncSession) -> None:
-    gamemodes, total = await gamemode_service.get_all(session, params=pagination.PaginationParams(per_page=-1, page=1))
+    gamemodes, total = await gamemode_service.get_all(
+        session,
+        params=pagination.PaginationSortParams(per_page=-1, page=1),
+    )
     for gamemode in gamemodes:
         maps = await fetch_maps(gamemode)
         for map in maps:

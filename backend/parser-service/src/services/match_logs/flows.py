@@ -157,7 +157,7 @@ class MatchLogProcessor:
         return await map_flows.get_by_name_and_gamemode(session, map_name, gamemode)
 
     async def _preload_data(self, session: AsyncSession):
-        heroes_db, _ = await hero_service.get_all(session, pagination.PaginationParams(per_page=-1))
+        heroes_db, _ = await hero_service.get_all(session, pagination.PaginationSortParams(per_page=-1))
         self.heroes_map = {hero.name: hero for hero in heroes_db}
         for alias, real_name in enums.hero_translation.items():
             if real_name in self.heroes_map and alias not in self.heroes_map:
@@ -1011,10 +1011,8 @@ async def process_closeness(session: AsyncSession, payload: list[str]):
 
         logger.info(f"Tournament {tournament.name} found [id={tournament.id}]")
         logger.info(f"Home team name: {home_team_name}, away team name: {away_team_name}")
-        home_team = await team_service.get_by_name_and_tournament(
-            session, tournament.id, home_team_name.strip(), [])
-        away_team = await team_service.get_by_name_and_tournament(
-            session, tournament.id, away_team_name.strip(), [])
+        home_team = await team_service.get_by_name_and_tournament(session, tournament.id, home_team_name.strip(), [])
+        away_team = await team_service.get_by_name_and_tournament(session, tournament.id, away_team_name.strip(), [])
 
         if not home_team or not away_team:
             logger.error(f"Home team {home_team_name} or away team {away_team_name} not found")

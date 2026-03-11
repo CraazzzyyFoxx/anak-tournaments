@@ -16,15 +16,15 @@ router = APIRouter(
 
 @router.get("", response_model=pagination.Paginated[schemas.HeroRead])
 async def get_heroes(
-    page: int = 1,
-    per_page: int = 50,
-    search: str | None = None,
-    role: str | None = None,
+    params: admin_schemas.HeroListQueryParams = Depends(),
     session: AsyncSession = Depends(db.get_async_session),
     user: models.AuthUser = Depends(auth.require_permission("hero", "read")),
 ):
     """Get paginated list of heroes (admin only)"""
-    heroes_list = await admin_service.get_heroes(session, page, per_page, search, role)
+    heroes_list = await admin_service.get_heroes(
+        session,
+        admin_schemas.HeroListParams.from_query_params(params),
+    )
     return heroes_list
 
 

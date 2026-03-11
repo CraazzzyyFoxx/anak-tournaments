@@ -1,52 +1,44 @@
 """Admin service layer for user and identity CRUD operations"""
 
+import sqlalchemy as sa
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src import models
+from src.schemas import UserRead
 from src.schemas.admin import user as admin_schemas
-
 
 # ─── User CRUD ───────────────────────────────────────────────────────────────
 
 
-async def get_users(
-    session: AsyncSession, page: int = 1, per_page: int = 50, search: str | None = None
-) -> dict:
+async def get_users(session: AsyncSession, params: admin_schemas.UserListParams) -> dict:
     """Get paginated list of users"""
-    from src.schemas import PaginatedResponse, UserRead
-
     query = select(models.User).options(
         selectinload(models.User.discord),
         selectinload(models.User.battle_tag),
         selectinload(models.User.twitch),
     )
+    count_query = select(sa.func.count(models.User.id))
 
-    # Apply search filter
-    if search:
-        query = query.where(models.User.name.ilike(f"%{search}%"))
+    if params.search:
+        search_term = f"%{params.search}%"
+        query = query.where(models.User.name.ilike(search_term))
+        count_query = count_query.where(models.User.name.ilike(search_term))
 
-    # Count total
-    count_query = select(models.User.id)
-    if search:
-        count_query = count_query.where(models.User.name.ilike(f"%{search}%"))
-    total_result = await session.execute(count_query)
-    total = len(total_result.all())
-
-    # Apply pagination
-    offset = (page - 1) * per_page
-    query = query.offset(offset).limit(per_page)
+    query = params.apply_pagination_sort(query, models.User)
 
     result = await session.execute(query)
+    total_result = await session.execute(count_query)
     users = result.scalars().all()
+    total = total_result.scalar_one()
 
     return {
         "results": [UserRead.model_validate(user, from_attributes=True) for user in users],
         "total": total,
-        "page": page,
-        "per_page": per_page,
+        "page": params.page,
+        "per_page": params.per_page,
     }
 
 
@@ -72,9 +64,7 @@ async def create_user(session: AsyncSession, data: admin_schemas.UserCreate) -> 
     return user
 
 
-async def update_user(
-    session: AsyncSession, user_id: int, data: admin_schemas.UserUpdate
-) -> models.User:
+async def update_user(session: AsyncSession, user_id: int, data: admin_schemas.UserUpdate) -> models.User:
     """Update user fields"""
     result = await session.execute(
         select(models.User)
@@ -139,9 +129,7 @@ async def add_discord_identity(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     # Check if Discord name is already taken
-    result = await session.execute(
-        select(models.UserDiscord).where(models.UserDiscord.name == data.name)
-    )
+    result = await session.execute(select(models.UserDiscord).where(models.UserDiscord.name == data.name))
     existing = result.scalar_one_or_none()
 
     if existing:
@@ -165,22 +153,16 @@ async def update_discord_identity(
 ) -> models.UserDiscord:
     """Update Discord identity"""
     result = await session.execute(
-        select(models.UserDiscord).where(
-            models.UserDiscord.id == identity_id, models.UserDiscord.user_id == user_id
-        )
+        select(models.UserDiscord).where(models.UserDiscord.id == identity_id, models.UserDiscord.user_id == user_id)
     )
     identity = result.scalar_one_or_none()
 
     if not identity:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Discord identity not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Discord identity not found")
 
     # Check if new name conflicts
     if data.name != identity.name:
-        result = await session.execute(
-            select(models.UserDiscord).where(models.UserDiscord.name == data.name)
-        )
+        result = await session.execute(select(models.UserDiscord).where(models.UserDiscord.name == data.name))
         existing = result.scalar_one_or_none()
 
         if existing:
@@ -200,16 +182,12 @@ async def update_discord_identity(
 async def delete_discord_identity(session: AsyncSession, user_id: int, identity_id: int) -> None:
     """Delete Discord identity"""
     result = await session.execute(
-        select(models.UserDiscord).where(
-            models.UserDiscord.id == identity_id, models.UserDiscord.user_id == user_id
-        )
+        select(models.UserDiscord).where(models.UserDiscord.id == identity_id, models.UserDiscord.user_id == user_id)
     )
     identity = result.scalar_one_or_none()
 
     if not identity:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Discord identity not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Discord identity not found")
 
     await session.delete(identity)
     await session.commit()
@@ -275,9 +253,7 @@ async def update_battletag_identity(
     identity = result.scalar_one_or_none()
 
     if not identity:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="BattleTag identity not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="BattleTag identity not found")
 
     # Parse battle tag
     if "#" not in data.battle_tag:
@@ -291,9 +267,7 @@ async def update_battletag_identity(
     # Check if new BattleTag conflicts
     if data.battle_tag != identity.battle_tag:
         result = await session.execute(
-            select(models.UserBattleTag).where(
-                models.UserBattleTag.battle_tag == data.battle_tag
-            )
+            select(models.UserBattleTag).where(models.UserBattleTag.battle_tag == data.battle_tag)
         )
         existing = result.scalar_one_or_none()
 
@@ -313,9 +287,7 @@ async def update_battletag_identity(
     return identity
 
 
-async def delete_battletag_identity(
-    session: AsyncSession, user_id: int, identity_id: int
-) -> None:
+async def delete_battletag_identity(session: AsyncSession, user_id: int, identity_id: int) -> None:
     """Delete BattleTag identity"""
     result = await session.execute(
         select(models.UserBattleTag).where(
@@ -325,9 +297,7 @@ async def delete_battletag_identity(
     identity = result.scalar_one_or_none()
 
     if not identity:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="BattleTag identity not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="BattleTag identity not found")
 
     await session.delete(identity)
     await session.commit()
@@ -348,9 +318,7 @@ async def add_twitch_identity(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     # Check if Twitch name is already taken
-    result = await session.execute(
-        select(models.UserTwitch).where(models.UserTwitch.name == data.name)
-    )
+    result = await session.execute(select(models.UserTwitch).where(models.UserTwitch.name == data.name))
     existing = result.scalar_one_or_none()
 
     if existing:
@@ -374,22 +342,16 @@ async def update_twitch_identity(
 ) -> models.UserTwitch:
     """Update Twitch identity"""
     result = await session.execute(
-        select(models.UserTwitch).where(
-            models.UserTwitch.id == identity_id, models.UserTwitch.user_id == user_id
-        )
+        select(models.UserTwitch).where(models.UserTwitch.id == identity_id, models.UserTwitch.user_id == user_id)
     )
     identity = result.scalar_one_or_none()
 
     if not identity:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Twitch identity not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Twitch identity not found")
 
     # Check if new name conflicts
     if data.name != identity.name:
-        result = await session.execute(
-            select(models.UserTwitch).where(models.UserTwitch.name == data.name)
-        )
+        result = await session.execute(select(models.UserTwitch).where(models.UserTwitch.name == data.name))
         existing = result.scalar_one_or_none()
 
         if existing:
@@ -409,16 +371,12 @@ async def update_twitch_identity(
 async def delete_twitch_identity(session: AsyncSession, user_id: int, identity_id: int) -> None:
     """Delete Twitch identity"""
     result = await session.execute(
-        select(models.UserTwitch).where(
-            models.UserTwitch.id == identity_id, models.UserTwitch.user_id == user_id
-        )
+        select(models.UserTwitch).where(models.UserTwitch.id == identity_id, models.UserTwitch.user_id == user_id)
     )
     identity = result.scalar_one_or_none()
 
     if not identity:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Twitch identity not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Twitch identity not found")
 
     await session.delete(identity)
     await session.commit()

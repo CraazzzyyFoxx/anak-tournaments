@@ -8,7 +8,6 @@ from src.services.hero import service as hero_service
 
 from . import crud
 
-
 MIN_MATCH_PLAYTIME_SEC = 60
 TOTAL_MIN_PLAYTIME_SEC = 600
 MIN_QUALIFYING_MATCHES = 3
@@ -16,7 +15,7 @@ MIN_QUALIFYING_MATCHES = 3
 
 async def create_hero_kd_achievements(session: AsyncSession, tournament: models.Tournament) -> None:
     logger.info(f"Starting to create hero K/D achievements for tournament '{tournament.name}'...")
-    heroes, _ = await hero_service.get_all(session, pagination.PaginationParams(per_page=-1))
+    heroes, _ = await hero_service.get_all(session, pagination.PaginationSortParams(per_page=-1))
 
     for hero in heroes:
         achievement = await crud.get_achievement_or_log_error(session, slug=hero.slug)
@@ -78,7 +77,7 @@ async def create_hero_kd_achievements(session: AsyncSession, tournament: models.
             .having(
                 sa.and_(
                     sa.func.sum(user_match_stats_cte.c.time_played) >= TOTAL_MIN_PLAYTIME_SEC,
-                    sa.func.count("*") >= MIN_QUALIFYING_MATCHES
+                    sa.func.count("*") >= MIN_QUALIFYING_MATCHES,
                 )
             )
             .order_by(sa.desc("avg_kd"))

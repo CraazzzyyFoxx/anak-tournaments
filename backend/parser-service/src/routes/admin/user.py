@@ -19,14 +19,15 @@ router = APIRouter(
 
 @router.get("", response_model=pagination.Paginated[schemas.UserRead])
 async def get_users(
-    page: int = 1,
-    per_page: int = 50,
-    search: str | None = None,
+    params: admin_schemas.UserListQueryParams = Depends(),
     session: AsyncSession = Depends(db.get_async_session),
     user: models.AuthUser = Depends(auth.require_permission("user", "read")),
 ):
     """Get paginated list of users (admin only)"""
-    users_list = await admin_service.get_users(session, page, per_page, search)
+    users_list = await admin_service.get_users(
+        session,
+        admin_schemas.UserListParams.from_query_params(params),
+    )
     return users_list
 
 

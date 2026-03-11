@@ -16,14 +16,15 @@ router = APIRouter(
 
 @router.get("", response_model=pagination.Paginated[schemas.GamemodeRead])
 async def get_gamemodes(
-    page: int = 1,
-    per_page: int = 50,
-    search: str | None = None,
+    params: admin_schemas.GamemodeListQueryParams = Depends(),
     session: AsyncSession = Depends(db.get_async_session),
     user: models.AuthUser = Depends(auth.require_permission("gamemode", "read")),
 ):
     """Get paginated list of gamemodes (admin only)"""
-    gamemodes_list = await admin_service.get_gamemodes(session, page, per_page, search)
+    gamemodes_list = await admin_service.get_gamemodes(
+        session,
+        admin_schemas.GamemodeListParams.from_query_params(params),
+    )
     return gamemodes_list
 
 

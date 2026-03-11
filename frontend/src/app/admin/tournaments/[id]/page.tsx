@@ -30,6 +30,13 @@ function formatDate(value?: Date | string | null) {
   return new Date(value).toLocaleDateString();
 }
 
+const adminDetailTableShell = "overflow-hidden rounded-xl border border-border/60 bg-background/40";
+const adminDetailTableHeaderRow = "border-border/60 hover:bg-transparent";
+const adminDetailTableHead =
+  "h-11 bg-muted/15 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/90 first:pl-4 last:pr-4";
+const adminDetailTableRow = "border-border/50 transition-colors duration-200 hover:bg-muted/20";
+const adminDetailTableCell = "py-3.5 first:pl-4 last:pr-4";
+
 export default function AdminTournamentWorkspacePage() {
   const params = useParams<{ id: string }>();
   const tournamentId = Number(params.id);
@@ -256,30 +263,32 @@ export default function AdminTournamentWorkspacePage() {
             <CardDescription>Top teams in this tournament by average SR.</CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Team</TableHead>
-                  <TableHead>Avg SR</TableHead>
-                  <TableHead>Total SR</TableHead>
-                  <TableHead>Players</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {teams.slice(0, 8).map((team) => (
-                  <TableRow key={team.id}>
-                    <TableCell>
-                      <Link className="font-medium hover:underline" href={`/admin/teams/${team.id}`}>
-                        {team.name}
-                      </Link>
-                    </TableCell>
-                    <TableCell>{team.avg_sr.toFixed(0)}</TableCell>
-                    <TableCell>{team.total_sr}</TableCell>
-                    <TableCell>{team.players?.length ?? 0}</TableCell>
+            <div className={adminDetailTableShell}>
+              <Table>
+                <TableHeader>
+                  <TableRow className={adminDetailTableHeaderRow}>
+                    <TableHead className={adminDetailTableHead}>Team</TableHead>
+                    <TableHead className={adminDetailTableHead}>Avg SR</TableHead>
+                    <TableHead className={adminDetailTableHead}>Total SR</TableHead>
+                    <TableHead className={adminDetailTableHead}>Players</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {teams.slice(0, 8).map((team) => (
+                    <TableRow key={team.id} className={adminDetailTableRow}>
+                      <TableCell className={adminDetailTableCell}>
+                        <Link className="font-medium hover:underline" href={`/admin/teams/${team.id}`}>
+                          {team.name}
+                        </Link>
+                      </TableCell>
+                      <TableCell className={adminDetailTableCell}>{team.avg_sr.toFixed(0)}</TableCell>
+                      <TableCell className={adminDetailTableCell}>{team.total_sr}</TableCell>
+                      <TableCell className={adminDetailTableCell}>{team.players?.length ?? 0}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         </Card>
 
@@ -289,28 +298,32 @@ export default function AdminTournamentWorkspacePage() {
             <CardDescription>Top placements from the current standings snapshot.</CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Pos</TableHead>
-                  <TableHead>Team</TableHead>
-                  <TableHead>Points</TableHead>
-                  <TableHead>Record</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {standings.slice(0, 8).map((standing) => (
-                  <TableRow key={`${standing.team_id}-${standing.group_id}`}>
-                    <TableCell>{standing.position}</TableCell>
-                    <TableCell className="font-medium">{standing.team?.name ?? "—"}</TableCell>
-                    <TableCell>{standing.points}</TableCell>
-                    <TableCell>
-                      {standing.win}-{standing.draw}-{standing.lose}
-                    </TableCell>
+            <div className={adminDetailTableShell}>
+              <Table>
+                <TableHeader>
+                  <TableRow className={adminDetailTableHeaderRow}>
+                    <TableHead className={adminDetailTableHead}>Pos</TableHead>
+                    <TableHead className={adminDetailTableHead}>Team</TableHead>
+                    <TableHead className={adminDetailTableHead}>Points</TableHead>
+                    <TableHead className={adminDetailTableHead}>Record</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {standings.slice(0, 8).map((standing) => (
+                    <TableRow key={`${standing.team_id}-${standing.group_id}`} className={adminDetailTableRow}>
+                      <TableCell className={adminDetailTableCell}>{standing.position}</TableCell>
+                      <TableCell className={`${adminDetailTableCell} font-medium`}>
+                        {standing.team?.name ?? "—"}
+                      </TableCell>
+                      <TableCell className={adminDetailTableCell}>{standing.points}</TableCell>
+                      <TableCell className={adminDetailTableCell}>
+                        {standing.win}-{standing.draw}-{standing.lose}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -321,30 +334,34 @@ export default function AdminTournamentWorkspacePage() {
           <CardDescription>Latest encounter records loaded for this tournament.</CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Encounter</TableHead>
-                <TableHead>Round</TableHead>
-                <TableHead>Score</TableHead>
-                <TableHead>Logs</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {recentEncounters.slice(0, 10).map((encounter) => (
-                <TableRow key={encounter.id}>
-                  <TableCell className="font-medium">{encounter.name}</TableCell>
-                  <TableCell>{encounter.round}</TableCell>
-                  <TableCell>
-                    {encounter.score.home} - {encounter.score.away}
-                  </TableCell>
-                  <TableCell>
-                    {encounter.has_logs ? <Badge variant="default">Available</Badge> : <Badge variant="outline">Missing</Badge>}
-                  </TableCell>
+          <div className={adminDetailTableShell}>
+            <Table>
+              <TableHeader>
+                <TableRow className={adminDetailTableHeaderRow}>
+                  <TableHead className={adminDetailTableHead}>Encounter</TableHead>
+                  <TableHead className={adminDetailTableHead}>Round</TableHead>
+                  <TableHead className={adminDetailTableHead}>Score</TableHead>
+                  <TableHead className={adminDetailTableHead}>Logs</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {recentEncounters.slice(0, 10).map((encounter) => (
+                  <TableRow key={encounter.id} className={adminDetailTableRow}>
+                    <TableCell className={`${adminDetailTableCell} font-medium`}>
+                      {encounter.name}
+                    </TableCell>
+                    <TableCell className={adminDetailTableCell}>{encounter.round}</TableCell>
+                    <TableCell className={adminDetailTableCell}>
+                      {encounter.score.home} - {encounter.score.away}
+                    </TableCell>
+                    <TableCell className={adminDetailTableCell}>
+                      {encounter.has_logs ? <Badge variant="default">Available</Badge> : <Badge variant="outline">Missing</Badge>}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
     </div>
