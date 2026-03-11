@@ -27,11 +27,43 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import { usePermissions } from "@/hooks/usePermissions";
+import { hasUnsavedChanges } from "@/lib/form-change";
+
+const emptyEncounterForm: EncounterCreateInput = {
+  name: "",
+  tournament_id: 0,
+  tournament_group_id: undefined,
+  home_team_id: 0,
+  away_team_id: 0,
+  round: 1,
+  home_score: 0,
+  away_score: 0,
+  status: "open",
+};
+
+function getCreateEncounterForm(tournamentId: number | null): EncounterCreateInput {
+  return { ...emptyEncounterForm, tournament_id: tournamentId || 0 };
+}
+
+function getEditEncounterForm(encounter: Encounter): EncounterUpdateInput {
+  return {
+    name: encounter.name,
+    home_score: encounter.score.home,
+    away_score: encounter.score.away,
+    status: "open",
+    round: encounter.round,
+  };
+}
 
 export default function EncountersPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const { hasPermission } = usePermissions();
   const queryClient = useQueryClient();
+  const canCreate = hasPermission("match.create");
+  const canUpdate = hasPermission("match.update");
+  const canDelete = hasPermission("match.delete");
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -54,15 +86,7 @@ export default function EncountersPage() {
 
   // Form state
   const [formData, setFormData] = useState<EncounterCreateInput | EncounterUpdateInput>({
-    name: "",
-    tournament_id: 0,
-    tournament_group_id: undefined,
-    home_team_id: 0,
-    away_team_id: 0,
-    round: 1,
-    home_score: 0,
-    away_score: 0,
-    status: "open"
+    ...emptyEncounterForm,
   });
 
   // Mutations
@@ -108,33 +132,19 @@ export default function EncountersPage() {
   });
 
   const resetForm = () => {
-    setFormData({
-      name: "",
-      tournament_id: selectedTournamentId || 0,
-      tournament_group_id: undefined,
-      home_team_id: 0,
-      away_team_id: 0,
-      round: 1,
-      home_score: 0,
-      away_score: 0,
-      status: "open"
-    });
+    setFormData(getCreateEncounterForm(selectedTournamentId));
   };
 
   const handleCreate = () => {
+    createMutation.reset();
     setCreateDialogOpen(true);
     resetForm();
   };
 
   const handleEdit = (encounter: Encounter) => {
+    updateMutation.reset();
     setSelectedEncounter(encounter);
-    setFormData({
-      name: encounter.name,
-      home_score: encounter.score.home,
-      away_score: encounter.score.away,
-      status: "open", // Default, since we don't have status in Encounter type
-      round: encounter.round
-    });
+    setFormData(getEditEncounterForm(encounter));
     setEditDialogOpen(true);
   };
 
@@ -163,6 +173,11 @@ export default function EncountersPage() {
       deleteMutation.mutate(selectedEncounter.id);
     }
   };
+
+  const createFormInitial = getCreateEncounterForm(selectedTournamentId);
+  const editFormInitial = selectedEncounter ? getEditEncounterForm(selectedEncounter) : createFormInitial;
+  const isCreateDirty = createDialogOpen && hasUnsavedChanges(formData, createFormInitial);
+  const isEditDirty = editDialogOpen && hasUnsavedChanges(formData, editFormInitial);
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -232,21 +247,27 @@ export default function EncountersPage() {
     },
     {
       id: "actions",
-      cell: ({ row }) => (
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={() => handleEdit(row.original)}>
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => handleDelete(row.original)}
-            className="text-destructive"
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
-      )
+      cell: ({ row }) =>
+        canUpdate || canDelete ? (
+          <div className="flex items-center gap-2">
+            {canUpdate ? (
+              <Button aria-label={`Edit ${row.original.name}`} variant="ghost" size="icon" onClick={() => handleEdit(row.original)}>
+                <Pencil className="h-4 w-4" />
+              </Button>
+            ) : null}
+            {canDelete ? (
+              <Button
+                aria-label={`Delete ${row.original.name}`}
+                variant="ghost"
+                size="icon"
+                onClick={() => handleDelete(row.original)}
+                className="text-destructive"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            ) : null}
+          </div>
+        ) : null
     }
   ];
 
@@ -256,10 +277,12 @@ export default function EncountersPage() {
         title="Encounters"
         description="Manage tournament encounters and matches"
         actions={
-          <Button onClick={handleCreate} disabled={!selectedTournamentId}>
-            <Plus className="mr-2 h-4 w-4" />
-            Create Encounter
-          </Button>
+          canCreate ? (
+            <Button onClick={handleCreate} disabled={!selectedTournamentId}>
+              <Plus className="mr-2 h-4 w-4" />
+              Create Encounter
+            </Button>
+          ) : null
         }
       />
 
@@ -317,6 +340,9 @@ export default function EncountersPage() {
         description="Create a new encounter between two teams"
         onSubmit={handleSubmitCreate}
         isSubmitting={createMutation.isPending}
+        submittingLabel="Creating encounter…"
+        errorMessage={createMutation.isError ? createMutation.error.message : undefined}
+        isDirty={isCreateDirty}
       >
         <div className="space-y-4">
           <div>
@@ -439,6 +465,9 @@ export default function EncountersPage() {
         description="Update encounter details"
         onSubmit={handleSubmitUpdate}
         isSubmitting={updateMutation.isPending}
+        submittingLabel="Updating encounter…"
+        errorMessage={updateMutation.isError ? updateMutation.error.message : undefined}
+        isDirty={isEditDirty}
       >
         <div className="space-y-4">
           <div>
@@ -509,15 +538,17 @@ export default function EncountersPage() {
       </EntityFormDialog>
 
       {/* Delete Dialog */}
-      <DeleteConfirmDialog
-        open={deleteDialogOpen}
-        onOpenChange={setDeleteDialogOpen}
-        onConfirm={handleConfirmDelete}
-        title="Delete Encounter"
-        description={`Are you sure you want to delete "${selectedEncounter?.name}"? This action cannot be undone.`}
-        cascadeInfo={["All matches in this encounter", "All match statistics and logs"]}
-        isDeleting={deleteMutation.isPending}
-      />
+      {canDelete ? (
+        <DeleteConfirmDialog
+          open={deleteDialogOpen}
+          onOpenChange={setDeleteDialogOpen}
+          onConfirm={handleConfirmDelete}
+          title="Delete Encounter"
+          description={`Are you sure you want to delete "${selectedEncounter?.name}"? This action cannot be undone.`}
+          cascadeInfo={["All matches in this encounter", "All match statistics and logs"]}
+          isDeleting={deleteMutation.isPending}
+        />
+      ) : null}
     </div>
   );
 }

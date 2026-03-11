@@ -34,16 +34,27 @@ import type { MapRead } from "@/types/map.types";
 import type { MapCreateInput, MapUpdateInput } from "@/types/admin.types";
 import { customFetch } from "@/lib/custom_fetch";
 import type { Gamemode } from "@/types/gamemode.types";
+import { usePermissions } from "@/hooks/usePermissions";
+import { hasUnsavedChanges } from "@/lib/form-change";
+
+const emptyMapForm: MapCreateInput = {
+  name: "",
+  gamemode_id: 0,
+};
 
 export default function MapsAdminPage() {
   const queryClient = useQueryClient();
+  const { hasPermission } = usePermissions();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingMap, setEditingMap] = useState<MapRead | null>(null);
   const [deletingMap, setDeletingMap] = useState<MapRead | null>(null);
   const [formData, setFormData] = useState<MapCreateInput | MapUpdateInput>({
-    name: "",
-    gamemode_id: 0,
+    ...emptyMapForm,
   });
+  const canCreate = hasPermission("map.create");
+  const canUpdate = hasPermission("map.update");
+  const canDelete = hasPermission("map.delete");
+  const canSync = hasPermission("map.sync");
 
   // Fetch gamemodes for selector
   const { data: gamemodesData } = useQuery({
@@ -59,7 +70,7 @@ export default function MapsAdminPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "maps"] });
       setCreateDialogOpen(false);
-      setFormData({ name: "", gamemode_id: 0 });
+      setFormData({ ...emptyMapForm });
     },
   });
 
@@ -69,7 +80,7 @@ export default function MapsAdminPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "maps"] });
       setEditingMap(null);
-      setFormData({ name: "", gamemode_id: 0 });
+      setFormData({ ...emptyMapForm });
     },
   });
 
@@ -96,6 +107,9 @@ export default function MapsAdminPage() {
       createMutation.mutate(formData as MapCreateInput);
     }
   };
+
+  const formInitial = editingMap ? { name: editingMap.name, gamemode_id: editingMap.gamemode_id } : emptyMapForm;
+  const isFormDirty = (createDialogOpen || !!editingMap) && hasUnsavedChanges(formData, formInitial);
 
   const columns: ColumnDef<MapRead>[] = [
     {
@@ -124,32 +138,40 @@ export default function MapsAdminPage() {
       size: 50,
       cell: ({ row }) => {
         const map = row.original;
+        if (!canUpdate && !canDelete) {
+          return null;
+        }
         return (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon">
+              <Button aria-label={`Open actions for ${map.name}`} variant="ghost" size="icon">
                 <MoreHorizontal className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>Actions</DropdownMenuLabel>
-              <DropdownMenuItem
-                onClick={() => {
-                  setEditingMap(map);
-                  setFormData({ name: map.name, gamemode_id: map.gamemode_id });
-                }}
-              >
-                <Pencil className="mr-2 h-4 w-4" />
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => setDeletingMap(map)} className="text-destructive">
-                <Trash2 className="mr-2 h-4 w-4" />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        );
+               {canUpdate ? (
+                 <DropdownMenuItem
+                   onClick={() => {
+                     updateMutation.reset();
+                     setEditingMap(map);
+                     setFormData({ name: map.name, gamemode_id: map.gamemode_id });
+                   }}
+                 >
+                   <Pencil className="mr-2 h-4 w-4" />
+                   Edit
+                 </DropdownMenuItem>
+               ) : null}
+               {canUpdate && canDelete ? <DropdownMenuSeparator /> : null}
+               {canDelete ? (
+                 <DropdownMenuItem onClick={() => setDeletingMap(map)} className="text-destructive">
+                   <Trash2 className="mr-2 h-4 w-4" />
+                   Delete
+                 </DropdownMenuItem>
+               ) : null}
+             </DropdownMenuContent>
+           </DropdownMenu>
+         );
       },
     },
   ];
@@ -160,22 +182,35 @@ export default function MapsAdminPage() {
         title="Maps"
         description="Manage game maps"
         actions={
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => syncMutation.mutate()}
-              disabled={syncMutation.isPending}
-            >
-              <RefreshCw
-                className={`mr-2 h-4 w-4 ${syncMutation.isPending ? "animate-spin" : ""}`}
-              />
-              Sync from Game
-            </Button>
-            <Button onClick={() => setCreateDialogOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Create Map
-            </Button>
-          </div>
+          canSync || canCreate ? (
+            <div className="flex gap-2">
+              {canSync ? (
+                <Button
+                  variant="outline"
+                  onClick={() => syncMutation.mutate()}
+                  disabled={syncMutation.isPending}
+                >
+                  <RefreshCw
+                    className={`mr-2 h-4 w-4 ${syncMutation.isPending ? "animate-spin" : ""}`}
+                  />
+                  Sync from Game
+                </Button>
+              ) : null}
+              {canCreate ? (
+                <Button
+                  onClick={() => {
+                    createMutation.reset();
+                    updateMutation.reset();
+                    setFormData({ ...emptyMapForm });
+                    setCreateDialogOpen(true);
+                  }}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Create Map
+                </Button>
+              ) : null}
+            </div>
+          ) : null
         }
       />
 
@@ -194,13 +229,20 @@ export default function MapsAdminPage() {
           if (!open) {
             setCreateDialogOpen(false);
             setEditingMap(null);
-            setFormData({ name: "", gamemode_id: 0 });
+            setFormData({ ...emptyMapForm });
           }
         }}
         title={editingMap ? "Edit Map" : "Create Map"}
         description={editingMap ? "Update map information" : "Create a new map in the game"}
         onSubmit={handleSubmit}
         isSubmitting={createMutation.isPending || updateMutation.isPending}
+        submittingLabel={editingMap ? "Updating map…" : "Creating map…"}
+        errorMessage={
+          (editingMap ? updateMutation.error : createMutation.error) instanceof Error
+            ? (editingMap ? updateMutation.error : createMutation.error).message
+            : undefined
+        }
+        isDirty={isFormDirty}
       >
         <div className="space-y-4">
           <div className="space-y-2">
@@ -238,7 +280,7 @@ export default function MapsAdminPage() {
       </EntityFormDialog>
 
       {/* Delete Confirmation */}
-      {deletingMap && (
+      {canDelete && deletingMap && (
         <DeleteConfirmDialog
           open={!!deletingMap}
           onOpenChange={(open) => !open && setDeletingMap(null)}

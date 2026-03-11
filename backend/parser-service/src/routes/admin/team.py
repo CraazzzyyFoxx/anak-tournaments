@@ -26,10 +26,21 @@ player_router = APIRouter(
 async def create_team(
     data: admin_schemas.TeamCreate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_any_role("admin", "tournament_organizer")),
+    user: models.AuthUser = Depends(auth.require_permission("team", "create")),
 ):
     """Create a new team (admin/organizer only)"""
     team = await admin_service.create_team(session, data)
+    return schemas.TeamRead.model_validate(team, from_attributes=True)
+
+
+@router.get("/{team_id}", response_model=schemas.TeamRead)
+async def get_team(
+    team_id: int,
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_permission("team", "read")),
+):
+    """Get one team for admin workspace pages."""
+    team = await admin_service.get_team(session, team_id)
     return schemas.TeamRead.model_validate(team, from_attributes=True)
 
 
@@ -38,7 +49,7 @@ async def update_team(
     team_id: int,
     data: admin_schemas.TeamUpdate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_any_role("admin", "tournament_organizer")),
+    user: models.AuthUser = Depends(auth.require_permission("team", "update")),
 ):
     """Update team fields (admin/organizer only)"""
     team = await admin_service.update_team(session, team_id, data)
@@ -49,7 +60,7 @@ async def update_team(
 async def delete_team(
     team_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_any_role("admin", "tournament_organizer")),
+    user: models.AuthUser = Depends(auth.require_permission("team", "delete")),
 ):
     """Delete team and all players (admin/organizer only)"""
     await admin_service.delete_team(session, team_id)
@@ -63,7 +74,7 @@ async def add_player_to_team(
     team_id: int,
     data: admin_schemas.PlayerCreate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_any_role("admin", "tournament_organizer")),
+    user: models.AuthUser = Depends(auth.require_permission("player", "create")),
 ):
     """Add a player to a team (admin/organizer only)"""
     player = await admin_service.add_player_to_team(session, team_id, data)
@@ -75,7 +86,7 @@ async def remove_player_from_team(
     team_id: int,
     player_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_any_role("admin", "tournament_organizer")),
+    user: models.AuthUser = Depends(auth.require_permission("player", "delete")),
 ):
     """Remove a player from a team (admin/organizer only)"""
     await admin_service.remove_player_from_team(session, team_id, player_id)
@@ -88,7 +99,7 @@ async def remove_player_from_team(
 async def create_player(
     data: admin_schemas.PlayerCreate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_any_role("admin", "tournament_organizer")),
+    user: models.AuthUser = Depends(auth.require_permission("player", "create")),
 ):
     """Create a new player (admin/organizer only)"""
     player = await admin_service.create_player(session, data)
@@ -100,7 +111,7 @@ async def update_player(
     player_id: int,
     data: admin_schemas.PlayerUpdate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_any_role("admin", "tournament_organizer")),
+    user: models.AuthUser = Depends(auth.require_permission("player", "update")),
 ):
     """Update player fields (admin/organizer only)"""
     player = await admin_service.update_player(session, player_id, data)
@@ -111,7 +122,7 @@ async def update_player(
 async def delete_player(
     player_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_any_role("admin", "tournament_organizer")),
+    user: models.AuthUser = Depends(auth.require_permission("player", "delete")),
 ):
     """Delete player (admin/organizer only)"""
     await admin_service.delete_player(session, player_id)

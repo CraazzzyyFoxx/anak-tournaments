@@ -9,22 +9,60 @@ export type AppRole = "admin" | "tournament_organizer" | "moderator" | "user";
 // ─── Typed permission names ──────────────────────────────────────────────────
 
 export type AppPermission =
+  | "achievement.calculate"
+  | "achievement.create"
+  | "achievement.delete"
+  | "achievement.read"
+  | "achievement.update"
   | "user.read"
   | "user.create"
   | "user.update"
   | "user.delete"
+  | "auth_user.read"
+  | "auth_user.update"
   | "tournament.read"
   | "tournament.create"
   | "tournament.update"
   | "tournament.delete"
   | "team.read"
   | "team.create"
+  | "team.import"
   | "team.update"
   | "team.delete"
+  | "player.read"
+  | "player.create"
+  | "player.update"
+  | "player.delete"
   | "match.read"
   | "match.create"
   | "match.update"
   | "match.delete"
+  | "match.sync"
+  | "standing.read"
+  | "standing.update"
+  | "standing.delete"
+  | "standing.recalculate"
+  | "hero.read"
+  | "hero.create"
+  | "hero.update"
+  | "hero.delete"
+  | "hero.sync"
+  | "gamemode.read"
+  | "gamemode.create"
+  | "gamemode.update"
+  | "gamemode.delete"
+  | "gamemode.sync"
+  | "map.read"
+  | "map.create"
+  | "map.update"
+  | "map.delete"
+  | "map.sync"
+  | "role.read"
+  | "role.create"
+  | "role.update"
+  | "role.delete"
+  | "role.assign"
+  | "permission.read"
   | "analytics.read"
   | "analytics.update"
   | "admin.*";
@@ -92,6 +130,7 @@ export function usePermissions() {
     hasAllPermissions,
 
     // Semantic flags
+    isSuperuser: user?.isSuperuser ?? false,
     isAdmin: hasRole("admin"),
     isOrganizer: hasRole("tournament_organizer"),
     isModerator: hasRole("moderator"),

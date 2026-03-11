@@ -21,7 +21,7 @@ async def get_heroes(
     search: str | None = None,
     role: str | None = None,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_role("admin")),
+    user: models.AuthUser = Depends(auth.require_permission("hero", "read")),
 ):
     """Get paginated list of heroes (admin only)"""
     heroes_list = await admin_service.get_heroes(session, page, per_page, search, role)
@@ -32,7 +32,7 @@ async def get_heroes(
 async def create_hero(
     data: admin_schemas.HeroCreate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_role("admin")),
+    user: models.AuthUser = Depends(auth.require_permission("hero", "create")),
 ):
     """Create a new hero (admin only)"""
     created_hero = await admin_service.create_hero(session, data)
@@ -44,7 +44,7 @@ async def update_hero(
     hero_id: int,
     data: admin_schemas.HeroUpdate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_role("admin")),
+    user: models.AuthUser = Depends(auth.require_permission("hero", "update")),
 ):
     """Update hero fields (admin only)"""
     updated_hero = await admin_service.update_hero(session, hero_id, data)
@@ -55,7 +55,7 @@ async def update_hero(
 async def delete_hero(
     hero_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_role("admin")),
+    user: models.AuthUser = Depends(auth.require_permission("hero", "delete")),
 ):
     """Delete hero (admin only)"""
     await admin_service.delete_hero(session, hero_id)

@@ -49,6 +49,11 @@ class AdminService {
     return response.json();
   }
 
+  async getTournament(id: number): Promise<Tournament> {
+    const response = await parserFetch(`admin/tournaments/${id}`);
+    return response.json();
+  }
+
   async updateTournament(id: number, data: TournamentUpdateInput): Promise<Tournament> {
     const response = await parserFetch(`admin/tournaments/${id}`, {
       method: "PATCH",
@@ -106,6 +111,11 @@ class AdminService {
       method: "POST",
       body: data
     });
+    return response.json();
+  }
+
+  async getTeam(id: number): Promise<Team> {
+    const response = await parserFetch(`admin/teams/${id}`);
     return response.json();
   }
 

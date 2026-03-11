@@ -2,9 +2,12 @@
 RBAC (Role-Based Access Control) schemas
 """
 from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 __all__ = (
+    "AuthUserListRead",
+    "AuthUserDetailRead",
     "PermissionBase",
     "PermissionCreate",
     "PermissionRead",
@@ -74,10 +77,36 @@ class RoleRead(RoleBase):
 
 class RoleWithPermissions(RoleRead):
     """Schema for role with permissions"""
-    permissions: list[PermissionRead] = []
+    permissions: list[PermissionRead] = Field(default_factory=list)
 
     class Config:
         from_attributes = True
+
+
+class AuthUserListRead(BaseModel):
+    """Schema for listing auth users with assigned roles."""
+
+    id: int
+    email: str
+    username: str
+    first_name: str | None = None
+    last_name: str | None = None
+    avatar_url: str | None = None
+    is_active: bool
+    is_superuser: bool
+    is_verified: bool
+    roles: list[RoleRead] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime | None = None
+
+    class Config:
+        from_attributes = True
+
+
+class AuthUserDetailRead(AuthUserListRead):
+    """Schema for auth-user detail view with effective permissions."""
+
+    effective_permissions: list[str] = Field(default_factory=list)
 
 
 # User Role Assignment Schemas

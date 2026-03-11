@@ -19,10 +19,21 @@ router = APIRouter(
 async def create_tournament(
     data: admin_schemas.TournamentCreate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_any_role("admin", "tournament_organizer")),
+    user: models.AuthUser = Depends(auth.require_permission("tournament", "create")),
 ):
     """Create a new tournament (admin/organizer only)"""
     tournament = await admin_service.create_tournament(session, data)
+    return await tournament_flows.to_pydantic(session, tournament, ["groups"])
+
+
+@router.get("/{tournament_id}", response_model=schemas.TournamentRead)
+async def get_tournament(
+    tournament_id: int,
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_permission("tournament", "read")),
+):
+    """Get one tournament for admin workspace pages."""
+    tournament = await admin_service.get_tournament(session, tournament_id)
     return await tournament_flows.to_pydantic(session, tournament, ["groups"])
 
 
@@ -31,7 +42,7 @@ async def update_tournament(
     tournament_id: int,
     data: admin_schemas.TournamentUpdate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_any_role("admin", "tournament_organizer")),
+    user: models.AuthUser = Depends(auth.require_permission("tournament", "update")),
 ):
     """Update tournament fields (admin/organizer only)"""
     tournament = await admin_service.update_tournament(session, tournament_id, data)
@@ -42,7 +53,7 @@ async def update_tournament(
 async def delete_tournament(
     tournament_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_any_role("admin", "tournament_organizer")),
+    user: models.AuthUser = Depends(auth.require_permission("tournament", "delete")),
 ):
     """Delete tournament and all related data (admin/organizer only)"""
     await admin_service.delete_tournament(session, tournament_id)
@@ -52,7 +63,7 @@ async def delete_tournament(
 async def toggle_tournament_finished(
     tournament_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_any_role("admin", "tournament_organizer")),
+    user: models.AuthUser = Depends(auth.require_permission("tournament", "update")),
 ):
     """Toggle tournament finished status (admin/organizer only)"""
     tournament = await admin_service.toggle_finished(session, tournament_id)
@@ -67,7 +78,7 @@ async def create_tournament_group(
     tournament_id: int,
     data: admin_schemas.TournamentGroupCreate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_any_role("admin", "tournament_organizer")),
+    user: models.AuthUser = Depends(auth.require_permission("tournament", "update")),
 ):
     """Create a new tournament group (admin/organizer only)"""
     group = await admin_service.create_group(session, tournament_id, data)
@@ -80,7 +91,7 @@ async def update_tournament_group(
     group_id: int,
     data: admin_schemas.TournamentGroupUpdate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_any_role("admin", "tournament_organizer")),
+    user: models.AuthUser = Depends(auth.require_permission("tournament", "update")),
 ):
     """Update tournament group (admin/organizer only)"""
     group = await admin_service.update_group(session, tournament_id, group_id, data)
@@ -92,7 +103,7 @@ async def delete_tournament_group(
     tournament_id: int,
     group_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_any_role("admin", "tournament_organizer")),
+    user: models.AuthUser = Depends(auth.require_permission("tournament", "update")),
 ):
     """Delete tournament group (admin/organizer only)"""
     await admin_service.delete_group(session, tournament_id, group_id)

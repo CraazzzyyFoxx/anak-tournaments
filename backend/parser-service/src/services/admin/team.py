@@ -8,8 +8,26 @@ from sqlalchemy.orm import selectinload
 from src import models
 from src.schemas.admin import team as admin_schemas
 
-
 # ─── Team CRUD ───────────────────────────────────────────────────────────────
+
+
+async def get_team(session: AsyncSession, team_id: int) -> models.Team:
+    """Get one team with captain, tournament, and roster loaded."""
+    result = await session.execute(
+        select(models.Team)
+        .where(models.Team.id == team_id)
+        .options(
+            selectinload(models.Team.players).selectinload(models.Player.user),
+            selectinload(models.Team.captain),
+            selectinload(models.Team.tournament),
+        )
+    )
+    team = result.scalar_one_or_none()
+
+    if not team:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
+
+    return team
 
 
 async def create_team(session: AsyncSession, data: admin_schemas.TeamCreate) -> models.Team:

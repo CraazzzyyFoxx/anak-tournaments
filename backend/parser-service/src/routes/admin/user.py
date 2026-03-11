@@ -23,7 +23,7 @@ async def get_users(
     per_page: int = 50,
     search: str | None = None,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_role("admin")),
+    user: models.AuthUser = Depends(auth.require_permission("user", "read")),
 ):
     """Get paginated list of users (admin only)"""
     users_list = await admin_service.get_users(session, page, per_page, search)
@@ -34,7 +34,7 @@ async def get_users(
 async def create_user(
     data: admin_schemas.UserCreate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_role("admin")),
+    user: models.AuthUser = Depends(auth.require_permission("user", "create")),
 ):
     """Create a new user (admin only)"""
     created_user = await admin_service.create_user(session, data)
@@ -46,7 +46,7 @@ async def update_user(
     user_id: int,
     data: admin_schemas.UserUpdate,
     session: AsyncSession = Depends(db.get_async_session),
-    auth_user: models.AuthUser = Depends(auth.require_role("admin")),
+    auth_user: models.AuthUser = Depends(auth.require_permission("user", "update")),
 ):
     """Update user fields (admin only)"""
     updated_user = await admin_service.update_user(session, user_id, data)
@@ -57,7 +57,7 @@ async def update_user(
 async def delete_user(
     user_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_role("admin")),
+    user: models.AuthUser = Depends(auth.require_permission("user", "delete")),
 ):
     """Delete user and all identities (admin only)"""
     await admin_service.delete_user(session, user_id)
@@ -71,7 +71,7 @@ async def add_discord_identity(
     user_id: int,
     data: admin_schemas.DiscordIdentityCreate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_role("admin")),
+    user: models.AuthUser = Depends(auth.require_permission("user", "update")),
 ):
     """Add Discord identity to user (admin only)"""
     identity = await admin_service.add_discord_identity(session, user_id, data)
@@ -84,7 +84,7 @@ async def update_discord_identity(
     identity_id: int,
     data: admin_schemas.DiscordIdentityUpdate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_role("admin")),
+    user: models.AuthUser = Depends(auth.require_permission("user", "update")),
 ):
     """Update Discord identity (admin only)"""
     identity = await admin_service.update_discord_identity(session, user_id, identity_id, data)
@@ -96,7 +96,7 @@ async def delete_discord_identity(
     user_id: int,
     identity_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_role("admin")),
+    user: models.AuthUser = Depends(auth.require_permission("user", "delete")),
 ):
     """Delete Discord identity (admin only)"""
     await admin_service.delete_discord_identity(session, user_id, identity_id)
@@ -110,7 +110,7 @@ async def add_battletag_identity(
     user_id: int,
     data: admin_schemas.BattleTagIdentityCreate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_role("admin")),
+    user: models.AuthUser = Depends(auth.require_permission("user", "update")),
 ):
     """Add BattleTag identity to user (admin only)"""
     identity = await admin_service.add_battletag_identity(session, user_id, data)
@@ -123,7 +123,7 @@ async def update_battletag_identity(
     identity_id: int,
     data: admin_schemas.BattleTagIdentityUpdate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_role("admin")),
+    user: models.AuthUser = Depends(auth.require_permission("user", "update")),
 ):
     """Update BattleTag identity (admin only)"""
     identity = await admin_service.update_battletag_identity(session, user_id, identity_id, data)
@@ -135,7 +135,7 @@ async def delete_battletag_identity(
     user_id: int,
     identity_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_role("admin")),
+    user: models.AuthUser = Depends(auth.require_permission("user", "delete")),
 ):
     """Delete BattleTag identity (admin only)"""
     await admin_service.delete_battletag_identity(session, user_id, identity_id)
@@ -149,7 +149,7 @@ async def add_twitch_identity(
     user_id: int,
     data: admin_schemas.TwitchIdentityCreate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_role("admin")),
+    user: models.AuthUser = Depends(auth.require_permission("user", "update")),
 ):
     """Add Twitch identity to user (admin only)"""
     identity = await admin_service.add_twitch_identity(session, user_id, data)
@@ -162,7 +162,7 @@ async def update_twitch_identity(
     identity_id: int,
     data: admin_schemas.TwitchIdentityUpdate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_role("admin")),
+    user: models.AuthUser = Depends(auth.require_permission("user", "update")),
 ):
     """Update Twitch identity (admin only)"""
     identity = await admin_service.update_twitch_identity(session, user_id, identity_id, data)
@@ -174,7 +174,7 @@ async def delete_twitch_identity(
     user_id: int,
     identity_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_role("admin")),
+    user: models.AuthUser = Depends(auth.require_permission("user", "delete")),
 ):
     """Delete Twitch identity (admin only)"""
     await admin_service.delete_twitch_identity(session, user_id, identity_id)

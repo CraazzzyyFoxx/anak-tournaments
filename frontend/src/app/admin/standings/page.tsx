@@ -34,10 +34,38 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog";
+import { usePermissions } from "@/hooks/usePermissions";
+import { hasUnsavedChanges } from "@/lib/form-change";
+
+const emptyStandingForm: StandingUpdateInput = {
+  position: 0,
+  points: 0,
+  win: 0,
+  draw: 0,
+  lose: 0,
+};
+
+function getStandingForm(standing: Standings | null): StandingUpdateInput {
+  if (!standing) {
+    return { ...emptyStandingForm };
+  }
+
+  return {
+    position: standing.position,
+    points: standing.points,
+    win: standing.win,
+    draw: standing.draw,
+    lose: standing.lose,
+  };
+}
 
 export default function StandingsPage() {
   const { toast } = useToast();
+  const { hasPermission } = usePermissions();
   const queryClient = useQueryClient();
+  const canUpdate = hasPermission("standing.update");
+  const canDelete = hasPermission("standing.delete");
+  const canRecalculate = hasPermission("standing.recalculate");
 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -63,11 +91,7 @@ export default function StandingsPage() {
 
   // Form state
   const [formData, setFormData] = useState<StandingUpdateInput>({
-    position: 0,
-    points: 0,
-    win: 0,
-    draw: 0,
-    lose: 0
+    ...emptyStandingForm
   });
 
   // Mutations
@@ -111,14 +135,9 @@ export default function StandingsPage() {
   });
 
   const handleEdit = (standing: Standings) => {
+    updateMutation.reset();
     setSelectedStanding(standing);
-    setFormData({
-      position: standing.position,
-      points: standing.points,
-      win: standing.win,
-      draw: standing.draw,
-      lose: standing.lose
-    });
+    setFormData(getStandingForm(standing));
     setEditDialogOpen(true);
   };
 
@@ -152,6 +171,8 @@ export default function StandingsPage() {
       recalculateMutation.mutate(selectedTournamentId);
     }
   };
+
+  const isEditDirty = editDialogOpen && hasUnsavedChanges(formData, getStandingForm(selectedStanding));
 
   const columns: ColumnDef<Standings>[] = [
     {
@@ -221,21 +242,27 @@ export default function StandingsPage() {
     },
     {
       id: "actions",
-      cell: ({ row }) => (
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={() => handleEdit(row.original)}>
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => handleDelete(row.original)}
-            className="text-destructive"
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
-      )
+      cell: ({ row }) =>
+        canUpdate || canDelete ? (
+          <div className="flex items-center gap-2">
+            {canUpdate ? (
+              <Button aria-label={`Edit standing for ${row.original.team?.name ?? "team"}`} variant="ghost" size="icon" onClick={() => handleEdit(row.original)}>
+                <Pencil className="h-4 w-4" />
+              </Button>
+            ) : null}
+            {canDelete ? (
+              <Button
+                aria-label={`Delete standing for ${row.original.team?.name ?? "team"}`}
+                variant="ghost"
+                size="icon"
+                onClick={() => handleDelete(row.original)}
+                className="text-destructive"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            ) : null}
+          </div>
+        ) : null
     }
   ];
 
@@ -245,10 +272,12 @@ export default function StandingsPage() {
         title="Standings"
         description="Manage tournament standings and rankings"
         actions={
-          <Button onClick={handleRecalculate} disabled={!selectedTournamentId}>
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Recalculate Standings
-          </Button>
+          canRecalculate ? (
+            <Button onClick={handleRecalculate} disabled={!selectedTournamentId}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Recalculate Standings
+            </Button>
+          ) : null
         }
       />
 
@@ -316,6 +345,9 @@ export default function StandingsPage() {
         description="Update standing details"
         onSubmit={handleSubmitUpdate}
         isSubmitting={updateMutation.isPending}
+        submittingLabel="Updating standing…"
+        errorMessage={updateMutation.isError ? updateMutation.error.message : undefined}
+        isDirty={isEditDirty}
       >
         <div className="space-y-4">
           <div>

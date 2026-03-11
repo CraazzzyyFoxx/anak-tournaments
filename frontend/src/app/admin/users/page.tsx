@@ -34,13 +34,22 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import adminService from "@/services/admin.service";
 import type { User, UserDiscord, UserBattleTag, UserTwitch } from "@/types/user.types";
 import type { UserCreateInput, UserUpdateInput } from "@/types/admin.types";
+import { usePermissions } from "@/hooks/usePermissions";
+import { hasUnsavedChanges } from "@/lib/form-change";
 
 interface IdentityManagementProps {
   user: User;
   onClose: () => void;
+  canEditIdentity: boolean;
+  canDeleteIdentity: boolean;
 }
 
-function IdentityManagement({ user, onClose }: IdentityManagementProps) {
+function IdentityManagement({
+  user,
+  onClose,
+  canEditIdentity,
+  canDeleteIdentity,
+}: IdentityManagementProps) {
   const queryClient = useQueryClient();
   const [discordName, setDiscordName] = useState("");
   const [battleTag, setBattleTag] = useState("");
@@ -171,42 +180,50 @@ function IdentityManagement({ user, onClose }: IdentityManagementProps) {
                       <Badge variant="secondary" className="flex-1">
                         {identity.name}
                       </Badge>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => setEditingDiscord(identity.id)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => deleteDiscordMutation.mutate(identity.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      {canEditIdentity ? (
+                        <Button
+                          aria-label={`Edit Discord identity ${identity.name}`}
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => setEditingDiscord(identity.id)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      ) : null}
+                      {canDeleteIdentity ? (
+                        <Button
+                          aria-label={`Delete Discord identity ${identity.name}`}
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => deleteDiscordMutation.mutate(identity.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      ) : null}
                     </>
                   )}
                 </div>
               ))}
-              <div className="flex items-center gap-2">
-                <Input
-                  placeholder="Add Discord username..."
-                  value={discordName}
-                  onChange={(e) => setDiscordName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && discordName) {
-                      addDiscordMutation.mutate(discordName);
-                    }
-                  }}
-                />
-                <Button
-                  onClick={() => discordName && addDiscordMutation.mutate(discordName)}
-                  disabled={!discordName || addDiscordMutation.isPending}
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
+              {canEditIdentity ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    placeholder="Add Discord username..."
+                    value={discordName}
+                    onChange={(e) => setDiscordName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && discordName) {
+                        addDiscordMutation.mutate(discordName);
+                      }
+                    }}
+                  />
+                  <Button
+                    onClick={() => discordName && addDiscordMutation.mutate(discordName)}
+                    disabled={!discordName || addDiscordMutation.isPending}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : null}
             </CardContent>
           </Card>
 
@@ -252,42 +269,50 @@ function IdentityManagement({ user, onClose }: IdentityManagementProps) {
                       <Badge variant="secondary" className="flex-1">
                         {identity.battle_tag}
                       </Badge>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => setEditingBattleTag(identity.id)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => deleteBattleTagMutation.mutate(identity.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      {canEditIdentity ? (
+                        <Button
+                          aria-label={`Edit BattleTag identity ${identity.battle_tag}`}
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => setEditingBattleTag(identity.id)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      ) : null}
+                      {canDeleteIdentity ? (
+                        <Button
+                          aria-label={`Delete BattleTag identity ${identity.battle_tag}`}
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => deleteBattleTagMutation.mutate(identity.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      ) : null}
                     </>
                   )}
                 </div>
               ))}
-              <div className="flex items-center gap-2">
-                <Input
-                  placeholder="Add BattleTag (Name#1234)..."
-                  value={battleTag}
-                  onChange={(e) => setBattleTag(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && battleTag) {
-                      addBattleTagMutation.mutate(battleTag);
-                    }
-                  }}
-                />
-                <Button
-                  onClick={() => battleTag && addBattleTagMutation.mutate(battleTag)}
-                  disabled={!battleTag || addBattleTagMutation.isPending}
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
+              {canEditIdentity ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    placeholder="Add BattleTag (Name#1234)..."
+                    value={battleTag}
+                    onChange={(e) => setBattleTag(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && battleTag) {
+                        addBattleTagMutation.mutate(battleTag);
+                      }
+                    }}
+                  />
+                  <Button
+                    onClick={() => battleTag && addBattleTagMutation.mutate(battleTag)}
+                    disabled={!battleTag || addBattleTagMutation.isPending}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : null}
             </CardContent>
           </Card>
 
@@ -330,42 +355,50 @@ function IdentityManagement({ user, onClose }: IdentityManagementProps) {
                       <Badge variant="secondary" className="flex-1">
                         {identity.name}
                       </Badge>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => setEditingTwitch(identity.id)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => deleteTwitchMutation.mutate(identity.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      {canEditIdentity ? (
+                        <Button
+                          aria-label={`Edit Twitch identity ${identity.name}`}
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => setEditingTwitch(identity.id)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      ) : null}
+                      {canDeleteIdentity ? (
+                        <Button
+                          aria-label={`Delete Twitch identity ${identity.name}`}
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => deleteTwitchMutation.mutate(identity.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      ) : null}
                     </>
                   )}
                 </div>
               ))}
-              <div className="flex items-center gap-2">
-                <Input
-                  placeholder="Add Twitch username..."
-                  value={twitchName}
-                  onChange={(e) => setTwitchName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && twitchName) {
-                      addTwitchMutation.mutate(twitchName);
-                    }
-                  }}
-                />
-                <Button
-                  onClick={() => twitchName && addTwitchMutation.mutate(twitchName)}
-                  disabled={!twitchName || addTwitchMutation.isPending}
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
+              {canEditIdentity ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    placeholder="Add Twitch username..."
+                    value={twitchName}
+                    onChange={(e) => setTwitchName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && twitchName) {
+                        addTwitchMutation.mutate(twitchName);
+                      }
+                    }}
+                  />
+                  <Button
+                    onClick={() => twitchName && addTwitchMutation.mutate(twitchName)}
+                    disabled={!twitchName || addTwitchMutation.isPending}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : null}
             </CardContent>
           </Card>
         </div>
@@ -380,11 +413,19 @@ function IdentityManagement({ user, onClose }: IdentityManagementProps) {
 
 export default function UsersAdminPage() {
   const queryClient = useQueryClient();
+  const { hasPermission } = usePermissions();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
   const [managingIdentities, setManagingIdentities] = useState<User | null>(null);
   const [formData, setFormData] = useState<UserCreateInput | UserUpdateInput>({ name: "" });
+  const canCreate = hasPermission("user.create");
+  const canUpdate = hasPermission("user.update");
+  const canDelete = hasPermission("user.delete");
+  const canManageIdentities = canUpdate || canDelete;
+  const createFormInitial: UserCreateInput = { name: "" };
+  const editFormInitial: UserUpdateInput = editingUser ? { name: editingUser.name } : createFormInitial;
+  const isFormDirty = (createDialogOpen || !!editingUser) && hasUnsavedChanges(formData, editingUser ? editFormInitial : createFormInitial);
 
   const createMutation = useMutation({
     mutationFn: (data: UserCreateInput) => adminService.createUser(data),
@@ -462,33 +503,43 @@ export default function UsersAdminPage() {
       size: 50,
       cell: ({ row }) => {
         const user = row.original;
+        if (!canManageIdentities && !canUpdate && !canDelete) {
+          return null;
+        }
         return (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon">
+              <Button aria-label={`Open actions for ${user.name}`} variant="ghost" size="icon">
                 <MoreHorizontal className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>Actions</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => setManagingIdentities(user)}>
-                <UserPlus className="mr-2 h-4 w-4" />
-                Manage Identities
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={() => {
-                  setEditingUser(user);
-                  setFormData({ name: user.name });
-                }}
-              >
-                <Pencil className="mr-2 h-4 w-4" />
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setDeletingUser(user)} className="text-destructive">
-                <Trash2 className="mr-2 h-4 w-4" />
-                Delete
-              </DropdownMenuItem>
+              {canManageIdentities ? (
+                <DropdownMenuItem onClick={() => setManagingIdentities(user)}>
+                  <UserPlus className="mr-2 h-4 w-4" />
+                  Manage Identities
+                </DropdownMenuItem>
+              ) : null}
+              {(canManageIdentities && (canUpdate || canDelete)) ? <DropdownMenuSeparator /> : null}
+              {canUpdate ? (
+                <DropdownMenuItem
+                  onClick={() => {
+                    updateMutation.reset();
+                    setEditingUser(user);
+                    setFormData({ name: user.name });
+                  }}
+                >
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Edit
+                </DropdownMenuItem>
+              ) : null}
+              {canDelete ? (
+                <DropdownMenuItem onClick={() => setDeletingUser(user)} className="text-destructive">
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete
+                </DropdownMenuItem>
+              ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
         );
@@ -499,13 +550,22 @@ export default function UsersAdminPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader
-        title="Users"
-        description="Manage users and their identities (Discord, BattleTag, Twitch)"
+        title="Player Identities"
+        description="Manage tournament identity records and linked Discord, BattleTag, and Twitch handles."
         actions={
-          <Button onClick={() => setCreateDialogOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Create User
-          </Button>
+          canCreate ? (
+            <Button
+              onClick={() => {
+                createMutation.reset();
+                updateMutation.reset();
+                setFormData({ name: "" });
+                setCreateDialogOpen(true);
+              }}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Create User
+            </Button>
+          ) : null
         }
       />
 
@@ -515,7 +575,7 @@ export default function UsersAdminPage() {
         columns={columns}
         searchPlaceholder="Search users..."
         emptyMessage="No users found."
-        onRowClick={(row) => setManagingIdentities(row.original)}
+        onRowClick={canManageIdentities ? (row) => setManagingIdentities(row.original) : undefined}
       />
 
       {/* Create/Edit Dialog */}
@@ -534,6 +594,13 @@ export default function UsersAdminPage() {
         }
         onSubmit={handleSubmit}
         isSubmitting={createMutation.isPending || updateMutation.isPending}
+        submittingLabel={editingUser ? "Updating player identity…" : "Creating player identity…"}
+        errorMessage={
+          (editingUser ? updateMutation.error : createMutation.error) instanceof Error
+            ? (editingUser ? updateMutation.error : createMutation.error).message
+            : undefined
+        }
+        isDirty={isFormDirty}
       >
         <div className="space-y-4">
           <div className="space-y-2">
@@ -550,7 +617,7 @@ export default function UsersAdminPage() {
       </EntityFormDialog>
 
       {/* Delete Confirmation */}
-      {deletingUser && (
+      {canDelete && deletingUser && (
         <DeleteConfirmDialog
           open={!!deletingUser}
           onOpenChange={(open) => !open && setDeletingUser(null)}
@@ -568,7 +635,12 @@ export default function UsersAdminPage() {
 
       {/* Identity Management Dialog */}
       {managingIdentities && (
-        <IdentityManagement user={managingIdentities} onClose={() => setManagingIdentities(null)} />
+        <IdentityManagement
+          user={managingIdentities}
+          onClose={() => setManagingIdentities(null)}
+          canEditIdentity={canUpdate}
+          canDeleteIdentity={canDelete}
+        />
       )}
     </div>
   );

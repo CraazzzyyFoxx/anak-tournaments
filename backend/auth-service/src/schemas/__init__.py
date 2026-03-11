@@ -24,6 +24,8 @@ from .oauth import (
     PlayerLinkResponse,
 )
 from .rbac import (
+    AuthUserDetailRead,
+    AuthUserListRead,
     PermissionBase,
     PermissionCreate,
     PermissionRead,
@@ -56,6 +58,8 @@ __all__ = [
     "PlayerLinkRequest",
     "PlayerLinkResponse",
     "LinkedPlayer",
+    "AuthUserListRead",
+    "AuthUserDetailRead",
     "PermissionBase",
     "PermissionCreate",
     "PermissionRead",

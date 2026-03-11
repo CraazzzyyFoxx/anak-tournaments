@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ColumnDef,
   flexRender,
@@ -8,7 +8,7 @@ import {
   useReactTable,
   Row
 } from "@tanstack/react-table";
-import { CircleMinus, Search } from "lucide-react";
+import { CircleMinus, LoaderCircle, Search, SlidersHorizontal } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useDebounce } from "use-debounce";
 import {
@@ -23,7 +23,8 @@ import { PaginationControlled } from "@/components/ui/pagination-with-links";
 import { PaginatedResponse } from "@/types/pagination.types";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { useQuery } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export interface AdminDataTableProps<TData> {
   // Data
@@ -89,6 +90,9 @@ export function AdminDataTable<TData>({
   });
 
   const data = dataQuery.data ?? initialData ?? { results: [], total: 0, page: 1, per_page: 15 };
+  const isRefreshing = dataQuery.isFetching && !dataQuery.isLoading;
+  const rangeStart = data.total > 0 ? (currentPage - 1) * data.per_page + 1 : 0;
+  const rangeEnd = data.total > 0 ? Math.min(currentPage * data.per_page, data.total) : 0;
 
   // Handle browser back/forward
   useEffect(() => {
@@ -176,24 +180,64 @@ export function AdminDataTable<TData>({
     onRowClick(row);
   };
 
+  const handleRowKeyDown = (event: React.KeyboardEvent<HTMLTableRowElement>, row: Row<TData>) => {
+    if (!onRowClick) {
+      return;
+    }
+
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onRowClick(row);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-4">
-      {/* Search and Actions */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="relative w-full max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <input
-            className="h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            placeholder={searchPlaceholder}
-            value={searchValue}
-            onChange={(event) => setSearchValue(event.target.value)}
-          />
+      <div className="rounded-2xl border border-border/70 bg-card/70 p-3 shadow-sm sm:p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              Dataset Controls
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {data.total > 0
+                ? `Showing ${rangeStart}-${rangeEnd} of ${data.total} records`
+                : "No records loaded yet"}
+            </p>
+          </div>
+
+          <div className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto lg:min-w-[420px] lg:justify-end">
+            <div className="relative w-full lg:max-w-sm">
+              <Label htmlFor="admin-table-search" className="sr-only">
+                {searchPlaceholder}
+              </Label>
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                id="admin-table-search"
+                aria-label={searchPlaceholder}
+                autoComplete="off"
+                className="border-border/70 bg-background/80 pl-9"
+                name="admin-table-search"
+                placeholder={searchPlaceholder}
+                value={searchValue}
+                onChange={(event) => setSearchValue(event.target.value)}
+              />
+            </div>
+            {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+          </div>
         </div>
-        {actions && <div className="flex items-center gap-2">{actions}</div>}
       </div>
 
-      {/* Table */}
-      <div className="rounded-md border">
+      <div className="overflow-hidden rounded-2xl border border-border/70 bg-card/70 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
+          <div className="flex items-center gap-2">
+            {isRefreshing ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : null}
+            <span>{isRefreshing ? "Refreshing data" : "Snapshot ready"}</span>
+          </div>
+          <span>{searchValue ? `Filtered by “${searchValue}”` : "Showing full dataset"}</span>
+        </div>
+
         <ScrollArea>
           <Table>
             <TableHeader>
@@ -217,8 +261,10 @@ export function AdminDataTable<TData>({
                   <TableRow
                     key={row.id}
                     data-state={row.getIsSelected() && "selected"}
-                    className={onRowClick ? "cursor-pointer" : ""}
+                    className={onRowClick ? "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" : ""}
                     onClick={(event) => handleRowClick(event, row)}
+                    onKeyDown={(event) => handleRowKeyDown(event, row)}
+                    tabIndex={onRowClick ? 0 : undefined}
                   >
                     {row.getVisibleCells().map((cell) => (
                       <TableCell key={cell.id}>
@@ -229,10 +275,19 @@ export function AdminDataTable<TData>({
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={columns.length} className="h-32 text-center">
-                    <div className="flex flex-col items-center justify-center gap-2">
-                      <CircleMinus className="h-8 w-8 text-muted-foreground" />
-                      <p className="text-sm text-muted-foreground">{emptyMessage}</p>
+                  <TableCell colSpan={columns.length} className="h-40 text-center">
+                    <div className="flex flex-col items-center justify-center gap-3 px-4">
+                      <div className="rounded-full border border-border/70 bg-background/70 p-3">
+                        <CircleMinus className="h-8 w-8 text-muted-foreground" />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium text-foreground">{emptyMessage}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {searchValue
+                            ? "Try a broader search or clear the current filter."
+                            : "Add data or adjust your current admin context to continue."}
+                        </p>
+                      </div>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -243,12 +298,10 @@ export function AdminDataTable<TData>({
         </ScrollArea>
       </div>
 
-      {/* Pagination */}
       {data.total > 0 && (
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-card/70 px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-muted-foreground">
-            Showing {(currentPage - 1) * data.per_page + 1} to{" "}
-            {Math.min(currentPage * data.per_page, data.total)} of {data.total} results
+            Showing {rangeStart} to {rangeEnd} of {data.total} results
           </p>
           <PaginationControlled
             page={currentPage}

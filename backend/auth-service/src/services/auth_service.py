@@ -10,7 +10,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from loguru import logger
 from shared.models.rbac import role_permissions, user_roles
-from sqlalchemy import insert, select
+from sqlalchemy import insert, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from starlette.requests import Request
@@ -176,6 +176,41 @@ class AuthService:
         """Load a user with roles + permissions eagerly loaded."""
         result = await session.execute(AuthService._user_query_with_rbac().where(models.AuthUser.id == user_id))
         return result.scalar_one_or_none()
+
+    @staticmethod
+    async def list_users_with_rbac(
+        session: AsyncSession,
+        search: str | None = None,
+        role_id: int | None = None,
+        is_active: bool | None = None,
+        is_superuser: bool | None = None,
+    ) -> list[models.AuthUser]:
+        """List auth users with roles and permissions eagerly loaded."""
+
+        query = AuthService._user_query_with_rbac().order_by(models.AuthUser.id.desc())
+
+        if search:
+            term = f"%{search}%"
+            query = query.where(
+                or_(
+                    models.AuthUser.email.ilike(term),
+                    models.AuthUser.username.ilike(term),
+                    models.AuthUser.first_name.ilike(term),
+                    models.AuthUser.last_name.ilike(term),
+                )
+            )
+
+        if role_id is not None:
+            query = query.where(models.AuthUser.roles.any(models.Role.id == role_id))
+
+        if is_active is not None:
+            query = query.where(models.AuthUser.is_active == is_active)
+
+        if is_superuser is not None:
+            query = query.where(models.AuthUser.is_superuser == is_superuser)
+
+        result = await session.execute(query)
+        return list(result.scalars().all())
 
     @staticmethod
     async def authenticate_user(session: AsyncSession, email: str, password: str) -> models.AuthUser | None:

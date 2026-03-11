@@ -20,7 +20,7 @@ async def get_gamemodes(
     per_page: int = 50,
     search: str | None = None,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_role("admin")),
+    user: models.AuthUser = Depends(auth.require_permission("gamemode", "read")),
 ):
     """Get paginated list of gamemodes (admin only)"""
     gamemodes_list = await admin_service.get_gamemodes(session, page, per_page, search)
@@ -31,7 +31,7 @@ async def get_gamemodes(
 async def create_gamemode(
     data: admin_schemas.GamemodeCreate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_role("admin")),
+    user: models.AuthUser = Depends(auth.require_permission("gamemode", "create")),
 ):
     """Create a new gamemode (admin only)"""
     created_gamemode = await admin_service.create_gamemode(session, data)
@@ -43,7 +43,7 @@ async def update_gamemode(
     gamemode_id: int,
     data: admin_schemas.GamemodeUpdate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_role("admin")),
+    user: models.AuthUser = Depends(auth.require_permission("gamemode", "update")),
 ):
     """Update gamemode fields (admin only)"""
     updated_gamemode = await admin_service.update_gamemode(session, gamemode_id, data)
@@ -54,7 +54,7 @@ async def update_gamemode(
 async def delete_gamemode(
     gamemode_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_role("admin")),
+    user: models.AuthUser = Depends(auth.require_permission("gamemode", "delete")),
 ):
     """Delete gamemode (admin only)"""
     await admin_service.delete_gamemode(session, gamemode_id)

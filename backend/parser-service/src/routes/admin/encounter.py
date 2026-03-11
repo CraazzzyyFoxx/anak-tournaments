@@ -18,7 +18,7 @@ router = APIRouter(
 async def create_encounter(
     data: admin_schemas.EncounterCreate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_any_role("admin", "tournament_organizer")),
+    user: models.AuthUser = Depends(auth.require_permission("match", "create")),
 ):
     """Create a new encounter (admin/organizer only)"""
     encounter = await admin_service.create_encounter(session, data)
@@ -30,7 +30,7 @@ async def update_encounter(
     encounter_id: int,
     data: admin_schemas.EncounterUpdate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_any_role("admin", "tournament_organizer")),
+    user: models.AuthUser = Depends(auth.require_permission("match", "update")),
 ):
     """Update encounter fields (admin/organizer only)"""
     encounter = await admin_service.update_encounter(session, encounter_id, data)
@@ -41,7 +41,7 @@ async def update_encounter(
 async def delete_encounter(
     encounter_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_any_role("admin", "tournament_organizer")),
+    user: models.AuthUser = Depends(auth.require_permission("match", "delete")),
 ):
     """Delete encounter and all matches (admin/organizer only)"""
     await admin_service.delete_encounter(session, encounter_id)

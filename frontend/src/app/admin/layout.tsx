@@ -1,10 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
-import { usePermissions } from "@/hooks/usePermissions";
+import { AppPermission, usePermissions } from "@/hooks/usePermissions";
 import { Separator } from "@/components/ui/separator";
 import {
   Breadcrumb,
@@ -15,6 +13,35 @@ import {
   BreadcrumbSeparator
 } from "@/components/ui/breadcrumb";
 import { usePathname } from "next/navigation";
+
+const overviewPermissions: AppPermission[] = [
+  "tournament.read",
+  "team.read",
+  "player.read",
+  "match.read",
+  "standing.read",
+  "user.read",
+  "hero.read",
+  "gamemode.read",
+  "map.read",
+  "analytics.read",
+];
+
+const routePermissions: Array<{ prefix: string; permissions: AppPermission[]; superuserOnly?: boolean }> = [
+  { prefix: "/admin/access", permissions: [], superuserOnly: true },
+  { prefix: "/admin/tournaments", permissions: ["tournament.read"] },
+  { prefix: "/admin/teams", permissions: ["team.read"] },
+  { prefix: "/admin/players", permissions: ["player.read"] },
+  { prefix: "/admin/encounters", permissions: ["match.read"] },
+  { prefix: "/admin/standings", permissions: ["standing.read"] },
+  { prefix: "/admin/users", permissions: ["user.read"] },
+  { prefix: "/admin/heroes", permissions: ["hero.read"] },
+  { prefix: "/admin/gamemodes", permissions: ["gamemode.read"] },
+  { prefix: "/admin/maps", permissions: ["map.read"] },
+  { prefix: "/admin/achievements", permissions: ["achievement.read"] },
+  { prefix: "/admin/settings", permissions: [], superuserOnly: true },
+  { prefix: "/admin", permissions: overviewPermissions },
+];
 
 function LoadingState() {
   return (
@@ -77,16 +104,24 @@ function AdminBreadcrumb() {
 }
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const { isLoaded, isAdmin, isOrganizer } = usePermissions();
-  const router = useRouter();
+  const pathname = usePathname();
+  const { isLoaded, isAdmin, isOrganizer, isModerator, isSuperuser, hasAnyPermission } = usePermissions();
 
   // Show loading state while auth is resolving
   if (!isLoaded) {
     return <LoadingState />;
   }
 
-  // Check if user has admin or organizer role
-  const hasAccess = isAdmin || isOrganizer;
+  const matchingRoute = routePermissions.find((route) => pathname.startsWith(route.prefix));
+
+  let hasAccess = false;
+  if (matchingRoute?.superuserOnly) {
+    hasAccess = isSuperuser;
+  } else if (matchingRoute?.permissions?.length) {
+    hasAccess = isSuperuser || hasAnyPermission(matchingRoute.permissions);
+  } else {
+    hasAccess = isSuperuser || isAdmin || isOrganizer || isModerator;
+  }
 
   // Redirect or show unauthorized if no access
   if (!hasAccess) {

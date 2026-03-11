@@ -9,6 +9,21 @@ from src import models
 from src.schemas.admin import tournament as admin_schemas
 
 
+async def get_tournament(session: AsyncSession, tournament_id: int) -> models.Tournament:
+    """Get one tournament with groups loaded for admin workspaces."""
+    result = await session.execute(
+        select(models.Tournament)
+        .where(models.Tournament.id == tournament_id)
+        .options(selectinload(models.Tournament.groups))
+    )
+    tournament = result.scalar_one_or_none()
+
+    if not tournament:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+
+    return tournament
+
+
 async def create_tournament(session: AsyncSession, data: admin_schemas.TournamentCreate) -> models.Tournament:
     """Create a new tournament"""
     if data.number is not None:

@@ -21,7 +21,7 @@ async def get_maps(
     search: str | None = None,
     gamemode_id: int | None = None,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_role("admin")),
+    user: models.AuthUser = Depends(auth.require_permission("map", "read")),
 ):
     """Get paginated list of maps (admin only)"""
     maps_list = await admin_service.get_maps(session, page, per_page, search, gamemode_id)
@@ -32,7 +32,7 @@ async def get_maps(
 async def create_map(
     data: admin_schemas.MapCreate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_role("admin")),
+    user: models.AuthUser = Depends(auth.require_permission("map", "create")),
 ):
     """Create a new map (admin only)"""
     created_map = await admin_service.create_map(session, data)
@@ -44,7 +44,7 @@ async def update_map(
     map_id: int,
     data: admin_schemas.MapUpdate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_role("admin")),
+    user: models.AuthUser = Depends(auth.require_permission("map", "update")),
 ):
     """Update map fields (admin only)"""
     updated_map = await admin_service.update_map(session, map_id, data)
@@ -55,7 +55,7 @@ async def update_map(
 async def delete_map(
     map_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_role("admin")),
+    user: models.AuthUser = Depends(auth.require_permission("map", "delete")),
 ):
     """Delete map (admin only)"""
     await admin_service.delete_map(session, map_id)

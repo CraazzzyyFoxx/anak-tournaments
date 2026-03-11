@@ -25,6 +25,8 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import { usePermissions } from "@/hooks/usePermissions";
+import { hasUnsavedChanges } from "@/lib/form-change";
 
 interface TeamFormData {
   name: string;
@@ -44,10 +46,27 @@ const defaultFormData: TeamFormData = {
   total_sr: 0,
 };
 
+function getCreateTeamForm(tournamentId: number | null): TeamFormData {
+  return { ...defaultFormData, tournament_id: tournamentId || 0 };
+}
+
+function getEditTeamForm(team: Team): TeamFormData {
+  return {
+    ...defaultFormData,
+    name: team.name,
+    avg_sr: team.avg_sr,
+    total_sr: team.total_sr,
+  };
+}
+
 export default function TeamsPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const { hasPermission } = usePermissions();
   const queryClient = useQueryClient();
+  const canCreate = hasPermission("team.create");
+  const canUpdate = hasPermission("team.update");
+  const canDelete = hasPermission("team.delete");
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -107,22 +126,19 @@ export default function TeamsPage() {
   });
 
   const resetForm = () => {
-    setFormData({ ...defaultFormData, tournament_id: selectedTournamentId || 0 });
+    setFormData(getCreateTeamForm(selectedTournamentId));
   };
 
   const handleCreate = () => {
+    createMutation.reset();
     setCreateDialogOpen(true);
     resetForm();
   };
 
   const handleEdit = (team: Team) => {
+    updateMutation.reset();
     setSelectedTeam(team);
-    setFormData({
-      ...defaultFormData,
-      name: team.name,
-      avg_sr: team.avg_sr,
-      total_sr: team.total_sr,
-    });
+    setFormData(getEditTeamForm(team));
     setEditDialogOpen(true);
   };
 
@@ -153,6 +169,11 @@ export default function TeamsPage() {
       deleteMutation.mutate(selectedTeam.id);
     }
   };
+
+  const createFormInitial = getCreateTeamForm(selectedTournamentId);
+  const editFormInitial = selectedTeam ? getEditTeamForm(selectedTeam) : createFormInitial;
+  const isCreateDirty = createDialogOpen && hasUnsavedChanges(formData, createFormInitial);
+  const isEditDirty = editDialogOpen && hasUnsavedChanges(formData, editFormInitial);
 
   const columns: ColumnDef<Team>[] = [
     {
@@ -196,21 +217,27 @@ export default function TeamsPage() {
     },
     {
       id: "actions",
-      cell: ({ row }) => (
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={() => handleEdit(row.original)}>
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => handleDelete(row.original)}
-            className="text-destructive"
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
-      )
+      cell: ({ row }) =>
+        canUpdate || canDelete ? (
+          <div className="flex items-center gap-2">
+            {canUpdate ? (
+              <Button aria-label={`Edit ${row.original.name}`} variant="ghost" size="icon" onClick={() => handleEdit(row.original)}>
+                <Pencil className="h-4 w-4" />
+              </Button>
+            ) : null}
+            {canDelete ? (
+              <Button
+                aria-label={`Delete ${row.original.name}`}
+                variant="ghost"
+                size="icon"
+                onClick={() => handleDelete(row.original)}
+                className="text-destructive"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            ) : null}
+          </div>
+        ) : null
     }
   ];
 
@@ -220,10 +247,12 @@ export default function TeamsPage() {
         title="Teams"
         description="Manage teams and their rosters"
         actions={
-          <Button onClick={handleCreate}>
-            <Plus className="mr-2 h-4 w-4" />
-            Create Team
-          </Button>
+          canCreate ? (
+            <Button onClick={handleCreate}>
+              <Plus className="mr-2 h-4 w-4" />
+              Create Team
+            </Button>
+          ) : null
         }
       />
 
@@ -279,6 +308,9 @@ export default function TeamsPage() {
         description="Create a new team"
         onSubmit={handleSubmitCreate}
         isSubmitting={createMutation.isPending}
+        submittingLabel="Creating team…"
+        errorMessage={createMutation.isError ? createMutation.error.message : undefined}
+        isDirty={isCreateDirty}
       >
         <div className="space-y-4">
           <div>
@@ -371,6 +403,9 @@ export default function TeamsPage() {
         description="Update team details"
         onSubmit={handleSubmitUpdate}
         isSubmitting={updateMutation.isPending}
+        submittingLabel="Updating team…"
+        errorMessage={updateMutation.isError ? updateMutation.error.message : undefined}
+        isDirty={isEditDirty}
       >
         <div className="space-y-4">
           <div>
@@ -424,15 +459,17 @@ export default function TeamsPage() {
       </EntityFormDialog>
 
       {/* Delete Dialog */}
-      <DeleteConfirmDialog
-        open={deleteDialogOpen}
-        onOpenChange={setDeleteDialogOpen}
-        onConfirm={handleConfirmDelete}
-        title="Delete Team"
-        description={`Are you sure you want to delete "${selectedTeam?.name}"? This action cannot be undone.`}
-        cascadeInfo={["All players in this team", "All related match statistics"]}
-        isDeleting={deleteMutation.isPending}
-      />
+      {canDelete ? (
+        <DeleteConfirmDialog
+          open={deleteDialogOpen}
+          onOpenChange={setDeleteDialogOpen}
+          onConfirm={handleConfirmDelete}
+          title="Delete Team"
+          description={`Are you sure you want to delete "${selectedTeam?.name}"? This action cannot be undone.`}
+          cascadeInfo={["All players in this team", "All related match statistics"]}
+          isDeleting={deleteMutation.isPending}
+        />
+      ) : null}
     </div>
   );
 }

@@ -32,26 +32,48 @@ import { Badge } from "@/components/ui/badge";
 import adminService from "@/services/admin.service";
 import type { Hero } from "@/types/hero.types";
 import type { HeroCreateInput, HeroUpdateInput } from "@/types/admin.types";
+import { usePermissions } from "@/hooks/usePermissions";
+import { hasUnsavedChanges } from "@/lib/form-change";
 
 const HERO_ROLES = ["Tank", "Damage", "Support"];
+const emptyHeroForm: HeroCreateInput = {
+  name: "",
+  role: "Damage",
+  color: "#3b82f6",
+};
+
+function getHeroForm(hero: Hero | null): HeroCreateInput | HeroUpdateInput {
+  if (!hero) {
+    return { ...emptyHeroForm };
+  }
+
+  return {
+    name: hero.name,
+    role: hero.role,
+    color: hero.color,
+  };
+}
 
 export default function HeroesAdminPage() {
   const queryClient = useQueryClient();
+  const { hasPermission } = usePermissions();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingHero, setEditingHero] = useState<Hero | null>(null);
   const [deletingHero, setDeletingHero] = useState<Hero | null>(null);
   const [formData, setFormData] = useState<HeroCreateInput | HeroUpdateInput>({
-    name: "",
-    role: "Damage",
-    color: "#3b82f6",
+    ...emptyHeroForm,
   });
+  const canCreate = hasPermission("hero.create");
+  const canUpdate = hasPermission("hero.update");
+  const canDelete = hasPermission("hero.delete");
+  const canSync = hasPermission("hero.sync");
 
   const createMutation = useMutation({
     mutationFn: (data: HeroCreateInput) => adminService.createHero(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "heroes"] });
       setCreateDialogOpen(false);
-      setFormData({ name: "", role: "Damage", color: "#3b82f6" });
+      setFormData({ ...emptyHeroForm });
     },
   });
 
@@ -61,7 +83,7 @@ export default function HeroesAdminPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "heroes"] });
       setEditingHero(null);
-      setFormData({ name: "", role: "Damage", color: "#3b82f6" });
+      setFormData({ ...emptyHeroForm });
     },
   });
 
@@ -89,6 +111,9 @@ export default function HeroesAdminPage() {
     }
   };
 
+  const formInitial = getHeroForm(editingHero);
+  const isFormDirty = (createDialogOpen || !!editingHero) && hasUnsavedChanges(formData, formInitial);
+
   const getRoleBadgeColor = (role: string) => {
     switch (role) {
       case "Tank":
@@ -113,6 +138,9 @@ export default function HeroesAdminPage() {
       header: "Name",
       cell: ({ row }) => {
         const hero = row.original;
+        if (!canUpdate && !canDelete) {
+          return null;
+        }
         return (
           <div className="flex items-center gap-2">
             {hero.color && (
@@ -146,29 +174,34 @@ export default function HeroesAdminPage() {
         return (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon">
+              <Button aria-label={`Open actions for ${hero.name}`} variant="ghost" size="icon">
                 <MoreHorizontal className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>Actions</DropdownMenuLabel>
-              <DropdownMenuItem
-                onClick={() => {
-                  setEditingHero(hero);
-                  setFormData({ name: hero.name, role: hero.role, color: hero.color });
-                }}
-              >
-                <Pencil className="mr-2 h-4 w-4" />
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => setDeletingHero(hero)} className="text-destructive">
-                <Trash2 className="mr-2 h-4 w-4" />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        );
+               {canUpdate ? (
+                 <DropdownMenuItem
+                   onClick={() => {
+                     updateMutation.reset();
+                     setEditingHero(hero);
+                     setFormData({ name: hero.name, role: hero.role, color: hero.color });
+                   }}
+                 >
+                   <Pencil className="mr-2 h-4 w-4" />
+                   Edit
+                 </DropdownMenuItem>
+               ) : null}
+               {canUpdate && canDelete ? <DropdownMenuSeparator /> : null}
+               {canDelete ? (
+                 <DropdownMenuItem onClick={() => setDeletingHero(hero)} className="text-destructive">
+                   <Trash2 className="mr-2 h-4 w-4" />
+                   Delete
+                 </DropdownMenuItem>
+               ) : null}
+             </DropdownMenuContent>
+           </DropdownMenu>
+         );
       },
     },
   ];
@@ -179,20 +212,33 @@ export default function HeroesAdminPage() {
         title="Heroes"
         description="Manage game heroes and their roles"
         actions={
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => syncMutation.mutate()}
-              disabled={syncMutation.isPending}
-            >
-              <RefreshCw className={`mr-2 h-4 w-4 ${syncMutation.isPending ? "animate-spin" : ""}`} />
-              Sync from Game
-            </Button>
-            <Button onClick={() => setCreateDialogOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Create Hero
-            </Button>
-          </div>
+          canSync || canCreate ? (
+            <div className="flex gap-2">
+              {canSync ? (
+                <Button
+                  variant="outline"
+                  onClick={() => syncMutation.mutate()}
+                  disabled={syncMutation.isPending}
+                >
+                  <RefreshCw className={`mr-2 h-4 w-4 ${syncMutation.isPending ? "animate-spin" : ""}`} />
+                  Sync from Game
+                </Button>
+              ) : null}
+              {canCreate ? (
+                <Button
+                  onClick={() => {
+                    createMutation.reset();
+                    updateMutation.reset();
+                    setFormData({ ...emptyHeroForm });
+                    setCreateDialogOpen(true);
+                  }}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Create Hero
+                </Button>
+              ) : null}
+            </div>
+          ) : null
         }
       />
 
@@ -211,13 +257,20 @@ export default function HeroesAdminPage() {
           if (!open) {
             setCreateDialogOpen(false);
             setEditingHero(null);
-            setFormData({ name: "", role: "damage", color: "#3b82f6" });
+            setFormData({ ...emptyHeroForm });
           }
         }}
         title={editingHero ? "Edit Hero" : "Create Hero"}
         description={editingHero ? "Update hero information" : "Create a new hero in the game"}
         onSubmit={handleSubmit}
         isSubmitting={createMutation.isPending || updateMutation.isPending}
+        submittingLabel={editingHero ? "Updating hero…" : "Creating hero…"}
+        errorMessage={
+          (editingHero ? updateMutation.error : createMutation.error) instanceof Error
+            ? (editingHero ? updateMutation.error : createMutation.error).message
+            : undefined
+        }
+        isDirty={isFormDirty}
       >
         <div className="space-y-4">
           <div className="space-y-2">
@@ -273,7 +326,7 @@ export default function HeroesAdminPage() {
       </EntityFormDialog>
 
       {/* Delete Confirmation */}
-      {deletingHero && (
+      {canDelete && deletingHero && (
         <DeleteConfirmDialog
           open={!!deletingHero}
           onOpenChange={(open) => !open && setDeletingHero(null)}

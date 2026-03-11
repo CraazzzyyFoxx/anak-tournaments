@@ -22,11 +22,35 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { usePermissions } from "@/hooks/usePermissions";
+import { hasUnsavedChanges } from "@/lib/form-change";
+
+const emptyTournamentForm: TournamentCreateInput = {
+  name: "",
+  description: "",
+  is_league: false,
+  start_date: "",
+  end_date: "",
+};
+
+function getTournamentEditForm(tournament: Tournament): TournamentUpdateInput {
+  return {
+    name: tournament.name,
+    description: tournament.description || "",
+    is_finished: tournament.is_finished,
+    start_date: new Date(tournament.start_date).toISOString().split("T")[0],
+    end_date: new Date(tournament.end_date).toISOString().split("T")[0],
+  };
+}
 
 export default function TournamentsPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const { hasPermission } = usePermissions();
   const queryClient = useQueryClient();
+  const canCreate = hasPermission("tournament.create");
+  const canUpdate = hasPermission("tournament.update");
+  const canDelete = hasPermission("tournament.delete");
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -35,11 +59,7 @@ export default function TournamentsPage() {
 
   // Form state
   const [formData, setFormData] = useState<TournamentCreateInput | TournamentUpdateInput>({
-    name: "",
-    description: "",
-    is_league: false,
-    start_date: "",
-    end_date: ""
+    ...emptyTournamentForm,
   });
 
   // Mutations
@@ -85,29 +105,19 @@ export default function TournamentsPage() {
   });
 
   const resetForm = () => {
-    setFormData({
-      name: "",
-      description: "",
-      is_league: false,
-      start_date: "",
-      end_date: ""
-    });
+    setFormData({ ...emptyTournamentForm });
   };
 
   const handleCreate = () => {
+    createMutation.reset();
     setCreateDialogOpen(true);
     resetForm();
   };
 
   const handleEdit = (tournament: Tournament) => {
+    updateMutation.reset();
     setSelectedTournament(tournament);
-    setFormData({
-      name: tournament.name,
-      description: tournament.description || "",
-      is_finished: tournament.is_finished,
-      start_date: new Date(tournament.start_date).toISOString().split("T")[0],
-      end_date: new Date(tournament.end_date).toISOString().split("T")[0]
-    });
+    setFormData(getTournamentEditForm(tournament));
     setEditDialogOpen(true);
   };
 
@@ -136,6 +146,10 @@ export default function TournamentsPage() {
       deleteMutation.mutate(selectedTournament.id);
     }
   };
+
+  const editFormInitial = selectedTournament ? getTournamentEditForm(selectedTournament) : emptyTournamentForm;
+  const isCreateDirty = createDialogOpen && hasUnsavedChanges(formData, emptyTournamentForm);
+  const isEditDirty = editDialogOpen && hasUnsavedChanges(formData, editFormInitial);
 
   const columns: ColumnDef<Tournament>[] = [
     {
@@ -185,21 +199,27 @@ export default function TournamentsPage() {
     },
     {
       id: "actions",
-      cell: ({ row }) => (
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={() => handleEdit(row.original)}>
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => handleDelete(row.original)}
-            className="text-destructive"
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
-      )
+      cell: ({ row }) =>
+        canUpdate || canDelete ? (
+          <div className="flex items-center gap-2">
+            {canUpdate ? (
+              <Button aria-label={`Edit ${row.original.name}`} variant="ghost" size="icon" onClick={() => handleEdit(row.original)}>
+                <Pencil className="h-4 w-4" />
+              </Button>
+            ) : null}
+            {canDelete ? (
+              <Button
+                aria-label={`Delete ${row.original.name}`}
+                variant="ghost"
+                size="icon"
+                onClick={() => handleDelete(row.original)}
+                className="text-destructive"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            ) : null}
+          </div>
+        ) : null
     }
   ];
 
@@ -209,10 +229,12 @@ export default function TournamentsPage() {
         title="Tournaments"
         description="Manage tournaments and their groups"
         actions={
-          <Button onClick={handleCreate}>
-            <Plus className="mr-2 h-4 w-4" />
-            Create Tournament
-          </Button>
+          canCreate ? (
+            <Button onClick={handleCreate}>
+              <Plus className="mr-2 h-4 w-4" />
+              Create Tournament
+            </Button>
+          ) : null
         }
       />
 
@@ -240,6 +262,9 @@ export default function TournamentsPage() {
         description="Create a new tournament"
         onSubmit={handleSubmitCreate}
         isSubmitting={createMutation.isPending}
+        submittingLabel="Creating tournament…"
+        errorMessage={createMutation.isError ? createMutation.error.message : undefined}
+        isDirty={isCreateDirty}
       >
         <div className="space-y-4">
           <div>
@@ -321,6 +346,9 @@ export default function TournamentsPage() {
         description="Update tournament details"
         onSubmit={handleSubmitUpdate}
         isSubmitting={updateMutation.isPending}
+        submittingLabel="Updating tournament…"
+        errorMessage={updateMutation.isError ? updateMutation.error.message : undefined}
+        isDirty={isEditDirty}
       >
         <div className="space-y-4">
           <div>
@@ -379,21 +407,23 @@ export default function TournamentsPage() {
       </EntityFormDialog>
 
       {/* Delete Dialog */}
-      <DeleteConfirmDialog
-        open={deleteDialogOpen}
-        onOpenChange={setDeleteDialogOpen}
-        onConfirm={handleConfirmDelete}
-        title="Delete Tournament"
-        description={`Are you sure you want to delete "${selectedTournament?.name}"? This action cannot be undone.`}
-        cascadeInfo={[
-          "All tournament groups",
-          "All teams in this tournament",
-          "All players in these teams",
-          "All encounters in this tournament",
-          "All standings data"
-        ]}
-        isDeleting={deleteMutation.isPending}
-      />
+      {canDelete ? (
+        <DeleteConfirmDialog
+          open={deleteDialogOpen}
+          onOpenChange={setDeleteDialogOpen}
+          onConfirm={handleConfirmDelete}
+          title="Delete Tournament"
+          description={`Are you sure you want to delete "${selectedTournament?.name}"? This action cannot be undone.`}
+          cascadeInfo={[
+            "All tournament groups",
+            "All teams in this tournament",
+            "All players in these teams",
+            "All encounters in this tournament",
+            "All standings data"
+          ]}
+          isDeleting={deleteMutation.isPending}
+        />
+      ) : null}
     </div>
   );
 }

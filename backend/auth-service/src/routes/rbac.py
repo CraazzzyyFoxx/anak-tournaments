@@ -4,17 +4,39 @@ RBAC (Role-Based Access Control) routes
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from loguru import logger
+from shared.models.rbac import Permission, Role, user_roles
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from src import models, schemas
 from src.core import db
-from loguru import logger
-from src import schemas, models
 from src.services import auth_service
-from shared.models.rbac import Role, Permission
 
 router = APIRouter(prefix="/rbac", tags=["RBAC"])
+
+ADMIN_EQUIVALENT_ROLE_NAMES = {"admin"}
+
+
+def _permission_key(resource: str, action: str) -> str:
+    if resource == "*" and action == "*":
+        return "admin.*"
+    return f"{resource}.{action}"
+
+
+def _effective_permissions(user: models.AuthUser) -> list[str]:
+    keys = {
+        _permission_key(permission.resource, permission.action)
+        for role in user.roles
+        for permission in role.permissions
+    }
+    return sorted(keys)
+
+
+async def _count_users_with_role(session: AsyncSession, role_id: int) -> int:
+    result = await session.execute(select(user_roles.c.user_id).where(user_roles.c.role_id == role_id))
+    return len(result.scalars().all())
 
 
 # Permission Routes
@@ -55,7 +77,7 @@ async def create_permission(
     session.add(permission)
     await session.commit()
     await session.refresh(permission)
-    
+
     logger.info(f"Permission created: {permission.name}")
     return permission
 
@@ -71,13 +93,13 @@ async def delete_permission(
         select(Permission).where(Permission.id == permission_id)
     )
     permission = result.scalar_one_or_none()
-    
+
     if not permission:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Permission not found"
         )
-    
+
     await session.delete(permission)
     await session.commit()
     logger.info(f"Permission deleted: {permission.name}")
@@ -87,9 +109,9 @@ async def delete_permission(
 @router.get("/roles", response_model=list[schemas.RoleRead])
 async def list_roles(
     session: Annotated[AsyncSession, Depends(db.get_async_session)],
-    current_user: Annotated[models.AuthUser, Depends(auth_service.get_current_active_user)]
+    current_user: Annotated[models.AuthUser, Depends(auth_service.get_current_superuser)]
 ):
-    """List all roles"""
+    """List all roles (superuser only)."""
     result = await session.execute(select(Role))
     roles = result.scalars().all()
     return roles
@@ -99,22 +121,22 @@ async def list_roles(
 async def get_role(
     role_id: int,
     session: Annotated[AsyncSession, Depends(db.get_async_session)],
-    current_user: Annotated[models.AuthUser, Depends(auth_service.get_current_active_user)]
+    current_user: Annotated[models.AuthUser, Depends(auth_service.get_current_superuser)]
 ):
-    """Get role with permissions"""
+    """Get role with permissions (superuser only)."""
     result = await session.execute(
         select(Role)
         .where(Role.id == role_id)
         .options(selectinload(Role.permissions))
     )
     role = result.scalar_one_or_none()
-    
+
     if not role:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Role not found"
         )
-    
+
     return role
 
 
@@ -140,7 +162,7 @@ async def create_role(
         description=role_data.description,
         is_system=False
     )
-    
+
     # Add permissions
     if role_data.permission_ids:
         result = await session.execute(
@@ -148,11 +170,11 @@ async def create_role(
         )
         permissions = result.scalars().all()
         role.permissions = list(permissions)
-    
+
     session.add(role)
     await session.commit()
     await session.refresh(role)
-    
+
     logger.info(f"Role created: {role.name}")
     return role
 
@@ -169,19 +191,19 @@ async def update_role(
         select(Role).where(Role.id == role_id).options(selectinload(Role.permissions))
     )
     role = result.scalar_one_or_none()
-    
+
     if not role:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Role not found"
         )
-    
+
     if role.is_system:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot modify system roles"
         )
-    
+
     if role_data.name is not None:
         # Check if new name is already taken
         result = await session.execute(
@@ -193,20 +215,20 @@ async def update_role(
                 detail="Role with this name already exists"
             )
         role.name = role_data.name
-    
+
     if role_data.description is not None:
         role.description = role_data.description
-    
+
     if role_data.permission_ids is not None:
         result = await session.execute(
             select(Permission).where(Permission.id.in_(role_data.permission_ids))
         )
         permissions = result.scalars().all()
         role.permissions = list(permissions)
-    
+
     await session.commit()
     await session.refresh(role)
-    
+
     logger.info(f"Role updated: {role.name}")
     return role
 
@@ -222,22 +244,63 @@ async def delete_role(
         select(Role).where(Role.id == role_id)
     )
     role = result.scalar_one_or_none()
-    
+
     if not role:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Role not found"
         )
-    
+
     if role.is_system:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot delete system roles"
         )
-    
+
     await session.delete(role)
     await session.commit()
     logger.info(f"Role deleted: {role.name}")
+
+
+@router.get("/users", response_model=list[schemas.AuthUserListRead])
+async def list_auth_users(
+    session: Annotated[AsyncSession, Depends(db.get_async_session)],
+    current_user: Annotated[models.AuthUser, Depends(auth_service.get_current_superuser)],
+    search: str | None = None,
+    role_id: int | None = None,
+    is_active: bool | None = None,
+    is_superuser: bool | None = None,
+):
+    """List auth users with assigned roles (superuser only)."""
+
+    users = await auth_service.AuthService.list_users_with_rbac(
+        session,
+        search=search,
+        role_id=role_id,
+        is_active=is_active,
+        is_superuser=is_superuser,
+    )
+    return [schemas.AuthUserListRead.model_validate(user, from_attributes=True) for user in users]
+
+
+@router.get("/users/{user_id}", response_model=schemas.AuthUserDetailRead)
+async def get_auth_user(
+    user_id: int,
+    session: Annotated[AsyncSession, Depends(db.get_async_session)],
+    current_user: Annotated[models.AuthUser, Depends(auth_service.get_current_superuser)],
+):
+    """Get auth-user detail with assigned roles and effective permissions."""
+
+    user = await auth_service.AuthService.get_user_with_rbac(session, user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    payload = schemas.AuthUserListRead.model_validate(user, from_attributes=True).model_dump()
+    payload["effective_permissions"] = _effective_permissions(user)
+    return schemas.AuthUserDetailRead.model_validate(payload)
 
 
 # User Role Assignment Routes
@@ -258,7 +321,7 @@ async def assign_role_to_user(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
-    
+
     # Check if role exists
     result = await session.execute(
         select(Role).where(Role.id == data.role_id)
@@ -269,14 +332,14 @@ async def assign_role_to_user(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Role not found"
         )
-    
+
     # Check if user already has this role
     if role in user.roles:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User already has this role"
         )
-    
+
     user.roles.append(role)
     await session.commit()
     logger.info(f"Role {role.name} assigned to user {user.email}")
@@ -301,7 +364,7 @@ async def remove_role_from_user(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
-    
+
     # Check if role exists
     result = await session.execute(
         select(Role).where(Role.id == data.role_id)
@@ -312,14 +375,22 @@ async def remove_role_from_user(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Role not found"
         )
-    
+
     # Check if user has this role
     if role not in user.roles:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User does not have this role"
         )
-    
+
+    if role.name in ADMIN_EQUIVALENT_ROLE_NAMES:
+        role_assignment_count = await _count_users_with_role(session, role.id)
+        if role_assignment_count <= 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot remove the last admin role assignment"
+            )
+
     user.roles.remove(role)
     await session.commit()
     logger.info(f"Role {role.name} removed from user {user.email}")
@@ -329,27 +400,21 @@ async def remove_role_from_user(
 async def get_user_roles(
     user_id: int,
     session: Annotated[AsyncSession, Depends(db.get_async_session)],
-    current_user: Annotated[models.AuthUser, Depends(auth_service.get_current_active_user)]
+    current_user: Annotated[models.AuthUser, Depends(auth_service.get_current_superuser)]
 ):
-    """Get all roles for a user"""
-    # Users can only see their own roles unless they're superuser
-    if user_id != current_user.id and not current_user.is_superuser:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
-        )
-    
+    """Get all roles for a user (superuser only)."""
+
     result = await session.execute(
         select(models.AuthUser)
         .where(models.AuthUser.id == user_id)
         .options(selectinload(models.AuthUser.roles))
     )
     user = result.scalar_one_or_none()
-    
+
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
-    
+
     return user.roles
