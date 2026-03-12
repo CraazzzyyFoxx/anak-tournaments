@@ -82,11 +82,18 @@ const matches_components: { title: string; href: string; description: string }[]
   }
 ];
 
-const organizer_components: { title: string; href: string; description: string }[] = [
+const organization_components: { title: string; href: string; description: string; roles: ("admin" | "organizer")[] }[] = [
   {
     title: "Balancer",
     href: "/balancer",
-    description: "Tool for balancing teams by player roles and ratings"
+    description: "Tool for balancing teams by player roles and ratings",
+    roles: ["organizer"]
+  },
+  {
+    title: "Admin",
+    href: "/admin",
+    description: "Workspace for tournaments, access, and operations management",
+    roles: ["admin"]
   }
 ];
 
@@ -94,7 +101,7 @@ const components: Record<string, { title: string; href: string; description: str
   Tournaments: tournament_components,
   Users: users_components,
   Matches: matches_components,
-  Organizer: organizer_components
+  Organization: organization_components
 };
 
 const Header = () => {
@@ -104,6 +111,17 @@ const Header = () => {
   const username = user?.username;
   const avatarUrl = user?.avatarUrl;
   const profileHref = username ? `/users/${username}` : "/users";
+  const canAccessOrganization = isLoaded && (isAdmin || isOrganizer);
+
+  const getVisibleItems = (
+    items: { title: string; href: string; description: string; roles?: ("admin" | "organizer")[] }[]
+  ) =>
+    items.filter((item) => {
+      if (!item.roles?.length) return true;
+      if (item.roles.includes("admin") && isAdmin) return true;
+      if (item.roles.includes("organizer") && isOrganizer) return true;
+      return false;
+    });
 
   return (
     <header className="sticky top-0 z-50 flex h-14 items-center bg-background gap-4 border-b px-4 md:px-6">
@@ -112,14 +130,14 @@ const Header = () => {
       </Link>
       <NavigationMenu className="hidden md:flex">
         {Object.keys(components)
-          .filter((title) => title !== "Organizer" || (isLoaded && isOrganizer))
+          .filter((title) => title !== "Organization" || canAccessOrganization)
           .map((title) => (
             <NavigationMenuList key={title}>
               <NavigationMenuItem>
                 <NavigationMenuTrigger>{title}</NavigationMenuTrigger>
                 <NavigationMenuContent>
                   <ul className="grid w-[400px] gap-3 p-4 md:w-[500px] md:grid-cols-2 lg:w-[600px] ">
-                    {components[title].map((component) => (
+                    {getVisibleItems(components[title]).map((component) => (
                       <ListItem key={component.title} title={component.title} href={component.href}>
                         {component.description}
                       </ListItem>
@@ -129,17 +147,6 @@ const Header = () => {
               </NavigationMenuItem>
             </NavigationMenuList>
           ))}
-        {isLoaded && (isAdmin || isOrganizer) && (
-          <NavigationMenuList>
-            <NavigationMenuItem>
-              <Link href="/admin" legacyBehavior passHref>
-                <NavigationMenuLink className="group inline-flex h-9 w-max items-center justify-center rounded-md bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground focus:outline-none disabled:pointer-events-none disabled:opacity-50 data-[active]:bg-accent/50 data-[state=open]:bg-accent/50">
-                  Admin
-                </NavigationMenuLink>
-              </Link>
-            </NavigationMenuItem>
-          </NavigationMenuList>
-        )}
       </NavigationMenu>
       <Sheet>
         <SheetTrigger asChild>
@@ -156,7 +163,7 @@ const Header = () => {
             </Link>
             <Accordion type="single" collapsible className="w-full">
               {Object.entries(components)
-                .filter(([category]) => category !== "Organizer" || (isLoaded && isOrganizer))
+                .filter(([category]) => category !== "Organization" || canAccessOrganization)
                 .map(([category, items]) => (
                   <AccordionItem key={category} value={category}>
                     <AccordionTrigger className="text-base hover:text-foreground">
@@ -164,7 +171,7 @@ const Header = () => {
                     </AccordionTrigger>
                     <AccordionContent>
                       <div className="grid gap-4 pl-4">
-                        {items.map((item) => (
+                        {getVisibleItems(items).map((item) => (
                           <Link
                             key={item.title}
                             href={item.href}
@@ -178,14 +185,6 @@ const Header = () => {
                   </AccordionItem>
                 ))}
             </Accordion>
-            {isLoaded && (isAdmin || isOrganizer) && (
-              <Link
-                href="/admin"
-                className="text-muted-foreground hover:text-foreground text-base mt-4 block"
-              >
-                Admin
-              </Link>
-            )}
           </nav>
         </SheetContent>
       </Sheet>

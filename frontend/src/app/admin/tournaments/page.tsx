@@ -296,7 +296,7 @@ export default function TournamentsPage() {
             <Label htmlFor="description">Description</Label>
             <Textarea
               id="description"
-              value={formData.description}
+              value={formData.description ?? ""}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
             />
           </div>
@@ -364,7 +364,7 @@ export default function TournamentsPage() {
             <Label htmlFor="edit-description">Description</Label>
             <Textarea
               id="edit-description"
-              value={formData.description}
+              value={formData.description ?? ""}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
             />
           </div>

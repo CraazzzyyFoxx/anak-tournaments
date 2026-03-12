@@ -17,9 +17,10 @@ export interface Encounter {
   score: Score;
   round: number;
   tournament_id: number;
-  tournament_group_id: number;
-  challonge_id: number;
-  challonge_slug: string;
+  tournament_group_id: number | null;
+  challonge_id: number | null;
+  challonge_slug?: string | null;
+  status: string;
   closeness: number | null;
   has_logs: boolean;
 

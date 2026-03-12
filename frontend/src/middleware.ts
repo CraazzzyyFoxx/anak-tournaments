@@ -45,8 +45,6 @@ export async function middleware(request: NextRequest) {
       });
 
       if (!res.ok) {
-        console.warn("Access token refresh failed", { status: res.status });
-
         const response = NextResponse.next();
         response.cookies.delete("aqt_access_token");
         response.cookies.delete("aqt_refresh_token");

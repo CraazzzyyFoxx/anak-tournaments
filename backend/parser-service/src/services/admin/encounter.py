@@ -10,31 +10,23 @@ from src.core import enums
 from src.schemas.admin import encounter as admin_schemas
 
 
-async def create_encounter(
-    session: AsyncSession, data: admin_schemas.EncounterCreate
-) -> models.Encounter:
+async def create_encounter(session: AsyncSession, data: admin_schemas.EncounterCreate) -> models.Encounter:
     """Create a new encounter"""
     # Verify tournament exists
-    result = await session.execute(
-        select(models.Tournament).where(models.Tournament.id == data.tournament_id)
-    )
+    result = await session.execute(select(models.Tournament).where(models.Tournament.id == data.tournament_id))
     tournament = result.scalar_one_or_none()
 
     if not tournament:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
     # Verify teams exist
-    result = await session.execute(
-        select(models.Team).where(models.Team.id == data.home_team_id)
-    )
+    result = await session.execute(select(models.Team).where(models.Team.id == data.home_team_id))
     home_team = result.scalar_one_or_none()
 
     if not home_team:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Home team not found")
 
-    result = await session.execute(
-        select(models.Team).where(models.Team.id == data.away_team_id)
-    )
+    result = await session.execute(select(models.Team).where(models.Team.id == data.away_team_id))
     away_team = result.scalar_one_or_none()
 
     if not away_team:
@@ -48,9 +40,7 @@ async def create_encounter(
         group = result.scalar_one_or_none()
 
         if not group:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Tournament group not found"
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament group not found")
 
     # Parse status
     try:
@@ -99,6 +89,26 @@ async def update_encounter(
     # Update fields
     update_data = data.model_dump(exclude_unset=True)
 
+    if "home_team_id" in update_data:
+        result = await session.execute(select(models.Team).where(models.Team.id == update_data["home_team_id"]))
+        if result.scalar_one_or_none() is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Home team not found")
+
+    if "away_team_id" in update_data:
+        result = await session.execute(select(models.Team).where(models.Team.id == update_data["away_team_id"]))
+        if result.scalar_one_or_none() is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Away team not found")
+
+    if "tournament_group_id" in update_data and update_data["tournament_group_id"] is not None:
+        result = await session.execute(
+            select(models.TournamentGroup).where(models.TournamentGroup.id == update_data["tournament_group_id"])
+        )
+        if result.scalar_one_or_none() is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Tournament group not found",
+            )
+
     # Handle status conversion
     if "status" in update_data:
         try:
@@ -106,7 +116,7 @@ async def update_encounter(
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid status. Must be one of: {', '.join([s.value for s in enums.EncounterStatus])}"
+                detail=f"Invalid status. Must be one of: {', '.join([s.value for s in enums.EncounterStatus])}",
             )
 
     for field, value in update_data.items():
@@ -120,9 +130,7 @@ async def update_encounter(
 
 async def delete_encounter(session: AsyncSession, encounter_id: int) -> None:
     """Delete encounter (cascade deletes matches)"""
-    result = await session.execute(
-        select(models.Encounter).where(models.Encounter.id == encounter_id)
-    )
+    result = await session.execute(select(models.Encounter).where(models.Encounter.id == encounter_id))
     encounter = result.scalar_one_or_none()
 
     if not encounter:

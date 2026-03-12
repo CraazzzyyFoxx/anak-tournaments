@@ -3,6 +3,8 @@
 import { isServer, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
 
+import AuthBootstrap from "@/components/auth/AuthBootstrap";
+
 function makeQueryClient() {
   return new QueryClient({
     defaultOptions: {
@@ -27,5 +29,10 @@ function getQueryClient() {
 export function Providers({ children }: { children: React.ReactNode }) {
   const queryClient = getQueryClient();
 
-  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AuthBootstrap />
+      {children}
+    </QueryClientProvider>
+  );
 }

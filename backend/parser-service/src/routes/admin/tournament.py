@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src import models, schemas
 from src.core import auth, db
 from src.schemas.admin import tournament as admin_schemas
+from src.services.challonge import service as challonge_service
 from src.services.admin import tournament as admin_service
 from src.services.tournament import flows as tournament_flows
 
@@ -57,6 +58,17 @@ async def delete_tournament(
 ):
     """Delete tournament and all related data (admin/organizer only)"""
     await admin_service.delete_tournament(session, tournament_id)
+
+
+@router.get("/challonge/lookup", response_model=schemas.ChallongeTournament)
+async def lookup_challonge_tournament(
+    slug: str,
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_permission("tournament", "update")),
+):
+    """Resolve Challonge metadata for linking tournament groups."""
+    del session
+    return await challonge_service.fetch_tournament(slug)
 
 
 @router.post("/{tournament_id}/finish", response_model=schemas.TournamentRead)

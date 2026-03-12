@@ -4,11 +4,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { usePathname } from "next/navigation";
 
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
-import {
-  adminRoutePermissions,
-  getActiveAdminNavigation,
-  getVisibleAdminNavigationGroups,
-} from "@/components/admin/admin-navigation";
+import { adminRoutePermissions } from "@/components/admin/admin-navigation";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -17,7 +13,6 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -113,34 +108,17 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     return <UnauthorizedState />;
   }
 
-  const visibleGroups = getVisibleAdminNavigationGroups(isSuperuser, hasAnyPermission);
-  const activeNavigation = getActiveAdminNavigation(pathname, visibleGroups);
-
   return (
     <SidebarProvider className="admin-theme" defaultOpen style={sidebarShellStyle}>
       <AdminSidebar />
-      <SidebarInset className="min-h-[calc(100svh-8rem)] bg-background/95 md:peer-data-[variant=inset]:border md:peer-data-[variant=inset]:border-border/50 md:peer-data-[variant=inset]:shadow-xl md:peer-data-[variant=inset]:shadow-black/10">
-        <header className="sticky top-0 z-20 flex h-[3.75rem] shrink-0 items-center gap-3 border-b border-border/50 bg-background/90 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/82 md:px-5">
+      <SidebarInset className="min-h-svh min-w-0 bg-background/95 md:peer-data-[variant=inset]:border md:peer-data-[variant=inset]:border-border/50 md:peer-data-[variant=inset]:shadow-xl md:peer-data-[variant=inset]:shadow-black/10">
+        <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-3 border-b border-border/50 bg-background/90 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/82 md:px-5">
           <SidebarTrigger className="size-8 rounded-lg border border-border/60" />
-          <Separator orientation="vertical" className="hidden h-5 md:block" />
-
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline">{activeNavigation?.group.title ?? "Admin"}</Badge>
-              <span className="truncate text-sm font-medium text-foreground">{activeNavigation?.item.title ?? "Dashboard"}</span>
-              {activeNavigation?.item.superuserOnly ? <Badge variant="secondary">Restricted</Badge> : null}
-            </div>
-            <div className="mt-1 hidden text-muted-foreground md:block">
-              <AdminBreadcrumb />
-            </div>
-          </div>
-
-          <div className="hidden max-w-xs truncate text-sm text-muted-foreground 2xl:block">
-            {activeNavigation?.item.description ?? "Admin overview and operational health."}
-          </div>
+          <Separator orientation="vertical" className="h-5" />
+          <AdminBreadcrumb />
         </header>
 
-        <div className="flex flex-1 flex-col gap-5 p-4 md:p-5">{children}</div>
+        <div className="flex flex-1 flex-col gap-5 overflow-x-hidden p-4 md:p-5">{children}</div>
       </SidebarInset>
     </SidebarProvider>
   );

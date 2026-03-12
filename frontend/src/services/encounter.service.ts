@@ -38,16 +38,17 @@ export default class encounterService {
   static async getAll(
     page: number,
     query: string,
-    tournamentId: number | null = null
+    tournamentId: number | null = null,
+    perPage: number = 15
   ): Promise<PaginatedResponse<Encounter>> {
     return customFetch(`encounters`, {
       query: {
-        per_page: 15,
+        per_page: perPage,
         page: page,
         query: query,
         sort: "id",
         order: "desc",
-        entities: ["tournament", "tournament_group"],
+        entities: ["tournament", "tournament_group", "home_team", "away_team"],
         fields: ["name"],
         tournament_id: tournamentId
       }

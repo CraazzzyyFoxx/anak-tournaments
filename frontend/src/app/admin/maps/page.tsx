@@ -286,7 +286,7 @@ export default function MapsAdminPage() {
         submittingLabel={editingMap ? "Updating map…" : "Creating map…"}
         errorMessage={
           (editingMap ? updateMutation.error : createMutation.error) instanceof Error
-            ? (editingMap ? updateMutation.error : createMutation.error).message
+            ? (editingMap ? updateMutation.error : createMutation.error)?.message
             : undefined
         }
         isDirty={isFormDirty}

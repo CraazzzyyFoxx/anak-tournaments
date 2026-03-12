@@ -283,7 +283,7 @@ export default function AccessAdminRolesPage() {
         submittingLabel={isEditing ? "Updating role…" : "Creating role…"}
         errorMessage={
           (isEditing ? updateRoleMutation.error : createRoleMutation.error) instanceof Error
-            ? (isEditing ? updateRoleMutation.error : createRoleMutation.error).message
+            ? (isEditing ? updateRoleMutation.error : createRoleMutation.error)?.message
             : undefined
         }
         isDirty={isFormDirty}

@@ -24,6 +24,9 @@ class EncounterUpdate(BaseModel):
     """Schema for updating an encounter"""
 
     name: str | None = None
+    tournament_group_id: int | None = None
+    home_team_id: int | None = None
+    away_team_id: int | None = None
     home_score: int | None = None
     away_score: int | None = None
     status: str | None = None

@@ -1,7 +1,7 @@
 """Admin service layer for tournament CRUD operations"""
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -84,6 +84,7 @@ async def delete_tournament(session: AsyncSession, tournament_id: int) -> None:
     if not tournament:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
+    await session.execute(delete(models.Standing).where(models.Standing.tournament_id == tournament_id))
     await session.delete(tournament)
     await session.commit()
 
@@ -169,5 +170,6 @@ async def delete_group(session: AsyncSession, tournament_id: int, group_id: int)
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament group not found")
 
+    await session.execute(delete(models.Standing).where(models.Standing.group_id == group_id))
     await session.delete(group)
     await session.commit()

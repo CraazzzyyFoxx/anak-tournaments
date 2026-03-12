@@ -1,11 +1,11 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowUpRight, ShieldCheck } from "lucide-react";
+import { ArrowUpRight, LayoutDashboard } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import {
   Sidebar,
   SidebarContent,
@@ -24,7 +24,7 @@ import {
   getVisibleAdminNavigationGroups,
   isAdminNavItemActive,
 } from "@/components/admin/admin-navigation";
-import { SITE_NAME } from "@/config/site";
+import { SITE_FAVICON, SITE_NAME } from "@/config/site";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { usePermissions } from "@/hooks/usePermissions";
 
@@ -58,47 +58,54 @@ export function AdminSidebar() {
 
   const navigationGroups = getVisibleAdminNavigationGroups(isSuperuser, hasAnyPermission);
   const adminToolsGroup = navigationGroups.find((group) => group.title === "Administration");
-  const primaryGroups = navigationGroups.filter((group) => group.title !== "Administration");
+  const primaryGroups = navigationGroups.filter((group) => group.title !== "Administration" && group.title !== "Overview");
   const roleLabel = getRoleLabel({ isSuperuser, isAdmin, isOrganizer, isModerator });
   const profileHref = user?.username ? `/users/${user.username}` : "/users";
 
   return (
     <Sidebar collapsible="icon" variant="inset">
-      <SidebarHeader className="gap-2 border-b border-sidebar-border/70 px-2.5 py-2.5">
+      <SidebarHeader className="border-b border-sidebar-border/70 px-2.5 py-2.5">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild size="lg" className="h-12 rounded-xl bg-sidebar-accent/70 px-2.5 hover:bg-sidebar-accent">
+            <SidebarMenuButton asChild size="lg" className="h-11 rounded-xl bg-sidebar-accent/70 px-2.5 hover:bg-sidebar-accent">
               <Link href="/admin">
-                <div className="flex size-8 items-center justify-center rounded-lg border border-sidebar-border/80 bg-sidebar/80 text-sidebar-foreground">
-                  <ShieldCheck />
+                <div className="flex size-9 items-center justify-center rounded-lg bg-sidebar/80 text-sidebar-foreground">
+                  <Image
+                    src={SITE_FAVICON}
+                    alt={SITE_NAME}
+                    width={22}
+                    height={22}
+                    unoptimized
+                    className="size-[22px] object-contain"
+                  />
                 </div>
                 <div className="grid flex-1 text-left leading-tight group-data-[collapsible=icon]:hidden">
-                  <span className="truncate text-sm font-semibold text-sidebar-foreground">Control deck</span>
-                  <span className="truncate text-[11px] text-sidebar-foreground/60">{SITE_NAME} admin</span>
+                  <span className="truncate text-sm font-semibold text-sidebar-foreground">Admin</span>
+                  <span className="truncate text-[11px] text-sidebar-foreground/60">{roleLabel}</span>
                 </div>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
-
-        <div className="flex flex-wrap items-center gap-2 px-2 group-data-[collapsible=icon]:hidden">
-          <Badge variant="secondary">{roleLabel}</Badge>
-          {isSuperuser ? <Badge variant="outline">Full access</Badge> : null}
-        </div>
-
-        <div className="px-2 group-data-[collapsible=icon]:hidden">
-          <div className="h-px w-full bg-sidebar-border/80" />
-        </div>
-
-        <div className="flex flex-col gap-2 px-2 group-data-[collapsible=icon]:hidden">
-          <p className="text-[11px] uppercase tracking-[0.18em] text-sidebar-foreground/45">Admin shell</p>
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-xs leading-5 text-sidebar-foreground/68">Tournament operations, rosters, and logs in one place.</p>
-          </div>
-        </div>
       </SidebarHeader>
 
       <SidebarContent className="px-2 py-2.5">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              asChild
+              isActive={pathname === "/admin"}
+              tooltip="Dashboard"
+              className="h-9 rounded-lg px-2.5 text-sidebar-foreground/78 hover:text-sidebar-foreground data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-foreground data-[active=true]:shadow-[inset_0_0_0_1px_hsl(var(--sidebar-border))]"
+            >
+              <Link href="/admin">
+                <LayoutDashboard />
+                <span>Dashboard</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+
         {primaryGroups.map((group) => (
           <SidebarGroup key={group.title} className="px-0 py-0.5">
             <SidebarGroupLabel className="px-2 text-[10px] uppercase tracking-[0.22em] text-sidebar-foreground/38">

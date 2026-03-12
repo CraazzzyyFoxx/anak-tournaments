@@ -209,7 +209,7 @@ export default function GamemodesAdminPage() {
         submittingLabel={editingGamemode ? "Updating gamemode…" : "Creating gamemode…"}
         errorMessage={
           (editingGamemode ? updateMutation.error : createMutation.error) instanceof Error
-            ? (editingGamemode ? updateMutation.error : createMutation.error).message
+            ? (editingGamemode ? updateMutation.error : createMutation.error)?.message
             : undefined
         }
         isDirty={isFormDirty}

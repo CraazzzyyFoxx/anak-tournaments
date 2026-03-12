@@ -1,4 +1,5 @@
-import { getTokenFromCookies, refreshAccessToken } from "./auth-tokens";
+import { getTokenFromCookies } from "./auth-tokens";
+import { retryWithRefreshOnUnauthorized } from "./auth-request";
 
 interface ParserFetchOptions {
   query?: Record<string, any>;
@@ -71,15 +72,11 @@ export async function parserFetch(url: string, options?: ParserFetchOptions): Pr
     });
   };
 
-  let response = await runRequest(initialToken);
-
-  // If the cookie-based access token is expired/invalid, try refreshing once.
-  if (response.status === 401 && !options.token && typeof window !== "undefined") {
-    const refreshedToken = await refreshAccessToken();
-    if (refreshedToken) {
-      response = await runRequest(refreshedToken);
-    }
-  }
+  const response = await retryWithRefreshOnUnauthorized({
+    response: await runRequest(initialToken),
+    token: options.token,
+    runRequest
+  });
 
   if (!response.ok) {
     let message = "An error occurred";

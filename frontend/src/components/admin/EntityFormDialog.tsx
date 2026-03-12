@@ -104,7 +104,7 @@ export function EntityFormDialog({
       }
 
       const href = anchor.getAttribute("href");
-      if (!href || anchor.target === "_blank" || anchor.hasAttribute("download")) {
+      if (!href || (anchor as HTMLAnchorElement).target === "_blank" || anchor.hasAttribute("download")) {
         return;
       }
 

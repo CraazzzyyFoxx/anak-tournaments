@@ -12,8 +12,10 @@ export interface TournamentCreateInput {
 }
 
 export interface TournamentUpdateInput {
+  number?: number | null;
   name?: string;
-  description?: string;
+  description?: string | null;
+  is_league?: boolean;
   is_finished?: boolean;
   start_date?: string;
   end_date?: string;
@@ -21,14 +23,18 @@ export interface TournamentUpdateInput {
 
 export interface TournamentGroupCreateInput {
   name: string;
-  is_playoffs: boolean;
+  description?: string | null;
   is_groups: boolean;
+  challonge_id?: number | null;
+  challonge_slug?: string | null;
 }
 
 export interface TournamentGroupUpdateInput {
   name?: string;
-  is_playoffs?: boolean;
+  description?: string | null;
   is_groups?: boolean;
+  challonge_id?: number | null;
+  challonge_slug?: string | null;
 }
 
 // ─── Team ────────────────────────────────────────────────────────────────────
@@ -78,7 +84,7 @@ export interface PlayerUpdateInput {
 
 export interface EncounterCreateInput {
   tournament_id: number;
-  tournament_group_id: number;
+  tournament_group_id: number | null;
   home_team_id: number;
   away_team_id: number;
   round: number;
@@ -89,11 +95,26 @@ export interface EncounterCreateInput {
 }
 
 export interface EncounterUpdateInput {
+  tournament_group_id?: number | null;
+  home_team_id?: number;
+  away_team_id?: number;
   home_score?: number;
   away_score?: number;
   status?: string;
   round?: number;
   name?: string;
+}
+
+export interface ChallongeTournamentLookup {
+  id: number;
+  name: string;
+  url: string;
+  description: string;
+  state: string;
+  participants_count: number;
+  match_count?: number | null;
+  group_stages_enabled: boolean;
+  grand_finals_modifier?: string | null;
 }
 
 // ─── Standing ────────────────────────────────────────────────────────────────

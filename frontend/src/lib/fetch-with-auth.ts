@@ -1,4 +1,5 @@
-import { getTokenFromCookies, refreshAccessToken } from "./auth-tokens";
+import { getTokenFromCookies } from "./auth-tokens";
+import { retryWithRefreshOnUnauthorized } from "./auth-request";
 
 export async function fetchWithAuth(
   url: string,
@@ -6,31 +7,25 @@ export async function fetchWithAuth(
 ): Promise<Response> {
   const accessToken = await getTokenFromCookies("aqt_access_token");
 
-  const res = await fetch(url, {
-    ...options,
-    credentials: "include",
-    headers: {
-      Accept: "application/json",
-      ...options.headers,
-      ...(accessToken && { Authorization: `Bearer ${accessToken}` })
+  const runRequest = async (token?: string) => {
+    const headers = new Headers(options.headers);
+    headers.set("Accept", "application/json");
+
+    if (token) {
+      headers.set("Authorization", `Bearer ${token}`);
+    } else {
+      headers.delete("Authorization");
     }
+
+    return fetch(url, {
+      ...options,
+      credentials: "include",
+      headers,
+    });
+  };
+
+  return retryWithRefreshOnUnauthorized({
+    response: await runRequest(accessToken),
+    runRequest,
   });
-
-  if (res.status === 401 && typeof window !== "undefined") {
-    const refreshedToken = await refreshAccessToken();
-
-    if (refreshedToken) {
-      return fetch(url, {
-        ...options,
-        credentials: "include",
-        headers: {
-          Accept: "application/json",
-          ...options.headers,
-          Authorization: `Bearer ${refreshedToken}`
-        }
-      });
-    }
-  }
-
-  return res;
 }

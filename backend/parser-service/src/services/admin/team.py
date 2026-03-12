@@ -1,7 +1,7 @@
 """Admin service layer for team and player CRUD operations"""
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -59,9 +59,7 @@ async def create_team(session: AsyncSession, data: admin_schemas.TeamCreate) -> 
 async def update_team(session: AsyncSession, team_id: int, data: admin_schemas.TeamUpdate) -> models.Team:
     """Update team fields"""
     result = await session.execute(
-        select(models.Team)
-        .where(models.Team.id == team_id)
-        .options(selectinload(models.Team.players))
+        select(models.Team).where(models.Team.id == team_id).options(selectinload(models.Team.players))
     )
     team = result.scalar_one_or_none()
 
@@ -94,6 +92,7 @@ async def delete_team(session: AsyncSession, team_id: int) -> None:
     if not team:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
 
+    await session.execute(delete(models.Standing).where(models.Standing.team_id == team_id))
     await session.delete(team)
     await session.commit()
 
@@ -101,9 +100,7 @@ async def delete_team(session: AsyncSession, team_id: int) -> None:
 # ─── Player Management ───────────────────────────────────────────────────────
 
 
-async def add_player_to_team(
-    session: AsyncSession, team_id: int, data: admin_schemas.PlayerCreate
-) -> models.Player:
+async def add_player_to_team(session: AsyncSession, team_id: int, data: admin_schemas.PlayerCreate) -> models.Player:
     """Add a player to a team"""
     # Verify team exists
     result = await session.execute(select(models.Team).where(models.Team.id == team_id))
@@ -136,10 +133,7 @@ async def add_player_to_team(
 async def remove_player_from_team(session: AsyncSession, team_id: int, player_id: int) -> None:
     """Remove a player from a team"""
     result = await session.execute(
-        select(models.Player).where(
-            models.Player.id == player_id,
-            models.Player.team_id == team_id
-        )
+        select(models.Player).where(models.Player.id == player_id, models.Player.team_id == team_id)
     )
     player = result.scalar_one_or_none()
 
@@ -179,9 +173,7 @@ async def create_player(session: AsyncSession, data: admin_schemas.PlayerCreate)
     return player
 
 
-async def update_player(
-    session: AsyncSession, player_id: int, data: admin_schemas.PlayerUpdate
-) -> models.Player:
+async def update_player(session: AsyncSession, player_id: int, data: admin_schemas.PlayerUpdate) -> models.Player:
     """Update player fields"""
     result = await session.execute(
         select(models.Player)

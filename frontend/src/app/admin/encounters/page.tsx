@@ -33,7 +33,7 @@ import { hasUnsavedChanges } from "@/lib/form-change";
 const emptyEncounterForm: EncounterCreateInput = {
   name: "",
   tournament_id: 0,
-  tournament_group_id: undefined,
+  tournament_group_id: 0,
   home_team_id: 0,
   away_team_id: 0,
   round: 1,

@@ -23,8 +23,10 @@ class TournamentCreate(BaseModel):
 class TournamentUpdate(BaseModel):
     """Schema for updating a tournament"""
 
+    number: int | None = None
     name: str | None = None
     description: str | None = None
+    is_league: bool | None = None
     is_finished: bool | None = None
     start_date: date | None = None
     end_date: date | None = None
@@ -35,8 +37,9 @@ class TournamentGroupCreate(BaseModel):
 
     name: str
     description: str | None = None
-    is_playoffs: bool = False
     is_groups: bool = True
+    challonge_id: int | None = None
+    challonge_slug: str | None = None
 
 
 class TournamentGroupUpdate(BaseModel):
@@ -44,5 +47,6 @@ class TournamentGroupUpdate(BaseModel):
 
     name: str | None = None
     description: str | None = None
-    is_playoffs: bool | None = None
     is_groups: bool | None = None
+    challonge_id: int | None = None
+    challonge_slug: str | None = None

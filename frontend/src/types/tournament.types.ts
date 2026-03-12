@@ -7,10 +7,10 @@ export interface TournamentGroup {
   created_at: Date;
   updated_at: Date | null;
   name: string;
-  is_playoffs: boolean;
+  description: string | null;
   is_groups: boolean;
-  challonge_id: number;
-  challonge_slug: string;
+  challonge_id: number | null;
+  challonge_slug: string | null;
 }
 
 export interface Tournament {
@@ -22,8 +22,8 @@ export interface Tournament {
   end_date: Date;
   number: number;
   description: string | null;
-  challonge_id: number;
-  challonge_slug: string;
+  challonge_id: number | null;
+  challonge_slug: string | null;
   is_league: boolean;
   is_finished: boolean;
 
@@ -63,6 +63,7 @@ export interface OwalStandings {
 }
 
 export interface Standings {
+  id: number;
   tournament_id: number;
   group_id: number;
   team_id: number;

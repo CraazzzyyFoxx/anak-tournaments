@@ -93,6 +93,13 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         description: "Audit bracket health and ranking outputs.",
         permissions: ["standing.read"],
       },
+      {
+        title: "Player Identities",
+        href: "/admin/users",
+        icon: UserCircle,
+        description: "Resolve Discord, BattleTag, and Twitch identities.",
+        permissions: ["user.read"],
+      },
     ],
   },
   {
@@ -118,18 +125,6 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         icon: Map,
         description: "Manage map pool coverage for tournaments and stats.",
         permissions: ["map.read"],
-      },
-    ],
-  },
-  {
-    title: "Identity",
-    items: [
-      {
-        title: "Player Identities",
-        href: "/admin/users",
-        icon: UserCircle,
-        description: "Resolve Discord, BattleTag, and Twitch identities.",
-        permissions: ["user.read"],
       },
     ],
   },

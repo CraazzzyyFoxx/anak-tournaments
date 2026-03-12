@@ -31,6 +31,7 @@ export interface Team {
   name: string;
   avg_sr: number;
   total_sr: number;
+  captain_id: number;
   tournament_id: number;
   players: Player[];
   tournament: Tournament | null;

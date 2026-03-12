@@ -15,6 +15,7 @@ class EncounterRead(BaseRead):
     tournament_id: int
     tournament_group_id: int | None
     challonge_id: int | None
+    status: str
     closeness: float | None
     has_logs: bool
 

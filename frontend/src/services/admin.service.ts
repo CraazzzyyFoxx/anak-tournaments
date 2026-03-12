@@ -8,6 +8,7 @@ import { Hero } from "@/types/hero.types";
 import { Gamemode } from "@/types/gamemode.types";
 import { MapRead } from "@/types/map.types";
 import {
+  ChallongeTournamentLookup,
   TournamentCreateInput,
   TournamentUpdateInput,
   TournamentGroupCreateInput,
@@ -66,6 +67,13 @@ class AdminService {
     await parserFetch(`admin/tournaments/${id}`, {
       method: "DELETE"
     });
+  }
+
+  async lookupChallongeTournament(slug: string): Promise<ChallongeTournamentLookup> {
+    const response = await parserFetch("admin/tournaments/challonge/lookup", {
+      query: { slug }
+    });
+    return response.json();
   }
 
   async addTournamentGroup(
@@ -165,7 +173,8 @@ class AdminService {
   async syncTeamsFromChallonge(tournamentId: number): Promise<BulkOperationResult> {
     const response = await parserFetch("teams/create/challonge", {
       method: "POST",
-      body: { tournament_id: tournamentId }
+      query: { tournament_id: tournamentId },
+      body: {}
     });
     return response.json();
   }
@@ -219,9 +228,9 @@ class AdminService {
   }
 
   async syncEncountersFromChallonge(tournamentId: number): Promise<BulkOperationResult> {
-    const response = await parserFetch("encounter/bulk", {
+    const response = await parserFetch("encounter/challonge", {
       method: "POST",
-      body: { tournament_id: tournamentId }
+      query: { tournament_id: tournamentId }
     });
     return response.json();
   }
@@ -245,7 +254,7 @@ class AdminService {
   async calculateStandings(tournamentId: number): Promise<BulkOperationResult> {
     const response = await parserFetch("standing/create", {
       method: "POST",
-      body: { tournament_id: tournamentId }
+      query: { tournament_id: tournamentId }
     });
     return response.json();
   }

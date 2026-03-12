@@ -597,7 +597,7 @@ export default function UsersAdminPage() {
         submittingLabel={editingUser ? "Updating player identity…" : "Creating player identity…"}
         errorMessage={
           (editingUser ? updateMutation.error : createMutation.error) instanceof Error
-            ? (editingUser ? updateMutation.error : createMutation.error).message
+            ? (editingUser ? updateMutation.error : createMutation.error)?.message
             : undefined
         }
         isDirty={isFormDirty}

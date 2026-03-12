@@ -130,7 +130,7 @@ export default function AdminTeamWorkspacePage() {
             <CardDescription>Captain</CardDescription>
             <CardTitle className="flex items-center gap-2 text-lg">
               <Shield className="h-5 w-5 text-muted-foreground" />
-              {team.captain?.name ?? `User #${team.captain_id}`}
+              {team.captain?.name ?? `User #${team.captain?.id}`}
             </CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
@@ -212,7 +212,7 @@ export default function AdminTeamWorkspacePage() {
                 <div>
                   <div className="font-medium">Captain Assignment</div>
                   <div className="text-muted-foreground">
-                    {team.captain?.name ?? `User #${team.captain_id}`} controls roster ownership.
+                    {team.captain?.name ?? `User #${team.captain?.id}`} controls roster ownership.
                   </div>
                 </div>
               </div>

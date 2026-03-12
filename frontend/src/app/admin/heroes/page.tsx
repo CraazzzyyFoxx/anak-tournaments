@@ -309,7 +309,7 @@ export default function HeroesAdminPage() {
         submittingLabel={editingHero ? "Updating hero…" : "Creating hero…"}
         errorMessage={
           (editingHero ? updateMutation.error : createMutation.error) instanceof Error
-            ? (editingHero ? updateMutation.error : createMutation.error).message
+            ? (editingHero ? updateMutation.error : createMutation.error)?.message
             : undefined
         }
         isDirty={isFormDirty}

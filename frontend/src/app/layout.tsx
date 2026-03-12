@@ -4,9 +4,6 @@ import "./globals.css";
 import React from "react";
 import { Providers } from "@/app/providers";
 import { GoogleAnalytics } from "@next/third-parties/google";
-import Header from "@/components/Header";
-import { Footer } from "@/components/Footer";
-import { Separator } from "@/components/ui/separator";
 import { SITE_FAVICON, SITE_NAME } from "@/config/site";
 import { cn } from "@/lib/utils";
 import AuthModal from "@/components/AuthModal";
@@ -52,17 +49,7 @@ export default function RootLayout({
             <AccountSettingsModal />
           </Suspense>
           <Toaster />
-
-          <div className="w-full max-w-screen-3xl mt-6 mx-auto px-4 md:px-6 xl:px-10 h-full">
-            <Header />
-            <div className="flex w-full flex-col min-h-[95%]">
-              <main className="flex flex-1 flex-col gap-4 pt-4 md:gap-8 md:pt-8 ">
-                {children}
-              </main>
-            </div>
-            <Separator className="mt-8" />
-            <Footer />
-          </div>
+          {children}
         </Providers>
       </body>
     </html>
