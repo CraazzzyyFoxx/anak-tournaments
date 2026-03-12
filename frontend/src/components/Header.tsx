@@ -24,6 +24,7 @@ import {
 import { cn } from "@/lib/utils";
 import { SITE_ICON, SITE_NAME } from "@/config/site";
 import UserMenu from "@/components/UserMenu";
+import { adminEntryPermissions } from "@/components/admin/admin-navigation";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useAuthModalStore } from "@/stores/auth-modal.store";
@@ -82,7 +83,13 @@ const matches_components: { title: string; href: string; description: string }[]
   }
 ];
 
-const organization_components: { title: string; href: string; description: string; roles: ("admin" | "organizer")[] }[] = [
+const organization_components: {
+  title: string;
+  href: string;
+  description: string;
+  roles?: ("admin" | "organizer")[];
+  requiresAdminAccess?: boolean;
+}[] = [
   {
     title: "Balancer",
     href: "/balancer",
@@ -93,7 +100,7 @@ const organization_components: { title: string; href: string; description: strin
     title: "Admin",
     href: "/admin",
     description: "Workspace for tournaments, access, and operations management",
-    roles: ["admin"]
+    requiresAdminAccess: true,
   }
 ];
 
@@ -107,18 +114,25 @@ const components: Record<string, { title: string; href: string; description: str
 const Header = () => {
   const { user } = useAuthProfile();
   const openAuthModal = useAuthModalStore((state) => state.open);
-  const { isOrganizer, isAdmin, isLoaded } = usePermissions();
+  const { isOrganizer, isLoaded, isSuperuser, hasAnyPermission } = usePermissions();
   const username = user?.username;
   const avatarUrl = user?.avatarUrl;
   const profileHref = username ? `/users/${username}` : "/users";
-  const canAccessOrganization = isLoaded && (isAdmin || isOrganizer);
+  const canAccessAdmin = isLoaded && (isSuperuser || hasAnyPermission(adminEntryPermissions));
+  const canAccessOrganization = isLoaded && (canAccessAdmin || isOrganizer);
 
   const getVisibleItems = (
-    items: { title: string; href: string; description: string; roles?: ("admin" | "organizer")[] }[]
+    items: {
+      title: string;
+      href: string;
+      description: string;
+      roles?: ("admin" | "organizer")[];
+      requiresAdminAccess?: boolean;
+    }[]
   ) =>
     items.filter((item) => {
+      if (item.requiresAdminAccess) return canAccessAdmin;
       if (!item.roles?.length) return true;
-      if (item.roles.includes("admin") && isAdmin) return true;
       if (item.roles.includes("organizer") && isOrganizer) return true;
       return false;
     });

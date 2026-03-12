@@ -2,27 +2,33 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import {
+  accessPermissionsPermissions,
+  accessRolesPermissions,
+  accessUsersPermissions,
+} from "@/components/admin/admin-navigation";
 import { cn } from "@/lib/utils";
 import { usePermissions } from "@/hooks/usePermissions";
 
 const accessNavItems = [
-  { href: "/admin/access/users", label: "Users" },
-  { href: "/admin/access/roles", label: "Roles" },
-  { href: "/admin/access/permissions", label: "Permissions" },
+  { href: "/admin/access/users", label: "Users", permissions: accessUsersPermissions },
+  { href: "/admin/access/roles", label: "Roles", permissions: accessRolesPermissions },
+  { href: "/admin/access/permissions", label: "Permissions", permissions: accessPermissionsPermissions },
 ];
 
 export default function AccessAdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { isSuperuser } = usePermissions();
+  const { isSuperuser, hasAnyPermission } = usePermissions();
+  const visibleNavItems = accessNavItems.filter((item) => isSuperuser || hasAnyPermission(item.permissions));
 
-  if (!isSuperuser) {
+  if (visibleNavItems.length === 0) {
     return null;
   }
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap gap-2 rounded-lg border border-border/60 bg-card/60 p-2">
-        {accessNavItems.map((item) => {
+        {visibleNavItems.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
           return (
             <Link

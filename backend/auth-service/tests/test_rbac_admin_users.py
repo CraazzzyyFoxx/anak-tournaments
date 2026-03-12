@@ -35,6 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.routes import rbac as rbac_routes  # noqa: E402
+from src.services import auth_service  # noqa: E402
 
 
 def _role(
@@ -104,6 +105,34 @@ def test_list_auth_users_route_returns_user_summaries(monkeypatch: pytest.Monkey
     assert len(response) == 1
     assert response[0].email == "ada@example.com"
     assert response[0].roles[0].name == "admin"
+
+
+def test_require_permission_allows_user_with_matching_permission() -> None:
+    current_user = SimpleNamespace(
+        is_active=True,
+        has_permission=lambda resource, action: resource == "role" and action == "read",
+    )
+
+    dependency = auth_service.require_permission("role", "read")
+
+    response = asyncio.run(dependency(current_user=current_user))
+
+    assert response is current_user
+
+
+def test_require_permission_rejects_user_without_matching_permission() -> None:
+    current_user = SimpleNamespace(
+        is_active=True,
+        has_permission=lambda _resource, _action: False,
+    )
+
+    dependency = auth_service.require_permission("role", "assign")
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(dependency(current_user=current_user))
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "Permission denied: role.assign required"
 
 
 def test_get_auth_user_route_returns_effective_permissions(monkeypatch: pytest.MonkeyPatch) -> None:

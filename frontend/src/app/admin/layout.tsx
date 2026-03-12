@@ -4,7 +4,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { usePathname } from "next/navigation";
 
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
-import { adminRoutePermissions } from "@/components/admin/admin-navigation";
+import { adminEntryPermissions, getMatchingAdminRoute } from "@/components/admin/admin-navigation";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -87,21 +87,21 @@ const sidebarShellStyle = {
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { isLoaded, isAdmin, isOrganizer, isModerator, isSuperuser, hasAnyPermission } = usePermissions();
+  const { isLoaded, isSuperuser, hasAnyPermission } = usePermissions();
 
   if (!isLoaded) {
     return <LoadingState />;
   }
 
-  const matchingRoute = adminRoutePermissions.find((route) => pathname.startsWith(route.prefix));
+  const matchingRoute = getMatchingAdminRoute(pathname);
 
   let hasAccess = false;
   if (matchingRoute?.superuserOnly) {
     hasAccess = isSuperuser;
   } else if (matchingRoute?.permissions?.length) {
-    hasAccess = isSuperuser || hasAnyPermission(matchingRoute.permissions);
+    hasAccess = hasAnyPermission(matchingRoute.permissions);
   } else {
-    hasAccess = isSuperuser || isAdmin || isOrganizer || isModerator;
+    hasAccess = isSuperuser || hasAnyPermission(adminEntryPermissions);
   }
 
   if (!hasAccess) {

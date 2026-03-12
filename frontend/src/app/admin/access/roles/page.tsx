@@ -23,6 +23,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { usePermissions } from "@/hooks/usePermissions";
 import { useToast } from "@/hooks/use-toast";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import { paginateResults } from "@/lib/paginate-results";
@@ -44,6 +45,11 @@ const emptyRoleForm: UpsertRolePayload = {
 export default function AccessAdminRolesPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { hasPermission } = usePermissions();
+  const canReadPermissions = hasPermission("permission.read");
+  const canCreateRole = hasPermission("role.create") && canReadPermissions;
+  const canUpdateRole = hasPermission("role.update") && canReadPermissions;
+  const canDeleteRole = hasPermission("role.delete");
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingRoleId, setEditingRoleId] = useState<number | null>(null);
@@ -53,6 +59,7 @@ export default function AccessAdminRolesPage() {
   const permissionsQuery = useQuery({
     queryKey: ["access-admin", "permissions", "all"],
     queryFn: () => rbacService.listPermissions(),
+    enabled: canReadPermissions && (createDialogOpen || editingRoleId !== null),
   });
 
   const roleDetailQuery = useQuery({
@@ -151,6 +158,10 @@ export default function AccessAdminRolesPage() {
       header: "",
       cell: ({ row }) => {
         const role = row.original;
+        if (!canUpdateRole && !canDeleteRole) {
+          return null;
+        }
+
         return (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -160,24 +171,28 @@ export default function AccessAdminRolesPage() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>Actions</DropdownMenuLabel>
-              <DropdownMenuItem
-                onClick={() => {
-                  updateRoleMutation.reset();
-                  setEditingRoleId(role.id);
-                }}
-              >
-                <Pencil className="mr-2 h-4 w-4" />
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="text-destructive"
-                disabled={role.is_system}
-                onClick={() => setDeletingRole(role)}
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                Delete
-              </DropdownMenuItem>
+              {canUpdateRole ? (
+                <DropdownMenuItem
+                  onClick={() => {
+                    updateRoleMutation.reset();
+                    setEditingRoleId(role.id);
+                  }}
+                >
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Edit
+                </DropdownMenuItem>
+              ) : null}
+              {canUpdateRole && canDeleteRole ? <DropdownMenuSeparator /> : null}
+              {canDeleteRole ? (
+                <DropdownMenuItem
+                  className="text-destructive"
+                  disabled={role.is_system}
+                  onClick={() => setDeletingRole(role)}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete
+                </DropdownMenuItem>
+              ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
         );
@@ -230,19 +245,21 @@ export default function AccessAdminRolesPage() {
         title="Roles"
         description="Create custom roles, inspect protected system roles, and manage permission bundles."
         eyebrow="Access Admin"
-        meta={<Badge variant="secondary">Superuser only</Badge>}
+        meta={<Badge variant="secondary">RBAC</Badge>}
         actions={
-          <Button
-            onClick={() => {
-              createRoleMutation.reset();
-              updateRoleMutation.reset();
-              setFormData(emptyRoleForm);
-              setCreateDialogOpen(true);
-            }}
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Create Role
-          </Button>
+          canCreateRole ? (
+            <Button
+              onClick={() => {
+                createRoleMutation.reset();
+                updateRoleMutation.reset();
+                setFormData(emptyRoleForm);
+                setCreateDialogOpen(true);
+              }}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Create Role
+            </Button>
+          ) : undefined
         }
       />
 

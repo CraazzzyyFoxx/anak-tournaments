@@ -24,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { usePermissions } from "@/hooks/usePermissions";
 import { useToast } from "@/hooks/use-toast";
 import { paginateResults } from "@/lib/paginate-results";
 import { rbacService } from "@/services/rbac.service";
@@ -38,6 +39,8 @@ function getErrorMessage(error: unknown): string {
 export default function AccessAdminUsersPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { hasPermission } = usePermissions();
+  const canAssignRoles = hasPermission("role.assign") && hasPermission("role.read");
 
   const [managingUserId, setManagingUserId] = useState<number | null>(null);
   const [selectedRoleId, setSelectedRoleId] = useState<string>("");
@@ -45,6 +48,7 @@ export default function AccessAdminUsersPage() {
   const rolesQuery = useQuery({
     queryKey: ["access-admin", "roles", "all"],
     queryFn: () => rbacService.listRoles(),
+    enabled: canAssignRoles,
   });
 
   const userDetailQuery = useQuery({
@@ -134,12 +138,12 @@ export default function AccessAdminUsersPage() {
       header: "",
       cell: ({ row }) => (
         <div className="flex justify-end">
-          <Button variant="outline" size="sm" onClick={() => setManagingUserId(row.original.id)}>
-            <UserCog className="mr-2 h-4 w-4" />
-            Manage
-          </Button>
-        </div>
-      ),
+            <Button variant="outline" size="sm" onClick={() => setManagingUserId(row.original.id)}>
+              <UserCog className="mr-2 h-4 w-4" />
+              {canAssignRoles ? "Manage" : "Inspect"}
+            </Button>
+          </div>
+        ),
     },
   ];
 
@@ -154,7 +158,7 @@ export default function AccessAdminUsersPage() {
         title="Access Users"
         description="Manage auth accounts, review assigned roles, and inspect effective permissions."
         eyebrow="Access Admin"
-        meta={<Badge variant="secondary">Superuser only</Badge>}
+        meta={<Badge variant="secondary">RBAC</Badge>}
       />
 
       <AdminDataTable
@@ -178,12 +182,14 @@ export default function AccessAdminUsersPage() {
         }}
       >
         <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Manage Access</DialogTitle>
-            <DialogDescription>
-              Assign or remove roles and review effective permissions for this auth account.
-            </DialogDescription>
-          </DialogHeader>
+            <DialogHeader>
+              <DialogTitle>Manage Access</DialogTitle>
+              <DialogDescription>
+                {canAssignRoles
+                  ? "Assign or remove roles and review effective permissions for this auth account."
+                  : "Review assigned roles and effective permissions for this auth account."}
+              </DialogDescription>
+            </DialogHeader>
 
           {userDetailQuery.isLoading ? (
             <div className="py-8 text-sm text-muted-foreground">Loading auth user...</div>
@@ -229,7 +235,7 @@ export default function AccessAdminUsersPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            disabled={removeRoleMutation.isPending}
+                            disabled={!canAssignRoles || removeRoleMutation.isPending}
                             onClick={() =>
                               removeRoleMutation.mutate({
                                 user_id: userDetailQuery.data!.id,
@@ -237,7 +243,7 @@ export default function AccessAdminUsersPage() {
                               })
                             }
                           >
-                            Remove
+                            {canAssignRoles ? "Remove" : "Assigned"}
                           </Button>
                         </div>
                       ))
@@ -246,35 +252,37 @@ export default function AccessAdminUsersPage() {
                     )}
                   </div>
 
-                  <div className="rounded-md border border-dashed border-border p-4">
-                    <div className="space-y-3">
-                      <p className="text-sm font-medium">Assign another role</p>
-                      <Select value={selectedRoleId} onValueChange={setSelectedRoleId}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select a role" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {assignableRoles.map((role) => (
-                            <SelectItem key={role.id} value={String(role.id)}>
-                              {role.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        disabled={!selectedRoleId || assignRoleMutation.isPending}
-                        onClick={() =>
-                          assignRoleMutation.mutate({
-                            user_id: userDetailQuery.data!.id,
-                            role_id: Number(selectedRoleId),
-                          })
-                        }
-                      >
-                        <Shield className="mr-2 h-4 w-4" />
-                        Assign Role
-                      </Button>
+                  {canAssignRoles ? (
+                    <div className="rounded-md border border-dashed border-border p-4">
+                      <div className="space-y-3">
+                        <p className="text-sm font-medium">Assign another role</p>
+                        <Select value={selectedRoleId} onValueChange={setSelectedRoleId}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a role" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {assignableRoles.map((role) => (
+                              <SelectItem key={role.id} value={String(role.id)}>
+                                {role.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          disabled={!selectedRoleId || assignRoleMutation.isPending}
+                          onClick={() =>
+                            assignRoleMutation.mutate({
+                              user_id: userDetailQuery.data!.id,
+                              role_id: Number(selectedRoleId),
+                            })
+                          }
+                        >
+                          <Shield className="mr-2 h-4 w-4" />
+                          Assign Role
+                        </Button>
+                      </div>
                     </div>
-                  </div>
+                  ) : null}
                 </div>
 
                 <div className="space-y-4 rounded-lg border border-border/60 bg-card/60 p-4">

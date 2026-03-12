@@ -42,6 +42,21 @@ export const overviewPermissions: AppPermission[] = [
   "analytics.read",
 ];
 
+export const accessUsersPermissions: AppPermission[] = ["auth_user.read"];
+export const accessRolesPermissions: AppPermission[] = ["role.read"];
+export const accessPermissionsPermissions: AppPermission[] = ["permission.read"];
+export const accessAdminPermissions: AppPermission[] = [
+  ...accessUsersPermissions,
+  ...accessRolesPermissions,
+  ...accessPermissionsPermissions,
+];
+
+export const adminEntryPermissions: AppPermission[] = [
+  ...overviewPermissions,
+  ...accessAdminPermissions,
+  "achievement.read",
+];
+
 export const adminNavigationGroups: AdminNavGroup[] = [
   {
     title: "Overview",
@@ -130,28 +145,27 @@ export const adminNavigationGroups: AdminNavGroup[] = [
   },
   {
     title: "Administration",
-    superuserOnly: true,
     items: [
       {
         title: "Users",
         href: "/admin/access/users",
         icon: Users,
         description: "Admin account access and assignments.",
-        superuserOnly: true,
+        permissions: accessUsersPermissions,
       },
       {
         title: "Roles",
         href: "/admin/access/roles",
         icon: Shield,
         description: "Role catalog and permission bundles.",
-        superuserOnly: true,
+        permissions: accessRolesPermissions,
       },
       {
         title: "Permissions",
         href: "/admin/access/permissions",
         icon: Shield,
         description: "Permission visibility and governance.",
-        superuserOnly: true,
+        permissions: accessPermissionsPermissions,
       },
       {
         title: "Settings",
@@ -169,7 +183,10 @@ export const adminRoutePermissions: Array<{
   permissions: AppPermission[];
   superuserOnly?: boolean;
 }> = [
-  { prefix: "/admin/access", permissions: [], superuserOnly: true },
+  { prefix: "/admin/access/users", permissions: accessUsersPermissions },
+  { prefix: "/admin/access/roles", permissions: accessRolesPermissions },
+  { prefix: "/admin/access/permissions", permissions: accessPermissionsPermissions },
+  { prefix: "/admin/access", permissions: accessAdminPermissions },
   { prefix: "/admin/settings", permissions: [], superuserOnly: true },
   { prefix: "/admin/tournaments", permissions: ["tournament.read"] },
   { prefix: "/admin/teams", permissions: ["team.read"] },
@@ -181,8 +198,18 @@ export const adminRoutePermissions: Array<{
   { prefix: "/admin/gamemodes", permissions: ["gamemode.read"] },
   { prefix: "/admin/maps", permissions: ["map.read"] },
   { prefix: "/admin/achievements", permissions: ["achievement.read"] },
-  { prefix: "/admin", permissions: overviewPermissions },
+  { prefix: "/admin", permissions: adminEntryPermissions },
 ];
+
+export function getMatchingAdminRoute(pathname: string) {
+  return adminRoutePermissions.find((route) => {
+    if (route.prefix === "/admin") {
+      return pathname === "/admin";
+    }
+
+    return pathname === route.prefix || pathname.startsWith(`${route.prefix}/`);
+  });
+}
 
 export function isAdminNavItemActive(pathname: string, href: string) {
   if (href === "/admin") {

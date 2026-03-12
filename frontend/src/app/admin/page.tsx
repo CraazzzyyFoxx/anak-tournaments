@@ -136,7 +136,7 @@ function MiniStatCell({
 }
 
 export default function AdminDashboard() {
-  const { hasPermission, isSuperuser } = usePermissions();
+  const { hasPermission } = usePermissions();
 
   const canReadTournaments = hasPermission("tournament.read");
   const canReadTeams = hasPermission("team.read");
@@ -144,9 +144,19 @@ export default function AdminDashboard() {
   const canReadMatches = hasPermission("match.read");
   const canReadStandings = hasPermission("standing.read");
   const canReadUsers = hasPermission("user.read");
+  const canReadAccessUsers = hasPermission("auth_user.read");
   const canReadHeroes = hasPermission("hero.read");
   const canReadGamemodes = hasPermission("gamemode.read");
   const canReadMaps = hasPermission("map.read");
+  const canReadRoles = hasPermission("role.read");
+  const canReadPermissions = hasPermission("permission.read");
+  const accessAdminHref = canReadAccessUsers
+    ? "/admin/access/users"
+    : canReadRoles
+      ? "/admin/access/roles"
+      : canReadPermissions
+        ? "/admin/access/permissions"
+        : null;
 
   const dashboardQuery = useQuery({
     queryKey: ["admin", "dashboard", "command-deck"],
@@ -361,9 +371,9 @@ export default function AdminDashboard() {
           icon: Map,
         }
       : null,
-    isSuperuser
+    accessAdminHref
       ? {
-          href: "/admin/access/users",
+          href: accessAdminHref,
           title: "Access and roles",
           description: "Govern who can touch what inside the admin shell.",
           icon: Shield,
