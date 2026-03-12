@@ -11,7 +11,6 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 # Import from main module to use the singleton instance
 import main
@@ -73,14 +72,18 @@ async def get_current_user(
         logger.error(f"Error validating token: {e}")
         raise credentials_exception from e
 
-    # Fetch user from local database
     result = await session.execute(
-        select(models.AuthUser).options(selectinload(models.AuthUser.roles)).where(models.AuthUser.id == user_id)
+        select(models.AuthUser).where(models.AuthUser.id == user_id)
     )
     user = result.scalar_one_or_none()
 
     if user is None:
         raise credentials_exception
+
+    user.set_rbac_cache(
+        role_names=payload.get("roles", []),
+        permissions=payload.get("permissions", []),
+    )
 
     return user
 

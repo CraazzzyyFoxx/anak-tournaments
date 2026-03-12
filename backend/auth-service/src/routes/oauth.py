@@ -77,18 +77,12 @@ async def oauth_callback(
         if not auth_user.is_active:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User account is inactive")
 
-        # Get user roles and permissions (async-safe)
-        roles, permissions = await auth_service.AuthService.get_user_roles_and_permissions_db(session, auth_user.id)
-
-        # Create JWT tokens with RBAC data
         access_token = auth_service.AuthService.create_access_token(
             data={
                 "sub": str(auth_user.id),
                 "email": auth_user.email,
                 "username": auth_user.username,
                 "is_superuser": auth_user.is_superuser,
-                "roles": roles,
-                "permissions": permissions,
             }
         )
 

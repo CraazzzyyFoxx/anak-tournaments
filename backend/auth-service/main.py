@@ -11,6 +11,7 @@ from starlette.requests import Request
 
 from src.core.config import settings
 from src.core.db import init_db
+from src.core.redis import close_redis, init_redis
 from src.routes import router
 from src.middlewares.exception import ExceptionMiddleware
 
@@ -58,8 +59,12 @@ async def lifespan(app: FastAPI):
     await init_db()
     logger.success("Database connection established")
 
+    # Initialize Redis connection
+    await init_redis()
+
     yield
 
+    await close_redis()
     logger.info(f"Shutting down {settings.PROJECT_NAME}...")
 
 

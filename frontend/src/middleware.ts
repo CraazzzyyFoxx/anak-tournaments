@@ -61,7 +61,7 @@ export async function middleware(request: NextRequest) {
         sameSite: "lax",
         secure: process.env.NODE_ENV === "production",
         path: "/",
-        maxAge: 25 * 60
+        maxAge: 13 * 60
       });
 
       if (tokens.refresh_token) {

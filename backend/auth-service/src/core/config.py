@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     # JWT Authentication
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 
     # Service-to-service (client credentials)
@@ -104,6 +104,9 @@ class Settings(BaseSettings):
     otlp_endpoint: str | None = None
     tracing_enabled: bool = False
     json_logging: bool = True
+
+    # Redis
+    REDIS_URL: str = "redis://localhost:6379"
 
     # Proxy (optional)
     proxy_ip: str | None = None

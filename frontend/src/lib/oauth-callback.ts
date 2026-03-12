@@ -82,7 +82,7 @@ export async function handleOAuthCallback(request: Request, provider: OAuthProvi
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",
       path: "/",
-      maxAge: 25 * 60
+      maxAge: 13 * 60
     });
 
     response.cookies.set("aqt_refresh_token", tokens.refresh_token, {

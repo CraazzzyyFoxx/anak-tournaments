@@ -19,17 +19,15 @@ class AuthUser(db.TimeStampIntegerMixin):
 
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     username: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
-    hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)  # Nullable for OAuth users
+    hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean(), default=True, nullable=False)
     is_superuser: Mapped[bool] = mapped_column(Boolean(), default=False, nullable=False)
     is_verified: Mapped[bool] = mapped_column(Boolean(), default=False, nullable=False)
     
-    # Optional profile fields
     first_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     last_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     
-    # Relations
     refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
@@ -47,6 +45,23 @@ class AuthUser(db.TimeStampIntegerMixin):
         lazy="selectin"
     )
 
+    def set_rbac_cache(
+        self,
+        role_names: list[str],
+        permissions: list[dict[str, str]],
+    ) -> None:
+        """Attach RBAC data from auth-service /validate response.
+
+        When set, has_role() and has_permission() use these cached
+        values instead of traversing ORM relationships, avoiding an
+        extra DB query and ensuring instant propagation of changes.
+
+        Stored as plain instance attributes (not Mapped) so SQLAlchemy
+        ignores them.
+        """
+        object.__setattr__(self, "_cached_role_names", role_names)
+        object.__setattr__(self, "_cached_permissions", permissions)
+
     def __repr__(self):
         return f"<AuthUser id={self.id} email={self.email}>"
     
@@ -54,12 +69,19 @@ class AuthUser(db.TimeStampIntegerMixin):
         """Check if user has a specific permission"""
         if self.is_superuser:
             return True
+
+        cached = getattr(self, "_cached_permissions", None)
+        if cached is not None:
+            for p in cached:
+                pr, pa = p.get("resource", ""), p.get("action", "")
+                if (pr == resource or pr == "*") and (pa == action or pa == "*"):
+                    return True
+            return False
         
         for role in self.roles:
             for permission in role.permissions:
                 if permission.resource == resource and permission.action == action:
                     return True
-                # Wildcard permissions
                 if permission.resource == "*" and permission.action == action:
                     return True
                 if permission.resource == resource and permission.action == "*":
@@ -73,6 +95,9 @@ class AuthUser(db.TimeStampIntegerMixin):
         """Check if user has a specific role"""
         if self.is_superuser:
             return True
+        cached_roles = getattr(self, "_cached_role_names", None)
+        if cached_roles is not None:
+            return role_name in cached_roles
         return any(role.name == role_name for role in self.roles)
 
 

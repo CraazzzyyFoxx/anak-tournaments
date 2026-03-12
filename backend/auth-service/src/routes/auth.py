@@ -13,6 +13,7 @@ from src import models, schemas
 from src.core import db
 from src.services import auth_service
 from src.services.oauth_service import OAuthService
+from src.services.session_cache import get_rbac, set_rbac
 
 router = APIRouter(tags=["Authentication"])
 
@@ -59,22 +60,15 @@ async def login(
         logger.bind(user_id=str(user.id)).warning("Login attempt for inactive user")
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User account is inactive")
 
-    # Get user roles and permissions (async-safe)
-    roles, permissions = await auth_service.AuthService.get_user_roles_and_permissions_db(session, user.id)
-
-    # Create access token with RBAC data
     access_token = auth_service.AuthService.create_access_token(
         data={
             "sub": str(user.id),
             "email": user.email,
             "username": user.username,
             "is_superuser": user.is_superuser,
-            "roles": roles,
-            "permissions": permissions,
         }
     )
 
-    # Create and store refresh token
     refresh_token = auth_service.AuthService.create_refresh_token()
     await auth_service.AuthService.create_refresh_token_db(session, user.id, refresh_token, request)
 
@@ -110,18 +104,12 @@ async def refresh_token(
         logger.warning("Refresh token became invalid during rotation")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired refresh token")
 
-    # Get user roles and permissions (async-safe)
-    roles, permissions = await auth_service.AuthService.get_user_roles_and_permissions_db(session, user.id)
-
-    # Create new tokens with RBAC data
     access_token = auth_service.AuthService.create_access_token(
         data={
             "sub": str(user.id),
             "email": user.email,
             "username": user.username,
             "is_superuser": user.is_superuser,
-            "roles": roles,
-            "permissions": permissions,
         }
     )
 
@@ -226,10 +214,18 @@ async def validate_token(
     current_user: Annotated[models.AuthUser, Depends(auth_service.get_current_active_user)],
 ):
     """
-    Validate JWT token and return payload with RBAC data
-    This endpoint is used by other microservices to validate tokens
+    Validate JWT token and return payload with RBAC data.
+    Uses Redis cache (60s TTL) with DB fallback for instant propagation.
     """
-    roles, permissions = await auth_service.AuthService.get_user_roles_and_permissions_db(session, current_user.id)
+    cached = await get_rbac(current_user.id)
+    if cached is not None:
+        roles = cached["roles"]
+        permissions = cached["permissions"]
+    else:
+        roles, permissions = await auth_service.AuthService.get_user_roles_and_permissions_db(
+            session, current_user.id
+        )
+        await set_rbac(current_user.id, roles, permissions)
 
     return schemas.TokenPayload(
         sub=current_user.id,

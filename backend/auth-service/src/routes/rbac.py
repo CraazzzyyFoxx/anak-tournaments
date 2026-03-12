@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from loguru import logger
-from shared.models.rbac import Permission, Role, user_roles
+from shared.models.rbac import Permission, Role, role_permissions, user_roles
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -14,6 +14,7 @@ from sqlalchemy.orm import selectinload
 from src import models, schemas
 from src.core import db
 from src.services import auth_service
+from src.services.session_cache import invalidate_rbac
 
 router = APIRouter(prefix="/rbac", tags=["RBAC"])
 
@@ -38,6 +39,13 @@ def _effective_permissions(user: models.AuthUser) -> list[str]:
 async def _count_users_with_role(session: AsyncSession, role_id: int) -> int:
     result = await session.execute(select(user_roles.c.user_id).where(user_roles.c.role_id == role_id))
     return len(result.scalars().all())
+
+
+async def _invalidate_users_with_role(session: AsyncSession, role_id: int) -> None:
+    """Invalidate RBAC cache for every user that holds a given role."""
+    result = await session.execute(select(user_roles.c.user_id).where(user_roles.c.role_id == role_id))
+    for uid in result.scalars().all():
+        await invalidate_rbac(uid)
 
 
 # Permission Routes
@@ -90,6 +98,13 @@ async def delete_permission(
 
     if not permission:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Permission not found")
+
+    rp_result = await session.execute(
+        select(role_permissions.c.role_id).where(role_permissions.c.permission_id == permission_id)
+    )
+    affected_role_ids = rp_result.scalars().all()
+    for rid in affected_role_ids:
+        await _invalidate_users_with_role(session, rid)
 
     await session.delete(permission)
     await session.commit()
@@ -179,13 +194,18 @@ async def update_role(
     if role_data.description is not None:
         role.description = role_data.description
 
+    permissions_changed = False
     if role_data.permission_ids is not None:
         result = await session.execute(select(Permission).where(Permission.id.in_(role_data.permission_ids)))
         permissions = result.scalars().all()
         role.permissions = list(permissions)
+        permissions_changed = True
 
     await session.commit()
     await session.refresh(role)
+
+    if permissions_changed:
+        await _invalidate_users_with_role(session, role.id)
 
     logger.info(f"Role updated: {role.name}")
     return role
@@ -207,6 +227,7 @@ async def delete_role(
     if role.is_system:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete system roles")
 
+    await _invalidate_users_with_role(session, role.id)
     await session.delete(role)
     await session.commit()
     logger.info(f"Role deleted: {role.name}")
@@ -279,6 +300,7 @@ async def assign_role_to_user(
 
     user.roles.append(role)
     await session.commit()
+    await invalidate_rbac(data.user_id)
     logger.info(f"Role {role.name} assigned to user {user.email}")
 
 
@@ -316,6 +338,7 @@ async def remove_role_from_user(
 
     user.roles.remove(role)
     await session.commit()
+    await invalidate_rbac(data.user_id)
     logger.info(f"Role {role.name} removed from user {user.email}")
 
 
