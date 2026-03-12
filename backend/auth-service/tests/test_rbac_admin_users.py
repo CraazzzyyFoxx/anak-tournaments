@@ -34,6 +34,7 @@ _ensure_test_env()
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from src import models  # noqa: E402
 from src.routes import rbac as rbac_routes  # noqa: E402
 from src.services import auth_service  # noqa: E402
 
@@ -133,6 +134,32 @@ def test_require_permission_rejects_user_without_matching_permission() -> None:
 
     assert exc_info.value.status_code == 403
     assert exc_info.value.detail == "Permission denied: role.assign required"
+
+
+def test_auth_user_has_permission_allows_admin_role_without_explicit_permissions() -> None:
+    current_user = models.AuthUser(
+        email="admin@example.com",
+        username="admin",
+        is_active=True,
+        is_superuser=False,
+        is_verified=True,
+    )
+    current_user.roles = [models.Role(name="admin")]
+
+    assert current_user.has_permission("player", "create") is True
+
+
+def test_auth_user_has_permission_allows_cached_admin_role_without_explicit_permissions() -> None:
+    current_user = models.AuthUser(
+        email="admin@example.com",
+        username="admin",
+        is_active=True,
+        is_superuser=False,
+        is_verified=True,
+    )
+    current_user.set_rbac_cache(role_names=["admin"], permissions=[])
+
+    assert current_user.has_permission("team", "import") is True
 
 
 def test_get_auth_user_route_returns_effective_permissions(monkeypatch: pytest.MonkeyPatch) -> None:

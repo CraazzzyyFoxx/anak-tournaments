@@ -76,8 +76,11 @@ export function usePermissions() {
   const isLoaded = status !== "idle" && status !== "loading";
   const isAuthenticated = status === "authenticated";
 
-  // "admin.*" permission or is_superuser flag → wildcard, passes any permission check
-  const hasWildcard = (user?.isSuperuser ?? false) || (user?.permissions.includes("admin.*") ?? false);
+  // Superusers, admins, and explicit "admin.*" permission holders pass every permission check.
+  const hasWildcard =
+    (user?.isSuperuser ?? false) ||
+    (user?.roles.includes("admin") ?? false) ||
+    (user?.permissions.includes("admin.*") ?? false);
 
   // ─── Role checks ────────────────────────────────────────────────────────────
 

@@ -12,9 +12,12 @@ if TYPE_CHECKING:
 
 __all__ = ("AuthUser", "RefreshToken", "AuthUserPlayer")
 
+ADMIN_EQUIVALENT_ROLE_NAMES = {"admin"}
+
 
 class AuthUser(db.TimeStampIntegerMixin):
     """User model for authentication"""
+
     __tablename__ = "auth_user"
 
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
@@ -23,26 +26,18 @@ class AuthUser(db.TimeStampIntegerMixin):
     is_active: Mapped[bool] = mapped_column(Boolean(), default=True, nullable=False)
     is_superuser: Mapped[bool] = mapped_column(Boolean(), default=False, nullable=False)
     is_verified: Mapped[bool] = mapped_column(Boolean(), default=False, nullable=False)
-    
+
     first_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     last_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    
-    refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
-        back_populates="user", cascade="all, delete-orphan"
-    )
+
+    refresh_tokens: Mapped[list["RefreshToken"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     player_links: Mapped[list["AuthUserPlayer"]] = relationship(
         back_populates="auth_user", cascade="all, delete-orphan"
     )
-    roles: Mapped[list["Role"]] = relationship(
-        secondary="user_roles",
-        back_populates="users",
-        lazy="selectin"
-    )
+    roles: Mapped[list["Role"]] = relationship(secondary="user_roles", back_populates="users", lazy="selectin")
     oauth_connections: Mapped[list["OAuthConnection"]] = relationship(
-        back_populates="auth_user",
-        cascade="all, delete-orphan",
-        lazy="selectin"
+        back_populates="auth_user", cascade="all, delete-orphan", lazy="selectin"
     )
 
     def set_rbac_cache(
@@ -64,10 +59,17 @@ class AuthUser(db.TimeStampIntegerMixin):
 
     def __repr__(self):
         return f"<AuthUser id={self.id} email={self.email}>"
-    
+
+    def _has_admin_equivalent_role(self) -> bool:
+        cached_roles = getattr(self, "_cached_role_names", None)
+        if cached_roles is not None:
+            return any(role_name in ADMIN_EQUIVALENT_ROLE_NAMES for role_name in cached_roles)
+
+        return any(role.name in ADMIN_EQUIVALENT_ROLE_NAMES for role in self.roles)
+
     def has_permission(self, resource: str, action: str) -> bool:
         """Check if user has a specific permission"""
-        if self.is_superuser:
+        if self.is_superuser or self._has_admin_equivalent_role():
             return True
 
         cached = getattr(self, "_cached_permissions", None)
@@ -77,7 +79,7 @@ class AuthUser(db.TimeStampIntegerMixin):
                 if (pr == resource or pr == "*") and (pa == action or pa == "*"):
                     return True
             return False
-        
+
         for role in self.roles:
             for permission in role.permissions:
                 if permission.resource == resource and permission.action == action:
@@ -88,9 +90,9 @@ class AuthUser(db.TimeStampIntegerMixin):
                     return True
                 if permission.resource == "*" and permission.action == "*":
                     return True
-        
+
         return False
-    
+
     def has_role(self, role_name: str) -> bool:
         """Check if user has a specific role"""
         if self.is_superuser:
@@ -103,13 +105,14 @@ class AuthUser(db.TimeStampIntegerMixin):
 
 class RefreshToken(db.TimeStampIntegerMixin):
     """Refresh token model for JWT authentication"""
+
     __tablename__ = "refresh_token"
 
     token: Mapped[str] = mapped_column(Text(), unique=True, index=True, nullable=False)
     user_id: Mapped[int] = mapped_column(ForeignKey("auth_user.id", ondelete="CASCADE"), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), nullable=False)
     is_revoked: Mapped[bool] = mapped_column(Boolean(), default=False, nullable=False)
-    
+
     # User agent and IP for security
     user_agent: Mapped[str | None] = mapped_column(String(500), nullable=True)
     ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
@@ -123,6 +126,7 @@ class RefreshToken(db.TimeStampIntegerMixin):
 
 class AuthUserPlayer(db.TimeStampIntegerMixin):
     """Link between auth user and game player"""
+
     __tablename__ = "auth_user_player"
 
     auth_user_id: Mapped[int] = mapped_column(ForeignKey("auth_user.id", ondelete="CASCADE"), nullable=False)

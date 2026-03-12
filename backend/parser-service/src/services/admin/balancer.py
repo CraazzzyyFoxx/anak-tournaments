@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import re
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import parse_qs, urlparse
+from uuid import uuid4
 
 import httpx
 import sqlalchemy as sa
@@ -55,6 +57,13 @@ STREAM_TRUE_VALUES = {
 }
 
 VALID_ROLES = {"tank", "dps", "support"}
+VALID_ROLE_SUBTYPES = {
+    "tank": set(),
+    "dps": {"hitscan", "projectile"},
+    "support": {"main_heal", "light_heal"},
+}
+EXPORT_ROLE_ORDER = ["dps", "tank", "support"]
+EXPORT_ROLE_PRIORITY = {role: index for index, role in enumerate(EXPORT_ROLE_ORDER)}
 
 
 def normalize_battle_tag(value: str | None) -> str:
@@ -198,6 +207,10 @@ def normalize_role_entries(
         if role not in VALID_ROLES or role in seen_roles:
             continue
 
+        subtype = entry.get("subtype")
+        if subtype not in VALID_ROLE_SUBTYPES.get(role, set()):
+            subtype = None
+
         division_number = entry.get("division_number")
         rank_value = entry.get("rank_value")
 
@@ -209,6 +222,7 @@ def normalize_role_entries(
         normalized_entries.append(
             {
                 "role": role,
+                "subtype": subtype,
                 "priority": len(normalized_entries) + 1,
                 "division_number": int(division_number) if division_number is not None else None,
                 "rank_value": int(rank_value) if rank_value is not None else None,
@@ -234,6 +248,7 @@ def build_role_entries_from_application(application: models.BalancerApplication)
         [
             {
                 "role": role,
+                "subtype": None,
                 "priority": index + 1,
                 "division_number": None,
                 "rank_value": None,
@@ -256,6 +271,161 @@ def sync_legacy_player_fields(player: models.BalancerPlayer, *, is_flex_override
     player.secondary_roles_json = [entry["role"] for entry in role_entries[1:]]
     player.division_number = primary_entry.get("division_number") if primary_entry else None
     player.rank_value = primary_entry.get("rank_value") if primary_entry else None
+
+
+def extract_players_dict(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    if payload.get("format") == "xv-1" and isinstance(payload.get("players"), dict):
+        return payload["players"]
+
+    data_root = payload.get("data")
+    if isinstance(data_root, dict):
+        if isinstance(data_root.get("players"), dict):
+            return data_root["players"]
+
+        nested_root = data_root.get("data")
+        if isinstance(nested_root, dict) and isinstance(nested_root.get("players"), dict):
+            return nested_root["players"]
+
+    if isinstance(payload.get("players"), dict):
+        return payload["players"]
+
+    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid atravkovs payload")
+
+
+def build_role_entries_from_classes(classes: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_entries: list[dict[str, Any]] = []
+    for role, stats in classes.items():
+        if role not in VALID_ROLES or not isinstance(stats, dict):
+            continue
+
+        rank_raw = stats.get("rank")
+        rank_value = int(rank_raw) if isinstance(rank_raw, int | float) and int(rank_raw) > 0 else None
+        priority_raw = stats.get("priority")
+        priority = int(priority_raw) if isinstance(priority_raw, int | float) else 99
+        is_active = bool(stats.get("isActive", False))
+
+        if not is_active and rank_value is None and "priority" not in stats:
+            continue
+
+        raw_entries.append(
+            {
+                "role": role,
+                "subtype": stats.get("subtype"),
+                "priority": priority,
+                "division_number": resolve_division_from_rank(rank_value),
+                "rank_value": rank_value,
+            }
+        )
+
+    return normalize_role_entries(raw_entries)
+
+
+def parse_imported_player_nodes(payload: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+    players_dict = extract_players_dict(payload)
+    parsed_players: list[dict[str, Any]] = []
+    skipped: list[dict[str, str]] = []
+    seen_tags: set[str] = set()
+
+    for _, player_node in players_dict.items():
+        if not isinstance(player_node, dict):
+            continue
+
+        battle_tag = normalize_battle_tag(player_node.get("identity", {}).get("name"))
+        normalized_tag = normalize_battle_tag_key(battle_tag)
+        if not normalized_tag:
+            continue
+
+        if normalized_tag in seen_tags:
+            skipped.append(
+                {
+                    "battle_tag": battle_tag,
+                    "battle_tag_normalized": normalized_tag,
+                    "reason": "duplicate_in_file",
+                }
+            )
+            continue
+
+        seen_tags.add(normalized_tag)
+        meta = player_node.get("meta") if isinstance(player_node.get("meta"), dict) else {}
+        role_entries = meta.get("roleEntries") if isinstance(meta.get("roleEntries"), list) else None
+        normalized_role_entries = normalize_role_entries(role_entries) if role_entries is not None else None
+
+        if not normalized_role_entries:
+            classes = player_node.get("stats", {}).get("classes", {})
+            normalized_role_entries = build_role_entries_from_classes(classes if isinstance(classes, dict) else {})
+
+        admin_notes = meta.get("adminNotes") if isinstance(meta.get("adminNotes"), str) else None
+        is_in_pool = bool(meta.get("isInPool", True))
+        is_flex = meta.get("isFlex") if isinstance(meta.get("isFlex"), bool) else None
+
+        parsed_players.append(
+            {
+                "battle_tag": battle_tag,
+                "battle_tag_normalized": normalized_tag,
+                "role_entries_json": normalized_role_entries,
+                "admin_notes": admin_notes,
+                "is_in_pool": is_in_pool,
+                "is_flex": is_flex,
+            }
+        )
+
+    return parsed_players, skipped
+
+
+async def resolve_import_context(
+    session: AsyncSession,
+    tournament_id: int,
+    imported_players: list[dict[str, Any]],
+) -> tuple[dict[str, models.BalancerApplication], dict[int, models.BalancerPlayer]]:
+    normalized_tags = [player["battle_tag_normalized"] for player in imported_players]
+    if not normalized_tags:
+        return {}, {}
+
+    result = await session.execute(
+        sa.select(models.BalancerApplication)
+        .where(models.BalancerApplication.tournament_id == tournament_id)
+        .where(models.BalancerApplication.battle_tag_normalized.in_(normalized_tags))
+        .where(models.BalancerApplication.is_active.is_(True))
+        .options(selectinload(models.BalancerApplication.player))
+    )
+    applications = {application.battle_tag_normalized: application for application in result.scalars().all()}
+    existing_players = {
+        application.id: application.player for application in applications.values() if application.player is not None
+    }
+    return applications, existing_players
+
+
+def serialize_player_for_export(player: models.BalancerPlayer, export_uuid: str) -> dict[str, Any]:
+    role_entries = normalize_role_entries(player.role_entries_json or [])
+    ordered_active_roles = [entry["role"] for entry in role_entries]
+    ordered_roles = ordered_active_roles + [role for role in EXPORT_ROLE_ORDER if role not in ordered_active_roles]
+    export_priorities = {role: index for index, role in enumerate(ordered_roles)}
+    classes: dict[str, dict[str, Any]] = {}
+    for role in EXPORT_ROLE_ORDER:
+        entry = next((candidate for candidate in role_entries if candidate["role"] == role), None)
+        is_active = bool(entry and entry.get("rank_value") is not None)
+        priority = export_priorities[role]
+        classes[role] = {
+            "rank": entry.get("rank_value") if is_active and entry is not None else 0,
+            "playHours": 0,
+            "priority": priority,
+            "primary": is_active and priority == 0,
+            "isActive": is_active,
+            "secondary": is_active and priority > 0,
+        }
+
+    return {
+        "identity": {
+            "name": player.battle_tag,
+            "uuid": export_uuid,
+            "isLocked": False,
+            "isCaptain": False,
+            "isSquire": False,
+            "isFullFlex": bool(player.is_flex),
+        },
+        "stats": {"classes": classes},
+        "createdAt": player.created_at.astimezone(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+    }
 
 
 def detect_column_mapping(headers: list[str]) -> dict[str, Any]:
@@ -700,6 +870,161 @@ async def delete_player(session: AsyncSession, player_id: int) -> None:
     player = await get_player(session, player_id)
     await session.delete(player)
     await session.commit()
+
+
+async def preview_player_import(
+    session: AsyncSession,
+    tournament_id: int,
+    payload: dict[str, Any],
+) -> admin_schemas.BalancerPlayerImportPreviewResponse:
+    await ensure_tournament_exists(session, tournament_id)
+    imported_players, skipped_entries = parse_imported_player_nodes(payload)
+    applications, existing_players = await resolve_import_context(session, tournament_id, imported_players)
+
+    duplicates: list[admin_schemas.BalancerPlayerImportDuplicate] = []
+    skipped = [admin_schemas.BalancerPlayerImportSkipped.model_validate(entry) for entry in skipped_entries]
+    creatable_players = 0
+
+    for imported_player in imported_players:
+        application = applications.get(imported_player["battle_tag_normalized"])
+        if application is None:
+            skipped.append(
+                admin_schemas.BalancerPlayerImportSkipped(
+                    battle_tag=imported_player["battle_tag"],
+                    battle_tag_normalized=imported_player["battle_tag_normalized"],
+                    reason="missing_active_application",
+                )
+            )
+            continue
+
+        existing_player = existing_players.get(application.id)
+        if existing_player is None:
+            creatable_players += 1
+            continue
+
+        duplicates.append(
+            admin_schemas.BalancerPlayerImportDuplicate(
+                battle_tag=application.battle_tag,
+                battle_tag_normalized=application.battle_tag_normalized,
+                application_id=application.id,
+                existing_player_id=existing_player.id,
+                imported_role_entries_json=imported_player["role_entries_json"],
+                existing_role_entries_json=normalize_role_entries(existing_player.role_entries_json),
+                imported_is_in_pool=imported_player["is_in_pool"],
+                existing_is_in_pool=existing_player.is_in_pool,
+                imported_admin_notes=imported_player["admin_notes"],
+                existing_admin_notes=existing_player.admin_notes,
+            )
+        )
+
+    return admin_schemas.BalancerPlayerImportPreviewResponse(
+        total_players=len(imported_players) + len(skipped_entries),
+        creatable_players=creatable_players,
+        duplicate_players=len(duplicates),
+        skipped_players=len(skipped),
+        duplicates=duplicates,
+        skipped=skipped,
+    )
+
+
+async def import_players(
+    session: AsyncSession,
+    tournament_id: int,
+    payload: dict[str, Any],
+    *,
+    duplicate_strategy: admin_schemas.DuplicateStrategy,
+    resolutions: dict[str, admin_schemas.DuplicateResolution] | None = None,
+) -> admin_schemas.BalancerPlayerImportResult:
+    await ensure_tournament_exists(session, tournament_id)
+    imported_players, skipped_entries = parse_imported_player_nodes(payload)
+    applications, existing_players = await resolve_import_context(session, tournament_id, imported_players)
+
+    created = 0
+    replaced = 0
+    skipped_duplicates = 0
+    skipped_missing_application = 0
+    skipped_duplicate_in_file = sum(1 for entry in skipped_entries if entry["reason"] == "duplicate_in_file")
+    unresolved_duplicates: list[str] = []
+    resolutions = resolutions or {}
+
+    for imported_player in imported_players:
+        application = applications.get(imported_player["battle_tag_normalized"])
+        if application is None:
+            skipped_missing_application += 1
+            continue
+
+        existing_player = existing_players.get(application.id)
+        if existing_player is None:
+            user_id = await resolve_public_user_id_for_application(session, application)
+            player = models.BalancerPlayer(
+                tournament_id=tournament_id,
+                application_id=application.id,
+                battle_tag=application.battle_tag,
+                battle_tag_normalized=application.battle_tag_normalized,
+                user_id=user_id,
+                role_entries_json=imported_player["role_entries_json"],
+                is_in_pool=imported_player["is_in_pool"],
+                admin_notes=imported_player["admin_notes"],
+            )
+            sync_legacy_player_fields(player, is_flex_override=imported_player["is_flex"])
+            session.add(player)
+            created += 1
+            continue
+
+        if duplicate_strategy == "replace_all":
+            resolution = "replace"
+        elif duplicate_strategy == "skip_all":
+            resolution = "skip"
+        else:
+            resolution = resolutions.get(imported_player["battle_tag_normalized"])
+            if resolution not in {"replace", "skip"}:
+                unresolved_duplicates.append(application.battle_tag)
+                continue
+
+        if resolution == "skip":
+            skipped_duplicates += 1
+            continue
+
+        user_id = await resolve_public_user_id_for_application(session, application)
+        existing_player.battle_tag = application.battle_tag
+        existing_player.battle_tag_normalized = application.battle_tag_normalized
+        existing_player.user_id = user_id
+        existing_player.role_entries_json = imported_player["role_entries_json"]
+        existing_player.is_in_pool = imported_player["is_in_pool"]
+        if imported_player["admin_notes"] is not None:
+            existing_player.admin_notes = imported_player["admin_notes"]
+        sync_legacy_player_fields(existing_player, is_flex_override=imported_player["is_flex"])
+        replaced += 1
+
+    if unresolved_duplicates:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unresolved duplicate players: {', '.join(unresolved_duplicates)}",
+        )
+
+    await session.commit()
+    return admin_schemas.BalancerPlayerImportResult(
+        success=True,
+        created=created,
+        replaced=replaced,
+        skipped_duplicates=skipped_duplicates,
+        skipped_missing_application=skipped_missing_application,
+        skipped_duplicate_in_file=skipped_duplicate_in_file,
+        total_players=len(imported_players) + len(skipped_entries),
+    )
+
+
+async def export_players(
+    session: AsyncSession,
+    tournament_id: int,
+) -> admin_schemas.BalancerPlayerExportResponse:
+    await ensure_tournament_exists(session, tournament_id)
+    players = await list_players(session, tournament_id)
+    serialized_players: dict[str, Any] = {}
+    for player in players:
+        export_uuid = str(uuid4())
+        serialized_players[export_uuid] = serialize_player_for_export(player, export_uuid)
+    return admin_schemas.BalancerPlayerExportResponse(format="xv-1", players=serialized_players)
 
 
 async def get_balance(session: AsyncSession, tournament_id: int) -> models.BalancerBalance | None:

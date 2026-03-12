@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+import json
+
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models
@@ -108,6 +110,49 @@ async def delete_player(
     user: models.AuthUser = Depends(auth.require_permission("player", "delete")),
 ):
     await balancer_service.delete_player(session, player_id)
+
+
+@router.post(
+    "/tournaments/{tournament_id}/players/import/preview",
+    response_model=admin_schemas.BalancerPlayerImportPreviewResponse,
+)
+async def preview_player_import(
+    tournament_id: int,
+    data: UploadFile = File(...),
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_permission("player", "update")),
+):
+    payload = json.loads((await data.read()).decode("utf-8"))
+    return await balancer_service.preview_player_import(session, tournament_id, payload)
+
+
+@router.post("/tournaments/{tournament_id}/players/import", response_model=admin_schemas.BalancerPlayerImportResult)
+async def import_players(
+    tournament_id: int,
+    data: UploadFile = File(...),
+    duplicate_strategy: admin_schemas.DuplicateStrategy = Form(...),
+    resolutions_json: str | None = Form(default=None),
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_permission("player", "update")),
+):
+    payload = json.loads((await data.read()).decode("utf-8"))
+    resolutions = json.loads(resolutions_json) if resolutions_json else None
+    return await balancer_service.import_players(
+        session,
+        tournament_id,
+        payload,
+        duplicate_strategy=duplicate_strategy,
+        resolutions=resolutions,
+    )
+
+
+@router.get("/tournaments/{tournament_id}/players/export", response_model=admin_schemas.BalancerPlayerExportResponse)
+async def export_players(
+    tournament_id: int,
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_permission("player", "read")),
+):
+    return await balancer_service.export_players(session, tournament_id)
 
 
 @router.get("/tournaments/{tournament_id}/balance", response_model=admin_schemas.BalanceRead | None)

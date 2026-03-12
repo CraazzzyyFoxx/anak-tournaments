@@ -4,9 +4,14 @@ import {
   BalanceSaveInput,
   BalancerApplication,
   BalancerPlayerCreateInput,
+  BalancerPlayerExportResponse,
+  BalancerPlayerImportPreviewResponse,
+  BalancerPlayerImportResult,
   BalancerPlayerRecord,
   BalancerPlayerUpdateInput,
   BalancerTournamentSheet,
+  DuplicateResolution,
+  DuplicateStrategy,
   SavedBalance,
   SheetSyncResponse,
   TournamentSheetUpsertInput,
@@ -80,6 +85,45 @@ export default class balancerAdminService {
     await parserFetch(`admin/balancer/players/${playerId}`, {
       method: "DELETE",
     });
+  }
+
+  static async previewPlayerImport(
+    tournamentId: number,
+    file: File,
+  ): Promise<BalancerPlayerImportPreviewResponse> {
+    const formData = new FormData();
+    formData.append("data", file);
+
+    const response = await parserFetch(`admin/balancer/tournaments/${tournamentId}/players/import/preview`, {
+      method: "POST",
+      body: formData,
+    });
+    return response.json();
+  }
+
+  static async importPlayers(
+    tournamentId: number,
+    file: File,
+    duplicateStrategy: DuplicateStrategy,
+    resolutions?: Record<string, DuplicateResolution>,
+  ): Promise<BalancerPlayerImportResult> {
+    const formData = new FormData();
+    formData.append("data", file);
+    formData.append("duplicate_strategy", duplicateStrategy);
+    if (resolutions && Object.keys(resolutions).length > 0) {
+      formData.append("resolutions_json", JSON.stringify(resolutions));
+    }
+
+    const response = await parserFetch(`admin/balancer/tournaments/${tournamentId}/players/import`, {
+      method: "POST",
+      body: formData,
+    });
+    return response.json();
+  }
+
+  static async exportPlayers(tournamentId: number): Promise<BalancerPlayerExportResponse> {
+    const response = await parserFetch(`admin/balancer/tournaments/${tournamentId}/players/export`);
+    return response.json();
   }
 
   static async getBalance(tournamentId: number): Promise<SavedBalance | null> {

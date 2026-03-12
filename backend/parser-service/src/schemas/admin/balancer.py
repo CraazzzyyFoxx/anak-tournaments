@@ -8,6 +8,9 @@ from pydantic import BaseModel, Field
 from src.schemas import BaseRead
 
 BalancerRole = Literal["tank", "dps", "support"]
+BalancerRoleSubtype = Literal["hitscan", "projectile", "main_heal", "light_heal"]
+DuplicateResolution = Literal["replace", "skip"]
+DuplicateStrategy = Literal["manual", "replace_all", "skip_all"]
 
 __all__ = (
     "BalanceExportResponse",
@@ -16,8 +19,13 @@ __all__ = (
     "BalancerApplicationRead",
     "BalancerPlayerCreateRequest",
     "BalancerPlayerRead",
+    "BalancerPlayerImportDuplicate",
+    "BalancerPlayerImportPreviewResponse",
+    "BalancerPlayerImportResult",
+    "BalancerPlayerImportSkipped",
     "BalancerPlayerRoleEntry",
     "BalancerPlayerUpdate",
+    "BalancerPlayerExportResponse",
     "BalancerTeamRead",
     "BalancerTournamentSheetRead",
     "BalancerTournamentSheetUpsert",
@@ -34,6 +42,7 @@ class BalancerTournamentSheetUpsert(BaseModel):
 
 class BalancerPlayerRoleEntry(BaseModel):
     role: BalancerRole
+    subtype: BalancerRoleSubtype | None = None
     priority: int
     division_number: int | None = None
     rank_value: int | None = None
@@ -102,6 +111,49 @@ class BalancerPlayerUpdate(BaseModel):
     is_flex: bool | None = None
     is_in_pool: bool | None = None
     admin_notes: str | None = None
+
+
+class BalancerPlayerImportDuplicate(BaseModel):
+    battle_tag: str
+    battle_tag_normalized: str
+    application_id: int
+    existing_player_id: int
+    imported_role_entries_json: list[BalancerPlayerRoleEntry] = Field(default_factory=list)
+    existing_role_entries_json: list[BalancerPlayerRoleEntry] = Field(default_factory=list)
+    imported_is_in_pool: bool = True
+    existing_is_in_pool: bool = True
+    imported_admin_notes: str | None = None
+    existing_admin_notes: str | None = None
+
+
+class BalancerPlayerImportSkipped(BaseModel):
+    battle_tag: str
+    battle_tag_normalized: str
+    reason: Literal["missing_active_application", "duplicate_in_file"]
+
+
+class BalancerPlayerImportPreviewResponse(BaseModel):
+    total_players: int
+    creatable_players: int
+    duplicate_players: int
+    skipped_players: int
+    duplicates: list[BalancerPlayerImportDuplicate] = Field(default_factory=list)
+    skipped: list[BalancerPlayerImportSkipped] = Field(default_factory=list)
+
+
+class BalancerPlayerImportResult(BaseModel):
+    success: bool
+    created: int
+    replaced: int
+    skipped_duplicates: int
+    skipped_missing_application: int
+    skipped_duplicate_in_file: int
+    total_players: int
+
+
+class BalancerPlayerExportResponse(BaseModel):
+    format: str
+    players: dict[str, Any]
 
 
 class BalancerTeamRead(BaseRead):
