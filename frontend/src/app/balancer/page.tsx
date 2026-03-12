@@ -14,6 +14,7 @@ import {
   buildVariantFromSavedBalance,
   convertBalanceResponseToInternalPayload,
   downloadPayload,
+  fetchPlayerRankHistory,
   playerHasRankedRole,
   type BalanceVariant,
 } from "@/app/balancer/_components/workspace-helpers";
@@ -29,7 +30,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import balancerAdminService from "@/services/balancer-admin.service";
 import balancerService from "@/services/balancer.service";
-import { BalanceSaveInput, BalancerApplication, BalancerPlayerRecord } from "@/types/balancer-admin.types";
+import { BalanceSaveInput, BalancerApplication, BalancerPlayerRecord, BalancerRoleCode } from "@/types/balancer-admin.types";
 import { BalancerConfig } from "@/types/balancer.types";
 
 const PRESET_LABELS: Record<string, string> = {
@@ -57,6 +58,7 @@ export default function BalancerMainPage() {
   const [variants, setVariants] = useState<BalanceVariant[]>([]);
   const [activeVariantId, setActiveVariantId] = useState<string | null>(null);
   const [editingPlayerId, setEditingPlayerId] = useState<number | null>(null);
+  const [pendingRankHistory, setPendingRankHistory] = useState<Partial<Record<BalancerRoleCode, number>> | null>(null);
 
   const balancerConfigQuery = useQuery({
     queryKey: ["balancer-public", "config"],
@@ -95,6 +97,7 @@ export default function BalancerMainPage() {
     setJobMessage(null);
     setJobProgress(null);
     setEditingPlayerId(null);
+    setPendingRankHistory(null);
   }, [tournamentId]);
 
   useEffect(() => {
@@ -127,7 +130,7 @@ export default function BalancerMainPage() {
         application_ids: [application.id],
       });
     },
-    onSuccess: async (playersCreated) => {
+    onSuccess: async (playersCreated, application) => {
       const createdPlayer = playersCreated[0];
       if (createdPlayer) {
         setEditingPlayerId(createdPlayer.id);
@@ -137,6 +140,9 @@ export default function BalancerMainPage() {
         queryClient.invalidateQueries({ queryKey: ["balancer-public", "players", tournamentId] }),
       ]);
       toast({ title: "Player added to pool" });
+      fetchPlayerRankHistory(application.battle_tag)
+        .then((history) => setPendingRankHistory(history))
+        .catch(() => setPendingRankHistory(null));
     },
     onError: (error: Error) => {
       toast({ title: "Failed to add player", description: error.message, variant: "destructive" });
@@ -319,11 +325,15 @@ export default function BalancerMainPage() {
           player={quickEditPlayer}
           open={editingPlayerId !== null}
           onOpenChange={(open) => {
-            if (!open) setEditingPlayerId(null);
+            if (!open) {
+              setEditingPlayerId(null);
+              setPendingRankHistory(null);
+            }
           }}
           saving={updatePlayerMutation.isPending}
           onSave={(playerId, payload) => updatePlayerMutation.mutate({ playerId, payload })}
           onRemove={(playerId) => removePlayerMutation.mutate(playerId)}
+          rankHistory={pendingRankHistory}
         />
       ) : null}
 

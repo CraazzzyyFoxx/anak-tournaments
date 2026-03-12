@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { GripVertical, Plus, Save, Trash2 } from "lucide-react";
+import { GripVertical, History, Loader2, Plus, Save, Trash2 } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -49,6 +49,9 @@ import {
   BalancerRoleCode,
   BalancerRoleSubtype,
 } from "@/types/balancer-admin.types";
+import {
+  fetchPlayerRankHistory,
+} from "@/app/balancer/_components/workspace-helpers";
 
 const ROLE_OPTIONS: Array<{ value: BalancerRoleCode; label: string }> = [
   { value: "tank", label: "Tank" },
@@ -126,6 +129,30 @@ function normalizeRoleEntries(
   }
 
   return normalized;
+}
+
+function applyHistoryToSelectedRoles(
+  entries: BalancerPlayerRoleEntry[],
+  history: Partial<Record<BalancerRoleCode, number>> | null,
+): BalancerPlayerRoleEntry[] {
+  if (!history) {
+    return entries;
+  }
+
+  return normalizeRoleEntries(
+    entries.map((entry) => {
+      const rankValue = history[entry.role];
+      if (rankValue == null) {
+        return entry;
+      }
+
+      return {
+        ...entry,
+        rank_value: rankValue,
+        division_number: resolveDivisionFromRank(rankValue),
+      };
+    }),
+  );
 }
 
 type SortableRoleEntryProps = {
@@ -288,6 +315,7 @@ type PlayerEditModalProps = {
   ) => void;
   onRemove?: (playerId: number) => void;
   saving?: boolean;
+  rankHistory?: Partial<Record<BalancerRoleCode, number>> | null;
 };
 
 export function PlayerEditModal({
@@ -297,6 +325,7 @@ export function PlayerEditModal({
   onSave,
   onRemove,
   saving = false,
+  rankHistory = null,
 }: PlayerEditModalProps) {
   const [roleEntries, setRoleEntries] = useState<BalancerPlayerRoleEntry[]>(
     normalizeRoleEntries(player.role_entries_json),
@@ -304,13 +333,28 @@ export function PlayerEditModal({
   const [isInPool, setIsInPool] = useState(player.is_in_pool);
   const [isFlex, setIsFlex] = useState(player.is_flex);
   const [notes, setNotes] = useState(player.admin_notes ?? "");
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   useEffect(() => {
-    setRoleEntries(normalizeRoleEntries(player.role_entries_json));
+    const normalized = normalizeRoleEntries(player.role_entries_json);
     setIsInPool(player.is_in_pool);
     setIsFlex(player.is_flex);
     setNotes(player.admin_notes ?? "");
-  }, [player]);
+
+    setRoleEntries(applyHistoryToSelectedRoles(normalized, rankHistory));
+  }, [player, rankHistory]);
+
+  const handleLoadFromHistory = async () => {
+    setLoadingHistory(true);
+    try {
+      const history = await fetchPlayerRankHistory(player.battle_tag);
+      if (history && Object.keys(history).length > 0) {
+        setRoleEntries((current) => applyHistoryToSelectedRoles(current, history));
+      }
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -446,16 +490,32 @@ export function PlayerEditModal({
               </SortableContext>
             </DndContext>
 
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={addRole}
-              disabled={roleEntries.length >= ROLE_OPTIONS.length}
-            >
-              <Plus className="mr-1.5 h-3.5 w-3.5" />
-              Add role
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={addRole}
+                disabled={roleEntries.length >= ROLE_OPTIONS.length}
+              >
+                <Plus className="mr-1.5 h-3.5 w-3.5" />
+                Add role
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleLoadFromHistory}
+                disabled={loadingHistory}
+              >
+                {loadingHistory ? (
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <History className="mr-1.5 h-3.5 w-3.5" />
+                )}
+                Load from history
+              </Button>
+            </div>
           </div>
 
           <div className="space-y-2">
