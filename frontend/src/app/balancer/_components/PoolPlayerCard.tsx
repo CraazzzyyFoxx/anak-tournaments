@@ -75,6 +75,7 @@ function normalizeRoleEntries(entries: BalancerPlayerRoleEntry[]): BalancerPlaye
     const divisionNumber = entry.division_number ?? null;
     normalized.push({
       role: entry.role,
+      subtype: entry.subtype ?? null,
       priority: normalized.length + 1,
       division_number: divisionNumber,
       rank_value: entry.rank_value ?? resolveRankFromDivision(divisionNumber),
