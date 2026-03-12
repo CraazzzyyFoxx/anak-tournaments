@@ -33,6 +33,14 @@ const TagChip = ({ children, className }: { children: React.ReactNode; className
   );
 };
 
+const formatNullableStat = (value: number | null, digits = 1, suffix = "") => {
+  if (value === null || !Number.isFinite(value)) {
+    return "-";
+  }
+
+  return `${value.toFixed(digits)}${suffix}`;
+};
+
 const UserHeader = ({ profile, user }: UserHeaderProps) => {
   const nameData = user.name.split("#");
   const name = nameData[0];
@@ -48,7 +56,7 @@ const UserHeader = ({ profile, user }: UserHeaderProps) => {
   const divisionIconSrc = `/divisions/${primaryRoleDivision}.png`;
   const avatarSrc = getPlayerImage(profile, user);
 
-  const winrate = profile.maps_total ? (profile.maps_won / profile.maps_total) * 100 : null;
+  const winrate = profile.maps_total > 0 ? (profile.maps_won / profile.maps_total) * 100 : null;
 
   return (
     <section className="liquid-glass-panel relative overflow-hidden rounded-2xl border p-4 md:p-6">
@@ -133,9 +141,9 @@ const UserHeader = ({ profile, user }: UserHeaderProps) => {
 
         <div className="grid w-full grid-cols-2 gap-2 md:w-auto md:self-start shrink-0">
           <StatPill label="Tournaments" value={`${profile.tournaments_count}`} />
-          <StatPill label="Winrate" value={winrate === null ? "-" : `${winrate.toFixed(1)}%`} />
+          <StatPill label="Winrate" value={formatNullableStat(winrate, 1, "%")} />
           <StatPill label="Maps" value={`${profile.maps_won}/${profile.maps_total}`} />
-          <StatPill label="Avg Place" value={`${profile.avg_placement.toFixed(1)}`} />
+          <StatPill label="Avg Place" value={formatNullableStat(profile.avg_placement)} />
         </div>
       </div>
     </section>

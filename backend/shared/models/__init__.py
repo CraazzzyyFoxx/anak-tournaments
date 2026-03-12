@@ -13,3 +13,4 @@ from .auth_user import *
 from .discord_channel import *
 from .rbac import *
 from .oauth import *
+from .balancer import *

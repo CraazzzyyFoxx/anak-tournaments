@@ -1,0 +1,888 @@
+from __future__ import annotations
+
+import csv
+import io
+import re
+from datetime import UTC, datetime
+from typing import Any
+from urllib.parse import parse_qs, urlparse
+
+import httpx
+import sqlalchemy as sa
+from fastapi import HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from src import models, schemas
+from src.core import config
+from src.schemas.admin import balancer as admin_schemas
+from src.services.team import flows as team_flows
+from src.services.user import flows as user_flows
+from src.services.user import service as user_service
+
+BATTLE_TAG_RE = re.compile(config.settings.battle_tag_regex, re.UNICODE)
+
+DEFAULT_ROLE_MAPPING: dict[str, str | None] = {
+    "Лайт хил (Мерси, Кирико)": "support",
+    "Лайт хил (Мерси, Зен, Люсио, Брига, Мойра)": "support",
+    "Лайт хил (Мерси, Зен, Люсио, Брига)": "support",
+    "Лайт хил (Мерси, Иллари, Зен, Люсио, Брига, Мойра)": "support",
+    "Оба Подкласса Хила": "support",
+    "Мейн хил (Ана, Батист, Мойра)": "support",
+    "Мейн хил (Юнона, Ана, Батист, Мойра)": "support",
+    "Танк": "tank",
+    "Танк.": "tank",
+    "Оба Подкласса Танка.": "tank",
+    "ОффТанк (Заря, Дива, Хог, Сигма)": "tank",
+    "МейнТанк (Рейнхард, Винстон, Ориса, Хэммонд)": "tank",
+    "Оба Подкласса ДД": "dps",
+    "Dps": "dps",
+    "Проджектайл ДД (Генджи, Фара, Ханзо, Торбьерн, Джанкрет, Эхо, Мей, Рипер, Сомбра, Симметра, Трейсер)": "dps",
+    "Хитскан ДД (Маккри, Вдова, Солдат76, Эш)": "dps",
+    "Хитскан ДД (Кэс, Вдова, Солдат76, Эш)": "dps",
+    "Я флекс, могу играть абсолютно на всем": None,
+}
+
+STREAM_TRUE_VALUES = {
+    "1",
+    "true",
+    "yes",
+    "y",
+    "да",
+    "ага",
+    "буду",
+    "конечно",
+}
+
+VALID_ROLES = {"tank", "dps", "support"}
+
+
+def normalize_battle_tag(value: str | None) -> str:
+    text = (value or "").strip()
+    text = re.sub(r"\s*#\s*", "#", text)
+    return text
+
+
+def normalize_battle_tag_key(value: str | None) -> str:
+    return normalize_battle_tag(value).replace(" ", "").strip().lower()
+
+
+def normalize_header(value: str) -> str:
+    return re.sub(r"\s+", " ", value or "").strip().lower()
+
+
+def extract_sheet_source(source_url: str) -> tuple[str, str | None]:
+    match = re.search(r"/spreadsheets/d/([^/]+)", source_url)
+    if not match:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Google Sheets URL")
+
+    sheet_id = match.group(1)
+    parsed = urlparse(source_url)
+    query = parse_qs(parsed.query)
+    gid = query.get("gid", [None])[0]
+    if gid is None and parsed.fragment.startswith("gid="):
+        gid = parsed.fragment.split("=", 1)[1]
+
+    return sheet_id, gid
+
+
+def build_csv_export_url(sheet_id: str, gid: str | None) -> str:
+    base_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
+    if gid:
+        return f"{base_url}&gid={gid}"
+    return base_url
+
+
+def parse_submitted_at(value: str | None) -> datetime | None:
+    if not value:
+        return None
+
+    text = value.strip()
+    if not text:
+        return None
+
+    formats = (
+        "%m/%d/%Y %H:%M:%S",
+        "%d.%m.%Y %H:%M:%S",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S.%f",
+    )
+    for fmt in formats:
+        try:
+            return datetime.strptime(text, fmt).replace(tzinfo=UTC)
+        except ValueError:
+            continue
+
+    try:
+        parsed = datetime.fromisoformat(text)
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(UTC)
+    except ValueError:
+        return None
+
+
+def parse_bool(value: str | None) -> bool:
+    if value is None:
+        return False
+    normalized = normalize_header(value)
+    return normalized in STREAM_TRUE_VALUES or normalized.startswith("да")
+
+
+def unique_strings(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if not value:
+            continue
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
+
+
+def extract_battle_tags(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return unique_strings([normalize_battle_tag(match) for match in BATTLE_TAG_RE.findall(value)])
+
+
+def map_role(raw_role: str | None, role_mapping: dict[str, str | None]) -> str | None:
+    if raw_role is None:
+        return None
+
+    normalized_value = raw_role.strip()
+    if not normalized_value:
+        return None
+
+    if normalized_value in role_mapping:
+        return role_mapping[normalized_value]
+
+    lowered = normalize_header(normalized_value)
+    if "танк" in lowered or lowered == "tank":
+        return "tank"
+    if "дд" in lowered or "dps" in lowered or "damage" in lowered:
+        return "dps"
+    if "хил" in lowered or "support" in lowered:
+        return "support"
+    return None
+
+
+def sanitize_secondary_roles(primary_role: str | None, roles: list[str] | None) -> list[str]:
+    valid_roles = [role for role in roles or [] if role in VALID_ROLES]
+    unique_roles = unique_strings(valid_roles)
+    if primary_role is None:
+        return unique_roles
+    return [role for role in unique_roles if role != primary_role]
+
+
+def normalize_role_entries(
+    role_entries: list[dict[str, Any]] | list[admin_schemas.BalancerPlayerRoleEntry] | None,
+) -> list[dict[str, Any]]:
+    normalized_entries: list[dict[str, Any]] = []
+    seen_roles: set[str] = set()
+
+    prepared_entries: list[dict[str, Any]] = []
+    for entry in role_entries or []:
+        if isinstance(entry, dict):
+            prepared_entries.append(entry)
+        else:
+            prepared_entries.append(entry.model_dump())
+
+    prepared_entries.sort(key=lambda item: item.get("priority") or 999)
+
+    for entry in prepared_entries:
+        role = entry.get("role")
+        if role not in VALID_ROLES or role in seen_roles:
+            continue
+
+        division_number = entry.get("division_number")
+        rank_value = entry.get("rank_value")
+
+        if division_number is not None and rank_value is None:
+            rank_value = resolve_rank_from_division(int(division_number))
+        elif rank_value is not None and division_number is None:
+            division_number = resolve_division_from_rank(int(rank_value))
+
+        normalized_entries.append(
+            {
+                "role": role,
+                "priority": len(normalized_entries) + 1,
+                "division_number": int(division_number) if division_number is not None else None,
+                "rank_value": int(rank_value) if rank_value is not None else None,
+            }
+        )
+        seen_roles.add(role)
+
+    return normalized_entries
+
+
+def build_role_entries_from_application(application: models.BalancerApplication) -> list[dict[str, Any]]:
+    ordered_roles: list[str] = []
+    if application.primary_role in VALID_ROLES:
+        ordered_roles.append(application.primary_role)
+
+    ordered_roles.extend(
+        role
+        for role in sanitize_secondary_roles(application.primary_role, application.additional_roles_json or [])
+        if role not in ordered_roles
+    )
+
+    return normalize_role_entries(
+        [
+            {
+                "role": role,
+                "priority": index + 1,
+                "division_number": None,
+                "rank_value": None,
+            }
+            for index, role in enumerate(ordered_roles)
+        ]
+    )
+
+
+def sync_legacy_player_fields(player: models.BalancerPlayer, *, is_flex_override: bool | None = None) -> None:
+    role_entries = normalize_role_entries(player.role_entries_json or [])
+    primary_entry = role_entries[0] if role_entries else None
+
+    player.role_entries_json = role_entries
+    if is_flex_override is not None:
+        player.is_flex = is_flex_override
+    else:
+        player.is_flex = sum(1 for entry in role_entries if entry.get("rank_value") is not None) > 1
+    player.primary_role = primary_entry["role"] if primary_entry else None
+    player.secondary_roles_json = [entry["role"] for entry in role_entries[1:]]
+    player.division_number = primary_entry.get("division_number") if primary_entry else None
+    player.rank_value = primary_entry.get("rank_value") if primary_entry else None
+
+
+def detect_column_mapping(headers: list[str]) -> dict[str, Any]:
+    mapping: dict[str, Any] = {"additional_roles": []}
+
+    for index, header in enumerate(headers):
+        normalized = normalize_header(header)
+        if normalized == "отметка времени":
+            mapping["timestamp"] = index
+        elif normalized.startswith("ваш battle tag"):
+            mapping["battle_tag"] = index
+        elif normalized.startswith("ваши battle tag смурфов"):
+            mapping["smurf_tags"] = index
+        elif normalized.startswith("ваш ник на твиче"):
+            mapping["twitch_nick"] = index
+        elif normalized.startswith("ваш ник в дискорде"):
+            mapping["discord_nick"] = index
+        elif normalized.startswith("планируете ли стримить"):
+            mapping["stream_pov"] = index
+        elif normalized.startswith("в каком последнем турнире"):
+            mapping["last_tournament_text"] = index
+        elif normalized.startswith("укажите вашу роль"):
+            mapping["primary_role"] = index
+        elif normalized.startswith("дополнительная игровая роль"):
+            mapping["additional_roles"].append(index)
+        elif normalized.startswith("любая доп. информация"):
+            mapping["notes"] = index
+
+    if not mapping["additional_roles"]:
+        mapping.pop("additional_roles")
+
+    return mapping
+
+
+def row_to_json(headers: list[str], row: list[str]) -> dict[str, str]:
+    result: dict[str, str] = {}
+    seen: dict[str, int] = {}
+
+    for index, header in enumerate(headers):
+        key_base = header.strip() or f"column_{index}"
+        occurrence = seen.get(key_base, 0)
+        seen[key_base] = occurrence + 1
+        key = key_base if occurrence == 0 else f"{key_base}__{occurrence}"
+        result[key] = row[index].strip() if index < len(row) else ""
+
+    return result
+
+
+def get_row_value(row: list[str], index: int | None) -> str | None:
+    if index is None or index < 0 or index >= len(row):
+        return None
+    value = row[index].strip()
+    return value or None
+
+
+def get_row_values(row: list[str], indexes: list[int] | None) -> list[str]:
+    if not indexes:
+        return []
+    values = [get_row_value(row, index) for index in indexes]
+    return [value for value in values if value]
+
+
+def resolve_rank_from_division(division_number: int | None) -> int | None:
+    if division_number is None:
+        return None
+
+    rank_map = {
+        20: 100,
+        19: 250,
+        18: 350,
+        17: 450,
+        16: 550,
+        15: 650,
+        14: 750,
+        13: 850,
+        12: 950,
+        11: 1050,
+        10: 1150,
+        9: 1250,
+        8: 1350,
+        7: 1450,
+        6: 1550,
+        5: 1650,
+        4: 1750,
+        3: 1850,
+        2: 1950,
+        1: 2000,
+    }
+    return rank_map.get(division_number)
+
+
+def resolve_division_from_rank(rank_value: int | None) -> int | None:
+    if rank_value is None:
+        return None
+    return team_flows.resolve_player_div(rank_value)
+
+
+async def get_tournament_sheet(session: AsyncSession, tournament_id: int) -> models.BalancerTournamentSheet | None:
+    result = await session.execute(
+        sa.select(models.BalancerTournamentSheet).where(models.BalancerTournamentSheet.tournament_id == tournament_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def require_tournament_sheet(session: AsyncSession, tournament_id: int) -> models.BalancerTournamentSheet:
+    sheet = await get_tournament_sheet(session, tournament_id)
+    if sheet is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament sheet not found")
+    return sheet
+
+
+async def ensure_tournament_exists(session: AsyncSession, tournament_id: int) -> None:
+    result = await session.execute(sa.select(models.Tournament.id).where(models.Tournament.id == tournament_id))
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+
+
+async def upsert_tournament_sheet(
+    session: AsyncSession,
+    tournament_id: int,
+    data: admin_schemas.BalancerTournamentSheetUpsert,
+) -> models.BalancerTournamentSheet:
+    await ensure_tournament_exists(session, tournament_id)
+
+    sheet_id, gid = extract_sheet_source(data.source_url)
+    sheet = await get_tournament_sheet(session, tournament_id)
+    role_mapping = data.role_mapping_json or DEFAULT_ROLE_MAPPING
+
+    if sheet is None:
+        sheet = models.BalancerTournamentSheet(
+            tournament_id=tournament_id,
+            source_url=data.source_url,
+            sheet_id=sheet_id,
+            gid=gid,
+            title=data.title,
+            column_mapping_json=data.column_mapping_json,
+            role_mapping_json=role_mapping,
+            last_sync_status="pending",
+        )
+        session.add(sheet)
+    else:
+        sheet.source_url = data.source_url
+        sheet.sheet_id = sheet_id
+        sheet.gid = gid
+        sheet.title = data.title
+        if data.column_mapping_json is not None:
+            sheet.column_mapping_json = data.column_mapping_json
+        if data.role_mapping_json is not None:
+            sheet.role_mapping_json = data.role_mapping_json
+
+    await session.commit()
+    await session.refresh(sheet)
+    return sheet
+
+
+async def fetch_google_sheet_rows(sheet: models.BalancerTournamentSheet) -> list[list[str]]:
+    url = build_csv_export_url(sheet.sheet_id, sheet.gid)
+    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+        response = await client.get(url)
+        response.raise_for_status()
+
+    text = response.text.lstrip("\ufeff")
+    rows = list(csv.reader(io.StringIO(text)))
+    if not rows:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Google Sheet is empty")
+    return rows
+
+
+def build_application_payload(
+    row: list[str],
+    headers: list[str],
+    column_mapping: dict[str, Any],
+    role_mapping: dict[str, str | None],
+) -> dict[str, Any] | None:
+    battle_tag = normalize_battle_tag(get_row_value(row, column_mapping.get("battle_tag")))
+    battle_tag_normalized = normalize_battle_tag_key(battle_tag)
+    if not battle_tag_normalized:
+        return None
+
+    primary_role_raw = get_row_value(row, column_mapping.get("primary_role"))
+    additional_roles_raw = get_row_values(row, column_mapping.get("additional_roles"))
+    additional_roles = sanitize_secondary_roles(
+        map_role(primary_role_raw, role_mapping),
+        [mapped for mapped in (map_role(value, role_mapping) for value in additional_roles_raw) if mapped],
+    )
+
+    submitted_at = parse_submitted_at(get_row_value(row, column_mapping.get("timestamp")))
+    return {
+        "battle_tag": battle_tag,
+        "battle_tag_normalized": battle_tag_normalized,
+        "smurf_tags_json": extract_battle_tags(get_row_value(row, column_mapping.get("smurf_tags"))),
+        "twitch_nick": get_row_value(row, column_mapping.get("twitch_nick")),
+        "discord_nick": get_row_value(row, column_mapping.get("discord_nick")),
+        "stream_pov": parse_bool(get_row_value(row, column_mapping.get("stream_pov"))),
+        "last_tournament_text": get_row_value(row, column_mapping.get("last_tournament_text")),
+        "primary_role": map_role(primary_role_raw, role_mapping),
+        "additional_roles_json": additional_roles,
+        "notes": get_row_value(row, column_mapping.get("notes")),
+        "raw_row_json": row_to_json(headers, row),
+        "submitted_at": submitted_at,
+    }
+
+
+async def sync_tournament_sheet(
+    session: AsyncSession,
+    tournament_id: int,
+) -> tuple[models.BalancerTournamentSheet, int, int, int, int]:
+    sheet = await require_tournament_sheet(session, tournament_id)
+
+    try:
+        rows = await fetch_google_sheet_rows(sheet)
+        headers = rows[0]
+        detected_mapping = detect_column_mapping(headers)
+        column_mapping = sheet.column_mapping_json or detected_mapping
+        role_mapping = {**DEFAULT_ROLE_MAPPING, **(sheet.role_mapping_json or {})}
+
+        if column_mapping.get("battle_tag") is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Battle tag column not detected")
+
+        latest_payloads: dict[str, tuple[int, dict[str, Any]]] = {}
+        for row_index, row in enumerate(rows[1:], start=1):
+            payload = build_application_payload(row, headers, column_mapping, role_mapping)
+            if payload is None:
+                continue
+
+            ordering_key = payload["submitted_at"].timestamp() if payload["submitted_at"] else row_index
+            existing = latest_payloads.get(payload["battle_tag_normalized"])
+            if existing is None or ordering_key >= existing[0]:
+                latest_payloads[payload["battle_tag_normalized"]] = (int(ordering_key), payload)
+
+        result = await session.execute(
+            sa.select(models.BalancerApplication)
+            .where(models.BalancerApplication.tournament_id == tournament_id)
+            .options(selectinload(models.BalancerApplication.player))
+        )
+        existing_applications = {
+            application.battle_tag_normalized: application for application in result.scalars().all()
+        }
+
+        created = 0
+        updated = 0
+        seen_keys: set[str] = set()
+        sync_time = datetime.now(UTC)
+
+        for normalized_tag, (_, payload) in latest_payloads.items():
+            seen_keys.add(normalized_tag)
+            application = existing_applications.get(normalized_tag)
+            if application is None:
+                application = models.BalancerApplication(
+                    tournament_id=tournament_id,
+                    tournament_sheet_id=sheet.id,
+                    synced_at=sync_time,
+                    is_active=True,
+                    **payload,
+                )
+                session.add(application)
+                created += 1
+                continue
+
+            application.tournament_sheet_id = sheet.id
+            application.battle_tag = payload["battle_tag"]
+            application.smurf_tags_json = payload["smurf_tags_json"]
+            application.twitch_nick = payload["twitch_nick"]
+            application.discord_nick = payload["discord_nick"]
+            application.stream_pov = payload["stream_pov"]
+            application.last_tournament_text = payload["last_tournament_text"]
+            application.primary_role = payload["primary_role"]
+            application.additional_roles_json = payload["additional_roles_json"]
+            application.notes = payload["notes"]
+            application.raw_row_json = payload["raw_row_json"]
+            application.submitted_at = payload["submitted_at"]
+            application.synced_at = sync_time
+            application.is_active = True
+            updated += 1
+
+        deactivated = 0
+        for normalized_tag, application in existing_applications.items():
+            if normalized_tag in seen_keys or not application.is_active:
+                continue
+            application.is_active = False
+            application.synced_at = sync_time
+            deactivated += 1
+
+        sheet.header_row_json = headers
+        sheet.column_mapping_json = column_mapping
+        sheet.role_mapping_json = role_mapping
+        sheet.last_synced_at = sync_time
+        sheet.last_sync_status = "success"
+        sheet.last_error = None
+
+        await session.commit()
+        await session.refresh(sheet)
+        return sheet, created, updated, deactivated, len(latest_payloads)
+    except HTTPException as exc:
+        sheet.last_sync_status = "failed"
+        sheet.last_error = str(exc.detail)
+        sheet.last_synced_at = datetime.now(UTC)
+        await session.commit()
+        raise
+    except httpx.HTTPError as exc:
+        sheet.last_sync_status = "failed"
+        sheet.last_error = str(exc)
+        sheet.last_synced_at = datetime.now(UTC)
+        await session.commit()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to fetch Google Sheet") from exc
+
+
+async def list_applications(
+    session: AsyncSession,
+    tournament_id: int,
+    *,
+    include_inactive: bool = False,
+) -> list[models.BalancerApplication]:
+    query = (
+        sa.select(models.BalancerApplication)
+        .where(models.BalancerApplication.tournament_id == tournament_id)
+        .options(selectinload(models.BalancerApplication.player))
+        .order_by(models.BalancerApplication.battle_tag_normalized.asc())
+    )
+    if not include_inactive:
+        query = query.where(models.BalancerApplication.is_active.is_(True))
+
+    result = await session.execute(query)
+    return list(result.scalars().all())
+
+
+async def resolve_public_user_id_for_application(
+    session: AsyncSession,
+    application: models.BalancerApplication,
+) -> int | None:
+    user_payload = schemas.UserCSV(
+        battle_tag=application.battle_tag,
+        discord=application.discord_nick,
+        twitch=application.twitch_nick,
+        smurfs=application.smurf_tags_json or [],
+    )
+    user = await user_service.find_by_csv(session, user_payload)
+    return user.id if user else None
+
+
+async def create_players_from_applications(
+    session: AsyncSession,
+    tournament_id: int,
+    data: admin_schemas.BalancerPlayerCreateRequest,
+) -> list[models.BalancerPlayer]:
+    if not data.application_ids:
+        return []
+
+    result = await session.execute(
+        sa.select(models.BalancerApplication)
+        .where(
+            models.BalancerApplication.tournament_id == tournament_id,
+            models.BalancerApplication.id.in_(data.application_ids),
+        )
+        .options(selectinload(models.BalancerApplication.player))
+    )
+    applications = list(result.scalars().all())
+    if not applications:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Applications not found")
+
+    for application in applications:
+        if application.player is not None:
+            continue
+
+        role_entries = build_role_entries_from_application(application)
+        user_id = await resolve_public_user_id_for_application(session, application)
+
+        player = models.BalancerPlayer(
+            tournament_id=tournament_id,
+            application_id=application.id,
+            battle_tag=application.battle_tag,
+            battle_tag_normalized=application.battle_tag_normalized,
+            user_id=user_id,
+            role_entries_json=role_entries,
+            is_in_pool=True,
+        )
+        sync_legacy_player_fields(player)
+        session.add(player)
+
+    await session.commit()
+
+    result = await session.execute(
+        sa.select(models.BalancerPlayer)
+        .where(models.BalancerPlayer.tournament_id == tournament_id)
+        .where(models.BalancerPlayer.application_id.in_(data.application_ids))
+        .order_by(models.BalancerPlayer.battle_tag_normalized.asc())
+    )
+    return list(result.scalars().all())
+
+
+async def list_players(
+    session: AsyncSession,
+    tournament_id: int,
+    *,
+    in_pool_only: bool = False,
+) -> list[models.BalancerPlayer]:
+    query = (
+        sa.select(models.BalancerPlayer)
+        .where(models.BalancerPlayer.tournament_id == tournament_id)
+        .order_by(models.BalancerPlayer.battle_tag_normalized.asc())
+    )
+    if in_pool_only:
+        query = query.where(models.BalancerPlayer.is_in_pool.is_(True))
+    result = await session.execute(query)
+    return list(result.scalars().all())
+
+
+async def get_player(session: AsyncSession, player_id: int) -> models.BalancerPlayer:
+    result = await session.execute(sa.select(models.BalancerPlayer).where(models.BalancerPlayer.id == player_id))
+    player = result.scalar_one_or_none()
+    if player is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Balancer player not found")
+    return player
+
+
+async def update_player(
+    session: AsyncSession,
+    player_id: int,
+    data: admin_schemas.BalancerPlayerUpdate,
+) -> models.BalancerPlayer:
+    player = await get_player(session, player_id)
+    update_data = data.model_dump(exclude_unset=True)
+
+    if "role_entries_json" in update_data:
+        player.role_entries_json = normalize_role_entries(update_data["role_entries_json"])
+
+    is_flex_override: bool | None = update_data.get("is_flex")
+
+    for field, value in update_data.items():
+        if field in ("role_entries_json", "is_flex"):
+            continue
+        setattr(player, field, value)
+
+    sync_legacy_player_fields(player, is_flex_override=is_flex_override)
+
+    await session.commit()
+    await session.refresh(player)
+    return player
+
+
+async def delete_player(session: AsyncSession, player_id: int) -> None:
+    player = await get_player(session, player_id)
+    await session.delete(player)
+    await session.commit()
+
+
+async def get_balance(session: AsyncSession, tournament_id: int) -> models.BalancerBalance | None:
+    result = await session.execute(
+        sa.select(models.BalancerBalance)
+        .where(models.BalancerBalance.tournament_id == tournament_id)
+        .options(selectinload(models.BalancerBalance.teams))
+    )
+    return result.scalar_one_or_none()
+
+
+def materialize_balance_teams(
+    balance_id: int,
+    payload: schemas.InternalBalancerTeamsPayload,
+) -> list[models.BalancerTeam]:
+    teams: list[models.BalancerTeam] = []
+    for sort_order, team in enumerate(payload.teams):
+        total_sr = sum(player.rating for players in team.roster.values() for player in players)
+        teams.append(
+            models.BalancerTeam(
+                balance_id=balance_id,
+                exported_team_id=None,
+                name=team.name.split("#")[0],
+                balancer_name=team.name,
+                captain_battle_tag=team.name,
+                avg_sr=team.avg_mmr,
+                total_sr=total_sr,
+                roster_json=team.model_dump(mode="python", by_alias=True)["roster"],
+                sort_order=sort_order,
+            )
+        )
+    return teams
+
+
+async def save_balance(
+    session: AsyncSession,
+    tournament_id: int,
+    data: admin_schemas.BalanceSaveRequest,
+    auth_user: models.AuthUser,
+) -> models.BalancerBalance:
+    await ensure_tournament_exists(session, tournament_id)
+    payload = schemas.InternalBalancerTeamsPayload.model_validate(data.result_json)
+    if not payload.teams:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Balance result does not contain teams")
+
+    balance = await get_balance(session, tournament_id)
+    if balance is None:
+        balance = models.BalancerBalance(
+            tournament_id=tournament_id,
+            config_json=data.config_json,
+            result_json=data.result_json,
+            saved_by=auth_user.id,
+            saved_at=datetime.now(UTC),
+            export_status=None,
+            export_error=None,
+            exported_at=None,
+        )
+        session.add(balance)
+        await session.flush()
+    else:
+        balance.config_json = data.config_json
+        balance.result_json = data.result_json
+        balance.saved_by = auth_user.id
+        balance.saved_at = datetime.now(UTC)
+        balance.export_status = None
+        balance.export_error = None
+        balance.exported_at = None
+        await session.execute(sa.delete(models.BalancerTeam).where(models.BalancerTeam.balance_id == balance.id))
+
+    session.add_all(materialize_balance_teams(balance.id, payload))
+    await session.commit()
+
+    saved_balance = await get_balance(session, tournament_id)
+    if saved_balance is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to save balance")
+    return saved_balance
+
+
+async def ensure_public_user_for_application(
+    session: AsyncSession,
+    application: models.BalancerApplication,
+) -> models.User:
+    payload = schemas.UserCSV(
+        battle_tag=application.battle_tag,
+        discord=application.discord_nick,
+        twitch=application.twitch_nick,
+        smurfs=application.smurf_tags_json or [],
+    )
+    user = await user_service.find_by_csv(session, payload)
+    if user is None:
+        user = await user_flows.create(session, payload)
+    return user
+
+
+async def ensure_public_users_for_balance(
+    session: AsyncSession,
+    tournament_id: int,
+    payload: schemas.InternalBalancerTeamsPayload,
+) -> None:
+    normalized_tags = unique_strings(
+        [
+            normalize_battle_tag_key(player.name)
+            for team in payload.teams
+            for players in team.roster.values()
+            for player in players
+        ]
+    )
+    if not normalized_tags:
+        return
+
+    result = await session.execute(
+        sa.select(models.BalancerApplication)
+        .where(models.BalancerApplication.tournament_id == tournament_id)
+        .where(models.BalancerApplication.battle_tag_normalized.in_(normalized_tags))
+        .options(selectinload(models.BalancerApplication.player))
+    )
+    applications = {application.battle_tag_normalized: application for application in result.scalars().all()}
+
+    for normalized_tag in normalized_tags:
+        application = applications.get(normalized_tag)
+        if application is None:
+            continue
+        user = await ensure_public_user_for_application(session, application)
+        if application.player is not None and application.player.user_id != user.id:
+            application.player.user_id = user.id
+
+    await session.commit()
+
+
+async def export_balance(session: AsyncSession, balance_id: int) -> tuple[models.BalancerBalance, int, int]:
+    result = await session.execute(
+        sa.select(models.BalancerBalance)
+        .where(models.BalancerBalance.id == balance_id)
+        .options(selectinload(models.BalancerBalance.teams))
+    )
+    balance = result.scalar_one_or_none()
+    if balance is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Balance not found")
+
+    payload = schemas.InternalBalancerTeamsPayload.model_validate(balance.result_json)
+
+    linked_team_ids = [team.exported_team_id for team in balance.teams if team.exported_team_id is not None]
+    removed_teams = len(linked_team_ids)
+
+    if linked_team_ids:
+        await session.execute(sa.delete(models.Standing).where(models.Standing.team_id.in_(linked_team_ids)))
+        await session.execute(sa.delete(models.Player).where(models.Player.team_id.in_(linked_team_ids)))
+        await session.execute(sa.delete(models.Team).where(models.Team.id.in_(linked_team_ids)))
+        for team in balance.teams:
+            team.exported_team_id = None
+        await session.commit()
+
+    try:
+        await ensure_public_users_for_balance(session, balance.tournament_id, payload)
+        balancer_teams = [team.to_balancer_team() for team in payload.teams]
+        await team_flows.bulk_create_from_balancer(session, balance.tournament_id, balancer_teams)
+
+        imported_names = [team.name for team in payload.teams]
+        result = await session.execute(
+            sa.select(models.Team).where(
+                models.Team.tournament_id == balance.tournament_id,
+                models.Team.balancer_name.in_(imported_names),
+            )
+        )
+        public_teams = {team.balancer_name: team for team in result.scalars().all()}
+        for materialized_team in balance.teams:
+            public_team = public_teams.get(materialized_team.balancer_name)
+            if public_team is not None:
+                materialized_team.exported_team_id = public_team.id
+
+        balance.exported_at = datetime.now(UTC)
+        balance.export_status = "success"
+        balance.export_error = None
+        await session.commit()
+    except Exception as exc:  # noqa: BLE001
+        balance.export_status = "failed"
+        balance.export_error = str(exc)
+        await session.commit()
+        raise
+
+    refreshed = await get_balance(session, balance.tournament_id)
+    if refreshed is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to refresh exported balance"
+        )
+    return refreshed, removed_teams, len(payload.teams)

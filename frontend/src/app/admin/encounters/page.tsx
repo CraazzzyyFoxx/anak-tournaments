@@ -30,6 +30,20 @@ import {
 import { usePermissions } from "@/hooks/usePermissions";
 import { hasUnsavedChanges } from "@/lib/form-change";
 
+const ENCOUNTER_STATUS_OPTIONS = ["OPEN", "PENDING", "COMPLETED"] as const;
+
+function normalizeEncounterStatus(status?: string | null) {
+  const normalizedStatus = status?.toUpperCase();
+  return ENCOUNTER_STATUS_OPTIONS.includes(normalizedStatus as (typeof ENCOUNTER_STATUS_OPTIONS)[number])
+    ? normalizedStatus
+    : "OPEN";
+}
+
+function formatEncounterStatus(status?: string | null) {
+  const normalizedStatus = normalizeEncounterStatus(status);
+  return normalizedStatus.charAt(0) + normalizedStatus.slice(1).toLowerCase();
+}
+
 const emptyEncounterForm: EncounterCreateInput = {
   name: "",
   tournament_id: 0,
@@ -39,7 +53,7 @@ const emptyEncounterForm: EncounterCreateInput = {
   round: 1,
   home_score: 0,
   away_score: 0,
-  status: "open",
+  status: "OPEN",
 };
 
 function getCreateEncounterForm(tournamentId: number | null): EncounterCreateInput {
@@ -51,7 +65,7 @@ function getEditEncounterForm(encounter: Encounter): EncounterUpdateInput {
     name: encounter.name,
     home_score: encounter.score.home,
     away_score: encounter.score.away,
-    status: "open",
+    status: normalizeEncounterStatus(encounter.status),
     round: encounter.round,
   };
 }
@@ -180,10 +194,10 @@ export default function EncountersPage() {
   const isEditDirty = editDialogOpen && hasUnsavedChanges(formData, editFormInitial);
 
   const getStatusIcon = (status: string) => {
-    switch (status) {
-      case "completed":
+    switch (normalizeEncounterStatus(status)) {
+      case "COMPLETED":
         return <CheckCircle className="h-3 w-3" />;
-      case "pending":
+      case "PENDING":
         return <Clock className="h-3 w-3" />;
       default:
         return <AlertCircle className="h-3 w-3" />;
@@ -230,6 +244,20 @@ export default function EncountersPage() {
           <div className="text-sm text-muted-foreground">{(closeness * 100).toFixed(0)}%</div>
         ) : (
           "—"
+        );
+      }
+    },
+    {
+      accessorKey: "status",
+      header: "Status",
+      cell: ({ row }) => {
+        const status = normalizeEncounterStatus(row.getValue<string>("status"));
+
+        return (
+          <Badge variant={status === "COMPLETED" ? "default" : "outline"} className="inline-flex items-center gap-1.5">
+            {getStatusIcon(status)}
+            {formatEncounterStatus(status)}
+          </Badge>
         );
       }
     },
@@ -440,9 +468,9 @@ export default function EncountersPage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="open">Open</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
+                <SelectItem value="OPEN">Open</SelectItem>
+                <SelectItem value="PENDING">Pending</SelectItem>
+                <SelectItem value="COMPLETED">Completed</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -520,9 +548,9 @@ export default function EncountersPage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="open">Open</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
+                <SelectItem value="OPEN">Open</SelectItem>
+                <SelectItem value="PENDING">Pending</SelectItem>
+                <SelectItem value="COMPLETED">Completed</SelectItem>
               </SelectContent>
             </Select>
           </div>

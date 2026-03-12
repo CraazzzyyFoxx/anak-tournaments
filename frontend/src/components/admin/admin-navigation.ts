@@ -188,6 +188,7 @@ export const adminRoutePermissions: Array<{
   { prefix: "/admin/access/permissions", permissions: accessPermissionsPermissions },
   { prefix: "/admin/access", permissions: accessAdminPermissions },
   { prefix: "/admin/settings", permissions: [], superuserOnly: true },
+  { prefix: "/admin/balancer", permissions: ["team.import"] },
   { prefix: "/admin/tournaments", permissions: ["tournament.read"] },
   { prefix: "/admin/teams", permissions: ["team.read"] },
   { prefix: "/admin/players", permissions: ["player.read"] },

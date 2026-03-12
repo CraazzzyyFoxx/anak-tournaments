@@ -100,10 +100,10 @@ export interface UserProfile {
   tournaments_won: number;
   maps_total: number;
   maps_won: number;
-  avg_closeness: number;
-  avg_placement: number;
-  avg_playoff_placement: number;
-  avg_group_placement: number;
+  avg_closeness: number | null;
+  avg_placement: number | null;
+  avg_playoff_placement: number | null;
+  avg_group_placement: number | null;
   most_played_hero: Hero;
 
   roles: UserRole[];

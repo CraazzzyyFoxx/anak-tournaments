@@ -6,6 +6,7 @@ from .user import *
 from .hero import *
 from .gamemode import *
 from .map import *
+from .balancer import *
 
 __all__ = (
     # Tournament schemas
@@ -43,4 +44,16 @@ __all__ = (
     # Map schemas
     "MapCreate",
     "MapUpdate",
+    # Balancer schemas
+    "BalancerTournamentSheetUpsert",
+    "BalancerTournamentSheetRead",
+    "BalancerApplicationRead",
+    "SheetSyncResponse",
+    "BalancerPlayerCreateRequest",
+    "BalancerPlayerRead",
+    "BalancerPlayerUpdate",
+    "BalanceSaveRequest",
+    "BalancerTeamRead",
+    "BalanceRead",
+    "BalanceExportResponse",
 )

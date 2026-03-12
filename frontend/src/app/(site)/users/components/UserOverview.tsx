@@ -43,7 +43,21 @@ export const UserOverviewSkeleton = () => {
   );
 };
 
+const formatNullableValue = (
+  value: number | null,
+  formatter: (resolvedValue: number) => string = (resolvedValue) => `${resolvedValue}`
+) => {
+  if (value === null || !Number.isFinite(value)) {
+    return "-";
+  }
+
+  return formatter(value);
+};
+
 const UserOverview = ({ profile }: UserTournamentsProps) => {
+  const winrate = profile.maps_total > 0 ? (profile.maps_won / profile.maps_total) * 100 : null;
+  const proximity = profile.avg_closeness === null ? null : profile.avg_closeness * 100;
+
   return (
     <Card className="lg:h-110 flex flex-col">
       <CardHeader>
@@ -56,21 +70,15 @@ const UserOverview = ({ profile }: UserTournamentsProps) => {
         <ul className="divide-y divide-border/40">
           <UserOverviewLi label="Tournaments" value={`${profile.tournaments_count}`} />
           <UserOverviewLi label="Tournaments Won" value={`${profile.tournaments_won}`} />
-          <UserOverviewLi
-            label="Winrate"
-            value={`${((profile.maps_won / profile.maps_total) * 100).toFixed(2)}%`}
-          />
+          <UserOverviewLi label="Winrate" value={formatNullableValue(winrate, (value) => `${value.toFixed(2)}%`)} />
           <UserOverviewLi label="Maps" value={`${profile.maps_won}/${profile.maps_total}`} />
-          <UserOverviewLi
-            label="Proximity"
-            value={`${(profile.avg_closeness * 100).toFixed(0)}%`}
-          />
-          <UserOverviewLi label="Avg. Placement" value={`${profile.avg_placement}`} />
+          <UserOverviewLi label="Proximity" value={formatNullableValue(proximity, (value) => `${value.toFixed(0)}%`)} />
+          <UserOverviewLi label="Avg. Placement" value={formatNullableValue(profile.avg_placement)} />
           <UserOverviewLi
             label="Avg. Playoff Placement"
-            value={`${profile.avg_playoff_placement}`}
+            value={formatNullableValue(profile.avg_playoff_placement)}
           />
-          <UserOverviewLi label="Avg. Group Placement" value={`${profile.avg_group_placement}`} />
+          <UserOverviewLi label="Avg. Group Placement" value={formatNullableValue(profile.avg_group_placement)} />
         </ul>
       </CardContent>
     </Card>
