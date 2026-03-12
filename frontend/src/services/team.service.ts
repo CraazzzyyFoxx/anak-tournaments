@@ -1,6 +1,7 @@
 import { PaginatedResponse } from "@/types/pagination.types";
 import { Team } from "@/types/team.types";
 import { customFetch } from "@/lib/custom_fetch";
+import { normalizePaginatedResponse } from "@/lib/normalize-paginated-response";
 
 export default class teamService {
   static async getAll(
@@ -17,6 +18,8 @@ export default class teamService {
         entities: ["players", "players.user", "placement", "group"],
         tournament_id: tournament_id
       }
-    }).then((response) => response.json());
+    })
+      .then((response) => response.json())
+      .then((response: PaginatedResponse<Team>) => normalizePaginatedResponse(response));
   }
 }

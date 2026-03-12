@@ -2,6 +2,7 @@ import { PaginatedResponse } from "@/types/pagination.types";
 import { OwalStack, OwalStandings, Standings, Tournament } from "@/types/tournament.types";
 import { customFetch } from "@/lib/custom_fetch";
 import { PlayerAnalytics, TournamentAnalytics } from "@/types/analytics.types";
+import { normalizePaginatedResponse } from "@/lib/normalize-paginated-response";
 
 export default class tournamentService {
   static async getAll(isLeague: boolean | null = null): Promise<PaginatedResponse<Tournament>> {
@@ -14,7 +15,9 @@ export default class tournamentService {
         order: "desc",
         entities: ["groups", "participants_count"]
       }
-    }).then((response) => response.json());
+    })
+      .then((response) => response.json())
+      .then((response: PaginatedResponse<Tournament>) => normalizePaginatedResponse(response));
   }
   static async getOwalSeasons(): Promise<string[]> {
     return customFetch(`tournaments/league/seasons`).then((response) => response.json());
