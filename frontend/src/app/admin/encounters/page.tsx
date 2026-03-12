@@ -306,21 +306,13 @@ export default function EncountersPage() {
       </div>
 
       <AdminDataTable
-        queryKey={(page, search) => ["encounters", selectedTournamentId, page, search]}
-        queryFn={async (page, search) => {
+        queryKey={(page, search, pageSize) => ["encounters", selectedTournamentId, page, search, pageSize]}
+        queryFn={async (page, search, pageSize) => {
           if (!selectedTournamentId) {
-            return { results: [], total: 0, page: 1, per_page: 15 };
+            return { results: [], total: 0, page: 1, per_page: pageSize };
           }
-          const data = await encounterService.getAll(page, search);
-          // Filter by tournament (this is a simplified filter, ideally should be on backend)
-          const filtered = data.results.filter(
-            (e) => e.tournament && e.tournament.id === selectedTournamentId
-          );
-          return {
-            ...data,
-            results: filtered,
-            total: filtered.length
-          };
+
+          return encounterService.getAll(page, search, selectedTournamentId, pageSize);
         }}
         columns={columns}
         searchPlaceholder="Search encounters..."

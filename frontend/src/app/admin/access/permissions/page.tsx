@@ -44,8 +44,10 @@ export default function AccessAdminPermissionsPage() {
       />
 
       <AdminDataTable
-        queryKey={(page, search) => ["access-admin", "permissions", page, search]}
-        queryFn={async (page, search) => {
+        initialPageSize={PAGE_SIZE}
+        pageSizeOptions={[10, 20, 50, 100]}
+        queryKey={(page, search, pageSize) => ["access-admin", "permissions", page, search, pageSize]}
+        queryFn={async (page, search, pageSize) => {
           const permissions = await rbacService.listPermissions();
           const filteredPermissions = search
             ? permissions.filter((permission) => {
@@ -53,7 +55,7 @@ export default function AccessAdminPermissionsPage() {
                 return haystack.includes(search.toLowerCase());
               })
             : permissions;
-          return paginateResults(filteredPermissions, page, PAGE_SIZE);
+          return paginateResults(filteredPermissions, page, pageSize);
         }}
         columns={columns}
         searchPlaceholder="Search permissions..."

@@ -183,11 +183,23 @@ export default function GamemodesAdminPage() {
       />
 
       <AdminDataTable
-        queryKey={(page, search) => ["admin", "gamemodes", page, search]}
-        queryFn={(page, search) => adminService.getGamemodes({ page, search })}
+        queryKey={(page, search, pageSize) => ["admin", "gamemodes", page, search, pageSize]}
+        queryFn={(page, search, pageSize) =>
+          adminService.getGamemodes({ page, search, per_page: pageSize })
+        }
         columns={columns}
         searchPlaceholder="Search gamemodes..."
         emptyMessage="No gamemodes found."
+        onRowDoubleClick={
+          canUpdate
+            ? (row) => {
+                const gamemode = row.original;
+                updateMutation.reset();
+                setEditingGamemode(gamemode);
+                setFormData({ name: gamemode.name });
+              }
+            : undefined
+        }
       />
 
       {/* Create/Edit Dialog */}

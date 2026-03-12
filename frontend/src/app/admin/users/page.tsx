@@ -454,6 +454,12 @@ export default function UsersAdminPage() {
     },
   });
 
+  const openEditUserDialog = (user: User) => {
+    updateMutation.reset();
+    setEditingUser(user);
+    setFormData({ name: user.name });
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (editingUser) {
@@ -524,11 +530,7 @@ export default function UsersAdminPage() {
               {(canManageIdentities && (canUpdate || canDelete)) ? <DropdownMenuSeparator /> : null}
               {canUpdate ? (
                 <DropdownMenuItem
-                  onClick={() => {
-                    updateMutation.reset();
-                    setEditingUser(user);
-                    setFormData({ name: user.name });
-                  }}
+                  onClick={() => openEditUserDialog(user)}
                 >
                   <Pencil className="mr-2 h-4 w-4" />
                   Edit
@@ -570,12 +572,13 @@ export default function UsersAdminPage() {
       />
 
       <AdminDataTable
-        queryKey={(page, search) => ["admin", "users", page, search]}
-        queryFn={(page, search) => adminService.getUsers({ page, search })}
+        queryKey={(page, search, pageSize) => ["admin", "users", page, search, pageSize]}
+        queryFn={(page, search, pageSize) => adminService.getUsers({ page, search, per_page: pageSize })}
         columns={columns}
         searchPlaceholder="Search users..."
         emptyMessage="No users found."
         onRowClick={canManageIdentities ? (row) => setManagingIdentities(row.original) : undefined}
+        onRowDoubleClick={canUpdate ? (row) => openEditUserDialog(row.original) : undefined}
       />
 
       {/* Create/Edit Dialog */}

@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { usePermissions } from "@/hooks/usePermissions";
 import { hasUnsavedChanges } from "@/lib/form-change";
+import { paginateResults } from "@/lib/paginate-results";
 
 const emptyStandingForm: StandingUpdateInput = {
   position: 0,
@@ -77,16 +78,6 @@ export default function StandingsPage() {
   const { data: tournamentsData } = useQuery({
     queryKey: ["tournaments"],
     queryFn: () => tournamentService.getAll(null)
-  });
-
-  // Fetch standings for selected tournament
-  const { data: standingsData } = useQuery({
-    queryKey: ["standings", selectedTournamentId],
-    queryFn: () =>
-      selectedTournamentId
-        ? tournamentService.getStandings(selectedTournamentId)
-        : Promise.resolve([]),
-    enabled: !!selectedTournamentId
   });
 
   // Form state
@@ -154,7 +145,7 @@ export default function StandingsPage() {
     e.preventDefault();
     if (selectedStanding) {
       updateMutation.mutate({
-        id: selectedStanding.tournament_id, // Note: This might need to be standing.id
+        id: selectedStanding.id,
         data: formData
       });
     }
@@ -162,7 +153,7 @@ export default function StandingsPage() {
 
   const handleConfirmDelete = () => {
     if (selectedStanding) {
-      deleteMutation.mutate(selectedStanding.tournament_id); // Note: This might need to be standing.id
+      deleteMutation.mutate(selectedStanding.id);
     }
   };
 
@@ -266,6 +257,8 @@ export default function StandingsPage() {
     }
   ];
 
+  const selectedTournament = tournamentsData?.results.find((tournament) => tournament.id === selectedTournamentId);
+
   return (
     <div className="flex flex-col gap-6">
       <AdminPageHeader
@@ -300,33 +293,33 @@ export default function StandingsPage() {
         </Select>
       </div>
 
-      {standingsData && standingsData.length > 0 && (
+      {selectedTournamentId ? (
         <div className="rounded-md border p-4 bg-muted/50">
           <p className="text-sm text-muted-foreground">
             Showing standings for{" "}
             <span className="font-semibold">
-              {tournamentsData?.results.find((t) => t.id === selectedTournamentId)?.name ||
-                `Tournament ${selectedTournamentId}`}
+              {selectedTournament?.name || `Tournament ${selectedTournamentId}`}
             </span>
           </p>
         </div>
-      )}
+      ) : null}
 
       <AdminDataTable
-        queryKey={(page, search) => ["standings-table", selectedTournamentId, page, search]}
-        queryFn={async (page, search) => {
-          const data = standingsData || [];
-          const filtered = search
-            ? data.filter((s) =>
-                s.team?.name.toLowerCase().includes(search.toLowerCase())
+        queryKey={(page, search, pageSize) => ["standings", selectedTournamentId, page, search, pageSize]}
+        queryFn={async (page, search, pageSize) => {
+          if (!selectedTournamentId) {
+            return { results: [], total: 0, page: 1, per_page: pageSize };
+          }
+
+          const data = await tournamentService.getStandings(selectedTournamentId);
+          const normalizedSearch = search.trim().toLowerCase();
+          const filtered = normalizedSearch
+            ? data.filter((standing) =>
+                standing.team?.name.toLowerCase().includes(normalizedSearch)
               )
             : data;
-          return {
-            results: filtered,
-            total: filtered.length,
-            page: 1,
-            per_page: filtered.length
-          };
+
+          return paginateResults(filtered, page, pageSize);
         }}
         columns={columns}
         searchPlaceholder="Search by team name..."
@@ -335,6 +328,7 @@ export default function StandingsPage() {
             ? "No standings found. Click 'Recalculate Standings' to generate them."
             : "Select a tournament to view standings."
         }
+        onRowDoubleClick={canUpdate ? (row) => handleEdit(row.original) : undefined}
       />
 
       {/* Edit Dialog */}

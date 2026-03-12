@@ -21,7 +21,6 @@ import {
 } from "@/components/ui/table";
 import { PaginationControlled } from "@/components/ui/pagination-with-links";
 import { PaginatedResponse } from "@/types/pagination.types";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { useQuery } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,20 +28,29 @@ import { cn } from "@/lib/utils";
 
 const ADMIN_ACTION_COLUMN_ID = "actions";
 const ADMIN_ACTION_COLUMN_MIN_WIDTH = 112;
+const DEFAULT_PAGE_SIZE_OPTIONS = [10, 15, 25, 50, 100];
+
+function parsePositiveInt(value: string | null, fallback: number) {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
 
 export interface AdminDataTableProps<TData> {
   // Data
   initialData?: PaginatedResponse<TData>;
-  queryKey: (page: number, search: string) => readonly unknown[];
-  queryFn: (page: number, search: string) => Promise<PaginatedResponse<TData>>;
+  queryKey: (page: number, search: string, pageSize: number) => readonly unknown[];
+  queryFn: (page: number, search: string, pageSize: number) => Promise<PaginatedResponse<TData>>;
 
   // Table configuration
   columns: ColumnDef<TData>[];
   searchPlaceholder?: string;
   emptyMessage?: string;
+  initialPageSize?: number;
+  pageSizeOptions?: number[];
 
   // Actions
   onRowClick?: (row: Row<TData>) => void;
+  onRowDoubleClick?: (row: Row<TData>) => void;
   actions?: React.ReactNode;
 
   // URL state
@@ -58,21 +66,36 @@ export function AdminDataTable<TData>({
   searchPlaceholder = "Search...",
   emptyMessage = "No results found.",
   onRowClick,
+  onRowDoubleClick,
   actions,
   initialPage = 1,
-  initialSearch = ""
+  initialSearch = "",
+  initialPageSize = 15,
+  pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS
 }: AdminDataTableProps<TData>) {
   const pathname = usePathname();
+  const defaultPageSize = initialData?.per_page && initialData.per_page > 0 ? initialData.per_page : initialPageSize;
   const [searchValue, setSearchValue] = useState<string>(initialSearch);
   const [debouncedSearchValue] = useDebounce(searchValue, 300);
   const [currentPage, setCurrentPage] = useState<number>(initialPage);
+  const [pageSize, setPageSize] = useState<number>(defaultPageSize);
   const previousDebouncedSearchRef = useRef(initialSearch);
-  const previousUrlStateRef = useRef({ page: initialPage, search: initialSearch });
+  const previousPageSizeRef = useRef(defaultPageSize);
+  const previousUrlStateRef = useRef({ page: initialPage, search: initialSearch, pageSize: defaultPageSize });
+  const rowClickTimeoutRef = useRef<number | null>(null);
+  const safeCurrentPage = Number.isFinite(currentPage) && currentPage > 0 ? currentPage : initialPage;
+  const safePageSize = Number.isFinite(pageSize) && pageSize > 0 ? pageSize : defaultPageSize;
 
   // Sync search value with initial search
   useEffect(() => {
+    previousDebouncedSearchRef.current = initialSearch;
     setSearchValue(initialSearch);
   }, [initialSearch]);
+
+  useEffect(() => {
+    setPageSize(defaultPageSize);
+    previousPageSizeRef.current = defaultPageSize;
+  }, [defaultPageSize]);
 
   // Reset to page 1 when search changes
   useEffect(() => {
@@ -82,37 +105,77 @@ export function AdminDataTable<TData>({
     }
   }, [debouncedSearchValue]);
 
+  useEffect(() => {
+    if (previousPageSizeRef.current !== pageSize) {
+      previousPageSizeRef.current = pageSize;
+      setCurrentPage(1);
+    }
+  }, [pageSize]);
+
   // Fetch data
   const dataQuery = useQuery({
-    queryKey: queryKey(currentPage, debouncedSearchValue),
-    queryFn: () => queryFn(currentPage, debouncedSearchValue),
+    queryKey: queryKey(safeCurrentPage, debouncedSearchValue, safePageSize),
+    queryFn: () => queryFn(safeCurrentPage, debouncedSearchValue, safePageSize),
     placeholderData: (previousData) => previousData,
     initialData:
-      initialData && currentPage === initialPage && debouncedSearchValue === initialSearch
+      initialData &&
+      safeCurrentPage === initialPage &&
+      debouncedSearchValue === initialSearch &&
+      safePageSize === defaultPageSize
         ? initialData
         : undefined
   });
 
-  const data = dataQuery.data ?? initialData ?? { results: [], total: 0, page: 1, per_page: 15 };
+  const data = dataQuery.data ?? initialData ?? { results: [], total: 0, page: 1, per_page: safePageSize };
   const isRefreshing = dataQuery.isFetching && !dataQuery.isLoading;
-  const rangeStart = data.total > 0 ? (currentPage - 1) * data.per_page + 1 : 0;
-  const rangeEnd = data.total > 0 ? Math.min(currentPage * data.per_page, data.total) : 0;
+  const safeTotal = Number.isFinite(data.total) ? data.total : 0;
+  const responsePageSize = Number.isFinite(data.per_page) ? data.per_page : undefined;
+  const effectivePageSize = responsePageSize && responsePageSize > 0 ? responsePageSize : safePageSize;
+  const availablePageSizeOptions = Array.from(new Set([...pageSizeOptions, effectivePageSize])).sort(
+    (left, right) => left - right
+  );
+  const totalPageCount = Math.max(1, Math.ceil(safeTotal / effectivePageSize));
+  const rangeStart = safeTotal > 0 ? (safeCurrentPage - 1) * effectivePageSize + 1 : 0;
+  const rangeEnd = safeTotal > 0 ? Math.min(safeCurrentPage * effectivePageSize, safeTotal) : 0;
+
+  useEffect(() => {
+    if (safeCurrentPage > totalPageCount) {
+      setCurrentPage(totalPageCount);
+    }
+  }, [safeCurrentPage, totalPageCount]);
 
   // Handle browser back/forward
   useEffect(() => {
-    const handlePopState = () => {
+    const syncStateFromUrl = () => {
       const params = new URLSearchParams(window.location.search);
-      const nextPage = Number.parseInt(params.get("page") ?? "1", 10) || 1;
-      const nextSearch = params.get("search") ?? "";
+      const nextPage = parsePositiveInt(params.get("page"), initialPage);
+      const nextSearch = params.get("search") ?? initialSearch;
+      const nextPageSize = parsePositiveInt(params.get("per_page"), defaultPageSize);
 
-      previousUrlStateRef.current = { page: nextPage, search: nextSearch };
+      previousDebouncedSearchRef.current = nextSearch;
+      previousPageSizeRef.current = nextPageSize;
+      previousUrlStateRef.current = { page: nextPage, search: nextSearch, pageSize: nextPageSize };
       setCurrentPage(nextPage);
       setSearchValue(nextSearch);
+      setPageSize(nextPageSize);
     };
 
+    const handlePopState = () => {
+      syncStateFromUrl();
+    };
+
+    syncStateFromUrl();
     window.addEventListener("popstate", handlePopState);
     return () => {
       window.removeEventListener("popstate", handlePopState);
+    };
+  }, [defaultPageSize, initialPage, initialSearch]);
+
+  useEffect(() => {
+    return () => {
+      if (rowClickTimeoutRef.current !== null) {
+        window.clearTimeout(rowClickTimeoutRef.current);
+      }
     };
   }, []);
 
@@ -121,17 +184,27 @@ export function AdminDataTable<TData>({
     const params = new URLSearchParams(window.location.search);
     const currentSearch = params.get("search") ?? "";
     const currentPageParam = Number.parseInt(params.get("page") ?? "1", 10) || 1;
+    const currentPageSizeParam = parsePositiveInt(params.get("per_page"), defaultPageSize);
 
     const previousUrlState = previousUrlStateRef.current;
     const searchChanged = previousUrlState.search !== debouncedSearchValue;
-    const pageChanged = previousUrlState.page !== currentPage;
+    const pageChanged = previousUrlState.page !== safeCurrentPage;
+    const pageSizeChanged = previousUrlState.pageSize !== safePageSize;
 
-    if (!searchChanged && !pageChanged) {
+    if (!searchChanged && !pageChanged && !pageSizeChanged) {
       return;
     }
 
-    if (currentSearch === debouncedSearchValue && currentPageParam === currentPage) {
-      previousUrlStateRef.current = { page: currentPage, search: debouncedSearchValue };
+    if (
+      currentSearch === debouncedSearchValue &&
+      currentPageParam === safeCurrentPage &&
+      currentPageSizeParam === safePageSize
+    ) {
+      previousUrlStateRef.current = {
+        page: safeCurrentPage,
+        search: debouncedSearchValue,
+        pageSize: safePageSize
+      };
       return;
     }
 
@@ -141,23 +214,33 @@ export function AdminDataTable<TData>({
       params.delete("search");
     }
 
-    if (currentPage > 1) {
-      params.set("page", String(currentPage));
+    if (safeCurrentPage > 1) {
+      params.set("page", String(safeCurrentPage));
     } else {
       params.delete("page");
+    }
+
+    if (safePageSize !== defaultPageSize) {
+      params.set("per_page", String(safePageSize));
+    } else {
+      params.delete("per_page");
     }
 
     const query = params.toString();
     const nextUrl = query ? `${pathname}?${query}` : pathname;
 
-    if (searchChanged) {
+    if (searchChanged || pageSizeChanged) {
       window.history.replaceState(null, "", nextUrl);
     } else {
       window.history.pushState(null, "", nextUrl);
     }
 
-    previousUrlStateRef.current = { page: currentPage, search: debouncedSearchValue };
-  }, [currentPage, debouncedSearchValue, pathname]);
+    previousUrlStateRef.current = {
+      page: safeCurrentPage,
+      search: debouncedSearchValue,
+      pageSize: safePageSize
+    };
+  }, [safeCurrentPage, debouncedSearchValue, defaultPageSize, safePageSize, pathname]);
 
   const table = useReactTable({
     data: data.results ?? [],
@@ -177,21 +260,62 @@ export function AdminDataTable<TData>({
     return width ? { width, minWidth: width } : undefined;
   };
 
+  const hasRowAction = Boolean(onRowClick || onRowDoubleClick);
+
+  const isInteractiveRowTarget = (target: HTMLElement) => {
+    const interactiveElement = target.closest(
+      "button, a, input, select, textarea, [role='button'], [role='link'], [data-radix-collection-item]"
+    );
+
+    return Boolean(interactiveElement);
+  };
+
   const handleRowClick = (event: React.MouseEvent<HTMLTableRowElement>, row: Row<TData>) => {
     if (!onRowClick) {
       return;
     }
 
     const target = event.target as HTMLElement;
-    const interactiveElement = target.closest(
-      "button, a, input, select, textarea, [role='button'], [role='link'], [data-radix-collection-item]"
-    );
+    if (isInteractiveRowTarget(target)) {
+      return;
+    }
 
-    if (interactiveElement) {
+    if (onRowDoubleClick) {
+      if (rowClickTimeoutRef.current !== null) {
+        window.clearTimeout(rowClickTimeoutRef.current);
+      }
+
+      rowClickTimeoutRef.current = window.setTimeout(() => {
+        onRowClick(row);
+        rowClickTimeoutRef.current = null;
+      }, 200);
       return;
     }
 
     onRowClick(row);
+  };
+
+  const handleRowDoubleClick = (event: React.MouseEvent<HTMLTableRowElement>, row: Row<TData>) => {
+    if (!onRowDoubleClick) {
+      return;
+    }
+
+    const target = event.target as HTMLElement;
+    if (isInteractiveRowTarget(target)) {
+      return;
+    }
+
+    if (rowClickTimeoutRef.current !== null) {
+      window.clearTimeout(rowClickTimeoutRef.current);
+      rowClickTimeoutRef.current = null;
+    }
+
+    onRowDoubleClick(row);
+  };
+
+  const handlePageSizeChange = (nextPageSize: number) => {
+    setCurrentPage(1);
+    setPageSize(nextPageSize);
   };
 
   const handleRowKeyDown = (event: React.KeyboardEvent<HTMLTableRowElement>, row: Row<TData>) => {
@@ -215,8 +339,8 @@ export function AdminDataTable<TData>({
               Dataset Controls
             </div>
             <p className="text-sm text-muted-foreground">
-              {data.total > 0
-                ? `Showing ${rangeStart}-${rangeEnd} of ${data.total} records`
+              {safeTotal > 0
+                ? `Showing ${rangeStart}-${rangeEnd} of ${safeTotal} records`
                 : "No records loaded yet"}
             </p>
           </div>
@@ -243,7 +367,7 @@ export function AdminDataTable<TData>({
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-border/70 bg-card/70 shadow-sm">
+      <div className="rounded-2xl border border-border/70 bg-card/70 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 bg-gradient-to-r from-muted/35 via-muted/20 to-background/20 px-4 py-3 text-xs text-muted-foreground">
           <div className="flex items-center gap-2">
             {isRefreshing ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : null}
@@ -252,7 +376,7 @@ export function AdminDataTable<TData>({
           <span>{searchValue ? `Filtered by “${searchValue}”` : "Showing full dataset"}</span>
         </div>
 
-        <ScrollArea>
+        <div className="overflow-x-auto rounded-b-2xl">
           <Table className="min-w-full border-separate border-spacing-0">
             <TableHeader>
               {table.getHeaderGroups().map((headerGroup) => (
@@ -266,7 +390,7 @@ export function AdminDataTable<TData>({
                       <TableHead
                         key={header.id}
                         className={cn(
-                          "h-11 border-b border-border/60 bg-muted/15 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/90",
+                          "sticky top-0 z-10 h-11 border-b border-border/60 bg-background/95 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/90 backdrop-blur supports-[backdrop-filter]:bg-background/80",
                           isFirstColumn && "pl-4 sm:pl-5",
                           isLastColumn && "pr-4 sm:pr-5",
                           isActionColumn ? "text-right" : "text-left"
@@ -289,11 +413,12 @@ export function AdminDataTable<TData>({
                     key={row.id}
                     data-state={row.getIsSelected() && "selected"}
                     className={cn(
-                      "group border-border/50 bg-background/0 transition-colors duration-200 hover:bg-muted/20 data-[state=selected]:bg-muted/25",
-                      onRowClick &&
+                      "group border-b border-border/45 transition-colors duration-200 odd:bg-background/[0.92] even:bg-muted/[0.2] hover:bg-accent/30 data-[state=selected]:bg-accent/35",
+                      hasRowAction &&
                         "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-offset-2"
                     )}
                     onClick={(event) => handleRowClick(event, row)}
+                    onDoubleClick={(event) => handleRowDoubleClick(event, row)}
                     onKeyDown={(event) => handleRowKeyDown(event, row)}
                     tabIndex={onRowClick ? 0 : undefined}
                   >
@@ -309,7 +434,8 @@ export function AdminDataTable<TData>({
                             "py-3.5 align-middle",
                             isFirstColumn && "pl-4 sm:pl-5",
                             isLastColumn && "pr-4 sm:pr-5",
-                            isActionColumn && "whitespace-nowrap text-right"
+                            isActionColumn && "whitespace-nowrap text-right",
+                            index === 0 && "text-muted-foreground"
                           )}
                           style={getColumnStyle(cell.column)}
                         >
@@ -346,20 +472,21 @@ export function AdminDataTable<TData>({
               )}
             </TableBody>
           </Table>
-          <ScrollBar orientation="horizontal" />
-        </ScrollArea>
+        </div>
       </div>
 
-      {data.total > 0 && (
+      {safeTotal > 0 && (
         <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-card/70 px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-muted-foreground">
-            Showing {rangeStart} to {rangeEnd} of {data.total} results
+            Showing {rangeStart} to {rangeEnd} of {safeTotal} results
           </p>
           <PaginationControlled
-            page={currentPage}
-            totalCount={data.total}
-            pageSize={data.per_page}
+            page={safeCurrentPage}
+            totalCount={safeTotal}
+            pageSize={effectivePageSize}
+            pageSizeSelectOptions={{ pageSizeOptions: availablePageSizeOptions }}
             onSetPage={setCurrentPage}
+            onSetPageSize={handlePageSizeChange}
           />
         </div>
       )}

@@ -162,14 +162,17 @@ export default function AccessAdminUsersPage() {
       />
 
       <AdminDataTable
-        queryKey={(page, search) => ["access-admin", "users", page, search]}
-        queryFn={async (page, search) => {
+        initialPageSize={PAGE_SIZE}
+        pageSizeOptions={[10, 20, 50, 100]}
+        queryKey={(page, search, pageSize) => ["access-admin", "users", page, search, pageSize]}
+        queryFn={async (page, search, pageSize) => {
           const users = await rbacService.listUsers({ search: search || undefined });
-          return paginateResults(users, page, PAGE_SIZE);
+          return paginateResults(users, page, pageSize);
         }}
         columns={columns}
         searchPlaceholder="Search auth users..."
         emptyMessage="No auth users found."
+        onRowDoubleClick={(row) => setManagingUserId(row.original.id)}
       />
 
       <Dialog

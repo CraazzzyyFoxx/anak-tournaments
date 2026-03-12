@@ -57,24 +57,27 @@ export interface TeamUpdateInput {
 // ─── Player ──────────────────────────────────────────────────────────────────
 
 export interface PlayerCreateInput {
+  name: string;
   user_id: number;
   team_id: number;
+  tournament_id: number;
   role: string;
   rank?: number;
-  division?: number;
-  is_primary?: boolean;
-  is_secondary?: boolean;
+  div?: number;
+  primary?: boolean;
+  secondary?: boolean;
   is_newcomer?: boolean;
   is_newcomer_role?: boolean;
   is_substitution?: boolean;
 }
 
 export interface PlayerUpdateInput {
+  name?: string;
   role?: string;
   rank?: number;
-  division?: number;
-  is_primary?: boolean;
-  is_secondary?: boolean;
+  div?: number;
+  primary?: boolean;
+  secondary?: boolean;
   is_newcomer?: boolean;
   is_newcomer_role?: boolean;
   is_substitution?: boolean;

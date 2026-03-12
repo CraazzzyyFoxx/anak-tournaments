@@ -264,8 +264,10 @@ export default function AccessAdminRolesPage() {
       />
 
       <AdminDataTable
-        queryKey={(page, search) => ["access-admin", "roles", page, search]}
-        queryFn={async (page, search) => {
+        initialPageSize={PAGE_SIZE}
+        pageSizeOptions={[10, 20, 50, 100]}
+        queryKey={(page, search, pageSize) => ["access-admin", "roles", page, search, pageSize]}
+        queryFn={async (page, search, pageSize) => {
           const roles = await rbacService.listRoles();
           const filteredRoles = search
             ? roles.filter((role) => {
@@ -273,11 +275,19 @@ export default function AccessAdminRolesPage() {
                 return haystack.includes(search.toLowerCase());
               })
             : roles;
-          return paginateResults(filteredRoles, page, PAGE_SIZE);
+          return paginateResults(filteredRoles, page, pageSize);
         }}
         columns={columns}
         searchPlaceholder="Search roles..."
         emptyMessage="No roles found."
+        onRowDoubleClick={
+          canUpdateRole
+            ? (row) => {
+                updateRoleMutation.reset();
+                setEditingRoleId(row.original.id);
+              }
+            : undefined
+        }
       />
 
       <EntityFormDialog

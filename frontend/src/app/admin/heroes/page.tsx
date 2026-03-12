@@ -156,12 +156,12 @@ export default function HeroesAdminPage() {
     {
       accessorKey: "id",
       header: "ID",
-      size: 80,
+      size: 44,
     },
     {
       id: "icon",
-      header: "Icon",
-      size: 88,
+      header: () => <div className="text-center">Icon</div>,
+      size: 52,
       cell: ({ row }) => {
         const hero = row.original;
         return (
@@ -174,6 +174,7 @@ export default function HeroesAdminPage() {
     {
       accessorKey: "name",
       header: "Name",
+      size: 132,
       cell: ({ row }) => {
         const hero = row.original;
         return (
@@ -191,7 +192,8 @@ export default function HeroesAdminPage() {
     },
     {
       id: "role",
-      header: "Role",
+      header: () => <div className="text-center">Role</div>,
+      size: 48,
       cell: ({ row }) => {
         const role = getHeroRoleValue(row.original);
         return (
@@ -285,11 +287,23 @@ export default function HeroesAdminPage() {
       />
 
       <AdminDataTable
-        queryKey={(page, search) => ["admin", "heroes", page, search]}
-        queryFn={(page, search) => adminService.getHeroes({ page, search })}
+        queryKey={(page, search, pageSize) => ["admin", "heroes", page, search, pageSize]}
+        queryFn={(page, search, pageSize) =>
+          adminService.getHeroes({ page, search, per_page: pageSize })
+        }
         columns={columns}
         searchPlaceholder="Search heroes..."
         emptyMessage="No heroes found."
+        onRowDoubleClick={
+          canUpdate
+            ? (row) => {
+                const hero = row.original;
+                updateMutation.reset();
+                setEditingHero(hero);
+                setFormData(getHeroForm(hero));
+              }
+            : undefined
+        }
       />
 
       {/* Create/Edit Dialog */}

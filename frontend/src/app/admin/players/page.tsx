@@ -8,13 +8,15 @@ import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import { UserSearchCombobox } from "@/components/admin/UserSearchCombobox";
+import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import teamService from "@/services/team.service";
 import tournamentService from "@/services/tournament.service";
 import adminService from "@/services/admin.service";
-import { Player } from "@/types/team.types";
+import { Player, Team } from "@/types/team.types";
 import { PlayerCreateInput, PlayerUpdateInput } from "@/types/admin.types";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,6 +30,8 @@ import {
 } from "@/components/ui/select";
 import { usePermissions } from "@/hooks/usePermissions";
 import { hasUnsavedChanges } from "@/lib/form-change";
+import { MinimizedUser } from "@/types/user.types";
+import { paginateResults } from "@/lib/paginate-results";
 
 interface PlayerFormData {
   name: string;
@@ -44,12 +48,45 @@ interface PlayerFormData {
   is_substitution: boolean;
 }
 
+type PlayerRow = Player & { team: Team };
+
+type PlayerRoleOption = "Tank" | "Damage" | "Support";
+
+const PLAYER_ROLE_OPTIONS: PlayerRoleOption[] = ["Tank", "Damage", "Support"];
+
+function normalizePlayerRole(role: string | null | undefined): PlayerRoleOption {
+  const normalized = role?.trim().toLowerCase();
+
+  if (normalized === "tank") {
+    return "Tank";
+  }
+
+  if (normalized === "dps" || normalized === "damage") {
+    return "Damage";
+  }
+
+  if (normalized === "support") {
+    return "Support";
+  }
+
+  return "Damage";
+}
+
+function RoleOptionContent({ role }: { role: PlayerRoleOption }) {
+  return (
+    <div className="flex items-center gap-2">
+      <PlayerRoleIcon role={role} size={18} />
+      <span>{role}</span>
+    </div>
+  );
+}
+
 const defaultFormData: PlayerFormData = {
   name: "",
   user_id: 0,
   team_id: 0,
   tournament_id: 0,
-  role: "dps",
+  role: "Damage",
   rank: 0,
   division: 0,
   is_primary: false,
@@ -67,7 +104,7 @@ function getEditPlayerForm(player: Player): PlayerFormData {
   return {
     ...defaultFormData,
     name: player.name,
-    role: player.role,
+    role: normalizePlayerRole(player.role),
     rank: player.rank,
     division: player.division,
     is_primary: player.primary,
@@ -75,6 +112,46 @@ function getEditPlayerForm(player: Player): PlayerFormData {
     is_newcomer: player.is_newcomer,
     is_newcomer_role: player.is_newcomer_role,
     is_substitution: player.is_substitution,
+  };
+}
+
+function buildPlayerRows(teams: Team[]): PlayerRow[] {
+  return teams.flatMap((team) =>
+    (team.players ?? []).map((player) => ({
+      ...player,
+      team,
+    }))
+  );
+}
+
+function buildPlayerCreateInput(formData: PlayerFormData): PlayerCreateInput {
+  return {
+    name: formData.name.trim(),
+    user_id: formData.user_id,
+    team_id: formData.team_id,
+    tournament_id: formData.tournament_id,
+    role: normalizePlayerRole(formData.role),
+    rank: formData.rank,
+    div: formData.division,
+    primary: formData.is_primary,
+    secondary: formData.is_secondary,
+    is_newcomer: formData.is_newcomer,
+    is_newcomer_role: formData.is_newcomer_role,
+    is_substitution: formData.is_substitution,
+  };
+}
+
+function buildPlayerUpdateInput(formData: PlayerFormData): PlayerUpdateInput {
+  return {
+    name: formData.name.trim(),
+    role: normalizePlayerRole(formData.role),
+    rank: formData.rank,
+    div: formData.division,
+    primary: formData.is_primary,
+    secondary: formData.is_secondary,
+    is_newcomer: formData.is_newcomer,
+    is_newcomer_role: formData.is_newcomer_role,
+    is_substitution: formData.is_substitution,
   };
 }
 
@@ -91,6 +168,7 @@ export default function PlayersPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const [selectedTournamentId, setSelectedTournamentId] = useState<number | null>(null);
+  const [selectedUserName, setSelectedUserName] = useState("");
 
   // Fetch tournaments and teams
   const { data: tournamentsData } = useQuery({
@@ -112,6 +190,7 @@ export default function PlayersPage() {
   const createMutation = useMutation({
     mutationFn: (data: PlayerCreateInput) => adminService.createPlayer(data),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["players"] });
       queryClient.invalidateQueries({ queryKey: ["teams"] });
       setCreateDialogOpen(false);
       resetForm();
@@ -126,6 +205,7 @@ export default function PlayersPage() {
     mutationFn: ({ id, data }: { id: number; data: PlayerUpdateInput }) =>
       adminService.updatePlayer(id, data),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["players"] });
       queryClient.invalidateQueries({ queryKey: ["teams"] });
       setEditDialogOpen(false);
       setSelectedPlayer(null);
@@ -140,6 +220,7 @@ export default function PlayersPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: number) => adminService.deletePlayer(id),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["players"] });
       queryClient.invalidateQueries({ queryKey: ["teams"] });
       setDeleteDialogOpen(false);
       setSelectedPlayer(null);
@@ -152,6 +233,7 @@ export default function PlayersPage() {
 
   const resetForm = () => {
     setFormData(getCreatePlayerForm(selectedTournamentId));
+    setSelectedUserName("");
   };
 
   const handleCreate = () => {
@@ -174,17 +256,31 @@ export default function PlayersPage() {
 
   const handleSubmitCreate = (e: React.FormEvent) => {
     e.preventDefault();
-    const { name, tournament_id, ...rest } = formData;
-    createMutation.mutate(rest);
+
+    if (!formData.name.trim()) {
+      toast({ title: "Missing player name", description: "Enter a player name before saving.", variant: "destructive" });
+      return;
+    }
+
+    if (formData.user_id <= 0) {
+      toast({ title: "Missing user", description: "Select a user from the search field before saving.", variant: "destructive" });
+      return;
+    }
+
+    if (formData.team_id <= 0) {
+      toast({ title: "Missing team", description: "Select a team before saving.", variant: "destructive" });
+      return;
+    }
+
+    createMutation.mutate(buildPlayerCreateInput(formData));
   };
 
   const handleSubmitUpdate = (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedPlayer) {
-      const { role, rank, division, is_primary, is_secondary, is_newcomer, is_newcomer_role, is_substitution } = formData;
       updateMutation.mutate({
         id: selectedPlayer.id,
-        data: { role, rank, division, is_primary, is_secondary, is_newcomer, is_newcomer_role, is_substitution },
+        data: buildPlayerUpdateInput(formData),
       });
     }
   };
@@ -200,12 +296,7 @@ export default function PlayersPage() {
   const isCreateDirty = createDialogOpen && hasUnsavedChanges(formData, createFormInitial);
   const isEditDirty = editDialogOpen && hasUnsavedChanges(formData, editFormInitial);
 
-  // Flatten players from all teams
-  const allPlayers = teamsData?.results.flatMap((team) =>
-    team.players?.map((player: Player) => ({ ...player, team })) || []
-  ) || [];
-
-  const columns: ColumnDef<Player & { team?: any }>[] = [
+  const columns: ColumnDef<PlayerRow>[] = [
     {
       accessorKey: "name",
       header: "Name",
@@ -215,9 +306,9 @@ export default function PlayersPage() {
       accessorKey: "role",
       header: "Role",
       cell: ({ row }) => (
-        <Badge variant="outline" className="capitalize">
-          {row.getValue("role")}
-        </Badge>
+        <div className="flex items-center" title={normalizePlayerRole(row.getValue<string>("role"))}>
+          <PlayerRoleIcon role={normalizePlayerRole(row.getValue<string>("role"))} size={18} />
+        </div>
       )
     },
     {
@@ -234,7 +325,7 @@ export default function PlayersPage() {
       accessorKey: "team",
       header: "Team",
       cell: ({ row }) => {
-        const team = row.getValue<any>("team");
+        const team = row.getValue<Team>("team");
         return team ? <div className="text-sm">{team.name}</div> : "—";
       }
     },
@@ -311,17 +402,20 @@ export default function PlayersPage() {
       </div>
 
       <AdminDataTable
-        queryKey={(page, search) => ["players", selectedTournamentId, page, search]}
-        queryFn={async (page, search) => {
-          const filtered = search
-            ? allPlayers.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()))
-            : allPlayers;
-          return {
-            results: filtered,
-            total: filtered.length,
-            page: 1,
-            per_page: filtered.length
-          };
+        queryKey={(page, search, pageSize) => ["players", selectedTournamentId, page, search, pageSize]}
+        queryFn={async (page, search, pageSize) => {
+          if (!selectedTournamentId) {
+            return { results: [], total: 0, page: 1, per_page: pageSize };
+          }
+
+          const data = await teamService.getAll(selectedTournamentId);
+          const players = buildPlayerRows(data.results);
+          const normalizedSearch = search.trim().toLowerCase();
+          const filtered = normalizedSearch
+            ? players.filter((player) => player.name.toLowerCase().includes(normalizedSearch))
+            : players;
+
+          return paginateResults(filtered, page, pageSize);
         }}
         columns={columns}
         searchPlaceholder="Search players..."
@@ -330,6 +424,7 @@ export default function PlayersPage() {
             ? "No players found in this tournament."
             : "Select a tournament to view players."
         }
+        onRowDoubleClick={canUpdate ? (row) => handleEdit(row.original) : undefined}
       />
 
       {/* Create Dialog */}
@@ -348,7 +443,7 @@ export default function PlayersPage() {
           <div>
             <Label htmlFor="team_id">Team *</Label>
             <Select
-              value={formData.team_id?.toString()}
+              value={formData.team_id ? formData.team_id.toString() : ""}
               onValueChange={(value) => setFormData({ ...formData, team_id: parseInt(value) })}
             >
               <SelectTrigger>
@@ -375,31 +470,38 @@ export default function PlayersPage() {
           </div>
 
           <div>
-            <Label htmlFor="user_id">User ID *</Label>
-            <Input
-              id="user_id"
-              type="number"
-              value={formData.user_id}
-              onChange={(e) =>
-                setFormData({ ...formData, user_id: parseInt(e.target.value) })
-              }
-              required
+            <Label htmlFor="user_id">User *</Label>
+            <UserSearchCombobox
+              value={formData.user_id || undefined}
+              selectedName={selectedUserName || undefined}
+              placeholder="Search user by name"
+              searchPlaceholder="Search user by name..."
+              onSelect={(user: MinimizedUser | undefined) => {
+                setSelectedUserName(user?.name ?? "");
+                setFormData((current) => ({
+                  ...current,
+                  user_id: user?.id ?? 0,
+                  name: current.name || user?.name || "",
+                }));
+              }}
             />
           </div>
 
           <div>
             <Label htmlFor="role">Role</Label>
             <Select
-              value={formData.role || "dps"}
+              value={normalizePlayerRole(formData.role)}
               onValueChange={(value) => setFormData({ ...formData, role: value })}
             >
               <SelectTrigger>
-                <SelectValue />
+                <RoleOptionContent role={normalizePlayerRole(formData.role)} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="tank">Tank</SelectItem>
-                <SelectItem value="dps">DPS</SelectItem>
-                <SelectItem value="support">Support</SelectItem>
+                {PLAYER_ROLE_OPTIONS.map((role) => (
+                  <SelectItem key={role} value={role}>
+                    <RoleOptionContent role={role} />
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -507,16 +609,18 @@ export default function PlayersPage() {
           <div>
             <Label htmlFor="edit-role">Role</Label>
             <Select
-              value={formData.role || "dps"}
+              value={normalizePlayerRole(formData.role)}
               onValueChange={(value) => setFormData({ ...formData, role: value })}
             >
               <SelectTrigger>
-                <SelectValue />
+                <RoleOptionContent role={normalizePlayerRole(formData.role)} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="tank">Tank</SelectItem>
-                <SelectItem value="dps">DPS</SelectItem>
-                <SelectItem value="support">Support</SelectItem>
+                {PLAYER_ROLE_OPTIONS.map((role) => (
+                  <SelectItem key={role} value={role}>
+                    <RoleOptionContent role={role} />
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

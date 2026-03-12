@@ -149,12 +149,12 @@ export default function MapsAdminPage() {
     {
       accessorKey: "id",
       header: "ID",
-      size: 80,
+      size: 44,
     },
     {
       id: "image",
-      header: "Image",
-      size: 140,
+      header: () => <div className="text-center">Image</div>,
+      size: 96,
       cell: ({ row }) => {
         const map = row.original;
         return (
@@ -167,10 +167,12 @@ export default function MapsAdminPage() {
     {
       accessorKey: "name",
       header: "Name",
+      size: 144,
     },
     {
       accessorKey: "gamemode",
       header: "Gamemode",
+      size: 112,
       cell: ({ row }) => {
         const map = row.original;
         return map.gamemode ? (
@@ -262,11 +264,23 @@ export default function MapsAdminPage() {
       />
 
       <AdminDataTable
-        queryKey={(page, search) => ["admin", "maps", page, search]}
-        queryFn={(page, search) => adminService.getMaps({ page, search })}
+        queryKey={(page, search, pageSize) => ["admin", "maps", page, search, pageSize]}
+        queryFn={(page, search, pageSize) =>
+          adminService.getMaps({ page, search, per_page: pageSize })
+        }
         columns={columns}
         searchPlaceholder="Search maps..."
         emptyMessage="No maps found."
+        onRowDoubleClick={
+          canUpdate
+            ? (row) => {
+                const map = row.original;
+                updateMutation.reset();
+                setEditingMap(map);
+                setFormData({ name: map.name, gamemode_id: map.gamemode_id });
+              }
+            : undefined
+        }
       />
 
       {/* Create/Edit Dialog */}
