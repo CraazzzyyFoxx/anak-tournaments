@@ -32,10 +32,10 @@ import { hasUnsavedChanges } from "@/lib/form-change";
 
 const ENCOUNTER_STATUS_OPTIONS = ["OPEN", "PENDING", "COMPLETED"] as const;
 
-function normalizeEncounterStatus(status?: string | null) {
+function normalizeEncounterStatus(status?: string | null): string {
   const normalizedStatus = status?.toUpperCase();
   return ENCOUNTER_STATUS_OPTIONS.includes(normalizedStatus as (typeof ENCOUNTER_STATUS_OPTIONS)[number])
-    ? normalizedStatus
+    ? normalizedStatus!
     : "OPEN";
 }
 
