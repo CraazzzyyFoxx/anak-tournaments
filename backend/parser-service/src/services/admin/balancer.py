@@ -699,9 +699,12 @@ async def resolve_import_context(
 
 def serialize_player_for_export(player: models.BalancerPlayer, export_uuid: str) -> dict[str, Any]:
     role_entries = normalize_role_entries(player.role_entries_json or [])
-    ordered_active_roles = [entry["role"] for entry in role_entries if entry.get("is_active", True)]
-    ordered_roles = ordered_active_roles + [role for role in EXPORT_ROLE_ORDER if role not in ordered_active_roles]
-    export_priorities = {role: index for index, role in enumerate(ordered_roles)}
+    if player.is_flex:
+        export_priorities = {role: 0 for role in EXPORT_ROLE_ORDER}
+    else:
+        ordered_active_roles = [entry["role"] for entry in role_entries if entry.get("is_active", True)]
+        ordered_roles = ordered_active_roles + [role for role in EXPORT_ROLE_ORDER if role not in ordered_active_roles]
+        export_priorities = {role: index for index, role in enumerate(ordered_roles)}
     classes: dict[str, dict[str, Any]] = {}
     for role in EXPORT_ROLE_ORDER:
         entry = next((candidate for candidate in role_entries if candidate["role"] == role), None)

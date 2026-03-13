@@ -165,6 +165,7 @@ function isFlexApplication(application: BalancerApplication | null | undefined, 
 
 function roleSequencesMatch(
   application: BalancerApplication | null | undefined,
+  isFlexPlayer: boolean,
   left: BalancerRoleCode[],
   right: BalancerRoleCode[],
 ): boolean {
@@ -172,8 +173,12 @@ function roleSequencesMatch(
     return false;
   }
 
-  if (isFlexApplication(application, right)) {
-    return left.length <= right.length && left.every((roleCode, index) => roleCode === right[index]);
+  if (isFlexPlayer || isFlexApplication(application, right)) {
+    if (left.length > right.length) {
+      return false;
+    }
+
+    return left.every((roleCode) => right.includes(roleCode));
   }
 
   if (left.length > right.length) {
@@ -200,7 +205,7 @@ export function getPlayerValidationIssues(
     const playerRoleCodes = getPlayerRoleCodes(player);
     const applicationRoleCodes = getApplicationRoleCodes(application);
 
-    if (!roleSequencesMatch(application, playerRoleCodes, applicationRoleCodes)) {
+    if (!roleSequencesMatch(application, player.is_flex, playerRoleCodes, applicationRoleCodes)) {
       issues.push({
         code: "application_role_mismatch",
         message: `Application: ${formatRoleCodes(applicationRoleCodes)}; balancer: ${formatRoleCodes(playerRoleCodes)}`,

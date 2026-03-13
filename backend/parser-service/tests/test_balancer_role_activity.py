@@ -176,6 +176,42 @@ class SerializePlayerForExportTests(TestCase):
         self.assertFalse(exported["stats"]["classes"]["support"]["isActive"])
         self.assertEqual(0, exported["stats"]["classes"]["support"]["rank"])
 
+    def test_flex_player_exports_unordered_priorities(self) -> None:
+        player = SimpleNamespace(
+            battle_tag="Flex#1234",
+            is_flex=True,
+            created_at=datetime(2026, 3, 14, tzinfo=timezone.utc),
+            role_entries_json=[
+                {
+                    "role": "support",
+                    "priority": 1,
+                    "division_number": 12,
+                    "rank_value": 900,
+                    "is_active": True,
+                },
+                {
+                    "role": "dps",
+                    "priority": 2,
+                    "division_number": 12,
+                    "rank_value": 900,
+                    "is_active": True,
+                },
+                {
+                    "role": "tank",
+                    "priority": 3,
+                    "division_number": None,
+                    "rank_value": None,
+                    "is_active": False,
+                },
+            ],
+        )
+
+        exported = serialize_player_for_export(player, "export-uuid")
+
+        self.assertEqual(0, exported["stats"]["classes"]["support"]["priority"])
+        self.assertEqual(0, exported["stats"]["classes"]["dps"]["priority"])
+        self.assertEqual(0, exported["stats"]["classes"]["tank"]["priority"])
+
 
 class ParseImportedPlayerNodesTests(IsolatedAsyncioTestCase):
     async def test_meta_role_entries_respect_is_active_flag(self) -> None:
