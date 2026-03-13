@@ -318,7 +318,8 @@ def filter_ranked_role_entries(
     role_entries: list[dict[str, Any]] | list[admin_schemas.BalancerPlayerRoleEntry] | None,
 ) -> list[dict[str, Any]]:
     normalized_entries = normalize_role_entries(role_entries)
-    return [entry for entry in normalized_entries if entry.get("rank_value") is not None]
+    ranked_entries = [entry for entry in normalized_entries if entry.get("rank_value") is not None]
+    return normalize_role_entries(ranked_entries)
 
 
 def merge_role_candidates_with_subtypes(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -371,7 +372,7 @@ def normalize_role_entries(
         else:
             prepared_entries.append(entry.model_dump())
 
-    prepared_entries.sort(key=lambda item: item.get("priority") or 999)
+    prepared_entries.sort(key=lambda item: item.get("priority") or 999, reverse=True)
 
     for entry in prepared_entries:
         role = entry.get("role")
@@ -419,13 +420,13 @@ def build_role_entries_from_application(application: models.BalancerApplication)
             {
                 "role": primary_role,
                 "subtype": infer_role_subtype(primary_role_raw, primary_role),
-                "priority": 1,
+                "priority": 0,
                 "division_number": None,
                 "rank_value": None,
             }
         )
 
-    additional_index = 2
+    additional_index = 1
     for raw_role in additional_roles_raw:
         mapped_role = map_role(raw_role, DEFAULT_ROLE_MAPPING)
         if mapped_role not in additional_roles:
