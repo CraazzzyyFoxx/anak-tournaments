@@ -49,7 +49,13 @@ export const useAuthProfileStore = create<AuthProfileState>((set, get) => ({
       return;
     }
 
-    set({ status: "loading", error: undefined });
+    const isInitialLoad = status === "idle";
+
+    if (isInitialLoad) {
+      set({ status: "loading", error: undefined });
+    } else {
+      set({ error: undefined });
+    }
 
     try {
       const res = await fetchWithAuth("/api/auth/me", { method: "GET" });

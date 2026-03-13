@@ -169,6 +169,12 @@ export default function BalancerMainPage() {
 
   const balanceEditorRef = useRef<HTMLDivElement>(null);
 
+  const clearJobState = () => {
+    setJobStatus(null);
+    setJobMessage(null);
+    setJobProgress(null);
+  };
+
   const handleScreenshot = async () => {
     if (!balanceEditorRef.current) return;
     try {
@@ -192,26 +198,27 @@ export default function BalancerMainPage() {
     queryKey: ["balancer-public", "applications", tournamentId],
     queryFn: () => balancerAdminService.listApplications(tournamentId as number, true),
     enabled: tournamentId !== null,
+    refetchOnWindowFocus: false,
   });
 
   const playersQuery = useQuery({
     queryKey: ["balancer-public", "players", tournamentId],
     queryFn: () => balancerAdminService.listPlayers(tournamentId as number),
     enabled: tournamentId !== null,
+    refetchOnWindowFocus: false,
   });
 
   const savedBalanceQuery = useQuery({
     queryKey: ["balancer-public", "balance", tournamentId],
     queryFn: () => balancerAdminService.getBalance(tournamentId as number),
     enabled: tournamentId !== null,
+    refetchOnWindowFocus: false,
   });
 
   useEffect(() => {
     setVariants([]);
     setActiveVariantId(null);
-    setJobStatus(null);
-    setJobMessage(null);
-    setJobProgress(null);
+    clearJobState();
     setEditingPlayerId(null);
     setPendingRankHistory(null);
     setSidebarSearchQuery("");
@@ -426,6 +433,7 @@ export default function BalancerMainPage() {
               setActiveVariantId(latest.id);
               return next;
             });
+            clearJobState();
             toast({ title: "Balance completed" });
           }
 
