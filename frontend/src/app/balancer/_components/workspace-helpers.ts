@@ -173,19 +173,20 @@ function roleSequencesMatch(
     return false;
   }
 
-  if (isFlexPlayer || isFlexApplication(application, right)) {
-    if (left.length > right.length) {
-      return false;
-    }
+  const primaryApplicationRole = normalizeApplicationRole(application?.primary_role);
+  if (primaryApplicationRole) {
+    return left.includes(primaryApplicationRole);
+  }
 
+  if (right.length === 0) {
+    return true;
+  }
+
+  if (isFlexPlayer || isFlexApplication(application, right)) {
     return left.every((roleCode) => right.includes(roleCode));
   }
 
-  if (left.length > right.length) {
-    return false;
-  }
-
-  return left.every((roleCode, index) => roleCode === right[index]);
+  return left.every((roleCode) => right.includes(roleCode));
 }
 
 export function getPlayerValidationIssues(
