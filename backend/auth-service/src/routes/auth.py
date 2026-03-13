@@ -136,6 +136,16 @@ async def logout(
     """Logout and revoke refresh token"""
     logger.bind(user_id=str(current_user.id)).info("Logout")
 
+    refresh_token = await auth_service.AuthService.get_refresh_token_record(session, token_data.refresh_token)
+    if refresh_token is not None and refresh_token.user_id != current_user.id:
+        logger.bind(user_id=str(current_user.id), refresh_token_user_id=refresh_token.user_id).warning(
+            "Logout attempt with refresh token from another user"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Refresh token does not belong to the current user",
+        )
+
     await auth_service.AuthService.revoke_refresh_token(session, token_data.refresh_token)
     logger.bind(user_id=str(current_user.id)).success("User logged out")
 
@@ -222,9 +232,7 @@ async def validate_token(
         roles = cached["roles"]
         permissions = cached["permissions"]
     else:
-        roles, permissions = await auth_service.AuthService.get_user_roles_and_permissions_db(
-            session, current_user.id
-        )
+        roles, permissions = await auth_service.AuthService.get_user_roles_and_permissions_db(session, current_user.id)
         await set_rbac(current_user.id, roles, permissions)
 
     return schemas.TokenPayload(

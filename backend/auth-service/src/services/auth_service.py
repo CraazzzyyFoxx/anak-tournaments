@@ -293,6 +293,13 @@ class AuthService:
         return refresh_token
 
     @staticmethod
+    async def get_refresh_token_record(session: AsyncSession, token: str) -> models.RefreshToken | None:
+        """Get a refresh-token record by raw token value."""
+        token_hash = AuthService.hash_refresh_token(token)
+        result = await session.execute(select(models.RefreshToken).where(models.RefreshToken.token == token_hash))
+        return result.scalar_one_or_none()
+
+    @staticmethod
     async def get_user_by_refresh_token(session: AsyncSession, token: str) -> models.AuthUser | None:
         """Get user by refresh token"""
         token_hash = AuthService.hash_refresh_token(token)
@@ -316,9 +323,17 @@ class AuthService:
         reused_token = result.scalar_one_or_none()
         if reused_token:
             logger.bind(user_id=str(reused_token.user_id)).error(
-                "Refresh token reuse detected — possible token theft; revoking all active sessions"
+                "Refresh token reuse detected; revoking only the matching browser session"
             )
-            await AuthService.revoke_all_user_tokens(session, reused_token.user_id)
+            if reused_token.user_agent or reused_token.ip_address:
+                await AuthService.revoke_user_session_tokens(
+                    session,
+                    reused_token.user_id,
+                    reused_token.user_agent,
+                    reused_token.ip_address,
+                )
+            else:
+                await AuthService.revoke_all_user_tokens(session, reused_token.user_id)
 
         return None
 
@@ -340,6 +355,45 @@ class AuthService:
         if commit:
             await session.commit()
         return True
+
+    @staticmethod
+    async def revoke_user_session_tokens(
+        session: AsyncSession,
+        user_id: int,
+        user_agent: str | None,
+        ip_address: str | None,
+        commit: bool = True,
+    ) -> int:
+        """Revoke active tokens for the same browser session.
+
+        We scope by browser user-agent first so different browsers on the same
+        device keep working independently. IP is only used as a fallback when
+        user-agent data is unavailable.
+        """
+        if not user_agent and not ip_address:
+            return await AuthService.revoke_all_user_tokens(session, user_id, commit=commit)
+
+        result = await session.execute(
+            select(models.RefreshToken)
+            .where(models.RefreshToken.user_id == user_id)
+            .where(models.RefreshToken.is_revoked.is_(False))
+        )
+        tokens = result.scalars().all()
+
+        count = 0
+        for token in tokens:
+            if token.is_revoked:
+                continue
+            same_browser = user_agent is not None and token.user_agent == user_agent
+            same_network = user_agent is None and ip_address is not None and token.ip_address == ip_address
+            if not same_browser and not same_network:
+                continue
+            token.is_revoked = True
+            count += 1
+
+        if commit:
+            await session.commit()
+        return count
 
     @staticmethod
     async def revoke_all_user_tokens(
