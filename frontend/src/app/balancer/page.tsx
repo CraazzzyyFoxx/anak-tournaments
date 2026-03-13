@@ -12,6 +12,7 @@ import {
   Search,
   Sparkles,
   Upload,
+  UserX,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -39,7 +40,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useToast } from "@/hooks/use-toast";
@@ -159,6 +162,7 @@ export default function BalancerMainPage() {
   const [poolView, setPoolView] = useState<PoolView>("all");
   const [poolSort, setPoolSort] = useState<PoolSortValue>("added_desc");
   const [showSidebarFilters, setShowSidebarFilters] = useState(false);
+  const [excludeInvalidPlayers, setExcludeInvalidPlayers] = useState(false);
 
   const balancerConfigQuery = useQuery({
     queryKey: ["balancer-public", "config"],
@@ -197,6 +201,7 @@ export default function BalancerMainPage() {
     setPoolView("all");
     setPoolSort("added_desc");
     setShowSidebarFilters(false);
+    setExcludeInvalidPlayers(false);
   }, [tournamentId]);
 
   useEffect(() => {
@@ -359,16 +364,22 @@ export default function BalancerMainPage() {
       if (!tournamentId) {
         throw new Error("Select a tournament first");
       }
-      if (invalidPlayerStates.length > 0) {
+      if (!excludeInvalidPlayers && invalidPlayerStates.length > 0) {
         throw new Error("Resolve all pool player validation issues before balancing");
       }
 
-      const input = buildBalancerInput(readyPlayers);
+      const playersForBalance = excludeInvalidPlayers ? readyPlayers : poolPlayers;
+      if (playersForBalance.length === 0) {
+        throw new Error("No players available to balance");
+      }
+
+      const input = buildBalancerInput(playersForBalance);
       const file = new File([JSON.stringify(input)], `balancer-${tournamentId}.json`, { type: "application/json" });
       const config = balancerConfigQuery.data?.presets[selectedPreset] ?? balancerConfigQuery.data?.defaults;
-      return balancerService.createBalanceJob(file, config as BalancerConfig | undefined);
+      const skipped = excludeInvalidPlayers ? invalidPlayerStates.length : 0;
+      return { job: await balancerService.createBalanceJob(file, config as BalancerConfig | undefined), skipped };
     },
-    onSuccess: (job) => {
+    onSuccess: ({ job, skipped }) => {
       setJobStatus(job.status);
       setJobMessage("Balance job created");
       setJobProgress(0);
@@ -391,6 +402,7 @@ export default function BalancerMainPage() {
                 label: createVariantLabel(next.filter((variant) => variant.source === "generated").length + 1),
                 payload,
                 source: "generated",
+                skippedCount: skipped > 0 ? skipped : undefined,
               });
               const latest = next[next.length - 1];
               setActiveVariantId(latest.id);
@@ -454,7 +466,20 @@ export default function BalancerMainPage() {
     },
   });
 
-  const emptyWorkspaceState = invalidPlayerStates.length > 0
+  const emptyWorkspaceState = excludeInvalidPlayers && readyPlayers.length === 0 && invalidPlayerStates.length > 0
+    ? {
+        icon: UserX,
+        title: "All pool players have issues — nothing to balance",
+        description: "Every player in the pool has unresolved issues. Fix at least one player before running the balancer.",
+        actionLabel: "Review conflicts",
+        actionVariant: "outline" as const,
+        action: () => {
+          setPoolView("needs_fix");
+          setSidebarSearchMode("default");
+        },
+        actionDisabled: false,
+      }
+    : invalidPlayerStates.length > 0 && !excludeInvalidPlayers
     ? {
         icon: AlertTriangle,
         title: `${invalidPlayerStates.length} player${invalidPlayerStates.length !== 1 ? "s" : ""} need review before balancing`,
@@ -698,9 +723,28 @@ export default function BalancerMainPage() {
                   ))}
                 </SelectContent>
               </Select>
+              {invalidPlayerStates.length > 0 && (
+                <div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5">
+                  <Switch
+                    id="exclude-invalid"
+                    checked={excludeInvalidPlayers}
+                    onCheckedChange={setExcludeInvalidPlayers}
+                    className="data-[state=checked]:bg-amber-500"
+                  />
+                  <Label htmlFor="exclude-invalid" className="flex cursor-pointer items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+                    <UserX className="h-3.5 w-3.5" />
+                    Skip {invalidPlayerStates.length} problem player{invalidPlayerStates.length !== 1 ? "s" : ""}
+                  </Label>
+                </div>
+              )}
               <Button
                 onClick={() => runBalanceMutation.mutate()}
-                disabled={runBalanceMutation.isPending || poolPlayers.length === 0 || invalidPlayerStates.length > 0}
+                disabled={
+                  runBalanceMutation.isPending ||
+                  poolPlayers.length === 0 ||
+                  (!excludeInvalidPlayers && invalidPlayerStates.length > 0) ||
+                  (excludeInvalidPlayers && readyPlayers.length === 0)
+                }
                 className="shadow-lg shadow-primary/20"
               >
                 {runBalanceMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
@@ -735,15 +779,23 @@ export default function BalancerMainPage() {
             {/* Row 2: Variant Tabs + Action Buttons */}
             <div className="flex flex-wrap items-center justify-between gap-3">
               {hasVariants ? (
-                <Tabs value={activeVariantId ?? undefined} onValueChange={setActiveVariantId}>
-                  <TabsList>
-                    {variants.map((variant) => (
-                      <TabsTrigger key={variant.id} value={variant.id}>
-                        {variant.label}
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-                </Tabs>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Tabs value={activeVariantId ?? undefined} onValueChange={setActiveVariantId}>
+                    <TabsList>
+                      {variants.map((variant) => (
+                        <TabsTrigger key={variant.id} value={variant.id}>
+                          {variant.label}
+                        </TabsTrigger>
+                      ))}
+                    </TabsList>
+                  </Tabs>
+                  {activeVariant?.skippedCount != null && activeVariant.skippedCount > 0 && (
+                    <Badge variant="outline" className="gap-1 border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400">
+                      <UserX className="h-3 w-3" />
+                      {activeVariant.skippedCount} skipped
+                    </Badge>
+                  )}
+                </div>
               ) : null}
 
               {hasVariants ? (

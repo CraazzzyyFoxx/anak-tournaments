@@ -17,6 +17,8 @@ export type BalanceVariant = {
   label: string;
   payload: InternalBalancePayload;
   source: "saved" | "generated";
+  /** Number of pool players excluded from this run due to validation issues */
+  skippedCount?: number;
 };
 
 export type PlayerValidationIssue =
