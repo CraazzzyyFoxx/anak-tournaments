@@ -70,7 +70,7 @@ type PlayerValidationState = {
   issues: PlayerValidationIssue[];
 };
 
-type PoolView = "all" | "needs_fix" | "ready";
+type PoolView = "all" | "needs_fix" | "ready" | "excluded";
 type PoolSortValue = "added_desc" | "name_asc" | "division_asc" | "division_desc";
 
 type StatsFilterCardProps = {
@@ -243,9 +243,18 @@ export default function BalancerMainPage() {
   const applications = applicationsQuery.data ?? [];
   const players = playersQuery.data ?? [];
   const poolPlayers = useMemo(() => players.filter((player) => player.is_in_pool), [players]);
+  const excludedPlayers = useMemo(() => players.filter((player) => !player.is_in_pool), [players]);
   const applicationsById = useMemo(
     () => new Map(applications.map((application) => [application.id, application])),
     [applications],
+  );
+  const allPlayerValidationStates = useMemo<PlayerValidationState[]>(
+    () =>
+      players.map((player) => ({
+        player,
+        issues: getPlayerValidationIssues(player, applicationsById.get(player.application_id) ?? null),
+      })),
+    [applicationsById, players],
   );
   const playerValidationStates = useMemo<PlayerValidationState[]>(
     () =>
@@ -273,7 +282,15 @@ export default function BalancerMainPage() {
   );
   const normalizedSidebarSearchQuery = sidebarSearchQuery.trim().toLowerCase();
   const filteredPoolPlayerStates = useMemo(() => {
-    const nextStates = playerValidationStates.filter((state) => {
+    const nextStates = allPlayerValidationStates.filter((state) => {
+      if (poolView === "excluded") {
+        if (state.player.is_in_pool) {
+          return false;
+        }
+      } else if (!state.player.is_in_pool) {
+        return false;
+      }
+
       if (poolView === "ready" && state.issues.length > 0) {
         return false;
       }
@@ -292,7 +309,8 @@ export default function BalancerMainPage() {
     });
 
     return sortPlayerStates(nextStates, poolSort);
-  }, [applicationsById, normalizedSidebarSearchQuery, playerValidationStates, poolSort, poolView]);
+  }, [allPlayerValidationStates, applicationsById, normalizedSidebarSearchQuery, poolSort, poolView]);
+  const sidebarPlayerCount = poolView === "excluded" ? excludedPlayers.length : poolPlayers.length;
   const activeSidebarSummary =
     sidebarSearchMode === "applications" && normalizedSidebarSearchQuery.length === 0 ? "applications" : poolView;
   const filteredPoolEmptyState = useMemo(() => {
@@ -314,6 +332,13 @@ export default function BalancerMainPage() {
       return {
         title: "No ready players yet",
         description: "Fix player conflicts or add ranked roles to start balancing.",
+      };
+    }
+
+    if (poolView === "excluded") {
+      return {
+        title: "No excluded players",
+        description: "Every player is currently included in the balancing pool.",
       };
     }
 
@@ -564,12 +589,13 @@ export default function BalancerMainPage() {
             <CardTitle>Player Pool</CardTitle>
             <CardDescription>
               {poolPlayers.length} player{poolPlayers.length !== 1 ? "s" : ""} in pool
+              {excludedPlayers.length > 0 ? ` · ${excludedPlayers.length} excluded` : ""}
               {invalidPlayerStates.length > 0 ? ` · ${invalidPlayerStates.length} need fixes` : " · all clear"}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex min-h-0 flex-1 flex-col space-y-3 overflow-hidden">
             <PoolSearchCombobox
-              playerStates={playerValidationStates}
+              playerStates={allPlayerValidationStates}
               applications={applications}
               value={sidebarSearchQuery}
               onValueChange={(nextValue) => {
@@ -609,6 +635,10 @@ export default function BalancerMainPage() {
                 <span>All</span>
                 <span className="text-muted-foreground">{poolPlayers.length}</span>
               </ToggleGroupItem>
+              <ToggleGroupItem value="excluded" className="flex-1 justify-between rounded-lg px-3 text-xs">
+                <span>Excluded</span>
+                <span className="text-muted-foreground">{excludedPlayers.length}</span>
+              </ToggleGroupItem>
               <ToggleGroupItem value="needs_fix" className="flex-1 justify-between rounded-lg px-3 text-xs">
                 <span>Need Fix</span>
                 <span className="text-muted-foreground">{invalidPlayerStates.length}</span>
@@ -621,10 +651,16 @@ export default function BalancerMainPage() {
 
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span>
-                Showing {filteredPoolPlayerStates.length} of {poolPlayers.length}
+                Showing {filteredPoolPlayerStates.length} of {sidebarPlayerCount}
               </span>
               <span className="uppercase tracking-[0.14em]">
-                {poolView === "all" ? "All" : poolView === "needs_fix" ? "Need Fix" : "Ready"}
+                {poolView === "all"
+                  ? "All"
+                  : poolView === "needs_fix"
+                    ? "Need Fix"
+                    : poolView === "excluded"
+                      ? "Excluded"
+                      : "Ready"}
               </span>
             </div>
 
@@ -661,7 +697,7 @@ export default function BalancerMainPage() {
       {/* ── Right Workspace ── */}
       <div className="flex min-h-0 flex-col gap-4">
         {/* Stats Summary Strip */}
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
           <StatsFilterCard
             label="Applications"
             value={applications.length}
@@ -684,6 +720,18 @@ export default function BalancerMainPage() {
             active={activeSidebarSummary === "all"}
             onClick={() => {
               setPoolView("all");
+              setSidebarSearchMode("default");
+            }}
+          />
+          <StatsFilterCard
+            label="Excluded"
+            value={excludedPlayers.length}
+            helperText={excludedPlayers.length > 0 ? "Hidden from balancing runs" : "No excluded players"}
+            icon={UserX}
+            iconClassName="bg-slate-500/10 text-slate-600"
+            active={activeSidebarSummary === "excluded"}
+            onClick={() => {
+              setPoolView("excluded");
               setSidebarSearchMode("default");
             }}
           />

@@ -123,6 +123,11 @@ export function PoolPlayerCompactList({
                 <div className="min-w-0 flex-1 space-y-2.5">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="truncate text-sm font-semibold text-foreground">{player.battle_tag}</span>
+                    {!player.is_in_pool ? (
+                      <Badge variant="outline" className="h-5 rounded-full px-2 text-[10px] uppercase tracking-[0.12em]">
+                        Excluded
+                      </Badge>
+                    ) : null}
                     {player.is_flex ? (
                       <Badge variant="secondary" className="h-5 rounded-full px-2 text-[10px] uppercase tracking-[0.12em]">
                         Flex
