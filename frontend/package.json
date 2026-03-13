@@ -46,6 +46,7 @@
     "cmdk": "^1.1.1",
     "dayjs": "^1.11.13",
     "duration": "^0.2.2",
+    "html-to-image": "^1.11.13",
     "js-cookie": "^3.0.5",
     "json-bigint": "^1.0.0",
     "lucide-react": "^0.428.0",

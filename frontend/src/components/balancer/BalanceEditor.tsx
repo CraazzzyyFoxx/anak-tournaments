@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { forwardRef, useMemo, useState } from "react";
 import {
   DndContext,
   DragEndEvent,
@@ -171,7 +171,7 @@ type BalanceEditorProps = {
   onChange: (payload: InternalBalancePayload) => void;
 };
 
-export function BalanceEditor({ value, onChange }: BalanceEditorProps) {
+export const BalanceEditor = forwardRef<HTMLDivElement, BalanceEditorProps>(function BalanceEditor({ value, onChange }, ref) {
   const [activePlayer, setActivePlayer] = useState<InternalBalancePlayer | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -265,7 +265,7 @@ export function BalanceEditor({ value, onChange }: BalanceEditorProps) {
       onDragStart={(event) => handleDragStart(String(event.active.id))}
       onDragEnd={handleDragEnd}
     >
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div ref={ref} className="grid gap-4 xl:grid-cols-2">
         {teamCards.map((team, teamIndex) => {
           const deviation = getTeamDeviation(team);
           const deviationLabel = deviation < 20 ? "Balanced" : deviation < 50 ? "Slight gap" : "Large gap";
@@ -298,4 +298,4 @@ export function BalanceEditor({ value, onChange }: BalanceEditorProps) {
       <DragOverlay>{activePlayer ? <PlayerCard player={activePlayer} /> : null}</DragOverlay>
     </DndContext>
   );
-}
+});

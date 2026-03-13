@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { toPng } from "html-to-image";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  Camera,
   Check,
   CheckCircle2,
   Copy,
@@ -44,6 +46,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -163,6 +166,21 @@ export default function BalancerMainPage() {
   const [poolSort, setPoolSort] = useState<PoolSortValue>("added_desc");
   const [showSidebarFilters, setShowSidebarFilters] = useState(false);
   const [excludeInvalidPlayers, setExcludeInvalidPlayers] = useState(false);
+
+  const balanceEditorRef = useRef<HTMLDivElement>(null);
+
+  const handleScreenshot = async () => {
+    if (!balanceEditorRef.current) return;
+    try {
+      const dataUrl = await toPng(balanceEditorRef.current, { cacheBust: true });
+      const link = document.createElement("a");
+      link.download = `balance-${tournamentId ?? "export"}.png`;
+      link.href = dataUrl;
+      link.click();
+    } catch {
+      toast({ title: "Screenshot failed", variant: "destructive" });
+    }
+  };
 
   const balancerConfigQuery = useQuery({
     queryKey: ["balancer-public", "config"],
@@ -799,49 +817,93 @@ export default function BalancerMainPage() {
               ) : null}
 
               {hasVariants ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button onClick={() => saveBalanceMutation.mutate()} disabled={!activeVariant || saveBalanceMutation.isPending}>
-                    {saveBalanceMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
-                    Save final
-                  </Button>
-                  <Separator orientation="vertical" className="h-6" />
-                  <Button variant="secondary" size="sm" onClick={() => activeVariant && downloadPayload(activeVariant.payload, tournamentId)} disabled={!activeVariant}>
-                    <Download className="mr-2 h-4 w-4" />
-                    Download
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={async () => {
-                      await navigator.clipboard.writeText(buildTeamNamesText(activeVariant?.payload ?? null));
-                      toast({ title: "Team names copied" });
-                    }}
-                    disabled={!activeVariant}
-                  >
-                    <Copy className="mr-2 h-4 w-4" />
-                    Copy names
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => exportBalanceMutation.mutate()} disabled={!savedBalanceQuery.data || exportBalanceMutation.isPending}>
-                    {exportBalanceMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
-                    Export
-                  </Button>
-                </div>
+                <TooltipProvider delayDuration={300}>
+                  <div className="flex items-center gap-1.5">
+                    <Button onClick={() => saveBalanceMutation.mutate()} disabled={!activeVariant || saveBalanceMutation.isPending} size="sm">
+                      {saveBalanceMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
+                      Save final
+                    </Button>
+                    <Separator orientation="vertical" className="mx-0.5 h-6" />
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => activeVariant && downloadPayload(activeVariant.payload, tournamentId)}
+                          disabled={!activeVariant}
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Download JSON</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={async () => {
+                            await navigator.clipboard.writeText(buildTeamNamesText(activeVariant?.payload ?? null));
+                            toast({ title: "Team names copied" });
+                          }}
+                          disabled={!activeVariant}
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Copy team names</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => exportBalanceMutation.mutate()}
+                          disabled={!savedBalanceQuery.data || exportBalanceMutation.isPending}
+                        >
+                          {exportBalanceMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Export to spreadsheet</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => handleScreenshot()}
+                          disabled={!activeVariant}
+                        >
+                          <Camera className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Save as image</TooltipContent>
+                    </Tooltip>
+                  </div>
+                </TooltipProvider>
               ) : null}
             </div>
 
             {/* Balance Editor or Empty State */}
             {hasVariants ? (
-              <BalanceEditor
-                value={activeVariant?.payload ?? null}
-                onChange={(payload) => {
-                  if (!activeVariantId) {
-                    return;
-                  }
-                  setVariants((current) =>
-                    current.map((variant) => (variant.id === activeVariantId ? { ...variant, payload } : variant)),
-                  );
-                }}
-              />
+              <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                <BalanceEditor
+                  ref={balanceEditorRef}
+                  value={activeVariant?.payload ?? null}
+                  onChange={(payload) => {
+                    if (!activeVariantId) {
+                      return;
+                    }
+                    setVariants((current) =>
+                      current.map((variant) => (variant.id === activeVariantId ? { ...variant, payload } : variant)),
+                    );
+                  }}
+                />
+              </div>
             ) : (
               <div className="flex flex-1 flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-border/70 bg-muted/10 px-6 text-center">
                 <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
