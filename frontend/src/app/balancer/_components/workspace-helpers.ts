@@ -10,6 +10,8 @@ import { BalanceResponse } from "@/types/balancer.types";
 import { UserRoleType } from "@/types/user.types";
 import userService from "@/services/user.service";
 
+const ROLE_ORDER: BalancerRoleCode[] = ["tank", "dps", "support"];
+
 export type BalanceVariant = {
   id: string;
   label: string;
