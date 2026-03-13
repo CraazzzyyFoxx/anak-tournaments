@@ -15,8 +15,10 @@ import {
   convertBalanceResponseToInternalPayload,
   downloadPayload,
   fetchPlayerRankHistory,
+  getPlayerValidationIssues,
   playerHasRankedRole,
   type BalanceVariant,
+  type PlayerValidationIssue,
 } from "@/app/balancer/_components/workspace-helpers";
 import { BalanceEditor } from "@/components/balancer/BalanceEditor";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -40,6 +42,11 @@ const PRESET_LABELS: Record<string, string> = {
   QUICK: "Quick",
   PREFERENCE_FOCUSED: "Preference Focused",
   HIGH_QUALITY: "High Quality",
+};
+
+type PlayerValidationState = {
+  player: BalancerPlayerRecord;
+  issues: PlayerValidationIssue[];
 };
 
 function createVariantLabel(index: number): string {
@@ -113,8 +120,30 @@ export default function BalancerMainPage() {
   const applications = applicationsQuery.data ?? [];
   const players = playersQuery.data ?? [];
   const poolPlayers = useMemo(() => players.filter((player) => player.is_in_pool), [players]);
-  const readyPlayers = useMemo(() => poolPlayers.filter(playerHasRankedRole), [poolPlayers]);
-  const invalidPlayers = useMemo(() => poolPlayers.filter((player) => !playerHasRankedRole(player)), [poolPlayers]);
+  const applicationsById = useMemo(
+    () => new Map(applications.map((application) => [application.id, application])),
+    [applications],
+  );
+  const playerValidationStates = useMemo<PlayerValidationState[]>(
+    () =>
+      poolPlayers.map((player) => ({
+        player,
+        issues: getPlayerValidationIssues(player, applicationsById.get(player.application_id) ?? null),
+      })),
+    [applicationsById, poolPlayers],
+  );
+  const readyPlayers = useMemo(
+    () => playerValidationStates.filter((state) => state.issues.length === 0).map((state) => state.player),
+    [playerValidationStates],
+  );
+  const invalidPlayerStates = useMemo(
+    () => playerValidationStates.filter((state) => state.issues.length > 0),
+    [playerValidationStates],
+  );
+  const missingRankPlayerStates = useMemo(
+    () => invalidPlayerStates.filter((state) => state.issues.some((issue) => issue.code === "missing_ranked_role")),
+    [invalidPlayerStates],
+  );
   const quickEditPlayer = players.find((player) => player.id === editingPlayerId) ?? null;
   const activeVariant = useMemo(
     () => variants.find((variant) => variant.id === activeVariantId) ?? null,
@@ -183,8 +212,8 @@ export default function BalancerMainPage() {
       if (!tournamentId) {
         throw new Error("Select a tournament first");
       }
-      if (invalidPlayers.length > 0) {
-        throw new Error("Every pool player must have at least one ranked role before balancing");
+      if (invalidPlayerStates.length > 0) {
+        throw new Error("Resolve all pool player validation issues before balancing");
       }
 
       const input = buildBalancerInput(readyPlayers);
@@ -296,10 +325,10 @@ export default function BalancerMainPage() {
         <Card className="flex min-h-0 flex-1 flex-col rounded-2xl border-border/70 bg-card/80 shadow-sm">
           <CardHeader>
             <CardTitle>Player Pool</CardTitle>
-            <CardDescription>
-              {poolPlayers.length} player{poolPlayers.length !== 1 ? "s" : ""} in pool
-              {invalidPlayers.length > 0 && ` · ${invalidPlayers.length} need ranks`}
-            </CardDescription>
+              <CardDescription>
+                {poolPlayers.length} player{poolPlayers.length !== 1 ? "s" : ""} in pool
+              {invalidPlayerStates.length > 0 && ` · ${invalidPlayerStates.length} need fixes`}
+              </CardDescription>
           </CardHeader>
           <CardContent className="flex min-h-0 flex-1 flex-col space-y-3 overflow-hidden">
             <PoolSearchCombobox
@@ -311,6 +340,7 @@ export default function BalancerMainPage() {
             />
             <PoolPlayerCompactList
               players={players}
+              applications={applications}
               editingPlayerId={editingPlayerId}
               onSelectPlayer={setEditingPlayerId}
               maxHeightClassName="flex-1"
@@ -377,14 +407,14 @@ export default function BalancerMainPage() {
               </div>
             </CardContent>
           </Card>
-          <Card className={`rounded-2xl border-border/70 shadow-sm ${invalidPlayers.length > 0 ? "border-destructive/40 bg-destructive/5" : "bg-card/80"}`}>
+          <Card className={`rounded-2xl border-border/70 shadow-sm ${invalidPlayerStates.length > 0 ? "border-destructive/40 bg-destructive/5" : "bg-card/80"}`}>
             <CardContent className="flex items-center gap-3 p-4">
-              <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${invalidPlayers.length > 0 ? "bg-destructive/10" : "bg-muted/50"}`}>
-                <AlertTriangle className={`h-4 w-4 ${invalidPlayers.length > 0 ? "text-destructive" : "text-muted-foreground"}`} />
+              <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${invalidPlayerStates.length > 0 ? "bg-destructive/10" : "bg-muted/50"}`}>
+                <AlertTriangle className={`h-4 w-4 ${invalidPlayerStates.length > 0 ? "text-destructive" : "text-muted-foreground"}`} />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Invalid</p>
-                <p className="text-lg font-semibold leading-none">{invalidPlayers.length}</p>
+                <p className="text-lg font-semibold leading-none">{invalidPlayerStates.length}</p>
               </div>
             </CardContent>
           </Card>
@@ -440,21 +470,23 @@ export default function BalancerMainPage() {
 
           <CardContent className="flex min-h-0 flex-1 flex-col space-y-4 overflow-hidden">
             {/* Invalid Players Alert with clickable names */}
-            {invalidPlayers.length > 0 ? (
+            {missingRankPlayerStates.length > 0 ? (
               <Alert variant="destructive">
-                <AlertTitle>Pool is incomplete</AlertTitle>
-                <AlertDescription className="flex flex-wrap items-center gap-1.5">
-                  <span>Players without any ranked role:</span>
-                  {invalidPlayers.map((player) => (
-                    <button
-                      key={player.id}
-                      type="button"
-                      onClick={() => setEditingPlayerId(player.id)}
-                      className="inline-flex items-center rounded-md bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive underline-offset-2 transition-colors hover:bg-destructive/20 hover:underline"
-                    >
-                      {player.battle_tag}
-                    </button>
-                  ))}
+                <AlertTitle>Pool requires fixes</AlertTitle>
+                <AlertDescription>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span>Players without any ranked role:</span>
+                    {missingRankPlayerStates.map(({ player }) => (
+                      <button
+                        key={`missing-rank-${player.id}`}
+                        type="button"
+                        onClick={() => setEditingPlayerId(player.id)}
+                        className="inline-flex items-center rounded-md bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive underline-offset-2 transition-colors hover:bg-destructive/20 hover:underline"
+                      >
+                        {player.battle_tag}
+                      </button>
+                    ))}
+                  </div>
                 </AlertDescription>
               </Alert>
             ) : null}

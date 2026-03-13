@@ -1,4 +1,5 @@
 import {
+  BalancerApplication,
   BalancerPlayerRecord,
   BalancerPlayerRoleEntry,
   BalancerRoleCode,
@@ -16,12 +17,109 @@ export type BalanceVariant = {
   source: "saved" | "generated";
 };
 
+export type PlayerValidationIssue = {
+  code: "missing_ranked_role" | "application_role_mismatch";
+  message: string;
+};
+
+const ROLE_LABELS: Record<BalancerRoleCode, string> = {
+  tank: "Tank",
+  dps: "Damage",
+  support: "Support",
+};
+
+const ROLE_ORDER: BalancerRoleCode[] = ["tank", "dps", "support"];
+
 export function sortRoleEntries(entries: BalancerPlayerRoleEntry[]): BalancerPlayerRoleEntry[] {
   return [...entries].sort((a, b) => a.priority - b.priority);
 }
 
 export function playerHasRankedRole(player: BalancerPlayerRecord): boolean {
   return player.role_entries_json.some((entry) => entry.rank_value !== null);
+}
+
+function normalizeApplicationRole(role: string | null | undefined): BalancerRoleCode | null {
+  const normalized = role?.trim().toLowerCase();
+
+  if (!normalized) {
+    return null;
+  }
+
+  if (normalized === "tank") {
+    return "tank";
+  }
+
+  if (normalized === "dps" || normalized === "damage") {
+    return "dps";
+  }
+
+  if (normalized === "support") {
+    return "support";
+  }
+
+  return null;
+}
+
+function sortRoleCodes(roleCodes: Iterable<BalancerRoleCode>): BalancerRoleCode[] {
+  return [...new Set(roleCodes)].sort((left, right) => ROLE_ORDER.indexOf(left) - ROLE_ORDER.indexOf(right));
+}
+
+function formatRoleCodes(roleCodes: Iterable<BalancerRoleCode>): string {
+  const sortedRoleCodes = sortRoleCodes(roleCodes);
+
+  if (sortedRoleCodes.length === 0) {
+    return "None";
+  }
+
+  return sortedRoleCodes.map((roleCode) => ROLE_LABELS[roleCode]).join(" / ");
+}
+
+function getPlayerRoleCodes(player: BalancerPlayerRecord): BalancerRoleCode[] {
+  return sortRoleCodes(player.role_entries_json.map((entry) => entry.role));
+}
+
+function getApplicationRoleCodes(application: BalancerApplication | null | undefined): BalancerRoleCode[] {
+  if (!application) {
+    return [];
+  }
+
+  return sortRoleCodes(
+    [application.primary_role, ...application.additional_roles_json]
+      .map((role) => normalizeApplicationRole(role))
+      .filter((role): role is BalancerRoleCode => role !== null),
+  );
+}
+
+function roleSetsMatch(left: BalancerRoleCode[], right: BalancerRoleCode[]): boolean {
+  return left.length === right.length && left.every((roleCode, index) => roleCode === right[index]);
+}
+
+export function getPlayerValidationIssues(
+  player: BalancerPlayerRecord,
+  application: BalancerApplication | null | undefined,
+): PlayerValidationIssue[] {
+  const issues: PlayerValidationIssue[] = [];
+
+  if (!playerHasRankedRole(player)) {
+    issues.push({
+      code: "missing_ranked_role",
+      message: "No ranked roles configured",
+    });
+  }
+
+  if (application) {
+    const playerRoleCodes = getPlayerRoleCodes(player);
+    const applicationRoleCodes = getApplicationRoleCodes(application);
+
+    if (!roleSetsMatch(playerRoleCodes, applicationRoleCodes)) {
+      issues.push({
+        code: "application_role_mismatch",
+        message: `Application: ${formatRoleCodes(applicationRoleCodes)}; balancer: ${formatRoleCodes(playerRoleCodes)}`,
+      });
+    }
+  }
+
+  return issues;
 }
 
 export function normalizeInternalPayload(payload: InternalBalancePayload): InternalBalancePayload {
@@ -157,8 +255,6 @@ function resolveDivisionFromRankHelper(rankValue: number | null): number | null 
  * Converts a map of { role -> SR rank } to a sorted BalancerPlayerRoleEntry[].
  * Priority is assigned in ROLE_ORDER order: tank=1, dps=2, support=3.
  */
-const ROLE_ORDER: BalancerRoleCode[] = ["tank", "dps", "support"];
-
 export function buildRoleEntriesFromRankHistory(
   history: Partial<Record<BalancerRoleCode, number>>,
 ): BalancerPlayerRoleEntry[] {
