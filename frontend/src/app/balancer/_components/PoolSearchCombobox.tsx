@@ -14,6 +14,8 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { BalancerApplication, BalancerPlayerRecord } from "@/types/balancer-admin.types";
 import { playerHasRankedRole } from "@/app/balancer/_components/workspace-helpers";
 
@@ -56,15 +58,20 @@ export function PoolSearchCombobox({
 }: PoolSearchComboboxProps) {
   const [open, setOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
+  const [hideAdded, setHideAdded] = useState(false);
 
   const poolPlayers = useMemo(() => players.filter((p) => p.is_in_pool), [players]);
+  const visiblePoolPlayers = useMemo(
+    () => (hideAdded ? [] : poolPlayers),
+    [hideAdded, poolPlayers],
+  );
 
   const addableApplications = useMemo(
     () => applications.filter((app) => app.is_active && app.player === null),
     [applications],
   );
 
-  const hasResults = poolPlayers.length > 0 || addableApplications.length > 0;
+  const hasResults = visiblePoolPlayers.length > 0 || addableApplications.length > 0;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -88,12 +95,22 @@ export function PoolSearchCombobox({
             onValueChange={setSearchValue}
             placeholder="Search by BattleTag…"
           />
+          <div className="flex items-center gap-2 border-b px-3 py-2 text-sm">
+            <Checkbox
+              id="hide-added-pool-players"
+              checked={hideAdded}
+              onCheckedChange={(checked) => setHideAdded(Boolean(checked))}
+            />
+            <Label htmlFor="hide-added-pool-players" className="cursor-pointer font-normal text-muted-foreground">
+              Hide already added
+            </Label>
+          </div>
           <CommandList>
             {!hasResults && <CommandEmpty>No players or applications found.</CommandEmpty>}
 
-            {poolPlayers.length > 0 && (
+            {visiblePoolPlayers.length > 0 && (
               <CommandGroup heading="Pool Players">
-                {poolPlayers.map((player) => {
+                {visiblePoolPlayers.map((player) => {
                   const valid = playerHasRankedRole(player);
                   return (
                     <CommandItem

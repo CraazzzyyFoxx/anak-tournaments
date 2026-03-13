@@ -159,7 +159,7 @@ export interface BalancerPlayerImportDuplicate {
 export interface BalancerPlayerImportSkipped {
   battle_tag: string;
   battle_tag_normalized: string;
-  reason: "missing_active_application" | "duplicate_in_file";
+  reason: "missing_active_application" | "duplicate_in_file" | "no_ranked_roles";
 }
 
 export interface BalancerPlayerImportPreviewResponse {
@@ -178,12 +178,18 @@ export interface BalancerPlayerImportResult {
   skipped_duplicates: number;
   skipped_missing_application: number;
   skipped_duplicate_in_file: number;
+  skipped_no_ranked_roles: number;
   total_players: number;
 }
 
 export interface BalancerPlayerExportResponse {
   format: string;
   players: Record<string, unknown>;
+}
+
+export interface BalancerPlayerRoleSyncResponse {
+  updated: number;
+  skipped: number;
 }
 
 export interface BalancerPlayerUpdateInput {

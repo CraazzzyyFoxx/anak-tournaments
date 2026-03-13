@@ -104,16 +104,16 @@ export default function BalancerLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <SidebarProvider className="admin-theme" defaultOpen style={sidebarShellStyle}>
+    <SidebarProvider className="admin-theme xl:h-svh xl:overflow-hidden" defaultOpen style={sidebarShellStyle}>
       <BalancerSidebar />
-      <SidebarInset className="min-h-svh min-w-0 bg-background/95 md:peer-data-[variant=inset]:border md:peer-data-[variant=inset]:border-border/50 md:peer-data-[variant=inset]:shadow-xl md:peer-data-[variant=inset]:shadow-black/10">
+      <SidebarInset className="min-h-svh min-w-0 bg-background/95 xl:h-svh xl:overflow-hidden md:peer-data-[variant=inset]:border md:peer-data-[variant=inset]:border-border/50 md:peer-data-[variant=inset]:shadow-xl md:peer-data-[variant=inset]:shadow-black/10">
         <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-3 border-b border-border/50 bg-background/90 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/82 md:px-5">
           <SidebarTrigger className="size-8 rounded-lg border border-border/60" />
           <Separator orientation="vertical" className="h-5" />
           <BalancerBreadcrumb />
         </header>
 
-        <div className="flex flex-1 flex-col gap-5 overflow-x-hidden p-4 md:p-5">
+        <div className="flex flex-1 flex-col gap-5 overflow-x-hidden p-4 xl:min-h-0 xl:overflow-hidden md:p-5">
           <BalancerShell>{children}</BalancerShell>
         </div>
       </SidebarInset>

@@ -24,6 +24,7 @@ __all__ = (
     "BalancerPlayerImportResult",
     "BalancerPlayerImportSkipped",
     "BalancerPlayerRoleEntry",
+    "BalancerPlayerRoleSyncResponse",
     "BalancerPlayerUpdate",
     "BalancerPlayerExportResponse",
     "BalancerTeamRead",
@@ -129,7 +130,7 @@ class BalancerPlayerImportDuplicate(BaseModel):
 class BalancerPlayerImportSkipped(BaseModel):
     battle_tag: str
     battle_tag_normalized: str
-    reason: Literal["missing_active_application", "duplicate_in_file"]
+    reason: Literal["missing_active_application", "duplicate_in_file", "no_ranked_roles"]
 
 
 class BalancerPlayerImportPreviewResponse(BaseModel):
@@ -148,12 +149,18 @@ class BalancerPlayerImportResult(BaseModel):
     skipped_duplicates: int
     skipped_missing_application: int
     skipped_duplicate_in_file: int
+    skipped_no_ranked_roles: int
     total_players: int
 
 
 class BalancerPlayerExportResponse(BaseModel):
     format: str
     players: dict[str, Any]
+
+
+class BalancerPlayerRoleSyncResponse(BaseModel):
+    updated: int
+    skipped: int
 
 
 class BalancerTeamRead(BaseRead):

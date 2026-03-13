@@ -119,11 +119,17 @@ async def delete_player(
 async def preview_player_import(
     tournament_id: int,
     data: UploadFile = File(...),
+    match_application_roles: bool = Form(default=False),
     session: AsyncSession = Depends(db.get_async_session),
     user: models.AuthUser = Depends(auth.require_permission("player", "update")),
 ):
     payload = json.loads((await data.read()).decode("utf-8"))
-    return await balancer_service.preview_player_import(session, tournament_id, payload)
+    return await balancer_service.preview_player_import(
+        session,
+        tournament_id,
+        payload,
+        match_application_roles=match_application_roles,
+    )
 
 
 @router.post("/tournaments/{tournament_id}/players/import", response_model=admin_schemas.BalancerPlayerImportResult)
@@ -131,6 +137,7 @@ async def import_players(
     tournament_id: int,
     data: UploadFile = File(...),
     duplicate_strategy: admin_schemas.DuplicateStrategy = Form(...),
+    match_application_roles: bool = Form(default=False),
     resolutions_json: str | None = Form(default=None),
     session: AsyncSession = Depends(db.get_async_session),
     user: models.AuthUser = Depends(auth.require_permission("player", "update")),
@@ -143,6 +150,7 @@ async def import_players(
         payload,
         duplicate_strategy=duplicate_strategy,
         resolutions=resolutions,
+        match_application_roles=match_application_roles,
     )
 
 
@@ -153,6 +161,18 @@ async def export_players(
     user: models.AuthUser = Depends(auth.require_permission("player", "read")),
 ):
     return await balancer_service.export_players(session, tournament_id)
+
+
+@router.post(
+    "/tournaments/{tournament_id}/players/application-roles",
+    response_model=admin_schemas.BalancerPlayerRoleSyncResponse,
+)
+async def sync_player_roles_from_applications(
+    tournament_id: int,
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_permission("player", "update")),
+):
+    return await balancer_service.sync_player_roles_from_applications(session, tournament_id)
 
 
 @router.get("/tournaments/{tournament_id}/balance", response_model=admin_schemas.BalanceRead | None)

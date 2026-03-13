@@ -187,6 +187,100 @@ def sanitize_secondary_roles(primary_role: str | None, roles: list[str] | None) 
     return [role for role in unique_roles if role != primary_role]
 
 
+def infer_role_subtype(raw_role: str | None, mapped_role: str | None) -> str | None:
+    if raw_role is None or mapped_role not in VALID_ROLES:
+        return None
+
+    lowered = normalize_header(raw_role)
+    if mapped_role == "dps":
+        if "хитскан" in lowered or "hitscan" in lowered:
+            return "hitscan"
+        if "проджект" in lowered or "projectile" in lowered:
+            return "projectile"
+    if mapped_role == "support":
+        if "мейн хил" in lowered or "main heal" in lowered:
+            return "main_heal"
+        if "лайт хил" in lowered or "light heal" in lowered:
+            return "light_heal"
+    return None
+
+
+def infer_role_subtype_from_class_flags(role: str, stats: dict[str, Any]) -> str | None:
+    primary = bool(stats.get("primary", False))
+    secondary = bool(stats.get("secondary", False))
+
+    if primary and secondary:
+        return None
+
+    if role == "dps":
+        if primary:
+            return "hitscan"
+        if secondary:
+            return "projectile"
+
+    if role == "support":
+        if primary:
+            return "main_heal"
+        if secondary:
+            return "light_heal"
+
+    return None
+
+
+def build_class_subtype_flags(role: str, subtype: str | None) -> tuple[bool, bool]:
+    if role == "dps":
+        return subtype == "hitscan", subtype == "projectile"
+
+    if role == "support":
+        return subtype == "main_heal", subtype == "light_heal"
+
+    return False, False
+
+
+def filter_ranked_role_entries(
+    role_entries: list[dict[str, Any]] | list[admin_schemas.BalancerPlayerRoleEntry] | None,
+) -> list[dict[str, Any]]:
+    normalized_entries = normalize_role_entries(role_entries)
+    return [entry for entry in normalized_entries if entry.get("rank_value") is not None]
+
+
+def merge_role_candidates_with_subtypes(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    merged_by_role: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+
+    for candidate in candidates:
+        role = candidate["role"]
+        if role not in merged_by_role:
+            merged_by_role[role] = {**candidate}
+            order.append(role)
+            continue
+
+        existing = merged_by_role[role]
+        if existing.get("subtype") != candidate.get("subtype"):
+            existing["subtype"] = None
+
+    return [merged_by_role[role] for role in order]
+
+
+def extract_application_raw_role_values(application: models.BalancerApplication) -> tuple[str | None, list[str]]:
+    raw_row = application.raw_row_json or {}
+    primary_role_raw: str | None = None
+    additional_roles_raw: list[str] = []
+
+    for key, value in raw_row.items():
+        if not isinstance(value, str) or not value.strip():
+            continue
+
+        normalized_key = normalize_header(key)
+        if normalized_key.startswith("укажите вашу роль") and primary_role_raw is None:
+            primary_role_raw = value.strip()
+            continue
+        if normalized_key.startswith("дополнительная игровая роль"):
+            additional_roles_raw.append(value.strip())
+
+    return primary_role_raw, additional_roles_raw
+
+
 def normalize_role_entries(
     role_entries: list[dict[str, Any]] | list[admin_schemas.BalancerPlayerRoleEntry] | None,
 ) -> list[dict[str, Any]]:
@@ -234,6 +328,45 @@ def normalize_role_entries(
 
 
 def build_role_entries_from_application(application: models.BalancerApplication) -> list[dict[str, Any]]:
+    primary_role_raw, additional_roles_raw = extract_application_raw_role_values(application)
+    primary_role = map_role(primary_role_raw, DEFAULT_ROLE_MAPPING)
+    additional_roles = sanitize_secondary_roles(
+        primary_role,
+        [mapped for mapped in (map_role(value, DEFAULT_ROLE_MAPPING) for value in additional_roles_raw) if mapped],
+    )
+
+    candidates: list[dict[str, Any]] = []
+    if primary_role in VALID_ROLES:
+        candidates.append(
+            {
+                "role": primary_role,
+                "subtype": infer_role_subtype(primary_role_raw, primary_role),
+                "priority": 1,
+                "division_number": None,
+                "rank_value": None,
+            }
+        )
+
+    additional_index = 2
+    for raw_role in additional_roles_raw:
+        mapped_role = map_role(raw_role, DEFAULT_ROLE_MAPPING)
+        if mapped_role not in additional_roles:
+            continue
+        candidates.append(
+            {
+                "role": mapped_role,
+                "subtype": infer_role_subtype(raw_role, mapped_role),
+                "priority": additional_index,
+                "division_number": None,
+                "rank_value": None,
+            }
+        )
+        additional_index += 1
+
+    merged_candidates = merge_role_candidates_with_subtypes(candidates)
+    if merged_candidates:
+        return normalize_role_entries(merged_candidates)
+
     ordered_roles: list[str] = []
     if application.primary_role in VALID_ROLES:
         ordered_roles.append(application.primary_role)
@@ -256,6 +389,49 @@ def build_role_entries_from_application(application: models.BalancerApplication)
             for index, role in enumerate(ordered_roles)
         ]
     )
+
+
+def map_imported_role_entries_to_application(
+    application: models.BalancerApplication,
+    imported_role_entries: list[dict[str, Any]] | list[admin_schemas.BalancerPlayerRoleEntry] | None,
+) -> list[dict[str, Any]]:
+    normalized_imported = filter_ranked_role_entries(imported_role_entries)
+    allowed_role_entries = build_role_entries_from_application(application)
+    imported_by_role = {entry["role"]: entry for entry in normalized_imported}
+
+    merged_entries = [
+        {
+            "role": allowed_entry["role"],
+            "subtype": imported_by_role.get(allowed_entry["role"], {}).get("subtype"),
+            "priority": allowed_entry["priority"],
+            "division_number": imported_by_role.get(allowed_entry["role"], {}).get("division_number"),
+            "rank_value": imported_by_role.get(allowed_entry["role"], {}).get("rank_value"),
+        }
+        for allowed_entry in allowed_role_entries
+        if allowed_entry["role"] in imported_by_role
+    ]
+    return normalize_role_entries(merged_entries)
+
+
+def map_existing_role_entries_to_application(
+    application: models.BalancerApplication,
+    existing_role_entries: list[dict[str, Any]] | list[admin_schemas.BalancerPlayerRoleEntry] | None,
+) -> list[dict[str, Any]]:
+    normalized_existing = normalize_role_entries(existing_role_entries)
+    allowed_role_entries = build_role_entries_from_application(application)
+    existing_by_role = {entry["role"]: entry for entry in normalized_existing}
+
+    mapped_entries = [
+        {
+            "role": allowed_entry["role"],
+            "subtype": allowed_entry.get("subtype"),
+            "priority": allowed_entry["priority"],
+            "division_number": existing_by_role.get(allowed_entry["role"], {}).get("division_number"),
+            "rank_value": existing_by_role.get(allowed_entry["role"], {}).get("rank_value"),
+        }
+        for allowed_entry in allowed_role_entries
+    ]
+    return normalize_role_entries(mapped_entries)
 
 
 def sync_legacy_player_fields(player: models.BalancerPlayer, *, is_flex_override: bool | None = None) -> None:
@@ -310,14 +486,14 @@ def build_role_entries_from_classes(classes: dict[str, Any]) -> list[dict[str, A
         raw_entries.append(
             {
                 "role": role,
-                "subtype": stats.get("subtype"),
+                "subtype": stats.get("subtype") or infer_role_subtype_from_class_flags(role, stats),
                 "priority": priority,
                 "division_number": resolve_division_from_rank(rank_value),
                 "rank_value": rank_value,
             }
         )
 
-    return normalize_role_entries(raw_entries)
+    return filter_ranked_role_entries(raw_entries)
 
 
 def parse_imported_player_nodes(payload: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
@@ -348,11 +524,21 @@ def parse_imported_player_nodes(payload: dict[str, Any]) -> tuple[list[dict[str,
         seen_tags.add(normalized_tag)
         meta = player_node.get("meta") if isinstance(player_node.get("meta"), dict) else {}
         role_entries = meta.get("roleEntries") if isinstance(meta.get("roleEntries"), list) else None
-        normalized_role_entries = normalize_role_entries(role_entries) if role_entries is not None else None
+        normalized_role_entries = filter_ranked_role_entries(role_entries) if role_entries is not None else None
 
         if not normalized_role_entries:
             classes = player_node.get("stats", {}).get("classes", {})
             normalized_role_entries = build_role_entries_from_classes(classes if isinstance(classes, dict) else {})
+
+        if not normalized_role_entries:
+            skipped.append(
+                {
+                    "battle_tag": battle_tag,
+                    "battle_tag_normalized": normalized_tag,
+                    "reason": "no_ranked_roles",
+                }
+            )
+            continue
 
         admin_notes = meta.get("adminNotes") if isinstance(meta.get("adminNotes"), str) else None
         is_in_pool = bool(meta.get("isInPool", True))
@@ -377,18 +563,44 @@ async def resolve_import_context(
     tournament_id: int,
     imported_players: list[dict[str, Any]],
 ) -> tuple[dict[str, models.BalancerApplication], dict[int, models.BalancerPlayer]]:
-    normalized_tags = [player["battle_tag_normalized"] for player in imported_players]
-    if not normalized_tags:
+    if not imported_players:
         return {}, {}
 
     result = await session.execute(
         sa.select(models.BalancerApplication)
         .where(models.BalancerApplication.tournament_id == tournament_id)
-        .where(models.BalancerApplication.battle_tag_normalized.in_(normalized_tags))
         .where(models.BalancerApplication.is_active.is_(True))
         .options(selectinload(models.BalancerApplication.player))
+        .order_by(models.BalancerApplication.battle_tag_normalized.asc())
     )
-    applications = {application.battle_tag_normalized: application for application in result.scalars().all()}
+    active_applications = list(result.scalars().all())
+    applications_by_tag = {application.battle_tag_normalized: application for application in active_applications}
+    applications_by_user_id: dict[int, models.BalancerApplication] = {}
+
+    for application in active_applications:
+        user_id = application.player.user_id if application.player is not None else None
+        if user_id is None:
+            user_id = await resolve_public_user_id_for_application(session, application)
+        if user_id is None or user_id in applications_by_user_id:
+            continue
+        applications_by_user_id[user_id] = application
+
+    applications: dict[str, models.BalancerApplication] = {}
+    for imported_player in imported_players:
+        normalized_tag = imported_player["battle_tag_normalized"]
+        direct_application = applications_by_tag.get(normalized_tag)
+        if direct_application is not None:
+            applications[normalized_tag] = direct_application
+            continue
+
+        user = await user_service.find_by_battle_tag(session, imported_player["battle_tag"], ["battle_tag"])
+        if user is None:
+            continue
+
+        alias_application = applications_by_user_id.get(user.id)
+        if alias_application is not None:
+            applications[normalized_tag] = alias_application
+
     existing_players = {
         application.id: application.player for application in applications.values() if application.player is not None
     }
@@ -405,13 +617,16 @@ def serialize_player_for_export(player: models.BalancerPlayer, export_uuid: str)
         entry = next((candidate for candidate in role_entries if candidate["role"] == role), None)
         is_active = bool(entry and entry.get("rank_value") is not None)
         priority = export_priorities[role]
+        primary_flag, secondary_flag = build_class_subtype_flags(
+            role, entry.get("subtype") if is_active and entry else None
+        )
         classes[role] = {
             "rank": entry.get("rank_value") if is_active and entry is not None else 0,
             "playHours": 0,
             "priority": priority,
-            "primary": is_active and priority == 0,
+            "primary": primary_flag,
             "isActive": is_active,
-            "secondary": is_active and priority > 0,
+            "secondary": secondary_flag,
         }
 
     return {
@@ -876,6 +1091,8 @@ async def preview_player_import(
     session: AsyncSession,
     tournament_id: int,
     payload: dict[str, Any],
+    *,
+    match_application_roles: bool = False,
 ) -> admin_schemas.BalancerPlayerImportPreviewResponse:
     await ensure_tournament_exists(session, tournament_id)
     imported_players, skipped_entries = parse_imported_player_nodes(payload)
@@ -897,6 +1114,11 @@ async def preview_player_import(
             )
             continue
 
+        imported_role_entries = (
+            map_imported_role_entries_to_application(application, imported_player["role_entries_json"])
+            if match_application_roles
+            else imported_player["role_entries_json"]
+        )
         existing_player = existing_players.get(application.id)
         if existing_player is None:
             creatable_players += 1
@@ -904,11 +1126,11 @@ async def preview_player_import(
 
         duplicates.append(
             admin_schemas.BalancerPlayerImportDuplicate(
-                battle_tag=application.battle_tag,
-                battle_tag_normalized=application.battle_tag_normalized,
+                battle_tag=imported_player["battle_tag"],
+                battle_tag_normalized=imported_player["battle_tag_normalized"],
                 application_id=application.id,
                 existing_player_id=existing_player.id,
-                imported_role_entries_json=imported_player["role_entries_json"],
+                imported_role_entries_json=imported_role_entries,
                 existing_role_entries_json=normalize_role_entries(existing_player.role_entries_json),
                 imported_is_in_pool=imported_player["is_in_pool"],
                 existing_is_in_pool=existing_player.is_in_pool,
@@ -934,6 +1156,7 @@ async def import_players(
     *,
     duplicate_strategy: admin_schemas.DuplicateStrategy,
     resolutions: dict[str, admin_schemas.DuplicateResolution] | None = None,
+    match_application_roles: bool = False,
 ) -> admin_schemas.BalancerPlayerImportResult:
     await ensure_tournament_exists(session, tournament_id)
     imported_players, skipped_entries = parse_imported_player_nodes(payload)
@@ -944,6 +1167,7 @@ async def import_players(
     skipped_duplicates = 0
     skipped_missing_application = 0
     skipped_duplicate_in_file = sum(1 for entry in skipped_entries if entry["reason"] == "duplicate_in_file")
+    skipped_no_ranked_roles = sum(1 for entry in skipped_entries if entry["reason"] == "no_ranked_roles")
     unresolved_duplicates: list[str] = []
     resolutions = resolutions or {}
 
@@ -952,6 +1176,12 @@ async def import_players(
         if application is None:
             skipped_missing_application += 1
             continue
+
+        imported_role_entries = (
+            map_imported_role_entries_to_application(application, imported_player["role_entries_json"])
+            if match_application_roles
+            else imported_player["role_entries_json"]
+        )
 
         existing_player = existing_players.get(application.id)
         if existing_player is None:
@@ -962,7 +1192,7 @@ async def import_players(
                 battle_tag=application.battle_tag,
                 battle_tag_normalized=application.battle_tag_normalized,
                 user_id=user_id,
-                role_entries_json=imported_player["role_entries_json"],
+                role_entries_json=imported_role_entries,
                 is_in_pool=imported_player["is_in_pool"],
                 admin_notes=imported_player["admin_notes"],
             )
@@ -978,7 +1208,7 @@ async def import_players(
         else:
             resolution = resolutions.get(imported_player["battle_tag_normalized"])
             if resolution not in {"replace", "skip"}:
-                unresolved_duplicates.append(application.battle_tag)
+                unresolved_duplicates.append(imported_player["battle_tag"])
                 continue
 
         if resolution == "skip":
@@ -989,7 +1219,7 @@ async def import_players(
         existing_player.battle_tag = application.battle_tag
         existing_player.battle_tag_normalized = application.battle_tag_normalized
         existing_player.user_id = user_id
-        existing_player.role_entries_json = imported_player["role_entries_json"]
+        existing_player.role_entries_json = imported_role_entries
         existing_player.is_in_pool = imported_player["is_in_pool"]
         if imported_player["admin_notes"] is not None:
             existing_player.admin_notes = imported_player["admin_notes"]
@@ -1010,6 +1240,7 @@ async def import_players(
         skipped_duplicates=skipped_duplicates,
         skipped_missing_application=skipped_missing_application,
         skipped_duplicate_in_file=skipped_duplicate_in_file,
+        skipped_no_ranked_roles=skipped_no_ranked_roles,
         total_players=len(imported_players) + len(skipped_entries),
     )
 
@@ -1025,6 +1256,36 @@ async def export_players(
         export_uuid = str(uuid4())
         serialized_players[export_uuid] = serialize_player_for_export(player, export_uuid)
     return admin_schemas.BalancerPlayerExportResponse(format="xv-1", players=serialized_players)
+
+
+async def sync_player_roles_from_applications(
+    session: AsyncSession,
+    tournament_id: int,
+) -> admin_schemas.BalancerPlayerRoleSyncResponse:
+    await ensure_tournament_exists(session, tournament_id)
+
+    result = await session.execute(
+        sa.select(models.BalancerPlayer)
+        .where(models.BalancerPlayer.tournament_id == tournament_id)
+        .options(selectinload(models.BalancerPlayer.application))
+        .order_by(models.BalancerPlayer.battle_tag_normalized.asc())
+    )
+    players = list(result.scalars().all())
+
+    updated = 0
+    skipped = 0
+    for player in players:
+        application = player.application
+        if application is None or not application.is_active:
+            skipped += 1
+            continue
+
+        player.role_entries_json = map_existing_role_entries_to_application(application, player.role_entries_json)
+        sync_legacy_player_fields(player, is_flex_override=player.is_flex)
+        updated += 1
+
+    await session.commit()
+    return admin_schemas.BalancerPlayerRoleSyncResponse(updated=updated, skipped=skipped)
 
 
 async def get_balance(session: AsyncSession, tournament_id: int) -> models.BalancerBalance | None:

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState, type ChangeEvent } from "react";
-import { Download, Loader2, Upload } from "lucide-react";
+import { Download, Loader2, RefreshCcw, Upload } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { ApplicationCombobox } from "@/app/balancer/_components/ApplicationCombobox";
@@ -59,6 +59,7 @@ export default function BalancerPoolPage() {
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [duplicateResolutions, setDuplicateResolutions] = useState<Record<string, DuplicateResolution>>({});
   const [applyToAllResolution, setApplyToAllResolution] = useState<DuplicateResolution | null>(null);
+  const [matchApplicationRoles, setMatchApplicationRoles] = useState(false);
 
   const applicationsQuery = useQuery({
     queryKey: ["balancer-public", "applications", tournamentId],
@@ -125,16 +126,24 @@ export default function BalancerPoolPage() {
       file,
       duplicateStrategy,
       resolutions,
+      matchRolesToApplication,
     }: {
       file: File;
       duplicateStrategy: DuplicateStrategy;
       resolutions?: Record<string, DuplicateResolution>;
+      matchRolesToApplication: boolean;
     }) => {
       if (!tournamentId) {
         throw new Error("Select a tournament first");
       }
 
-      return balancerAdminService.importPlayers(tournamentId, file, duplicateStrategy, resolutions);
+      return balancerAdminService.importPlayers(
+        tournamentId,
+        file,
+        duplicateStrategy,
+        matchRolesToApplication,
+        resolutions,
+      );
     },
     onSuccess: async (result) => {
       await Promise.all([
@@ -155,6 +164,7 @@ export default function BalancerPoolPage() {
           `${result.replaced} replaced`,
           `${result.skipped_duplicates} skipped duplicates`,
           `${result.skipped_missing_application} skipped without active application`,
+          `${result.skipped_no_ranked_roles} skipped without ranked roles`,
         ].join(" · "),
       });
     },
@@ -164,20 +174,21 @@ export default function BalancerPoolPage() {
   });
 
   const previewImportMutation = useMutation({
-    mutationFn: async (file: File) => {
+    mutationFn: async ({ file, matchRolesToApplication }: { file: File; matchRolesToApplication: boolean }) => {
       if (!tournamentId) {
         throw new Error("Select a tournament first");
       }
-      return balancerAdminService.previewPlayerImport(tournamentId, file);
+      return balancerAdminService.previewPlayerImport(tournamentId, file, matchRolesToApplication);
     },
-    onSuccess: (preview, file) => {
+    onSuccess: (preview, variables) => {
+      const { file, matchRolesToApplication } = variables;
       setSelectedImportFile(file);
       setImportPreview(preview);
       setDuplicateResolutions(buildInitialDuplicateResolutions(preview));
       setApplyToAllResolution(preview.duplicate_players > 0 ? "replace" : null);
 
       if (preview.duplicate_players === 0) {
-        importPlayersMutation.mutate({ file, duplicateStrategy: "skip_all" });
+        importPlayersMutation.mutate({ file, duplicateStrategy: "skip_all", matchRolesToApplication });
         return;
       }
 
@@ -201,6 +212,25 @@ export default function BalancerPoolPage() {
     },
     onError: (error: Error) => {
       toast({ title: "Failed to export players", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const syncApplicationRolesMutation = useMutation({
+    mutationFn: async () => {
+      if (!tournamentId) {
+        throw new Error("Select a tournament first");
+      }
+      return balancerAdminService.syncPlayerRolesFromApplications(tournamentId);
+    },
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ["balancer-public", "players", tournamentId] });
+      toast({
+        title: "Application roles applied",
+        description: `${result.updated} players updated${result.skipped > 0 ? ` · ${result.skipped} skipped` : ""}`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to apply application roles", description: error.message, variant: "destructive" });
     },
   });
 
@@ -234,8 +264,19 @@ export default function BalancerPoolPage() {
       return;
     }
 
-    previewImportMutation.mutate(file);
+    previewImportMutation.mutate({ file, matchRolesToApplication: matchApplicationRoles });
     event.target.value = "";
+  };
+
+  const handleMatchApplicationRolesChange = (checked: boolean) => {
+    const nextValue = checked === true;
+    setMatchApplicationRoles(nextValue);
+
+    if (!importDialogOpen || !selectedImportFile || previewImportMutation.isPending || importPlayersMutation.isPending) {
+      return;
+    }
+
+    previewImportMutation.mutate({ file: selectedImportFile, matchRolesToApplication: nextValue });
   };
 
   const handleDuplicateActionChange = (battleTagNormalized: string, resolution: DuplicateResolution) => {
@@ -290,6 +331,7 @@ export default function BalancerPoolPage() {
       file: selectedImportFile,
       duplicateStrategy,
       resolutions,
+      matchRolesToApplication: matchApplicationRoles,
     });
   };
 
@@ -339,10 +381,33 @@ export default function BalancerPoolPage() {
                   )}
                   Export players
                 </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => syncApplicationRolesMutation.mutate()}
+                  disabled={syncApplicationRolesMutation.isPending}
+                >
+                  {syncApplicationRolesMutation.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCcw className="mr-2 h-4 w-4" />
+                  )}
+                  Apply app roles
+                </Button>
               </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="flex items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-sm">
+              <Checkbox
+                id="match-application-roles"
+                checked={matchApplicationRoles}
+                onCheckedChange={handleMatchApplicationRolesChange}
+              />
+              <Label htmlFor="match-application-roles" className="cursor-pointer font-normal leading-snug">
+                Match imported roles to active application roles and keep only the roles declared in the application
+              </Label>
+            </div>
             <ApplicationCombobox
               applications={applications}
               onAdd={(application) => addPlayerMutation.mutate(application.id)}
@@ -380,6 +445,16 @@ export default function BalancerPoolPage() {
           </DialogHeader>
 
           <div className="space-y-4">
+            <div className="flex items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-sm">
+              <Checkbox
+                id="match-application-roles-dialog"
+                checked={matchApplicationRoles}
+                onCheckedChange={handleMatchApplicationRolesChange}
+              />
+              <Label htmlFor="match-application-roles-dialog" className="cursor-pointer font-normal leading-snug">
+                Restrict imported roles to the player&apos;s active application roles
+              </Label>
+            </div>
             <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
               <Badge variant="outline">Create: {importPreview?.creatable_players ?? 0}</Badge>
               <Badge variant="outline">Duplicates: {importPreview?.duplicate_players ?? 0}</Badge>
@@ -466,7 +541,11 @@ export default function BalancerPoolPage() {
                   <div className="mt-2 space-y-1 text-xs">
                     {importPreview?.skipped.map((entry) => (
                       <p key={`${entry.reason}-${entry.battle_tag_normalized}`}>
-                        {entry.battle_tag}: {entry.reason === "missing_active_application" ? "no active application for this tournament" : "duplicate row inside import file"}
+                        {entry.battle_tag}: {entry.reason === "missing_active_application"
+                          ? "no active application for this tournament"
+                          : entry.reason === "duplicate_in_file"
+                            ? "duplicate row inside import file"
+                            : "no ranked roles in import file"}
                       </p>
                     ))}
                   </div>

@@ -8,6 +8,7 @@ import {
   BalancerPlayerImportPreviewResponse,
   BalancerPlayerImportResult,
   BalancerPlayerRecord,
+  BalancerPlayerRoleSyncResponse,
   BalancerPlayerUpdateInput,
   BalancerTournamentSheet,
   DuplicateResolution,
@@ -90,9 +91,11 @@ export default class balancerAdminService {
   static async previewPlayerImport(
     tournamentId: number,
     file: File,
+    matchApplicationRoles = false,
   ): Promise<BalancerPlayerImportPreviewResponse> {
     const formData = new FormData();
     formData.append("data", file);
+    formData.append("match_application_roles", String(matchApplicationRoles));
 
     const response = await parserFetch(`admin/balancer/tournaments/${tournamentId}/players/import/preview`, {
       method: "POST",
@@ -105,11 +108,13 @@ export default class balancerAdminService {
     tournamentId: number,
     file: File,
     duplicateStrategy: DuplicateStrategy,
+    matchApplicationRoles = false,
     resolutions?: Record<string, DuplicateResolution>,
   ): Promise<BalancerPlayerImportResult> {
     const formData = new FormData();
     formData.append("data", file);
     formData.append("duplicate_strategy", duplicateStrategy);
+    formData.append("match_application_roles", String(matchApplicationRoles));
     if (resolutions && Object.keys(resolutions).length > 0) {
       formData.append("resolutions_json", JSON.stringify(resolutions));
     }
@@ -123,6 +128,14 @@ export default class balancerAdminService {
 
   static async exportPlayers(tournamentId: number): Promise<BalancerPlayerExportResponse> {
     const response = await parserFetch(`admin/balancer/tournaments/${tournamentId}/players/export`);
+    return response.json();
+  }
+
+  static async syncPlayerRolesFromApplications(tournamentId: number): Promise<BalancerPlayerRoleSyncResponse> {
+    const response = await parserFetch(`admin/balancer/tournaments/${tournamentId}/players/application-roles`, {
+      method: "POST",
+      body: {},
+    });
     return response.json();
   }
 

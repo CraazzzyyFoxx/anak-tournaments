@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import PlayerDivisionIcon from "@/components/PlayerDivisionIcon";
 import { BalancerPlayerRecord } from "@/types/balancer-admin.types";
@@ -53,6 +55,14 @@ function sortPlayers(
   });
 }
 
+function buildPoolPlayerSearchValue(player: BalancerPlayerRecord): string {
+  const roleText = player.role_entries_json
+    .flatMap((entry) => [entry.role, ROLE_DISPLAY[entry.role]?.toLowerCase() ?? "", entry.subtype ?? "", entry.division_number?.toString() ?? ""])
+    .join(" ");
+
+  return `${player.battle_tag} ${player.battle_tag_normalized} ${roleText}`.toLowerCase();
+}
+
 export function PoolPlayerCompactList({
   players,
   editingPlayerId,
@@ -61,6 +71,9 @@ export function PoolPlayerCompactList({
 }: PoolPlayerCompactListProps) {
   const [sortField, setSortField] = useState<SortField>("added");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [searchValue, setSearchValue] = useState("");
+  const fillsAvailableHeight = maxHeightClassName.split(/\s+/).includes("flex-1");
+  const normalizedSearchValue = searchValue.trim().toLowerCase();
 
   function handleSortClick(field: SortField) {
     if (sortField === field) {
@@ -71,11 +84,18 @@ export function PoolPlayerCompactList({
     }
   }
 
-  const poolPlayers = sortPlayers(
-    players.filter((p) => p.is_in_pool),
-    sortField,
-    sortDir,
+  const poolPlayers = useMemo(
+    () => sortPlayers(players.filter((p) => p.is_in_pool), sortField, sortDir),
+    [players, sortDir, sortField],
   );
+
+  const filteredPoolPlayers = useMemo(() => {
+    if (!normalizedSearchValue) {
+      return poolPlayers;
+    }
+
+    return poolPlayers.filter((player) => buildPoolPlayerSearchValue(player).includes(normalizedSearchValue));
+  }, [normalizedSearchValue, poolPlayers]);
 
   if (poolPlayers.length === 0) {
     return (
@@ -91,7 +111,16 @@ export function PoolPlayerCompactList({
   };
 
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className={cn("flex flex-col gap-1.5", fillsAvailableHeight && "min-h-0 flex-1")}>
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={searchValue}
+          onChange={(event) => setSearchValue(event.target.value)}
+          placeholder="Find player in pool..."
+          className="h-8 pl-8 text-sm"
+        />
+      </div>
       <div className="flex items-center gap-1 text-xs text-muted-foreground">
         <span className="mr-1">Sort:</span>
         {(["name", "division", "added"] as SortField[]).map((field) => (
@@ -109,59 +138,68 @@ export function PoolPlayerCompactList({
             {sortIcon(field)}
           </Button>
         ))}
+        <span className="ml-auto text-[11px] text-muted-foreground">
+          {filteredPoolPlayers.length}/{poolPlayers.length}
+        </span>
       </div>
-    <ScrollArea className={cn("min-h-0", maxHeightClassName)}>
-      <div className="space-y-1.5 pr-3">
-        {poolPlayers.map((player) => {
-          const isEditing = player.id === editingPlayerId;
-          const isValid = playerHasRankedRole(player);
-          const sortedEntries = [...player.role_entries_json].sort((a, b) => a.priority - b.priority);
-          const rankedRoles = sortedEntries.filter((entry) => entry.rank_value !== null);
-          const primaryEntry = sortedEntries[0] ?? null;
-          const divisionNumber = primaryEntry?.division_number ?? null;
+      <ScrollArea className={cn("min-h-0", maxHeightClassName)}>
+        {filteredPoolPlayers.length === 0 ? (
+          <div className="py-6 pr-3 text-center text-sm text-muted-foreground">
+            No pool players match &quot;{searchValue.trim()}&quot;.
+          </div>
+        ) : (
+          <div className="space-y-1.5 pr-3">
+            {filteredPoolPlayers.map((player) => {
+              const isEditing = player.id === editingPlayerId;
+              const isValid = playerHasRankedRole(player);
+              const sortedEntries = [...player.role_entries_json].sort((a, b) => a.priority - b.priority);
+              const rankedRoles = sortedEntries.filter((entry) => entry.rank_value !== null);
+              const primaryEntry = sortedEntries[0] ?? null;
+              const divisionNumber = primaryEntry?.division_number ?? null;
 
-          return (
-            <Card
-              key={player.id}
-              className={cn(
-                "cursor-pointer border-border/60 bg-background/70 transition-colors hover:border-primary/30",
-                isEditing && "border-primary/50 bg-primary/5 ring-1 ring-primary/30",
-              )}
-              onClick={onSelectPlayer ? () => onSelectPlayer(isEditing ? null : player.id) : undefined}
-            >
-              <CardContent className="flex items-center gap-2 p-2.5">
-                <div
+              return (
+                <Card
+                  key={player.id}
                   className={cn(
-                    "h-2 w-2 shrink-0 rounded-full",
-                    isValid ? "bg-green-500" : "bg-amber-500",
+                    "cursor-pointer border-border/60 bg-background/70 transition-colors hover:border-primary/30",
+                    isEditing && "border-primary/50 bg-primary/5 ring-1 ring-primary/30",
                   )}
-                  title={isValid ? "Ranked roles configured" : "Needs rank data"}
-                />
-                <div className="min-w-0 flex-1 flex items-center gap-1.5">
-                  <div className="truncate text-sm font-medium">{player.battle_tag}</div>
-                  {divisionNumber !== null && (
-                    <PlayerDivisionIcon division={divisionNumber} width={24} height={24} />
-                  )}
-                </div>
-                {rankedRoles.length > 0 ? (
-                  <div className="flex shrink-0 items-center gap-0.5">
-                    {rankedRoles.map((entry) => (
-                      <PlayerRoleIcon
-                        key={entry.role}
-                        role={ROLE_DISPLAY[entry.role] ?? entry.role}
-                        size={16}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <span className="shrink-0 text-[10px] text-muted-foreground">No ranks</span>
-                )}
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-    </ScrollArea>
+                  onClick={onSelectPlayer ? () => onSelectPlayer(isEditing ? null : player.id) : undefined}
+                >
+                  <CardContent className="flex items-center gap-2 p-2.5">
+                    <div
+                      className={cn(
+                        "h-2 w-2 shrink-0 rounded-full",
+                        isValid ? "bg-green-500" : "bg-amber-500",
+                      )}
+                      title={isValid ? "Ranked roles configured" : "Needs rank data"}
+                    />
+                    <div className="min-w-0 flex flex-1 items-center gap-1.5">
+                      <div className="truncate text-sm font-medium">{player.battle_tag}</div>
+                      {divisionNumber !== null && (
+                        <PlayerDivisionIcon division={divisionNumber} width={24} height={24} />
+                      )}
+                    </div>
+                    {rankedRoles.length > 0 ? (
+                      <div className="flex shrink-0 items-center gap-0.5">
+                        {rankedRoles.map((entry) => (
+                          <PlayerRoleIcon
+                            key={entry.role}
+                            role={ROLE_DISPLAY[entry.role] ?? entry.role}
+                            size={16}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="shrink-0 text-[10px] text-muted-foreground">No ranks</span>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </ScrollArea>
     </div>
   );
 }

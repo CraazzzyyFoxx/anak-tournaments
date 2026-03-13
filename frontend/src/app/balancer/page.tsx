@@ -290,10 +290,10 @@ export default function BalancerMainPage() {
   }
 
   return (
-    <div className="grid h-full flex-1 gap-6 xl:grid-cols-[minmax(280px,25%)_1fr] xl:grid-rows-[1fr]">
+    <div className="grid flex-1 gap-6 xl:min-h-0 xl:grid-cols-[minmax(280px,25%)_1fr] xl:grid-rows-[1fr] xl:overflow-hidden">
       {/* ── Left Sidebar ── */}
-      <div className="flex flex-col">
-        <Card className="flex flex-1 flex-col rounded-2xl border-border/70 bg-card/80 shadow-sm">
+      <div className="flex min-h-0 flex-col">
+        <Card className="flex min-h-0 flex-1 flex-col rounded-2xl border-border/70 bg-card/80 shadow-sm">
           <CardHeader>
             <CardTitle>Player Pool</CardTitle>
             <CardDescription>
@@ -301,7 +301,7 @@ export default function BalancerMainPage() {
               {invalidPlayers.length > 0 && ` · ${invalidPlayers.length} need ranks`}
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-1 flex-col space-y-3 overflow-hidden">
+          <CardContent className="flex min-h-0 flex-1 flex-col space-y-3 overflow-hidden">
             <PoolSearchCombobox
               players={players}
               applications={applications}
@@ -338,7 +338,7 @@ export default function BalancerMainPage() {
       ) : null}
 
       {/* ── Right Workspace ── */}
-      <div className="flex flex-col gap-4">
+      <div className="flex min-h-0 flex-col gap-4">
         {/* Stats Summary Strip */}
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <Card className="rounded-2xl border-border/70 bg-card/80 shadow-sm">
@@ -407,7 +407,7 @@ export default function BalancerMainPage() {
         ) : null}
 
         {/* Workspace Card */}
-        <Card className="flex flex-1 flex-col rounded-2xl border-border/70 bg-card/80 shadow-sm">
+        <Card className="flex min-h-0 flex-1 flex-col rounded-2xl border-border/70 bg-card/80 shadow-sm">
           {/* Row 1: Config + Run */}
           <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-4 space-y-0">
             <div className="min-w-0">
@@ -438,7 +438,7 @@ export default function BalancerMainPage() {
             </div>
           </CardHeader>
 
-          <CardContent className="flex flex-1 flex-col space-y-4 overflow-hidden">
+          <CardContent className="flex min-h-0 flex-1 flex-col space-y-4 overflow-hidden">
             {/* Invalid Players Alert with clickable names */}
             {invalidPlayers.length > 0 ? (
               <Alert variant="destructive">
