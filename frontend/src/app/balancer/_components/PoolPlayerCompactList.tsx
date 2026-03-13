@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { BalancerPlayerRecord, BalancerRoleCode } from "@/types/balancer-admin.types";
-import { ROLE_LABELS, type PlayerValidationIssue } from "@/app/balancer/_components/workspace-helpers";
+import { ROLE_LABELS, isRoleEntryActive, type PlayerValidationIssue } from "@/app/balancer/_components/workspace-helpers";
 
 type PoolPlayerCompactListProps = {
   playerStates: Array<{
@@ -94,7 +94,7 @@ export function PoolPlayerCompactList({
           const isEditing = player.id === editingPlayerId;
           const isValid = issues.length === 0;
           const sortedEntries = sortRoleEntries(player);
-          const rankedEntries = sortedEntries.filter((entry) => entry.rank_value !== null);
+          const rankedEntries = sortedEntries.filter((entry) => isRoleEntryActive(entry) && entry.rank_value !== null);
           const rankedRoleCodes = uniqueRoleCodes(rankedEntries.map((entry) => entry.role));
           const primaryEntry = rankedEntries[0] ?? sortedEntries[0] ?? null;
           const divisionNumber = primaryEntry?.division_number ?? null;
@@ -154,7 +154,6 @@ export function PoolPlayerCompactList({
                     >
                       <span className="inline-flex items-center gap-1 font-medium uppercase tracking-[0.12em] text-amber-700 dark:text-amber-200">
                         <AlertTriangle className="h-3.5 w-3.5" />
-                        Conflict
                       </span>
                       <span className="text-amber-700/80 dark:text-amber-200/80">Applied</span>
                       <RoleIconGroup roleCodes={mismatchIssue.applicationRoleCodes} />

@@ -39,6 +39,7 @@ export interface BalancerPlayerRoleEntry {
   priority: number;
   division_number: number | null;
   rank_value: number | null;
+  is_active: boolean;
 }
 
 export interface BalancerApplication {

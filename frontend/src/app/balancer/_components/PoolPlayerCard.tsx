@@ -79,6 +79,7 @@ function normalizeRoleEntries(entries: BalancerPlayerRoleEntry[]): BalancerPlaye
       priority: normalized.length + 1,
       division_number: divisionNumber,
       rank_value: entry.rank_value ?? resolveRankFromDivision(divisionNumber),
+      is_active: entry.is_active ?? true,
     });
   }
 
@@ -143,14 +144,15 @@ export function PoolPlayerCard({ player, onSave, onRemove, saving = false }: Poo
 
     setRoleEntries((current) => [
       ...current,
-      {
-        role: availableRole.value,
-        subtype: null,
-        priority: current.length + 1,
-        division_number: null,
-        rank_value: null,
-      },
-    ]);
+        {
+          role: availableRole.value,
+          subtype: null,
+          priority: current.length + 1,
+          division_number: null,
+          rank_value: null,
+          is_active: true,
+        },
+      ]);
   };
 
   const updateEntry = (index: number, nextEntry: BalancerPlayerRoleEntry) => {
@@ -265,6 +267,7 @@ export function PoolPlayerCard({ player, onSave, onRemove, saving = false }: Poo
                   min={1}
                   max={20}
                   className="h-9"
+                  disabled={!entry.is_active}
                   value={entry.division_number ?? ""}
                   onChange={(event) => {
                     const divisionNumber = event.target.value ? Number(event.target.value) : null;
@@ -280,11 +283,24 @@ export function PoolPlayerCard({ player, onSave, onRemove, saving = false }: Poo
               <div className="space-y-1 md:space-y-0">
                 <span className="text-xs text-muted-foreground md:hidden">Rank</span>
                 <div className="flex h-9 items-center rounded-md border px-3 text-sm text-muted-foreground">
-                  {entry.rank_value ?? "—"}
+                  {entry.is_active ? (entry.rank_value ?? "—") : "Off"}
                 </div>
               </div>
 
               <div className="flex items-center gap-1 pt-1 md:justify-end md:pt-0">
+                <Button
+                  variant={entry.is_active ? "secondary" : "outline"}
+                  size="sm"
+                  className="h-8"
+                  onClick={() =>
+                    updateEntry(index, {
+                      ...entry,
+                      is_active: !entry.is_active,
+                    })
+                  }
+                >
+                  {entry.is_active ? "On" : "Off"}
+                </Button>
                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => moveEntry(index, -1)} disabled={index === 0}>
                   <ArrowUp className="h-3.5 w-3.5" />
                 </Button>
@@ -310,6 +326,7 @@ export function PoolPlayerCard({ player, onSave, onRemove, saving = false }: Poo
             <Plus className="mr-2 h-4 w-4" />
             Add role
           </Button>
+          <p className="flex items-center text-xs text-muted-foreground">Use On/Off to disable a role without removing it.</p>
         </div>
 
         {showNotes ? (

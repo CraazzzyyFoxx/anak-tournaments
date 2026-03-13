@@ -49,6 +49,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import PlayerDivisionIcon from "@/components/PlayerDivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { cn } from "@/lib/utils";
 import {
   BalancerPlayerRecord,
   BalancerPlayerRoleEntry,
@@ -131,6 +132,7 @@ function normalizeRoleEntries(
       division_number:
         entry.division_number ?? resolveDivisionFromRank(entry.rank_value),
       rank_value: entry.rank_value,
+      is_active: entry.is_active ?? true,
     });
   }
 
@@ -213,7 +215,12 @@ function SortableRoleEntry({
     <div
       ref={setNodeRef}
       style={style}
-      className="grid grid-cols-[18px_24px_minmax(0,1fr)_32px] gap-3 rounded-xl border bg-background p-3 sm:grid-cols-[18px_24px_minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,132px)_36px_32px] sm:items-center"
+      className={cn(
+        "grid grid-cols-[18px_24px_minmax(0,1fr)_32px] gap-3 rounded-xl border bg-background p-3 transition-colors sm:grid-cols-[18px_24px_72px_minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,132px)_36px_32px] sm:items-center",
+        entry.is_active
+          ? "border-border bg-background"
+          : "border-amber-500/35 bg-amber-500/10 shadow-[inset_0_0_0_1px_rgba(245,158,11,0.12)]",
+      )}
     >
       <button
         type="button"
@@ -224,8 +231,34 @@ function SortableRoleEntry({
         <GripVertical className="h-4 w-4" />
       </button>
 
-      <div className="flex h-8 items-center justify-center rounded-md border border-dashed border-muted-foreground/30 bg-muted/20">
+      <div
+        className={cn(
+          "flex h-8 items-center justify-center rounded-md border border-dashed bg-muted/20 transition-colors",
+          entry.is_active ? "border-muted-foreground/30" : "border-amber-400/35 bg-amber-500/10",
+        )}
+      >
         <PlayerRoleIcon role={ROLE_DISPLAY[entry.role]} size={20} />
+      </div>
+
+      <div className="col-start-2 col-span-2 flex items-center gap-2 sm:col-span-1 sm:col-start-auto sm:justify-center">
+        <Switch
+          checked={entry.is_active}
+          onCheckedChange={(checked) =>
+            onUpdate(index, {
+              ...entry,
+              is_active: checked,
+            })
+          }
+          aria-label={entry.is_active ? "Disable role" : "Enable role"}
+        />
+        <span
+          className={cn(
+            "text-[11px] font-semibold uppercase tracking-[0.14em]",
+            entry.is_active ? "text-muted-foreground" : "text-amber-300",
+          )}
+        >
+          {entry.is_active ? "On" : "Off"}
+        </span>
       </div>
 
       <Select
@@ -234,7 +267,12 @@ function SortableRoleEntry({
           onUpdate(index, { ...entry, role: value as BalancerRoleCode, subtype: null })
         }
       >
-        <SelectTrigger className="h-8 w-full min-w-0">
+        <SelectTrigger
+          className={cn(
+            "h-8 w-full min-w-0",
+            !entry.is_active && "border-amber-500/30 bg-amber-500/5",
+          )}
+        >
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -257,7 +295,12 @@ function SortableRoleEntry({
             })
           }
         >
-          <SelectTrigger className="h-8 w-full min-w-0">
+          <SelectTrigger
+            className={cn(
+              "h-8 w-full min-w-0",
+              !entry.is_active && "border-amber-500/30 bg-amber-500/5",
+            )}
+          >
             <SelectValue placeholder="Sub-role" />
           </SelectTrigger>
           <SelectContent>
@@ -271,15 +314,28 @@ function SortableRoleEntry({
         </Select>
       </div>
 
-      <div className="col-start-2 col-span-2 flex min-w-0 items-center overflow-hidden rounded-md border border-input bg-background shadow-sm sm:col-span-1 sm:col-start-auto">
-        <span className="flex h-8 items-center border-r border-input bg-muted/50 px-2 text-xs font-medium text-muted-foreground">
+      <div
+        className={cn(
+          "col-start-2 col-span-2 flex min-w-0 items-center overflow-hidden rounded-md border border-input bg-background shadow-sm sm:col-span-1 sm:col-start-auto",
+          !entry.is_active && "border-amber-500/30 bg-amber-500/5",
+        )}
+      >
+        <span
+          className={cn(
+            "flex h-8 items-center border-r border-input bg-muted/50 px-2 text-xs font-medium text-muted-foreground",
+            !entry.is_active && "border-amber-500/20 bg-amber-500/10 text-amber-200",
+          )}
+        >
           SR
         </span>
         <Input
           type="number"
           min={0}
           max={5000}
-          className="h-8 border-0 px-3 shadow-none focus-visible:ring-0"
+          className={cn(
+            "h-8 border-0 px-3 shadow-none focus-visible:ring-0",
+            !entry.is_active && "bg-transparent text-foreground/90",
+          )}
           value={entry.rank_value ?? ""}
           onChange={(event) => {
             const rankValue = event.target.value
@@ -294,7 +350,13 @@ function SortableRoleEntry({
         />
       </div>
 
-      <div className="col-start-4 row-start-1 flex h-8 shrink-0 items-center justify-center self-start sm:col-start-auto sm:row-start-auto sm:self-center" title={divisionNumber != null ? `Division ${divisionNumber}` : undefined}>
+      <div
+        className={cn(
+          "col-start-4 row-start-1 flex h-8 shrink-0 items-center justify-center self-start rounded-md sm:col-start-auto sm:row-start-auto sm:self-center",
+          !entry.is_active && "bg-amber-500/10",
+        )}
+        title={divisionNumber != null ? `Division ${divisionNumber}` : undefined}
+      >
         {divisionNumber != null ? (
           <>
             <PlayerDivisionIcon division={divisionNumber} width={28} height={28} />
@@ -305,14 +367,16 @@ function SortableRoleEntry({
         )}
       </div>
 
-      <Button
-        variant="ghost"
-        size="icon"
-        className="col-start-4 row-start-2 h-8 w-8 shrink-0 self-center sm:col-start-auto sm:row-start-auto"
-        onClick={() => onRemove(index)}
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </Button>
+      <div className="col-start-4 row-start-2 flex items-center self-center sm:col-start-auto sm:row-start-auto">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 shrink-0"
+          onClick={() => onRemove(index)}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      </div>
     </div>
   );
 }
@@ -406,14 +470,15 @@ export function PlayerEditModal({
 
     setRoleEntries((current) => [
       ...current,
-      {
-        role: availableRole.value,
-        subtype: null,
-        priority: current.length + 1,
-        division_number: null,
-        rank_value: null,
-      },
-    ]);
+        {
+          role: availableRole.value,
+          subtype: null,
+          priority: current.length + 1,
+          division_number: null,
+          rank_value: null,
+          is_active: true,
+        },
+      ]);
   };
 
   const updateEntry = (index: number, nextEntry: BalancerPlayerRoleEntry) => {
@@ -445,7 +510,7 @@ export function PlayerEditModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-4xl">
         {onRemove ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -481,7 +546,7 @@ export function PlayerEditModal({
           <DialogDescription>Edit player roles, ranks, and pool status.</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-5">
+        <div className="space-y-6 px-1 sm:px-0">
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="flex items-start justify-between rounded-xl border bg-muted/20 p-4">
               <div className="space-y-1 pr-4">
@@ -518,10 +583,10 @@ export function PlayerEditModal({
             </div>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-4">
             <div className="flex items-center justify-between gap-3">
               <Label className="text-sm font-medium">Roles</Label>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
                   variant="secondary"
@@ -549,15 +614,18 @@ export function PlayerEditModal({
               </div>
             </div>
 
-            <div className="hidden rounded-lg border border-dashed border-muted-foreground/20 bg-muted/10 px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground sm:grid sm:grid-cols-[18px_24px_minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,132px)_36px_32px] sm:items-center sm:gap-3">
+            <div className="hidden rounded-lg border border-dashed border-muted-foreground/20 bg-muted/10 px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground sm:grid sm:grid-cols-[18px_24px_72px_minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,132px)_36px_32px] sm:items-center sm:gap-3">
               <span />
               <span />
+              <span className="text-center">State</span>
               <span>Role</span>
               <span>Sub-role</span>
               <span>Skill rating</span>
               <span className="text-center">Div</span>
               <span />
             </div>
+
+            <p className="text-xs text-muted-foreground">Use the On/Off toggle to disable a role without deleting it. Export and import keep this state via `isActive`.</p>
 
             <DndContext
               sensors={sensors}

@@ -318,7 +318,9 @@ def filter_ranked_role_entries(
     role_entries: list[dict[str, Any]] | list[admin_schemas.BalancerPlayerRoleEntry] | None,
 ) -> list[dict[str, Any]]:
     normalized_entries = normalize_role_entries(role_entries)
-    ranked_entries = [entry for entry in normalized_entries if entry.get("rank_value") is not None]
+    ranked_entries = [
+        entry for entry in normalized_entries if entry.get("is_active", True) and entry.get("rank_value") is not None
+    ]
     return normalize_role_entries(ranked_entries)
 
 
@@ -379,6 +381,11 @@ def normalize_role_entries(
         if role not in VALID_ROLES or role in seen_roles:
             continue
 
+        is_active_raw = entry.get("is_active")
+        if is_active_raw is None:
+            is_active_raw = entry.get("isActive")
+        is_active = bool(True if is_active_raw is None else is_active_raw)
+
         subtype = entry.get("subtype")
         if subtype not in VALID_ROLE_SUBTYPES.get(role, set()):
             subtype = None
@@ -398,6 +405,7 @@ def normalize_role_entries(
                 "priority": len(normalized_entries) + 1,
                 "division_number": int(division_number) if division_number is not None else None,
                 "rank_value": int(rank_value) if rank_value is not None else None,
+                "is_active": is_active,
             }
         )
         seen_roles.add(role)
@@ -423,6 +431,7 @@ def build_role_entries_from_application(application: models.BalancerApplication)
                 "priority": 0,
                 "division_number": None,
                 "rank_value": None,
+                "is_active": True,
             }
         )
 
@@ -438,6 +447,7 @@ def build_role_entries_from_application(application: models.BalancerApplication)
                 "priority": additional_index,
                 "division_number": None,
                 "rank_value": None,
+                "is_active": True,
             }
         )
         additional_index += 1
@@ -464,6 +474,7 @@ def build_role_entries_from_application(application: models.BalancerApplication)
                 "priority": index + 1,
                 "division_number": None,
                 "rank_value": None,
+                "is_active": True,
             }
             for index, role in enumerate(ordered_roles)
         ]
@@ -485,6 +496,7 @@ def map_imported_role_entries_to_application(
             "priority": allowed_entry["priority"],
             "division_number": imported_by_role.get(allowed_entry["role"], {}).get("division_number"),
             "rank_value": imported_by_role.get(allowed_entry["role"], {}).get("rank_value"),
+            "is_active": imported_by_role.get(allowed_entry["role"], {}).get("is_active", True),
         }
         for allowed_entry in allowed_role_entries
         if allowed_entry["role"] in imported_by_role
@@ -507,6 +519,7 @@ def map_existing_role_entries_to_application(
             "priority": allowed_entry["priority"],
             "division_number": existing_by_role.get(allowed_entry["role"], {}).get("division_number"),
             "rank_value": existing_by_role.get(allowed_entry["role"], {}).get("rank_value"),
+            "is_active": existing_by_role.get(allowed_entry["role"], {}).get("is_active", True),
         }
         for allowed_entry in allowed_role_entries
     ]
@@ -515,11 +528,12 @@ def map_existing_role_entries_to_application(
 
 def sync_legacy_player_fields(player: models.BalancerPlayer) -> None:
     role_entries = normalize_role_entries(player.role_entries_json or [])
-    primary_entry = role_entries[0] if role_entries else None
+    active_role_entries = [entry for entry in role_entries if entry.get("is_active", True)]
+    primary_entry = active_role_entries[0] if active_role_entries else None
 
     player.role_entries_json = role_entries
     player.primary_role = primary_entry["role"] if primary_entry else None
-    player.secondary_roles_json = [entry["role"] for entry in role_entries[1:]]
+    player.secondary_roles_json = [entry["role"] for entry in active_role_entries[1:]]
     player.division_number = primary_entry.get("division_number") if primary_entry else None
     player.rank_value = primary_entry.get("rank_value") if primary_entry else None
 
@@ -565,6 +579,7 @@ def build_role_entries_from_classes(classes: dict[str, Any]) -> list[dict[str, A
                 "priority": priority,
                 "division_number": resolve_division_from_rank(rank_value),
                 "rank_value": rank_value,
+                "is_active": is_active,
             }
         )
 
@@ -684,13 +699,13 @@ async def resolve_import_context(
 
 def serialize_player_for_export(player: models.BalancerPlayer, export_uuid: str) -> dict[str, Any]:
     role_entries = normalize_role_entries(player.role_entries_json or [])
-    ordered_active_roles = [entry["role"] for entry in role_entries]
+    ordered_active_roles = [entry["role"] for entry in role_entries if entry.get("is_active", True)]
     ordered_roles = ordered_active_roles + [role for role in EXPORT_ROLE_ORDER if role not in ordered_active_roles]
     export_priorities = {role: index for index, role in enumerate(ordered_roles)}
     classes: dict[str, dict[str, Any]] = {}
     for role in EXPORT_ROLE_ORDER:
         entry = next((candidate for candidate in role_entries if candidate["role"] == role), None)
-        is_active = bool(entry and entry.get("rank_value") is not None)
+        is_active = bool(entry and entry.get("is_active", True) and entry.get("rank_value") is not None)
         priority = export_priorities[role]
         primary_flag, secondary_flag = build_class_subtype_flags(
             role, entry.get("subtype") if is_active and entry else None

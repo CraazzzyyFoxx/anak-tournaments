@@ -47,6 +47,7 @@ class BalancerPlayerRoleEntry(BaseModel):
     priority: int
     division_number: int | None = None
     rank_value: int | None = None
+    is_active: bool = True
 
 
 class BalancerPlayerRead(BaseRead):

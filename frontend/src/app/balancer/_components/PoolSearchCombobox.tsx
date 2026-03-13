@@ -15,6 +15,7 @@ import {
   ROLE_LABELS,
   buildApplicationSearchIndex,
   buildPlayerSearchIndex,
+  isRoleEntryActive,
   type PlayerValidationIssue,
 } from "@/app/balancer/_components/workspace-helpers";
 
@@ -83,7 +84,7 @@ function getPlayerRoleCodes(player: BalancerPlayerRecord): BalancerRoleCode[] {
   return uniqueRoleCodes(
     [...player.role_entries_json]
       .sort((left, right) => left.priority - right.priority)
-      .filter((entry) => entry.rank_value !== null)
+      .filter((entry) => isRoleEntryActive(entry) && entry.rank_value !== null)
       .map((entry) => entry.role),
   );
 }

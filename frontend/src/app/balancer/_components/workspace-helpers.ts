@@ -43,8 +43,16 @@ export function sortRoleEntries(entries: BalancerPlayerRoleEntry[]): BalancerPla
   return [...entries].sort((a, b) => a.priority - b.priority);
 }
 
+export function isRoleEntryActive(entry: BalancerPlayerRoleEntry): boolean {
+  return entry.is_active;
+}
+
+export function getActiveRoleEntries(entries: BalancerPlayerRoleEntry[]): BalancerPlayerRoleEntry[] {
+  return sortRoleEntries(entries).filter((entry) => isRoleEntryActive(entry));
+}
+
 export function playerHasRankedRole(player: BalancerPlayerRecord): boolean {
-  return player.role_entries_json.some((entry) => entry.rank_value !== null);
+  return player.role_entries_json.some((entry) => isRoleEntryActive(entry) && entry.rank_value !== null);
 }
 
 function normalizeApplicationRole(role: string | null | undefined): BalancerRoleCode | null {
@@ -95,7 +103,7 @@ function formatRoleCodes(roleCodes: Iterable<BalancerRoleCode>): string {
 }
 
 function getPlayerRoleCodes(player: BalancerPlayerRecord): BalancerRoleCode[] {
-  return uniqueRoleCodesInOrder(sortRoleEntries(player.role_entries_json).map((entry) => entry.role));
+  return uniqueRoleCodesInOrder(getActiveRoleEntries(player.role_entries_json).map((entry) => entry.role));
 }
 
 function getApplicationRoleCodes(application: BalancerApplication | null | undefined): BalancerRoleCode[] {
@@ -115,9 +123,10 @@ export function buildPlayerSearchIndex(
   application: BalancerApplication | null | undefined,
 ): string {
   const roleEntries = sortRoleEntries(player.role_entries_json);
-  const playerRoleLabels = roleEntries.map((entry) => ROLE_LABELS[entry.role]);
-  const playerRoleCodes = roleEntries.map((entry) => entry.role);
-  const divisions = roleEntries.map((entry) => entry.division_number).filter((division): division is number => division !== null);
+  const activeRoleEntries = roleEntries.filter((entry) => isRoleEntryActive(entry));
+  const playerRoleLabels = activeRoleEntries.map((entry) => ROLE_LABELS[entry.role]);
+  const playerRoleCodes = activeRoleEntries.map((entry) => entry.role);
+  const divisions = activeRoleEntries.map((entry) => entry.division_number).filter((division): division is number => division !== null);
   const applicationRoleLabels = getApplicationRoleCodes(application).map((roleCode) => ROLE_LABELS[roleCode]);
 
   return [
@@ -249,7 +258,7 @@ export function convertBalanceResponseToInternalPayload(response: BalanceRespons
 
 export function buildBalancerInput(players: BalancerPlayerRecord[]): Record<string, unknown> {
   const payload = players.reduce<Record<string, unknown>>((accumulator, player) => {
-    const roleEntries = sortRoleEntries(player.role_entries_json);
+    const roleEntries = getActiveRoleEntries(player.role_entries_json);
     const hasRankedRole = roleEntries.some((entry) => entry.rank_value !== null);
     if (!hasRankedRole) {
       return accumulator;
@@ -258,7 +267,7 @@ export function buildBalancerInput(players: BalancerPlayerRecord[]): Record<stri
     const toClassConfig = (role: "tank" | "dps" | "support") => {
       const roleEntry = roleEntries.find((entry) => entry.role === role);
       return {
-        isActive: Boolean(roleEntry?.rank_value),
+        isActive: Boolean(roleEntry?.is_active && roleEntry?.rank_value),
         rank: roleEntry?.rank_value ?? 0,
         priority: roleEntry?.priority ?? 99,
       };
@@ -351,6 +360,7 @@ export function buildRoleEntriesFromRankHistory(
       priority: priority++,
       rank_value: rankValue,
       division_number: resolveDivisionFromRankHelper(rankValue),
+      is_active: true,
     });
   }
   return entries;

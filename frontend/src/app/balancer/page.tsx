@@ -31,6 +31,7 @@ import {
   convertBalanceResponseToInternalPayload,
   downloadPayload,
   fetchPlayerRankHistory,
+  getActiveRoleEntries,
   getPlayerValidationIssues,
   type BalanceVariant,
   type PlayerValidationIssue,
@@ -87,12 +88,12 @@ function createVariantLabel(index: number): string {
 }
 
 function getPrimaryDivision(player: BalancerPlayerRecord): number {
-  if (player.role_entries_json.length === 0) {
+  const activeEntries = getActiveRoleEntries(player.role_entries_json);
+  if (activeEntries.length === 0) {
     return Number.POSITIVE_INFINITY;
   }
 
-  const sortedEntries = [...player.role_entries_json].sort((left, right) => left.priority - right.priority);
-  return sortedEntries[0]?.division_number ?? Number.POSITIVE_INFINITY;
+  return activeEntries[0]?.division_number ?? Number.POSITIVE_INFINITY;
 }
 
 function sortPlayerStates(playerStates: PlayerValidationState[], sortValue: PoolSortValue): PlayerValidationState[] {
