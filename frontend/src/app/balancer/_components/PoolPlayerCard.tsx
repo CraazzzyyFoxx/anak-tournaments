@@ -1,15 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, Plus, Save, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, NotebookPen, Plus, Save, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { BalancerPlayerRecord, BalancerPlayerRoleEntry, BalancerRoleCode, BalancerRoleSubtype } from "@/types/balancer-admin.types";
 
@@ -96,17 +96,44 @@ export function PoolPlayerCard({ player, onSave, onRemove, saving = false }: Poo
   const [roleEntries, setRoleEntries] = useState<BalancerPlayerRoleEntry[]>(normalizeRoleEntries(player.role_entries_json));
   const [isInPool, setIsInPool] = useState(player.is_in_pool);
   const [notes, setNotes] = useState(player.admin_notes ?? "");
+  const [showNotes, setShowNotes] = useState(Boolean(player.admin_notes));
 
   useEffect(() => {
     setRoleEntries(normalizeRoleEntries(player.role_entries_json));
     setIsInPool(player.is_in_pool);
     setNotes(player.admin_notes ?? "");
+    setShowNotes(Boolean(player.admin_notes));
   }, [player]);
 
-  const rankedRolesCount = useMemo(
-    () => roleEntries.filter((entry) => entry.rank_value !== null).length,
-    [roleEntries],
-  );
+  const isDirty = useMemo(() => {
+    const originalEntries = normalizeRoleEntries(player.role_entries_json);
+
+    if (isInPool !== player.is_in_pool) {
+      return true;
+    }
+
+    if (notes !== (player.admin_notes ?? "")) {
+      return true;
+    }
+
+    if (roleEntries.length !== originalEntries.length) {
+      return true;
+    }
+
+    return roleEntries.some((entry, index) => {
+      const originalEntry = originalEntries[index];
+
+      if (!originalEntry) {
+        return true;
+      }
+
+      return (
+        entry.role !== originalEntry.role ||
+        entry.subtype !== originalEntry.subtype ||
+        entry.division_number !== originalEntry.division_number
+      );
+    });
+  }, [isInPool, notes, player, roleEntries]);
 
   const addRole = () => {
     const availableRole = ROLE_OPTIONS.find((option) => !roleEntries.some((entry) => entry.role === option.value));
@@ -152,33 +179,47 @@ export function PoolPlayerCard({ player, onSave, onRemove, saving = false }: Poo
 
   return (
     <Card className="border-border/60 bg-background/80">
-      <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
-        <div>
-          <CardTitle className="text-base">{player.battle_tag}</CardTitle>
-          <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
-            {isInPool ? <Badge variant="outline">In pool</Badge> : <Badge variant="secondary">Excluded</Badge>}
-            {rankedRolesCount > 1 ? <Badge>Flex</Badge> : null}
+      <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0 pb-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <CardTitle className="truncate text-base">{player.battle_tag}</CardTitle>
+            {player.is_flex ? <Badge>Flex</Badge> : null}
           </div>
         </div>
-        {onRemove ? (
-          <Button variant="ghost" size="icon" onClick={() => onRemove(player.id)}>
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        ) : null}
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-2">
+            <Switch id={`pool-switch-${player.id}`} checked={isInPool} onCheckedChange={setIsInPool} />
+            <Label htmlFor={`pool-switch-${player.id}`} className="cursor-pointer text-sm font-normal">
+              In pool
+            </Label>
+          </div>
+          {onRemove ? (
+            <Button variant="ghost" size="icon" onClick={() => onRemove(player.id)}>
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          ) : null}
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex items-center gap-2 text-sm">
-          <Checkbox checked={isInPool} onCheckedChange={(checked) => setIsInPool(Boolean(checked))} />
-          <span>Include in balancing pool</span>
-        </div>
-
         <div className="space-y-3">
+          {roleEntries.length > 0 ? (
+            <div className="hidden grid-cols-[minmax(0,1fr)_110px_72px_72px_96px] gap-2 px-1 text-xs text-muted-foreground md:grid">
+              <span>Role</span>
+              <span>Subtype</span>
+              <span>Div</span>
+              <span>SR</span>
+              <span aria-hidden="true" />
+            </div>
+          ) : null}
           {roleEntries.map((entry, index) => (
-            <div key={`${player.id}-${entry.role}-${index}`} className="grid gap-3 rounded-xl border p-3 md:grid-cols-[1fr_120px_100px_auto]">
-              <div className="space-y-2">
-                <Label>Role</Label>
+            <div
+              key={`${player.id}-${entry.role}-${index}`}
+              className="grid gap-2 rounded-xl border p-3 md:grid-cols-[minmax(0,1fr)_110px_72px_72px_96px] md:items-center"
+            >
+              <div className="space-y-1 md:space-y-0">
+                <span className="text-xs text-muted-foreground md:hidden">Role</span>
                 <Select value={entry.role} onValueChange={(value) => updateEntry(index, { ...entry, role: value as BalancerRoleCode, subtype: null })}>
-                  <SelectTrigger>
+                  <SelectTrigger className="h-9">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -193,14 +234,14 @@ export function PoolPlayerCard({ player, onSave, onRemove, saving = false }: Poo
                 </Select>
               </div>
 
-              {SUBTYPE_OPTIONS[entry.role].length > 0 && (
-                <div className="space-y-2">
-                  <Label>Subtype</Label>
+              {SUBTYPE_OPTIONS[entry.role].length > 0 ? (
+                <div className="space-y-1 md:space-y-0">
+                  <span className="text-xs text-muted-foreground md:hidden">Subtype</span>
                   <Select
                     value={entry.subtype ?? "none"}
                     onValueChange={(value) => updateEntry(index, { ...entry, subtype: value === "none" ? null : (value as BalancerRoleSubtype) })}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="h-9">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -213,14 +254,17 @@ export function PoolPlayerCard({ player, onSave, onRemove, saving = false }: Poo
                     </SelectContent>
                   </Select>
                 </div>
+              ) : (
+                <div className="hidden md:block" aria-hidden="true" />
               )}
 
-              <div className="space-y-2">
-                <Label>Division</Label>
+              <div className="space-y-1 md:space-y-0">
+                <span className="text-xs text-muted-foreground md:hidden">Division</span>
                 <Input
                   type="number"
                   min={1}
                   max={20}
+                  className="h-9"
                   value={entry.division_number ?? ""}
                   onChange={(event) => {
                     const divisionNumber = event.target.value ? Number(event.target.value) : null;
@@ -233,22 +277,28 @@ export function PoolPlayerCard({ player, onSave, onRemove, saving = false }: Poo
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label>Rank</Label>
-                <div className="flex h-10 items-center rounded-md border px-3 text-sm text-muted-foreground">
+              <div className="space-y-1 md:space-y-0">
+                <span className="text-xs text-muted-foreground md:hidden">Rank</span>
+                <div className="flex h-9 items-center rounded-md border px-3 text-sm text-muted-foreground">
                   {entry.rank_value ?? "—"}
                 </div>
               </div>
 
-              <div className="flex items-end gap-1">
-                <Button variant="outline" size="icon" onClick={() => moveEntry(index, -1)} disabled={index === 0}>
-                  <ArrowUp className="h-4 w-4" />
+              <div className="flex items-center gap-1 pt-1 md:justify-end md:pt-0">
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => moveEntry(index, -1)} disabled={index === 0}>
+                  <ArrowUp className="h-3.5 w-3.5" />
                 </Button>
-                <Button variant="outline" size="icon" onClick={() => moveEntry(index, 1)} disabled={index === roleEntries.length - 1}>
-                  <ArrowDown className="h-4 w-4" />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => moveEntry(index, 1)}
+                  disabled={index === roleEntries.length - 1}
+                >
+                  <ArrowDown className="h-3.5 w-3.5" />
                 </Button>
-                <Button variant="outline" size="icon" onClick={() => removeEntry(index)}>
-                  <Trash2 className="h-4 w-4" />
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeEntry(index)}>
+                  <Trash2 className="h-3.5 w-3.5" />
                 </Button>
               </div>
             </div>
@@ -262,15 +312,36 @@ export function PoolPlayerCard({ player, onSave, onRemove, saving = false }: Poo
           </Button>
         </div>
 
-        <div className="space-y-2">
-          <Label>Admin notes</Label>
-          <Textarea value={notes} onChange={(event) => setNotes(event.target.value)} className="min-h-20" />
-        </div>
+        {showNotes ? (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <NotebookPen className="h-4 w-4" />
+              <span>Admin notes</span>
+            </div>
+            <Textarea
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              className="min-h-16"
+              placeholder="Admin notes..."
+            />
+          </div>
+        ) : (
+          <Button
+            type="button"
+            variant="link"
+            size="sm"
+            className="h-auto w-fit p-0 text-xs text-muted-foreground"
+            onClick={() => setShowNotes(true)}
+          >
+            <NotebookPen className="mr-1 h-3.5 w-3.5" />
+            Add note
+          </Button>
+        )}
 
         <Button
           type="button"
           onClick={() => onSave(player.id, { role_entries_json: normalizeRoleEntries(roleEntries), is_in_pool: isInPool, admin_notes: notes || null })}
-          disabled={saving}
+          disabled={!isDirty || saving}
         >
           <Save className="mr-2 h-4 w-4" />
           Save player

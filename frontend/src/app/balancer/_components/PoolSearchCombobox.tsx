@@ -1,176 +1,306 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Plus, Search, UserCheck } from "lucide-react";
+import { Plus, Search, SlidersHorizontal, UserCheck } from "lucide-react";
 
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Button } from "@/components/ui/button";
+import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { BalancerApplication, BalancerPlayerRecord } from "@/types/balancer-admin.types";
-import { playerHasRankedRole } from "@/app/balancer/_components/workspace-helpers";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
+import { BalancerApplication, BalancerPlayerRecord, BalancerRoleCode } from "@/types/balancer-admin.types";
+import {
+  ROLE_LABELS,
+  buildApplicationSearchIndex,
+  buildPlayerSearchIndex,
+  type PlayerValidationIssue,
+} from "@/app/balancer/_components/workspace-helpers";
+
+const MAX_RESULTS_PER_GROUP = 6;
+
+const SORT_OPTIONS = [
+  { value: "added_desc", label: "Newest in pool" },
+  { value: "name_asc", label: "Name A-Z" },
+  { value: "division_asc", label: "Highest division first" },
+  { value: "division_desc", label: "Lowest division first" },
+] as const;
 
 type PoolSearchComboboxProps = {
-  players: BalancerPlayerRecord[];
+  playerStates: Array<{
+    player: BalancerPlayerRecord;
+    issues: PlayerValidationIssue[];
+  }>;
   applications: BalancerApplication[];
+  value: string;
+  onValueChange: (value: string) => void;
+  sortValue: string;
+  onSortValueChange: (value: string) => void;
+  showFilters: boolean;
+  onShowFiltersChange: (open: boolean) => void;
   onSelectPlayer: (playerId: number) => void;
   onAddFromApplication: (application: BalancerApplication) => void;
   disabled?: boolean;
+  suggestionsMode?: "default" | "applications";
 };
 
-function buildPlayerSearchValue(player: BalancerPlayerRecord): string {
-  return player.battle_tag;
+function uniqueRoleCodes(roleCodes: BalancerRoleCode[]): BalancerRoleCode[] {
+  return roleCodes.filter((roleCode, index) => roleCodes.indexOf(roleCode) === index);
 }
 
-function buildApplicationSearchValue(application: BalancerApplication): string {
-  return `${application.battle_tag} ${application.discord_nick ?? ""} ${application.twitch_nick ?? ""}`;
+function normalizeApplicationRole(role: string | null | undefined): BalancerRoleCode | null {
+  const normalized = role?.trim().toLowerCase();
+
+  if (!normalized) {
+    return null;
+  }
+
+  if (normalized === "tank") {
+    return "tank";
+  }
+
+  if (normalized === "dps" || normalized === "damage") {
+    return "dps";
+  }
+
+  if (normalized === "support") {
+    return "support";
+  }
+
+  return null;
 }
 
-function formatPlayerRoles(player: BalancerPlayerRecord): string {
-  const ranked = player.role_entries_json
-    .filter((entry) => entry.rank_value !== null)
-    .map((entry) => {
-      const labels: Record<string, string> = { tank: "T", dps: "D", support: "S" };
-      return labels[entry.role] ?? entry.role;
-    });
-  return ranked.length > 0 ? ranked.join("/") : "—";
+function getApplicationRoleCodes(application: BalancerApplication): BalancerRoleCode[] {
+  return uniqueRoleCodes(
+    [application.primary_role, ...application.additional_roles_json]
+      .map((role) => normalizeApplicationRole(role))
+      .filter((roleCode): roleCode is BalancerRoleCode => roleCode !== null),
+  );
 }
 
-function formatApplicationRoles(application: BalancerApplication): string {
-  return [application.primary_role, ...application.additional_roles_json].filter(Boolean).join(" / ") || "No roles";
+function getPlayerRoleCodes(player: BalancerPlayerRecord): BalancerRoleCode[] {
+  return uniqueRoleCodes(
+    [...player.role_entries_json]
+      .sort((left, right) => left.priority - right.priority)
+      .filter((entry) => entry.rank_value !== null)
+      .map((entry) => entry.role),
+  );
+}
+
+function RoleIconRow({ roleCodes }: { roleCodes: BalancerRoleCode[] }) {
+  if (roleCodes.length === 0) {
+    return <span className="text-xs text-muted-foreground">No roles</span>;
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      {roleCodes.map((roleCode) => (
+        <span
+          key={roleCode}
+          className="flex h-6 w-6 items-center justify-center rounded-full border border-border/60 bg-background/90"
+          title={ROLE_LABELS[roleCode]}
+        >
+          <PlayerRoleIcon role={ROLE_LABELS[roleCode]} size={14} />
+        </span>
+      ))}
+      <span className="sr-only">{roleCodes.map((roleCode) => ROLE_LABELS[roleCode]).join(", ")}</span>
+    </div>
+  );
 }
 
 export function PoolSearchCombobox({
-  players,
+  playerStates,
   applications,
+  value,
+  onValueChange,
+  sortValue,
+  onSortValueChange,
+  showFilters,
+  onShowFiltersChange,
   onSelectPlayer,
   onAddFromApplication,
   disabled = false,
+  suggestionsMode = "default",
 }: PoolSearchComboboxProps) {
-  const [open, setOpen] = useState(false);
-  const [searchValue, setSearchValue] = useState("");
-  const [hideAdded, setHideAdded] = useState(false);
+  const normalizedQuery = value.trim().toLowerCase();
+  const showApplicationShelf = suggestionsMode === "applications" && normalizedQuery.length === 0;
+  const applicationsById = new Map(applications.map((application) => [application.id, application]));
+  const addableApplications = applications.filter((application) => application.is_active && application.player === null);
 
-  const poolPlayers = useMemo(() => players.filter((p) => p.is_in_pool), [players]);
-  const visiblePoolPlayers = useMemo(
-    () => (hideAdded ? [] : poolPlayers),
-    [hideAdded, poolPlayers],
-  );
+  const matchingPoolPlayers = normalizedQuery
+    ? playerStates
+        .filter(({ player }) =>
+          buildPlayerSearchIndex(player, applicationsById.get(player.application_id) ?? null).includes(normalizedQuery),
+        )
+        .slice(0, MAX_RESULTS_PER_GROUP)
+    : [];
 
-  const addableApplications = useMemo(
-    () => applications.filter((app) => app.is_active && app.player === null),
-    [applications],
-  );
+  const matchingApplications = (normalizedQuery
+    ? addableApplications.filter((application) => buildApplicationSearchIndex(application).includes(normalizedQuery))
+    : showApplicationShelf
+      ? addableApplications
+      : []
+  ).slice(0, MAX_RESULTS_PER_GROUP);
 
-  const hasResults = visiblePoolPlayers.length > 0 || addableApplications.length > 0;
+  const shouldShowSuggestions = !disabled && (normalizedQuery.length > 0 || showApplicationShelf);
+  const totalSuggestionCount = matchingPoolPlayers.length + matchingApplications.length;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={value}
+            onChange={(event) => onValueChange(event.target.value)}
+            placeholder="Search players or applications"
+            aria-label="Search players or applications"
+            autoComplete="off"
+            disabled={disabled}
+            className="h-10 rounded-xl border-border/70 pl-9"
+          />
+        </div>
+
         <Button
           type="button"
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          disabled={disabled}
-          className="w-full justify-start gap-2 text-muted-foreground"
+          size="icon"
+          variant={showFilters ? "secondary" : "outline"}
+          aria-label={showFilters ? "Hide pool filters" : "Show pool filters"}
+          aria-pressed={showFilters}
+          onClick={() => onShowFiltersChange(!showFilters)}
         >
-          <Search className="h-4 w-4 shrink-0" />
-          <span className="truncate">Search players or applications…</span>
+          <SlidersHorizontal className="h-4 w-4" />
         </Button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-[420px] p-0">
-        <Command>
-          <CommandInput
-            value={searchValue}
-            onValueChange={setSearchValue}
-            placeholder="Search by BattleTag…"
-          />
-          <div className="flex items-center gap-2 border-b px-3 py-2 text-sm">
-            <Checkbox
-              id="hide-added-pool-players"
-              checked={hideAdded}
-              onCheckedChange={(checked) => setHideAdded(Boolean(checked))}
-            />
-            <Label htmlFor="hide-added-pool-players" className="cursor-pointer font-normal text-muted-foreground">
-              Hide already added
-            </Label>
+      </div>
+
+      {showFilters ? (
+        <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-end">
+            <div className="space-y-1.5">
+              <Label htmlFor="player-pool-sort">Sort pool list</Label>
+              <Select value={sortValue} onValueChange={onSortValueChange}>
+                <SelectTrigger id="player-pool-sort" className="w-full rounded-xl border-border/70 bg-background">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SORT_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="rounded-xl border border-dashed border-border/70 bg-background/80 px-3 py-2 text-xs text-muted-foreground">
+              Search filters both the current pool and active applications that can be added.
+            </div>
           </div>
-          <CommandList>
-            {!hasResults && <CommandEmpty>No players or applications found.</CommandEmpty>}
+        </div>
+      ) : null}
 
-            {visiblePoolPlayers.length > 0 && (
-              <CommandGroup heading="Pool Players">
-                {visiblePoolPlayers.map((player) => {
-                  const valid = playerHasRankedRole(player);
-                  return (
-                    <CommandItem
-                      key={`pool-${player.id}`}
-                      value={buildPlayerSearchValue(player)}
-                      onSelect={() => {
-                        onSelectPlayer(player.id);
-                        setOpen(false);
-                        setSearchValue("");
-                      }}
-                    >
-                      <UserCheck className="mr-2 h-4 w-4 shrink-0 text-primary" />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-medium">{player.battle_tag}</div>
-                        <div className="truncate text-xs text-muted-foreground">
-                          Roles: {formatPlayerRoles(player)}
+      {shouldShowSuggestions ? (
+        <div className="overflow-hidden rounded-xl border border-border/70 bg-background/95 shadow-sm">
+          <div className="flex items-center justify-between border-b border-border/60 px-3 py-2 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            <span>{showApplicationShelf ? "Applications ready to add" : "Quick results"}</span>
+            <span>{totalSuggestionCount} results</span>
+          </div>
+
+          <ScrollArea className="max-h-72">
+            <div className="space-y-4 p-2">
+              {matchingPoolPlayers.length > 0 ? (
+                <div className="space-y-1">
+                  <p className="px-2 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">Pool Players</p>
+                  {matchingPoolPlayers.map(({ player, issues }) => {
+                    const roleCodes = getPlayerRoleCodes(player);
+                    const isValid = issues.length === 0;
+
+                    return (
+                      <button
+                        key={`pool-${player.id}`}
+                        type="button"
+                        onClick={() => {
+                          onSelectPlayer(player.id);
+                          onValueChange("");
+                        }}
+                        className="flex w-full items-center gap-3 rounded-xl border border-transparent px-2.5 py-2 text-left transition-colors hover:border-primary/20 hover:bg-muted/35"
+                      >
+                        <UserCheck className={cn("h-4 w-4 shrink-0", isValid ? "text-emerald-600" : "text-amber-600")} />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate text-sm font-medium text-foreground">{player.battle_tag}</span>
+                            {player.is_flex ? (
+                              <Badge variant="secondary" className="h-5 rounded-full px-2 text-[10px] uppercase tracking-[0.12em]">
+                                Flex
+                              </Badge>
+                            ) : null}
+                          </div>
+                          <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                            <RoleIconRow roleCodes={roleCodes} />
+                          </div>
                         </div>
-                      </div>
-                      {valid ? (
-                        <Badge variant="outline" className="ml-2 shrink-0 text-[10px]">
-                          Ready
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "rounded-full px-2 text-[10px] uppercase tracking-[0.12em]",
+                            isValid
+                              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                              : "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-200",
+                          )}
+                        >
+                          {isValid ? "Ready" : "Need Fix"}
                         </Badge>
-                      ) : (
-                        <Badge variant="secondary" className="ml-2 shrink-0 text-[10px]">
-                          Needs rank
-                        </Badge>
-                      )}
-                    </CommandItem>
-                  );
-                })}
-              </CommandGroup>
-            )}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
 
-            {addableApplications.length > 0 && (
-              <CommandGroup heading="Applications (not in pool)">
-                {addableApplications.map((application) => (
-                  <CommandItem
-                    key={`app-${application.id}`}
-                    value={buildApplicationSearchValue(application)}
-                    onSelect={() => {
-                      onAddFromApplication(application);
-                      setOpen(false);
-                      setSearchValue("");
-                    }}
-                  >
-                    <Plus className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium">{application.battle_tag}</div>
-                      <div className="truncate text-xs text-muted-foreground">
-                        {formatApplicationRoles(application)}
-                      </div>
-                    </div>
-                    <span className="ml-2 shrink-0 text-[10px] text-muted-foreground">Add to pool</span>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            )}
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
+              {matchingApplications.length > 0 ? (
+                <div className="space-y-1">
+                  <p className="px-2 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">Add to Pool</p>
+                  {matchingApplications.map((application) => {
+                    const roleCodes = getApplicationRoleCodes(application);
+
+                    return (
+                      <button
+                        key={`app-${application.id}`}
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => {
+                          onAddFromApplication(application);
+                          onValueChange("");
+                        }}
+                        className="flex w-full items-center gap-3 rounded-xl border border-transparent px-2.5 py-2 text-left transition-colors hover:border-primary/20 hover:bg-muted/35 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <Plus className="h-4 w-4 shrink-0 text-primary" />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium text-foreground">{application.battle_tag}</div>
+                          <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                            <RoleIconRow roleCodes={roleCodes} />
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                          Add
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+
+              {totalSuggestionCount === 0 ? (
+                <div className="px-2 py-6 text-center text-sm text-muted-foreground">
+                  {normalizedQuery.length > 0
+                    ? `No players or applications match "${value.trim()}".`
+                    : "No active applications are ready to add right now."}
+                </div>
+              ) : null}
+            </div>
+          </ScrollArea>
+        </div>
+      ) : null}
+    </div>
   );
 }

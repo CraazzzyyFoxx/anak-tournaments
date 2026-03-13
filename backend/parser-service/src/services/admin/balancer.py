@@ -179,6 +179,83 @@ def map_role(raw_role: str | None, role_mapping: dict[str, str | None]) -> str |
     return None
 
 
+def is_flex_role_selection(raw_role: str | None, role_mapping: dict[str, str | None]) -> bool:
+    if raw_role is None:
+        return False
+
+    normalized_value = raw_role.strip()
+    if not normalized_value:
+        return False
+
+    if normalized_value in role_mapping and role_mapping[normalized_value] is None:
+        return True
+
+    lowered = normalize_header(normalized_value)
+    return "флекс" in lowered or "flex" in lowered
+
+
+def extract_roles_from_flex_selection(raw_role: str | None, role_mapping: dict[str, str | None]) -> list[str]:
+    if not is_flex_role_selection(raw_role, role_mapping):
+        return []
+
+    normalized_value = (raw_role or "").strip()
+    lowered = normalize_header(normalized_value)
+
+    if normalized_value in role_mapping and role_mapping[normalized_value] is None:
+        return ["tank", "dps", "support"]
+
+    if "абсолютно на всем" in lowered or "на всем" in lowered or "all roles" in lowered or "everything" in lowered:
+        return ["tank", "dps", "support"]
+
+    roles: list[str] = []
+    if "танк" in lowered or "tank" in lowered:
+        roles.append("tank")
+    if "дд" in lowered or "dps" in lowered or "damage" in lowered:
+        roles.append("dps")
+    if "хил" in lowered or "support" in lowered or "сап" in lowered:
+        roles.append("support")
+
+    return unique_strings(roles) or ["tank", "dps", "support"]
+
+
+def parse_application_roles(
+    primary_role_raw: str | None,
+    additional_roles_raw: list[str],
+    role_mapping: dict[str, str | None],
+    flex_hint_values: list[str] | None = None,
+) -> tuple[str | None, list[str], bool]:
+    explicit_primary_role = (
+        None if is_flex_role_selection(primary_role_raw, role_mapping) else map_role(primary_role_raw, role_mapping)
+    )
+    ordered_roles: list[str] = []
+    if explicit_primary_role in VALID_ROLES:
+        ordered_roles.append(explicit_primary_role)
+
+    has_flex = False
+
+    for value in [primary_role_raw, *additional_roles_raw, *(flex_hint_values or [])]:
+        if not value:
+            continue
+
+        flex_roles = extract_roles_from_flex_selection(value, role_mapping)
+        if flex_roles:
+            has_flex = True
+            ordered_roles.extend(flex_roles)
+            continue
+
+        mapped_role = map_role(value, role_mapping)
+        if mapped_role in VALID_ROLES:
+            ordered_roles.append(mapped_role)
+
+    unique_roles = unique_strings([role for role in ordered_roles if role in VALID_ROLES])
+
+    if explicit_primary_role in unique_roles:
+        additional_roles = [role for role in unique_roles if role != explicit_primary_role]
+        return explicit_primary_role, additional_roles, has_flex
+
+    return None, unique_roles, has_flex
+
+
 def sanitize_secondary_roles(primary_role: str | None, roles: list[str] | None) -> list[str]:
     valid_roles = [role for role in roles or [] if role in VALID_ROLES]
     unique_roles = unique_strings(valid_roles)
@@ -329,10 +406,11 @@ def normalize_role_entries(
 
 def build_role_entries_from_application(application: models.BalancerApplication) -> list[dict[str, Any]]:
     primary_role_raw, additional_roles_raw = extract_application_raw_role_values(application)
-    primary_role = map_role(primary_role_raw, DEFAULT_ROLE_MAPPING)
-    additional_roles = sanitize_secondary_roles(
-        primary_role,
-        [mapped for mapped in (map_role(value, DEFAULT_ROLE_MAPPING) for value in additional_roles_raw) if mapped],
+    primary_role, additional_roles, _ = parse_application_roles(
+        primary_role_raw,
+        additional_roles_raw,
+        DEFAULT_ROLE_MAPPING,
+        [application.notes] if application.notes else None,
     )
 
     candidates: list[dict[str, Any]] = []
@@ -434,15 +512,11 @@ def map_existing_role_entries_to_application(
     return normalize_role_entries(mapped_entries)
 
 
-def sync_legacy_player_fields(player: models.BalancerPlayer, *, is_flex_override: bool | None = None) -> None:
+def sync_legacy_player_fields(player: models.BalancerPlayer) -> None:
     role_entries = normalize_role_entries(player.role_entries_json or [])
     primary_entry = role_entries[0] if role_entries else None
 
     player.role_entries_json = role_entries
-    if is_flex_override is not None:
-        player.is_flex = is_flex_override
-    else:
-        player.is_flex = sum(1 for entry in role_entries if entry.get("rank_value") is not None) > 1
     player.primary_role = primary_entry["role"] if primary_entry else None
     player.secondary_roles_json = [entry["role"] for entry in role_entries[1:]]
     player.division_number = primary_entry.get("division_number") if primary_entry else None
@@ -822,9 +896,12 @@ def build_application_payload(
 
     primary_role_raw = get_row_value(row, column_mapping.get("primary_role"))
     additional_roles_raw = get_row_values(row, column_mapping.get("additional_roles"))
-    additional_roles = sanitize_secondary_roles(
-        map_role(primary_role_raw, role_mapping),
-        [mapped for mapped in (map_role(value, role_mapping) for value in additional_roles_raw) if mapped],
+    notes = get_row_value(row, column_mapping.get("notes"))
+    primary_role, additional_roles, _ = parse_application_roles(
+        primary_role_raw,
+        additional_roles_raw,
+        role_mapping,
+        [notes] if notes else None,
     )
 
     submitted_at = parse_submitted_at(get_row_value(row, column_mapping.get("timestamp")))
@@ -836,9 +913,9 @@ def build_application_payload(
         "discord_nick": get_row_value(row, column_mapping.get("discord_nick")),
         "stream_pov": parse_bool(get_row_value(row, column_mapping.get("stream_pov"))),
         "last_tournament_text": get_row_value(row, column_mapping.get("last_tournament_text")),
-        "primary_role": map_role(primary_role_raw, role_mapping),
+        "primary_role": primary_role,
         "additional_roles_json": additional_roles,
-        "notes": get_row_value(row, column_mapping.get("notes")),
+        "notes": notes,
         "raw_row_json": row_to_json(headers, row),
         "submitted_at": submitted_at,
     }
@@ -1015,6 +1092,7 @@ async def create_players_from_applications(
             battle_tag_normalized=application.battle_tag_normalized,
             user_id=user_id,
             role_entries_json=role_entries,
+            is_flex=False,
             is_in_pool=True,
         )
         sync_legacy_player_fields(player)
@@ -1067,14 +1145,15 @@ async def update_player(
     if "role_entries_json" in update_data:
         player.role_entries_json = normalize_role_entries(update_data["role_entries_json"])
 
-    is_flex_override: bool | None = update_data.get("is_flex")
+    if "is_flex" in update_data:
+        player.is_flex = bool(update_data["is_flex"])
 
     for field, value in update_data.items():
         if field in ("role_entries_json", "is_flex"):
             continue
         setattr(player, field, value)
 
-    sync_legacy_player_fields(player, is_flex_override=is_flex_override)
+    sync_legacy_player_fields(player)
 
     await session.commit()
     await session.refresh(player)
@@ -1193,10 +1272,11 @@ async def import_players(
                 battle_tag_normalized=application.battle_tag_normalized,
                 user_id=user_id,
                 role_entries_json=imported_role_entries,
+                is_flex=bool(imported_player["is_flex"]) if imported_player["is_flex"] is not None else False,
                 is_in_pool=imported_player["is_in_pool"],
                 admin_notes=imported_player["admin_notes"],
             )
-            sync_legacy_player_fields(player, is_flex_override=imported_player["is_flex"])
+            sync_legacy_player_fields(player)
             session.add(player)
             created += 1
             continue
@@ -1220,10 +1300,12 @@ async def import_players(
         existing_player.battle_tag_normalized = application.battle_tag_normalized
         existing_player.user_id = user_id
         existing_player.role_entries_json = imported_role_entries
+        if imported_player["is_flex"] is not None:
+            existing_player.is_flex = imported_player["is_flex"]
         existing_player.is_in_pool = imported_player["is_in_pool"]
         if imported_player["admin_notes"] is not None:
             existing_player.admin_notes = imported_player["admin_notes"]
-        sync_legacy_player_fields(existing_player, is_flex_override=imported_player["is_flex"])
+        sync_legacy_player_fields(existing_player)
         replaced += 1
 
     if unresolved_duplicates:
@@ -1281,7 +1363,7 @@ async def sync_player_roles_from_applications(
             continue
 
         player.role_entries_json = map_existing_role_entries_to_application(application, player.role_entries_json)
-        sync_legacy_player_fields(player, is_flex_override=player.is_flex)
+        sync_legacy_player_fields(player)
         updated += 1
 
     await session.commit()

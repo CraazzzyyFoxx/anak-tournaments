@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { GripVertical, History, Loader2, Plus, Save, Trash2 } from "lucide-react";
+import { GripVertical, History, Loader2, MoreHorizontal, Plus, Save, Trash2 } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -22,7 +22,6 @@ import { CSS } from "@dnd-kit/utilities";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -31,6 +30,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -40,6 +45,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import PlayerDivisionIcon from "@/components/PlayerDivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -201,35 +207,62 @@ function SortableRoleEntry({
   );
 
   const divisionNumber = resolveDivisionFromRank(entry.rank_value);
+  const hasSubtypeOptions = SUBTYPE_OPTIONS[entry.role].length > 0;
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-2 rounded-xl border bg-background p-3"
+      className="grid grid-cols-[18px_24px_minmax(0,1fr)_32px] gap-3 rounded-xl border bg-background p-3 sm:grid-cols-[18px_24px_minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,132px)_36px_32px] sm:items-center"
     >
       <button
         type="button"
-        className="flex shrink-0 cursor-grab touch-none items-center text-muted-foreground hover:text-foreground active:cursor-grabbing"
+        className="flex h-8 shrink-0 cursor-grab touch-none items-center justify-center self-start text-muted-foreground hover:text-foreground active:cursor-grabbing sm:h-auto sm:self-center"
         {...attributes}
         {...listeners}
       >
         <GripVertical className="h-4 w-4" />
       </button>
 
-      <div className="flex shrink-0 items-center gap-1.5">
+      <div className="flex h-8 items-center justify-center rounded-md border border-dashed border-muted-foreground/30 bg-muted/20">
         <PlayerRoleIcon role={ROLE_DISPLAY[entry.role]} size={20} />
+      </div>
+
+      <Select
+        value={entry.role}
+        onValueChange={(value) =>
+          onUpdate(index, { ...entry, role: value as BalancerRoleCode, subtype: null })
+        }
+      >
+        <SelectTrigger className="h-8 w-full min-w-0">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {availableRoles.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <div className="col-start-2 col-span-2 sm:col-span-1 sm:col-start-auto">
         <Select
-          value={entry.role}
+          value={entry.subtype ?? undefined}
+          disabled={!hasSubtypeOptions}
           onValueChange={(value) =>
-            onUpdate(index, { ...entry, role: value as BalancerRoleCode, subtype: null })
+            onUpdate(index, {
+              ...entry,
+              subtype: value === "none" ? null : (value as BalancerRoleSubtype),
+            })
           }
         >
-          <SelectTrigger className="h-8 w-[100px]">
-            <SelectValue />
+          <SelectTrigger className="h-8 w-full min-w-0">
+            <SelectValue placeholder="Sub-role" />
           </SelectTrigger>
           <SelectContent>
-            {availableRoles.map((option) => (
+            <SelectItem value="none">No sub-role</SelectItem>
+            {SUBTYPE_OPTIONS[entry.role].map((option) => (
               <SelectItem key={option.value} value={option.value}>
                 {option.label}
               </SelectItem>
@@ -238,34 +271,15 @@ function SortableRoleEntry({
         </Select>
       </div>
 
-      {SUBTYPE_OPTIONS[entry.role].length > 0 && (
-        <Select
-          value={entry.subtype ?? "none"}
-          onValueChange={(value) =>
-            onUpdate(index, { ...entry, subtype: value === "none" ? null : (value as BalancerRoleSubtype) })
-          }
-        >
-          <SelectTrigger className="h-8 w-[110px] shrink-0">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="none">—</SelectItem>
-            {SUBTYPE_OPTIONS[entry.role].map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
-
-      <div className="flex items-center gap-1.5">
-        <Label className="shrink-0 text-xs text-muted-foreground">SR</Label>
+      <div className="col-start-2 col-span-2 flex min-w-0 items-center overflow-hidden rounded-md border border-input bg-background shadow-sm sm:col-span-1 sm:col-start-auto">
+        <span className="flex h-8 items-center border-r border-input bg-muted/50 px-2 text-xs font-medium text-muted-foreground">
+          SR
+        </span>
         <Input
           type="number"
           min={0}
           max={5000}
-          className="h-8 w-[80px]"
+          className="h-8 border-0 px-3 shadow-none focus-visible:ring-0"
           value={entry.rank_value ?? ""}
           onChange={(event) => {
             const rankValue = event.target.value
@@ -280,9 +294,12 @@ function SortableRoleEntry({
         />
       </div>
 
-      <div className="flex shrink-0 items-center">
+      <div className="col-start-4 row-start-1 flex h-8 shrink-0 items-center justify-center self-start sm:col-start-auto sm:row-start-auto sm:self-center" title={divisionNumber != null ? `Division ${divisionNumber}` : undefined}>
         {divisionNumber != null ? (
-          <PlayerDivisionIcon division={divisionNumber} width={28} height={28} />
+          <>
+            <PlayerDivisionIcon division={divisionNumber} width={28} height={28} />
+            <span className="sr-only">Division {divisionNumber}</span>
+          </>
         ) : (
           <span className="text-xs text-muted-foreground">—</span>
         )}
@@ -291,7 +308,7 @@ function SortableRoleEntry({
       <Button
         variant="ghost"
         size="icon"
-        className="ml-auto h-7 w-7 shrink-0"
+        className="col-start-4 row-start-2 h-8 w-8 shrink-0 self-center sm:col-start-auto sm:row-start-auto"
         onClick={() => onRemove(index)}
       >
         <Trash2 className="h-3.5 w-3.5" />
@@ -428,7 +445,32 @@ export function PlayerEditModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-2xl">
+        {onRemove ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute right-14 top-4 h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
+              >
+                <MoreHorizontal className="h-4 w-4" />
+                <span className="sr-only">Player actions</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onClick={() => onRemove(player.id)}
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete player
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
+
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {player.battle_tag}
@@ -439,32 +481,84 @@ export function PlayerEditModal({
           <DialogDescription>Edit player roles, ranks, and pool status.</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-sm">
-              <Checkbox
+        <div className="space-y-5">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="flex items-start justify-between rounded-xl border bg-muted/20 p-4">
+              <div className="space-y-1 pr-4">
+                <Label htmlFor="is-in-pool" className="cursor-pointer text-sm font-medium">
+                  Include in balancing pool
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Keep this player available for roster generation.
+                </p>
+              </div>
+              <Switch
                 id="is-in-pool"
                 checked={isInPool}
-                onCheckedChange={(checked) => setIsInPool(Boolean(checked))}
+                onCheckedChange={setIsInPool}
+                aria-label="Include in balancing pool"
               />
-              <Label htmlFor="is-in-pool" className="cursor-pointer font-normal">
-                Include in balancing pool
-              </Label>
             </div>
-            <div className="flex items-center gap-2 text-sm">
-              <Checkbox
+
+            <div className="flex items-start justify-between rounded-xl border bg-muted/20 p-4">
+              <div className="space-y-1 pr-4">
+                <Label htmlFor="is-flex" className="cursor-pointer text-sm font-medium">
+                  Flex player
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Mark this player as comfortable switching roles.
+                </p>
+              </div>
+              <Switch
                 id="is-flex"
                 checked={isFlex}
-                onCheckedChange={(checked) => setIsFlex(Boolean(checked))}
+                onCheckedChange={setIsFlex}
+                aria-label="Flex player"
               />
-              <Label htmlFor="is-flex" className="cursor-pointer font-normal">
-                Flex player
-              </Label>
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label className="text-sm font-medium">Roles</Label>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <Label className="text-sm font-medium">Roles</Label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={addRole}
+                  disabled={roleEntries.length >= ROLE_OPTIONS.length}
+                >
+                  <Plus className="mr-1.5 h-3.5 w-3.5" />
+                  Add role
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleLoadFromHistory}
+                  disabled={loadingHistory}
+                >
+                  {loadingHistory ? (
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <History className="mr-1.5 h-3.5 w-3.5" />
+                  )}
+                  Load from history
+                </Button>
+              </div>
+            </div>
+
+            <div className="hidden rounded-lg border border-dashed border-muted-foreground/20 bg-muted/10 px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground sm:grid sm:grid-cols-[18px_24px_minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,132px)_36px_32px] sm:items-center sm:gap-3">
+              <span />
+              <span />
+              <span>Role</span>
+              <span>Sub-role</span>
+              <span>Skill rating</span>
+              <span className="text-center">Div</span>
+              <span />
+            </div>
+
             <DndContext
               sensors={sensors}
               collisionDetection={closestCenter}
@@ -489,33 +583,6 @@ export function PlayerEditModal({
                 </div>
               </SortableContext>
             </DndContext>
-
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={addRole}
-                disabled={roleEntries.length >= ROLE_OPTIONS.length}
-              >
-                <Plus className="mr-1.5 h-3.5 w-3.5" />
-                Add role
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleLoadFromHistory}
-                disabled={loadingHistory}
-              >
-                {loadingHistory ? (
-                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <History className="mr-1.5 h-3.5 w-3.5" />
-                )}
-                Load from history
-              </Button>
-            </div>
           </div>
 
           <div className="space-y-2">
@@ -529,17 +596,6 @@ export function PlayerEditModal({
         </div>
 
         <DialogFooter className="gap-2 sm:gap-0">
-          {onRemove ? (
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => onRemove(player.id)}
-              className="mr-auto"
-            >
-              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-              Remove
-            </Button>
-          ) : null}
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>

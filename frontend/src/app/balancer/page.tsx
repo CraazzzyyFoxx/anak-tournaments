@@ -2,7 +2,19 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Check, Copy, Download, Loader2, Sparkles, Upload, Users } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  CheckCircle2,
+  Copy,
+  Download,
+  Loader2,
+  Search,
+  Sparkles,
+  Upload,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 
 import { PoolPlayerCompactList } from "@/app/balancer/_components/PoolPlayerCompactList";
 import { PoolSearchCombobox } from "@/app/balancer/_components/PoolSearchCombobox";
@@ -10,13 +22,13 @@ import { PlayerEditModal } from "@/app/balancer/_components/PlayerEditModal";
 import { useBalancerTournamentId } from "@/app/balancer/_components/useBalancerTournamentId";
 import {
   buildBalancerInput,
+  buildPlayerSearchIndex,
   buildTeamNamesText,
   buildVariantFromSavedBalance,
   convertBalanceResponseToInternalPayload,
   downloadPayload,
   fetchPlayerRankHistory,
   getPlayerValidationIssues,
-  playerHasRankedRole,
   type BalanceVariant,
   type PlayerValidationIssue,
 } from "@/app/balancer/_components/workspace-helpers";
@@ -29,7 +41,9 @@ import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 import balancerAdminService from "@/services/balancer-admin.service";
 import balancerService from "@/services/balancer.service";
 import { BalanceSaveInput, BalancerApplication, BalancerPlayerRecord, BalancerRoleCode } from "@/types/balancer-admin.types";
@@ -49,8 +63,82 @@ type PlayerValidationState = {
   issues: PlayerValidationIssue[];
 };
 
+type PoolView = "all" | "needs_fix" | "ready";
+type PoolSortValue = "added_desc" | "name_asc" | "division_asc" | "division_desc";
+
+type StatsFilterCardProps = {
+  label: string;
+  value: number;
+  helperText: string;
+  icon: LucideIcon;
+  iconClassName: string;
+  active?: boolean;
+  onClick: () => void;
+};
+
 function createVariantLabel(index: number): string {
   return `Run ${index}`;
+}
+
+function getPrimaryDivision(player: BalancerPlayerRecord): number {
+  if (player.role_entries_json.length === 0) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const sortedEntries = [...player.role_entries_json].sort((left, right) => left.priority - right.priority);
+  return sortedEntries[0]?.division_number ?? Number.POSITIVE_INFINITY;
+}
+
+function sortPlayerStates(playerStates: PlayerValidationState[], sortValue: PoolSortValue): PlayerValidationState[] {
+  return [...playerStates].sort((left, right) => {
+    if (sortValue === "name_asc") {
+      return left.player.battle_tag.localeCompare(right.player.battle_tag);
+    }
+
+    if (sortValue === "division_asc") {
+      return getPrimaryDivision(left.player) - getPrimaryDivision(right.player);
+    }
+
+    if (sortValue === "division_desc") {
+      return getPrimaryDivision(right.player) - getPrimaryDivision(left.player);
+    }
+
+    return right.player.id - left.player.id;
+  });
+}
+
+function StatsFilterCard({
+  label,
+  value,
+  helperText,
+  icon: Icon,
+  iconClassName,
+  active = false,
+  onClick,
+}: StatsFilterCardProps) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={cn(
+        "rounded-2xl border border-border/70 bg-card/80 p-4 text-left shadow-sm transition-all hover:border-primary/35 hover:shadow-md",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+        active && "border-primary/45 bg-primary/5 shadow-md",
+      )}
+    >
+      <div className="flex items-center gap-3">
+        <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl", iconClassName)}>
+          <Icon className="h-4 w-4" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
+          <p className="mt-1 text-xl font-semibold leading-none text-foreground">{value}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{helperText}</p>
+        </div>
+      </div>
+    </button>
+  );
 }
 
 export default function BalancerMainPage() {
@@ -66,6 +154,11 @@ export default function BalancerMainPage() {
   const [activeVariantId, setActiveVariantId] = useState<string | null>(null);
   const [editingPlayerId, setEditingPlayerId] = useState<number | null>(null);
   const [pendingRankHistory, setPendingRankHistory] = useState<Partial<Record<BalancerRoleCode, number>> | null>(null);
+  const [sidebarSearchQuery, setSidebarSearchQuery] = useState("");
+  const [sidebarSearchMode, setSidebarSearchMode] = useState<"default" | "applications">("default");
+  const [poolView, setPoolView] = useState<PoolView>("all");
+  const [poolSort, setPoolSort] = useState<PoolSortValue>("added_desc");
+  const [showSidebarFilters, setShowSidebarFilters] = useState(false);
 
   const balancerConfigQuery = useQuery({
     queryKey: ["balancer-public", "config"],
@@ -91,12 +184,6 @@ export default function BalancerMainPage() {
     enabled: tournamentId !== null,
   });
 
-  const sheetQuery = useQuery({
-    queryKey: ["balancer-public", "sheet", tournamentId],
-    queryFn: () => balancerAdminService.getTournamentSheet(tournamentId as number),
-    enabled: tournamentId !== null,
-  });
-
   useEffect(() => {
     setVariants([]);
     setActiveVariantId(null);
@@ -105,6 +192,11 @@ export default function BalancerMainPage() {
     setJobProgress(null);
     setEditingPlayerId(null);
     setPendingRankHistory(null);
+    setSidebarSearchQuery("");
+    setSidebarSearchMode("default");
+    setPoolView("all");
+    setPoolSort("added_desc");
+    setShowSidebarFilters(false);
   }, [tournamentId]);
 
   useEffect(() => {
@@ -144,6 +236,61 @@ export default function BalancerMainPage() {
     () => invalidPlayerStates.filter((state) => state.issues.some((issue) => issue.code === "missing_ranked_role")),
     [invalidPlayerStates],
   );
+  const addableApplications = useMemo(
+    () => applications.filter((application) => application.is_active && application.player === null),
+    [applications],
+  );
+  const normalizedSidebarSearchQuery = sidebarSearchQuery.trim().toLowerCase();
+  const filteredPoolPlayerStates = useMemo(() => {
+    const nextStates = playerValidationStates.filter((state) => {
+      if (poolView === "ready" && state.issues.length > 0) {
+        return false;
+      }
+
+      if (poolView === "needs_fix" && state.issues.length === 0) {
+        return false;
+      }
+
+      if (!normalizedSidebarSearchQuery) {
+        return true;
+      }
+
+      return buildPlayerSearchIndex(state.player, applicationsById.get(state.player.application_id) ?? null).includes(
+        normalizedSidebarSearchQuery,
+      );
+    });
+
+    return sortPlayerStates(nextStates, poolSort);
+  }, [applicationsById, normalizedSidebarSearchQuery, playerValidationStates, poolSort, poolView]);
+  const activeSidebarSummary =
+    sidebarSearchMode === "applications" && normalizedSidebarSearchQuery.length === 0 ? "applications" : poolView;
+  const filteredPoolEmptyState = useMemo(() => {
+    if (normalizedSidebarSearchQuery.length > 0) {
+      return {
+        title: "No players match this search",
+        description: "Try another BattleTag, role, or division.",
+      };
+    }
+
+    if (poolView === "needs_fix") {
+      return {
+        title: "No players need fixes right now",
+        description: "Every player in the pool is ready for the balancer.",
+      };
+    }
+
+    if (poolView === "ready") {
+      return {
+        title: "No ready players yet",
+        description: "Fix player conflicts or add ranked roles to start balancing.",
+      };
+    }
+
+    return {
+      title: "No players in the pool",
+      description: "Use the search above to add players from applications.",
+    };
+  }, [normalizedSidebarSearchQuery, poolView]);
   const quickEditPlayer = players.find((player) => player.id === editingPlayerId) ?? null;
   const activeVariant = useMemo(
     () => variants.find((variant) => variant.id === activeVariantId) ?? null,
@@ -307,7 +454,45 @@ export default function BalancerMainPage() {
     },
   });
 
+  const emptyWorkspaceState = invalidPlayerStates.length > 0
+    ? {
+        icon: AlertTriangle,
+        title: `${invalidPlayerStates.length} player${invalidPlayerStates.length !== 1 ? "s" : ""} need review before balancing`,
+        description: "Resolve role conflicts and missing ranked roles in the player pool before you run the balancer.",
+        actionLabel: "Review conflicts",
+        actionVariant: "outline" as const,
+        action: () => {
+          setPoolView("needs_fix");
+          setSidebarSearchMode("default");
+        },
+        actionDisabled: false,
+      }
+    : poolPlayers.length === 0
+      ? {
+          icon: Search,
+          title: "Add players to the pool first",
+          description: "Use the application search to bring active applications into the player pool.",
+          actionLabel: "Browse applications",
+          actionVariant: "outline" as const,
+          action: () => {
+            setPoolView("all");
+            setSidebarSearchQuery("");
+            setSidebarSearchMode("applications");
+          },
+          actionDisabled: false,
+        }
+      : {
+          icon: Sparkles,
+          title: "No balance results yet",
+          description: "Pick a preset and run the balancer to generate team compositions from the current pool.",
+          actionLabel: "Run balance",
+          actionVariant: "default" as const,
+          action: () => runBalanceMutation.mutate(),
+          actionDisabled: runBalanceMutation.isPending,
+        };
+
   const hasVariants = variants.length > 0;
+  const EmptyWorkspaceIcon = emptyWorkspaceState.icon;
 
   if (!tournamentId) {
     return (
@@ -325,25 +510,79 @@ export default function BalancerMainPage() {
         <Card className="flex min-h-0 flex-1 flex-col rounded-2xl border-border/70 bg-card/80 shadow-sm">
           <CardHeader>
             <CardTitle>Player Pool</CardTitle>
-              <CardDescription>
-                {poolPlayers.length} player{poolPlayers.length !== 1 ? "s" : ""} in pool
-              {invalidPlayerStates.length > 0 && ` · ${invalidPlayerStates.length} need fixes`}
-              </CardDescription>
+            <CardDescription>
+              {poolPlayers.length} player{poolPlayers.length !== 1 ? "s" : ""} in pool
+              {invalidPlayerStates.length > 0 ? ` · ${invalidPlayerStates.length} need fixes` : " · all clear"}
+            </CardDescription>
           </CardHeader>
           <CardContent className="flex min-h-0 flex-1 flex-col space-y-3 overflow-hidden">
             <PoolSearchCombobox
-              players={players}
+              playerStates={playerValidationStates}
               applications={applications}
-              onSelectPlayer={(playerId) => setEditingPlayerId(playerId)}
+              value={sidebarSearchQuery}
+              onValueChange={(nextValue) => {
+                setSidebarSearchQuery(nextValue);
+                if (nextValue.trim().length > 0) {
+                  setSidebarSearchMode("default");
+                }
+              }}
+              sortValue={poolSort}
+              onSortValueChange={(value) => setPoolSort(value as PoolSortValue)}
+              showFilters={showSidebarFilters}
+              onShowFiltersChange={setShowSidebarFilters}
+              onSelectPlayer={(playerId) => {
+                setEditingPlayerId(playerId);
+                setSidebarSearchMode("default");
+              }}
               onAddFromApplication={(application) => addPlayerMutation.mutate(application)}
               disabled={addPlayerMutation.isPending}
+              suggestionsMode={sidebarSearchMode}
             />
+
+            <ToggleGroup
+              type="single"
+              value={poolView}
+              onValueChange={(nextValue) => {
+                if (!nextValue) {
+                  return;
+                }
+                setPoolView(nextValue as PoolView);
+                setSidebarSearchMode("default");
+              }}
+              variant="outline"
+              size="sm"
+              className="w-full rounded-xl border border-border/70 bg-muted/20 p-1"
+            >
+              <ToggleGroupItem value="all" className="flex-1 justify-between rounded-lg px-3 text-xs">
+                <span>All</span>
+                <span className="text-muted-foreground">{poolPlayers.length}</span>
+              </ToggleGroupItem>
+              <ToggleGroupItem value="needs_fix" className="flex-1 justify-between rounded-lg px-3 text-xs">
+                <span>Need Fix</span>
+                <span className="text-muted-foreground">{invalidPlayerStates.length}</span>
+              </ToggleGroupItem>
+              <ToggleGroupItem value="ready" className="flex-1 justify-between rounded-lg px-3 text-xs">
+                <span>Ready</span>
+                <span className="text-muted-foreground">{readyPlayers.length}</span>
+              </ToggleGroupItem>
+            </ToggleGroup>
+
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>
+                Showing {filteredPoolPlayerStates.length} of {poolPlayers.length}
+              </span>
+              <span className="uppercase tracking-[0.14em]">
+                {poolView === "all" ? "All" : poolView === "needs_fix" ? "Need Fix" : "Ready"}
+              </span>
+            </div>
+
             <PoolPlayerCompactList
-              players={players}
-              applications={applications}
+              playerStates={filteredPoolPlayerStates}
               editingPlayerId={editingPlayerId}
               onSelectPlayer={setEditingPlayerId}
               maxHeightClassName="flex-1"
+              emptyTitle={filteredPoolEmptyState.title}
+              emptyDescription={filteredPoolEmptyState.description}
             />
           </CardContent>
         </Card>
@@ -371,53 +610,55 @@ export default function BalancerMainPage() {
       <div className="flex min-h-0 flex-col gap-4">
         {/* Stats Summary Strip */}
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <Card className="rounded-2xl border-border/70 bg-card/80 shadow-sm">
-            <CardContent className="flex items-center gap-3 p-4">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                <Users className="h-4 w-4 text-primary" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Applications</p>
-                <p className="text-lg font-semibold leading-none">{applications.length}</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="rounded-2xl border-border/70 bg-card/80 shadow-sm">
-            <CardContent className="flex items-center gap-3 p-4">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                <Users className="h-4 w-4 text-primary" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">In Pool</p>
-                <p className="text-lg font-semibold leading-none">{poolPlayers.length}</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="rounded-2xl border-border/70 bg-card/80 shadow-sm">
-            <CardContent className="flex items-center gap-3 p-4">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10">
-                <Check className="h-4 w-4 text-emerald-500" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Ready</p>
-                <p className="text-lg font-semibold leading-none">
-                  {readyPlayers.length}
-                  <span className="text-sm font-normal text-muted-foreground">/{poolPlayers.length}</span>
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className={`rounded-2xl border-border/70 shadow-sm ${invalidPlayerStates.length > 0 ? "border-destructive/40 bg-destructive/5" : "bg-card/80"}`}>
-            <CardContent className="flex items-center gap-3 p-4">
-              <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${invalidPlayerStates.length > 0 ? "bg-destructive/10" : "bg-muted/50"}`}>
-                <AlertTriangle className={`h-4 w-4 ${invalidPlayerStates.length > 0 ? "text-destructive" : "text-muted-foreground"}`} />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Invalid</p>
-                <p className="text-lg font-semibold leading-none">{invalidPlayerStates.length}</p>
-              </div>
-            </CardContent>
-          </Card>
+          <StatsFilterCard
+            label="Applications"
+            value={applications.length}
+            helperText={`${addableApplications.length} ready to add`}
+            icon={Search}
+            iconClassName="bg-primary/10 text-primary"
+            active={activeSidebarSummary === "applications"}
+            onClick={() => {
+              setPoolView("all");
+              setSidebarSearchQuery("");
+              setSidebarSearchMode("applications");
+            }}
+          />
+          <StatsFilterCard
+            label="In Pool"
+            value={poolPlayers.length}
+            helperText="Browse every player in the pool"
+            icon={Users}
+            iconClassName="bg-primary/10 text-primary"
+            active={activeSidebarSummary === "all"}
+            onClick={() => {
+              setPoolView("all");
+              setSidebarSearchMode("default");
+            }}
+          />
+          <StatsFilterCard
+            label="Ready"
+            value={readyPlayers.length}
+            helperText={`${poolPlayers.length > 0 ? Math.round((readyPlayers.length / poolPlayers.length) * 100) : 0}% of pool ready`}
+            icon={CheckCircle2}
+            iconClassName="bg-emerald-500/10 text-emerald-600"
+            active={activeSidebarSummary === "ready"}
+            onClick={() => {
+              setPoolView("ready");
+              setSidebarSearchMode("default");
+            }}
+          />
+          <StatsFilterCard
+            label="Need Fix"
+            value={invalidPlayerStates.length}
+            helperText={invalidPlayerStates.length > 0 ? "Open the review queue" : "No blocking issues"}
+            icon={AlertTriangle}
+            iconClassName={invalidPlayerStates.length > 0 ? "bg-destructive/10 text-destructive" : "bg-muted/50 text-muted-foreground"}
+            active={activeSidebarSummary === "needs_fix"}
+            onClick={() => {
+              setPoolView("needs_fix");
+              setSidebarSearchMode("default");
+            }}
+          />
         </div>
 
         {/* Job Progress */}
@@ -459,7 +700,7 @@ export default function BalancerMainPage() {
               </Select>
               <Button
                 onClick={() => runBalanceMutation.mutate()}
-                disabled={runBalanceMutation.isPending || poolPlayers.length === 0}
+                disabled={runBalanceMutation.isPending || poolPlayers.length === 0 || invalidPlayerStates.length > 0}
                 className="shadow-lg shadow-primary/20"
               >
                 {runBalanceMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
@@ -550,14 +791,21 @@ export default function BalancerMainPage() {
                 }}
               />
             ) : (
-              <div className="flex flex-1 flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-border/70 text-center">
+              <div className="flex flex-1 flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-border/70 bg-muted/10 px-6 text-center">
                 <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
-                  <Sparkles className="h-6 w-6 text-muted-foreground" />
+                  <EmptyWorkspaceIcon className="h-6 w-6 text-muted-foreground" />
                 </div>
-                <div className="space-y-1">
-                  <p className="text-sm font-medium">No balance results yet</p>
-                  <p className="text-xs text-muted-foreground">Select a preset and run the balancer to generate team compositions.</p>
+                <div className="max-w-md space-y-1.5">
+                  <p className="text-sm font-medium">{emptyWorkspaceState.title}</p>
+                  <p className="text-xs text-muted-foreground">{emptyWorkspaceState.description}</p>
                 </div>
+                <Button
+                  variant={emptyWorkspaceState.actionVariant}
+                  onClick={emptyWorkspaceState.action}
+                  disabled={emptyWorkspaceState.actionDisabled}
+                >
+                  {emptyWorkspaceState.actionLabel}
+                </Button>
               </div>
             )}
           </CardContent>

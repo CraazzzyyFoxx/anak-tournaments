@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState, type ChangeEvent } from "react";
-import { Download, Loader2, RefreshCcw, Upload } from "lucide-react";
+import { Download, Loader2, RefreshCcw, Search, Upload } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { ApplicationCombobox } from "@/app/balancer/_components/ApplicationCombobox";
@@ -20,6 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import balancerAdminService from "@/services/balancer-admin.service";
@@ -60,6 +61,7 @@ export default function BalancerPoolPage() {
   const [duplicateResolutions, setDuplicateResolutions] = useState<Record<string, DuplicateResolution>>({});
   const [applyToAllResolution, setApplyToAllResolution] = useState<DuplicateResolution | null>(null);
   const [matchApplicationRoles, setMatchApplicationRoles] = useState(false);
+  const [playerSearch, setPlayerSearch] = useState("");
 
   const applicationsQuery = useQuery({
     queryKey: ["balancer-public", "applications", tournamentId],
@@ -243,6 +245,15 @@ export default function BalancerPoolPage() {
       ),
     [duplicateResolutions, importPreview],
   );
+  const filteredPlayers = useMemo(() => {
+    const query = playerSearch.trim().toLowerCase();
+
+    if (!query) {
+      return players;
+    }
+
+    return players.filter((player) => player.battle_tag.toLowerCase().includes(query));
+  }, [playerSearch, players]);
 
   const canConfirmImport =
     selectedImportFile !== null &&
@@ -342,7 +353,7 @@ export default function BalancerPoolPage() {
           <CardHeader>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <CardTitle>Add player</CardTitle>
+                <CardTitle>Pool Management</CardTitle>
                 <CardDescription>
                   Search synced applications, add registrations to the pool, or bulk import/export players in the atravkovs-compatible balancer format.
                 </CardDescription>
@@ -414,16 +425,26 @@ export default function BalancerPoolPage() {
               disabled={addPlayerMutation.isPending}
             />
             <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-              <Badge variant="outline">Pool players: {players.length}</Badge>
-              <Badge variant="outline">
+              <Badge variant="secondary">Pool players: {players.length}</Badge>
+              <Badge variant="secondary">
                 Available applications: {applications.filter((application) => application.player === null && application.is_active).length}
               </Badge>
             </div>
           </CardContent>
         </Card>
 
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={playerSearch}
+            onChange={(event) => setPlayerSearch(event.target.value)}
+            placeholder="Search pool players..."
+            className="pl-9"
+          />
+        </div>
+
         <div className="grid gap-4 xl:grid-cols-2">
-          {players.map((player) => (
+          {filteredPlayers.map((player) => (
             <PoolPlayerCard
               key={player.id}
               player={player}

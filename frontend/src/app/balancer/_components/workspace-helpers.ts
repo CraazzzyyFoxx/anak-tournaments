@@ -17,18 +17,23 @@ export type BalanceVariant = {
   source: "saved" | "generated";
 };
 
-export type PlayerValidationIssue = {
-  code: "missing_ranked_role" | "application_role_mismatch";
-  message: string;
-};
+export type PlayerValidationIssue =
+  | {
+      code: "missing_ranked_role";
+      message: string;
+    }
+  | {
+      code: "application_role_mismatch";
+      message: string;
+      applicationRoleCodes: BalancerRoleCode[];
+      playerRoleCodes: BalancerRoleCode[];
+    };
 
-const ROLE_LABELS: Record<BalancerRoleCode, string> = {
+export const ROLE_LABELS: Record<BalancerRoleCode, string> = {
   tank: "Tank",
   dps: "Damage",
   support: "Support",
 };
-
-const ROLE_ORDER: BalancerRoleCode[] = ["tank", "dps", "support"];
 
 export function sortRoleEntries(entries: BalancerPlayerRoleEntry[]): BalancerPlayerRoleEntry[] {
   return [...entries].sort((a, b) => a.priority - b.priority);
@@ -60,22 +65,33 @@ function normalizeApplicationRole(role: string | null | undefined): BalancerRole
   return null;
 }
 
-function sortRoleCodes(roleCodes: Iterable<BalancerRoleCode>): BalancerRoleCode[] {
-  return [...new Set(roleCodes)].sort((left, right) => ROLE_ORDER.indexOf(left) - ROLE_ORDER.indexOf(right));
+function uniqueRoleCodesInOrder(roleCodes: Iterable<BalancerRoleCode>): BalancerRoleCode[] {
+  const seen = new Set<BalancerRoleCode>();
+  const ordered: BalancerRoleCode[] = [];
+
+  for (const roleCode of roleCodes) {
+    if (seen.has(roleCode)) {
+      continue;
+    }
+    seen.add(roleCode);
+    ordered.push(roleCode);
+  }
+
+  return ordered;
 }
 
 function formatRoleCodes(roleCodes: Iterable<BalancerRoleCode>): string {
-  const sortedRoleCodes = sortRoleCodes(roleCodes);
+  const orderedRoleCodes = uniqueRoleCodesInOrder(roleCodes);
 
-  if (sortedRoleCodes.length === 0) {
+  if (orderedRoleCodes.length === 0) {
     return "None";
   }
 
-  return sortedRoleCodes.map((roleCode) => ROLE_LABELS[roleCode]).join(" / ");
+  return orderedRoleCodes.map((roleCode) => ROLE_LABELS[roleCode]).join(" / ");
 }
 
 function getPlayerRoleCodes(player: BalancerPlayerRecord): BalancerRoleCode[] {
-  return sortRoleCodes(player.role_entries_json.map((entry) => entry.role));
+  return uniqueRoleCodesInOrder(sortRoleEntries(player.role_entries_json).map((entry) => entry.role));
 }
 
 function getApplicationRoleCodes(application: BalancerApplication | null | undefined): BalancerRoleCode[] {
@@ -83,14 +99,68 @@ function getApplicationRoleCodes(application: BalancerApplication | null | undef
     return [];
   }
 
-  return sortRoleCodes(
+  return uniqueRoleCodesInOrder(
     [application.primary_role, ...application.additional_roles_json]
       .map((role) => normalizeApplicationRole(role))
       .filter((role): role is BalancerRoleCode => role !== null),
   );
 }
 
-function roleSetsMatch(left: BalancerRoleCode[], right: BalancerRoleCode[]): boolean {
+export function buildPlayerSearchIndex(
+  player: BalancerPlayerRecord,
+  application: BalancerApplication | null | undefined,
+): string {
+  const roleEntries = sortRoleEntries(player.role_entries_json);
+  const playerRoleLabels = roleEntries.map((entry) => ROLE_LABELS[entry.role]);
+  const playerRoleCodes = roleEntries.map((entry) => entry.role);
+  const divisions = roleEntries.map((entry) => entry.division_number).filter((division): division is number => division !== null);
+  const applicationRoleLabels = getApplicationRoleCodes(application).map((roleCode) => ROLE_LABELS[roleCode]);
+
+  return [
+    player.battle_tag,
+    player.battle_tag_normalized,
+    player.is_flex ? "flex" : "",
+    playerRoleLabels.join(" "),
+    playerRoleCodes.join(" "),
+    divisions.join(" "),
+    application?.battle_tag ?? "",
+    applicationRoleLabels.join(" "),
+  ]
+    .join(" ")
+    .trim()
+    .toLowerCase();
+}
+
+export function buildApplicationSearchIndex(application: BalancerApplication): string {
+  const applicationRoleLabels = getApplicationRoleCodes(application).map((roleCode) => ROLE_LABELS[roleCode]);
+
+  return [
+    application.battle_tag,
+    application.battle_tag_normalized,
+    application.discord_nick ?? "",
+    application.twitch_nick ?? "",
+    applicationRoleLabels.join(" "),
+  ]
+    .join(" ")
+    .trim()
+    .toLowerCase();
+}
+
+function isFlexApplication(application: BalancerApplication | null | undefined, applicationRoleCodes: BalancerRoleCode[]): boolean {
+  return application?.primary_role == null && applicationRoleCodes.length === 3;
+}
+
+function roleSequencesMatch(
+  application: BalancerApplication | null | undefined,
+  left: BalancerRoleCode[],
+  right: BalancerRoleCode[],
+): boolean {
+  if (isFlexApplication(application, right)) {
+    const leftSorted = [...left].sort();
+    const rightSorted = [...right].sort();
+    return leftSorted.length === rightSorted.length && leftSorted.every((roleCode, index) => roleCode === rightSorted[index]);
+  }
+
   return left.length === right.length && left.every((roleCode, index) => roleCode === right[index]);
 }
 
@@ -111,10 +181,12 @@ export function getPlayerValidationIssues(
     const playerRoleCodes = getPlayerRoleCodes(player);
     const applicationRoleCodes = getApplicationRoleCodes(application);
 
-    if (!roleSetsMatch(playerRoleCodes, applicationRoleCodes)) {
+    if (!roleSequencesMatch(application, playerRoleCodes, applicationRoleCodes)) {
       issues.push({
         code: "application_role_mismatch",
         message: `Application: ${formatRoleCodes(applicationRoleCodes)}; balancer: ${formatRoleCodes(playerRoleCodes)}`,
+        applicationRoleCodes,
+        playerRoleCodes,
       });
     }
   }
