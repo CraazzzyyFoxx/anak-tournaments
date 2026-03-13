@@ -159,13 +159,19 @@ function roleSequencesMatch(
   left: BalancerRoleCode[],
   right: BalancerRoleCode[],
 ): boolean {
-  if (isFlexApplication(application, right)) {
-    const leftSorted = [...left].sort();
-    const rightSorted = [...right].sort();
-    return leftSorted.length === rightSorted.length && leftSorted.every((roleCode, index) => roleCode === rightSorted[index]);
+  if (left.length === 0) {
+    return false;
   }
 
-  return left.length === right.length && left.every((roleCode, index) => roleCode === right[index]);
+  if (isFlexApplication(application, right)) {
+    return left.length <= right.length && left.every((roleCode, index) => roleCode === right[index]);
+  }
+
+  if (left.length > right.length) {
+    return false;
+  }
+
+  return left.every((roleCode, index) => roleCode === right[index]);
 }
 
 export function getPlayerValidationIssues(
