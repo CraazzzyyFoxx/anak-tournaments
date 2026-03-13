@@ -374,7 +374,7 @@ def normalize_role_entries(
         else:
             prepared_entries.append(entry.model_dump())
 
-    prepared_entries.sort(key=lambda item: item.get("priority") or 999, reverse=True)
+    prepared_entries.sort(key=lambda item: item.get("priority") if item.get("priority") is not None else 999)
 
     for entry in prepared_entries:
         role = entry.get("role")
@@ -485,21 +485,21 @@ def map_imported_role_entries_to_application(
     application: models.BalancerApplication,
     imported_role_entries: list[dict[str, Any]] | list[admin_schemas.BalancerPlayerRoleEntry] | None,
 ) -> list[dict[str, Any]]:
-    normalized_imported = filter_ranked_role_entries(imported_role_entries)
+    normalized_imported = normalize_role_entries(imported_role_entries)
     allowed_role_entries = build_role_entries_from_application(application)
-    imported_by_role = {entry["role"]: entry for entry in normalized_imported}
+    allowed_by_role = {entry["role"]: entry for entry in allowed_role_entries}
 
     merged_entries = [
         {
-            "role": allowed_entry["role"],
-            "subtype": imported_by_role.get(allowed_entry["role"], {}).get("subtype"),
-            "priority": allowed_entry["priority"],
-            "division_number": imported_by_role.get(allowed_entry["role"], {}).get("division_number"),
-            "rank_value": imported_by_role.get(allowed_entry["role"], {}).get("rank_value"),
-            "is_active": imported_by_role.get(allowed_entry["role"], {}).get("is_active", True),
+            "role": imported_entry["role"],
+            "subtype": imported_entry.get("subtype") or allowed_by_role[imported_entry["role"]].get("subtype"),
+            "priority": imported_entry["priority"],
+            "division_number": imported_entry.get("division_number"),
+            "rank_value": imported_entry.get("rank_value"),
+            "is_active": imported_entry.get("is_active", True),
         }
-        for allowed_entry in allowed_role_entries
-        if allowed_entry["role"] in imported_by_role
+        for imported_entry in normalized_imported
+        if imported_entry["role"] in allowed_by_role
     ]
     return normalize_role_entries(merged_entries)
 
@@ -583,7 +583,7 @@ def build_role_entries_from_classes(classes: dict[str, Any]) -> list[dict[str, A
             }
         )
 
-    return filter_ranked_role_entries(raw_entries)
+    return normalize_role_entries(raw_entries)
 
 
 def parse_imported_player_nodes(payload: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
@@ -614,13 +614,13 @@ def parse_imported_player_nodes(payload: dict[str, Any]) -> tuple[list[dict[str,
         seen_tags.add(normalized_tag)
         meta = player_node.get("meta") if isinstance(player_node.get("meta"), dict) else {}
         role_entries = meta.get("roleEntries") if isinstance(meta.get("roleEntries"), list) else None
-        normalized_role_entries = filter_ranked_role_entries(role_entries) if role_entries is not None else None
+        normalized_role_entries = normalize_role_entries(role_entries) if role_entries is not None else None
 
         if not normalized_role_entries:
             classes = player_node.get("stats", {}).get("classes", {})
             normalized_role_entries = build_role_entries_from_classes(classes if isinstance(classes, dict) else {})
 
-        if not normalized_role_entries:
+        if not filter_ranked_role_entries(normalized_role_entries):
             skipped.append(
                 {
                     "battle_tag": battle_tag,
