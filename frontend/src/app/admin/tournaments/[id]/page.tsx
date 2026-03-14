@@ -248,10 +248,10 @@ function getStandingForm(standing: Standings): StandingFormState {
   };
 }
 
-const adminDetailTableShell = "overflow-hidden rounded-xl border border-border/60 bg-background/40";
+const adminDetailTableShell = "max-h-96 overflow-y-auto rounded-xl border border-border/60 bg-background/40";
 const adminDetailTableHeaderRow = "border-border/60 hover:bg-transparent";
 const adminDetailTableHead =
-  "h-11 bg-muted/15 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/90 first:pl-4 last:pr-4";
+  "sticky top-0 z-10 h-11 bg-muted/30 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/90 first:pl-4 last:pr-4";
 const adminDetailTableRow = "border-border/50 transition-colors duration-200 hover:bg-muted/20";
 const adminDetailTableCell = "py-3.5 first:pl-4 last:pr-4 align-top";
 
