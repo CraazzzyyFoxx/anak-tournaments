@@ -410,8 +410,8 @@ export default function AdminTournamentWorkspacePage() {
   // Discord channel state
   const [discordChannelDialogOpen, setDiscordChannelDialogOpen] = useState(false);
   const [discordChannelForm, setDiscordChannelForm] = useState<DiscordChannelInput>({
-    guild_id: 0,
-    channel_id: 0,
+    guild_id: "",
+    channel_id: "",
     channel_name: "",
     is_active: true,
   });
@@ -1704,8 +1704,8 @@ export default function AdminTournamentWorkspacePage() {
                 onClick={() => {
                   const ch = discordChannelQuery.data;
                   setDiscordChannelForm({
-                    guild_id: ch?.guild_id ?? 0,
-                    channel_id: ch?.channel_id ?? 0,
+                    guild_id: ch?.guild_id ?? "",
+                    channel_id: ch?.channel_id ?? "",
                     channel_name: ch?.channel_name ?? "",
                     is_active: ch?.is_active ?? true,
                   });
@@ -1872,9 +1872,10 @@ export default function AdminTournamentWorkspacePage() {
             <Label htmlFor="discord-guild-id">Guild ID</Label>
             <Input
               id="discord-guild-id"
-              type="number"
-              value={discordChannelForm.guild_id || ""}
-              onChange={(e) => setDiscordChannelForm((c) => ({ ...c, guild_id: Number(e.target.value) }))}
+              type="text"
+              inputMode="numeric"
+              value={discordChannelForm.guild_id}
+              onChange={(e) => setDiscordChannelForm((c) => ({ ...c, guild_id: e.target.value.replace(/\D/g, "") }))}
               placeholder="e.g. 123456789012345678"
             />
           </div>
@@ -1882,9 +1883,10 @@ export default function AdminTournamentWorkspacePage() {
             <Label htmlFor="discord-channel-id">Channel ID</Label>
             <Input
               id="discord-channel-id"
-              type="number"
-              value={discordChannelForm.channel_id || ""}
-              onChange={(e) => setDiscordChannelForm((c) => ({ ...c, channel_id: Number(e.target.value) }))}
+              type="text"
+              inputMode="numeric"
+              value={discordChannelForm.channel_id}
+              onChange={(e) => setDiscordChannelForm((c) => ({ ...c, channel_id: e.target.value.replace(/\D/g, "") }))}
               placeholder="e.g. 987654321098765432"
             />
           </div>

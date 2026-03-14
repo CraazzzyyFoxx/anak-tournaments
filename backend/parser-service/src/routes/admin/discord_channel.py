@@ -59,8 +59,8 @@ async def upsert_discord_channel(
         channel = models.TournamentDiscordChannel(tournament_id=tournament_id)
         session.add(channel)
 
-    channel.guild_id = data.guild_id
-    channel.channel_id = data.channel_id
+    channel.guild_id = int(data.guild_id)
+    channel.channel_id = int(data.channel_id)
     channel.channel_name = data.channel_name
     channel.is_active = data.is_active
 
