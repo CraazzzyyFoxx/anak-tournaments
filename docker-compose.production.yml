@@ -284,6 +284,8 @@ services:
         condition: service_healthy
     volumes:
       - ./logs/discord:/logs
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - app-network
     healthcheck:
