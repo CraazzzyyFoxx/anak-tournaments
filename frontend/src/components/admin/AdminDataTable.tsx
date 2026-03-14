@@ -5,10 +5,12 @@ import {
   ColumnDef,
   flexRender,
   getCoreRowModel,
+  getSortedRowModel,
+  SortingState,
   useReactTable,
   Row
 } from "@tanstack/react-table";
-import { CircleMinus, LoaderCircle, Search, SlidersHorizontal } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, CircleMinus, LoaderCircle, Search, SlidersHorizontal } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useDebounce } from "use-debounce";
 import {
@@ -79,6 +81,7 @@ export function AdminDataTable<TData>({
   const [debouncedSearchValue] = useDebounce(searchValue, 300);
   const [currentPage, setCurrentPage] = useState<number>(initialPage);
   const [pageSize, setPageSize] = useState<number>(defaultPageSize);
+  const [sorting, setSorting] = useState<SortingState>([]);
   const previousDebouncedSearchRef = useRef(initialSearch);
   const previousPageSizeRef = useRef(defaultPageSize);
   const previousUrlStateRef = useRef({ page: initialPage, search: initialSearch, pageSize: defaultPageSize });
@@ -246,6 +249,9 @@ export function AdminDataTable<TData>({
     data: data.results ?? [],
     columns,
     getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    onSortingChange: setSorting,
+    state: { sorting },
     manualPagination: true,
     rowCount: data.total ?? 0
   });
@@ -386,6 +392,9 @@ export function AdminDataTable<TData>({
                     const isFirstColumn = index === 0;
                     const isLastColumn = index === headerGroup.headers.length - 1;
 
+                    const canSort = header.column.getCanSort();
+                    const sortDir = header.column.getIsSorted();
+
                     return (
                       <TableHead
                         key={header.id}
@@ -397,9 +406,27 @@ export function AdminDataTable<TData>({
                         )}
                         style={getColumnStyle(header.column)}
                       >
-                        {header.isPlaceholder
-                          ? null
-                          : flexRender(header.column.columnDef.header, header.getContext())}
+                        {header.isPlaceholder ? null : canSort ? (
+                          <button
+                            type="button"
+                            onClick={header.column.getToggleSortingHandler()}
+                            className={cn(
+                              "inline-flex items-center gap-1.5 rounded transition-colors hover:text-foreground",
+                              sortDir ? "text-foreground" : "text-muted-foreground/90"
+                            )}
+                          >
+                            {flexRender(header.column.columnDef.header, header.getContext())}
+                            {sortDir === "asc" ? (
+                              <ArrowUp className="h-3 w-3 shrink-0" />
+                            ) : sortDir === "desc" ? (
+                              <ArrowDown className="h-3 w-3 shrink-0" />
+                            ) : (
+                              <ArrowUpDown className="h-3 w-3 shrink-0 opacity-40" />
+                            )}
+                          </button>
+                        ) : (
+                          flexRender(header.column.columnDef.header, header.getContext())
+                        )}
                       </TableHead>
                     );
                   })}

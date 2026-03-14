@@ -213,6 +213,7 @@ export default function EncountersPage() {
     {
       accessorKey: "tournament_group",
       header: "Group",
+      enableSorting: false,
       cell: ({ row }) => {
         const group = row.getValue<any>("tournament_group");
         return group ? <div className="text-sm">{group.name}</div> : "—";
@@ -226,6 +227,7 @@ export default function EncountersPage() {
     {
       accessorKey: "score",
       header: "Score",
+      enableSorting: false,
       cell: ({ row }) => {
         const score = row.getValue<any>("score");
         return (

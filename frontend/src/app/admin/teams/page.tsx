@@ -195,6 +195,7 @@ export default function TeamsPage() {
     {
       accessorKey: "players",
       header: "Players",
+      enableSorting: false,
       cell: ({ row }) => (
         <div className="flex items-center gap-1">
           <Users className="h-4 w-4" />
@@ -205,6 +206,7 @@ export default function TeamsPage() {
     {
       accessorKey: "tournament",
       header: "Tournament",
+      enableSorting: false,
       cell: ({ row }) => {
         const tournament = row.getValue<any>("tournament");
         return tournament ? (

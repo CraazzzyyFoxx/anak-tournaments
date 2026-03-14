@@ -179,6 +179,7 @@ export default function StandingsPage() {
     {
       accessorKey: "team",
       header: "Team",
+      enableSorting: false,
       cell: ({ row }) => {
         const team = row.getValue<any>("team");
         return team ? <div className="font-medium">{team.name}</div> : "—";
@@ -187,6 +188,7 @@ export default function StandingsPage() {
     {
       accessorKey: "group",
       header: "Group",
+      enableSorting: false,
       cell: ({ row }) => {
         const group = row.getValue<any>("group");
         return group ? <div className="text-sm">{group.name}</div> : "—";

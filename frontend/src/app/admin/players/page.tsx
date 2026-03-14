@@ -324,6 +324,7 @@ export default function PlayersPage() {
     {
       accessorKey: "team",
       header: "Team",
+      enableSorting: false,
       cell: ({ row }) => {
         const team = row.getValue<Team>("team");
         return team ? <div className="text-sm">{team.name}</div> : "—";

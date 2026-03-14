@@ -173,6 +173,7 @@ export default function MapsAdminPage() {
       accessorKey: "gamemode",
       header: "Gamemode",
       size: 112,
+      enableSorting: false,
       cell: ({ row }) => {
         const map = row.original;
         return map.gamemode ? (
