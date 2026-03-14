@@ -342,7 +342,7 @@ export default function AdminTournamentWorkspacePage() {
   const linkedGroupCount = groups.filter((group) => Boolean(group.challonge_slug)).length;
   const manualGroupCount = groups.length - linkedGroupCount;
   const groupedTeamCount = teams.filter((team) => Boolean(team.group)).length;
-  const completedEncounterCount = encounters.filter((encounter) => encounter.status === "completed").length;
+  const completedEncounterCount = encounters.filter((encounter) => encounter.status?.toUpperCase() === "COMPLETED").length;
   const hasChallongeSource = Boolean(tournament?.challonge_slug || linkedGroupCount > 0);
   const canCreateEncounterNow = canCreateEncounter && teams.length >= 2;
   const canManageStandingsNow = canRecalculateStandings && encounters.length > 0;
@@ -1613,9 +1613,14 @@ export default function AdminTournamentWorkspacePage() {
                         {encounter.score.home} - {encounter.score.away}
                       </TableCell>
                       <TableCell className={adminDetailTableCell}>
-                        <Badge variant={encounter.status === "completed" ? "default" : "outline"}>
-                          {encounter.status}
-                        </Badge>
+                        {(() => {
+                          const s = encounter.status?.toUpperCase() ?? "";
+                          return (
+                            <Badge variant={s === "COMPLETED" ? "default" : "outline"}>
+                              {s ? s.charAt(0) + s.slice(1).toLowerCase() : "—"}
+                            </Badge>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell className={adminDetailTableCell}>
                         {encounter.has_logs ? (
