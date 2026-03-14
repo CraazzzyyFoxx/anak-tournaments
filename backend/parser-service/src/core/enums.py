@@ -129,8 +129,9 @@ hero_translation = {
     "Ань Жань": "Anran",
     "Мидзуки": "Mizuki",
     "Домина": "Domina",
-    "Амрет": "Emre",
-    "Реактивная киса": "Jetpack Cat"
+    "Амре": "Emre",
+    "Реактивная киса": "Jetpack Cat",
+    "Эмре": "Emre"
 }
 
 
