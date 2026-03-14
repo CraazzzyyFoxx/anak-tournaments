@@ -14,8 +14,12 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import main
+from shared.messaging.config import PROCESS_MATCH_LOG_QUEUE
+from shared.models.log_processing import LogProcessingStatus
+from shared.schemas.events import ProcessMatchLogEvent
 from src import models
 from src.core import auth, config, db
+from src.routes.match_logs import task_router
 
 router = APIRouter(
     prefix="/logs",
@@ -159,6 +163,36 @@ async def get_log_history(
     result = await session.execute(query.limit(limit).offset(offset))
     items = [_record_to_dict(r) for r in result.scalars().all()]
     return {"items": items, "total": total}
+
+
+@router.post(
+    "/{record_id}/retry",
+    response_model=LogRecordRead,
+    dependencies=[Depends(auth.require_any_role("admin", "tournament_organizer"))],
+)
+async def retry_log_record(
+    record_id: int,
+    session: AsyncSession = Depends(db.get_async_session),
+):
+    """Reset a failed/pending log record to pending and re-queue it for processing."""
+    result = await session.execute(
+        select(models.LogProcessingRecord).where(models.LogProcessingRecord.id == record_id)
+    )
+    record = result.scalar_one_or_none()
+    if record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Log processing record not found")
+
+    record.status = LogProcessingStatus.pending
+    record.error_message = None
+    record.started_at = None
+    record.finished_at = None
+    await session.commit()
+    await session.refresh(record)
+
+    event = ProcessMatchLogEvent(tournament_id=record.tournament_id, filename=record.filename)
+    await task_router.broker.publish(event.model_dump(), PROCESS_MATCH_LOG_QUEUE)
+
+    return LogRecordRead.model_validate(_record_to_dict(record))
 
 
 async def _require_sse_token(token: str = Query(..., description="JWT access token")) -> None:

@@ -635,6 +635,11 @@ class AdminService {
     const response = await parserFetch("admin/logs/queue-status");
     return response.json();
   }
+
+  async retryLogRecord(recordId: number): Promise<LogProcessingRecord> {
+    const response = await parserFetch(`admin/logs/${recordId}/retry`, { method: "POST" });
+    return response.json();
+  }
 }
 
 const adminService = new AdminService();

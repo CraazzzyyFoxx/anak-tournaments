@@ -20,6 +20,7 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  RotateCcw,
   ShieldAlert,
   Trash2,
   Trophy,
@@ -312,6 +313,11 @@ export default function AdminTournamentWorkspacePage() {
     queryFn: () => adminService.getLogHistory(tournamentId, { limit: 50 }),
     enabled: Number.isFinite(tournamentId) && tournamentId > 0,
     refetchInterval: 10_000,
+  });
+
+  const retryLogMutation = useMutation({
+    mutationFn: (recordId: number) => adminService.retryLogRecord(recordId),
+    onSuccess: () => logHistoryQuery.refetch(),
   });
 
   const invalidateWorkspace = async () => {
@@ -1794,6 +1800,7 @@ export default function AdminTournamentWorkspacePage() {
                     <TableHead className={adminDetailTableHead}>Uploader</TableHead>
                     <TableHead className={adminDetailTableHead}>Uploaded</TableHead>
                     <TableHead className={adminDetailTableHead}>Duration</TableHead>
+                    <TableHead className={adminDetailTableHead}></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1838,6 +1845,19 @@ export default function AdminTournamentWorkspacePage() {
                         </TableCell>
                         <TableCell className={adminDetailTableCell}>
                           <span className="text-sm text-muted-foreground">{duration}</span>
+                        </TableCell>
+                        <TableCell className={adminDetailTableCell}>
+                          {record.status === "failed" && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label="Retry processing"
+                              disabled={retryLogMutation.isPending && retryLogMutation.variables === record.id}
+                              onClick={() => retryLogMutation.mutate(record.id)}
+                            >
+                              <RotateCcw className="h-4 w-4" />
+                            </Button>
+                          )}
                         </TableCell>
                       </TableRow>
                     );
