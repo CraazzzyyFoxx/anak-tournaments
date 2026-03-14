@@ -12,3 +12,5 @@ from shared.models.achievement import *
 from shared.models.analytics import *
 from shared.models.auth_user import *
 from shared.models.balancer import *
+from shared.models.log_processing import *
+from shared.models.discord_channel import *

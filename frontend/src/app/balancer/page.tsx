@@ -16,6 +16,7 @@ import {
   Search,
   Shuffle,
   Sparkles,
+  FolderInput,
   Upload,
   UserX,
   Users,
@@ -172,6 +173,7 @@ export default function BalancerMainPage() {
   const [excludeInvalidPlayers, setExcludeInvalidPlayers] = useState(false);
 
   const balanceEditorRef = useRef<HTMLDivElement>(null);
+  const importTeamsFileRef = useRef<HTMLInputElement>(null);
 
   const clearJobState = () => {
     setJobStatus(null);
@@ -521,6 +523,20 @@ export default function BalancerMainPage() {
     },
     onError: (error: Error) => {
       toast({ title: "Failed to export balance", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const importTeamsMutation = useMutation({
+    mutationFn: async (file: File) => {
+      if (!tournamentId) throw new Error("Select a tournament first");
+      return balancerAdminService.importTeamsFromJson(tournamentId, file);
+    },
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ["balancer-public", "balance", tournamentId] });
+      toast({ title: "Teams imported", description: `${result.imported_teams} teams created.` });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to import teams", description: error.message, variant: "destructive" });
     },
   });
 
@@ -961,6 +977,25 @@ export default function BalancerMainPage() {
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>Export to spreadsheet</TooltipContent>
+                    </Tooltip>
+                    <input
+                      ref={importTeamsFileRef}
+                      type="file"
+                      accept="application/json"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) importTeamsMutation.mutate(file);
+                        e.target.value = "";
+                      }}
+                    />
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => importTeamsFileRef.current?.click()} disabled={importTeamsMutation.isPending || !tournamentId}>
+                          {importTeamsMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FolderInput className="h-4 w-4" />}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Import teams from JSON</TooltipContent>
                     </Tooltip>
                     <Tooltip>
                       <TooltipTrigger asChild>

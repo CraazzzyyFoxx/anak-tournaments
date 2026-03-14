@@ -70,6 +70,11 @@ class AppConfig(BaseSettings):
 
     rabbitmq_url: str | None = None
 
+    # RabbitMQ Management API (for queue depth monitoring)
+    rabbitmq_management_url: str = "http://rabbitmq:15672"
+    rabbitmq_management_user: str = "guest"
+    rabbitmq_management_password: str = "guest"
+
     @property
     def db_url_asyncpg(self):
         url = (

@@ -1,5 +1,6 @@
 import { parserFetch } from "@/lib/parser_fetch";
 import {
+  ApplicationUserExportResponse,
   BalanceExportResponse,
   BalanceSaveInput,
   BalancerApplication,
@@ -156,6 +157,29 @@ export default class balancerAdminService {
     const response = await parserFetch(`admin/balancer/balances/${balanceId}/export`, {
       method: "POST",
       body: {},
+    });
+    return response.json();
+  }
+
+  static async exportApplicationsToUsers(tournamentId: number): Promise<ApplicationUserExportResponse> {
+    const response = await parserFetch(`admin/balancer/tournaments/${tournamentId}/applications/export-users`, {
+      method: "POST",
+      body: {},
+    });
+    return response.json();
+  }
+
+  static async importTeamsFromJson(
+    tournamentId: number,
+    file: File,
+    payloadFormat: "auto" | "atravkovs" | "internal" = "auto",
+  ): Promise<{ imported_teams: number }> {
+    const formData = new FormData();
+    formData.append("data", file);
+    formData.append("payload_format", payloadFormat);
+    const response = await parserFetch(`admin/balancer/tournaments/${tournamentId}/teams/import`, {
+      method: "POST",
+      body: formData,
     });
     return response.json();
   }

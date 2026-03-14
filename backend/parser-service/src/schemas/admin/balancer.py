@@ -13,6 +13,7 @@ DuplicateResolution = Literal["replace", "skip"]
 DuplicateStrategy = Literal["manual", "replace_all", "skip_all"]
 
 __all__ = (
+    "ApplicationUserExportResponse",
     "BalanceExportResponse",
     "BalanceRead",
     "BalanceSaveRequest",
@@ -198,3 +199,9 @@ class BalanceExportResponse(BaseModel):
     removed_teams: int
     imported_teams: int
     balance_id: int
+
+
+class ApplicationUserExportResponse(BaseModel):
+    processed: int
+    skipped: int
+    total: int

@@ -52,13 +52,6 @@ const EncounterMatch = async ({ match }: { match: Match }) => {
           matchRound={parseInt(key)}
           maxHeroes={maxHeroes[parseInt(key)]}
         />
-        <div className="px-4">
-          <MatchStatsChart 
-            homeTeam={data.home_team} 
-            awayTeam={data.away_team} 
-            matchRound={parseInt(key)} 
-          />
-        </div>
       </TabsContent>
     );
   });

@@ -397,6 +397,7 @@ export const BalanceEditor = forwardRef<HTMLDivElement, BalanceEditorProps>(func
               <div className="border-t border-white/[0.06]" />
 
               {/* Table */}
+                <div className="overflow-hidden">
                 <Table>
                   <TableHeader>
                     <TableRow className="border-white/[0.06] hover:bg-transparent">
@@ -423,6 +424,7 @@ export const BalanceEditor = forwardRef<HTMLDivElement, BalanceEditorProps>(func
                   />
                 ))}
               </Table>
+              </div>
             </div>
           );
         })}

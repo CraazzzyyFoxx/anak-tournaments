@@ -164,6 +164,18 @@ def require_role_or_service_scope(role_name: str, scope: str) -> Callable:
     return checker
 
 
+async def get_current_user_optional(
+    request: Request,
+    token: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
+    session: Annotated[AsyncSession, Depends(db.get_async_session)],
+) -> models.AuthUser | None:
+    """Return the authenticated user if a valid user token is provided, otherwise None."""
+    try:
+        return await get_current_user(request=request, token=token, session=session)
+    except HTTPException:
+        return None
+
+
 async def get_current_active_user(
     current_user: Annotated[models.AuthUser, Depends(get_current_user)],
 ) -> models.AuthUser:

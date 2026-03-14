@@ -36,7 +36,11 @@ import {
   MapUpdateInput,
   AchievementCreateInput,
   AchievementUpdateInput,
-  BulkOperationResult
+  BulkOperationResult,
+  DiscordChannelRead,
+  DiscordChannelInput,
+  LogHistoryResponse,
+  QueueDepth,
 } from "@/types/admin.types";
 
 class AdminService {
@@ -585,6 +589,51 @@ class AdminService {
       });
       return response.json();
     }
+  }
+
+  // ─── Discord Channel Sync ─────────────────────────────────────────────────
+
+  async getDiscordChannel(tournamentId: number): Promise<DiscordChannelRead | null> {
+    const response = await parserFetch(`admin/tournaments/${tournamentId}/discord-channel`);
+    if (response.status === 404) return null;
+    const text = await response.text();
+    if (!text || text === "null") return null;
+    return JSON.parse(text);
+  }
+
+  async setDiscordChannel(tournamentId: number, data: DiscordChannelInput): Promise<DiscordChannelRead> {
+    const response = await parserFetch(`admin/tournaments/${tournamentId}/discord-channel`, {
+      method: "POST",
+      body: data
+    });
+    return response.json();
+  }
+
+  async deleteDiscordChannel(tournamentId: number): Promise<void> {
+    await parserFetch(`admin/tournaments/${tournamentId}/discord-channel`, {
+      method: "DELETE"
+    });
+  }
+
+  // ─── Log Processing History ───────────────────────────────────────────────
+
+  async getLogHistory(
+    tournamentId?: number,
+    params?: { limit?: number; offset?: number }
+  ): Promise<LogHistoryResponse> {
+    const response = await parserFetch("admin/logs/history", {
+      query: {
+        ...(tournamentId != null && { tournament_id: tournamentId }),
+        limit: params?.limit ?? 50,
+        offset: params?.offset ?? 0,
+      }
+    });
+    return response.json();
+  }
+
+  async getQueueStatus(): Promise<QueueDepth[]> {
+    const response = await parserFetch("admin/logs/queue-status");
+    return response.json();
   }
 }
 

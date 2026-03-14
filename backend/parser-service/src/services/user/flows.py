@@ -105,12 +105,14 @@ async def create(session: AsyncSession, data_in: schemas.UserCSV) -> models.User
 
         if data_in.twitch:
             if data_in.twitch not in twitch_names.keys():
-                await service.create_twitch(session, user, twitch=data_in.twitch)
+                if not await service.get_twitch(session, data_in.twitch):
+                    await service.create_twitch(session, user, twitch=data_in.twitch)
             else:
                 await service.update_twitch(session, twitch_names[data_in.twitch], name=data_in.twitch)
         if data_in.discord:
             if data_in.discord not in discord_names.keys():
-                await service.create_discord(session, user, discord=data_in.discord)
+                if not await service.get_discord(session, data_in.discord):
+                    await service.create_discord(session, user, discord=data_in.discord)
             else:
                 await service.update_discord(session, discord_names[data_in.discord], name=data_in.discord)
 

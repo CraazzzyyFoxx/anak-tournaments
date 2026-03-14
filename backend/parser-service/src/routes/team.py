@@ -18,13 +18,20 @@ router = APIRouter(
 async def bulk_create_from_balancer(
     tournament_id: int,
     data: UploadFile,
-    payload_format: typing.Literal["atravkovs", "internal"] = "atravkovs",
+    payload_format: typing.Literal["auto", "atravkovs", "internal"] = "auto",
     session=Depends(db.get_async_session),
 ):
     text = await data.read()
     payload = json.loads(text)
 
-    if payload_format == "atravkovs":
+    use_atravkovs = payload_format == "atravkovs" or (
+        payload_format == "auto"
+        and isinstance(payload, dict)
+        and isinstance(payload.get("data"), dict)
+        and "teams" in payload["data"]
+    )
+
+    if use_atravkovs:
         teams = [schemas.BalancerTeam.model_validate(team) for team in payload["data"]["teams"]]
     else:
         internal_payload = schemas.InternalBalancerTeamsPayload.model_validate(payload)

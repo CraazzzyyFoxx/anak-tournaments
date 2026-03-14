@@ -8,6 +8,7 @@ import {
   ArrowRight,
   BarChart3,
   Gamepad2,
+  History,
   Layers3,
   Lock,
   Map,
@@ -16,6 +17,8 @@ import {
   Trophy,
   UserCircle,
   Users,
+  Wifi,
+  WifiOff,
   type LucideIcon,
 } from "lucide-react";
 
@@ -25,6 +28,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useLogStream } from "@/hooks/useLogStream";
 import { customFetch } from "@/lib/custom_fetch";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
@@ -157,6 +161,8 @@ export default function AdminDashboard() {
       : canReadPermissions
         ? "/admin/access/permissions"
         : null;
+
+  const logStream = useLogStream(true);
 
   const dashboardQuery = useQuery({
     queryKey: ["admin", "dashboard", "command-deck"],
@@ -764,6 +770,115 @@ export default function AdminDashboard() {
           )}
         </div>
       </section>
+
+      {/* ── LOG PROCESSING QUEUE ─────────────────────────── */}
+      <SurfaceCard>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <History className="size-4 text-muted-foreground" />
+                Log Processing Queue
+              </CardTitle>
+              <CardDescription className="mt-1">
+                Real-time RabbitMQ queue depths and recent log processing activity.
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs">
+              {logStream.connected ? (
+                <>
+                  <Wifi className="size-3.5 text-green-500" />
+                  <span className="text-muted-foreground">Live</span>
+                </>
+              ) : (
+                <>
+                  <WifiOff className="size-3.5 text-muted-foreground" />
+                  <span className="text-muted-foreground">
+                    {logStream.error ?? "Connecting…"}
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Queue depths */}
+          {logStream.queues.length > 0 ? (
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {logStream.queues.map((q) => (
+                <div
+                  key={q.name}
+                  className="rounded-[16px] border border-border/60 bg-background/45 p-3 space-y-2"
+                >
+                  <p className="text-xs font-medium text-muted-foreground truncate">{q.name.replace(/_/g, " ")}</p>
+                  <div className="flex items-end justify-between">
+                    <span className="text-xl font-semibold tabular-nums">
+                      {q.messages_ready < 0 ? "—" : q.messages_ready}
+                    </span>
+                    {q.messages_unacknowledged > 0 && (
+                      <span className="text-xs text-amber-500">+{q.messages_unacknowledged} processing</span>
+                    )}
+                  </div>
+                  {q.messages_ready >= 0 && (
+                    <Progress
+                      value={Math.min(100, q.messages_ready * 10)}
+                      className="h-1"
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground">
+              {logStream.connected ? "No queue data yet…" : "Waiting for connection…"}
+            </div>
+          )}
+
+          {/* Recent log records */}
+          {logStream.recentLogs.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Recent activity</p>
+              <div className="divide-y divide-border/50 rounded-xl border border-border/60 overflow-hidden">
+                {logStream.recentLogs.slice(0, 8).map((record) => {
+                  const statusColors: Record<string, string> = {
+                    pending: "text-muted-foreground",
+                    processing: "text-blue-500",
+                    done: "text-green-600",
+                    failed: "text-destructive",
+                  };
+                  return (
+                    <div
+                      key={record.id}
+                      className="flex items-center justify-between gap-3 px-3 py-2 bg-background/40 text-sm"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className={`shrink-0 text-xs font-medium uppercase ${statusColors[record.status] ?? ""}`}>
+                          {record.status}
+                        </span>
+                        <span className="truncate font-mono text-xs text-muted-foreground">
+                          {record.filename.split("/").at(-1)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0 text-xs text-muted-foreground">
+                        {record.uploader_username && <span>{record.uploader_username}</span>}
+                        {record.tournament_name && (
+                          <span className="hidden sm:block text-muted-foreground/60">{record.tournament_name}</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {logStream.lastUpdated && (
+            <p className="text-right text-xs text-muted-foreground/60">
+              Updated {logStream.lastUpdated.toLocaleTimeString()}
+            </p>
+          )}
+        </CardContent>
+      </SurfaceCard>
 
       {/* ── OPERATIONAL LANES ────────────────────────────── */}
       {operationalLanes.length > 0 && (

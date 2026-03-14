@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState, type ChangeEvent } from "react";
-import { Download, Loader2, RefreshCcw, Search, Upload } from "lucide-react";
+import { Download, Loader2, RefreshCcw, Search, Upload, UserPlus } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { ApplicationCombobox } from "@/app/balancer/_components/ApplicationCombobox";
@@ -25,6 +25,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import balancerAdminService from "@/services/balancer-admin.service";
 import {
+  ApplicationUserExportResponse,
   BalancerPlayerImportPreviewResponse,
   DuplicateResolution,
   DuplicateStrategy,
@@ -236,6 +237,24 @@ export default function BalancerPoolPage() {
     },
   });
 
+  const exportApplicationsToUsersMutation = useMutation({
+    mutationFn: async () => {
+      if (!tournamentId) {
+        throw new Error("Select a tournament first");
+      }
+      return balancerAdminService.exportApplicationsToUsers(tournamentId);
+    },
+    onSuccess: (result: ApplicationUserExportResponse) => {
+      toast({
+        title: "Applications exported to users",
+        description: `${result.processed} processed · ${result.skipped} skipped`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to export applications to users", description: error.message, variant: "destructive" });
+    },
+  });
+
   const applications = applicationsQuery.data ?? [];
   const players = playersQuery.data ?? [];
   const unresolvedDuplicates = useMemo(
@@ -404,6 +423,19 @@ export default function BalancerPoolPage() {
                     <RefreshCcw className="mr-2 h-4 w-4" />
                   )}
                   Apply app roles
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => exportApplicationsToUsersMutation.mutate()}
+                  disabled={exportApplicationsToUsersMutation.isPending}
+                >
+                  {exportApplicationsToUsersMutation.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <UserPlus className="mr-2 h-4 w-4" />
+                  )}
+                  Export to users
                 </Button>
               </div>
             </div>

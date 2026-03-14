@@ -243,6 +243,61 @@ export interface AchievementUpdateInput {
   hero_id?: number;
 }
 
+// ─── Discord Channel Sync ─────────────────────────────────────────────────────
+
+export interface DiscordChannelRead {
+  id: number;
+  tournament_id: number;
+  guild_id: number;
+  channel_id: number;
+  channel_name: string | null;
+  is_active: boolean;
+}
+
+export interface DiscordChannelInput {
+  guild_id: number;
+  channel_id: number;
+  channel_name?: string | null;
+  is_active: boolean;
+}
+
+// ─── Log Processing ───────────────────────────────────────────────────────────
+
+export type LogProcessingStatus = "pending" | "processing" | "done" | "failed";
+export type LogProcessingSource = "upload" | "discord" | "manual";
+
+export interface LogProcessingRecord {
+  id: number;
+  tournament_id: number;
+  tournament_name: string | null;
+  filename: string;
+  status: LogProcessingStatus;
+  source: LogProcessingSource;
+  uploader_username: string | null;
+  error_message: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface LogHistoryResponse {
+  items: LogProcessingRecord[];
+  total: number;
+}
+
+export interface QueueDepth {
+  name: string;
+  messages_ready: number;
+  messages_unacknowledged: number;
+  consumers: number;
+}
+
+export interface LogStreamEvent {
+  timestamp: string;
+  queues: QueueDepth[];
+  recent_logs: LogProcessingRecord[];
+}
+
 // ─── Bulk Operations ─────────────────────────────────────────────────────────
 
 export interface CsvConfig {

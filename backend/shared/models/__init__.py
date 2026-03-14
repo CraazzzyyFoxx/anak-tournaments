@@ -14,3 +14,4 @@ from .discord_channel import *
 from .rbac import *
 from .oauth import *
 from .balancer import *
+from .log_processing import *

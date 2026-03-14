@@ -1029,8 +1029,12 @@ async def process_closeness(session: AsyncSession, payload: list[str]):
 
 
 async def process_match_log(session: AsyncSession, tournament_id: int, filename: str, *, is_raise: bool = True) -> None:
+    from src.services.match_logs import log_records as record_service
+
     tournament = await tournament_flows.get(session, tournament_id, [])
     logger.info(f"Fetching logs from S3 for tournament {tournament.id} and file {filename}")
+
+    record = await record_service.set_processing(session, tournament_id, filename)
 
     data = await s3_service.async_client.get_log_by_filename(tournament.id, filename)
     decoded_lines = [line.decode() for line in data.split(b"\n") if line]
@@ -1038,8 +1042,12 @@ async def process_match_log(session: AsyncSession, tournament_id: int, filename:
     processor = MatchLogProcessor(tournament, filename.split("/")[-1], decoded_lines)
     try:
         await processor.start(session, is_raise=is_raise)
+        if record is not None:
+            await record_service.set_done(session, record)
     except Exception as e:
         logger.exception(e)
+        if record is not None:
+            await record_service.set_failed(session, record, str(e))
         if is_raise:
             raise e
 

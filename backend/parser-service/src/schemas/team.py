@@ -21,7 +21,7 @@ __all__ = (
 
 
 class BalancerTeamMember(BaseModel):
-    uuid: UUID4
+    uuid: str | UUID4
     name: str
     primary: bool
     secondary: bool
@@ -62,7 +62,7 @@ class InternalBalancerPlayer(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
-    uuid: UUID4
+    uuid: str | UUID4
     name: str
     rating: int
     discomfort: int | None = 0

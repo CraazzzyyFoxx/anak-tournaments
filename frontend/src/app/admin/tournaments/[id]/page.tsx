@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -9,9 +9,14 @@ import {
   ArrowLeft,
   CalendarDays,
   CheckCircle2,
+  FolderInput,
+  Hash,
+  History,
   Layers3,
   Link2,
   ListChecks,
+  Loader2,
+  MessageSquare,
   Pencil,
   Plus,
   RefreshCw,
@@ -19,6 +24,8 @@ import {
   Trash2,
   Trophy,
   Users,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
@@ -54,13 +61,17 @@ import { hasUnsavedChanges } from "@/lib/form-change";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useToast } from "@/hooks/use-toast";
 import adminService from "@/services/admin.service";
+import balancerAdminService from "@/services/balancer-admin.service";
 import encounterService from "@/services/encounter.service";
 import teamService from "@/services/team.service";
 import tournamentService from "@/services/tournament.service";
 import type {
   ChallongeTournamentLookup,
+  DiscordChannelInput,
+  DiscordChannelRead,
   EncounterCreateInput,
   EncounterUpdateInput,
+  LogProcessingRecord,
   StandingUpdateInput,
   TeamCreateInput,
   TeamUpdateInput,
@@ -250,6 +261,7 @@ export default function AdminTournamentWorkspacePage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { hasPermission } = usePermissions();
+  const importTeamsFileRef = useRef<HTMLInputElement>(null);
 
   const canUpdateTournament = hasPermission("tournament.update");
   const canDeleteTournament = hasPermission("tournament.delete");
@@ -287,6 +299,19 @@ export default function AdminTournamentWorkspacePage() {
     queryKey: ["admin", "tournament", tournamentId, "encounters"],
     queryFn: () => encounterService.getAll(1, "", tournamentId, -1),
     enabled: Number.isFinite(tournamentId) && tournamentId > 0,
+  });
+
+  const discordChannelQuery = useQuery({
+    queryKey: ["admin", "tournament", tournamentId, "discord-channel"],
+    queryFn: () => adminService.getDiscordChannel(tournamentId),
+    enabled: Number.isFinite(tournamentId) && tournamentId > 0,
+  });
+
+  const logHistoryQuery = useQuery({
+    queryKey: ["admin", "tournament", tournamentId, "log-history"],
+    queryFn: () => adminService.getLogHistory(tournamentId, { limit: 50 }),
+    enabled: Number.isFinite(tournamentId) && tournamentId > 0,
+    refetchInterval: 10_000,
   });
 
   const invalidateWorkspace = async () => {
@@ -381,6 +406,16 @@ export default function AdminTournamentWorkspacePage() {
   });
   const [tournamentDeleteOpen, setTournamentDeleteOpen] = useState(false);
   const [standingPendingDelete, setStandingPendingDelete] = useState<Standings | null>(null);
+
+  // Discord channel state
+  const [discordChannelDialogOpen, setDiscordChannelDialogOpen] = useState(false);
+  const [discordChannelForm, setDiscordChannelForm] = useState<DiscordChannelInput>({
+    guild_id: 0,
+    channel_id: 0,
+    channel_name: "",
+    is_active: true,
+  });
+  const [discordChannelDeleteOpen, setDiscordChannelDeleteOpen] = useState(false);
 
   const resetTournamentDialog = () => {
     setTournamentDialogOpen(false);
@@ -570,6 +605,17 @@ export default function AdminTournamentWorkspacePage() {
     },
   });
 
+  const importTeamsMutation = useMutation({
+    mutationFn: (file: File) => balancerAdminService.importTeamsFromJson(tournamentId, file),
+    onSuccess: async (result) => {
+      await invalidateWorkspace();
+      toast({ title: "Teams imported", description: `${result.imported_teams} teams created.` });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to import teams", description: error.message, variant: "destructive" });
+    },
+  });
+
   const saveEncounterMutation = useMutation({
     mutationFn: async ({
       mode,
@@ -665,6 +711,30 @@ export default function AdminTournamentWorkspacePage() {
     onSuccess: async () => {
       await invalidateWorkspace();
       toast({ title: "Standings recalculated" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const saveDiscordChannelMutation = useMutation({
+    mutationFn: (data: DiscordChannelInput) => adminService.setDiscordChannel(tournamentId, data),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["admin", "tournament", tournamentId, "discord-channel"] });
+      setDiscordChannelDialogOpen(false);
+      toast({ title: "Discord channel configured" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const deleteDiscordChannelMutation = useMutation({
+    mutationFn: () => adminService.deleteDiscordChannel(tournamentId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["admin", "tournament", tournamentId, "discord-channel"] });
+      setDiscordChannelDeleteOpen(false);
+      toast({ title: "Discord channel removed" });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -1231,6 +1301,33 @@ export default function AdminTournamentWorkspacePage() {
                 Sync Teams
               </Button>
             ) : null}
+            {canImportTeams ? (
+              <>
+                <input
+                  ref={importTeamsFileRef}
+                  type="file"
+                  accept="application/json"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) importTeamsMutation.mutate(file);
+                    e.target.value = "";
+                  }}
+                />
+                <Button
+                  variant="outline"
+                  onClick={() => importTeamsFileRef.current?.click()}
+                  disabled={importTeamsMutation.isPending}
+                >
+                  {importTeamsMutation.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <FolderInput className="mr-2 h-4 w-4" />
+                  )}
+                  Import from JSON
+                </Button>
+              </>
+            ) : null}
             {canCreateTeam ? (
               <Button onClick={openCreateTeamDialog}>
                 <Plus className="mr-2 h-4 w-4" />
@@ -1586,6 +1683,239 @@ export default function AdminTournamentWorkspacePage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* ── Discord Sync Channel ─────────────────────────────────────────────── */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div className="space-y-1">
+            <CardTitle className="flex items-center gap-2 text-base font-semibold">
+              <MessageSquare className="h-4 w-4 text-muted-foreground" />
+              Discord Sync Channel
+            </CardTitle>
+            <CardDescription>
+              Discord channel where match logs are automatically collected.
+            </CardDescription>
+          </div>
+          {canUpdateTournament && (
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const ch = discordChannelQuery.data;
+                  setDiscordChannelForm({
+                    guild_id: ch?.guild_id ?? 0,
+                    channel_id: ch?.channel_id ?? 0,
+                    channel_name: ch?.channel_name ?? "",
+                    is_active: ch?.is_active ?? true,
+                  });
+                  setDiscordChannelDialogOpen(true);
+                }}
+              >
+                <Pencil className="mr-2 h-4 w-4" />
+                {discordChannelQuery.data ? "Edit" : "Configure"}
+              </Button>
+              {discordChannelQuery.data && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setDiscordChannelDeleteOpen(true)}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Remove
+                </Button>
+              )}
+            </div>
+          )}
+        </CardHeader>
+        <CardContent>
+          {discordChannelQuery.isLoading ? (
+            <Skeleton className="h-12 w-full" />
+          ) : discordChannelQuery.data ? (
+            <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
+              <div className="space-y-1">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Guild ID</p>
+                <p className="font-mono">{discordChannelQuery.data.guild_id}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Channel ID</p>
+                <p className="font-mono">{discordChannelQuery.data.channel_id}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Channel Name</p>
+                <p>{discordChannelQuery.data.channel_name ?? "—"}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Status</p>
+                <Badge variant={discordChannelQuery.data.is_active ? "default" : "secondary"}>
+                  {discordChannelQuery.data.is_active ? "Active" : "Inactive"}
+                </Badge>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No Discord sync channel configured for this tournament.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── Log Processing History ───────────────────────────────────────────── */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div className="space-y-1">
+            <CardTitle className="flex items-center gap-2 text-base font-semibold">
+              <History className="h-4 w-4 text-muted-foreground" />
+              Log Processing History
+            </CardTitle>
+            <CardDescription>
+              Recent match log uploads and processing results. Refreshes every 10 seconds.
+            </CardDescription>
+          </div>
+          <Button variant="ghost" size="sm" onClick={() => logHistoryQuery.refetch()} disabled={logHistoryQuery.isFetching}>
+            <RefreshCw className={`h-4 w-4 ${logHistoryQuery.isFetching ? "animate-spin" : ""}`} />
+          </Button>
+        </CardHeader>
+        <CardContent className="p-0">
+          {logHistoryQuery.isLoading ? (
+            <div className="p-4 space-y-2">
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+            </div>
+          ) : !logHistoryQuery.data?.items.length ? (
+            <p className="p-4 text-sm text-muted-foreground">No log processing records yet.</p>
+          ) : (
+            <div className={adminDetailTableShell}>
+              <Table>
+                <TableHeader>
+                  <TableRow className={adminDetailTableHeaderRow}>
+                    <TableHead className={adminDetailTableHead}>Filename</TableHead>
+                    <TableHead className={adminDetailTableHead}>Status</TableHead>
+                    <TableHead className={adminDetailTableHead}>Source</TableHead>
+                    <TableHead className={adminDetailTableHead}>Uploader</TableHead>
+                    <TableHead className={adminDetailTableHead}>Uploaded</TableHead>
+                    <TableHead className={adminDetailTableHead}>Duration</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {logHistoryQuery.data.items.map((record) => {
+                    const duration =
+                      record.started_at && record.finished_at
+                        ? `${((new Date(record.finished_at).getTime() - new Date(record.started_at).getTime()) / 1000).toFixed(1)}s`
+                        : record.status === "processing"
+                        ? "In progress…"
+                        : "—";
+                    const statusColors: Record<string, string> = {
+                      pending: "secondary",
+                      processing: "default",
+                      done: "outline",
+                      failed: "destructive",
+                    };
+                    return (
+                      <TableRow key={record.id} className={adminDetailTableRow}>
+                        <TableCell className={adminDetailTableCell}>
+                          <span className="font-mono text-xs">{record.filename.split("/").at(-1)}</span>
+                          {record.error_message && (
+                            <p className="mt-1 text-xs text-destructive line-clamp-1">{record.error_message}</p>
+                          )}
+                        </TableCell>
+                        <TableCell className={adminDetailTableCell}>
+                          <Badge variant={(statusColors[record.status] as any) ?? "secondary"}>
+                            {record.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className={adminDetailTableCell}>
+                          <span className="capitalize text-muted-foreground text-sm">{record.source}</span>
+                        </TableCell>
+                        <TableCell className={adminDetailTableCell}>
+                          {record.uploader_username ? (
+                            <span className="text-sm">{record.uploader_username}</span>
+                          ) : (
+                            <span className="text-muted-foreground text-sm">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className={adminDetailTableCell}>
+                          <span className="text-sm">{new Date(record.created_at).toLocaleString()}</span>
+                        </TableCell>
+                        <TableCell className={adminDetailTableCell}>
+                          <span className="text-sm text-muted-foreground">{duration}</span>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── Discord channel configure dialog ────────────────────────────────── */}
+      <EntityFormDialog
+        open={discordChannelDialogOpen}
+        onOpenChange={(open) => {
+          setDiscordChannelDialogOpen(open);
+          if (!open) saveDiscordChannelMutation.reset();
+        }}
+        title="Configure Discord Sync Channel"
+        description="Set the Discord guild and channel from which match logs are automatically imported."
+        onSubmit={(e) => {
+          e.preventDefault();
+          saveDiscordChannelMutation.mutate(discordChannelForm);
+        }}
+        isSubmitting={saveDiscordChannelMutation.isPending}
+        submittingLabel="Saving..."
+        errorMessage={saveDiscordChannelMutation.isError ? saveDiscordChannelMutation.error.message : undefined}
+        isDirty={true}
+      >
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="discord-guild-id">Guild ID</Label>
+            <Input
+              id="discord-guild-id"
+              type="number"
+              value={discordChannelForm.guild_id || ""}
+              onChange={(e) => setDiscordChannelForm((c) => ({ ...c, guild_id: Number(e.target.value) }))}
+              placeholder="e.g. 123456789012345678"
+            />
+          </div>
+          <div>
+            <Label htmlFor="discord-channel-id">Channel ID</Label>
+            <Input
+              id="discord-channel-id"
+              type="number"
+              value={discordChannelForm.channel_id || ""}
+              onChange={(e) => setDiscordChannelForm((c) => ({ ...c, channel_id: Number(e.target.value) }))}
+              placeholder="e.g. 987654321098765432"
+            />
+          </div>
+          <div>
+            <Label htmlFor="discord-channel-name">Channel Name (optional)</Label>
+            <Input
+              id="discord-channel-name"
+              value={discordChannelForm.channel_name ?? ""}
+              onChange={(e) => setDiscordChannelForm((c) => ({ ...c, channel_name: e.target.value || null }))}
+              placeholder="e.g. #match-logs"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="discord-is-active"
+              checked={discordChannelForm.is_active}
+              onCheckedChange={(checked) => setDiscordChannelForm((c) => ({ ...c, is_active: Boolean(checked) }))}
+            />
+            <Label htmlFor="discord-is-active">Active (bot will monitor this channel)</Label>
+          </div>
+        </div>
+      </EntityFormDialog>
+
+      <DeleteConfirmDialog
+        open={discordChannelDeleteOpen}
+        onOpenChange={setDiscordChannelDeleteOpen}
+        onConfirm={() => deleteDiscordChannelMutation.mutate()}
+        title="Remove Discord Channel"
+        description="Remove the Discord sync channel configuration for this tournament? The bot will stop monitoring this channel."
+        isDeleting={deleteDiscordChannelMutation.isPending}
+      />
 
       <EntityFormDialog
         open={tournamentDialogOpen}

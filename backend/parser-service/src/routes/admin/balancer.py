@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import json
+from typing import Literal
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src import models
+from src import models, schemas
 from src.core import auth, db
 from src.schemas.admin import balancer as admin_schemas
 from src.services.admin import balancer as balancer_service
+from src.services.team import flows as team_flows
 
 router = APIRouter(
     prefix="/balancer",
@@ -164,6 +166,18 @@ async def export_players(
 
 
 @router.post(
+    "/tournaments/{tournament_id}/applications/export-users",
+    response_model=admin_schemas.ApplicationUserExportResponse,
+)
+async def export_applications_to_users(
+    tournament_id: int,
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_permission("player", "import")),
+):
+    return await balancer_service.export_applications_to_users(session, tournament_id)
+
+
+@router.post(
     "/tournaments/{tournament_id}/players/application-roles",
     response_model=admin_schemas.BalancerPlayerRoleSyncResponse,
 )
@@ -211,3 +225,30 @@ async def export_balance(
         imported_teams=imported_teams,
         balance_id=balance.id,
     )
+
+
+@router.post("/tournaments/{tournament_id}/teams/import")
+async def import_teams_from_json(
+    tournament_id: int,
+    data: UploadFile = File(...),
+    payload_format: Literal["auto", "atravkovs", "internal"] = Form(default="auto"),
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_permission("team", "import")),
+):
+    payload = json.loads((await data.read()).decode("utf-8"))
+
+    use_atravkovs = payload_format == "atravkovs" or (
+        payload_format == "auto"
+        and isinstance(payload, dict)
+        and isinstance(payload.get("data"), dict)
+        and "teams" in payload["data"]
+    )
+
+    if use_atravkovs:
+        teams = [schemas.BalancerTeam.model_validate(team) for team in payload["data"]["teams"]]
+    else:
+        internal_payload = schemas.InternalBalancerTeamsPayload.model_validate(payload)
+        teams = [team.to_balancer_team() for team in internal_payload.teams]
+
+    await team_flows.bulk_create_from_balancer(session, tournament_id, teams)
+    return {"imported_teams": len(teams)}

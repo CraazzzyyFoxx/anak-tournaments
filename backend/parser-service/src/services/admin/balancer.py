@@ -1389,6 +1389,38 @@ async def sync_player_roles_from_applications(
     return admin_schemas.BalancerPlayerRoleSyncResponse(updated=updated, skipped=skipped)
 
 
+async def export_applications_to_users(
+    session: AsyncSession,
+    tournament_id: int,
+) -> admin_schemas.ApplicationUserExportResponse:
+    await ensure_tournament_exists(session, tournament_id)
+    applications = await list_applications(session, tournament_id, include_inactive=False)
+
+    processed = 0
+    skipped = 0
+    for application in applications:
+        smurfs = [tag for tag in (application.smurf_tags_json or []) if BATTLE_TAG_RE.match(tag)]
+        try:
+            payload = schemas.UserCSV(
+                battle_tag=application.battle_tag,
+                discord=application.discord_nick,
+                twitch=application.twitch_nick,
+                smurfs=smurfs,
+            )
+        except Exception:
+            skipped += 1
+            continue
+
+        await user_flows.create(session, payload)
+        processed += 1
+
+    return admin_schemas.ApplicationUserExportResponse(
+        processed=processed,
+        skipped=skipped,
+        total=len(applications),
+    )
+
+
 async def get_balance(session: AsyncSession, tournament_id: int) -> models.BalancerBalance | None:
     result = await session.execute(
         sa.select(models.BalancerBalance)

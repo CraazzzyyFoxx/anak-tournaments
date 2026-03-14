@@ -197,6 +197,12 @@ export interface BalancerPlayerRoleSyncResponse {
   skipped: number;
 }
 
+export interface ApplicationUserExportResponse {
+  processed: number;
+  skipped: number;
+  total: number;
+}
+
 export interface BalancerPlayerUpdateInput {
   role_entries_json?: BalancerPlayerRoleEntry[] | null;
   is_in_pool?: boolean | null;

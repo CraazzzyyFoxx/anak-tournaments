@@ -1,0 +1,202 @@
+"""Admin routes for log processing monitoring: history, queue status, and SSE stream."""
+
+import asyncio
+import json
+from datetime import datetime, timezone
+
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import EventSourceResponse
+from fastapi.sse import ServerSentEvent
+from loguru import logger
+from pydantic import BaseModel
+from sqlalchemy import desc, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+import main
+from src import models
+from src.core import auth, config, db
+
+router = APIRouter(
+    prefix="/logs",
+    tags=["admin", "logs"],
+)
+
+MONITORED_QUEUES = [
+    "process_match_log",
+    "process_tournament_logs",
+    "discord_commands",
+    "balancer_jobs",
+]
+
+
+# ─── Response schemas ────────────────────────────────────────────────────────
+
+
+class QueueDepth(BaseModel):
+    name: str
+    messages_ready: int
+    messages_unacknowledged: int
+    consumers: int
+
+
+class LogRecordRead(BaseModel):
+    id: int
+    tournament_id: int
+    tournament_name: str | None
+    filename: str
+    status: str
+    source: str
+    uploader_username: str | None
+    error_message: str | None
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+
+    model_config = {"from_attributes": True}
+
+
+class LogHistoryResponse(BaseModel):
+    items: list[LogRecordRead]
+    total: int
+
+
+# ─── Helpers ─────────────────────────────────────────────────────────────────
+
+
+async def _fetch_queue_depths() -> list[QueueDepth]:
+    """Query RabbitMQ Management API for queue depths."""
+    cfg = config.settings
+    base = cfg.rabbitmq_management_url.rstrip("/")
+    auth_tuple = (cfg.rabbitmq_management_user, cfg.rabbitmq_management_password)
+    depths: list[QueueDepth] = []
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            for queue_name in MONITORED_QUEUES:
+                url = f"{base}/api/queues/%2F/{queue_name}"
+                resp = await client.get(url, auth=auth_tuple)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    depths.append(
+                        QueueDepth(
+                            name=queue_name,
+                            messages_ready=data.get("messages_ready", 0),
+                            messages_unacknowledged=data.get("messages_unacknowledged", 0),
+                            consumers=data.get("consumers", 0),
+                        )
+                    )
+                else:
+                    depths.append(QueueDepth(name=queue_name, messages_ready=-1, messages_unacknowledged=-1, consumers=0))
+    except Exception as exc:
+        logger.warning(f"Failed to fetch queue depths from RabbitMQ management API: {exc}")
+        for queue_name in MONITORED_QUEUES:
+            depths.append(QueueDepth(name=queue_name, messages_ready=-1, messages_unacknowledged=-1, consumers=0))
+    return depths
+
+
+def _record_to_dict(record: models.LogProcessingRecord) -> dict:
+    return {
+        "id": record.id,
+        "tournament_id": record.tournament_id,
+        "tournament_name": record.tournament.name if record.tournament else None,
+        "filename": record.filename,
+        "status": record.status.value if hasattr(record.status, "value") else record.status,
+        "source": record.source.value if hasattr(record.source, "value") else record.source,
+        "uploader_username": record.uploader.username if record.uploader else None,
+        "error_message": record.error_message,
+        "created_at": record.created_at.isoformat() if record.created_at else None,
+        "started_at": record.started_at.isoformat() if record.started_at else None,
+        "finished_at": record.finished_at.isoformat() if record.finished_at else None,
+    }
+
+
+async def _fetch_recent_records(session: AsyncSession, limit: int = 20) -> list[dict]:
+    result = await session.execute(
+        select(models.LogProcessingRecord)
+        .order_by(desc(models.LogProcessingRecord.created_at))
+        .limit(limit)
+    )
+    return [_record_to_dict(r) for r in result.scalars().all()]
+
+
+# ─── Routes ──────────────────────────────────────────────────────────────────
+
+
+@router.get(
+    "/queue-status",
+    response_model=list[QueueDepth],
+    dependencies=[Depends(auth.require_any_role("admin", "tournament_organizer"))],
+)
+async def get_queue_status():
+    """Get current RabbitMQ queue depths for all monitored queues."""
+    return await _fetch_queue_depths()
+
+
+@router.get(
+    "/history",
+    dependencies=[Depends(auth.require_any_role("admin", "tournament_organizer"))],
+)
+async def get_log_history(
+    tournament_id: int | None = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    session: AsyncSession = Depends(db.get_async_session),
+):
+    """Get paginated log processing history, optionally filtered by tournament."""
+    query = select(models.LogProcessingRecord).order_by(desc(models.LogProcessingRecord.created_at))
+    if tournament_id is not None:
+        query = query.where(models.LogProcessingRecord.tournament_id == tournament_id)
+
+    count_result = await session.execute(
+        select(models.LogProcessingRecord.id).where(
+            models.LogProcessingRecord.tournament_id == tournament_id
+            if tournament_id is not None
+            else True
+        )
+    )
+    total = len(count_result.scalars().all())
+
+    result = await session.execute(query.limit(limit).offset(offset))
+    items = [_record_to_dict(r) for r in result.scalars().all()]
+    return {"items": items, "total": total}
+
+
+async def _require_sse_token(token: str = Query(..., description="JWT access token")) -> None:
+    """Dependency that validates the SSE token query param (EventSource can't send headers)."""
+    payload = await main.auth_client.validate_token(token)
+    if not payload:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
+
+@router.get("/stream", response_class=EventSourceResponse, dependencies=[Depends(_require_sse_token)])
+async def stream_log_status(
+    token: str = Query(..., description="JWT access token for authentication"),
+):
+    """SSE stream: emits queue depths + recent log processing updates every 2 seconds.
+
+    The endpoint must be an async generator so FastAPI's native SSE machinery can
+    iterate it directly.  A regular ``async def`` that *returns* a generator causes
+    Starlette to try ``iter(<coroutine>)`` which raises TypeError.
+    """
+    async with db.async_session_maker() as session:
+        # Initial keepalive so the browser knows the connection is open
+        yield ServerSentEvent(comment="connected")
+
+        while True:
+            try:
+                queues = await _fetch_queue_depths()
+                recent = await _fetch_recent_records(session, limit=20)
+
+                payload_data = {
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "queues": [q.model_dump() for q in queues],
+                    "recent_logs": recent,
+                }
+                yield ServerSentEvent(data=payload_data, event="update")
+            except asyncio.CancelledError:
+                return
+            except Exception as exc:
+                logger.warning(f"SSE stream error: {exc}")
+                yield ServerSentEvent(data={"error": str(exc)}, event="error")
+
+            await asyncio.sleep(2)

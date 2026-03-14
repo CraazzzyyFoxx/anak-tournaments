@@ -8,6 +8,7 @@ from shared.messaging.config import (
     PROCESS_MATCH_LOG_QUEUE,
     PROCESS_TOURNAMENT_LOGS_QUEUE,
 )
+from shared.models.log_processing import LogProcessingSource
 from shared.observability.correlation import correlation_id_ctx
 from shared.schemas.events import (
     DiscordCommandEvent,
@@ -15,8 +16,10 @@ from shared.schemas.events import (
     ProcessTournamentLogsEvent,
 )
 
+from src import models
 from src.core import auth, config, db, enums
 from src.services.match_logs import flows as logs_flows
+from src.services.match_logs import log_records as record_service
 from src.services.s3 import service as s3_service
 from src.services.tournament import flows as tournaments_flows
 from src.services.tournament import service as tournaments_service
@@ -61,7 +64,12 @@ async def process_tournament_logs(tournament_id: int, session=Depends(db.get_asy
 
 
 @router.post("/{tournament_id}/upload")
-async def process_logs_async(tournament_id: int, file: UploadFile, session=Depends(db.get_async_session)):
+async def process_logs_async(
+    tournament_id: int,
+    file: UploadFile,
+    session=Depends(db.get_async_session),
+    user: models.AuthUser | None = Depends(auth.get_current_user_optional),
+):
     if file.filename is None:
         raise HTTPException(status_code=400, detail="No file name provided")
 
@@ -70,6 +78,14 @@ async def process_logs_async(tournament_id: int, file: UploadFile, session=Depen
     state = await s3_service.async_client.upload_log(tournament.id, file.filename, decoded_lines)
     if not state:
         raise HTTPException(status_code=400, detail="Failed to upload file")
+
+    await record_service.upsert_log_record(
+        session,
+        tournament_id=tournament.id,
+        filename=file.filename,
+        source=LogProcessingSource.upload,
+        uploader_id=user.id if user else None,
+    )
     return {"message": "Logs uploaded successfully"}
 
 

@@ -37,7 +37,7 @@ class Tournament(db.TimeStampIntegerMixin):
         db.DateTime(timezone=True), nullable=True
     )
 
-    groups: Mapped[list["TournamentGroup"]] = relationship(uselist=True)
+    groups: Mapped[list["TournamentGroup"]] = relationship(uselist=True, passive_deletes=True)
     standings: Mapped[list["Standing"]] = relationship(uselist=True)
 
 
