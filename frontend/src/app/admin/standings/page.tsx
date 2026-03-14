@@ -36,7 +36,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { usePermissions } from "@/hooks/usePermissions";
 import { hasUnsavedChanges } from "@/lib/form-change";
-import { paginateResults } from "@/lib/paginate-results";
+import { paginateResults, sortArray } from "@/lib/paginate-results";
 
 const emptyStandingForm: StandingUpdateInput = {
   position: 0,
@@ -307,8 +307,8 @@ export default function StandingsPage() {
       ) : null}
 
       <AdminDataTable
-        queryKey={(page, search, pageSize) => ["standings", selectedTournamentId, page, search, pageSize]}
-        queryFn={async (page, search, pageSize) => {
+        queryKey={(page, search, pageSize, sortField, sortDir) => ["standings", selectedTournamentId, page, search, pageSize, sortField, sortDir]}
+        queryFn={async (page, search, pageSize, sortField, sortDir) => {
           if (!selectedTournamentId) {
             return { results: [], total: 0, page: 1, per_page: pageSize };
           }
@@ -320,8 +320,9 @@ export default function StandingsPage() {
                 standing.team?.name.toLowerCase().includes(normalizedSearch)
               )
             : data;
+          const sorted = sortArray(filtered, sortField, sortDir);
 
-          return paginateResults(filtered, page, pageSize);
+          return paginateResults(sorted, page, pageSize);
         }}
         columns={columns}
         searchPlaceholder="Search by team name..."

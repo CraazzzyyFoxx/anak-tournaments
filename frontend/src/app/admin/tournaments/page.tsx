@@ -24,7 +24,7 @@ import { DatePicker } from "@/components/ui/date-picker";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { usePermissions } from "@/hooks/usePermissions";
 import { hasUnsavedChanges } from "@/lib/form-change";
-import { paginateResults } from "@/lib/paginate-results";
+import { paginateResults, sortArray } from "@/lib/paginate-results";
 
 const emptyTournamentForm: TournamentCreateInput = {
   name: "",
@@ -240,17 +240,14 @@ export default function TournamentsPage() {
       />
 
       <AdminDataTable
-        queryKey={(page, search, pageSize) => ["tournaments", page, search, pageSize]}
-        queryFn={(page, search, pageSize) =>
-          tournamentService.getAll(null).then((data) => ({
-            ...paginateResults(
-              search
-                ? data.results.filter((t) => t.name.toLowerCase().includes(search.toLowerCase()))
-                : data.results,
-              page,
-              pageSize
-            )
-          }))
+        queryKey={(page, search, pageSize, sortField, sortDir) => ["tournaments", page, search, pageSize, sortField, sortDir]}
+        queryFn={(page, search, pageSize, sortField, sortDir) =>
+          tournamentService.getAll(null).then((data) => {
+            const filtered = search
+              ? data.results.filter((t) => t.name.toLowerCase().includes(search.toLowerCase()))
+              : data.results;
+            return { ...paginateResults(sortArray(filtered, sortField, sortDir), page, pageSize) };
+          })
         }
         columns={columns}
         searchPlaceholder="Search tournaments..."

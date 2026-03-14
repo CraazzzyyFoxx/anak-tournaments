@@ -572,8 +572,8 @@ export default function UsersAdminPage() {
       />
 
       <AdminDataTable
-        queryKey={(page, search, pageSize) => ["admin", "users", page, search, pageSize]}
-        queryFn={(page, search, pageSize) => adminService.getUsers({ page, search, per_page: pageSize })}
+        queryKey={(page, search, pageSize, sortField, sortDir) => ["admin", "users", page, search, pageSize, sortField, sortDir]}
+        queryFn={(page, search, pageSize, sortField, sortDir) => adminService.getUsers({ page, search, per_page: pageSize, sort: sortField ?? undefined, order: sortDir })}
         columns={columns}
         searchPlaceholder="Search users..."
         emptyMessage="No users found."

@@ -26,7 +26,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useToast } from "@/hooks/use-toast";
 import { hasUnsavedChanges } from "@/lib/form-change";
-import { paginateResults } from "@/lib/paginate-results";
+import { paginateResults, sortArray } from "@/lib/paginate-results";
 import { rbacService } from "@/services/rbac.service";
 import type { RbacRole, UpsertRolePayload } from "@/types/rbac.types";
 
@@ -266,8 +266,8 @@ export default function AccessAdminRolesPage() {
       <AdminDataTable
         initialPageSize={PAGE_SIZE}
         pageSizeOptions={[10, 20, 50, 100]}
-        queryKey={(page, search, pageSize) => ["access-admin", "roles", page, search, pageSize]}
-        queryFn={async (page, search, pageSize) => {
+        queryKey={(page, search, pageSize, sortField, sortDir) => ["access-admin", "roles", page, search, pageSize, sortField, sortDir]}
+        queryFn={async (page, search, pageSize, sortField, sortDir) => {
           const roles = await rbacService.listRoles();
           const filteredRoles = search
             ? roles.filter((role) => {
@@ -275,7 +275,7 @@ export default function AccessAdminRolesPage() {
                 return haystack.includes(search.toLowerCase());
               })
             : roles;
-          return paginateResults(filteredRoles, page, pageSize);
+          return paginateResults(sortArray(filteredRoles, sortField, sortDir), page, pageSize);
         }}
         columns={columns}
         searchPlaceholder="Search roles..."

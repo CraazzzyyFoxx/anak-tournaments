@@ -265,9 +265,9 @@ export default function MapsAdminPage() {
       />
 
       <AdminDataTable
-        queryKey={(page, search, pageSize) => ["admin", "maps", page, search, pageSize]}
-        queryFn={(page, search, pageSize) =>
-          adminService.getMaps({ page, search, per_page: pageSize })
+        queryKey={(page, search, pageSize, sortField, sortDir) => ["admin", "maps", page, search, pageSize, sortField, sortDir]}
+        queryFn={(page, search, pageSize, sortField, sortDir) =>
+          adminService.getMaps({ page, search, per_page: pageSize, sort: sortField ?? undefined, order: sortDir })
         }
         columns={columns}
         searchPlaceholder="Search maps..."

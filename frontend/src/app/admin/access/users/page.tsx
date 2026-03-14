@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/select";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useToast } from "@/hooks/use-toast";
-import { paginateResults } from "@/lib/paginate-results";
+import { paginateResults, sortArray } from "@/lib/paginate-results";
 import { rbacService } from "@/services/rbac.service";
 import type { AuthAdminUser } from "@/types/rbac.types";
 
@@ -164,10 +164,10 @@ export default function AccessAdminUsersPage() {
       <AdminDataTable
         initialPageSize={PAGE_SIZE}
         pageSizeOptions={[10, 20, 50, 100]}
-        queryKey={(page, search, pageSize) => ["access-admin", "users", page, search, pageSize]}
-        queryFn={async (page, search, pageSize) => {
+        queryKey={(page, search, pageSize, sortField, sortDir) => ["access-admin", "users", page, search, pageSize, sortField, sortDir]}
+        queryFn={async (page, search, pageSize, sortField, sortDir) => {
           const users = await rbacService.listUsers({ search: search || undefined });
-          return paginateResults(users, page, pageSize);
+          return paginateResults(sortArray(users, sortField, sortDir), page, pageSize);
         }}
         columns={columns}
         searchPlaceholder="Search auth users..."

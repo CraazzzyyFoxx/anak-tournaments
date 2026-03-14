@@ -287,9 +287,9 @@ export default function HeroesAdminPage() {
       />
 
       <AdminDataTable
-        queryKey={(page, search, pageSize) => ["admin", "heroes", page, search, pageSize]}
-        queryFn={(page, search, pageSize) =>
-          adminService.getHeroes({ page, search, per_page: pageSize })
+        queryKey={(page, search, pageSize, sortField, sortDir) => ["admin", "heroes", page, search, pageSize, sortField, sortDir]}
+        queryFn={(page, search, pageSize, sortField, sortDir) =>
+          adminService.getHeroes({ page, search, per_page: pageSize, sort: sortField ?? undefined, order: sortDir })
         }
         columns={columns}
         searchPlaceholder="Search heroes..."

@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/select";
 import { usePermissions } from "@/hooks/usePermissions";
 import { hasUnsavedChanges } from "@/lib/form-change";
-import { paginateResults } from "@/lib/paginate-results";
+import { paginateResults, sortArray } from "@/lib/paginate-results";
 
 interface TeamFormData {
   name: string;
@@ -282,8 +282,8 @@ export default function TeamsPage() {
       </div>
 
       <AdminDataTable
-        queryKey={(page, search, pageSize) => ["teams", selectedTournamentId, page, search, pageSize]}
-        queryFn={async (page, search, pageSize) => {
+        queryKey={(page, search, pageSize, sortField, sortDir) => ["teams", selectedTournamentId, page, search, pageSize, sortField, sortDir]}
+        queryFn={async (page, search, pageSize, sortField, sortDir) => {
           if (!selectedTournamentId) {
             return { results: [], total: 0, page: 1, per_page: pageSize };
           }
@@ -292,8 +292,9 @@ export default function TeamsPage() {
           const filteredTeams = search
             ? data.results.filter((team) => team.name.toLowerCase().includes(search.toLowerCase()))
             : data.results;
+          const sorted = sortArray(filteredTeams, sortField, sortDir);
 
-          return paginateResults(filteredTeams, page, pageSize);
+          return paginateResults(sorted, page, pageSize);
         }}
         columns={columns}
         searchPlaceholder="Search teams..."

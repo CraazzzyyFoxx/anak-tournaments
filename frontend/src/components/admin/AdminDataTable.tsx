@@ -5,7 +5,6 @@ import {
   ColumnDef,
   flexRender,
   getCoreRowModel,
-  getSortedRowModel,
   SortingState,
   useReactTable,
   Row
@@ -37,11 +36,17 @@ function parsePositiveInt(value: string | null, fallback: number) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function parseSortDir(value: string | null): SortDir {
+  return value === "desc" ? "desc" : "asc";
+}
+
+export type SortDir = "asc" | "desc";
+
 export interface AdminDataTableProps<TData> {
   // Data
   initialData?: PaginatedResponse<TData>;
-  queryKey: (page: number, search: string, pageSize: number) => readonly unknown[];
-  queryFn: (page: number, search: string, pageSize: number) => Promise<PaginatedResponse<TData>>;
+  queryKey: (page: number, search: string, pageSize: number, sortField: string | null, sortDir: SortDir) => readonly unknown[];
+  queryFn: (page: number, search: string, pageSize: number, sortField: string | null, sortDir: SortDir) => Promise<PaginatedResponse<TData>>;
 
   // Table configuration
   columns: ColumnDef<TData>[];
@@ -82,9 +87,12 @@ export function AdminDataTable<TData>({
   const [currentPage, setCurrentPage] = useState<number>(initialPage);
   const [pageSize, setPageSize] = useState<number>(defaultPageSize);
   const [sorting, setSorting] = useState<SortingState>([]);
+  const sortField = sorting[0]?.id ?? null;
+  const sortDir: SortDir = sorting[0]?.desc ? "desc" : "asc";
   const previousDebouncedSearchRef = useRef(initialSearch);
   const previousPageSizeRef = useRef(defaultPageSize);
-  const previousUrlStateRef = useRef({ page: initialPage, search: initialSearch, pageSize: defaultPageSize });
+  const previousSortRef = useRef<{ field: string | null; dir: SortDir }>({ field: null, dir: "asc" });
+  const previousUrlStateRef = useRef({ page: initialPage, search: initialSearch, pageSize: defaultPageSize, sortField: null as string | null, sortDir: "asc" as SortDir });
   const rowClickTimeoutRef = useRef<number | null>(null);
   const safeCurrentPage = Number.isFinite(currentPage) && currentPage > 0 ? currentPage : initialPage;
   const safePageSize = Number.isFinite(pageSize) && pageSize > 0 ? pageSize : defaultPageSize;
@@ -115,16 +123,26 @@ export function AdminDataTable<TData>({
     }
   }, [pageSize]);
 
+  // Reset to page 1 when sorting changes
+  useEffect(() => {
+    const prev = previousSortRef.current;
+    if (prev.field !== sortField || prev.dir !== sortDir) {
+      previousSortRef.current = { field: sortField, dir: sortDir };
+      setCurrentPage(1);
+    }
+  }, [sortField, sortDir]);
+
   // Fetch data
   const dataQuery = useQuery({
-    queryKey: queryKey(safeCurrentPage, debouncedSearchValue, safePageSize),
-    queryFn: () => queryFn(safeCurrentPage, debouncedSearchValue, safePageSize),
+    queryKey: queryKey(safeCurrentPage, debouncedSearchValue, safePageSize, sortField, sortDir),
+    queryFn: () => queryFn(safeCurrentPage, debouncedSearchValue, safePageSize, sortField, sortDir),
     placeholderData: (previousData) => previousData,
     initialData:
       initialData &&
       safeCurrentPage === initialPage &&
       debouncedSearchValue === initialSearch &&
-      safePageSize === defaultPageSize
+      safePageSize === defaultPageSize &&
+      sortField === null
         ? initialData
         : undefined
   });
@@ -154,13 +172,17 @@ export function AdminDataTable<TData>({
       const nextPage = parsePositiveInt(params.get("page"), initialPage);
       const nextSearch = params.get("search") ?? initialSearch;
       const nextPageSize = parsePositiveInt(params.get("per_page"), defaultPageSize);
+      const nextSortField = params.get("sort") ?? null;
+      const nextSortDir = parseSortDir(params.get("dir"));
 
       previousDebouncedSearchRef.current = nextSearch;
       previousPageSizeRef.current = nextPageSize;
-      previousUrlStateRef.current = { page: nextPage, search: nextSearch, pageSize: nextPageSize };
+      previousSortRef.current = { field: nextSortField, dir: nextSortDir };
+      previousUrlStateRef.current = { page: nextPage, search: nextSearch, pageSize: nextPageSize, sortField: nextSortField, sortDir: nextSortDir };
       setCurrentPage(nextPage);
       setSearchValue(nextSearch);
       setPageSize(nextPageSize);
+      setSorting(nextSortField ? [{ id: nextSortField, desc: nextSortDir === "desc" }] : []);
     };
 
     const handlePopState = () => {
@@ -182,31 +204,39 @@ export function AdminDataTable<TData>({
     };
   }, []);
 
-  // Update URL when page or search changes
+  // Update URL when page, search, or sort changes
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const currentSearch = params.get("search") ?? "";
     const currentPageParam = Number.parseInt(params.get("page") ?? "1", 10) || 1;
     const currentPageSizeParam = parsePositiveInt(params.get("per_page"), defaultPageSize);
+    const currentSortField = params.get("sort") ?? null;
+    const currentSortDir = parseSortDir(params.get("dir"));
 
     const previousUrlState = previousUrlStateRef.current;
     const searchChanged = previousUrlState.search !== debouncedSearchValue;
     const pageChanged = previousUrlState.page !== safeCurrentPage;
     const pageSizeChanged = previousUrlState.pageSize !== safePageSize;
+    const sortFieldChanged = previousUrlState.sortField !== sortField;
+    const sortDirChanged = previousUrlState.sortDir !== sortDir;
 
-    if (!searchChanged && !pageChanged && !pageSizeChanged) {
+    if (!searchChanged && !pageChanged && !pageSizeChanged && !sortFieldChanged && !sortDirChanged) {
       return;
     }
 
     if (
       currentSearch === debouncedSearchValue &&
       currentPageParam === safeCurrentPage &&
-      currentPageSizeParam === safePageSize
+      currentPageSizeParam === safePageSize &&
+      currentSortField === sortField &&
+      currentSortDir === sortDir
     ) {
       previousUrlStateRef.current = {
         page: safeCurrentPage,
         search: debouncedSearchValue,
-        pageSize: safePageSize
+        pageSize: safePageSize,
+        sortField,
+        sortDir
       };
       return;
     }
@@ -229,10 +259,22 @@ export function AdminDataTable<TData>({
       params.delete("per_page");
     }
 
+    if (sortField) {
+      params.set("sort", sortField);
+      if (sortDir === "desc") {
+        params.set("dir", "desc");
+      } else {
+        params.delete("dir");
+      }
+    } else {
+      params.delete("sort");
+      params.delete("dir");
+    }
+
     const query = params.toString();
     const nextUrl = query ? `${pathname}?${query}` : pathname;
 
-    if (searchChanged || pageSizeChanged) {
+    if (searchChanged || pageSizeChanged || sortFieldChanged || sortDirChanged) {
       window.history.replaceState(null, "", nextUrl);
     } else {
       window.history.pushState(null, "", nextUrl);
@@ -241,18 +283,20 @@ export function AdminDataTable<TData>({
     previousUrlStateRef.current = {
       page: safeCurrentPage,
       search: debouncedSearchValue,
-      pageSize: safePageSize
+      pageSize: safePageSize,
+      sortField,
+      sortDir
     };
-  }, [safeCurrentPage, debouncedSearchValue, defaultPageSize, safePageSize, pathname]);
+  }, [safeCurrentPage, debouncedSearchValue, defaultPageSize, safePageSize, pathname, sortField, sortDir]);
 
   const table = useReactTable({
     data: data.results ?? [],
     columns,
     getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
     onSortingChange: setSorting,
     state: { sorting },
     manualPagination: true,
+    manualSorting: true,
     rowCount: data.total ?? 0
   });
 

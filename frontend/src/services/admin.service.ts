@@ -277,11 +277,15 @@ class AdminService {
     page?: number;
     per_page?: number;
     search?: string;
+    sort?: string;
+    order?: string;
   } = {}): Promise<PaginatedResponse<User>> {
     const searchParams = new URLSearchParams();
     if (params.page) searchParams.append("page", params.page.toString());
     if (params.per_page) searchParams.append("per_page", params.per_page.toString());
     if (params.search) searchParams.append("search", params.search);
+    if (params.sort) searchParams.append("sort", params.sort);
+    if (params.order) searchParams.append("order", params.order);
 
     const response = await parserFetch(`admin/users?${searchParams.toString()}`);
     return response.json();
@@ -406,12 +410,16 @@ class AdminService {
     per_page?: number;
     search?: string;
     role?: string;
+    sort?: string;
+    order?: string;
   } = {}): Promise<PaginatedResponse<Hero>> {
     const searchParams = new URLSearchParams();
     if (params.page) searchParams.append("page", params.page.toString());
     if (params.per_page) searchParams.append("per_page", params.per_page.toString());
     if (params.search) searchParams.append("search", params.search);
     if (params.role) searchParams.append("role", params.role);
+    if (params.sort) searchParams.append("sort", params.sort);
+    if (params.order) searchParams.append("order", params.order);
 
     const response = await parserFetch(`admin/heroes?${searchParams.toString()}`);
     return response.json();
@@ -452,11 +460,15 @@ class AdminService {
     page?: number;
     per_page?: number;
     search?: string;
+    sort?: string;
+    order?: string;
   } = {}): Promise<PaginatedResponse<Gamemode>> {
     const searchParams = new URLSearchParams();
     if (params.page) searchParams.append("page", params.page.toString());
     if (params.per_page) searchParams.append("per_page", params.per_page.toString());
     if (params.search) searchParams.append("search", params.search);
+    if (params.sort) searchParams.append("sort", params.sort);
+    if (params.order) searchParams.append("order", params.order);
 
     const response = await parserFetch(`admin/gamemodes?${searchParams.toString()}`);
     return response.json();
@@ -498,12 +510,16 @@ class AdminService {
     per_page?: number;
     search?: string;
     gamemode_id?: number;
+    sort?: string;
+    order?: string;
   } = {}): Promise<PaginatedResponse<MapRead>> {
     const searchParams = new URLSearchParams();
     if (params.page) searchParams.append("page", params.page.toString());
     if (params.per_page) searchParams.append("per_page", params.per_page.toString());
     if (params.search) searchParams.append("search", params.search);
     if (params.gamemode_id) searchParams.append("gamemode_id", params.gamemode_id.toString());
+    if (params.sort) searchParams.append("sort", params.sort);
+    if (params.order) searchParams.append("order", params.order);
 
     const response = await parserFetch(`admin/maps?${searchParams.toString()}`);
     return response.json();

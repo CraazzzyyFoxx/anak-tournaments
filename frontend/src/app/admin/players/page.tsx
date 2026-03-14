@@ -31,7 +31,7 @@ import {
 import { usePermissions } from "@/hooks/usePermissions";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import { MinimizedUser } from "@/types/user.types";
-import { paginateResults } from "@/lib/paginate-results";
+import { paginateResults, sortArray } from "@/lib/paginate-results";
 
 interface PlayerFormData {
   name: string;
@@ -403,8 +403,8 @@ export default function PlayersPage() {
       </div>
 
       <AdminDataTable
-        queryKey={(page, search, pageSize) => ["players", selectedTournamentId, page, search, pageSize]}
-        queryFn={async (page, search, pageSize) => {
+        queryKey={(page, search, pageSize, sortField, sortDir) => ["players", selectedTournamentId, page, search, pageSize, sortField, sortDir]}
+        queryFn={async (page, search, pageSize, sortField, sortDir) => {
           if (!selectedTournamentId) {
             return { results: [], total: 0, page: 1, per_page: pageSize };
           }
@@ -415,8 +415,9 @@ export default function PlayersPage() {
           const filtered = normalizedSearch
             ? players.filter((player) => player.name.toLowerCase().includes(normalizedSearch))
             : players;
+          const sorted = sortArray(filtered, sortField, sortDir);
 
-          return paginateResults(filtered, page, pageSize);
+          return paginateResults(sorted, page, pageSize);
         }}
         columns={columns}
         searchPlaceholder="Search players..."

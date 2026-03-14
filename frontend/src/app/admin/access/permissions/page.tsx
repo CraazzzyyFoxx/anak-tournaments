@@ -5,7 +5,7 @@ import { ColumnDef } from "@tanstack/react-table";
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { Badge } from "@/components/ui/badge";
-import { paginateResults } from "@/lib/paginate-results";
+import { paginateResults, sortArray } from "@/lib/paginate-results";
 import { rbacService } from "@/services/rbac.service";
 import type { RbacPermission } from "@/types/rbac.types";
 
@@ -46,8 +46,8 @@ export default function AccessAdminPermissionsPage() {
       <AdminDataTable
         initialPageSize={PAGE_SIZE}
         pageSizeOptions={[10, 20, 50, 100]}
-        queryKey={(page, search, pageSize) => ["access-admin", "permissions", page, search, pageSize]}
-        queryFn={async (page, search, pageSize) => {
+        queryKey={(page, search, pageSize, sortField, sortDir) => ["access-admin", "permissions", page, search, pageSize, sortField, sortDir]}
+        queryFn={async (page, search, pageSize, sortField, sortDir) => {
           const permissions = await rbacService.listPermissions();
           const filteredPermissions = search
             ? permissions.filter((permission) => {
@@ -55,7 +55,7 @@ export default function AccessAdminPermissionsPage() {
                 return haystack.includes(search.toLowerCase());
               })
             : permissions;
-          return paginateResults(filteredPermissions, page, pageSize);
+          return paginateResults(sortArray(filteredPermissions, sortField, sortDir), page, pageSize);
         }}
         columns={columns}
         searchPlaceholder="Search permissions..."

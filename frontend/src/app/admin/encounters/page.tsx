@@ -336,13 +336,13 @@ export default function EncountersPage() {
       </div>
 
       <AdminDataTable
-        queryKey={(page, search, pageSize) => ["encounters", selectedTournamentId, page, search, pageSize]}
-        queryFn={async (page, search, pageSize) => {
+        queryKey={(page, search, pageSize, sortField, sortDir) => ["encounters", selectedTournamentId, page, search, pageSize, sortField, sortDir]}
+        queryFn={async (page, search, pageSize, sortField, sortDir) => {
           if (!selectedTournamentId) {
             return { results: [], total: 0, page: 1, per_page: pageSize };
           }
 
-          return encounterService.getAll(page, search, selectedTournamentId, pageSize);
+          return encounterService.getAll(page, search, selectedTournamentId, pageSize, sortField, sortDir);
         }}
         columns={columns}
         searchPlaceholder="Search encounters..."

@@ -183,9 +183,9 @@ export default function GamemodesAdminPage() {
       />
 
       <AdminDataTable
-        queryKey={(page, search, pageSize) => ["admin", "gamemodes", page, search, pageSize]}
-        queryFn={(page, search, pageSize) =>
-          adminService.getGamemodes({ page, search, per_page: pageSize })
+        queryKey={(page, search, pageSize, sortField, sortDir) => ["admin", "gamemodes", page, search, pageSize, sortField, sortDir]}
+        queryFn={(page, search, pageSize, sortField, sortDir) =>
+          adminService.getGamemodes({ page, search, per_page: pageSize, sort: sortField ?? undefined, order: sortDir })
         }
         columns={columns}
         searchPlaceholder="Search gamemodes..."

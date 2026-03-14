@@ -39,15 +39,17 @@ export default class encounterService {
     page: number,
     query: string,
     tournamentId: number | null = null,
-    perPage: number = 15
+    perPage: number = 15,
+    sort: string | null = null,
+    order: "asc" | "desc" = "desc"
   ): Promise<PaginatedResponse<Encounter>> {
     return customFetch(`encounters`, {
       query: {
         per_page: perPage,
         page: page,
         query: query,
-        sort: "id",
-        order: "desc",
+        sort: sort ?? "id",
+        order: order,
         entities: ["tournament", "tournament_group", "home_team", "away_team"],
         fields: ["name"],
         tournament_id: tournamentId
