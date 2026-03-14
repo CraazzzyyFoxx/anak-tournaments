@@ -54,7 +54,7 @@ import { cn } from "@/lib/utils";
 import balancerAdminService from "@/services/balancer-admin.service";
 import balancerService from "@/services/balancer.service";
 import { BalanceSaveInput, BalancerApplication, BalancerPlayerRecord, BalancerRoleCode } from "@/types/balancer-admin.types";
-import { BalancerConfig } from "@/types/balancer.types";
+import { BalanceJobResult, BalancerConfig } from "@/types/balancer.types";
 
 const PRESET_LABELS: Record<string, string> = {
   DEFAULT: "Standard",
@@ -63,6 +63,7 @@ const PRESET_LABELS: Record<string, string> = {
   QUICK: "Quick",
   PREFERENCE_FOCUSED: "Preference Focused",
   HIGH_QUALITY: "High Quality",
+  CPSAT: "CP-SAT (Exact)",
 };
 
 type PlayerValidationState = {
@@ -84,7 +85,7 @@ type StatsFilterCardProps = {
 };
 
 function createVariantLabel(index: number): string {
-  return `Run ${index}`;
+  return `Balance ${index}`;
 }
 
 function getPrimaryDivision(player: BalancerPlayerRecord): number {
@@ -444,16 +445,19 @@ export default function BalancerMainPage() {
           }
 
           if (event.status === "succeeded") {
-            const result = await balancerService.getBalanceJobResult(job.job_id);
-            const payload = convertBalanceResponseToInternalPayload(result);
+            const result = await balancerService.getBalanceJobResult(job.job_id) as BalanceJobResult;
             setVariants((current) => {
               const next = [...current];
-              next.push({
-                id: `generated-${Date.now()}`,
-                label: createVariantLabel(next.filter((variant) => variant.source === "generated").length + 1),
-                payload,
-                source: "generated",
-                skippedCount: skipped > 0 ? skipped : undefined,
+              const generatedCount = next.filter((variant) => variant.source === "generated").length;
+              result.variants.forEach((variant, batchIndex) => {
+                const payload = convertBalanceResponseToInternalPayload(variant);
+                next.push({
+                  id: `generated-${Date.now()}-${batchIndex}`,
+                  label: createVariantLabel(generatedCount + batchIndex + 1),
+                  payload,
+                  source: "generated",
+                  skippedCount: batchIndex === 0 && skipped > 0 ? skipped : undefined,
+                });
               });
               const latest = next[next.length - 1];
               setActiveVariantId(latest.id);

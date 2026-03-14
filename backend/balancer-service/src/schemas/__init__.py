@@ -1,5 +1,6 @@
 from .balancer import (
     BalancerConfigResponse,
+    BalanceJobResult,
     BalanceRequest,
     BalanceResponse,
     ConfigOverrides,
@@ -13,6 +14,7 @@ from .balancer import (
 )
 
 __all__ = [
+    "BalanceJobResult",
     "BalanceRequest",
     "BalanceResponse",
     "BalancerConfigResponse",

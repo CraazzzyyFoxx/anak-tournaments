@@ -66,6 +66,26 @@ class AlgorithmConfig(BaseSettings):
         description="Default mapping from input role names to algorithm role names",
     )
 
+    # Algorithm selection
+    ALGORITHM: typing.Literal["genetic", "cpsat"] = Field(default="genetic", description="Balancing algorithm to use")
+    MAX_CPSAT_SOLUTIONS: int = Field(default=3, ge=1, le=5, description="Maximum number of CP-SAT solutions to return")
+    
+    POPULATION_SIZE: int = 60
+    GENERATIONS: int = 220
+    ELITISM_RATE: float = 0.15
+    MUTATION_RATE: float = 0.92
+    MUTATION_STRENGTH: int = 3
+
+    MMR_DIFF_WEIGHT: float = 15.0
+    TEAM_TOTAL_STD_WEIGHT: float = 30.0
+    MAX_TEAM_GAP_WEIGHT: float = 50.0
+
+    DISCOMFORT_WEIGHT: float = 0.001
+    INTRA_TEAM_VAR_WEIGHT: float = 0.05
+    MAX_DISCOMFORT_WEIGHT: float = 0.001
+    ROLE_BALANCE_WEIGHT: float = 0.05
+    ROLE_SPREAD_WEIGHT: float = 0.02
+
 
 class Settings(BaseSettings):
     """

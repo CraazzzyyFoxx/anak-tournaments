@@ -10,7 +10,14 @@ from pydantic import ValidationError
 from src.core.config import config
 from src.core.auth import require_any_role
 from src.core.job_store import get_job_store
-from src.schemas import BalancerConfigResponse, BalanceResponse, ConfigOverrides, CreateJobResponse, JobStatusResponse
+from src.schemas import (
+    BalancerConfigResponse,
+    BalanceJobResult,
+    BalanceResponse,
+    ConfigOverrides,
+    CreateJobResponse,
+    JobStatusResponse,
+)
 from src.service import get_balancer_config_payload
 
 from shared.messaging.config import BALANCER_JOBS_QUEUE
@@ -132,7 +139,7 @@ async def get_balancer_job_status(job_id: str) -> dict:
     return meta
 
 
-@router.get("/jobs/{job_id}/result", response_model=BalanceResponse, status_code=status.HTTP_200_OK)
+@router.get("/jobs/{job_id}/result", response_model=BalanceJobResult, status_code=status.HTTP_200_OK)
 async def get_balancer_job_result(job_id: str) -> dict:
     job_store = get_job_store()
     meta = await job_store.get_job_meta(job_id)

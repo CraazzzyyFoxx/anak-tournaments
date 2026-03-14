@@ -44,6 +44,12 @@ export interface BalancerConfig {
   MAX_DISCOMFORT_WEIGHT?: number;
   USE_CAPTAINS?: boolean;
   ROLE_MAPPING?: Record<string, string>;
+  ALGORITHM?: "genetic" | "cpsat";
+  MAX_CPSAT_SOLUTIONS?: number;
+}
+
+export interface BalanceJobResult {
+  variants: BalanceResponse[];
 }
 
 export interface BalancerConfigResponse {

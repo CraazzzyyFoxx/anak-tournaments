@@ -1,8 +1,8 @@
 import {
   BalanceJobCreateResponse,
   BalanceJobEvent,
+  BalanceJobResult,
   BalanceJobStatusResponse,
-  BalanceResponse,
   BalancerConfig,
   BalancerConfigResponse
 } from "@/types/balancer.types";
@@ -88,7 +88,7 @@ export default class balancerService {
     return response.json();
   }
 
-  static async getBalanceJobResult(jobId: string): Promise<BalanceResponse> {
+  static async getBalanceJobResult(jobId: string): Promise<BalanceJobResult> {
     const response = await fetchWithTimeout(
       `${BALANCER_API_PREFIX}/jobs/${jobId}/result`,
       {

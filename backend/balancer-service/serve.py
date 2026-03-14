@@ -6,6 +6,7 @@ from faststream.rabbit import RabbitBroker
 from pydantic import ValidationError
 from src.core.config import config
 from src.core.job_store import JobStatus, get_job_store
+from src.cpsat_bridge import run_cpsat
 from src.service import balance_teams
 
 from shared.messaging.config import BALANCER_JOBS_QUEUE
@@ -87,12 +88,30 @@ async def process_balancer_job(body: dict[str, Any]) -> None:
 
     try:
         input_data = payload.get("data")
-        config_overrides = payload.get("config")
+        config_overrides = payload.get("config") or {}
 
         if not isinstance(input_data, dict):
             raise ValueError("Job payload does not contain valid player data")
 
-        result = await asyncio.to_thread(balance_teams, input_data, config_overrides, progress_callback)
+        algorithm = config_overrides.get("ALGORITHM", "genetic") if config_overrides else "genetic"
+
+        if algorithm == "cpsat":
+            max_solutions = config_overrides.get("MAX_CPSAT_SOLUTIONS", 3) if config_overrides else 3
+            await job_store.append_event(
+                event.job_id,
+                status="running",
+                stage="solving",
+                message="Running CP-SAT solver…",
+                level="info",
+                progress=None,
+                update_meta=True,
+            )
+            variants = await asyncio.to_thread(run_cpsat, input_data, max_solutions)
+            result = {"variants": variants}
+        else:
+            # genetic (original path)
+            result_single = await asyncio.to_thread(balance_teams, input_data, config_overrides, progress_callback)
+            result = {"variants": [result_single]}
 
         await event_queue.put(None)
         await consume_task

@@ -36,6 +36,12 @@ class ConfigOverrides(BaseModel):
         description="Mapping from input role names to algorithm role names",
     )
 
+    # Algorithm selection
+    ALGORITHM: Literal["genetic", "cpsat"] | None = Field(None, description="Balancing algorithm to use")
+    MAX_CPSAT_SOLUTIONS: int | None = Field(
+        None, ge=1, le=5, description="Maximum number of CP-SAT solutions to return"
+    )
+
 
 class BalanceRequest(BaseModel):
     """Request schema for team balancing"""
@@ -83,6 +89,12 @@ class BalanceResponse(BaseModel):
     teams: list[TeamData]
     statistics: Statistics
     appliedConfig: dict[str, Any] | None = None
+
+
+class BalanceJobResult(BaseModel):
+    """Wrapper containing one or more balance result variants."""
+
+    variants: list[BalanceResponse]
 
 
 class BalancerConfigResponse(BaseModel):

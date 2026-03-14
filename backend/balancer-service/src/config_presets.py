@@ -83,6 +83,9 @@ class ConfigPresets:
         "USE_CAPTAINS": True,
     }
 
+    # CP-SAT exact solver
+    CPSAT: dict[str, Any] = {"ALGORITHM": "cpsat", "MAX_CPSAT_SOLUTIONS": 3}
+
     # High quality: slow but optimal
     HIGH_QUALITY: dict[str, Any] = {
         "POPULATION_SIZE": 500,
@@ -96,6 +99,21 @@ class ConfigPresets:
         "MAX_DISCOMFORT_WEIGHT": 1.5,
         "USE_CAPTAINS": True,
     }
+    
+    CONFIG_LIMITS: dict[str, dict[str, int | float]] = {
+    "POPULATION_SIZE": {"min": 10, "max": 1000},
+    "GENERATIONS": {"min": 10, "max": 5000},
+    "ELITISM_RATE": {"min": 0.0, "max": 1.0},
+    "MUTATION_RATE": {"min": 0.0, "max": 1.0},
+    "MUTATION_STRENGTH": {"min": 1, "max": 10},
+    "MMR_DIFF_WEIGHT": {"min": 0.0, "max": 100.0},
+    "DISCOMFORT_WEIGHT": {"min": 0.0, "max": 100.0},
+    "INTRA_TEAM_VAR_WEIGHT": {"min": 0.0, "max": 100.0},
+    "MAX_DISCOMFORT_WEIGHT": {"min": 0.0, "max": 100.0},
+    "ROLE_BALANCE_WEIGHT": {"min": 0.0, "max": 100.0},
+    "ROLE_SPREAD_WEIGHT": {"min": 0.0, "max": 100.0},
+    "MAX_TEAM_GAP_WEIGHT": {"min": 0.0, "max": 100.0},
+}
 
 
 class ConfigBuilder:
