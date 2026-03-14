@@ -131,7 +131,8 @@ hero_translation = {
     "Домина": "Domina",
     "Амре": "Emre",
     "Реактивная киса": "Jetpack Cat",
-    "Эмре": "Emre"
+    "Эмре": "Emre",
+    "Реактивная Киса": "Jetpack Cat",
 }
 
 
