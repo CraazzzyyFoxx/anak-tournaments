@@ -20,16 +20,20 @@ class ConfigPresets:
         "MUTATION_RATE": 0.4,
         "MUTATION_STRENGTH": 3,
         "MMR_DIFF_WEIGHT": 3.0,
-        "DISCOMFORT_WEIGHT": 0.25,
+        "DISCOMFORT_WEIGHT": 1.5,
         "INTRA_TEAM_VAR_WEIGHT": 0.8,
-        "MAX_DISCOMFORT_WEIGHT": 1.0,
+        "MAX_DISCOMFORT_WEIGHT": 1.5,
+        "TEAM_TOTAL_STD_WEIGHT": 1.0,
+        "MAX_TEAM_GAP_WEIGHT": 1.0,
+        "ROLE_BALANCE_WEIGHT": 1.0,
+        "ROLE_SPREAD_WEIGHT": 1.0,
         "USE_CAPTAINS": True,
         "ROLE_MAPPING": {"tank": "Tank", "dps": "Damage", "damage": "Damage", "support": "Support"},
     }
 
     # Competitive tournament: prioritize fair matches
     COMPETITIVE: dict[str, Any] = {
-        "POPULATION_SIZE": 300,
+        "POPULATION_SIZE": 150,
         "GENERATIONS": 1000,
         "ELITISM_RATE": 0.15,
         "MUTATION_RATE": 0.5,
@@ -38,6 +42,10 @@ class ConfigPresets:
         "DISCOMFORT_WEIGHT": 0.2,
         "INTRA_TEAM_VAR_WEIGHT": 1.0,
         "MAX_DISCOMFORT_WEIGHT": 1.5,
+        "TEAM_TOTAL_STD_WEIGHT": 1.0,
+        "MAX_TEAM_GAP_WEIGHT": 1.0,
+        "ROLE_BALANCE_WEIGHT": 1.0,
+        "ROLE_SPREAD_WEIGHT": 1.0,
         "USE_CAPTAINS": True,
     }
 
@@ -52,6 +60,10 @@ class ConfigPresets:
         "DISCOMFORT_WEIGHT": 0.5,
         "INTRA_TEAM_VAR_WEIGHT": 0.5,
         "MAX_DISCOMFORT_WEIGHT": 0.8,
+        "TEAM_TOTAL_STD_WEIGHT": 1.0,
+        "MAX_TEAM_GAP_WEIGHT": 1.0,
+        "ROLE_BALANCE_WEIGHT": 1.0,
+        "ROLE_SPREAD_WEIGHT": 1.0,
         "USE_CAPTAINS": False,
     }
 
@@ -66,6 +78,10 @@ class ConfigPresets:
         "DISCOMFORT_WEIGHT": 0.25,
         "INTRA_TEAM_VAR_WEIGHT": 0.8,
         "MAX_DISCOMFORT_WEIGHT": 1.0,
+        "TEAM_TOTAL_STD_WEIGHT": 1.0,
+        "MAX_TEAM_GAP_WEIGHT": 1.0,
+        "ROLE_BALANCE_WEIGHT": 1.0,
+        "ROLE_SPREAD_WEIGHT": 1.0,
         "USE_CAPTAINS": False,
     }
 
@@ -80,6 +96,10 @@ class ConfigPresets:
         "DISCOMFORT_WEIGHT": 1.0,
         "INTRA_TEAM_VAR_WEIGHT": 0.5,
         "MAX_DISCOMFORT_WEIGHT": 2.0,
+        "TEAM_TOTAL_STD_WEIGHT": 1.0,
+        "MAX_TEAM_GAP_WEIGHT": 1.0,
+        "ROLE_BALANCE_WEIGHT": 1.0,
+        "ROLE_SPREAD_WEIGHT": 1.0,
         "USE_CAPTAINS": True,
     }
 
@@ -88,33 +108,29 @@ class ConfigPresets:
 
     # High quality: slow but optimal
     HIGH_QUALITY: dict[str, Any] = {
-        "POPULATION_SIZE": 500,
-        "GENERATIONS": 2000,
-        "ELITISM_RATE": 0.1,
-        "MUTATION_RATE": 0.5,
-        "MUTATION_STRENGTH": 5,
-        "MMR_DIFF_WEIGHT": 4.0,
-        "DISCOMFORT_WEIGHT": 0.3,
-        "INTRA_TEAM_VAR_WEIGHT": 1.0,
-        "MAX_DISCOMFORT_WEIGHT": 1.5,
+        "POPULATION_SIZE": 300,     # Большая популяция для поиска идеальных комбинаций
+        "GENERATIONS": 1000,
+        "ELITISM_RATE": 0.15,
+        "MUTATION_RATE": 0.85,
+        "MUTATION_STRENGTH": 4,     # 4 перестановки за мутацию, чтобы быстро тасовать составы
+        
+        # 1. Равенство команд (Приоритет №1)
+        "MAX_TEAM_GAP_WEIGHT": 60.0,    # Непреодолимый штраф, если сумма рейтинга одной команды сильно больше другой
+        "TEAM_TOTAL_STD_WEIGHT": 40.0,  # Жестко стягивает все команды к единой сумме рейтинга
+        "MMR_DIFF_WEIGHT": 30.0,        # Жестко стягивает все команды к единому среднему MMR
+        
+        # 2. Искоренение off-ролей (Приоритет №2)
+        "MAX_DISCOMFORT_WEIGHT": 150.0,  # Убивает любую ветку эволюции, где игрок стоит на роли, на которой не играет
+        "DISCOMFORT_WEIGHT": 80.0,      # Сильный штраф за 2-й и 3-й пик предпочтений (заставляет искать мейнеров)
+        
+        # 3. Отключаем то, на что нам "пофиг"
+        "INTRA_TEAM_VAR_WEIGHT": 0.0,   # ВЫКЛЮЧЕНО. Алгоритму теперь плевать на разброс внутри команды.
+        "ROLE_SPREAD_WEIGHT": 0.0,      # ВЫКЛЮЧЕНО.
+        "ROLE_BALANCE_WEIGHT": 5.0,     # Оставлен небольшой вес, просто чтобы при абсолютно равных MMR алгоритм предпочитал зеркальные линии.
+        
         "USE_CAPTAINS": True,
     }
     
-    CONFIG_LIMITS: dict[str, dict[str, int | float]] = {
-    "POPULATION_SIZE": {"min": 10, "max": 1000},
-    "GENERATIONS": {"min": 10, "max": 5000},
-    "ELITISM_RATE": {"min": 0.0, "max": 1.0},
-    "MUTATION_RATE": {"min": 0.0, "max": 1.0},
-    "MUTATION_STRENGTH": {"min": 1, "max": 10},
-    "MMR_DIFF_WEIGHT": {"min": 0.0, "max": 100.0},
-    "DISCOMFORT_WEIGHT": {"min": 0.0, "max": 100.0},
-    "INTRA_TEAM_VAR_WEIGHT": {"min": 0.0, "max": 100.0},
-    "MAX_DISCOMFORT_WEIGHT": {"min": 0.0, "max": 100.0},
-    "ROLE_BALANCE_WEIGHT": {"min": 0.0, "max": 100.0},
-    "ROLE_SPREAD_WEIGHT": {"min": 0.0, "max": 100.0},
-    "MAX_TEAM_GAP_WEIGHT": {"min": 0.0, "max": 100.0},
-}
-
 
 class ConfigBuilder:
     """Helper class to build custom configurations with validation"""
@@ -185,6 +201,10 @@ class ConfigBuilder:
         discomfort: float | None = None,
         intra_var: float | None = None,
         max_discomfort: float | None = None,
+        team_total_std: float | None = None,
+        max_team_gap: float | None = None,
+        role_balance: float | None = None,
+        role_spread: float | None = None,
     ) -> "ConfigBuilder":
         """Set cost function weights"""
         if mmr_diff is not None:
@@ -206,6 +226,26 @@ class ConfigBuilder:
             if max_discomfort < 0:
                 raise ValueError("Max discomfort weight must be >= 0")
             self.config["MAX_DISCOMFORT_WEIGHT"] = max_discomfort
+            
+        if team_total_std is not None:
+            if team_total_std < 0:
+                raise ValueError("Team total std weight must be >= 0")
+            self.config["TEAM_TOTAL_STD_WEIGHT"] = team_total_std
+
+        if max_team_gap is not None:
+            if max_team_gap < 0:
+                raise ValueError("Max team gap weight must be >= 0")
+            self.config["MAX_TEAM_GAP_WEIGHT"] = max_team_gap
+
+        if role_balance is not None:
+            if role_balance < 0:
+                raise ValueError("Role balance weight must be >= 0")
+            self.config["ROLE_BALANCE_WEIGHT"] = role_balance
+
+        if role_spread is not None:
+            if role_spread < 0:
+                raise ValueError("Role spread weight must be >= 0")
+            self.config["ROLE_SPREAD_WEIGHT"] = role_spread
 
         return self
 

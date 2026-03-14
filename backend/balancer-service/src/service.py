@@ -12,6 +12,7 @@ import random
 import statistics
 import time
 import typing
+from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
 
@@ -79,22 +80,34 @@ def calculate_gap_penalty(max_team_gap: float) -> float:
 class Player:
     """Represents a tournament player with ratings and role preferences."""
 
-    __slots__ = ("uuid", "name", "ratings", "preferences", "discomfort_map", "is_captain", "_max_rating", "_mask")
+    __slots__ = ("uuid", "name", "ratings", "preferences", "subclasses", "discomfort_map", "is_captain", "is_flex", "_max_rating", "_mask")
 
     def __init__(
-        self, name: str, ratings: dict[str, int], preferences: list[str], uuid: str, mask: dict[str, int]
+        self,
+        name: str,
+        ratings: dict[str, int],
+        preferences: list[str],
+        uuid: str,
+        mask: dict[str, int],
+        is_flex: bool = False,
+        subclasses: dict[str, str] | None = None,
     ) -> None:
         self.uuid = uuid
         self.name = name
         self.ratings = ratings
         self.preferences = preferences
+        self.subclasses: dict[str, str] = subclasses or {}
         self.is_captain = False
+        self.is_flex = is_flex
         self._max_rating = max(ratings.values()) if ratings else 0
         self._mask = mask
 
         self.discomfort_map = {}
         for role in self._mask.keys():
-            if role in preferences:
+            if is_flex and role in ratings:
+                # Flex players are equally comfortable in any role they can play
+                self.discomfort_map[role] = 0
+            elif role in preferences:
                 self.discomfort_map[role] = preferences.index(role) * 100
             else:
                 self.discomfort_map[role] = 1000 if role in ratings else 5000
@@ -144,7 +157,8 @@ class Team:
 
     def copy(self) -> "Team":
         new_team = Team(self.id, self._mask)
-        new_team.roster = {r: list(p_list) for r, p_list in self.roster.items()}
+        # Безопасная микро-оптимизация: срезы lst[:] работают быстрее list(lst)
+        new_team.roster = {r: p_list[:] for r, p_list in self.roster.items()}
         new_team._cached_mmr = self._cached_mmr
         new_team._cached_total_rating = self._cached_total_rating
         new_team._cached_discomfort = self._cached_discomfort
@@ -360,10 +374,13 @@ def parse_player_node(
 ) -> Player | None:
     """Parse player data from input dictionary."""
     try:
-        name = data.get("identity", {}).get("name", "Unknown")
+        identity = data.get("identity", {})
+        name = identity.get("name", "Unknown")
+        is_flex = bool(identity.get("isFullFlex", False))
         raw_classes = data.get("stats", {}).get("classes", {})
         ratings = {}
         role_priorities = []
+        subclasses: dict[str, str] = {}
 
         for json_role, stats in raw_classes.items():
             if not stats.get("isActive", False):
@@ -377,13 +394,16 @@ def parse_player_node(
             ratings[algo_role] = rank
             priority = stats.get("priority", 99)
             role_priorities.append((priority, algo_role))
+            subtype = stats.get("subtype") or ""
+            if subtype:
+                subclasses[algo_role] = subtype
 
         if not ratings:
             return None
 
         role_priorities.sort(key=lambda x: x[0])
         preferences = [r for _, r in role_priorities]
-        return Player(name, ratings, preferences, uuid, mask)
+        return Player(name, ratings, preferences, uuid, mask, is_flex=is_flex, subclasses=subclasses)
     except Exception as e:
         logger.warning(f"Failed to parse player {uuid}: {e}")
         return None
@@ -436,7 +456,7 @@ def assign_captains(players: list[Player], count: int) -> None:
 def create_random_solution(
     players: list[Player], num_teams: int, mask: dict[str, int], use_captains: bool
 ) -> list[Team]:
-    """Create a random team assignment solution."""
+    """Create a random team assignment solution (Optimized Search Space)."""
     teams = [Team(i + 1, mask) for i in range(num_teams)]
     captains = [p for p in players if p.is_captain]
     pool = [p for p in players if not p.is_captain]
@@ -750,9 +770,11 @@ class GeneticOptimizer:
 # --- JSON Conversion ---
 
 
-def teams_to_json(teams: list[Team], mask: dict[str, int]) -> dict[str, typing.Any]:
+def teams_to_json(
+    teams: list[Team], mask: dict[str, int], benched_players: list[Player] | None = None
+) -> dict[str, typing.Any]:
     """Convert teams to JSON-serializable dictionary for API response."""
-    result = {"teams": [], "statistics": {}}
+    result = {"teams": [], "statistics": {}, "benchedPlayers": []}
     teams = sorted(teams, key=lambda t: t.total_rating)
 
     for team in teams:
@@ -786,6 +808,7 @@ def teams_to_json(teams: list[Team], mask: dict[str, int]) -> dict[str, typing.A
                     "rating": p.get_rating(role),
                     "discomfort": p.get_discomfort(role),
                     "isCaptain": p.is_captain,
+                    "isFlex": p.is_flex,
                     "preferences": p.preferences,
                     "allRatings": p.ratings,
                 }
@@ -797,6 +820,30 @@ def teams_to_json(teams: list[Team], mask: dict[str, int]) -> dict[str, typing.A
     all_totals = [t.total_rating for t in teams]
     all_mmrs = [t.mmr for t in teams]
 
+    # Count off-role players: assigned to a role that is not their first preference,
+    # and they are NOT a flex player (flex players are comfortable in any of their roles).
+    off_role_count = 0
+    for team in teams:
+        for role, players in team.roster.items():
+            for p in players:
+                if not p.is_flex and p.preferences and p.preferences[0] != role:
+                    off_role_count += 1
+
+    # Count sub-role collisions: pairs of players on the same team sharing the same (role, subclass).
+    # E.g., two Hitscan DPS or two Main Heal supports on one team counts as 1 collision.
+    sub_role_collision_count = 0
+    for team in teams:
+        role_subclass_list: list[tuple[str, str]] = []
+        for role, players in team.roster.items():
+            for p in players:
+                subclass = p.subclasses.get(role, "")
+                if subclass:
+                    role_subclass_list.append((role, subclass))
+        counts = Counter(role_subclass_list)
+        for count in counts.values():
+            if count > 1:
+                sub_role_collision_count += count * (count - 1) // 2
+
     if len(all_totals) > 1:
         result["statistics"] = {
             "averageMMR": round(statistics.mean(all_mmrs), 2),
@@ -806,6 +853,8 @@ def teams_to_json(teams: list[Team], mask: dict[str, int]) -> dict[str, typing.A
             "maxTotalRatingGap": round(max(all_totals) - min(all_totals), 2),
             "totalTeams": len(teams),
             "playersPerTeam": sum(mask.values()),
+            "offRoleCount": off_role_count,
+            "subRoleCollisionCount": sub_role_collision_count,
         }
     else:
         result["statistics"] = {
@@ -816,7 +865,24 @@ def teams_to_json(teams: list[Team], mask: dict[str, int]) -> dict[str, typing.A
             "maxTotalRatingGap": 0,
             "totalTeams": len(teams),
             "playersPerTeam": sum(mask.values()),
+            "offRoleCount": off_role_count,
+            "subRoleCollisionCount": sub_role_collision_count,
         }
+
+    if benched_players:
+        result["benchedPlayers"] = [
+            {
+                "uuid": p.uuid,
+                "name": p.name,
+                "rating": p.max_rating,
+                "discomfort": 0,
+                "isCaptain": p.is_captain,
+                "isFlex": p.is_flex,
+                "preferences": p.preferences,
+                "allRatings": p.ratings,
+            }
+            for p in benched_players
+        ]
 
     return result
 
@@ -998,7 +1064,15 @@ def balance_teams(
     opt = GeneticOptimizer(valid_players, num_teams, config, progress_callback)
     result = opt.run()
 
-    response_payload = teams_to_json(result, mask)
+    # Determine which players were NOT placed into any team (benched)
+    placed_uuids: set[str] = set()
+    for team in result:
+        for role_players in team.roster.values():
+            for p in role_players:
+                placed_uuids.add(p.uuid)
+    benched = [p for p in valid_players if p.uuid not in placed_uuids]
+
+    response_payload = teams_to_json(result, mask, benched_players=benched)
 
     if has_applied_overrides:
         response_payload["appliedConfig"] = serialize_algorithm_config(config)

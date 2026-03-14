@@ -259,6 +259,7 @@ export function convertBalanceResponseToInternalPayload(response: BalanceRespons
       },
     })),
     statistics: response.statistics,
+    benchedPlayers: response.benchedPlayers ?? [],
   });
 }
 
@@ -276,12 +277,14 @@ export function buildBalancerInput(players: BalancerPlayerRecord[]): Record<stri
         isActive: Boolean(roleEntry?.is_active && roleEntry?.rank_value),
         rank: roleEntry?.rank_value ?? 0,
         priority: roleEntry?.priority ?? 99,
+        subtype: roleEntry?.subtype ?? null,
       };
     };
 
     accumulator[String(player.id)] = {
       identity: {
         name: player.battle_tag,
+        isFullFlex: player.is_flex,
       },
       stats: {
         classes: {

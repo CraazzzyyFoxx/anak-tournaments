@@ -4,7 +4,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toPng } from "html-to-image";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  AlertCircle,
   AlertTriangle,
+  BarChart2,
   Camera,
   Check,
   CheckCircle2,
@@ -12,6 +14,7 @@ import {
   Download,
   Loader2,
   Search,
+  Shuffle,
   Sparkles,
   Upload,
   UserX,
@@ -46,7 +49,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useToast } from "@/hooks/use-toast";
@@ -855,30 +857,81 @@ export default function BalancerMainPage() {
               </Alert>
             ) : null}
 
-            {/* Row 2: Variant Tabs + Action Buttons */}
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              {hasVariants ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  <Tabs value={activeVariantId ?? undefined} onValueChange={setActiveVariantId}>
-                    <TabsList>
-                      {variants.map((variant) => (
-                        <TabsTrigger key={variant.id} value={variant.id}>
+            {/* Row 2: Variant Cards + Action Buttons */}
+            {hasVariants ? (
+              <div className="flex flex-wrap gap-2">
+                {variants.map((variant) => {
+                  const stats = variant.payload.statistics;
+                  const isActive = variant.id === activeVariantId;
+                  return (
+                    <button
+                      key={variant.id}
+                      type="button"
+                      onClick={() => setActiveVariantId(variant.id)}
+                      className={cn(
+                        "flex flex-col gap-2 rounded-xl border px-4 py-3 text-left transition-all",
+                        "hover:border-white/20 hover:bg-white/[0.04]",
+                        isActive
+                          ? "border-primary/60 bg-primary/[0.08] shadow-sm shadow-primary/10"
+                          : "border-white/[0.07] bg-white/[0.02]",
+                      )}
+                    >
+                      {/* Header row */}
+                      <div className="flex items-center gap-2">
+                        <span className={cn("text-sm font-semibold", isActive ? "text-white" : "text-white/70")}>
                           {variant.label}
-                        </TabsTrigger>
-                      ))}
-                    </TabsList>
-                  </Tabs>
-                  {activeVariant?.skippedCount != null && activeVariant.skippedCount > 0 && (
-                    <Badge variant="outline" className="gap-1 border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400">
-                      <UserX className="h-3 w-3" />
-                      {activeVariant.skippedCount} skipped
-                    </Badge>
-                  )}
-                </div>
-              ) : null}
+                        </span>
+                        {variant.skippedCount != null && variant.skippedCount > 0 && (
+                          <Badge variant="outline" className="gap-1 border-amber-500/30 bg-amber-500/10 px-1.5 py-0 text-[10px] text-amber-400">
+                            <UserX className="h-2.5 w-2.5" />
+                            {variant.skippedCount}
+                          </Badge>
+                        )}
+                      </div>
+                      {/* Stats row */}
+                      {stats && (
+                        <div className="flex items-center gap-3 text-[11px]">
+                          {stats.mmrStdDev !== undefined && (
+                            <span className="flex items-center gap-1 text-white/40">
+                              <BarChart2 className="h-3 w-3 text-blue-400/70" />
+                              <span className="tabular-nums text-white/60">{stats.mmrStdDev.toFixed(1)}</span>
+                            </span>
+                          )}
+                          {stats.offRoleCount !== undefined && (
+                            <span className="flex items-center gap-1 text-white/40">
+                              <AlertCircle className="h-3 w-3 text-orange-400/70" />
+                              <span className={cn("tabular-nums", stats.offRoleCount > 0 ? "text-orange-400" : "text-white/60")}>
+                                {stats.offRoleCount}
+                              </span>
+                            </span>
+                          )}
+                          {stats.subRoleCollisionCount !== undefined && (
+                            <span className="flex items-center gap-1 text-white/40">
+                              <Shuffle className="h-3 w-3 text-violet-400/70" />
+                              <span className={cn("tabular-nums", stats.subRoleCollisionCount > 0 ? "text-violet-400" : "text-white/60")}>
+                                {stats.subRoleCollisionCount}
+                              </span>
+                            </span>
+                          )}
+                          {stats.unbalancedCount !== undefined && stats.unbalancedCount > 0 && (
+                            <span className="flex items-center gap-1">
+                              <UserX className="h-3 w-3 text-red-400/70" />
+                              <span className="tabular-nums text-red-400">{stats.unbalancedCount}</span>
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
 
-              {hasVariants ? (
-                <TooltipProvider delayDuration={300}>
+            {/* Action Buttons + Active Variant Stats */}
+            {hasVariants ? (
+              <TooltipProvider delayDuration={300}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  {/* Buttons */}
                   <div className="flex items-center gap-1.5">
                     <Button onClick={() => saveBalanceMutation.mutate()} disabled={!activeVariant || saveBalanceMutation.isPending} size="sm">
                       {saveBalanceMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
@@ -887,13 +940,7 @@ export default function BalancerMainPage() {
                     <Separator orientation="vertical" className="mx-0.5 h-6" />
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => activeVariant && downloadPayload(activeVariant.payload, tournamentId)}
-                          disabled={!activeVariant}
-                        >
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => activeVariant && downloadPayload(activeVariant.payload, tournamentId)} disabled={!activeVariant}>
                           <Download className="h-4 w-4" />
                         </Button>
                       </TooltipTrigger>
@@ -901,16 +948,7 @@ export default function BalancerMainPage() {
                     </Tooltip>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={async () => {
-                            await navigator.clipboard.writeText(buildTeamNamesText(activeVariant?.payload ?? null));
-                            toast({ title: "Team names copied" });
-                          }}
-                          disabled={!activeVariant}
-                        >
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={async () => { await navigator.clipboard.writeText(buildTeamNamesText(activeVariant?.payload ?? null)); toast({ title: "Team names copied" }); }} disabled={!activeVariant}>
                           <Copy className="h-4 w-4" />
                         </Button>
                       </TooltipTrigger>
@@ -918,13 +956,7 @@ export default function BalancerMainPage() {
                     </Tooltip>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => exportBalanceMutation.mutate()}
-                          disabled={!savedBalanceQuery.data || exportBalanceMutation.isPending}
-                        >
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => exportBalanceMutation.mutate()} disabled={!savedBalanceQuery.data || exportBalanceMutation.isPending}>
                           {exportBalanceMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
                         </Button>
                       </TooltipTrigger>
@@ -932,22 +964,53 @@ export default function BalancerMainPage() {
                     </Tooltip>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => handleScreenshot()}
-                          disabled={!activeVariant}
-                        >
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleScreenshot()} disabled={!activeVariant}>
                           <Camera className="h-4 w-4" />
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>Save as image</TooltipContent>
                     </Tooltip>
                   </div>
-                </TooltipProvider>
-              ) : null}
-            </div>
+
+                  {/* Active variant stats inline */}
+                  {activeVariant?.payload.statistics && (() => {
+                    const s = activeVariant.payload.statistics;
+                    return (
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        {s.mmrStdDev !== undefined && (
+                          <span className="flex items-center gap-1 rounded-md border border-white/[0.07] bg-white/[0.03] px-2 py-1">
+                            <BarChart2 className="h-3 w-3 text-blue-400" />
+                            <span className="text-white/50">StdDev:</span>
+                            <span className="tabular-nums text-white/70">{s.mmrStdDev.toFixed(1)}</span>
+                          </span>
+                        )}
+                        {s.offRoleCount !== undefined && (
+                          <span className="flex items-center gap-1 rounded-md border border-white/[0.07] bg-white/[0.03] px-2 py-1">
+                            <AlertCircle className="h-3 w-3 text-orange-400" />
+                            <span className="text-white/50">Off-role:</span>
+                            <span className={cn("tabular-nums", s.offRoleCount > 0 ? "text-orange-400" : "text-white/70")}>{s.offRoleCount}</span>
+                          </span>
+                        )}
+                        {s.subRoleCollisionCount !== undefined && (
+                          <span className="flex items-center gap-1 rounded-md border border-white/[0.07] bg-white/[0.03] px-2 py-1">
+                            <Shuffle className="h-3 w-3 text-violet-400" />
+                            <span className="text-white/50">Collisions:</span>
+                            <span className={cn("tabular-nums", s.subRoleCollisionCount > 0 ? "text-violet-400" : "text-white/70")}>{s.subRoleCollisionCount}</span>
+                          </span>
+                        )}
+                        {s.unbalancedCount !== undefined && (
+                          <span className="flex items-center gap-1 rounded-md border border-white/[0.07] bg-white/[0.03] px-2 py-1">
+                            <UserX className="h-3 w-3 text-red-400" />
+                            <span className="text-white/50">Unbalanced:</span>
+                            <span className={cn("tabular-nums", s.unbalancedCount > 0 ? "text-red-400" : "text-white/70")}>{s.unbalancedCount}</span>
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </TooltipProvider>
+            ) : null}
 
             {/* Balance Editor or Empty State */}
             {hasVariants ? (

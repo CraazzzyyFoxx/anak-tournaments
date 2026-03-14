@@ -24,9 +24,13 @@ class ConfigOverrides(BaseModel):
 
     # Cost function weights
     MMR_DIFF_WEIGHT: float | None = Field(None, ge=0, description="Weight for MMR difference between teams")
+    TEAM_TOTAL_STD_WEIGHT: float | None = Field(None, ge=0, description="Weight for aligning total rating sums among all teams")
+    MAX_TEAM_GAP_WEIGHT: float | None = Field(None, ge=0, description="Penalty weight for the rating gap between strongest and weakest team")
     DISCOMFORT_WEIGHT: float | None = Field(None, ge=0, description="Weight for player role discomfort")
     INTRA_TEAM_VAR_WEIGHT: float | None = Field(None, ge=0, description="Weight for variance within teams")
     MAX_DISCOMFORT_WEIGHT: float | None = Field(None, ge=0, description="Weight for maximum discomfort penalty")
+    ROLE_BALANCE_WEIGHT: float | None = Field(None, ge=0, description="Weight for balancing roles between teams")
+    ROLE_SPREAD_WEIGHT: float | None = Field(None, ge=0, description="Penalty weight for rating spread within roles in a team")
 
     # Strategy configuration
     USE_CAPTAINS: bool | None = Field(None, description="Whether to use captain assignment")
@@ -81,6 +85,9 @@ class Statistics(BaseModel):
     mmrStdDev: float
     totalTeams: int
     playersPerTeam: int
+    offRoleCount: int = 0
+    subRoleCollisionCount: int = 0
+    unbalancedCount: int = 0
 
 
 class BalanceResponse(BaseModel):
@@ -88,6 +95,7 @@ class BalanceResponse(BaseModel):
 
     teams: list[TeamData]
     statistics: Statistics
+    benchedPlayers: list[PlayerData] = Field(default_factory=list)
     appliedConfig: dict[str, Any] | None = None
 
 

@@ -97,7 +97,11 @@ export interface InternalBalancePayload {
     mmrStdDev?: number;
     totalTeams?: number;
     playersPerTeam?: number;
+    offRoleCount?: number;
+    subRoleCollisionCount?: number;
+    unbalancedCount?: number;
   };
+  benchedPlayers?: InternalBalancePlayer[];
 }
 
 export interface SavedBalancerTeam {

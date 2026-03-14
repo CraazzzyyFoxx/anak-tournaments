@@ -1,6 +1,7 @@
 """Bridge between xv-1 input format and ow_balancer_cpsat, and back to genetic-compatible output."""
 
 import math
+from collections import Counter
 
 from ow_balancer_cpsat import (
     BalancerConfig as CpsatConfig,
@@ -53,6 +54,7 @@ def input_adapter(input_data: dict, num_teams: int) -> list[CpsatPlayer]:
 
         role_sr: dict[Role, int] = {}
         role_priority: list[tuple[int, Role]] = []  # (priority, role) for sorting
+        subclasses: dict[Role, str] = {}
 
         for class_key, class_data in classes.items():
             role = INPUT_ROLE_MAP.get(class_key)
@@ -61,10 +63,13 @@ def input_adapter(input_data: dict, num_teams: int) -> list[CpsatPlayer]:
             is_active = class_data.get("isActive", False)
             rank = class_data.get("rank", 0)
             priority = class_data.get("priority", 99)
+            subtype = class_data.get("subtype") or ""
 
             if is_active and rank > 0:
                 role_sr[role] = rank
                 role_priority.append((priority, role))
+                if subtype:
+                    subclasses[role] = subtype
 
         # Пропускаем игроков без активных ролей
         if not role_sr:
@@ -87,7 +92,7 @@ def input_adapter(input_data: dict, num_teams: int) -> list[CpsatPlayer]:
                 name=name,
                 role_sr=role_sr,
                 preferred_roles=preferred_roles,
-                subclasses={},
+                subclasses=subclasses,
                 flags=flags,
                 avoid=set(),
                 is_captain=identity.get("isCaptain", False),
@@ -95,8 +100,6 @@ def input_adapter(input_data: dict, num_teams: int) -> list[CpsatPlayer]:
         )
     _auto_assign_captains(players, num_teams)
     return players
-
-
 
 
 def _compute_low_thresholds(players):
@@ -161,7 +164,9 @@ def _improve_team_equality(teams_list, players, max_iters=2000):
                     new_low[role_name] = list(low_players)
                     new_high[role_name][i], new_low[role_name][j] = b, a
 
-                    if _violates_low_rule(new_high, role_name, low_thresholds) or _violates_low_rule(new_low, role_name, low_thresholds):
+                    if _violates_low_rule(new_high, role_name, low_thresholds) or _violates_low_rule(
+                        new_low, role_name, low_thresholds
+                    ):
                         continue
 
                     new_high_avg = _team_avg(new_high)
@@ -173,7 +178,16 @@ def _improve_team_equality(teams_list, players, max_iters=2000):
 
                     # дополнительный критерий: уменьшаем и общий range, и разницу между этими двумя командами
                     pair_gap = abs(new_high_avg - new_low_avg)
-                    cand = (new_range, pair_gap, -(a["rating"] - b["rating"]), role_name, i, j, new_high_avg, new_low_avg)
+                    cand = (
+                        new_range,
+                        pair_gap,
+                        -(a["rating"] - b["rating"]),
+                        role_name,
+                        i,
+                        j,
+                        new_high_avg,
+                        new_low_avg,
+                    )
                     if best is None or cand < best[0]:
                         best = (cand, role_name, i, j, new_high_avg, new_low_avg)
 
@@ -181,9 +195,13 @@ def _improve_team_equality(teams_list, players, max_iters=2000):
             break
 
         role_name, i, j, new_high_avg, new_low_avg = best[1], best[2], best[3], best[4], best[5]
-        high_team["roster"][role_name][i], low_team["roster"][role_name][j] = low_team["roster"][role_name][j], high_team["roster"][role_name][i]
+        high_team["roster"][role_name][i], low_team["roster"][role_name][j] = (
+            low_team["roster"][role_name][j],
+            high_team["roster"][role_name][i],
+        )
         high_team["avgMMR"] = new_high_avg
         low_team["avgMMR"] = new_low_avg
+
 
 def output_adapter(results: list, num_teams: int) -> list[dict]:
     """Convert list of CP-SAT BalanceResult objects to genetic-compatible dicts."""
@@ -193,6 +211,9 @@ def output_adapter(results: list, num_teams: int) -> list[dict]:
 
         team_srs = []
         teams_list = []
+
+        # off-role count: players assigned to a role not in their preferred_roles
+        off_role_count = 0
 
         for t in sorted(teams_dict.keys()):
             roster_entries = teams_dict[t]
@@ -208,6 +229,16 @@ def output_adapter(results: list, num_teams: int) -> list[dict]:
 
                 # discomfort: use pref_cost (FLEX-aware)
                 discomfort = player.pref_cost(assigned_role)
+
+                # off-role: assigned to a role that is not the player's first preferred role
+                primary_role = player.preferred_roles[0] if player.preferred_roles else None
+                is_off_role = primary_role is not None and assigned_role != primary_role
+                if is_off_role:
+                    off_role_count += 1
+                    # Ensure discomfort is > 0 for off-role players so frontend displays the badge
+                    if discomfort == 0:
+                        discomfort = max(10, player.preferred_roles.index(assigned_role) * 10 if assigned_role in player.preferred_roles else 100)
+
 
                 total_discomfort += discomfort
                 max_discomfort = max(max_discomfort, discomfort)
@@ -239,7 +270,38 @@ def output_adapter(results: list, num_teams: int) -> list[dict]:
                 }
             )
 
+        # sub-role collision count: across all teams, pairs sharing (team, role, subclass)
+        # subclasses are stored in player.subclasses dict keyed by Role enum
+        sub_role_collision_count = 0
+        for t in sorted(teams_dict.keys()):
+            entries = teams_dict[t]
+            role_subclass_list: list[tuple[str, str]] = []
+            for player, assigned_role in entries:
+                subclass = player.subclasses.get(assigned_role, "")
+                if subclass:
+                    role_subclass_list.append((ROLE_NAME_MAP[assigned_role], subclass))
+            counts = Counter(role_subclass_list)
+            for count in counts.values():
+                if count > 1:
+                    # C(count, 2) pairs
+                    sub_role_collision_count += count * (count - 1) // 2
+
         _improve_team_equality(teams_list, balance_result.players)
+
+        # benched players
+        benched = balance_result.benched_players()
+        benched_players_data = [
+            {
+                "uuid": p.id,
+                "name": p.name,
+                "rating": p.avg_sr,
+                "discomfort": 0,
+                "isCaptain": p.is_captain,
+                "preferences": [ROLE_NAME_MAP[r] for r in p.preferred_roles],
+                "allRatings": {ROLE_NAME_MAP[r]: sr for r, sr in p.role_sr.items()},
+            }
+            for p in benched
+        ]
 
         # statistics
         avg_mmr = sum(team_srs) / len(team_srs) if team_srs else 0.0
@@ -261,7 +323,11 @@ def output_adapter(results: list, num_teams: int) -> list[dict]:
                     "objective": m["objective"],
                     "rolePrefPenalty": m["role_pref_penalty"],
                     "subclassCollisions": m["subclass_collisions"],
+                    "offRoleCount": off_role_count,
+                    "subRoleCollisionCount": sub_role_collision_count,
+                    "unbalancedCount": len(benched),
                 },
+                "benchedPlayers": benched_players_data,
                 "appliedConfig": {"ALGORITHM": "heuristic_v4"},
             }
         )
@@ -277,18 +343,13 @@ def run_cpsat(input_data: dict, max_solutions: int = 3) -> list[dict]:
     active_count = 0
     for player_data in players_raw.values():
         classes = player_data.get("stats", {}).get("classes", {})
-        has_active = any(
-            c.get("isActive", False) and c.get("rank", 0) > 0
-            for c in classes.values()
-        )
+        has_active = any(c.get("isActive", False) and c.get("rank", 0) > 0 for c in classes.values())
         if has_active:
             active_count += 1
 
     num_teams = active_count // 5
     if num_teams < 2:
-        raise ValueError(
-            f"Need at least 10 active players for CP-SAT balancing, got {active_count}"
-        )
+        raise ValueError(f"Need at least 10 active players for CP-SAT balancing, got {active_count}")
 
     players = input_adapter(input_data, num_teams)
     captain_count = sum(1 for p in players if p.is_captain)

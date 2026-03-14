@@ -23,11 +23,15 @@ export interface Statistics {
   mmrStdDev: number;
   totalTeams: number;
   playersPerTeam: number;
+  offRoleCount?: number;
+  subRoleCollisionCount?: number;
+  unbalancedCount?: number;
 }
 
 export interface BalanceResponse {
   teams: TeamData[];
   statistics: Statistics;
+  benchedPlayers?: PlayerData[];
   appliedConfig?: BalancerConfig;
 }
 

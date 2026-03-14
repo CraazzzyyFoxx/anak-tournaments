@@ -47,16 +47,28 @@ class AlgorithmConfig(BaseSettings):
     MMR_DIFF_WEIGHT: float = Field(
         default=3.0, ge=0.0, description="Weight for MMR difference between teams (higher = more balanced teams)"
     )
+    TEAM_TOTAL_STD_WEIGHT: float = Field(
+        default=1.0, ge=0.0, description="Weight for aligning total rating sums among all teams"
+    )
+    MAX_TEAM_GAP_WEIGHT: float = Field(
+        default=1.0, ge=0.0, description="Penalty weight for the rating gap between strongest and weakest team"
+    )
     DISCOMFORT_WEIGHT: float = Field(
-        default=0.25, ge=0.0, description="Weight for player role discomfort (higher = better role matching)"
+        default=1.5, ge=0.0, description="Weight for player role discomfort (higher = better role matching)"
     )
     INTRA_TEAM_VAR_WEIGHT: float = Field(
         default=0.8, ge=0.0, description="Weight for variance within teams (higher = more consistent team members)"
     )
     MAX_DISCOMFORT_WEIGHT: float = Field(
-        default=1.0,
+        default=1.5,
         ge=0.0,
         description="Weight for maximum discomfort penalty (higher = avoid worst-case role assignments)",
+    )
+    ROLE_BALANCE_WEIGHT: float = Field(
+        default=1.0, ge=0.0, description="Weight for balancing roles between teams (e.g., tank vs tank)"
+    )
+    ROLE_SPREAD_WEIGHT: float = Field(
+        default=1.0, ge=0.0, description="Penalty weight for rating spread within roles in a team"
     )
 
     # Strategy configuration
@@ -69,22 +81,7 @@ class AlgorithmConfig(BaseSettings):
     # Algorithm selection
     ALGORITHM: typing.Literal["genetic", "cpsat"] = Field(default="genetic", description="Balancing algorithm to use")
     MAX_CPSAT_SOLUTIONS: int = Field(default=3, ge=1, le=5, description="Maximum number of CP-SAT solutions to return")
-    
-    POPULATION_SIZE: int = 60
-    GENERATIONS: int = 220
-    ELITISM_RATE: float = 0.15
-    MUTATION_RATE: float = 0.92
-    MUTATION_STRENGTH: int = 3
 
-    MMR_DIFF_WEIGHT: float = 15.0
-    TEAM_TOTAL_STD_WEIGHT: float = 30.0
-    MAX_TEAM_GAP_WEIGHT: float = 50.0
-
-    DISCOMFORT_WEIGHT: float = 0.001
-    INTRA_TEAM_VAR_WEIGHT: float = 0.05
-    MAX_DISCOMFORT_WEIGHT: float = 0.001
-    ROLE_BALANCE_WEIGHT: float = 0.05
-    ROLE_SPREAD_WEIGHT: float = 0.02
 
 
 class Settings(BaseSettings):

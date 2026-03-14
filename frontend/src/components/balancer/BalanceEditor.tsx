@@ -12,7 +12,9 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
+import { UserX } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
@@ -145,9 +147,26 @@ function PlayerRow({ player, roleKey, dragging = false, dragHandleProps, rowRef,
         <PlayerRoleIcon role={roleKey} size={22} />
       </TableCell>
       <TableCell className="py-2.5 px-3 text-white/85 text-[15px] font-medium leading-none">{player.name}</TableCell>
-      <TableCell className="py-2.5 pl-3 pr-5 text-right">
-        <div className="flex justify-end" title={`Division ${division}`}>
+      <TableCell className="py-2.5 px-2 text-center">
+        <div className="flex justify-center" title={`Division ${division}`}>
           <PlayerDivisionIcon division={division} width={28} height={28} />
+        </div>
+      </TableCell>
+      {/* Registered roles in priority order */}
+      <TableCell className="py-2.5 pl-2 pr-5 text-center">
+        <div className="flex items-center justify-center gap-0.5">
+          {(player.preferences ?? []).map((pref, i) => (
+            <span
+              key={i}
+              className={cn(
+                "opacity-70",
+                pref === roleKey && "opacity-100",
+              )}
+              title={`Priority ${i + 1}: ${pref}`}
+            >
+              <PlayerRoleIcon role={pref} size={16} />
+            </span>
+          ))}
         </div>
       </TableCell>
     </TableRow>
@@ -197,7 +216,7 @@ function DroppableRoleSection({
 
       {players.length === 0 && (
         <TableRow className="border-white/[0.04] hover:bg-transparent">
-          <TableCell colSpan={3} className="py-3 px-5 text-center text-xs text-white/20">
+          <TableCell colSpan={4} className="py-3 px-5 text-center text-xs text-white/20">
             <span className="border border-dashed border-white/[0.1] rounded px-3 py-1">
               Drop {roleKey.toLowerCase()} here
             </span>
@@ -311,14 +330,41 @@ export const BalanceEditor = forwardRef<HTMLDivElement, BalanceEditorProps>(func
     return Math.abs(calculateTeamAverage(team) - globalAvg);
   }
 
+  const benchedPlayers = value.benchedPlayers ?? [];
+
   return (
     <DndContext
       sensors={sensors}
       onDragStart={(event) => handleDragStart(String(event.active.id))}
       onDragEnd={handleDragEnd}
     >
+      <div ref={ref} className="space-y-4">
+      {/* Benched players list */}
+      {benchedPlayers.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2">
+          <span className="mr-1 text-xs font-medium text-red-400/80">Not assigned:</span>
+          {benchedPlayers.map((p) => (
+            <Badge
+              key={p.uuid}
+              variant="outline"
+              className="gap-1 border-red-500/20 bg-red-500/10 text-red-300 text-xs py-0.5"
+            >
+              {p.preferences.length > 0 && (
+                <span className="flex items-center gap-0.5">
+                  {p.preferences.map((pref, i) => (
+                    <span key={i} className="opacity-70">
+                      <PlayerRoleIcon role={pref} size={12} />
+                    </span>
+                  ))}
+                </span>
+              )}
+              {p.name}
+            </Badge>
+          ))}
+        </div>
+      )}
+
       <div
-        ref={ref}
         className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(320px,1fr))]"
       >
         {teamCards.map((team, teamIndex) => {
@@ -351,20 +397,23 @@ export const BalanceEditor = forwardRef<HTMLDivElement, BalanceEditorProps>(func
               <div className="border-t border-white/[0.06]" />
 
               {/* Table */}
-              <Table>
-                <TableHeader>
-                  <TableRow className="border-white/[0.06] hover:bg-transparent">
-                    <TableHead className="h-9 pl-5 pr-3 text-[11px] uppercase tracking-wide text-white/30 font-semibold w-10">
-                      Role
-                    </TableHead>
-                    <TableHead className="h-9 px-3 text-[11px] uppercase tracking-wide text-white/30 font-semibold">
-                      Player
-                    </TableHead>
-                    <TableHead className="h-9 pl-3 pr-5 text-right text-[11px] uppercase tracking-wide text-white/30 font-semibold">
-                      Div
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
+                <Table>
+                  <TableHeader>
+                    <TableRow className="border-white/[0.06] hover:bg-transparent">
+                      <TableHead className="h-9 pl-5 pr-3 text-[11px] uppercase tracking-wide text-white/30 font-semibold w-10">
+                        Role
+                      </TableHead>
+                      <TableHead className="h-9 px-3 text-[11px] uppercase tracking-wide text-white/30 font-semibold">
+                        Player
+                      </TableHead>
+                      <TableHead className="h-9 px-2 text-center text-[11px] uppercase tracking-wide text-white/30 font-semibold">
+                        Div
+                      </TableHead>
+                      <TableHead className="h-9 pl-2 pr-5 text-center text-[11px] uppercase tracking-wide text-white/30 font-semibold">
+                        Regs
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
                 {(Object.keys(team.roster) as BalancerRosterKey[]).map((roleKey) => (
                   <DroppableRoleSection
                     key={`${team.id}-${roleKey}`}
@@ -378,6 +427,8 @@ export const BalanceEditor = forwardRef<HTMLDivElement, BalanceEditorProps>(func
           );
         })}
       </div>
+
+      </div>{/* end ref wrapper */}
 
       {/* Drag overlay — floating row preview */}
       <DragOverlay>

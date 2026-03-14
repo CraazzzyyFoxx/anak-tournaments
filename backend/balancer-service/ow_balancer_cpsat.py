@@ -102,6 +102,11 @@ class BalanceResult:
     players: list[Player]
     config: BalancerConfig
 
+    def benched_players(self) -> list[Player]:
+        """Return players who were not assigned to any team."""
+        assigned_ids = set(self.assignment.keys())
+        return [p for p in self.players if p.id not in assigned_ids]
+
     def _player_map(self) -> dict[str, Player]:
         return {p.id: p for p in self.players}
 
@@ -215,7 +220,9 @@ class TeamBalancer:
                 caps = [p for p in captains if role_assignment[p.id] == role]
                 caps.sort(key=lambda p: p.sr_for(role), reverse=True)
                 for p in caps:
-                    candidates = [tm for tm in teams if tm["captains"] == 0 and tm["slots"][role] < self.config.mask.roles[role]]
+                    candidates = [
+                        tm for tm in teams if tm["captains"] == 0 and tm["slots"][role] < self.config.mask.roles[role]
+                    ]
                     if not candidates:
                         break
                     candidates.sort(key=lambda tm: (tm["total_sr"], tm["role_sr"][role], tm["team_id"]))
@@ -225,12 +232,18 @@ class TeamBalancer:
             if any(tm["captains"] != 1 for tm in teams):
                 raise ValueError("Не удалось распределить по одному капитану на команду")
 
-        role_order = sorted(self.roles, key=lambda r: (self.config.mask.roles[r], sum(p.sr_for(r) > 0 for p in self.players)))
+        role_order = sorted(
+            self.roles, key=lambda r: (self.config.mask.roles[r], sum(p.sr_for(r) > 0 for p in self.players))
+        )
         for role in role_order:
             pool = role_pools[role][:]
             pool.sort(key=lambda p: (p.sr_for(role), -len(p.role_sr), -p.avg_sr, rng.random()), reverse=True)
             for p in pool:
-                eligible = [tm for tm in teams if tm["slots"][role] < self.config.mask.roles[role] and self._can_place(tm, p, role)]
+                eligible = [
+                    tm
+                    for tm in teams
+                    if tm["slots"][role] < self.config.mask.roles[role] and self._can_place(tm, p, role)
+                ]
                 if not eligible:
                     raise ValueError(f"Не удалось поставить игрока {p.name} на {role.value}")
                 chosen = min(eligible, key=lambda tm: self._placement_score(teams, tm, p, role, rng))
@@ -251,7 +264,11 @@ class TeamBalancer:
 
         # first lock exactly one captain/team if needed
         available_caps = [p for p in self.players if p.is_captain]
-        if self.config.captain_mode and self.config.require_exactly_one_captain_per_team and len(available_caps) >= self.T:
+        if (
+            self.config.captain_mode
+            and self.config.require_exactly_one_captain_per_team
+            and len(available_caps) >= self.T
+        ):
             caps = sorted(available_caps, key=lambda p: (p.avg_sr, rng.random()), reverse=True)[: self.T]
             for p in caps:
                 roles = [r for r in self.roles if p.sr_for(r) > 0 and remaining[r] > 0]
@@ -263,7 +280,9 @@ class TeamBalancer:
 
         players = [p for p in self.players if p.id not in assigned]
         scarcity = {r: demand[r] / max(1, sum(1 for p in self.players if p.sr_for(r) > 0)) for r in self.roles}
-        players.sort(key=lambda p: (len([r for r in self.roles if p.sr_for(r) > 0]), -p.max_sr, -p.avg_sr, rng.random()))
+        players.sort(
+            key=lambda p: (len([r for r in self.roles if p.sr_for(r) > 0]), -p.max_sr, -p.avg_sr, rng.random())
+        )
 
         for p in players:
             roles = [r for r in self.roles if p.sr_for(r) > 0 and remaining[r] > 0]
@@ -271,9 +290,7 @@ class TeamBalancer:
                 continue
             role = min(
                 roles,
-                key=lambda r: (
-                    p.pref_cost(r) * 1000 - p.sr_for(r) * 3 - remaining[r] * 20 - int(scarcity[r] * 100)
-                ),
+                key=lambda r: (p.pref_cost(r) * 1000 - p.sr_for(r) * 3 - remaining[r] * 20 - int(scarcity[r] * 100)),
             )
             assigned[p.id] = role
             remaining[role] -= 1
@@ -282,21 +299,24 @@ class TeamBalancer:
         for role in self.roles:
             while remaining[role] > 0:
                 candidates = [
-                    p for p in self.players
-                    if p.id in assigned and assigned[p.id] != role and p.sr_for(role) > 0
+                    p for p in self.players if p.id in assigned and assigned[p.id] != role and p.sr_for(role) > 0
                 ]
                 if not candidates:
                     raise ValueError(f"Не удалось добрать роль {role.value}")
+
                 def move_cost(p: Player):
                     from_role = assigned[p.id]
                     if remaining[from_role] >= 0:
                         # moving away creates shortage if from_role already exactly full
-                        base = 100000 if sum(1 for pid, rr in assigned.items() if rr == from_role) <= demand[from_role] else 0
+                        base = (
+                            100000
+                            if sum(1 for pid, rr in assigned.items() if rr == from_role) <= demand[from_role]
+                            else 0
+                        )
                     else:
                         base = 0
-                    return (
-                        base + p.pref_cost(role) * 500 + max(0, p.sr_for(from_role) - p.sr_for(role))
-                    )
+                    return base + p.pref_cost(role) * 500 + max(0, p.sr_for(from_role) - p.sr_for(role))
+
                 p = min(candidates, key=move_cost)
                 old = assigned[p.id]
                 assigned[p.id] = role
@@ -369,7 +389,12 @@ class TeamBalancer:
             lows = sum(1 for q in team["players_by_role"][role] if self._is_low(q, role))
             if lows >= 1:
                 return False
-        if self.config.captain_mode and self.config.require_exactly_one_captain_per_team and p.is_captain and team["captains"] >= 1:
+        if (
+            self.config.captain_mode
+            and self.config.require_exactly_one_captain_per_team
+            and p.is_captain
+            and team["captains"] >= 1
+        ):
             return False
         return True
 
@@ -428,7 +453,9 @@ class TeamBalancer:
                             new_assignment = dict(assignment)
                             new_assignment[p1.id] = (lo, role)
                             new_assignment[p2.id] = (hi, role)
-                            if not self._assignment_valid_fast(new_assignment, changed_teams={hi, lo}, changed_role=role):
+                            if not self._assignment_valid_fast(
+                                new_assignment, changed_teams={hi, lo}, changed_role=role
+                            ):
                                 continue
                             new_obj = self._objective(new_assignment)
                             if new_obj < current_obj and (best is None or new_obj < best[0]):
@@ -452,7 +479,9 @@ class TeamBalancer:
                                             new_assignment[p.id] = (lo, role)
                                         for p in pair_lo:
                                             new_assignment[p.id] = (hi, role)
-                                        if not self._assignment_valid_fast(new_assignment, changed_teams={hi, lo}, changed_role=role):
+                                        if not self._assignment_valid_fast(
+                                            new_assignment, changed_teams={hi, lo}, changed_role=role
+                                        ):
                                             continue
                                         new_obj = self._objective(new_assignment)
                                         if new_obj < current_obj and (best is None or new_obj < best[0]):
@@ -508,4 +537,9 @@ class TeamBalancer:
             role_delta += max(vals) - min(vals)
         pref = sum(self._player(pid).pref_cost(role) for pid, (_, role) in assignment.items())
         # primary focus on avgMMR range -> team sum range is equivalent * 5
-        return int(spread * self.config.w_sr_spread + mad * self.config.w_sr_balance + role_delta * self.config.w_role_delta + pref * self.config.w_role_pref)
+        return int(
+            spread * self.config.w_sr_spread
+            + mad * self.config.w_sr_balance
+            + role_delta * self.config.w_role_delta
+            + pref * self.config.w_role_pref
+        )
