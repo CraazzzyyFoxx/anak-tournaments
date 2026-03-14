@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_serializer
+from pydantic import BaseModel, field_validator
 
 __all__ = (
     "DiscordChannelUpsert",
@@ -31,6 +31,7 @@ class DiscordChannelRead(BaseModel):
 
     model_config = {"from_attributes": True}
 
-    @field_serializer("guild_id", "channel_id")
-    def serialize_snowflake(self, v: str | int) -> str:
+    @field_validator("guild_id", "channel_id", mode="before")
+    @classmethod
+    def coerce_snowflake_to_str(cls, v: object) -> str:
         return str(v)
