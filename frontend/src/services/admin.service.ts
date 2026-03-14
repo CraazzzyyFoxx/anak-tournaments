@@ -40,6 +40,7 @@ import {
   DiscordChannelRead,
   DiscordChannelInput,
   LogHistoryResponse,
+  LogProcessingRecord,
   QueueDepth,
 } from "@/types/admin.types";
 
