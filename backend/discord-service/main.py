@@ -1,6 +1,7 @@
 import discord
 import httpx
 import asyncio
+import asyncpg
 import time
 from datetime import datetime, timedelta, UTC
 from typing import Any, Dict, Set
@@ -25,8 +26,8 @@ logger = setup_logging(
 )
 from shared.models import Tournament, TournamentDiscordChannel
 from shared.models.log_processing import LogProcessingRecord, LogProcessingStatus
-from shared.schemas.events import DiscordCommandEvent
-from shared.messaging.config import DISCORD_COMMANDS_QUEUE
+from shared.schemas.events import DiscordCommandEvent, ProcessMatchLogEvent
+from shared.messaging.config import DISCORD_COMMANDS_QUEUE, PROCESS_MATCH_LOG_QUEUE
 
 
 intents = discord.Intents.default()
@@ -167,14 +168,80 @@ async def load_active_channels():
         logger.success(f"✅ Loaded {len(active_channels)} active channels")
 
 
+_PROCESSING_RESULT_TIMEOUT = 120  # seconds before giving up
+
+# Futures waiting for pg_notify('log_processed', ...) keyed by (tournament_id, filename)
+_pending_results: Dict[tuple, asyncio.Future] = {}
+
+_pg_listener_conn: asyncpg.Connection | None = None
+
+
+def _on_log_processed(_conn, _pid, _channel, payload: str) -> None:
+    """Called by asyncpg when a log_processed notification arrives."""
+    try:
+        parts = payload.split("|", 2)
+        if len(parts) != 3:
+            return
+        key = (int(parts[0]), parts[1])
+        success = parts[2] == "done"
+        fut = _pending_results.pop(key, None)
+        if fut and not fut.done():
+            fut.set_result(success)
+    except Exception as exc:
+        logger.warning(f"Error handling log_processed notification: {exc}")
+
+
+async def start_pg_listener() -> None:
+    global _pg_listener_conn
+    try:
+        _pg_listener_conn = await asyncpg.connect(
+            host=settings.postgres_host,
+            port=settings.postgres_port,
+            user=settings.postgres_user,
+            password=settings.postgres_password,
+            database=settings.postgres_db,
+        )
+        await _pg_listener_conn.add_listener("log_processed", _on_log_processed)
+        logger.success("✅ PostgreSQL LISTEN log_processed started")
+    except Exception as exc:
+        logger.error(f"❌ Failed to start pg listener: {exc}")
+
+
+async def stop_pg_listener() -> None:
+    global _pg_listener_conn
+    if _pg_listener_conn:
+        try:
+            await _pg_listener_conn.close()
+        except Exception:
+            pass
+        finally:
+            _pg_listener_conn = None
+
+
+async def _wait_for_processing_result(tournament_id: int, filename: str) -> bool:
+    """Await a pg_notify push from parser-service; resolves when done/failed or times out."""
+    key = (tournament_id, filename)
+    loop = asyncio.get_event_loop()
+    fut: asyncio.Future = loop.create_future()
+    _pending_results[key] = fut
+    try:
+        return await asyncio.wait_for(fut, timeout=_PROCESSING_RESULT_TIMEOUT)
+    except asyncio.TimeoutError:
+        logger.warning(f"⏱️ Timed out waiting for processing result of {filename}")
+        _pending_results.pop(key, None)
+        return False
+
+
 async def process_attachment(
     tournament_id: int,
     attachment: discord.Attachment,
     uploader_discord_name: str | None = None,
+    wait_for_result: bool = True,
 ) -> bool:
     """
-    Download and process a single attachment
-    Returns True if successful
+    Download and process a single attachment.
+    If wait_for_result is True, polls the DB until processing completes and
+    returns the actual success/failure. If False, returns True after queuing.
     """
     try:
         # Skip already-processed logs to avoid re-processing on restart
@@ -199,7 +266,7 @@ async def process_attachment(
             response.raise_for_status()
 
         async with await get_httpx_client(destination="internal") as http_client:
-            # Upload to parser service
+            # Upload to parser service (creates S3 object + LogProcessingRecord)
             files = {"file": (attachment.filename, response.content, attachment.content_type)}
             data = {}
             if uploader_discord_name:
@@ -214,28 +281,18 @@ async def process_attachment(
                 )
                 return False
 
-            logger.success(f"✅ {attachment.filename} uploaded")
+        # Publish processing event to queue (worker picks it up asynchronously)
+        if rabbit_broker is not None:
+            event = ProcessMatchLogEvent(tournament_id=tournament_id, filename=attachment.filename)
+            await rabbit_broker.publish(event.model_dump(), PROCESS_MATCH_LOG_QUEUE)
+            logger.success(f"✅ {attachment.filename} uploaded and queued for processing")
+        else:
+            logger.warning(f"⚠️ RabbitMQ not available, skipping queue publish for {attachment.filename}")
+            return False
 
-            # Process the uploaded file
-            process_response = await http_client.post(f"logs/{tournament_id}/{attachment.filename}")
+        if wait_for_result:
+            return await _wait_for_processing_result(tournament_id, attachment.filename)
 
-            if process_response.status_code == 400:
-                process_data = process_response.json()
-                if not process_data["detail"][0]["code"] == "match_not_finished":
-                    logger.error(
-                        f"❌ Processing failed for {attachment.filename}: "
-                        f"{process_response.status_code} - {process_response.text}"
-                    )
-                    return False
-
-            if process_response.status_code != 200:
-                logger.error(
-                    f"❌ Processing failed for {attachment.filename}: "
-                    f"{process_response.status_code} - {process_response.text}"
-                )
-                return False
-
-        logger.success(f"✅ {attachment.filename} processed successfully")
         return True
 
     except httpx.HTTPError as e:
@@ -246,10 +303,11 @@ async def process_attachment(
         return False
 
 
-async def process_message(message: discord.Message, tournament_id: int) -> None:
+async def process_message(message: discord.Message, tournament_id: int, wait_for_result: bool = True) -> None:
     """
-    Process a single message and its attachments
-    Adds reactions to indicate status
+    Process a single message and its attachments.
+    Adds reactions to indicate status.
+    Set wait_for_result=False to fire-and-forget without waiting for processing outcome.
     """
     if message.id in processing_messages:
         return  # Already processing
@@ -264,7 +322,11 @@ async def process_message(message: discord.Message, tournament_id: int) -> None:
         for attachment in message.attachments:
             # Only process log files
             if attachment.filename.lower().endswith((".txt", ".log", ".json")):
-                success = await process_attachment(tournament_id, attachment, uploader_discord_name=message.author.name)
+                success = await process_attachment(
+                    tournament_id, attachment,
+                    uploader_discord_name=message.author.name,
+                    wait_for_result=wait_for_result,
+                )
                 results.append(success)
             else:
                 logger.info(f"⏭️ Skipping non-log file: {attachment.filename}")
@@ -311,7 +373,7 @@ async def process_channel_history(channel_id: int, tournament_id: int, limit: in
         processed = 0
         async for message in channel.history(limit=limit):
             if message.attachments:
-                await process_message(message, tournament_id)
+                await process_message(message, tournament_id, wait_for_result=False)
                 processed += 1
 
         logger.success(f"✅ Processed {processed} messages with attachments")
@@ -496,6 +558,7 @@ async def main():
     try:
         logger.info("🚀 Starting Discord Log Collection Bot...")
         await start_rabbitmq_listener()
+        await start_pg_listener()
         await client.start(settings.discord_token)
     except KeyboardInterrupt:
         logger.info("⏸️ Shutting down bot...")
@@ -503,6 +566,7 @@ async def main():
         logger.error(f"❌ Fatal error: {e}")
     finally:
         await stop_rabbitmq_listener()
+        await stop_pg_listener()
         await client.close()
         logger.info("👋 Bot stopped")
 
