@@ -25,6 +25,7 @@ export const useUserCompareSearchParams = (): UseUserCompareSearchParamsResult =
   const role = parseRole(searchParams.get("role"));
   const divMin = parseOptionalInt(searchParams.get("div_min"));
   const divMax = parseOptionalInt(searchParams.get("div_max"));
+  const tournamentId = parseOptionalInt(searchParams.get("tournament_id"));
   const leftHeroId = parseOptionalInt(searchParams.get("left_hero_id"));
   const rightHeroId = parseOptionalInt(searchParams.get("right_hero_id"));
   const mapId = parseOptionalInt(searchParams.get("map_id"));
@@ -64,6 +65,7 @@ export const useUserCompareSearchParams = (): UseUserCompareSearchParamsResult =
     role,
     divMin,
     divMax,
+    tournamentId,
     leftHeroId,
     rightHeroId,
     mapId,

@@ -2,13 +2,13 @@ import React from "react";
 import dynamic from "next/dynamic";
 
 import { User } from "@/types/user.types";
-import userService from "@/services/user.service";
 
-const UserHeroes = dynamic(() => import("@/app/(site)/users/components/UserHeroes"));
+const UserHeroesContainer = dynamic(
+  () => import("@/app/(site)/users/components/UserHeroesContainer")
+);
 
-const UserHeroesPage = async ({ user }: { user: User }) => {
-  const heroes = await userService.getUserHeroes(user.id);
-  return <UserHeroes heroes={heroes.results} />;
+const UserHeroesPage = ({ user }: { user: User }) => {
+  return <UserHeroesContainer userId={user.id} />;
 };
 
 export default UserHeroesPage;

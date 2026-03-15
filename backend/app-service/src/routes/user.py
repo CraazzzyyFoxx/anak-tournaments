@@ -268,6 +268,7 @@ async def get_heroes(
     id: int,
     params: pagination.PaginationQueryParams = Depends(),
     stats: list[enums.LogStatsName] = Query([]),
+    tournament_id: int | None = Query(default=None, ge=1),
     session: AsyncSession = Depends(db.get_async_session),
 ):
     heroes = await user_flows.get_heroes(
@@ -275,6 +276,7 @@ async def get_heroes(
         id,
         pagination.PaginationParams.from_query_params(params),
         stats,
+        tournament_id=tournament_id,
     )
     return heroes
 

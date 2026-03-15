@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import heroService from "@/services/hero.service";
 import mapService from "@/services/map.service";
+import tournamentService from "@/services/tournament.service";
 import userService from "@/services/user.service";
 import { UserRoleType, UserCompareBaselineMode } from "@/types/user.types";
 import { CompareRow } from "@/app/(site)/users/compare/types";
@@ -20,6 +21,7 @@ interface UseUserCompareDataParams {
   role?: UserRoleType;
   divMin?: number;
   divMax?: number;
+  tournamentId?: number;
   leftHeroId?: number;
   rightHeroId?: number;
   mapId?: number;
@@ -33,12 +35,13 @@ export const useUserCompareData = ({
   role,
   divMin,
   divMax,
+  tournamentId,
   leftHeroId,
   rightHeroId,
   mapId
 }: UseUserCompareDataParams) => {
   const compareQuery = useQuery({
-    queryKey: ["user-compare", subjectUserId, effectiveBaseline, targetUserId, role, divMin, divMax],
+    queryKey: ["user-compare", subjectUserId, effectiveBaseline, targetUserId, role, divMin, divMax, tournamentId],
     enabled: !isHeroScope && subjectUserId !== undefined,
     queryFn: () =>
       userService.getUserCompare(subjectUserId!, {
@@ -46,7 +49,8 @@ export const useUserCompareData = ({
         targetUserId,
         role,
         divMin,
-        divMax
+        divMax,
+        tournamentId
       })
   });
 
@@ -72,6 +76,12 @@ export const useUserCompareData = ({
     staleTime: 5 * 60 * 1000
   });
 
+  const tournamentsQuery = useQuery({
+    queryKey: ["tournaments-select-options"],
+    queryFn: () => tournamentService.getAll(false),
+    staleTime: 5 * 60 * 1000
+  });
+
   const heroCompareQuery = useQuery({
     queryKey: [
       "user-hero-compare",
@@ -81,6 +91,7 @@ export const useUserCompareData = ({
       role,
       divMin,
       divMax,
+      tournamentId,
       leftHeroId,
       rightHeroId,
       mapId
@@ -96,12 +107,14 @@ export const useUserCompareData = ({
         role,
         divMin,
         divMax,
+        tournamentId,
         stats: HERO_COMPARE_STATS
       })
   });
 
   const heroes = heroesQuery.data?.results ?? [];
   const maps = mapsQuery.data?.results ?? [];
+  const tournaments = tournamentsQuery.data?.results ?? [];
 
   const heroMapById = useMemo(() => new Map(heroes.map((hero) => [hero.id, hero])), [heroes]);
   const mapById = useMemo(() => new Map(maps.map((map) => [map.id, map])), [maps]);
@@ -181,8 +194,10 @@ export const useUserCompareData = ({
     heroCompareQuery,
     heroesQuery,
     mapsQuery,
+    tournamentsQuery,
     heroes,
     maps,
+    tournaments,
     leftHero,
     rightHero,
     selectedMap,

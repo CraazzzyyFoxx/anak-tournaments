@@ -376,6 +376,7 @@ async def get_compare(
         role=compare_role,
         div_min=compare_div_min,
         div_max=compare_div_max,
+        tournament_id=params.tournament_id,
     )
     if not subject_rows:
         raise errors.ApiHTTPException(
@@ -390,7 +391,11 @@ async def get_compare(
 
     if mode == "target_user":
         target_user = await get(session, params.target_user_id, [])
-        target_rows = await service.get_compare_population(session, user_ids=[target_user.id])
+        target_rows = await service.get_compare_population(
+            session,
+            user_ids=[target_user.id],
+            tournament_id=params.tournament_id,
+        )
         if not target_rows:
             raise errors.ApiHTTPException(
                 status_code=404,
@@ -405,6 +410,7 @@ async def get_compare(
             role=compare_role,
             div_min=compare_div_min,
             div_max=compare_div_max,
+            tournament_id=params.tournament_id,
         )
         if not population_rows:
             raise errors.ApiHTTPException(
@@ -511,6 +517,7 @@ async def get_hero_compare(
         role=compare_role,
         div_min=compare_div_min,
         div_max=compare_div_max,
+        tournament_id=params.tournament_id,
     )
 
     if mode == "target_user":
@@ -521,6 +528,7 @@ async def get_hero_compare(
             hero_id=params.right_hero_id,
             map_id=params.map_id,
             stats=requested_stats,
+            tournament_id=params.tournament_id,
         )
         target = schemas.UserCompareUser(id=target_model.id, name=target_model.name)
         baseline_target = target
@@ -531,6 +539,7 @@ async def get_hero_compare(
             role=compare_role,
             div_min=compare_div_min,
             div_max=compare_div_max,
+            tournament_id=params.tournament_id,
         )
         if not population_users:
             raise errors.ApiHTTPException(
@@ -548,6 +557,7 @@ async def get_hero_compare(
             role=compare_role,
             div_min=compare_div_min,
             div_max=compare_div_max,
+            tournament_id=params.tournament_id,
         )
 
         sample_user_ids = [user_id for user_id, playtime in baseline_playtime_by_user.items() if playtime > 0]
@@ -896,6 +906,7 @@ async def get_heroes(
     id: int,
     params: pagination.PaginationParams,
     stats: list[enums.LogStatsName] | None = None,
+    tournament_id: int | None = None,
 ) -> pagination.Paginated[schemas.HeroWithUserStats]:
     """
     Retrieves a user's hero statistics, including performance and comparisons with other users.
@@ -912,7 +923,7 @@ async def get_heroes(
     requested_stats = set(stats or [])
     stats_filter = list(requested_stats) if requested_stats else None
 
-    user_stats = await service.get_statistics_by_heroes(session, user.id, stats_filter)
+    user_stats = await service.get_statistics_by_heroes(session, user.id, stats_filter, tournament_id=tournament_id)
     if stats_filter:
         all_stats = await service.get_statistics_by_heroes_all_values_filtered(session, stats_filter)
     else:

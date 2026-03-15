@@ -20,6 +20,7 @@ export interface ParsedCompareParams {
   role?: "Tank" | "Damage" | "Support";
   divMin?: number;
   divMax?: number;
+  tournamentId?: number;
   leftHeroId?: number;
   rightHeroId?: number;
   mapId?: number;

@@ -12,6 +12,7 @@ import SearchableImageSelect, {
 } from "@/app/(site)/users/compare/components/SearchableImageSelect";
 import { Hero } from "@/types/hero.types";
 import { MapRead } from "@/types/map.types";
+import { Tournament } from "@/types/tournament.types";
 import { UserRoleType } from "@/types/user.types";
 import { CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -23,6 +24,7 @@ interface CompareFiltersPanelProps {
   role?: UserRoleType;
   divMin?: number;
   divMax?: number;
+  tournamentId?: number;
   leftHeroId?: number;
   rightHeroId?: number;
   mapId?: number;
@@ -33,10 +35,13 @@ interface CompareFiltersPanelProps {
   targetNameLoading?: boolean;
   heroes: Hero[];
   maps: MapRead[];
+  tournaments: Tournament[];
   isHeroesLoading: boolean;
   isHeroesError: boolean;
   isMapsLoading: boolean;
   isMapsError: boolean;
+  isTournamentsLoading: boolean;
+  isTournamentsError: boolean;
   updateParams: (updates: Record<string, string | number | undefined>) => void;
 }
 
@@ -47,6 +52,7 @@ const CompareFiltersPanel = ({
   role,
   divMin,
   divMax,
+  tournamentId,
   leftHeroId,
   rightHeroId,
   mapId,
@@ -57,10 +63,13 @@ const CompareFiltersPanel = ({
   targetNameLoading = false,
   heroes,
   maps,
+  tournaments,
   isHeroesLoading,
   isHeroesError,
   isMapsLoading,
   isMapsError,
+  isTournamentsLoading,
+  isTournamentsError,
   updateParams
 }: CompareFiltersPanelProps) => {
   const heroOptions: SearchableImageOption[] = useMemo(
@@ -81,6 +90,16 @@ const CompareFiltersPanel = ({
         imageSrc: getMapIconSrc(map),
       })),
     [maps]
+  );
+
+  const tournamentOptions: SearchableImageOption[] = useMemo(
+    () =>
+      tournaments.map((t) => ({
+        value: String(t.id),
+        label: t.name,
+        imageSrc: null,
+      })),
+    [tournaments]
   );
 
   const isHeroScope = scope === "hero";
@@ -141,7 +160,7 @@ const CompareFiltersPanel = ({
         <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Filters
         </div>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
           <div className="space-y-1">
             <div className="text-xs font-semibold text-muted-foreground">Compare scope</div>
             <Select value={scope} onValueChange={(value) => updateParams({ scope: value as CompareScope })}>
@@ -281,6 +300,21 @@ const CompareFiltersPanel = ({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-1">
+            <div className="text-xs font-semibold text-muted-foreground">Tournament</div>
+            <SearchableImageSelect
+              value={tournamentId ? String(tournamentId) : undefined}
+              onValueChange={(val) =>
+                updateParams({ tournament_id: val ? parseOptionalInt(val) : undefined })
+              }
+              options={tournamentOptions}
+              placeholder="All tournaments"
+              searchPlaceholder="Search tournament..."
+              isLoading={isTournamentsLoading}
+              disabled={isTournamentsLoading || isTournamentsError}
+            />
           </div>
         </div>
       </div>

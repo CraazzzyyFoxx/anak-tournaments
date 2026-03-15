@@ -131,14 +131,16 @@ export default class userService {
   }
   static async getUserHeroes(
     id: number,
-    stats?: LogStatsName[]
+    stats?: LogStatsName[],
+    tournamentId?: number
   ): Promise<PaginatedResponse<HeroWithUserStats>> {
     return customFetch(`users/${id}/heroes`, {
       query: {
         per_page: -1,
         sort: "id",
         order: "asc",
-        stats
+        stats,
+        tournament_id: tournamentId
       }
     }).then((res) => res.json());
   }
@@ -220,13 +222,15 @@ export default class userService {
       targetUserId,
       role,
       divMin,
-      divMax
+      divMax,
+      tournamentId
     }: {
       baseline?: UserCompareBaselineMode;
       targetUserId?: number;
       role?: UserRoleType;
       divMin?: number;
       divMax?: number;
+      tournamentId?: number;
     } = {}
   ): Promise<UserCompareResponse> {
     return customFetch(`users/${userId}/compare`, {
@@ -235,7 +239,8 @@ export default class userService {
         target_user_id: targetUserId,
         role,
         div_min: divMin,
-        div_max: divMax
+        div_max: divMax,
+        tournament_id: tournamentId
       }
     }).then((res) => res.json());
   }
@@ -251,6 +256,7 @@ export default class userService {
       role,
       divMin,
       divMax,
+      tournamentId,
       stats
     }: {
       baseline?: UserCompareBaselineMode;
@@ -261,6 +267,7 @@ export default class userService {
       role?: UserRoleType;
       divMin?: number;
       divMax?: number;
+      tournamentId?: number;
       stats?: LogStatsName[];
     }
   ): Promise<UserHeroCompareResponse> {
@@ -274,6 +281,7 @@ export default class userService {
         role,
         div_min: divMin,
         div_max: divMax,
+        tournament_id: tournamentId,
         stats
       }
     }).then((res) => res.json());

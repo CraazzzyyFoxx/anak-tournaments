@@ -325,6 +325,7 @@ class UserCompareQueryParams(BaseModel):
     role: enums.HeroClass | None = None
     div_min: int | None = Field(default=None, ge=1, le=20)
     div_max: int | None = Field(default=None, ge=1, le=20)
+    tournament_id: int | None = Field(default=None, ge=1)
 
 
 @dataclass
@@ -334,6 +335,7 @@ class UserCompareParams:
     role: enums.HeroClass | None = None
     div_min: int | None = None
     div_max: int | None = None
+    tournament_id: int | None = None
 
     @classmethod
     def from_query_params(cls, query_params: UserCompareQueryParams):
@@ -371,6 +373,7 @@ class UserHeroCompareQueryParams(BaseModel):
     role: enums.HeroClass | None = None
     div_min: int | None = Field(default=None, ge=1, le=20)
     div_max: int | None = Field(default=None, ge=1, le=20)
+    tournament_id: int | None = Field(default=None, ge=1)
     stats: list[enums.LogStatsName] | None = None
 
 
@@ -384,6 +387,7 @@ class UserHeroCompareParams:
     role: enums.HeroClass | None = None
     div_min: int | None = None
     div_max: int | None = None
+    tournament_id: int | None = None
     stats: list[enums.LogStatsName] = field(default_factory=list)
 
     @classmethod

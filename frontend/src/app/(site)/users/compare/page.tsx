@@ -19,6 +19,7 @@ const PageContent = () => {
     heroCompareQuery,
     heroes,
     maps,
+    tournaments,
     leftHero,
     rightHero,
     selectedMap,
@@ -32,7 +33,8 @@ const PageContent = () => {
     activeErrorMessage,
     compareDisplayName,
     heroesQuery,
-    mapsQuery
+    mapsQuery,
+    tournamentsQuery
   } = useUserCompareData({
     isHeroScope: compareParams.isHeroScope,
     subjectUserId: compareParams.subjectUserId,
@@ -41,6 +43,7 @@ const PageContent = () => {
     role: compareParams.role,
     divMin: compareParams.divMin,
     divMax: compareParams.divMax,
+    tournamentId: compareParams.tournamentId,
     leftHeroId: compareParams.leftHeroId,
     rightHeroId: compareParams.rightHeroId,
     mapId: compareParams.mapId
@@ -81,6 +84,7 @@ const PageContent = () => {
           role={compareParams.role}
           divMin={compareParams.divMin}
           divMax={compareParams.divMax}
+          tournamentId={compareParams.tournamentId}
           leftHeroId={compareParams.leftHeroId}
           rightHeroId={compareParams.rightHeroId}
           mapId={compareParams.mapId}
@@ -91,10 +95,13 @@ const PageContent = () => {
           targetNameLoading={Boolean(compareParams.targetUserId) && activeLoading && !selectedTargetName}
           heroes={heroes}
           maps={maps}
+          tournaments={tournaments}
           isHeroesLoading={heroesQuery.isLoading}
           isHeroesError={heroesQuery.isError}
           isMapsLoading={mapsQuery.isLoading}
           isMapsError={mapsQuery.isError}
+          isTournamentsLoading={tournamentsQuery.isLoading}
+          isTournamentsError={tournamentsQuery.isError}
           updateParams={compareParams.updateParams}
         />
 
