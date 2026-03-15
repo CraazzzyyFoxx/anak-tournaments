@@ -443,7 +443,7 @@ export function AdminDataTable<TData>({
                       <TableHead
                         key={header.id}
                         className={cn(
-                          "sticky top-0 z-10 h-11 border-b border-border/60 bg-background/95 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/90 backdrop-blur supports-[backdrop-filter]:bg-background/80",
+                          "sticky top-0 z-10 h-9 border-b border-border/60 bg-background/95 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/90 backdrop-blur supports-[backdrop-filter]:bg-background/80",
                           isFirstColumn && "pl-4 sm:pl-5",
                           isLastColumn && "pr-4 sm:pr-5",
                           isActionColumn ? "text-right" : "text-left"
@@ -502,7 +502,7 @@ export function AdminDataTable<TData>({
                         <TableCell
                           key={cell.id}
                           className={cn(
-                            "py-3.5 align-middle",
+                            "py-2 align-middle",
                             isFirstColumn && "pl-4 sm:pl-5",
                             isLastColumn && "pr-4 sm:pr-5",
                             isActionColumn && "whitespace-nowrap text-right",
