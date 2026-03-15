@@ -284,11 +284,42 @@ heroes_achievements: list[schemas.AchievementCreate] = [
         description_en='Have the best K/D as Wuyang during the tournament',
     ),
     schemas.AchievementCreate(
-        name="",
+        name="Инкредибили",
         slug="vendetta",
         description_ru="Иметь лучшее K/D на Вендетте за турнир",
         description_en="Have the best K/D as Vendetta during the tournament",
-    )
+    ),
+    schemas.AchievementCreate(
+        name="Найду и выебу",
+        slug="emre",
+        description_ru="Иметь лучшее K/D на Эмре за турнир",
+        description_en="Have the best K/D as Emre during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="Ну это шляпа",
+        slug="mizuki",
+        description_ru="Иметь лучшее K/D на Мидзуки за турнир",
+        description_en="Have the best K/D as Mizuki during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="С дымком",
+        slug="anran",
+        description_ru="Иметь лучшее K/D на Анране за турнир",
+        description_en="Have the best K/D as Anran during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="Hot Mommy",
+        slug="domina",
+        description_ru="Иметь лучшее K/D на Домине за турнир",
+        description_en="Have the best K/D as Domina during the tournament",
+    ),
+    schemas.AchievementCreate(
+        name="Пушистый Гандон",
+        slug="jetpack-cat",
+        description_ru="Иметь лучшее K/D на Реактивной Кисе за турнир",
+        description_en="Have the best K/D as Jetpack Cat during the tournament",
+    ),
+
 ]
 
 overall_achievements: list[schemas.AchievementCreate] = [
