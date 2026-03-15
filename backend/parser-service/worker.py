@@ -1,0 +1,78 @@
+import uuid
+
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from faststream import FastStream
+from faststream.rabbit import RabbitBroker
+from shared.messaging.config import (
+    PROCESS_MATCH_LOG_QUEUE,
+    PROCESS_TOURNAMENT_LOGS_QUEUE,
+)
+from shared.observability import setup_logging
+from shared.observability.correlation import correlation_id_ctx
+from shared.schemas.events import ProcessMatchLogEvent, ProcessTournamentLogsEvent
+
+from src.core import config, db
+from src.services.encounter import tasks as encounter_tasks
+from src.services.match_logs import flows as logs_flows
+from src.services.s3 import service as s3_service
+from src.services.standings import tasks as standings_tasks
+from src.services.tournament import flows as tournaments_flows
+
+logger = setup_logging(
+    service_name="parser-worker",
+    log_level=config.settings.log_level,
+    logs_root_path=config.settings.logs_root_path,
+    json_output=config.settings.json_logging,
+)
+
+broker = RabbitBroker(config.settings.rabbitmq_url, logger=logger)
+app = FastStream(broker, logger=logger)
+
+scheduler = AsyncIOScheduler()
+
+
+@app.on_startup
+async def start_scheduler() -> None:
+    scheduler.add_job(encounter_tasks.bulk_create, "interval", minutes=2, id="encounter_sync")
+    scheduler.add_job(standings_tasks.bulk_create_all, "interval", minutes=3, id="standings_sync")
+    scheduler.start()
+    logger.info("Scheduler started: encounter sync every 2m, standings sync every 3m")
+
+
+@app.on_shutdown
+async def stop_scheduler() -> None:
+    scheduler.shutdown(wait=False)
+
+
+@broker.subscriber(PROCESS_MATCH_LOG_QUEUE)
+async def process_match_log_async(data: dict) -> None:
+    # Generate a correlation ID for this consumer invocation so all log lines
+    # emitted during processing of this message share a traceable ID.
+    correlation_id_ctx.set(str(uuid.uuid4()))
+    event = ProcessMatchLogEvent.model_validate(data)
+    logger.bind(tournament_id=event.tournament_id, filename=event.filename).info("Processing match log from queue")
+    try:
+        async with db.async_session_maker() as session:
+            await logs_flows.process_match_log(session, event.tournament_id, event.filename, is_raise=True)
+    except Exception:
+        # Re-raise so FastStream nacks the message; with x-dead-letter-exchange configured
+        # on PROCESS_MATCH_LOG_QUEUE, the message will be routed to process_match_log.dlq.
+        logger.exception(f"Failed to process match log tournament_id={event.tournament_id} filename={event.filename}")
+        raise
+
+
+@broker.subscriber(PROCESS_TOURNAMENT_LOGS_QUEUE)
+async def process_tournament_log(data: dict) -> None:
+    # Generate a correlation ID for this consumer invocation.
+    correlation_id_ctx.set(str(uuid.uuid4()))
+    event = ProcessTournamentLogsEvent.model_validate(data)
+    logger.bind(tournament_id=event.tournament_id).info("Processing tournament logs from queue")
+    try:
+        async with db.async_session_maker() as session:
+            tournament = await tournaments_flows.get(session, event.tournament_id, [])
+            for log in await s3_service.async_client.get_logs_by_tournament(tournament.id):
+                await logs_flows.process_match_log(session, tournament.id, log, is_raise=False)
+        logger.info(f"All logs for tournament {event.tournament_id} are queued for processing.")
+    except Exception:
+        logger.exception(f"Failed to process tournament logs tournament_id={event.tournament_id}")
+        raise

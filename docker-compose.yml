@@ -208,6 +208,34 @@ services:
       retries: 3
       start_period: 40s
 
+  parser-worker:
+    image: registry.craazzzyyfoxx.me/aqt-parser:dev
+    profiles: ["workers"]
+    build:
+      context: ./backend
+      args:
+        APP_PATH: parser
+    command: faststream run worker:app --reload --reload-dir /app/parser-service --reload-dir /app/shared
+    env_file:
+      - ./backend/env/common.env
+      - ./backend/env/parser.env
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      parser:
+        condition: service_healthy
+    volumes:
+      - ./backend/parser-service:/app/parser-service
+      - ./backend/shared:/app/shared
+      - ./logs/parser-worker:/logs
+    networks:
+      - app-network
+
   balancer-worker:
     image: registry.craazzzyyfoxx.me/aqt-balancer:dev
     profiles: ["workers"]

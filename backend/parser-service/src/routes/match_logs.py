@@ -1,19 +1,14 @@
-import uuid
-
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 from faststream.rabbit.fastapi import RabbitRouter
 from loguru import logger
 from shared.messaging.config import (
     DISCORD_COMMANDS_QUEUE,
-    PROCESS_MATCH_LOG_QUEUE,
     PROCESS_TOURNAMENT_LOGS_QUEUE,
 )
 from sqlalchemy import select
 from shared.models.log_processing import LogProcessingSource
-from shared.observability.correlation import correlation_id_ctx
 from shared.schemas.events import (
     DiscordCommandEvent,
-    ProcessMatchLogEvent,
     ProcessTournamentLogsEvent,
 )
 
@@ -31,7 +26,6 @@ router = APIRouter(
     dependencies=[Depends(auth.require_role_or_service_scope("admin", "parser:logs"))],
 )
 task_router = RabbitRouter(config.settings.broker_url, logger=logger)
-publisher = task_router.publisher(PROCESS_MATCH_LOG_QUEUE, title="Logs")
 
 
 def decode_file_lines(uploaded_file: UploadFile) -> bytes:
@@ -147,39 +141,3 @@ async def process_match_log(tournament_id: int, filename: str, session=Depends(d
     return {"message": f"Match log '{filename}' for tournament {tournament_id} processed successfully."}
 
 
-@publisher
-@task_router.subscriber(PROCESS_MATCH_LOG_QUEUE)
-async def process_match_log_async(data: dict):
-    # Generate a correlation ID for this consumer invocation so all log lines
-    # emitted during processing of this message share a traceable ID.
-    correlation_id_ctx.set(str(uuid.uuid4()))
-    event = ProcessMatchLogEvent.model_validate(data)
-    logger.bind(tournament_id=event.tournament_id, filename=event.filename).info("Processing match log from queue")
-    try:
-        async with db.async_session_maker() as session:
-            await logs_flows.process_match_log(session, event.tournament_id, event.filename, is_raise=True)
-    except Exception:
-        # Re-raise so FastStream nacks the message; with x-dead-letter-exchange configured
-        # on PROCESS_MATCH_LOG_QUEUE, the message will be routed to process_match_log.dlq.
-        logger.exception(f"Failed to process match log tournament_id={event.tournament_id} filename={event.filename}")
-        raise
-
-
-@publisher
-@task_router.subscriber(PROCESS_TOURNAMENT_LOGS_QUEUE)
-async def process_tournament_log(data: dict):
-    # Generate a correlation ID for this consumer invocation.
-    correlation_id_ctx.set(str(uuid.uuid4()))
-    event = ProcessTournamentLogsEvent.model_validate(data)
-    logger.bind(tournament_id=event.tournament_id).info("Processing tournament logs from queue")
-    try:
-        async with db.async_session_maker() as session:
-            tournament = await tournaments_flows.get(session, event.tournament_id, [])
-
-            for log in await s3_service.async_client.get_logs_by_tournament(tournament.id):
-                await logs_flows.process_match_log(session, tournament.id, log, is_raise=False)
-
-        logger.info(f"All logs for tournament {event.tournament_id} are queued for processing.")
-    except Exception:
-        logger.exception(f"Failed to process tournament logs tournament_id={event.tournament_id}")
-        raise
