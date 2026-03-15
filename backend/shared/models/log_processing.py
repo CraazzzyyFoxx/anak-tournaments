@@ -8,7 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from shared.core import db
 
 if TYPE_CHECKING:
-    from shared.models.auth_user import AuthUser
+    from shared.models.user import User
     from shared.models.tournament import Tournament
 
 __all__ = ("LogProcessingRecord", "LogProcessingStatus", "LogProcessingSource")
@@ -49,7 +49,7 @@ class LogProcessingRecord(db.TimeStampIntegerMixin):
         default=LogProcessingSource.manual,
     )
     uploader_id: Mapped[int | None] = mapped_column(
-        ForeignKey("auth_user.id", ondelete="SET NULL"),
+        ForeignKey("user.id", ondelete="SET NULL"),
         nullable=True,
     )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -58,7 +58,7 @@ class LogProcessingRecord(db.TimeStampIntegerMixin):
 
     # Relations
     tournament: Mapped["Tournament"] = relationship(lazy="selectin")
-    uploader: Mapped["AuthUser | None"] = relationship(lazy="selectin", foreign_keys=[uploader_id])
+    uploader: Mapped["User | None"] = relationship(lazy="selectin", foreign_keys=[uploader_id])
 
     def __repr__(self) -> str:
         return f"<LogProcessingRecord tournament_id={self.tournament_id} filename={self.filename} status={self.status}>"

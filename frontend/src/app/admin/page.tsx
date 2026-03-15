@@ -860,7 +860,7 @@ export default function AdminDashboard() {
                         </span>
                       </div>
                       <div className="flex items-center gap-2 shrink-0 text-xs text-muted-foreground">
-                        {record.uploader_username && <span>{record.uploader_username}</span>}
+                        {record.uploader_name && <span>{record.uploader_name}</span>}
                         {record.tournament_name && (
                           <span className="hidden sm:block text-muted-foreground/60">{record.tournament_name}</span>
                         )}

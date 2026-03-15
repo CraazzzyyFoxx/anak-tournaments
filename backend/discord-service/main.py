@@ -24,6 +24,7 @@ logger = setup_logging(
     json_output=settings.json_logging,
 )
 from shared.models import Tournament, TournamentDiscordChannel
+from shared.models.log_processing import LogProcessingRecord, LogProcessingStatus
 from shared.schemas.events import DiscordCommandEvent
 from shared.messaging.config import DISCORD_COMMANDS_QUEUE
 
@@ -169,12 +170,28 @@ async def load_active_channels():
 async def process_attachment(
     tournament_id: int,
     attachment: discord.Attachment,
+    uploader_discord_name: str | None = None,
 ) -> bool:
     """
     Download and process a single attachment
     Returns True if successful
     """
     try:
+        # Skip already-processed logs to avoid re-processing on restart
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(LogProcessingRecord)
+                .where(
+                    LogProcessingRecord.tournament_id == tournament_id,
+                    LogProcessingRecord.filename == attachment.filename,
+                    LogProcessingRecord.status == LogProcessingStatus.done,
+                )
+                .limit(1)
+            )
+            if result.scalar_one_or_none() is not None:
+                logger.info(f"⏭️ Skipping {attachment.filename} - already processed")
+                return True
+
         logger.info(f"📥 Downloading {attachment.filename} for tournament {tournament_id}")
         async with await get_httpx_client(destination="discord") as http_client:
             # Download file from Discord
@@ -184,8 +201,11 @@ async def process_attachment(
         async with await get_httpx_client(destination="internal") as http_client:
             # Upload to parser service
             files = {"file": (attachment.filename, response.content, attachment.content_type)}
+            data = {}
+            if uploader_discord_name:
+                data["discord_username"] = uploader_discord_name
 
-            upload_response = await http_client.post(f"logs/{tournament_id}/upload", files=files)
+            upload_response = await http_client.post(f"logs/{tournament_id}/upload", files=files, data=data)
 
             if upload_response.status_code != 200:
                 logger.error(
@@ -244,7 +264,7 @@ async def process_message(message: discord.Message, tournament_id: int) -> None:
         for attachment in message.attachments:
             # Only process log files
             if attachment.filename.lower().endswith((".txt", ".log", ".json")):
-                success = await process_attachment(tournament_id, attachment)
+                success = await process_attachment(tournament_id, attachment, uploader_discord_name=message.author.name)
                 results.append(success)
             else:
                 logger.info(f"⏭️ Skipping non-log file: {attachment.filename}")

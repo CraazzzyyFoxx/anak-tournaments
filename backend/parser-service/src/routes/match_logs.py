@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 from faststream.rabbit.fastapi import RabbitRouter
 from loguru import logger
 from shared.messaging.config import (
@@ -8,6 +8,7 @@ from shared.messaging.config import (
     PROCESS_MATCH_LOG_QUEUE,
     PROCESS_TOURNAMENT_LOGS_QUEUE,
 )
+from sqlalchemy import select
 from shared.models.log_processing import LogProcessingSource
 from shared.observability.correlation import correlation_id_ctx
 from shared.schemas.events import (
@@ -67,8 +68,9 @@ async def process_tournament_logs(tournament_id: int, session=Depends(db.get_asy
 async def process_logs_async(
     tournament_id: int,
     file: UploadFile,
+    discord_username: str | None = Form(None),
     session=Depends(db.get_async_session),
-    user: models.AuthUser | None = Depends(auth.get_current_user_optional),
+    auth_user: models.AuthUser | None = Depends(auth.get_current_user_optional),
 ):
     if file.filename is None:
         raise HTTPException(status_code=400, detail="No file name provided")
@@ -79,12 +81,33 @@ async def process_logs_async(
     if not state:
         raise HTTPException(status_code=400, detail="Failed to upload file")
 
+    # Resolve uploader game User and source
+    uploader_user_id: int | None = None
+    if discord_username:
+        source = LogProcessingSource.discord
+        discord_link = await session.execute(
+            select(models.UserDiscord).where(models.UserDiscord.name == discord_username).limit(1)
+        )
+        discord_user = discord_link.scalar_one_or_none()
+        if discord_user:
+            uploader_user_id = discord_user.user_id
+    elif auth_user:
+        source = LogProcessingSource.upload
+        player_link = await session.execute(
+            select(models.AuthUserPlayer).where(models.AuthUserPlayer.auth_user_id == auth_user.id).limit(1)
+        )
+        auth_player = player_link.scalar_one_or_none()
+        if auth_player:
+            uploader_user_id = auth_player.player_id
+    else:
+        source = LogProcessingSource.manual
+
     await record_service.upsert_log_record(
         session,
         tournament_id=tournament.id,
         filename=file.filename,
-        source=LogProcessingSource.upload,
-        uploader_id=user.id if user else None,
+        source=source,
+        uploader_id=uploader_user_id,
     )
     return {"message": "Logs uploaded successfully"}
 

@@ -1839,8 +1839,8 @@ export default function AdminTournamentWorkspacePage() {
                           <span className="capitalize text-muted-foreground text-sm">{record.source}</span>
                         </TableCell>
                         <TableCell className={adminDetailTableCell}>
-                          {record.uploader_username ? (
-                            <span className="text-sm">{record.uploader_username}</span>
+                          {record.uploader_name ? (
+                            <span className="text-sm">{record.uploader_name}</span>
                           ) : (
                             <span className="text-muted-foreground text-sm">—</span>
                           )}

@@ -51,7 +51,7 @@ class LogRecordRead(BaseModel):
     filename: str
     status: str
     source: str
-    uploader_username: str | None
+    uploader_name: str | None
     error_message: str | None
     created_at: datetime
     started_at: datetime | None
@@ -106,7 +106,7 @@ def _record_to_dict(record: models.LogProcessingRecord) -> dict:
         "filename": record.filename,
         "status": record.status.value if hasattr(record.status, "value") else record.status,
         "source": record.source.value if hasattr(record.source, "value") else record.source,
-        "uploader_username": record.uploader.username if record.uploader else None,
+        "uploader_name": record.uploader.name if record.uploader else None,
         "error_message": record.error_message,
         "created_at": record.created_at.isoformat() if record.created_at else None,
         "started_at": record.started_at.isoformat() if record.started_at else None,

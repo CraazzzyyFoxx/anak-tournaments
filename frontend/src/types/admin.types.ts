@@ -273,7 +273,7 @@ export interface LogProcessingRecord {
   filename: string;
   status: LogProcessingStatus;
   source: LogProcessingSource;
-  uploader_username: string | null;
+  uploader_name: string | null;
   error_message: string | null;
   created_at: string;
   started_at: string | null;
