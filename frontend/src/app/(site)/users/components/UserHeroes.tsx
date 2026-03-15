@@ -49,7 +49,7 @@ import {
   toCssVarRgb
 } from "@/app/(site)/users/components/user-heroes/utils";
 
-const UserHeroes = ({ heroes }: { heroes: HeroWithUserStats[] }) => {
+const UserHeroes = ({ heroes, filterSlot }: { heroes: HeroWithUserStats[]; filterSlot?: React.ReactNode }) => {
   const safeHeroes = Array.isArray(heroes) ? heroes : [];
 
   const HERO_POOL_LIMIT = 10;
@@ -469,16 +469,19 @@ const UserHeroes = ({ heroes }: { heroes: HeroWithUserStats[] }) => {
                   Playtime share across heroes (based on tracked time &gt; 60s).
                 </CardDescription>
               </div>
-              {heroPlaytimeData.length > HERO_POOL_LIMIT ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowAllChart((v) => !v)}
-                >
-                  {showAllChart ? "Show top" : "Show all"}
-                </Button>
-              ) : null}
+              <div className="flex shrink-0 items-center gap-2">
+                {filterSlot}
+                {heroPlaytimeData.length > HERO_POOL_LIMIT ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowAllChart((v) => !v)}
+                  >
+                    {showAllChart ? "Show top" : "Show all"}
+                  </Button>
+                ) : null}
+              </div>
             </div>
           </CardHeader>
           <div className="relative px-3 pb-4">

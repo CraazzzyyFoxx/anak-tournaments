@@ -37,25 +37,21 @@ const UserHeroesContainer = ({ userId }: UserHeroesContainerProps) => {
 
   const heroes = heroesQuery.data?.results ?? [];
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <div className="text-xs font-semibold text-muted-foreground">Tournament</div>
-        <div className="w-64">
-          <SearchableImageSelect
-            value={tournamentId ? String(tournamentId) : undefined}
-            onValueChange={(val) => setTournamentId(val ? Number(val) : undefined)}
-            options={tournamentOptions}
-            placeholder="All tournaments"
-            searchPlaceholder="Search tournament..."
-            isLoading={tournamentsQuery.isLoading}
-            disabled={tournamentsQuery.isLoading || tournamentsQuery.isError}
-          />
-        </div>
-      </div>
-      <UserHeroes heroes={heroes} />
+  const filterSlot = (
+    <div className="w-52">
+      <SearchableImageSelect
+        value={tournamentId ? String(tournamentId) : undefined}
+        onValueChange={(val) => setTournamentId(val ? Number(val) : undefined)}
+        options={tournamentOptions}
+        placeholder="All tournaments"
+        searchPlaceholder="Search tournament..."
+        isLoading={tournamentsQuery.isLoading}
+        disabled={tournamentsQuery.isLoading || tournamentsQuery.isError}
+      />
     </div>
   );
+
+  return <UserHeroes heroes={heroes} filterSlot={filterSlot} />;
 };
 
 export default UserHeroesContainer;
