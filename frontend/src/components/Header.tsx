@@ -114,11 +114,11 @@ const components: Record<string, { title: string; href: string; description: str
 const Header = () => {
   const { user } = useAuthProfile();
   const openAuthModal = useAuthModalStore((state) => state.open);
-  const { isOrganizer, isLoaded, isSuperuser, hasAnyPermission } = usePermissions();
+  const { isOrganizer, isLoaded, isSuperuser, isModerator, hasAnyPermission } = usePermissions();
   const username = user?.username;
   const avatarUrl = user?.avatarUrl;
   const profileHref = username ? `/users/${username}` : "/users";
-  const canAccessAdmin = isLoaded && (isSuperuser || hasAnyPermission(adminEntryPermissions));
+  const canAccessAdmin = isLoaded && (isSuperuser || isModerator || isOrganizer || hasAnyPermission(adminEntryPermissions));
   const canAccessOrganization = isLoaded && (canAccessAdmin || isOrganizer);
 
   const getVisibleItems = (
