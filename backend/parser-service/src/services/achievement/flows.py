@@ -7,6 +7,242 @@ from src.services.tournament import service as tournament_service
 
 from . import service
 
+function_division_map: dict[str, schemas.AchievementFunction] = {
+    "my-strength-is-growing": schemas.AchievementFunction(
+        slug="my-strength-is-growing",
+        tournament_required=False,
+        function=service.calculate_my_strength_is_growing_achievements,
+    ),
+    "not-good-enough": schemas.AchievementFunction(
+        slug="not-good-enough",
+        tournament_required=False,
+        function=service.calculate_not_good_enough_achievements,
+    ),
+    "i-need-more-power": schemas.AchievementFunction(
+        slug="i-need-more-power",
+        tournament_required=True,
+        function=service.calculate_i_need_more_power_achievements,
+    ),
+    "balance-from-anak": schemas.AchievementFunction(
+        slug="balance-from-anak",
+        tournament_required=False,
+        function=service.calculate_balance_from_anak_achievements,
+    ),
+    "critical-failure": schemas.AchievementFunction(
+        slug="critical-failure",
+        tournament_required=False,
+        function=service.calculate_critical_failure_achievements,
+    ),
+    "my-drill-will-pierce-the-sky": schemas.AchievementFunction(
+        slug="my-drill-will-pierce-the-sky",
+        tournament_required=False,
+        function=service.calculate_my_drill_will_pierce_the_sky_achievements,
+    ),
+    "im-fine-with-that": schemas.AchievementFunction(
+        slug="im-fine-with-that",
+        tournament_required=False,
+        function=service.calculate_im_fine_with_that_achievements,
+    ),
+}
+
+
+function_team_map: dict[str, schemas.AchievementFunction] = {
+    "accuracy-is-above-all-else": schemas.AchievementFunction(
+        slug="accuracy-is-above-all-else",
+        tournament_required=True,
+        function=service.calculate_accuracy_is_above_all_else_achievements,
+    ),
+    "simple-geometry": schemas.AchievementFunction(
+        slug="simple-geometry",
+        tournament_required=True,
+        function=service.calculate_simple_geometry_achievements,
+    ),
+    "no_mercy": schemas.AchievementFunction(
+        slug="no_mercy",
+        tournament_required=True,
+        function=service.calculate_no_mercy_achievements,
+    ),
+    "heal_for_a_fee": schemas.AchievementFunction(
+        slug="heal_for_a_fee",
+        tournament_required=True,
+        function=service.calculate_heal_for_a_fee_achievements,
+    ),
+    "damage-above-5-division": schemas.AchievementFunction(
+        slug="damage-above-5-division",
+        tournament_required=True,
+        function=service.calculate_captains_with_5_division_and_above_achievements,
+    ),
+    "tank-above-5-division": schemas.AchievementFunction(
+        slug="tank-above-5-division",
+        tournament_required=True,
+        function=service.calculate_captains_with_5_division_and_above_achievements,
+    ),
+    "support-above-5-division": schemas.AchievementFunction(
+        slug="support-above-5-division",
+        tournament_required=True,
+        function=service.calculate_captains_with_5_division_and_above_achievements,
+    ),
+    "lfs-4500": schemas.AchievementFunction(
+        slug="lfs-4500",
+        tournament_required=False,
+        function=service.calculate_lfs_4500_achievements,
+    ),
+    "im-screwed-run": schemas.AchievementFunction(
+        slug="im-screwed-run",
+        tournament_required=True,
+        function=service.calculate_im_screwed_run_achievements,
+    ),
+    "we-work-with-what-we-have": schemas.AchievementFunction(
+        slug="we-work-with-what-we-have",
+        tournament_required=True,
+        function=service.calculate_we_work_with_what_we_have_achievements,
+    ),
+    "were-so-fucked": schemas.AchievementFunction(
+        slug="were-so-fucked",
+        tournament_required=True,
+        function=service.calculate_were_so_fucked_achievements,
+    ),
+}
+
+
+function_standing_map: dict[str, schemas.AchievementFunction] = {
+    "beginners-are-lucky": schemas.AchievementFunction(
+        slug="beginners-are-lucky",
+        tournament_required=True,
+        function=service.calculate_beginners_are_lucky_achievements,
+    ),
+    "were-not-suckers": schemas.AchievementFunction(
+        slug="were-not-suckers",
+        tournament_required=False,
+        function=service.calculate_were_not_suckers_achievements,
+    ),
+    "reverse-sweep-champion": schemas.AchievementFunction(
+        slug="reverse-sweep-champion",
+        tournament_required=True,
+        function=service.calculate_reverse_sweep_champion_achievements,
+    ),
+    "to-the-bottom": schemas.AchievementFunction(
+        slug="to-the-bottom",
+        tournament_required=True,
+        function=service.calculate_to_bottom_achievements,
+    ),
+    "samurai-has-no-purpose": schemas.AchievementFunction(
+        slug="samurai-has-no-purpose",
+        tournament_required=False,
+        function=service.calculate_samurai_has_no_purpose_achievements,
+    ),
+    "the-best-among-the-best": schemas.AchievementFunction(
+        slug="the-best-among-the-best",
+        tournament_required=True,
+        function=service.calculate_the_best_among_the_best_achievements,
+    ),
+    "revenge-is-sweet": schemas.AchievementFunction(
+        slug="revenge-is-sweet",
+        tournament_required=True,
+        function=service.calculate_revenge_achievement,
+    ),
+    "dirty-smurf": schemas.AchievementFunction(
+        slug="dirty-smurf",
+        tournament_required=True,
+        function=service.calculate_dirty_smurf_achievements,
+    ),
+    "anchor-in-my-throat": schemas.AchievementFunction(
+        slug="anchor-in-my-throat",
+        tournament_required=True,
+        function=service.calculate_win_with_20_div_achievement,
+    ),
+    "win-2-plus-consecutive": schemas.AchievementFunction(
+        slug="win-2-plus-consecutive",
+        tournament_required=False,
+        function=service.calculate_consecutive_wins_achievement,
+    ),
+    "five-second-day-streak": schemas.AchievementFunction(
+        slug="five-second-day-streak",
+        tournament_required=False,
+        function=service.calculate_five_second_day_streak_achievement,
+    ),
+    "i-killed-i-stole": schemas.AchievementFunction(
+        slug="i-killed-i-stole",
+        tournament_required=True,
+        function=service.calculate_lower_bracket_run_achievement,
+    ),
+    "well-balanced": schemas.AchievementFunction(
+        slug="well-balanced",
+        tournament_required=True,
+        function=service.calculate_well_balanced_achievements,
+    ),
+}
+
+
+function_match_map: dict[str, schemas.AchievementFunction] = {
+    "friendly": schemas.AchievementFunction(
+        slug="friendly",
+        tournament_required=True,
+        function=service.calculate_friendly_achievements,
+    ),
+    "boris_dick": schemas.AchievementFunction(
+        slug="boris_dick",
+        tournament_required=True,
+        function=service.calculate_boris_dick_achievements,
+    ),
+    "just_dont_fuck_around": schemas.AchievementFunction(
+        slug="just_dont_fuck_around",
+        tournament_required=True,
+        function=service.calculate_just_dont_fuck_around_achievements,
+    ),
+    "john_wick": schemas.AchievementFunction(
+        slug="john_wick",
+        tournament_required=True,
+        function=service.calculate_john_wick_achievements,
+    ),
+    "the-shift-factory-is-done": schemas.AchievementFunction(
+        slug="the-shift-factory-is-done",
+        tournament_required=True,
+        function=service.calculate_the_shift_factory_is_done_achievements,
+    ),
+    "shooting_and_screaming": schemas.AchievementFunction(
+        slug="shooting_and_screaming",
+        tournament_required=True,
+        function=service.calculate_shooting_and_screaming_achievements,
+    ),
+    "fiasko": schemas.AchievementFunction(
+        slug="fiasko",
+        tournament_required=True,
+        function=service.calculate_fiasko_achievements,
+    ),
+    "boop_master": schemas.AchievementFunction(
+        slug="boop_master",
+        tournament_required=True,
+        function=service.calculate_boop_master_achievements,
+    ),
+    "bullet-is-not-stupid": schemas.AchievementFunction(
+        slug="bullet-is-not-stupid",
+        tournament_required=True,
+        function=service.calculate_bullet_is_not_stupid_achievements,
+    ),
+    "balanced": schemas.AchievementFunction(
+        slug="balanced",
+        tournament_required=True,
+        function=service.calculate_balanced_achievements,
+    ),
+    "hard_game": schemas.AchievementFunction(
+        slug="hard_game",
+        tournament_required=True,
+        function=service.calculate_hard_game_achievements,
+    ),
+    "7_years_in_azkaban": schemas.AchievementFunction(
+        slug="7_years_in_azkaban",
+        tournament_required=True,
+        function=service.calculate_7_years_in_azkaban_achievements,
+    ),
+    "fast": schemas.AchievementFunction(
+        slug="fast",
+        tournament_required=True,
+        function=service.calculate_fast_game_achievements,
+    ),
+}
+
+
 function_hero_map: dict[str, schemas.AchievementFunction] = {
     "freak": schemas.AchievementFunction(
         slug="freak",
@@ -386,6 +622,10 @@ async def calculate_registered_achievements(
     registry: dict[str, schemas.AchievementFunction] = {
         **function_overall_map,
         **function_hero_map,
+        **function_division_map,
+        **function_team_map,
+        **function_standing_map,
+        **function_match_map,
         "hero-kd": schemas.AchievementFunction(
             slug="hero-kd",
             tournament_required=True,
