@@ -64,6 +64,11 @@ const users_components: { title: string; href: string; description: string }[] =
     description: "Page where you can compare users"
   },
   {
+    title: "Heroes Leaderboard",
+    href: "/users/heroes-compare",
+    description: "Per-hero performance leaderboard across all players"
+  },
+  {
     title: "Achievements",
     href: "/achievements",
     description: "Page where all achievements are listed"

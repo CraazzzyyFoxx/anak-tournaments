@@ -62,3 +62,26 @@ async def get_statistics(
     return await hero_flows.get_playtime(
         session, schemas.HeroPlaytimePaginationParams.from_query_params(params)
     )
+
+
+@router.get(
+    path="/{hero_id}/leaderboard",
+    response_model=pagination.Paginated[schemas.HeroLeaderboardEntry],
+    description=f"Retrieve leaderboard of players ranked by their performance on a specific hero. Optionally filter by tournament. **Cache TTL:** {config.settings.heroes_cache_ttl} minutes.",
+    summary="Get hero performance leaderboard",
+)
+@cache(
+    ttl=cache_control_ttl(default=config.settings.heroes_cache_ttl),
+    key="fastapi:{request.url.path}/{request.query_params}",
+)
+async def get_hero_leaderboard(
+    request: Request,
+    hero_id: int,
+    params: schemas.HeroLeaderboardQueryParams = Depends(),
+    session: AsyncSession = Depends(db.get_async_session),
+):
+    return await hero_flows.get_hero_leaderboard(
+        session,
+        hero_id=hero_id,
+        params=schemas.HeroLeaderboardParams.from_query_params(params),
+    )

@@ -1,5 +1,6 @@
-import { Hero, HeroPlaytime } from "@/types/hero.types";
+import { Hero, HeroLeaderboardEntry, HeroPlaytime } from "@/types/hero.types";
 import { PaginatedResponse } from "@/types/pagination.types";
+import { LogStatsName } from "@/types/stats.types";
 import { customFetch } from "@/lib/custom_fetch";
 
 export default class heroService {
@@ -42,6 +43,30 @@ export default class heroService {
         tournament_id: tournamentId,
         sort: "playtime",
         order: "desc"
+      }
+    }).then((res) => res.json());
+  }
+
+  static async getHeroLeaderboard(
+    heroId: number,
+    {
+      tournamentId,
+      stat = LogStatsName.Performance,
+      page = 1,
+      perPage = 50
+    }: {
+      tournamentId?: number | null;
+      stat?: LogStatsName;
+      page?: number;
+      perPage?: number;
+    } = {}
+  ): Promise<PaginatedResponse<HeroLeaderboardEntry>> {
+    return customFetch(`heroes/${heroId}/leaderboard`, {
+      query: {
+        tournament_id: tournamentId ?? undefined,
+        stat,
+        page,
+        per_page: perPage
       }
     }).then((res) => res.json());
   }
