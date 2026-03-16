@@ -537,6 +537,7 @@ async def get_hero_leaderboard(
             ).cast(sa.Numeric(10, 2)).label("kda"),
         )
         .select_from(sums_cte)
+        .where(sums_cte.c.total_playtime >= 600)
     ).cte("stats_agg")
 
     player_rn_subq = (

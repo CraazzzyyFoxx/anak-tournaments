@@ -519,6 +519,8 @@ async def get_hero_compare(
         div_max=compare_div_max,
         tournament_id=params.tournament_id,
     )
+    if left_playtime < 600:
+        left_stats = {}
 
     if mode == "target_user":
         target_model = await get(session, params.target_user_id, [])
@@ -530,6 +532,8 @@ async def get_hero_compare(
             stats=requested_stats,
             tournament_id=params.tournament_id,
         )
+        if right_playtime < 600:
+            right_stats = {}
         target = schemas.UserCompareUser(id=target_model.id, name=target_model.name)
         baseline_target = target
         sample_size = 1
@@ -560,7 +564,7 @@ async def get_hero_compare(
             tournament_id=params.tournament_id,
         )
 
-        sample_user_ids = [user_id for user_id, playtime in baseline_playtime_by_user.items() if playtime > 0]
+        sample_user_ids = [user_id for user_id, playtime in baseline_playtime_by_user.items() if playtime >= 600]
         if not sample_user_ids:
             raise errors.ApiHTTPException(
                 status_code=404,
