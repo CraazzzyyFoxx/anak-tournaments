@@ -39,7 +39,8 @@ async def create_hero_kd_achievements(session: AsyncSession, tournament: models.
                     models.MatchStatistics.hero_id == hero.id,
                     models.MatchStatistics.round == 0,
                     models.MatchStatistics.name.in_([
-                        enums.LogStatsName.KD,
+                        enums.LogStatsName.Eliminations,
+                        enums.LogStatsName.Deaths,
                         enums.LogStatsName.HeroTimePlayed,
                     ]),
                 )
@@ -52,8 +53,11 @@ async def create_hero_kd_achievements(session: AsyncSession, tournament: models.
                 base_stats_cte.c.user_id,
                 base_stats_cte.c.match_id,
                 sa.func.sum(
-                    sa.case((base_stats_cte.c.name == enums.LogStatsName.KD, base_stats_cte.c.value), else_=None)
-                ).label("kd"),
+                    sa.case((base_stats_cte.c.name == enums.LogStatsName.Eliminations, base_stats_cte.c.value), else_=0)
+                ).label("eliminations"),
+                sa.func.sum(
+                    sa.case((base_stats_cte.c.name == enums.LogStatsName.Deaths, base_stats_cte.c.value), else_=0)
+                ).label("deaths"),
                 sa.func.sum(
                     sa.case(
                         (base_stats_cte.c.name == enums.LogStatsName.HeroTimePlayed, base_stats_cte.c.value), else_=None
@@ -67,15 +71,13 @@ async def create_hero_kd_achievements(session: AsyncSession, tournament: models.
         query = (
             sa.select(
                 models.User,
-                sa.func.avg(user_match_stats_cte.c.kd).label("avg_kd"),
+                (
+                    sa.func.sum(user_match_stats_cte.c.eliminations)
+                    / sa.func.nullif(sa.func.sum(user_match_stats_cte.c.deaths), 0)
+                ).label("kd"),
             )
             .join(models.User, models.User.id == user_match_stats_cte.c.user_id)
-            .where(
-                sa.and_(
-                    user_match_stats_cte.c.time_played >= MIN_MATCH_PLAYTIME_SEC,
-                    user_match_stats_cte.c.kd.isnot(None),
-                )
-            )
+            .where(user_match_stats_cte.c.time_played >= MIN_MATCH_PLAYTIME_SEC)
             .group_by(models.User.id)
             .having(
                 sa.and_(
@@ -83,7 +85,7 @@ async def create_hero_kd_achievements(session: AsyncSession, tournament: models.
                     sa.func.count("*") >= MIN_QUALIFYING_MATCHES,
                 )
             )
-            .order_by(sa.desc("avg_kd"))
+            .order_by(sa.desc("kd"))
             .limit(1)
         )
 
