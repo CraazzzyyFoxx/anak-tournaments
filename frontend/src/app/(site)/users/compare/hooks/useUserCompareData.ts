@@ -78,7 +78,7 @@ export const useUserCompareData = ({
 
   const tournamentsQuery = useQuery({
     queryKey: ["tournaments-select-options"],
-    queryFn: () => tournamentService.getAll(false),
+    queryFn: () => tournamentService.getAll(),
     staleTime: 5 * 60 * 1000
   });
 
