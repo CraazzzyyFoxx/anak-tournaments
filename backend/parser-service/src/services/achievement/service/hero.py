@@ -38,7 +38,10 @@ async def create_hero_kd_achievements(session: AsyncSession, tournament: models.
                     models.Encounter.tournament_id == tournament.id,
                     models.MatchStatistics.hero_id == hero.id,
                     models.MatchStatistics.round == 0,
-                    models.MatchStatistics.name.in_([enums.LogStatsName.KD, enums.LogStatsName.HeroTimePlayed]),
+                    models.MatchStatistics.name.in_([
+                        enums.LogStatsName.KD,
+                        enums.LogStatsName.HeroTimePlayed,
+                    ]),
                 )
             )
             .cte("base_stats_cte")
