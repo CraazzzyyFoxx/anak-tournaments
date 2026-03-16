@@ -530,10 +530,11 @@ async def get_hero_leaderboard(
             _avg_pct(sums_cte.c.sum_crit_accuracy,      sums_cte.c.count_crit_accuracy).label("avg_crit_accuracy"),
             # Derived ratios (not per-10-min — deaths cancel out)
             sa.func.coalesce(
-                sums_cte.c.sum_final_blows / sa.func.nullif(sums_cte.c.sum_deaths, 0), 0
+                sums_cte.c.sum_eliminations / sa.func.nullif(sums_cte.c.sum_deaths, 0), 0
             ).cast(sa.Numeric(10, 2)).label("kd"),
             sa.func.coalesce(
-                sums_cte.c.sum_eliminations / sa.func.nullif(sums_cte.c.sum_deaths, 0), 0
+                (sums_cte.c.sum_eliminations + sums_cte.c.sum_offensive_assists + sums_cte.c.sum_defensive_assists)
+                / sa.func.nullif(sums_cte.c.sum_deaths, 0), 0
             ).cast(sa.Numeric(10, 2)).label("kda"),
         )
         .select_from(sums_cte)
