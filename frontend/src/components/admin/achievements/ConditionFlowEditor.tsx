@@ -1131,7 +1131,7 @@ function ConditionFlowEditorInner({ value, onChange, readOnly = false }: Conditi
             <MiniMap
               nodeColor={(node) => {
                 if (node.type === "logicalNode") {
-                  return LOGICAL_COLORS[(node.data as FlatNode).logicalOp ?? "AND"];
+                  return LOGICAL_COLORS[(node.data as unknown as FlatNode).logicalOp ?? "AND"];
                 }
                 return "#22c55e";
               }}
