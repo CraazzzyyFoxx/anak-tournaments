@@ -196,8 +196,9 @@ async def get_maps(
             "name",
         ]
     ] = Depends(),
+    workspace_id: WorkspaceQuery = None,
 ):
-    maps = await map_flows.get_top_user(session, id, schemas.UserMapsSearchParams.from_query_params(params))
+    maps = await map_flows.get_top_user(session, id, schemas.UserMapsSearchParams.from_query_params(params), workspace_id=workspace_id)
     return maps
 
 
@@ -231,8 +232,9 @@ async def get_maps_summary(
             "name",
         ]
     ] = Depends(),
+    workspace_id: WorkspaceQuery = None,
 ):
-    summary = await map_flows.get_top_user_summary(session, id, schemas.UserMapsSearchParams.from_query_params(params))
+    summary = await map_flows.get_top_user_summary(session, id, schemas.UserMapsSearchParams.from_query_params(params), workspace_id=workspace_id)
     return summary
 
 

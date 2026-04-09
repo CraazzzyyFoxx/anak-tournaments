@@ -91,3 +91,22 @@ BALANCER_JOBS_DLQ = RabbitQueue(
     "balancer_jobs.dlq",
     durable=True,
 )
+
+# ============================================================================
+# Achievement Evaluate Queue
+# ============================================================================
+
+ACHIEVEMENT_EVALUATE_QUEUE = RabbitQueue(
+    "achievement_evaluate",
+    durable=True,
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "achievement_evaluate.dlq",
+        "x-message-ttl": 600000,  # 10 minutes
+    },
+)
+
+ACHIEVEMENT_EVALUATE_DLQ = RabbitQueue(
+    "achievement_evaluate.dlq",
+    durable=True,
+)

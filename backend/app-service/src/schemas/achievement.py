@@ -16,6 +16,10 @@ class AchievementRead(BaseRead):
     hero_id: int | None
     rarity: float
 
+    category: str | None = None
+    scope: str | None = None
+    condition_tree: dict | None = None
+
     hero: HeroRead | None
     count: int | None
 

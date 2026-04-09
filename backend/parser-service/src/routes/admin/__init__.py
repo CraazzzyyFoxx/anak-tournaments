@@ -12,6 +12,8 @@ from .balancer import router as balancer_router
 from .discord_channel import router as discord_channel_router
 from .logs import router as logs_router
 from .achievement import router as achievement_router
+from .achievement_rule import override_router as achievement_override_router
+from .achievement_rule import router as achievement_rule_router
 
 # Admin router - aggregates all admin CRUD endpoints
 # All endpoints require admin or tournament_organizer role
@@ -31,6 +33,8 @@ admin_router.include_router(balancer_router)
 admin_router.include_router(discord_channel_router)
 admin_router.include_router(logs_router)
 admin_router.include_router(achievement_router)
+admin_router.include_router(achievement_rule_router)
+admin_router.include_router(achievement_override_router)
 
 # TODO: Include remaining routers (hero, gamemode, map, achievement)
 # from .encounter import router as encounter_router

@@ -1,3 +1,6 @@
+# DEPRECATED: Superseded by flows_v2.py (reads from AchievementRule + EvaluationResult).
+# Kept for backward compatibility during migration. Remove after parity verification.
+
 import typing
 
 from sqlalchemy.ext.asyncio import AsyncSession

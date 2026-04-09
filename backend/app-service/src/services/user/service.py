@@ -390,8 +390,8 @@ def _overview_achievements_count_expr(
     tournament_id: int | None = None,
     grid: DivisionGrid,
 ) -> sa.ScalarSelect:
-    query = sa.select(sa.func.count(sa.distinct(models.AchievementUser.achievement_id))).where(
-        models.AchievementUser.user_id == user_id_column
+    query = sa.select(sa.func.count(sa.distinct(models.AchievementEvaluationResult.achievement_rule_id))).where(
+        models.AchievementEvaluationResult.user_id == user_id_column
     )
 
     if role is None and div_min is None and div_max is None and tournament_id is None:
@@ -401,7 +401,7 @@ def _overview_achievements_count_expr(
     achievement_encounter = aliased(models.Encounter)
     tournament_scope = _compare_tournament_scope_exists(
         user_id_column,
-        models.AchievementUser.tournament_id,
+        models.AchievementEvaluationResult.tournament_id,
         role=role,
         div_min=div_min,
         div_max=div_max,
@@ -413,7 +413,7 @@ def _overview_achievements_count_expr(
         .select_from(achievement_match)
         .join(achievement_encounter, achievement_encounter.id == achievement_match.encounter_id)
         .where(
-            achievement_match.id == models.AchievementUser.match_id,
+            achievement_match.id == models.AchievementEvaluationResult.match_id,
             _compare_tournament_scope_exists(
                 user_id_column,
                 achievement_encounter.tournament_id,
@@ -992,11 +992,11 @@ async def get_overview_achievements_count(
 
     query = (
         sa.select(
-            models.AchievementUser.user_id,
-            sa.func.count(sa.distinct(models.AchievementUser.achievement_id)).label("achievements_count"),
+            models.AchievementEvaluationResult.user_id,
+            sa.func.count(sa.distinct(models.AchievementEvaluationResult.achievement_rule_id)).label("achievements_count"),
         )
-        .where(models.AchievementUser.user_id.in_(user_ids))
-        .group_by(models.AchievementUser.user_id)
+        .where(models.AchievementEvaluationResult.user_id.in_(user_ids))
+        .group_by(models.AchievementEvaluationResult.user_id)
     )
 
     result = await session.execute(query)

@@ -69,3 +69,19 @@ class BalancerJobEvent(BaseEvent):
 
     event_type: str = Field(default="balancer_job", frozen=True)
     job_id: str = Field(..., description="Balancer job identifier")
+
+
+class AchievementEvaluateEvent(BaseEvent):
+    """Event for triggering achievement evaluation after parsing.
+
+    Published by: parser-service (after match/tournament processing)
+    Consumed by: parser-service (achievement engine)
+    """
+
+    event_type: str = Field(default="achievement_evaluate", frozen=True)
+    workspace_id: int = Field(..., description="Workspace to evaluate achievements for")
+    tournament_id: int = Field(..., description="Tournament that was just processed")
+    changed_tables: list[str] = Field(
+        ...,
+        description="DB tables that changed (e.g. ['matches.statistics', 'tournament.encounter'])",
+    )

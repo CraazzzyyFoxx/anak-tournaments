@@ -2,6 +2,15 @@ import { Tournament } from "@/types/tournament.types";
 import { Match } from "./encounter.types";
 import { User } from "@/types/user.types";
 
+export type AchievementCategory = "overall" | "hero" | "division" | "team" | "standing" | "match";
+export type AchievementScope = "global" | "tournament" | "match";
+
+export type ConditionNode =
+  | { AND: ConditionNode[] }
+  | { OR: ConditionNode[] }
+  | { NOT: ConditionNode }
+  | { type: string; params: Record<string, unknown> };
+
 export interface Achievement {
   id: number;
   created_at: Date;
@@ -11,6 +20,10 @@ export interface Achievement {
   description_ru: string;
   description_en: string;
   image_url: string | null;
+
+  category: AchievementCategory | null;
+  scope: AchievementScope | null;
+  condition_tree: ConditionNode | null;
 
   count: number | null;
   rarity: number;

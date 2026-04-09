@@ -38,6 +38,14 @@ import {
   AchievementCreateInput,
   AchievementUpdateInput,
   AchievementRegistryEntry,
+  AchievementRule,
+  AchievementRuleCreateInput,
+  AchievementRuleUpdateInput,
+  AchievementOverrideCreateInput,
+  AchievementOverrideRead,
+  ConditionTreeValidateResponse,
+  ConditionTypeInfo,
+  EvaluationRunRead,
   BulkOperationResult,
   CsvUserImportParams,
   DiscordChannelRead,
@@ -677,6 +685,193 @@ class AdminService {
     const response = await apiFetch("parser", url, {
       method: "POST",
       body: { slugs, ensure_created: true },
+    });
+    return response.json();
+  }
+
+  // ─── Achievement Rule Engine ────────────────────────────────────────────────
+
+  async getAchievementRules(
+    workspaceId: number,
+    params: { category?: string; enabled?: boolean } = {},
+  ): Promise<AchievementRule[]> {
+    const response = await apiFetch(
+      "parser",
+      `admin/ws/${workspaceId}/achievements/rules`,
+      { query: params },
+    );
+    return response.json();
+  }
+
+  async getAchievementRule(workspaceId: number, ruleId: number): Promise<AchievementRule> {
+    const response = await apiFetch(
+      "parser",
+      `admin/ws/${workspaceId}/achievements/rules/${ruleId}`,
+    );
+    return response.json();
+  }
+
+  async createAchievementRule(
+    workspaceId: number,
+    data: AchievementRuleCreateInput,
+  ): Promise<AchievementRule> {
+    const response = await apiFetch(
+      "parser",
+      `admin/ws/${workspaceId}/achievements/rules`,
+      { method: "POST", body: data },
+    );
+    return response.json();
+  }
+
+  async updateAchievementRule(
+    workspaceId: number,
+    ruleId: number,
+    data: AchievementRuleUpdateInput,
+  ): Promise<AchievementRule> {
+    const response = await apiFetch(
+      "parser",
+      `admin/ws/${workspaceId}/achievements/rules/${ruleId}`,
+      { method: "PATCH", body: data },
+    );
+    return response.json();
+  }
+
+  async getAchievementRuleUsers(
+    workspaceId: number,
+    ruleId: number,
+    params: {
+      page?: number;
+      per_page?: number;
+      tournament_id?: number;
+      sort?: string;
+      order?: string;
+    } = {},
+  ): Promise<{
+    page: number;
+    per_page: number;
+    total: number;
+    results: { user_id: number; user_name: string; count: number; last_tournament_id: number | null; last_match_id: number | null; first_qualified: string | null }[];
+  }> {
+    const response = await apiFetch(
+      "parser",
+      `admin/ws/${workspaceId}/achievements/rules/${ruleId}/users`,
+      { query: { page: params.page ?? 1, per_page: params.per_page ?? 30, ...params } },
+    );
+    return response.json();
+  }
+
+  async deleteAchievementRule(workspaceId: number, ruleId: number): Promise<void> {
+    await apiFetch(
+      "parser",
+      `admin/ws/${workspaceId}/achievements/rules/${ruleId}`,
+      { method: "DELETE" },
+    );
+  }
+
+  async validateConditionTree(
+    workspaceId: number,
+    conditionTree: Record<string, unknown>,
+  ): Promise<ConditionTreeValidateResponse> {
+    const response = await apiFetch(
+      "parser",
+      `admin/ws/${workspaceId}/achievements/rules/validate`,
+      { method: "POST", body: { condition_tree: conditionTree } },
+    );
+    return response.json();
+  }
+
+  async testAchievementRule(
+    workspaceId: number,
+    ruleId: number,
+    tournamentId?: number,
+  ): Promise<{ rule_slug: string; qualifying_count: number; sample: number[][] }> {
+    const response = await apiFetch(
+      "parser",
+      `admin/ws/${workspaceId}/achievements/rules/${ruleId}/test`,
+      { query: tournamentId ? { tournament_id: tournamentId } : {} },
+    );
+    return response.json();
+  }
+
+  async evaluateAchievements(
+    workspaceId: number,
+    params: { tournament_id?: number; rule_ids?: number[] } = {},
+  ): Promise<EvaluationRunRead> {
+    const response = await apiFetch(
+      "parser",
+      `admin/ws/${workspaceId}/achievements/rules/evaluate`,
+      { method: "POST", body: params },
+    );
+    return response.json();
+  }
+
+  async getEvaluationRuns(workspaceId: number): Promise<EvaluationRunRead[]> {
+    const response = await apiFetch(
+      "parser",
+      `admin/ws/${workspaceId}/achievements/rules/runs`,
+    );
+    return response.json();
+  }
+
+  async seedAchievementRules(workspaceId: number): Promise<{ seeded: number }> {
+    const response = await apiFetch(
+      "parser",
+      `admin/ws/${workspaceId}/achievements/rules/seed`,
+      { method: "POST" },
+    );
+    return response.json();
+  }
+
+  async getConditionTypes(): Promise<ConditionTypeInfo[]> {
+    const response = await apiFetch(
+      "parser",
+      "admin/ws/0/achievements/rules/condition-types",
+    );
+    return response.json();
+  }
+
+  async getAchievementOverrides(workspaceId: number): Promise<AchievementOverrideRead[]> {
+    const response = await apiFetch(
+      "parser",
+      `admin/ws/${workspaceId}/achievements/overrides`,
+    );
+    return response.json();
+  }
+
+  async createAchievementOverride(
+    workspaceId: number,
+    data: AchievementOverrideCreateInput,
+  ): Promise<AchievementOverrideRead> {
+    const response = await apiFetch(
+      "parser",
+      `admin/ws/${workspaceId}/achievements/overrides`,
+      { method: "POST", body: data },
+    );
+    return response.json();
+  }
+
+  async deleteAchievementOverride(workspaceId: number, overrideId: number): Promise<void> {
+    await apiFetch(
+      "parser",
+      `admin/ws/${workspaceId}/achievements/overrides/${overrideId}`,
+      { method: "DELETE" },
+    );
+  }
+
+  // ─── Asset Upload ──────────────────────────────────────────────────────────
+
+  async uploadAchievementImage(
+    slug: string,
+    file: File,
+    workspaceId?: number,
+  ): Promise<{ key: string; public_url: string }> {
+    const formData = new FormData();
+    formData.append("file", file);
+    const query = workspaceId ? { workspace_id: workspaceId } : {};
+    const response = await apiFetch("app", `admin/assets/achievements/${slug}`, {
+      method: "POST",
+      body: formData,
+      query,
     });
     return response.json();
   }

@@ -78,17 +78,22 @@ async def upload_asset(
     file_data: bytes,
     content_type: str,
     max_size: int = MAX_ASSET_SIZE,
+    workspace_slug: str | None = None,
 ) -> UploadResult:
     """Upload a static asset image by slug.
 
-    Key format: assets/{asset_type}/{slug}.{ext}
+    Key format: assets/{asset_type}/{workspace_slug}/{slug}.{ext}
+    Falls back to assets/{asset_type}/{slug}.{ext} if no workspace_slug.
     """
     error = _validate_image(file_data, content_type, max_size)
     if error:
         return UploadResult(success=False, key="", error=error)
 
     ext = _detect_extension(content_type)
-    key = f"assets/{asset_type}/{slug}.{ext}"
+    if workspace_slug:
+        key = f"assets/{asset_type}/{workspace_slug}/{slug}.{ext}"
+    else:
+        key = f"assets/{asset_type}/{slug}.{ext}"
 
     ok = await s3.put_object(key, file_data, content_type, public=True)
     if not ok:

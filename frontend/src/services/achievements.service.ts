@@ -3,14 +3,15 @@ import { apiFetch } from "@/lib/api-fetch";
 import { Achievement, AchievementEarned } from "@/types/achievement.types";
 
 export default class achievementsService {
-  static async getAll(page: number, perPage: number): Promise<PaginatedResponse<Achievement>> {
+  static async getAll(page: number, perPage: number, workspaceId?: number | null): Promise<PaginatedResponse<Achievement>> {
     return apiFetch("app",`achievements`, {
       query: {
         per_page: perPage,
         page: page,
         sort: "rarity",
         order: "asc",
-        entities: ["count"]
+        entities: ["count"],
+        ...(workspaceId ? { workspace_id: workspaceId } : {}),
       }
     }).then((res) => res.json());
   }

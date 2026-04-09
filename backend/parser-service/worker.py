@@ -5,14 +5,20 @@ from faststream import FastStream
 from faststream.rabbit import RabbitBroker
 from shared.clients.s3 import S3Client
 from shared.messaging.config import (
+    ACHIEVEMENT_EVALUATE_QUEUE,
     PROCESS_MATCH_LOG_QUEUE,
     PROCESS_TOURNAMENT_LOGS_QUEUE,
 )
 from shared.observability import setup_logging
 from shared.observability.correlation import correlation_id_ctx
-from shared.schemas.events import ProcessMatchLogEvent, ProcessTournamentLogsEvent
+from shared.schemas.events import (
+    AchievementEvaluateEvent,
+    ProcessMatchLogEvent,
+    ProcessTournamentLogsEvent,
+)
 
 from src.core import config, db
+from src.services.achievement.engine.consumer import handle_achievement_evaluate
 from src.services.encounter import tasks as encounter_tasks
 from src.services.match_logs import flows as logs_flows
 from src.services.s3 import service as s3_service
@@ -67,10 +73,21 @@ async def process_match_log_async(data: dict) -> None:
             await logs_flows.process_match_log(
                 session, event.tournament_id, event.filename, s3_client, is_raise=True
             )
+            # Publish achievement evaluation event after successful processing
+            tournament = await tournaments_flows.get(session, event.tournament_id, [])
+            achievement_event = AchievementEvaluateEvent(
+                workspace_id=tournament.workspace_id,
+                tournament_id=event.tournament_id,
+                changed_tables=["matches.statistics", "matches.match", "tournament.encounter"],
+            )
+            await broker.publish(
+                achievement_event.model_dump(), ACHIEVEMENT_EVALUATE_QUEUE
+            )
     except Exception:
-        # Re-raise so FastStream nacks the message; with x-dead-letter-exchange configured
-        # on PROCESS_MATCH_LOG_QUEUE, the message will be routed to process_match_log.dlq.
-        logger.exception(f"Failed to process match log tournament_id={event.tournament_id} filename={event.filename}")
+        logger.exception(
+            f"Failed to process match log "
+            f"tournament_id={event.tournament_id} filename={event.filename}"
+        )
         raise
 
 
@@ -91,3 +108,8 @@ async def process_tournament_log(data: dict) -> None:
     except Exception:
         logger.exception(f"Failed to process tournament logs tournament_id={event.tournament_id}")
         raise
+
+
+@broker.subscriber(ACHIEVEMENT_EVALUATE_QUEUE)
+async def process_achievement_evaluate(data: dict) -> None:
+    await handle_achievement_evaluate(data)

@@ -132,7 +132,7 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         title: "Achievements",
         href: "/admin/achievements",
         icon: Award,
-        description: "Manage achievement definitions and trigger calculations.",
+        description: "Manage achievements with condition tree evaluation engine.",
         permissions: ["achievement.read"],
       },
     ],

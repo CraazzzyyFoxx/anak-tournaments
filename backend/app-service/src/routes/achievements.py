@@ -10,7 +10,7 @@ from src import schemas
 from src.core import config, db, enums, errors, pagination
 from src.core.workspace import WorkspaceQuery
 
-from src.services.achievements import flows as achievements_flows
+from src.services.achievements import flows_v2 as achievements_flows
 
 router = APIRouter(prefix="/achievements", tags=[enums.RouteTag.ACHIEVEMENTS])
 
@@ -29,8 +29,9 @@ async def get_all(
     params: pagination.PaginationSortQueryParams[
         typing.Literal["id", "name", "slug", "rarity", "similarity:name", "similarity:slug"]
     ] = Depends(),
+    workspace_id: WorkspaceQuery = None,
 ):
-    return await achievements_flows.get_all(session, pagination.PaginationSortParams.from_query_params(params))
+    return await achievements_flows.get_all(session, pagination.PaginationSortParams.from_query_params(params), workspace_id=workspace_id)
 
 
 @router.get(

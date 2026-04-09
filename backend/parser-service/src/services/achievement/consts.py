@@ -1,3 +1,6 @@
+# DEPRECATED: Achievement definitions moved to engine/seeder.py as condition trees.
+# Kept for backward compatibility during migration. Remove after parity verification.
+
 from src import schemas
 
 heroes_achievements: list[schemas.AchievementCreate] = [

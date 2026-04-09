@@ -184,28 +184,17 @@ export function EntityFormDialog({
               <div className="space-y-4 py-4">{children}</div>
             </ScrollArea>
 
-            {(errorMessage || isSubmitting) ? (
+            {errorMessage ? (
               <div
                 aria-live="polite"
-                className="mt-4 rounded-xl border px-4 py-3 text-sm"
-                role={errorMessage ? "alert" : "status"}
+                role="alert"
+                className="mt-4 flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
               >
-                {errorMessage ? (
-                  <div className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-destructive">
-                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                    <div className="space-y-1">
-                      <p className="font-medium">Save failed</p>
-                      <p>{errorMessage}</p>
-                    </div>
-                  </div>
-                ) : null}
-
-                {isSubmitting ? (
-                  <div className="mt-3 flex items-center gap-2 text-muted-foreground">
-                    <LoaderCircle className="h-4 w-4 animate-spin" />
-                    <span>{submittingLabel}</span>
-                  </div>
-                ) : null}
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <div className="space-y-1">
+                  <p className="font-medium">Save failed</p>
+                  <p>{errorMessage}</p>
+                </div>
               </div>
             ) : null}
 

@@ -66,25 +66,7 @@ export const DEFAULT_CUSTOM_BY_ROLE: Record<string, StatKey> = {
 
 export const DEFAULT_CUSTOM_KEY: StatKey = "per10_final_blows";
 
-export const ALL_STAT_OPTIONS: StatColumnDef[] = [
-  COL.kd,
-  COL.kda,
-  COL.per10_final_blows,
-  COL.per10_damage_blocked,
-  COL.per10_solo_kills,
-  COL.per10_obj_kills,
-  COL.per10_defensive_assists,
-  COL.per10_offensive_assists,
-  COL.per10_all_damage,
-  COL.per10_damage_taken,
-  COL.per10_self_healing,
-  COL.per10_ultimates_used,
-  COL.per10_multikills,
-  COL.per10_env_kills,
-  COL.per10_crit_hits,
-  COL.avg_weapon_accuracy,
-  COL.avg_crit_accuracy,
-];
+export const ALL_STAT_OPTIONS: StatColumnDef[] = Object.values(COL);
 
 export const NUM_COLUMNS = 5;
 

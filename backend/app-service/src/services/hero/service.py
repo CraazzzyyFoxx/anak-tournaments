@@ -239,7 +239,7 @@ async def get_heroes_stats(
 
 
 async def get_heroes_playtime_by_maps(
-    session: AsyncSession, maps_ids: list[int], user_id: int, tournament_id: int | None = None,
+    session: AsyncSession, maps_ids: list[int], user_id: int, tournament_id: int | None = None, workspace_id: int | None = None,
 ) -> typing.Sequence[tuple[models.Hero, int, float]]:
     overall_play_time_subquery = (
         sa.select(sa.func.sum(models.MatchStatistics.value))
@@ -261,6 +261,13 @@ async def get_heroes_playtime_by_maps(
     if tournament_id is not None:
         overall_play_time_subquery = overall_play_time_subquery.where(
             models.Encounter.tournament_id == tournament_id
+        )
+
+    if workspace_id is not None:
+        overall_play_time_subquery = (
+            overall_play_time_subquery
+            .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
+            .where(models.Tournament.workspace_id == workspace_id)
         )
 
     query = (
@@ -288,6 +295,13 @@ async def get_heroes_playtime_by_maps(
     if tournament_id is not None:
         query = query.where(models.Encounter.tournament_id == tournament_id)
 
+    if workspace_id is not None:
+        query = (
+            query
+            .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
+            .where(models.Tournament.workspace_id == workspace_id)
+        )
+
     query = (
         query
         .group_by(models.Hero.id, models.Match.map_id)
@@ -305,6 +319,7 @@ async def get_user_hero_stats_by_maps(
     limit_per_map: int = 5,
     min_seconds: float = 60,
     tournament_id: int | None = None,
+    workspace_id: int | None = None,
 ) -> typing.Sequence[tuple[models.Hero, int, int, int, int, int, float, float, float]]:
     """Return top hero summaries per map for a given user.
 
@@ -342,12 +357,18 @@ async def get_user_hero_stats_by_maps(
         )
     )
 
-    if tournament_id is not None:
-        hero_match_q = (
-            hero_match_q
-            .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-            .where(models.Encounter.tournament_id == tournament_id)
-        )
+    if tournament_id is not None or workspace_id is not None:
+        hero_match_q = hero_match_q.join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
+
+        if tournament_id is not None:
+            hero_match_q = hero_match_q.where(models.Encounter.tournament_id == tournament_id)
+
+        if workspace_id is not None:
+            hero_match_q = (
+                hero_match_q
+                .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
+                .where(models.Tournament.workspace_id == workspace_id)
+            )
 
     hero_match = (
         hero_match_q

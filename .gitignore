@@ -25,3 +25,5 @@ monitoring/secrets/*
 .claude/
 proxy/shadowsocks.json
 !proxy/shadowsocks.json.example
+proxy/xray.json
+!proxy/xray.json.example

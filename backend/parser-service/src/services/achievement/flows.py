@@ -1,3 +1,6 @@
+# DEPRECATED: This module is superseded by engine/ (condition tree evaluator).
+# Kept for backward compatibility during migration. Remove after parity verification.
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.division_grid import DEFAULT_GRID, DivisionGrid, resolve_grid

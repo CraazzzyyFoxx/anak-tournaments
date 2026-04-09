@@ -106,7 +106,7 @@ async def get_all(
 
 
 async def get_top_maps(
-    session: AsyncSession, user_id: int, params: schemas.UserMapsSearchParams
+    session: AsyncSession, user_id: int, params: schemas.UserMapsSearchParams, *, workspace_id: int | None = None,
 ) -> tuple[typing.Sequence[tuple[models.Map, int, int, int, int, float]], int]:
     """
     Retrieves a paginated list of top maps for a specific user, including statistics.
@@ -156,12 +156,18 @@ async def get_top_maps(
         .group_by(models.Map.id)
     )
 
-    if params.tournament_id:
-        subquery_query = (
-            subquery_query
-            .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-            .where(models.Encounter.tournament_id == params.tournament_id)
-        )
+    if params.tournament_id or workspace_id:
+        subquery_query = subquery_query.join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
+
+        if params.tournament_id:
+            subquery_query = subquery_query.where(models.Encounter.tournament_id == params.tournament_id)
+
+        if workspace_id:
+            subquery_query = (
+                subquery_query
+                .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
+                .where(models.Tournament.workspace_id == workspace_id)
+            )
 
     if params.gamemode_id:
         subquery_query = subquery_query.where(sa.and_(models.Map.gamemode_id == params.gamemode_id))

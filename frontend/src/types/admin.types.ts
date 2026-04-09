@@ -263,6 +263,115 @@ export interface CalculationLogEntry {
   executed?: string[];
 }
 
+// ─── Achievement Rule Engine ──────────────────────────────────────────────────
+
+export type AchievementCategory = "overall" | "hero" | "division" | "team" | "standing" | "match";
+export type AchievementScope = "global" | "tournament" | "match";
+export type AchievementGrain = "user" | "user_tournament" | "user_match";
+
+export interface AchievementRule {
+  id: number;
+  workspace_id: number;
+  slug: string;
+  name: string;
+  description_ru: string;
+  description_en: string;
+  image_url: string | null;
+  hero_id: number | null;
+  category: AchievementCategory;
+  scope: AchievementScope;
+  grain: AchievementGrain;
+  condition_tree: Record<string, unknown>;
+  depends_on: string[];
+  enabled: boolean;
+  rule_version: number;
+  min_tournament_id: number | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface AchievementRuleCreateInput {
+  slug: string;
+  name: string;
+  description_ru: string;
+  description_en: string;
+  image_url?: string | null;
+  hero_id?: number | null;
+  category: AchievementCategory;
+  scope: AchievementScope;
+  grain: AchievementGrain;
+  condition_tree: Record<string, unknown>;
+  depends_on?: string[];
+  enabled?: boolean;
+  min_tournament_id?: number | null;
+}
+
+export interface AchievementRuleUpdateInput {
+  slug?: string;
+  name?: string;
+  description_ru?: string;
+  description_en?: string;
+  image_url?: string | null;
+  hero_id?: number | null;
+  category?: AchievementCategory;
+  scope?: AchievementScope;
+  grain?: AchievementGrain;
+  condition_tree?: Record<string, unknown>;
+  depends_on?: string[];
+  enabled?: boolean;
+  rule_version?: number;
+  min_tournament_id?: number | null;
+}
+
+export interface EvaluationRunRead {
+  id: string;
+  workspace_id: number;
+  trigger: string;
+  tournament_id: number | null;
+  rules_evaluated: number;
+  results_created: number;
+  results_removed: number;
+  started_at: string;
+  finished_at: string | null;
+  status: "running" | "done" | "failed" | "cancelled";
+  error_message: string | null;
+}
+
+export interface ConditionTreeValidateResponse {
+  valid: boolean;
+  errors: string[];
+  inferred_grain: string | null;
+}
+
+export interface AchievementOverrideCreateInput {
+  achievement_rule_id: number;
+  user_id: number;
+  tournament_id?: number | null;
+  match_id?: number | null;
+  action: "grant" | "revoke";
+  reason: string;
+}
+
+export interface AchievementOverrideRead {
+  id: number;
+  achievement_rule_id: number;
+  user_id: number;
+  tournament_id: number | null;
+  match_id: number | null;
+  action: "grant" | "revoke";
+  reason: string;
+  granted_by: number;
+  created_at: string;
+}
+
+export interface ConditionTypeInfo {
+  name: string;
+  grain: string;
+  description: string;
+  required_params: string[];
+  optional_params: string[];
+}
+
 // ─── Discord Channel Sync ─────────────────────────────────────────────────────
 
 export interface DiscordChannelRead {
