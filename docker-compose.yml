@@ -450,7 +450,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ./kong/kong.yml:/kong/kong.yml:ro
+      - ./kong/kong.dev.yml:/kong/kong.yml:ro
     depends_on:
       backend:
         condition: service_healthy

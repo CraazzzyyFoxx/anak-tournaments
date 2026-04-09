@@ -158,7 +158,7 @@ services:
     ports:
       - "${APP_PORT}:8000"
     volumes:
-      - ./kong/kong.yml:/kong/kong.yml:ro
+      - ./kong/kong.prod.yml:/kong/kong.yml:ro
     depends_on:
       backend:
         condition: service_healthy
