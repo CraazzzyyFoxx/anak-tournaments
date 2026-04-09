@@ -432,11 +432,11 @@ export default function AchievementDetailPage() {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => testMutation.mutate()}>
+          <Button variant="outline" size="sm" onClick={() => testMutation.mutate(undefined)}>
             <TestTube className="mr-2 h-4 w-4" />
             Test
           </Button>
-          <Button variant="outline" size="sm" onClick={() => evaluateMutation.mutate()}>
+          <Button variant="outline" size="sm" onClick={() => evaluateMutation.mutate(undefined)}>
             <Play className={`mr-2 h-4 w-4 ${evaluateMutation.isPending ? "animate-spin" : ""}`} />
             Evaluate
           </Button>
