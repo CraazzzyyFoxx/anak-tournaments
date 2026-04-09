@@ -142,6 +142,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      ss-local:
+        condition: service_healthy
     develop:
       watch:
         - path: ./backend/pyproject.toml
@@ -188,6 +190,8 @@ services:
       rabbitmq:
         condition: service_healthy
       auth:
+        condition: service_healthy
+      ss-local:
         condition: service_healthy
     develop:
       watch:
@@ -350,6 +354,8 @@ services:
         condition: service_healthy
       parser:
         condition: service_healthy
+      ss-local:
+        condition: service_healthy
     volumes:
       - ./backend/discord-service:/app/discord-service
       - ./backend/shared:/app/shared
@@ -432,7 +438,6 @@ services:
 
   ss-local:
     image: ghcr.io/shadowsocks/sslocal-rust:latest
-    profiles: ["proxy"]
     restart: unless-stopped
     volumes:
       - ./proxy/shadowsocks.json:/etc/shadowsocks-rust/config.json:ro
