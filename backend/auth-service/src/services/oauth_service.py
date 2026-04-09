@@ -76,7 +76,7 @@ class DiscordOAuthProvider(OAuthProviderBase):
 
         try:
             async with httpx.AsyncClient(proxy=PROXY_CONF) as client:
-                response = await client.post(settings.DISCORD_TOKEN_URL, data=data, headers=headers, timeout=10.0)
+                response = await client.post(settings.DISCORD_TOKEN_URL, data=data, headers=headers, timeout=30.0)
 
                 if response.status_code != 200:
                     logger.warning(
@@ -107,7 +107,7 @@ class DiscordOAuthProvider(OAuthProviderBase):
 
         try:
             async with httpx.AsyncClient(proxy=PROXY_CONF) as client:
-                response = await client.get(f"{settings.DISCORD_API_URL}/users/@me", headers=headers, timeout=10.0)
+                response = await client.get(f"{settings.DISCORD_API_URL}/users/@me", headers=headers, timeout=30.0)
 
                 if response.status_code != 200:
                     logger.warning(
@@ -172,7 +172,7 @@ class TwitchOAuthProvider(OAuthProviderBase):
 
         try:
             async with httpx.AsyncClient(proxy=PROXY_CONF) as client:
-                response = await client.post(settings.TWITCH_TOKEN_URL, data=data, headers=headers, timeout=10.0)
+                response = await client.post(settings.TWITCH_TOKEN_URL, data=data, headers=headers, timeout=30.0)
                 if response.status_code != 200:
                     logger.warning("Twitch token exchange failed", status_code=response.status_code)
                     raise HTTPException(
@@ -203,7 +203,7 @@ class TwitchOAuthProvider(OAuthProviderBase):
 
         try:
             async with httpx.AsyncClient(proxy=PROXY_CONF) as client:
-                response = await client.get(f"{settings.TWITCH_API_URL}/users", headers=headers, timeout=10.0)
+                response = await client.get(f"{settings.TWITCH_API_URL}/users", headers=headers, timeout=30.0)
 
                 if response.status_code != 200:
                     logger.warning("Twitch user info request failed", status_code=response.status_code)
@@ -288,7 +288,7 @@ class BattleNetOAuthProvider(OAuthProviderBase):
                     data=data,
                     headers=headers,
                     auth=(settings.BATTLENET_CLIENT_ID, settings.BATTLENET_CLIENT_SECRET),
-                    timeout=10.0,
+                    timeout=30.0,
                 )
 
                 if response.status_code != 200:
@@ -319,7 +319,7 @@ class BattleNetOAuthProvider(OAuthProviderBase):
 
         try:
             async with httpx.AsyncClient(proxy=PROXY_CONF) as client:
-                response = await client.get(f"{self._oauth_base_url()}/userinfo", headers=headers, timeout=10.0)
+                response = await client.get(f"{self._oauth_base_url()}/userinfo", headers=headers, timeout=30.0)
 
                 if response.status_code != 200:
                     logger.warning("Battle.net user info request failed", status_code=response.status_code)
