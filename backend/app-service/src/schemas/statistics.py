@@ -5,6 +5,8 @@ __all__ = (
     "DivisionStatistics",
     "PlayerStatistics",
     "OverallStatistics",
+    "DashboardActiveTournamentStats",
+    "DashboardIssues",
     "DashboardStats",
 )
 
