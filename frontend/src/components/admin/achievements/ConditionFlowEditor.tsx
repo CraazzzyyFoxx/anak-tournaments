@@ -510,7 +510,7 @@ function LeafNode({ data, id }: NodeProps) {
                   {OPERATORS.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
                 </SelectContent>
               </Select>
-              {params.op && <Input className="h-7 text-xs w-16" type="number" step="0.01" placeholder="rate" value={(params.value as number) ?? 0.5} onChange={(e) => setParam("value", Number(e.target.value))} />}
+              {Boolean(params.op) && <Input className="h-7 text-xs w-16" type="number" step="0.01" placeholder="rate" value={(params.value as number) ?? 0.5} onChange={(e) => setParam("value", Number(e.target.value))} />}
             </div>
           </>
         )}
