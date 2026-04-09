@@ -564,10 +564,10 @@ export default function AchievementsPage() {
             ? [...filtered].sort((a, b) => {
                 const va = sortField === "conditions_count"
                   ? countLeafConditions(a.condition_tree)
-                  : (a as Record<string, unknown>)[sortField];
+                  : (a as unknown as Record<string, unknown>)[sortField];
                 const vb = sortField === "conditions_count"
                   ? countLeafConditions(b.condition_tree)
-                  : (b as Record<string, unknown>)[sortField];
+                  : (b as unknown as Record<string, unknown>)[sortField];
                 const cmp = typeof va === "number" && typeof vb === "number"
                   ? va - vb
                   : String(va ?? "").localeCompare(String(vb ?? ""));
