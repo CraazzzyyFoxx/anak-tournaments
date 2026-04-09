@@ -176,7 +176,7 @@ export default function BalancerRegistrationsPage() {
     return registrations.filter((reg) => {
       if (statusFilter !== "all" && reg.status !== statusFilter) return false;
       if (!q) return true;
-      return [reg.battle_tag, reg.discord_nick, reg.twitch_nick, reg.primary_role, reg.notes]
+      return [reg.battle_tag, reg.discord_nick, reg.twitch_nick, ...reg.roles.map((r) => r.role), reg.notes]
         .filter(Boolean)
         .join(" ")
         .toLowerCase()

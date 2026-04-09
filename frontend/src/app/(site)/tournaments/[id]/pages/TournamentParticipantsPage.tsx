@@ -172,7 +172,7 @@ export default function TournamentParticipantsPage({
         r.battle_tag?.toLowerCase().includes(q) ||
         r.discord_nick?.toLowerCase().includes(q) ||
         r.twitch_nick?.toLowerCase().includes(q) ||
-        r.primary_role?.toLowerCase().includes(q),
+        r.roles?.some((role) => role.role.toLowerCase().includes(q)),
     );
   }, [registrations, searchQuery]);
 
