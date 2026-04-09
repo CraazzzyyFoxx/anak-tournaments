@@ -235,7 +235,7 @@ function layoutNodes(flatNodes: FlatNode[]): { nodes: Node[]; edges: Edge[] } {
 // ─── Custom Nodes ────────────────────────────────────────────────────────────
 
 function LogicalNode({ data, id }: NodeProps) {
-  const d = data as FlatNode & { readOnly?: boolean; onChangeOp?: (id: string, op: string) => void; onAddChild?: (id: string, type: string) => void; onDelete?: (id: string) => void };
+  const d = data as unknown as FlatNode & { readOnly?: boolean; onChangeOp?: (id: string, op: string) => void; onAddChild?: (id: string, type: string) => void; onDelete?: (id: string) => void };
   const color = LOGICAL_COLORS[d.logicalOp ?? "AND"];
 
   return (
@@ -340,7 +340,7 @@ function formatParamsSummary(type: string, params: Record<string, unknown>): str
 }
 
 function LeafNode({ data, id }: NodeProps) {
-  const d = data as FlatNode & { readOnly?: boolean; onChangeType?: (id: string, type: string) => void; onChangeParam?: (id: string, key: string, value: unknown) => void; onDelete?: (id: string) => void };
+  const d = data as unknown as FlatNode & { readOnly?: boolean; onChangeType?: (id: string, type: string) => void; onChangeParam?: (id: string, key: string, value: unknown) => void; onDelete?: (id: string) => void };
   const params = d.params ?? {};
 
   const setParam = (key: string, value: unknown) => d.onChangeParam?.(id, key, value);
