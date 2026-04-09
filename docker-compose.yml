@@ -437,10 +437,11 @@ services:
           memory: 256M
 
   ss-local:
-    image: ghcr.io/shadowsocks/sslocal-rust:latest
+    image: teddysun/xray:latest
     restart: unless-stopped
+    command: ["xray", "run", "-c", "/etc/xray/config.json"]
     volumes:
-      - ./proxy/shadowsocks.json:/etc/shadowsocks-rust/config.json:ro
+      - ./proxy/xray.json:/etc/xray/config.json:ro
     networks:
       - app-network
     healthcheck:
