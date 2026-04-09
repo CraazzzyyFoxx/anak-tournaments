@@ -15,6 +15,7 @@ dependencies = [
     "fastapi[standard]>=0.127.0",
     "faststream[rabbit]>=0.6.7",
     "httpx>=0.28.1",
+    "socksio>=1.0.0",
     "loguru>=0.7.3",
     "openpyxl>=3.1.5",
     "openskill>=6.1.3",

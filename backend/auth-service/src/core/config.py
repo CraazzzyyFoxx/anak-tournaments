@@ -83,11 +83,6 @@ class Settings(BaseServiceSettings):
     # Redis
     REDIS_URL: str = "redis://localhost:6379"
 
-    # Proxy (optional)
-    proxy_ip: str | None = None
-    proxy_port: int | None = None
-    proxy_username: str | None = None
-    proxy_password: str | None = None
 
 
 settings = Settings()

@@ -24,10 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src import models, schemas
 from src.core.config import settings
 
-if settings.proxy_ip:
-    PROXY_CONF = f"http://{settings.proxy_username}:{settings.proxy_password}@{settings.proxy_ip}:{settings.proxy_port}"
-else:
-    PROXY_CONF = None
+PROXY_CONF = settings.proxy_url
 
 
 class OAuthProviderBase(ABC):

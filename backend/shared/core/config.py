@@ -22,6 +22,16 @@ class BaseServiceSettings(BaseSettings):
         extra="ignore",
     )
 
+    # Proxy (optional — supports http, socks5, shadowsocks via ss-local sidecar)
+    proxy_type: typing.Literal["http", "socks5", "shadowsocks"] | None = None
+    proxy_ip: str | None = None
+    proxy_port: int | None = None
+    proxy_username: str | None = None
+    proxy_password: str | None = None
+    # shadowsocks: ss-local sidecar exposes a local SOCKS5 port
+    proxy_ss_local_host: str = "ss-local"
+    proxy_ss_local_port: int = 1080
+
     # Application
     project_name: str = "Anak Service"
     version: str = "0.0.1"
@@ -87,3 +97,33 @@ class BaseServiceSettings(BaseSettings):
             f"{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
         return f"postgresql+psycopg://{url}"
+
+    @property
+    def proxy_url(self) -> str | None:
+        """Build proxy URL based on proxy_type.
+
+        - ``http``: ``http://user:pass@host:port``
+        - ``socks5``: ``socks5://user:pass@host:port``
+        - ``shadowsocks``: ``socks5://ss-local-host:ss-local-port``
+          (shadowsocks client sidecar exposes a plain SOCKS5 interface)
+        """
+        if self.proxy_type is None:
+            # Backwards compat: if legacy proxy_ip is set without proxy_type, assume http
+            if self.proxy_ip:
+                auth = ""
+                if self.proxy_username and self.proxy_password:
+                    auth = f"{self.proxy_username}:{self.proxy_password}@"
+                return f"http://{auth}{self.proxy_ip}:{self.proxy_port}"
+            return None
+
+        if self.proxy_type == "shadowsocks":
+            return f"socks5://{self.proxy_ss_local_host}:{self.proxy_ss_local_port}"
+
+        # http or socks5
+        if not self.proxy_ip:
+            return None
+        scheme = self.proxy_type  # "http" or "socks5"
+        auth = ""
+        if self.proxy_username and self.proxy_password:
+            auth = f"{self.proxy_username}:{self.proxy_password}@"
+        return f"{scheme}://{auth}{self.proxy_ip}:{self.proxy_port}"

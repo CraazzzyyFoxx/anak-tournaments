@@ -36,11 +36,7 @@ intents.message_content = True
 intents.reactions = True
 intents.guilds = True
 
-if settings.proxy_ip:
-    PROXY_CONF = f"http://{settings.proxy_username}:{settings.proxy_password}@{settings.proxy_ip}:{settings.proxy_port}"
-else:
-    PROXY_CONF = None
-
+PROXY_CONF = settings.proxy_url
 
 client = discord.Client(intents=intents, proxy=PROXY_CONF)
 
@@ -104,7 +100,7 @@ async def get_httpx_client(destination: str = "internal") -> httpx.AsyncClient:
     return httpx.AsyncClient(
         base_url=settings.parser_url,
         headers=headers,
-        proxy=httpx.Proxy(url=PROXY_CONF) if PROXY_CONF and destination != "internal" else None,
+        proxy=PROXY_CONF if destination != "internal" else None,
         timeout=httpx.Timeout(30, read=60),
     )
 

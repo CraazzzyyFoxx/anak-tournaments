@@ -137,6 +137,20 @@ services:
       - prometheus
       - loki
 
+  ss-local:
+    image: ghcr.io/shadowsocks/sslocal-rust:latest
+    profiles: ["proxy"]
+    restart: unless-stopped
+    volumes:
+      - ./proxy/shadowsocks.json:/etc/shadowsocks-rust/config.json:ro
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "sh", "-c", "ss -tlnp | grep -q 1080"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   kong:
     image: kong:3.7
     restart: always

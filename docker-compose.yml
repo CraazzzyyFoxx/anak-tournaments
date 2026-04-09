@@ -430,6 +430,28 @@ services:
           cpus: '0.25'
           memory: 256M
 
+  ss-local:
+    image: ghcr.io/shadowsocks/sslocal-rust:latest
+    profiles: ["proxy"]
+    restart: unless-stopped
+    volumes:
+      - ./proxy/shadowsocks.json:/etc/shadowsocks-rust/config.json:ro
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "sh", "-c", "ss -tlnp | grep -q 1080"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.10'
+          memory: 64M
+        reservations:
+          cpus: '0.05'
+          memory: 32M
+
   kong:
     image: kong:3.7
     profiles: ["gateway"]

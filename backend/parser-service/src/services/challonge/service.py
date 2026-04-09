@@ -1,14 +1,7 @@
-from httpx import AsyncClient, BasicAuth, Proxy
+from httpx import AsyncClient, BasicAuth
 
 from src import schemas
 from src.core import config, errors
-
-if config.settings.proxy_ip:
-    proxy_conf = Proxy(
-        url=f"http://{config.settings.proxy_username}:{config.settings.proxy_password}@{config.settings.proxy_ip}:{config.settings.proxy_port}"
-    )
-else:
-    proxy_conf = None
 
 
 challonge_client = AsyncClient(
@@ -17,7 +10,7 @@ challonge_client = AsyncClient(
         username=config.settings.challonge_username,
         password=config.settings.challonge_api_key,
     ),
-    proxy=proxy_conf,
+    proxy=config.settings.proxy_url,
     timeout=15,
 )
 

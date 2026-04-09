@@ -16,12 +16,6 @@ class AppConfig(BaseServiceSettings):
     challonge_username: str
     challonge_api_key: str
 
-    # Proxy (optional)
-    proxy_ip: str | None = None
-    proxy_port: int | None = None
-    proxy_username: str | None = None
-    proxy_password: str | None = None
-
     # RabbitMQ
     rabbitmq_url: str | None = None
 

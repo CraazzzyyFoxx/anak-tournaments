@@ -13,12 +13,6 @@ class Settings(BaseServiceSettings):
     service_client_secret: str
     service_token_skew_seconds: int = 30
 
-    # Proxy (optional)
-    proxy_ip: str | None = None
-    proxy_port: int | None = None
-    proxy_username: str | None = None
-    proxy_password: str | None = None
-
     # RabbitMQ (optional)
     rabbitmq_url: str | None = None
 
