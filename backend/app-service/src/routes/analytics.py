@@ -1,7 +1,11 @@
 import typing
+from typing import Any
 
+import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from starlette.requests import Request
 
 from src import schemas, models
@@ -80,3 +84,83 @@ async def get_streaks(
     session: AsyncSession = Depends(db.get_async_session),
 ):
     return await analytics_flows.get_streaks(session, tournament_id)
+
+
+# ---------------------------------------------------------------------------
+# Balance quality snapshot endpoint
+# ---------------------------------------------------------------------------
+
+
+class BalancePlayerSnapshotRead(BaseModel):
+    user_id: int | None = None
+    team_id: int | None = None
+    assigned_role: str
+    preferred_role: str | None = None
+    assigned_rank: int
+    discomfort: int = 0
+    division_number: int | None = None
+    is_captain: bool = False
+    was_off_role: bool = False
+
+
+class BalanceQualityRead(BaseModel):
+    tournament_id: int
+    algorithm: str
+    division_scope: str | None = None
+    team_count: int
+    player_count: int
+    avg_sr_overall: float
+    sr_std_dev: float
+    sr_range: float
+    total_discomfort: int
+    off_role_count: int
+    objective_score: float | None = None
+    players: list[BalancePlayerSnapshotRead]
+
+
+@router.get(
+    path="/balance-quality",
+    response_model=BalanceQualityRead | None,
+    description="Retrieve balance quality snapshot for a tournament.",
+    summary="Get balance quality metrics",
+)
+async def get_balance_quality(
+    tournament_id: int,
+    session: AsyncSession = Depends(db.get_async_session),
+):
+    result = await session.execute(
+        sa.select(models.AnalyticsBalanceSnapshot)
+        .where(models.AnalyticsBalanceSnapshot.tournament_id == tournament_id)
+        .options(selectinload(models.AnalyticsBalanceSnapshot.players))
+    )
+    snapshot = result.scalar_one_or_none()
+    if snapshot is None:
+        return None
+
+    return BalanceQualityRead(
+        tournament_id=snapshot.tournament_id,
+        algorithm=snapshot.algorithm,
+        division_scope=snapshot.division_scope,
+        team_count=snapshot.team_count,
+        player_count=snapshot.player_count,
+        avg_sr_overall=snapshot.avg_sr_overall,
+        sr_std_dev=snapshot.sr_std_dev,
+        sr_range=snapshot.sr_range,
+        total_discomfort=snapshot.total_discomfort,
+        off_role_count=snapshot.off_role_count,
+        objective_score=snapshot.objective_score,
+        players=[
+            BalancePlayerSnapshotRead(
+                user_id=p.user_id,
+                team_id=p.team_id,
+                assigned_role=p.assigned_role,
+                preferred_role=p.preferred_role,
+                assigned_rank=p.assigned_rank,
+                discomfort=p.discomfort,
+                division_number=p.division_number,
+                is_captain=p.is_captain,
+                was_off_role=p.was_off_role,
+            )
+            for p in snapshot.players
+        ],
+    )

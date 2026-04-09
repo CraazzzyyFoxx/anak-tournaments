@@ -1,4 +1,4 @@
-import { ArrowLeftRight, ClipboardList, type LucideIcon, Users } from "lucide-react";
+import { ArrowLeftRight, ClipboardList, type LucideIcon, UserPlus, Users } from "lucide-react";
 
 import type { AppRole } from "@/hooks/usePermissions";
 
@@ -23,6 +23,12 @@ export const balancerNavigationItems: BalancerNavItem[] = [
     href: "/balancer/applications",
     icon: ClipboardList,
     description: "Review and manage tournament applications.",
+  },
+  {
+    title: "Registrations",
+    href: "/balancer/registrations",
+    icon: UserPlus,
+    description: "Review and manage tournament registrations.",
   },
   {
     title: "Player Pool",

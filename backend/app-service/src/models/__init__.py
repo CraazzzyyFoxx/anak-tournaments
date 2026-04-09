@@ -12,3 +12,4 @@ from shared.models.standings import *
 from shared.models.achievement import *
 from shared.models.analytics import *
 from shared.models.auth_user import *
+from shared.models.balancer import *

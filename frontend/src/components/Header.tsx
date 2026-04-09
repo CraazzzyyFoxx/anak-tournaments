@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 import { SITE_ICON, SITE_NAME } from "@/config/site";
 import UserMenu from "@/components/UserMenu";
 import WorkspaceSwitcher from "@/components/WorkspaceSwitcher";
+import ActiveEvents from "@/components/ActiveEvents";
 import { adminEntryPermissions } from "@/components/admin/admin-navigation";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -207,6 +208,7 @@ const Header = () => {
         </SheetContent>
       </Sheet>
       <div className="flex w-full items-center md:ml-auto gap-4 lg:gap-4">
+        <ActiveEvents />
         <div className="ml-auto flex-1 sm:flex-initial">
           <UserSearch />
         </div>

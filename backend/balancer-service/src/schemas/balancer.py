@@ -46,6 +46,14 @@ class ConfigOverrides(BaseModel):
         None, ge=1, le=5, description="Maximum number of CP-SAT solutions to return"
     )
 
+    # Workspace & division (new)
+    workspace_id: int | None = Field(None, description="Workspace context for division grid resolution")
+    tournament_id: int | None = Field(None, description="Tournament context")
+    division_grid: dict[str, Any] | None = Field(None, description="Resolved division grid JSON")
+    division_scope: Literal["cross", "within"] | None = Field(
+        None, description="Balancing scope: 'cross' (all players together) or 'within' (per division)"
+    )
+
 
 class BalanceRequest(BaseModel):
     """Request schema for team balancing"""

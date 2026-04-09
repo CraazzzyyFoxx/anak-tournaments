@@ -1,5 +1,9 @@
 import { apiFetch } from "@/lib/api-fetch";
 import {
+  AdminApproveResponse,
+  AdminRegistration,
+  AdminRegistrationForm,
+  AdminRegistrationFormUpsert,
   ApplicationUserExportResponse,
   BalanceExportResponse,
   BalanceSaveInput,
@@ -180,6 +184,65 @@ export default class balancerAdminService {
     const response = await apiFetch("parser",`admin/balancer/tournaments/${tournamentId}/teams/import`, {
       method: "POST",
       body: formData,
+    });
+    return response.json();
+  }
+
+  // -----------------------------------------------------------------------
+  // Registration management
+  // -----------------------------------------------------------------------
+
+  static async getRegistrationForm(tournamentId: number): Promise<AdminRegistrationForm | null> {
+    const response = await apiFetch("parser", `admin/balancer/tournaments/${tournamentId}/registration-form`);
+    return response.json();
+  }
+
+  static async upsertRegistrationForm(
+    tournamentId: number,
+    data: AdminRegistrationFormUpsert,
+  ): Promise<AdminRegistrationForm> {
+    const response = await apiFetch("parser", `admin/balancer/tournaments/${tournamentId}/registration-form`, {
+      method: "PUT",
+      body: data,
+    });
+    return response.json();
+  }
+
+  static async listRegistrations(
+    tournamentId: number,
+    statusFilter?: string,
+  ): Promise<AdminRegistration[]> {
+    const params = statusFilter ? `?status_filter=${statusFilter}` : "";
+    const response = await apiFetch("parser", `admin/balancer/tournaments/${tournamentId}/registrations${params}`);
+    return response.json();
+  }
+
+  static async approveRegistration(registrationId: number): Promise<AdminApproveResponse> {
+    const response = await apiFetch("parser", `admin/balancer/registrations/${registrationId}/approve`, {
+      method: "PATCH",
+    });
+    return response.json();
+  }
+
+  static async rejectRegistration(registrationId: number): Promise<void> {
+    await apiFetch("parser", `admin/balancer/registrations/${registrationId}/reject`, {
+      method: "PATCH",
+    });
+  }
+
+  static async deleteRegistration(registrationId: number): Promise<void> {
+    await apiFetch("parser", `admin/balancer/registrations/${registrationId}`, {
+      method: "DELETE",
+    });
+  }
+
+  static async bulkApproveRegistrations(
+    tournamentId: number,
+    registrationIds: number[],
+  ): Promise<{ approved: number; skipped: number }> {
+    const response = await apiFetch("parser", `admin/balancer/tournaments/${tournamentId}/registrations/bulk-approve`, {
+      method: "POST",
+      body: { registration_ids: registrationIds },
     });
     return response.json();
   }

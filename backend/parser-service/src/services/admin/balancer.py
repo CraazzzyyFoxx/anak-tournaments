@@ -20,6 +20,8 @@ from shared.division_grid import DEFAULT_GRID, DivisionGrid
 from src import models, schemas
 from src.core import config
 from src.schemas.admin import balancer as admin_schemas
+from src.services.admin.balance_analytics import create_balance_snapshot
+from src.services.admin.balancer_dual_write import sync_balance_variants_and_slots, sync_player_role_entries
 from src.services.team import flows as team_flows
 from src.services.user import flows as user_flows
 from src.services.user import service as user_service
@@ -1076,6 +1078,7 @@ async def create_players_from_applications(
     if not applications:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Applications not found")
 
+    created_players: list[models.BalancerPlayer] = []
     for application in applications:
         if application.player is not None:
             continue
@@ -1095,6 +1098,13 @@ async def create_players_from_applications(
         )
         sync_legacy_player_fields(player)
         session.add(player)
+        created_players.append(player)
+
+    await session.flush()
+
+    # Dual-write: sync to normalized player_role_entry table
+    for player in created_players:
+        await sync_player_role_entries(session, player)
 
     await session.commit()
 
@@ -1152,6 +1162,10 @@ async def update_player(
         setattr(player, field, value)
 
     sync_legacy_player_fields(player)
+
+    # Dual-write: sync to normalized player_role_entry table
+    await session.flush()
+    await sync_player_role_entries(session, player)
 
     await session.commit()
     await session.refresh(player)
@@ -1312,6 +1326,15 @@ async def import_players(
             detail=f"Unresolved duplicate players: {', '.join(unresolved_duplicates)}",
         )
 
+    # Dual-write: sync all touched players to normalized tables
+    await session.flush()
+    all_players_result = await session.execute(
+        sa.select(models.BalancerPlayer).where(models.BalancerPlayer.tournament_id == tournament_id)
+    )
+    for player in all_players_result.scalars().all():
+        if player.role_entries_json:
+            await sync_player_role_entries(session, player)
+
     await session.commit()
     return admin_schemas.BalancerPlayerImportResult(
         success=True,
@@ -1468,6 +1491,12 @@ async def save_balance(
         await session.execute(sa.delete(models.BalancerTeam).where(models.BalancerTeam.balance_id == balance.id))
 
     session.add_all(materialize_balance_teams(balance.id, payload))
+    await session.flush()
+
+    # Dual-write: sync balance variants and team slots
+    algorithm = (data.config_json or {}).get("ALGORITHM", "unknown") if data.config_json else "unknown"
+    await sync_balance_variants_and_slots(session, balance, payload, algorithm=algorithm)
+
     await session.commit()
 
     saved_balance = await get_balance(session, tournament_id)
@@ -1571,6 +1600,10 @@ async def export_balance(session: AsyncSession, balance_id: int) -> tuple[models
         balance.exported_at = datetime.now(UTC)
         balance.export_status = "success"
         balance.export_error = None
+
+        # Create analytics snapshot
+        await create_balance_snapshot(session, balance, payload, public_teams)
+
         await session.commit()
     except Exception as exc:  # noqa: BLE001
         balance.export_status = "failed"

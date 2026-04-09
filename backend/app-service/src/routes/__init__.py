@@ -14,10 +14,12 @@ from src.routes.utils import router as utils_router
 from src.routes.analytics import router as analytics_router
 from src.routes.workspace import router as workspace_router
 from src.routes.assets import router as assets_router
+from src.routes.registration import router as registration_router
 
 router = APIRouter()
 router.include_router(workspace_router)
 router.include_router(assets_router)
+router.include_router(registration_router)
 router.include_router(user_router)
 router.include_router(tournament_router)
 router.include_router(team_router)

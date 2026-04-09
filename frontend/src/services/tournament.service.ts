@@ -66,6 +66,22 @@ export default class tournamentService {
       },
     }).then((response) => response.json());
   }
+  static async getActive(): Promise<PaginatedResponse<Tournament>> {
+    return apiFetch("app", `tournaments`, {
+      query: {
+        page: 1,
+        per_page: -1,
+        sort: "id",
+        order: "desc",
+        entities: ["registrations_count"],
+      },
+    })
+      .then((response) => response.json())
+      .then((response: PaginatedResponse<Tournament>) =>
+        normalizePaginatedResponse(response)
+      );
+  }
+
   static async get(id: number): Promise<Tournament> {
     return apiFetch("app",`tournaments/${id}`, {
       query: {

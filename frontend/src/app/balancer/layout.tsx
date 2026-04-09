@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { BalancerShell } from "@/app/balancer/_components/BalancerShell";
-import { BalancerTournamentSelect } from "@/app/balancer/_components/BalancerTournamentSelect";
 import { BalancerSidebar } from "@/components/balancer/BalancerSidebar";
 import { balancerEntryRoles } from "@/components/balancer/balancer-navigation";
 import {
@@ -64,31 +63,27 @@ function BalancerBreadcrumb() {
   const segments = pathname.split("/").filter(Boolean);
 
   return (
-    <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
-      <Breadcrumb>
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink href="/balancer">Balancer</BreadcrumbLink>
-          </BreadcrumbItem>
-          {segments.slice(1).map((segment, index) => {
-            const href = `/balancer/${segments.slice(1, index + 2).join("/")}`;
-            const isLast = index === segments.length - 2;
-            const label = formatBreadcrumbLabel(segment);
+    <Breadcrumb>
+      <BreadcrumbList>
+        <BreadcrumbItem>
+          <BreadcrumbLink href="/balancer">Balancer</BreadcrumbLink>
+        </BreadcrumbItem>
+        {segments.slice(1).map((segment, index) => {
+          const href = `/balancer/${segments.slice(1, index + 2).join("/")}`;
+          const isLast = index === segments.length - 2;
+          const label = formatBreadcrumbLabel(segment);
 
-            return (
-              <div key={`${segment}-${index}`} className="flex items-center gap-2">
-                <BreadcrumbSeparator />
-                <BreadcrumbItem>
-                  {isLast ? <BreadcrumbPage>{label}</BreadcrumbPage> : <BreadcrumbLink href={href}>{label}</BreadcrumbLink>}
-                </BreadcrumbItem>
-              </div>
-            );
-          })}
-        </BreadcrumbList>
-      </Breadcrumb>
-
-      <BalancerTournamentSelect />
-    </div>
+          return (
+            <div key={`${segment}-${index}`} className="flex items-center gap-2">
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                {isLast ? <BreadcrumbPage>{label}</BreadcrumbPage> : <BreadcrumbLink href={href}>{label}</BreadcrumbLink>}
+              </BreadcrumbItem>
+            </div>
+          );
+        })}
+      </BreadcrumbList>
+    </Breadcrumb>
   );
 }
 

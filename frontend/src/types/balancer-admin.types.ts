@@ -214,3 +214,78 @@ export interface BalanceSaveInput {
   config_json?: Record<string, unknown> | null;
   result_json: InternalBalancePayload;
 }
+
+// ---------------------------------------------------------------------------
+// Registration (admin)
+// ---------------------------------------------------------------------------
+
+export interface AdminCustomFieldDef {
+  key: string;
+  label: string;
+  type: "text" | "number" | "select" | "checkbox" | "url";
+  required: boolean;
+  placeholder: string | null;
+  options: string[] | null;
+}
+
+export interface BuiltInFieldConfig {
+  enabled: boolean;
+  required: boolean;
+  /** Per-role subrole options. Only relevant for primary_role / additional_roles fields. */
+  subroles?: Record<string, string[]>;
+}
+
+export interface AdminRegistrationForm {
+  id: number;
+  tournament_id: number;
+  workspace_id: number;
+  is_open: boolean;
+  auto_approve: boolean;
+  opens_at: string | null;
+  closes_at: string | null;
+  built_in_fields_json: Record<string, BuiltInFieldConfig>;
+  custom_fields_json: AdminCustomFieldDef[];
+}
+
+export interface AdminRegistrationFormUpsert {
+  is_open: boolean;
+  auto_approve: boolean;
+  opens_at?: string | null;
+  closes_at?: string | null;
+  built_in_fields: Record<string, BuiltInFieldConfig>;
+  custom_fields: AdminCustomFieldDef[];
+}
+
+export interface AdminRegistrationRole {
+  role: string;
+  subrole: string | null;
+  is_primary: boolean;
+  priority: number;
+}
+
+export interface AdminRegistration {
+  id: number;
+  tournament_id: number;
+  workspace_id: number;
+  auth_user_id: number | null;
+  user_id: number | null;
+  battle_tag: string | null;
+  smurf_tags_json: string[] | null;
+  discord_nick: string | null;
+  twitch_nick: string | null;
+  stream_pov: boolean;
+  roles: AdminRegistrationRole[];
+  notes: string | null;
+  custom_fields_json: Record<string, unknown> | null;
+  status: "pending" | "approved" | "rejected" | "withdrawn";
+  submitted_at: string | null;
+  reviewed_at: string | null;
+  reviewed_by_username: string | null;
+}
+
+export interface AdminApproveResponse {
+  registration_id: number;
+  status: string;
+  application_id: number | null;
+  player_id: number | null;
+}

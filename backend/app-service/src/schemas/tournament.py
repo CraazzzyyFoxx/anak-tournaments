@@ -43,6 +43,7 @@ class TournamentRead(BaseRead):
 
     groups: list[TournamentGroupRead]
     participants_count: int | None
+    registrations_count: int | None = None
     division_grid: DivisionGridRead | None = Field(
         default=None, validation_alias="division_grid_json"
     )

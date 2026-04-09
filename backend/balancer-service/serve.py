@@ -13,6 +13,10 @@ from shared.messaging.config import BALANCER_JOBS_QUEUE
 from shared.observability import setup_logging
 from shared.schemas.events import BalancerJobEvent
 
+# New universal adapters (used alongside legacy paths during transition)
+from src.cpsat_adapter import CpsatBalancer
+from src.genetic_adapter import GeneticBalancer
+
 # Setup structured logging for this standalone FastStream worker.
 # This runs separately from main.py (FastAPI), so it must call setup_logging() itself.
 logger = setup_logging(

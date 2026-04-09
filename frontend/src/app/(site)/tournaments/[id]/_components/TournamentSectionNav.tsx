@@ -3,12 +3,13 @@
 import React from "react";
 import Link from "next/link";
 import { useSearchParams, useSelectedLayoutSegment } from "next/navigation";
-import { BarChart3, Calendar, Trophy, Users } from "lucide-react";
+import { BarChart3, Calendar, ClipboardList, Trophy, Users } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
 const items = [
   { title: "Teams", icon: Users, tab: "teams" },
+  { title: "Participants", icon: ClipboardList, tab: "participants" },
   { title: "Matches", icon: Calendar, tab: "matches" },
   { title: "Heroes", icon: Trophy, tab: "heroes" },
   { title: "Standings", icon: BarChart3, tab: "standings" }

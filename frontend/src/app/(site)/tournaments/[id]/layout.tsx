@@ -5,6 +5,7 @@ import { Activity, Calendar, ExternalLink, Users } from "lucide-react";
 
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { TournamentChallongeLinkInline } from "@/app/(site)/tournaments/components/TournamentCard";
+import TournamentRegisterButton from "./_components/TournamentRegisterButton";
 import { cn, formatDateRange } from "@/lib/utils";
 
 import TournamentSectionNav from "./_components/TournamentSectionNav";
@@ -99,60 +100,79 @@ export default async function TournamentLayout({
               </span>
             </div>
 
-            {/* Title */}
-            <h1 className="text-2xl font-semibold tracking-tight text-white">
-              {tournament.name}
-            </h1>
-
-            {tournament.description && (
-              <p className="mt-2 text-sm leading-relaxed text-white/50 max-w-prose">
-                {tournament.description}
-              </p>
-            )}
+            {/* Title + Register */}
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <h1 className="text-2xl font-semibold tracking-tight text-white">
+                  {tournament.name}
+                </h1>
+                {tournament.description && (
+                  <p className="mt-2 text-sm leading-relaxed text-white/50 max-w-prose">
+                    {tournament.description}
+                  </p>
+                )}
+              </div>
+              {!tournament.is_finished && (
+                <div className="shrink-0">
+                  <TournamentRegisterButton
+                    workspaceId={tournament.workspace_id}
+                    tournamentId={tournament.id}
+                    tournamentName={tournament.name}
+                  />
+                </div>
+              )}
+            </div>
 
             {/* Meta tiles */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-5">
-              <div className="flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
-                <Calendar className="h-4 w-4 shrink-0 text-white/30" />
-                <div className="min-w-0">
-                  <div className="text-[10px] text-white/40 uppercase tracking-wide mb-0.5">Dates</div>
-                  <div className="truncate text-sm font-medium text-white/80">
-                    {formatDateRange(tournament.start_date, tournament.end_date)}
+            {(() => {
+              const hasChallonge = tournament.challonge_slug || tournament.groups.some(g => g.challonge_slug);
+              return (
+                <div className={cn("grid grid-cols-2 gap-3 mt-5", hasChallonge ? "lg:grid-cols-4" : "lg:grid-cols-3")}>
+                  <div className="flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
+                    <Calendar className="h-4 w-4 shrink-0 text-white/30" />
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-white/40 uppercase tracking-wide mb-0.5">Dates</div>
+                      <div className="truncate text-sm font-medium text-white/80">
+                        {formatDateRange(tournament.start_date, tournament.end_date)}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
 
-              <div className="flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
-                <Users className="h-4 w-4 shrink-0 text-white/30" />
-                <div className="min-w-0">
-                  <div className="text-[10px] text-white/40 uppercase tracking-wide mb-0.5">Participants</div>
-                  <div className="truncate text-sm font-medium text-white/80">
-                    {tournament.participants_count ?? 0}
+                  <div className="flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
+                    <Users className="h-4 w-4 shrink-0 text-white/30" />
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-white/40 uppercase tracking-wide mb-0.5">Participants</div>
+                      <div className="truncate text-sm font-medium text-white/80">
+                        {tournament.participants_count ?? 0}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
 
-              <div className="flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
-                <Activity className="h-4 w-4 shrink-0 text-white/30" />
-                <div className="min-w-0">
-                  <div className="text-[10px] text-white/40 uppercase tracking-wide mb-0.5">Status</div>
-                  <div className={cn(
-                    "text-sm font-medium",
-                    tournament.is_finished ? "text-white/60" : "text-emerald-400"
-                  )}>
-                    {tournament.is_finished ? "Finished" : "Ongoing"}
+                  <div className="flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
+                    <Activity className="h-4 w-4 shrink-0 text-white/30" />
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-white/40 uppercase tracking-wide mb-0.5">Status</div>
+                      <div className={cn(
+                        "text-sm font-medium",
+                        tournament.is_finished ? "text-white/60" : "text-emerald-400"
+                      )}>
+                        {tournament.is_finished ? "Finished" : "Ongoing"}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
 
-              <div className="flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
-                <ExternalLink className="h-4 w-4 shrink-0 text-white/30" />
-                <div className="min-w-0">
-                  <div className="text-[10px] text-white/40 uppercase tracking-wide mb-0.5">Bracket</div>
-                  <TournamentChallongeLinkInline tournament={tournament} />
+                  {hasChallonge && (
+                    <div className="flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
+                      <ExternalLink className="h-4 w-4 shrink-0 text-white/30" />
+                      <div className="min-w-0">
+                        <div className="text-[10px] text-white/40 uppercase tracking-wide mb-0.5">Bracket</div>
+                        <TournamentChallongeLinkInline tournament={tournament} />
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
-            </div>
+              );
+            })()}
           </div>
 
           {/* Mobile nav */}

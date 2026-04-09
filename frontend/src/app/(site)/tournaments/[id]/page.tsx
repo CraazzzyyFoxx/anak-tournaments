@@ -17,7 +17,7 @@ type TournamentIndexPageProps = {
 };
 
 const isTab = (value: string | undefined) => {
-  return value === "teams" || value === "matches" || value === "heroes" || value === "standings";
+  return value === "teams" || value === "participants" || value === "matches" || value === "heroes" || value === "standings";
 };
 
 export default async function TournamentIndexPage({

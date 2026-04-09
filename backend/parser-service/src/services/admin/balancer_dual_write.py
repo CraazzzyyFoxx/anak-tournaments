@@ -1,0 +1,158 @@
+"""Dual-write helpers for the balancer subsystem.
+
+These functions synchronize data from the legacy JSON columns to the new
+normalized relational tables (player_role_entry, team_slot, balance_variant).
+They are called alongside existing JSON writes during the transition period.
+
+Once all reads are migrated to relational tables, the JSON columns can be
+dropped and these helpers become the sole write path.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+import sqlalchemy as sa
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src import models, schemas
+
+
+# ---------------------------------------------------------------------------
+# Player role entries  (replaces role_entries_json)
+# ---------------------------------------------------------------------------
+
+
+async def sync_player_role_entries(
+    session: AsyncSession,
+    player: models.BalancerPlayer,
+) -> None:
+    """Write normalized role entries from player.role_entries_json.
+
+    Deletes existing entries and re-inserts from the JSON source-of-truth.
+    This is safe during the dual-write period because the JSON column is
+    always written first.
+    """
+    role_entries_json: list[dict[str, Any]] = player.role_entries_json or []
+
+    # Delete existing
+    await session.execute(
+        sa.delete(models.BalancerPlayerRoleEntry).where(
+            models.BalancerPlayerRoleEntry.player_id == player.id
+        )
+    )
+
+    # Insert from JSON
+    for entry in role_entries_json:
+        role = entry.get("role")
+        if not role:
+            continue
+        session.add(
+            models.BalancerPlayerRoleEntry(
+                player_id=player.id,
+                role=role,
+                subtype=entry.get("subtype"),
+                priority=entry.get("priority", 1),
+                rank_value=entry.get("rank_value"),
+                division_number=entry.get("division_number"),
+                is_active=entry.get("is_active", True),
+            )
+        )
+
+
+# ---------------------------------------------------------------------------
+# Balance variants + team slots  (replaces roster_json)
+# ---------------------------------------------------------------------------
+
+
+ROLE_NAME_TO_CODE: dict[str, str] = {
+    "Tank": "tank",
+    "tank": "tank",
+    "Damage": "dps",
+    "dps": "dps",
+    "DPS": "dps",
+    "Support": "support",
+    "support": "support",
+}
+
+
+async def sync_balance_variants_and_slots(
+    session: AsyncSession,
+    balance: models.BalancerBalance,
+    payload: schemas.InternalBalancerTeamsPayload,
+    *,
+    algorithm: str = "unknown",
+) -> None:
+    """Create balance_variant and team_slot rows from the saved balance result.
+
+    Called after materialize_balance_teams() populates BalancerTeam rows.
+    """
+    # Delete old variants (cascades to team_slots through variant→team FK)
+    await session.execute(
+        sa.delete(models.BalancerBalanceVariant).where(
+            models.BalancerBalanceVariant.balance_id == balance.id
+        )
+    )
+    await session.flush()
+
+    # Create single variant (the saved/selected one)
+    variant = models.BalancerBalanceVariant(
+        balance_id=balance.id,
+        variant_number=1,
+        algorithm=algorithm,
+        objective_score=None,
+        statistics_json=None,
+        is_selected=True,
+    )
+    session.add(variant)
+    await session.flush()
+
+    # Update balance metadata
+    balance.algorithm = algorithm
+
+    # Build player lookup: battle_tag_normalized → BalancerPlayer
+    result = await session.execute(
+        sa.select(models.BalancerPlayer).where(
+            models.BalancerPlayer.tournament_id == balance.tournament_id,
+            models.BalancerPlayer.is_in_pool.is_(True),
+        )
+    )
+    player_lookup: dict[str, models.BalancerPlayer] = {}
+    for bp in result.scalars().all():
+        player_lookup[bp.battle_tag_normalized] = bp
+
+    # Link teams to variant and create team_slots
+    teams_result = await session.execute(
+        sa.select(models.BalancerTeam).where(
+            models.BalancerTeam.balance_id == balance.id
+        )
+    )
+    balancer_teams = {t.balancer_name: t for t in teams_result.scalars().all()}
+
+    for team_data in payload.teams:
+        balancer_team = balancer_teams.get(team_data.name)
+        if balancer_team is None:
+            continue
+
+        balancer_team.variant_id = variant.id
+
+        sort_order = 0
+        for role_name, players in team_data.roster.items():
+            role_code = ROLE_NAME_TO_CODE.get(role_name, role_name.lower())
+            for player_data in players:
+                # Try to find the BalancerPlayer by name
+                name_normalized = player_data.name.replace(" ", "").strip().lower()
+                bp = player_lookup.get(name_normalized)
+
+                session.add(
+                    models.BalancerTeamSlot(
+                        team_id=balancer_team.id,
+                        player_id=bp.id if bp else None,
+                        role=role_code,
+                        assigned_rank=player_data.rating,
+                        discomfort=player_data.discomfort or 0,
+                        is_captain=player_data.is_captain,
+                        sort_order=sort_order,
+                    )
+                )
+                sort_order += 1

@@ -31,6 +31,7 @@ export interface Tournament {
 
   groups: TournamentGroup[];
   participants_count: number | null;
+  registrations_count: number | null;
   division_grid: DivisionGrid | null;
 }
 

@@ -8,6 +8,7 @@ from shared.division_grid import DivisionGrid
 
 from src import models, schemas
 from src.core import enums, errors, pagination
+from src.services.registration import service as registration_service
 from src.services.team import service as team_service
 from src.services.user import flows as user_flows
 
@@ -30,12 +31,15 @@ async def to_pydantic(
     """
     groups: list[schemas.TournamentGroupRead] = []
     participants_count: int | None = None
+    registrations_count: int | None = None
     if "groups" in entities:
         groups = [
             schemas.TournamentGroupRead.model_validate(group, from_attributes=True) for group in tournament.groups
         ]
     if "participants_count" in entities:
         participants_count = await team_service.get_player_count_by_tournament(session, tournament.id)
+    if "registrations_count" in entities:
+        registrations_count = await registration_service.get_registration_count_by_tournament(session, tournament.id)
     return schemas.TournamentRead(
         id=tournament.id,
         workspace_id=tournament.workspace_id,
@@ -50,6 +54,7 @@ async def to_pydantic(
         challonge_slug=tournament.challonge_slug,
         groups=groups,
         participants_count=participants_count,
+        registrations_count=registrations_count,
     )
 
 

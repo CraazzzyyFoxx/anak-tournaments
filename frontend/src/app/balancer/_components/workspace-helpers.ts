@@ -8,6 +8,8 @@ import {
 } from "@/types/balancer-admin.types";
 import { BalanceResponse } from "@/types/balancer.types";
 import { UserRoleType } from "@/types/user.types";
+import type { DivisionGrid } from "@/types/workspace.types";
+import { DEFAULT_DIVISION_GRID } from "@/hooks/useCurrentWorkspace";
 import userService from "@/services/user.service";
 
 const ROLE_ORDER: BalancerRoleCode[] = ["tank", "dps", "support"];
@@ -320,35 +322,23 @@ export function downloadPayload(payload: InternalBalancePayload, tournamentId: n
   URL.revokeObjectURL(url);
 }
 
-const DIVISION_THRESHOLDS_HELPER: Array<{ division: number; minRank: number }> = [
-  { division: 1, minRank: 2000 },
-  { division: 2, minRank: 1900 },
-  { division: 3, minRank: 1800 },
-  { division: 4, minRank: 1700 },
-  { division: 5, minRank: 1600 },
-  { division: 6, minRank: 1500 },
-  { division: 7, minRank: 1400 },
-  { division: 8, minRank: 1300 },
-  { division: 9, minRank: 1200 },
-  { division: 10, minRank: 1100 },
-  { division: 11, minRank: 1000 },
-  { division: 12, minRank: 900 },
-  { division: 13, minRank: 800 },
-  { division: 14, minRank: 700 },
-  { division: 15, minRank: 600 },
-  { division: 16, minRank: 500 },
-  { division: 17, minRank: 400 },
-  { division: 18, minRank: 300 },
-  { division: 19, minRank: 200 },
-  { division: 20, minRank: 0 },
-];
-
-function resolveDivisionFromRankHelper(rankValue: number | null): number | null {
+/**
+ * Resolve division number from a rank value using the workspace division grid.
+ * Falls back to DEFAULT_DIVISION_GRID when no grid is provided.
+ */
+export function resolveDivisionFromRankHelper(
+  rankValue: number | null,
+  grid: DivisionGrid = DEFAULT_DIVISION_GRID,
+): number | null {
   if (rankValue == null) return null;
-  for (const { division, minRank } of DIVISION_THRESHOLDS_HELPER) {
-    if (rankValue >= minRank) return division;
+  for (const tier of grid.tiers) {
+    if (tier.rank_max === null) {
+      if (rankValue >= tier.rank_min) return tier.number;
+    } else if (rankValue >= tier.rank_min && rankValue <= tier.rank_max) {
+      return tier.number;
+    }
   }
-  return 20;
+  return grid.tiers.length > 0 ? grid.tiers[grid.tiers.length - 1].number : null;
 }
 
 /**
@@ -357,6 +347,7 @@ function resolveDivisionFromRankHelper(rankValue: number | null): number | null 
  */
 export function buildRoleEntriesFromRankHistory(
   history: Partial<Record<BalancerRoleCode, number>>,
+  grid: DivisionGrid = DEFAULT_DIVISION_GRID,
 ): BalancerPlayerRoleEntry[] {
   const entries: BalancerPlayerRoleEntry[] = [];
   let priority = 1;
@@ -368,7 +359,7 @@ export function buildRoleEntriesFromRankHistory(
       subtype: null,
       priority: priority++,
       rank_value: rankValue,
-      division_number: resolveDivisionFromRankHelper(rankValue),
+      division_number: resolveDivisionFromRankHelper(rankValue, grid),
       is_active: true,
     });
   }
