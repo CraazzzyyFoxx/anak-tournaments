@@ -191,7 +191,9 @@ async def get_by_tournament_challonge_id(
 
 
 async def get_all(
-    session: AsyncSession, params: schemas.TeamFilterParams
+    session: AsyncSession,
+    params: schemas.TeamFilterParams,
+    workspace_id: int | None = None,
 ) -> tuple[typing.Sequence[models.Team], int]:
     """
     Retrieves a paginated list of `Team` model instances based on filtering and sorting parameters, along with the total count of teams matching the criteria.
@@ -199,6 +201,7 @@ async def get_all(
     Args:
         session: An SQLAlchemy `AsyncSession` for database interaction.
         params: An instance of `TeamFilterParams` containing filtering, sorting, and pagination parameters.
+        workspace_id: An optional workspace ID to filter teams by their tournament's workspace.
 
     Returns:
         A tuple containing:
@@ -211,6 +214,18 @@ async def get_all(
         query = query.where(sa.and_(models.Team.tournament_id == params.tournament_id))
         total_query = total_query.where(
             sa.and_(models.Team.tournament_id == params.tournament_id)
+        )
+
+    if workspace_id is not None:
+        query = query.join(
+            models.Tournament, models.Team.tournament_id == models.Tournament.id
+        )
+        total_query = total_query.join(
+            models.Tournament, models.Team.tournament_id == models.Tournament.id
+        )
+        query = query.where(models.Tournament.workspace_id == workspace_id)
+        total_query = total_query.where(
+            models.Tournament.workspace_id == workspace_id
         )
 
     if params.sort == "group":

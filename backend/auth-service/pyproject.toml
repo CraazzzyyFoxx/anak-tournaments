@@ -38,6 +38,7 @@ dependencies = [
     "opentelemetry-instrumentation-sqlalchemy>=0.48b0",
     "opentelemetry-exporter-otlp>=1.27.0",
     "prometheus-fastapi-instrumentator>=7.0",
+    "tenacity>=9.0.0",
     "uvicorn>=0.34.0",
     "uvloop; platform_system == 'Linux'",
 ]

@@ -18,31 +18,31 @@ import { PaginatedResponse, SearchPaginationParams } from "@/types/pagination.ty
 import { HeroWithUserStats } from "@/types/hero.types";
 import { AchievementRarity } from "@/types/achievement.types";
 import { LogStatsName } from "@/types/stats.types";
-import { customFetch } from "@/lib/custom_fetch";
+import { apiFetch } from "@/lib/api-fetch";
 
 export default class userService {
   static async getAll(params: SearchPaginationParams): Promise<PaginatedResponse<User>> {
-    return customFetch("users", {
+    return apiFetch("app","users", {
       query: {
         ...params
       }
     }).then((res) => res.json());
   }
   static async getUserByName(name: string): Promise<User> {
-    return customFetch(`users/${name}`, {
+    return apiFetch("app",`users/${name}`, {
       query: {
         entities: ["twitch", "discord", "battle_tag"]
       }
     }).then((res) => res.json());
   }
   static async getUserProfile(id: number): Promise<UserProfile> {
-    return customFetch(`users/${id}/profile`).then((res) => res.json());
+    return apiFetch("app",`users/${id}/profile`).then((res) => res.json());
   }
   static async getUserTournament(
     id: number,
     tournamentId: number | null
   ): Promise<UserTournamentWithStats | null> {
-    return customFetch(`users/${id}/tournaments/${tournamentId}`)
+    return apiFetch("app",`users/${id}/tournaments/${tournamentId}`)
       .then((res) => {
         if (res.status === 200) {
           return res.json();
@@ -55,7 +55,7 @@ export default class userService {
       });
   }
   static async getUserTournaments(id: number): Promise<UserTournament[]> {
-    return customFetch(`users/${id}/tournaments`).then((res) => res.json());
+    return apiFetch("app",`users/${id}/tournaments`).then((res) => res.json());
   }
   static async getUserMaps(
     id: number,
@@ -66,7 +66,8 @@ export default class userService {
       order = "desc",
       query = "",
       minCount,
-      gamemodeId
+      gamemodeId,
+      tournamentId
     }: {
       page?: number;
       perPage?: number;
@@ -75,11 +76,12 @@ export default class userService {
       query?: string;
       minCount?: number;
       gamemodeId?: number | null;
+      tournamentId?: number | null;
     } = {}
   ): Promise<PaginatedResponse<UserMapRead>> {
     const entities = ["gamemode", "hero_stats"];
 
-    return customFetch(`users/${id}/maps`, {
+    return apiFetch("app",`users/${id}/maps`, {
       query: {
         page,
         per_page: perPage,
@@ -89,6 +91,7 @@ export default class userService {
         fields: ["name"],
         min_count: minCount,
         gamemode_id: gamemodeId,
+        tournament_id: tournamentId,
         entities
       }
     }).then((res) => res.json());
@@ -99,15 +102,17 @@ export default class userService {
     {
       query = "",
       minCount,
-      gamemodeId
-    }: { query?: string; minCount?: number; gamemodeId?: number | null } = {}
+      gamemodeId,
+      tournamentId
+    }: { query?: string; minCount?: number; gamemodeId?: number | null; tournamentId?: number | null } = {}
   ): Promise<UserMapsSummary> {
-    return customFetch(`users/${id}/maps/summary`, {
+    return apiFetch("app",`users/${id}/maps/summary`, {
       query: {
         query,
         fields: ["name"],
         min_count: minCount,
         gamemode_id: gamemodeId,
+        tournament_id: tournamentId,
         entities: ["gamemode"]
       }
     }).then((res) => res.json());
@@ -119,7 +124,7 @@ export default class userService {
     sort: string = "id",
     order: string = "desc"
   ): Promise<PaginatedResponse<EncounterWithUserStats>> {
-    return customFetch(`users/${id}/encounters`, {
+    return apiFetch("app",`users/${id}/encounters`, {
       query: {
         page: page,
         per_page: perPage,
@@ -134,7 +139,7 @@ export default class userService {
     stats?: LogStatsName[],
     tournamentId?: number
   ): Promise<PaginatedResponse<HeroWithUserStats>> {
-    return customFetch(`users/${id}/heroes`, {
+    return apiFetch("app",`users/${id}/heroes`, {
       query: {
         per_page: -1,
         sort: "id",
@@ -154,7 +159,7 @@ export default class userService {
       withoutTournament?: boolean;
     } = {}
   ): Promise<AchievementRarity[]> {
-    return customFetch(`achievements/user/${id}`, {
+    return apiFetch("app",`achievements/user/${id}`, {
       query: {
         entities: ["tournaments", "matches"],
         tournament_id: tournamentId,
@@ -163,7 +168,7 @@ export default class userService {
     }).then((res) => res.json());
   }
   static async getUserBestTeammates(id: number): Promise<PaginatedResponse<UserBestTeammate>> {
-    return customFetch(`users/${id}/teammates`, {
+    return apiFetch("app",`users/${id}/teammates`, {
       query: {
         per_page: 5,
         sort: "winrate",
@@ -172,7 +177,7 @@ export default class userService {
     }).then((res) => res.json());
   }
   static async searchUsers(query: string, signal?: AbortSignal): Promise<MinimizedUser[]> {
-    return customFetch(`users/search`, {
+    return apiFetch("app",`users/search`, {
       query: {
         query: query,
         fields: ["battle_tag"]
@@ -200,7 +205,7 @@ export default class userService {
     divMin?: number;
     divMax?: number;
   } = {}): Promise<PaginatedResponse<UserOverviewRow>> {
-    return customFetch("users/overview", {
+    return apiFetch("app","users/overview", {
       query: {
         page,
         per_page: perPage,
@@ -233,7 +238,7 @@ export default class userService {
       tournamentId?: number;
     } = {}
   ): Promise<UserCompareResponse> {
-    return customFetch(`users/${userId}/compare`, {
+    return apiFetch("app",`users/${userId}/compare`, {
       query: {
         baseline,
         target_user_id: targetUserId,
@@ -271,7 +276,7 @@ export default class userService {
       stats?: LogStatsName[];
     }
   ): Promise<UserHeroCompareResponse> {
-    return customFetch(`users/${userId}/compare/heroes`, {
+    return apiFetch("app",`users/${userId}/compare/heroes`, {
       query: {
         baseline,
         target_user_id: targetUserId,

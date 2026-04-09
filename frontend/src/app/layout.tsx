@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { GeistSans } from "geist/font/sans";
 import "./globals.css";
 import React from "react";
 import { Providers } from "@/app/providers";
@@ -12,7 +12,6 @@ import LoginModalTrigger from "@/components/LoginModalTrigger";
 import { Toaster } from "@/components/ui/toaster";
 import { Suspense } from "react";
 
-const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: SITE_NAME,
@@ -38,7 +37,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={cn(inter.className, "dark")}>
+      <body className={cn(GeistSans.className, "dark")}>
         <GoogleAnalytics gaId="G-6TYE0K6SQM" />
         <Providers>
           <Suspense fallback={null}>

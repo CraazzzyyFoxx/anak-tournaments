@@ -42,6 +42,7 @@ class QueueDepth(BaseModel):
     messages_ready: int
     messages_unacknowledged: int
     consumers: int
+    status: str = "ok"  # "ok" | "not_found" | "error"
 
 
 class LogRecordRead(BaseModel):
@@ -89,12 +90,14 @@ async def _fetch_queue_depths() -> list[QueueDepth]:
                             consumers=data.get("consumers", 0),
                         )
                     )
+                elif resp.status_code == 404:
+                    depths.append(QueueDepth(name=queue_name, messages_ready=-1, messages_unacknowledged=-1, consumers=0, status="not_found"))
                 else:
-                    depths.append(QueueDepth(name=queue_name, messages_ready=-1, messages_unacknowledged=-1, consumers=0))
+                    depths.append(QueueDepth(name=queue_name, messages_ready=-1, messages_unacknowledged=-1, consumers=0, status="error"))
     except Exception as exc:
         logger.warning(f"Failed to fetch queue depths from RabbitMQ management API: {exc}")
         for queue_name in MONITORED_QUEUES:
-            depths.append(QueueDepth(name=queue_name, messages_ready=-1, messages_unacknowledged=-1, consumers=0))
+            depths.append(QueueDepth(name=queue_name, messages_ready=-1, messages_unacknowledged=-1, consumers=0, status="error"))
     return depths
 
 
@@ -114,12 +117,13 @@ def _record_to_dict(record: models.LogProcessingRecord) -> dict:
     }
 
 
-async def _fetch_recent_records(session: AsyncSession, limit: int = 20) -> list[dict]:
-    result = await session.execute(
-        select(models.LogProcessingRecord)
-        .order_by(desc(models.LogProcessingRecord.created_at))
-        .limit(limit)
-    )
+async def _fetch_recent_records(session: AsyncSession, limit: int = 20, workspace_id: int | None = None) -> list[dict]:
+    query = select(models.LogProcessingRecord).order_by(desc(models.LogProcessingRecord.created_at))
+    if workspace_id is not None:
+        query = query.join(models.Tournament, models.LogProcessingRecord.tournament_id == models.Tournament.id).where(
+            models.Tournament.workspace_id == workspace_id
+        )
+    result = await session.execute(query.limit(limit))
     return [_record_to_dict(r) for r in result.scalars().all()]
 
 
@@ -142,22 +146,27 @@ async def get_queue_status():
 )
 async def get_log_history(
     tournament_id: int | None = Query(None),
+    workspace_id: int | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    """Get paginated log processing history, optionally filtered by tournament."""
+    """Get paginated log processing history, optionally filtered by tournament or workspace."""
     query = select(models.LogProcessingRecord).order_by(desc(models.LogProcessingRecord.created_at))
+    count_query = select(models.LogProcessingRecord.id)
+
     if tournament_id is not None:
         query = query.where(models.LogProcessingRecord.tournament_id == tournament_id)
+        count_query = count_query.where(models.LogProcessingRecord.tournament_id == tournament_id)
+    if workspace_id is not None:
+        query = query.join(
+            models.Tournament, models.LogProcessingRecord.tournament_id == models.Tournament.id
+        ).where(models.Tournament.workspace_id == workspace_id)
+        count_query = count_query.join(
+            models.Tournament, models.LogProcessingRecord.tournament_id == models.Tournament.id
+        ).where(models.Tournament.workspace_id == workspace_id)
 
-    count_result = await session.execute(
-        select(models.LogProcessingRecord.id).where(
-            models.LogProcessingRecord.tournament_id == tournament_id
-            if tournament_id is not None
-            else True
-        )
-    )
+    count_result = await session.execute(count_query)
     total = len(count_result.scalars().all())
 
     result = await session.execute(query.limit(limit).offset(offset))
@@ -205,6 +214,7 @@ async def _require_sse_token(token: str = Query(..., description="JWT access tok
 @router.get("/stream", response_class=EventSourceResponse, dependencies=[Depends(_require_sse_token)])
 async def stream_log_status(
     token: str = Query(..., description="JWT access token for authentication"),
+    workspace_id: int | None = Query(None, description="Filter recent logs by workspace"),
 ):
     """SSE stream: emits queue depths + recent log processing updates every 2 seconds.
 
@@ -219,7 +229,7 @@ async def stream_log_status(
         while True:
             try:
                 queues = await _fetch_queue_depths()
-                recent = await _fetch_recent_records(session, limit=20)
+                recent = await _fetch_recent_records(session, limit=20, workspace_id=workspace_id)
 
                 payload_data = {
                     "timestamp": datetime.now(timezone.utc).isoformat(),

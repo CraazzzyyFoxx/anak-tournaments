@@ -4,6 +4,8 @@ from statistics import mean
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.division_grid import DivisionGrid, division_case_expr
+
 from src import models, schemas
 from src.core import enums, errors, pagination
 from src.services.encounter import flows as encounter_flows
@@ -252,6 +254,9 @@ async def get_all(
 async def get_overview(
     session: AsyncSession,
     params: schemas.UserOverviewParams,
+    workspace_id: int | None = None,
+    *,
+    grid: DivisionGrid,
 ) -> pagination.Paginated[schemas.UserOverviewRow]:
     if params.div_min is not None and params.div_max is not None and params.div_min > params.div_max:
         raise errors.ApiHTTPException(
@@ -264,7 +269,7 @@ async def get_overview(
             ],
         )
 
-    users, total = await service.get_overview_users(session, params)
+    users, total = await service.get_overview_users(session, params, grid)
     if not users:
         return pagination.Paginated(
             page=params.page,
@@ -274,8 +279,8 @@ async def get_overview(
         )
 
     user_ids = [user.id for user in users]
-    roles_map = await service.get_overview_role_divisions(session, user_ids)
-    tournaments_count_map = await service.get_overview_tournaments_count(session, user_ids)
+    roles_map = await service.get_overview_role_divisions(session, user_ids, grid)
+    tournaments_count_map = await service.get_overview_tournaments_count(session, user_ids, workspace_id=workspace_id)
     achievements_count_map = await service.get_overview_achievements_count(session, user_ids)
     averages_map = await service.get_overview_averages(session, user_ids)
     top_heroes_map = await service.get_overview_top_heroes(session, user_ids)
@@ -347,6 +352,8 @@ async def get_compare(
     session: AsyncSession,
     id: int,
     params: schemas.UserCompareParams,
+    *,
+    grid: DivisionGrid,
 ) -> schemas.UserCompareResponse:
     if params.div_min is not None and params.div_max is not None and params.div_min > params.div_max:
         raise errors.ApiHTTPException(
@@ -377,6 +384,7 @@ async def get_compare(
         div_min=compare_div_min,
         div_max=compare_div_max,
         tournament_id=params.tournament_id,
+        grid=grid,
     )
     if not subject_rows:
         raise errors.ApiHTTPException(
@@ -395,6 +403,7 @@ async def get_compare(
             session,
             user_ids=[target_user.id],
             tournament_id=params.tournament_id,
+            grid=grid,
         )
         if not target_rows:
             raise errors.ApiHTTPException(
@@ -411,6 +420,7 @@ async def get_compare(
             div_min=compare_div_min,
             div_max=compare_div_max,
             tournament_id=params.tournament_id,
+            grid=grid,
         )
         if not population_rows:
             raise errors.ApiHTTPException(
@@ -478,6 +488,8 @@ async def get_hero_compare(
     session: AsyncSession,
     id: int,
     params: schemas.UserHeroCompareParams,
+    *,
+    grid: DivisionGrid,
 ) -> schemas.UserHeroCompareResponse:
     if params.div_min is not None and params.div_max is not None and params.div_min > params.div_max:
         raise errors.ApiHTTPException(
@@ -518,6 +530,7 @@ async def get_hero_compare(
         div_min=compare_div_min,
         div_max=compare_div_max,
         tournament_id=params.tournament_id,
+        grid=grid,
     )
     if left_playtime < 600:
         left_stats = {}
@@ -531,6 +544,7 @@ async def get_hero_compare(
             map_id=params.map_id,
             stats=requested_stats,
             tournament_id=params.tournament_id,
+            grid=grid,
         )
         if right_playtime < 600:
             right_stats = {}
@@ -544,6 +558,7 @@ async def get_hero_compare(
             div_min=compare_div_min,
             div_max=compare_div_max,
             tournament_id=params.tournament_id,
+            grid=grid,
         )
         if not population_users:
             raise errors.ApiHTTPException(
@@ -562,6 +577,7 @@ async def get_hero_compare(
             div_min=compare_div_min,
             div_max=compare_div_max,
             tournament_id=params.tournament_id,
+            grid=grid,
         )
 
         sample_user_ids = [user_id for user_id, playtime in baseline_playtime_by_user.items() if playtime >= 600]
@@ -657,18 +673,22 @@ async def get_read(session: AsyncSession, user_id: int, entities: list[str]) -> 
     return await to_pydantic(session, user, entities)
 
 
-async def get_roles(session: AsyncSession, user_id: int) -> list[schemas.UserRole]:
+async def get_roles(
+    session: AsyncSession, user_id: int, workspace_id: int | None = None, *, grid: DivisionGrid
+) -> list[schemas.UserRole]:
     """
     Retrieves the roles and statistics for a user across tournaments.
 
     Args:
         session: An SQLAlchemy `AsyncSession` for database interaction.
         user_id: The ID of the user to retrieve roles for.
+        workspace_id: Optional workspace ID to filter by.
+        grid: The division grid to compute divisions from rank.
 
     Returns:
         A list of `UserRole` schemas representing the user's roles and statistics.
     """
-    roles = await service.get_roles(session, user_id)
+    roles = await service.get_roles(session, user_id, workspace_id=workspace_id, grid=grid)
     return [
         schemas.UserRole(
             role=role,
@@ -681,7 +701,9 @@ async def get_roles(session: AsyncSession, user_id: int) -> list[schemas.UserRol
     ]
 
 
-async def get_profile(session: AsyncSession, id: int) -> schemas.UserProfile:
+async def get_profile(
+    session: AsyncSession, id: int, workspace_id: int | None = None, *, grid: DivisionGrid
+) -> schemas.UserProfile:
     """
     Retrieves a user's profile, including statistics, roles, and tournament history.
 
@@ -693,20 +715,22 @@ async def get_profile(session: AsyncSession, id: int) -> schemas.UserProfile:
         A `UserProfile` schema instance.
     """
     user = await get(session, id, [])
-    matches = await service.get_overall_statistics(session, user.id)
+    matches = await service.get_overall_statistics(session, user.id, workspace_id=workspace_id)
     matches_won, matches_lose, avg_closeness = 0, 0, 0
     if matches:
         matches_won, matches_lose, avg_closeness = matches
-    roles = await get_roles(session, user.id)
+    roles = await get_roles(session, user.id, workspace_id=workspace_id, grid=grid)
     hero_statistics = await hero_flows.get_playtime(
         session,
         schemas.HeroPlaytimePaginationParams(user_id=user.id, sort="playtime", order="desc"),
+        workspace_id=workspace_id,
     )
 
     teams, _ = await service.get_teams(
         session,
         user.id,
         params=pagination.PaginationSortParams(page=1, per_page=-1, entities=["tournament", "placement"]),
+        workspace_id=workspace_id,
     )
 
     placements: list[int] = []
@@ -748,7 +772,9 @@ async def get_profile(session: AsyncSession, id: int) -> schemas.UserProfile:
     )
 
 
-async def get_tournaments(session: AsyncSession, id: int) -> list[schemas.UserTournament]:
+async def get_tournaments(
+    session: AsyncSession, id: int, workspace_id: int | None = None, *, grid: DivisionGrid
+) -> list[schemas.UserTournament]:
     """
     Retrieves a user's tournament history, including statistics and encounters.
 
@@ -761,7 +787,7 @@ async def get_tournaments(session: AsyncSession, id: int) -> list[schemas.UserTo
     """
     user = await get(session, id, [])
     output: list[schemas.UserTournament] = []
-    tournaments = await service.get_tournaments_with_stats(session, user.id)
+    tournaments = await service.get_tournaments_with_stats(session, user.id, workspace_id=workspace_id)
     tournaments_ids = [tournament[0].tournament_id for tournament in tournaments]
     encounters: dict[int, list[schemas.EncounterReadWithUserStats]] = {}
     encounters_cache: dict[int, dict[int, models.Encounter]] = {}
@@ -805,7 +831,7 @@ async def get_tournaments(session: AsyncSession, id: int) -> list[schemas.UserTo
         for player in team.players:
             if player.user_id == user.id:
                 user_role = player.role
-                user_division = player.div
+                user_division = grid.resolve_division_number(player.rank)
                 break
 
         for standing in team.standings:
@@ -820,7 +846,7 @@ async def get_tournaments(session: AsyncSession, id: int) -> list[schemas.UserTo
             is_league=team.tournament.is_league,
             team_id=team.id,
             team=team.name,
-            players=[await team_flows.to_pydantic_player(session, player, []) for player in team.players],
+            players=[await team_flows.to_pydantic_player(session, player, [], grid=grid) for player in team.players],
             closeness=round(avg_closeness, 2) if avg_closeness else 0,
             maps_won=wins,
             maps_lost=losses,
@@ -840,7 +866,7 @@ async def get_tournaments(session: AsyncSession, id: int) -> list[schemas.UserTo
 
 
 async def get_tournament_with_stats(
-    session: AsyncSession, id: int, tournament_id: int
+    session: AsyncSession, id: int, tournament_id: int, *, grid: DivisionGrid
 ) -> schemas.UserTournamentWithStats | None:
     """
     Retrieves detailed statistics for a user in a specific tournament.
@@ -893,7 +919,7 @@ async def get_tournament_with_stats(
         id=team.tournament.id,
         number=team.tournament.number,
         name=team.tournament.name,
-        division=player.div,
+        division=grid.resolve_division_number(player.rank),
         closeness=round(statistics[2], 2) if statistics[2] else 0,
         role=player.role,
         maps=statistics[0] + statistics[1] if statistics[0] else 0,
@@ -911,6 +937,7 @@ async def get_heroes(
     params: pagination.PaginationParams,
     stats: list[enums.LogStatsName] | None = None,
     tournament_id: int | None = None,
+    workspace_id: int | None = None,
 ) -> pagination.Paginated[schemas.HeroWithUserStats]:
     """
     Retrieves a user's hero statistics, including performance and comparisons with other users.
@@ -927,7 +954,7 @@ async def get_heroes(
     requested_stats = set(stats or [])
     stats_filter = list(requested_stats) if requested_stats else None
 
-    user_stats = await service.get_statistics_by_heroes(session, user.id, stats_filter, tournament_id=tournament_id)
+    user_stats = await service.get_statistics_by_heroes(session, user.id, stats_filter, tournament_id=tournament_id, workspace_id=workspace_id)
     if stats_filter:
         all_stats = await service.get_statistics_by_heroes_all_values_filtered(session, stats_filter)
     else:
@@ -1003,7 +1030,7 @@ async def get_heroes(
 
 
 async def get_best_teammates(
-    session: AsyncSession, id: int, params: pagination.PaginationSortParams
+    session: AsyncSession, id: int, params: pagination.PaginationSortParams, workspace_id: int | None = None,
 ) -> pagination.Paginated[schemas.UserBestTeammate]:
     """
     Retrieves a paginated list of a user's best teammates, including win rate, tournaments played together,
@@ -1018,7 +1045,7 @@ async def get_best_teammates(
         A `Paginated` instance containing `UserBestTeammate` schemas, representing the user's best teammates.
     """
     user = await get(session, id, [])
-    teammates, total = await service.get_best_teammates(session, user.id, params)
+    teammates, total = await service.get_best_teammates(session, user.id, params, workspace_id=workspace_id)
     return pagination.Paginated(
         page=params.page,
         per_page=params.per_page,

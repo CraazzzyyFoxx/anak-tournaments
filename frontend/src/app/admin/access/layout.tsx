@@ -14,6 +14,7 @@ const accessNavItems = [
   { href: "/admin/access/users", label: "Users", permissions: accessUsersPermissions },
   { href: "/admin/access/roles", label: "Roles", permissions: accessRolesPermissions },
   { href: "/admin/access/permissions", label: "Permissions", permissions: accessPermissionsPermissions },
+  { href: "/admin/access/oauth", label: "OAuth Connections", permissions: accessUsersPermissions },
 ];
 
 export default function AccessAdminLayout({ children }: { children: React.ReactNode }) {

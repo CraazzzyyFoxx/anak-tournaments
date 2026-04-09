@@ -39,7 +39,6 @@ export default function AccessAdminPermissionsPage() {
       <AdminPageHeader
         title="Permissions"
         description="Read-only inventory of effective permission primitives available to superusers and roles."
-        eyebrow="Access Admin"
         meta={<Badge variant="secondary">RBAC</Badge>}
       />
 

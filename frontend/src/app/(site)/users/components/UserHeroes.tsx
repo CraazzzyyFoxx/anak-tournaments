@@ -580,7 +580,7 @@ const UserHeroes = ({ heroes, filterSlot }: { heroes: HeroWithUserStats[]; filte
           </CardContent>
         </Card>
 
-        <div ref={detailsRef} className="lg:col-span-8 space-y-6">
+        <div ref={detailsRef} className="lg:col-span-8 min-w-0 space-y-6">
           {/* Mobile quick selector */}
           <Card className="md:hidden">
             <CardContent className="pt-6">
@@ -703,7 +703,7 @@ const UserHeroes = ({ heroes, filterSlot }: { heroes: HeroWithUserStats[]; filte
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="overflow-hidden">
             <Tabs defaultValue="highlights" className="w-full">
               <CardHeader className="pb-2">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

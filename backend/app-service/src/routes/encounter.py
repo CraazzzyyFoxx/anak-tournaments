@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import schemas
 from src.core import config, db, enums, pagination
+from src.core.workspace import WorkspaceQuery
 from src.services.encounter import flows as encounter_flows
 
 router = APIRouter(prefix="/encounters", tags=[enums.RouteTag.ENCOUNTER])
@@ -18,6 +19,7 @@ router = APIRouter(prefix="/encounters", tags=[enums.RouteTag.ENCOUNTER])
 )
 async def get_all_encounters(
     session: AsyncSession = Depends(db.get_async_session),
+    workspace_id: WorkspaceQuery = None,
     params: schemas.EncounterSearchQueryParams[
         typing.Literal[
             "id",
@@ -33,7 +35,8 @@ async def get_all_encounters(
     ] = Depends(),
 ):
     return await encounter_flows.get_all_encounters(
-        session, schemas.EncounterSearchParams.from_query_params(params)
+        session, schemas.EncounterSearchParams.from_query_params(params),
+        workspace_id=workspace_id,
     )
 
 

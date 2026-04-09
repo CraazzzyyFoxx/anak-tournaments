@@ -9,6 +9,9 @@ import { Search } from "lucide-react";
 
 import userService from "@/services/user.service";
 import { UserMapHeroStats, UserMapRead, UserMapsSummary } from "@/types/user.types";
+import SearchableImageSelect, {
+  type SearchableImageOption
+} from "@/app/(site)/users/compare/components/SearchableImageSelect";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
@@ -255,6 +258,21 @@ export default function UserMapsExplorer({ userId }: UserMapsExplorerProps) {
   const [searchValue, setSearchValue] = useState(mapsQueryFromUrl);
   const [debouncedSearchValue] = useDebounce(searchValue, 300);
 
+  const [tournamentId, setTournamentId] = useState<number | undefined>(undefined);
+
+  const tournamentsQuery = useQuery({
+    queryKey: ["user-tournaments", userId],
+    queryFn: () => userService.getUserTournaments(userId),
+    staleTime: 5 * 60 * 1000
+  });
+
+  const tournamentOptions = useMemo<SearchableImageOption[]>(() => {
+    return (tournamentsQuery.data ?? []).map((t) => ({
+      value: String(t.id),
+      label: t.name
+    }));
+  }, [tournamentsQuery.data]);
+
   const [activeHeroPopoverKey, setActiveHeroPopoverKey] = useState<string | null>(null);
 
   useEffect(() => {
@@ -313,7 +331,8 @@ export default function UserMapsExplorer({ userId }: UserMapsExplorerProps) {
       sort,
       order,
       mapsQuery,
-      minCount
+      minCount,
+      tournamentId
     ],
     queryFn: () =>
       userService.getUserMaps(userId, {
@@ -322,14 +341,15 @@ export default function UserMapsExplorer({ userId }: UserMapsExplorerProps) {
         sort,
         order,
         query: mapsQuery,
-        minCount
+        minCount,
+        tournamentId
       }),
     staleTime: 60_000
   });
 
   const summaryQueryResult = useQuery({
-    queryKey: ["user-maps-summary", userId, mapsQuery, minCount],
-    queryFn: () => userService.getUserMapsSummary(userId, { query: mapsQuery, minCount }),
+    queryKey: ["user-maps-summary", userId, mapsQuery, minCount, tournamentId],
+    queryFn: () => userService.getUserMapsSummary(userId, { query: mapsQuery, minCount, tournamentId }),
     staleTime: 60_000
   });
 
@@ -390,6 +410,21 @@ export default function UserMapsExplorer({ userId }: UserMapsExplorerProps) {
 
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div className="flex flex-col gap-3 md:flex-row md:items-center">
+          <div className="w-60">
+            <SearchableImageSelect
+              value={tournamentId ? String(tournamentId) : undefined}
+              onValueChange={(val) => {
+                setTournamentId(val ? Number(val) : undefined);
+                pushParams({ [PAGE_KEY]: "1" }, false);
+              }}
+              options={tournamentOptions}
+              placeholder="All tournaments"
+              searchPlaceholder="Search tournament..."
+              isLoading={tournamentsQuery.isLoading}
+              disabled={tournamentsQuery.isLoading || tournamentsQuery.isError}
+            />
+          </div>
+
           <div className="relative md:w-[280px]">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden />
             <Input

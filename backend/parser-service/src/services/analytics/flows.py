@@ -7,6 +7,8 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from openskill.models import PlackettLuce, PlackettLuceRating
 
+from shared.division_grid import DEFAULT_GRID
+
 from src import models
 from src.schemas.analytics import AnalyticsMatch
 from src.services.team import service as team_service
@@ -31,7 +33,7 @@ async def get_data_frame(session: AsyncSession) -> pd.DataFrame:
                 "user_id": row[1].user_id,
                 "id_role": f"{row[1].user_id}-{row[1].role}",
                 "cost": row[1].rank,
-                "div": row[1].div,
+                "div": DEFAULT_GRID.resolve_division_number(row[1].rank),
                 "wins": row[3],
                 "losses": row[4],
                 "previous_cost": row[5],

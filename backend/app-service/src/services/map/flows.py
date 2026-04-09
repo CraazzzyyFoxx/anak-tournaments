@@ -139,7 +139,7 @@ async def get_top_user(
 
     if "heroes" in params.entities:
         maps_ids = [result.map.id for result in results]
-        heroes_data = await hero_service.get_heroes_playtime_by_maps(session, maps_ids, user.id)
+        heroes_data = await hero_service.get_heroes_playtime_by_maps(session, maps_ids, user.id, tournament_id=params.tournament_id)
         heroes_data_per_map: dict[int, list[schemas.HeroPlaytime]] = {map_id: [] for map_id in maps_ids}
         for hero, map_id, playtime in heroes_data:
             heroes_data_per_map[map_id].append(
@@ -154,7 +154,7 @@ async def get_top_user(
 
     if "hero_stats" in params.entities:
         maps_ids = [result.map.id for result in results]
-        hero_stats_rows = await hero_service.get_user_hero_stats_by_maps(session, maps_ids, user.id, limit_per_map=5)
+        hero_stats_rows = await hero_service.get_user_hero_stats_by_maps(session, maps_ids, user.id, limit_per_map=5, tournament_id=params.tournament_id)
         hero_stats_per_map: dict[int, list[schemas.UserMapHeroStats]] = {map_id: [] for map_id in maps_ids}
         for hero, map_id, games, win, loss, draw, win_rate, playtime_seconds, playtime_share in hero_stats_rows:
             hero_stats_per_map[map_id].append(

@@ -2,11 +2,12 @@ import typing
 from dataclasses import dataclass
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.core import enums, pagination
 from src.schemas import UserRead
 from src.schemas.base import BaseRead
+from src.schemas.division_grid import DivisionGridRead
 
 __all__ = (
     "TournamentRead",
@@ -29,6 +30,7 @@ class TournamentGroupRead(BaseRead):
 
 
 class TournamentRead(BaseRead):
+    workspace_id: int
     number: int | None
     name: str
     description: str | None
@@ -41,6 +43,9 @@ class TournamentRead(BaseRead):
 
     groups: list[TournamentGroupRead]
     participants_count: int | None
+    division_grid: DivisionGridRead | None = Field(
+        default=None, validation_alias="division_grid_json"
+    )
 
 
 class OwalStandingDay(BaseModel):
@@ -82,11 +87,13 @@ class TournamentPaginationSortSearchQueryParams(
     ]
 ):
     is_league: bool | None = None
+    workspace_id: int | None = None
 
 
 @dataclass
 class TournamentPaginationSortSearchParams(pagination.PaginationSortSearchParams):
     is_league: bool | None = None
+    workspace_id: int | None = None
 
 
 class LeaguePlayerStack(BaseModel):

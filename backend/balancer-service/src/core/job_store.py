@@ -246,7 +246,7 @@ _job_store: BalancerJobStore | None = None
 def get_job_store() -> BalancerJobStore:
     global _job_store
     if _job_store is None:
-        _job_store = BalancerJobStore(config.REDIS_URL, config.BALANCER_JOB_TTL_SECONDS)
+        _job_store = BalancerJobStore(config.redis_url, config.balancer_job_ttl_seconds)
     return _job_store
 
 

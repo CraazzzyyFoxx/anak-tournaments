@@ -4,7 +4,7 @@ import React from "react";
 import { UserTournament } from "@/types/user.types";
 import { useRouter } from "next/navigation";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { Table, TableBody, TableCell, TableHead, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { PerformanceBadgeWithTooltip } from "@/components/PerformanceBagde";
 import { CircleMinus, CirclePlus } from "lucide-react";
@@ -22,14 +22,16 @@ const UserTournamentEncounters = ({ tournament, team_id }: UserTournamentEncount
     <ScrollArea>
       <TooltipProvider>
         <Table>
-          <TableRow>
-            <TableHead className="w-[350px]">Match</TableHead>
-            <TableHead>Score</TableHead>
-            <TableHead>Heroes</TableHead>
-            <TableHead>MVP Score</TableHead>
-            <TableHead className="text-center">Closeness</TableHead>
-            <TableHead className="text-center">Logs</TableHead>
-          </TableRow>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-[350px]">Match</TableHead>
+              <TableHead>Score</TableHead>
+              <TableHead>Heroes</TableHead>
+              <TableHead>MVP Score</TableHead>
+              <TableHead className="text-center">Closeness</TableHead>
+              <TableHead className="text-center">Logs</TableHead>
+            </TableRow>
+          </TableHeader>
           <TableBody>
             {tournament.encounters.map((encounter) => {
               const heroSet = new Set<string>();

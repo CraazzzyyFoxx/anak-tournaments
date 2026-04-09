@@ -4,6 +4,8 @@ from itertools import groupby
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.division_grid import DivisionGrid
+
 from src import models, schemas
 from src.core import enums, errors, pagination
 from src.services.team import service as team_service
@@ -36,6 +38,7 @@ async def to_pydantic(
         participants_count = await team_service.get_player_count_by_tournament(session, tournament.id)
     return schemas.TournamentRead(
         id=tournament.id,
+        workspace_id=tournament.workspace_id,
         start_date=tournament.start_date,
         end_date=tournament.end_date,
         number=tournament.number,
@@ -174,7 +177,7 @@ async def get_all(
 
 
 async def get_history_tournaments(
-    session: AsyncSession,
+    session: AsyncSession, workspace_id: int | None = None,
 ) -> list[schemas.TournamentStatistics]:
     """
     Retrieves historical statistics for tournaments.
@@ -186,7 +189,7 @@ async def get_history_tournaments(
         A list of `TournamentStatistics` schemas.
     """
     output: list[schemas.TournamentStatistics] = []
-    stats = await service.get_history_tournaments(session)
+    stats = await service.get_history_tournaments(session, workspace_id=workspace_id)
     for stat in stats:
         if stat[2] is None:
             continue
@@ -203,7 +206,7 @@ async def get_history_tournaments(
 
 
 async def get_avg_divisions_tournaments(
-    session: AsyncSession,
+    session: AsyncSession, workspace_id: int | None = None, *, grid: DivisionGrid,
 ) -> list[schemas.DivisionStatistics]:
     """
     Retrieves average division statistics for tournaments.
@@ -217,7 +220,7 @@ async def get_avg_divisions_tournaments(
     cache: dict[int, dict[enums.HeroClass, float]] = {}
     output: list[schemas.DivisionStatistics] = []
     tournaments: dict[int, int] = {}
-    stats = await service.get_avg_div_tournaments(session)
+    stats = await service.get_avg_div_tournaments(session, workspace_id=workspace_id, grid=grid)
     for tournament, role, value in stats:
         if tournament.id not in cache:
             cache[tournament.id] = {}
@@ -241,7 +244,7 @@ async def get_avg_divisions_tournaments(
     return output
 
 
-async def get_tournaments_overall(session: AsyncSession) -> schemas.OverallStatistics:
+async def get_tournaments_overall(session: AsyncSession, workspace_id: int | None = None) -> schemas.OverallStatistics:
     """
     Retrieves overall statistics for tournaments, including counts of tournaments, teams, players, and champions.
 
@@ -251,7 +254,7 @@ async def get_tournaments_overall(session: AsyncSession) -> schemas.OverallStati
     Returns:
         An `OverallStatistics` schema instance.
     """
-    tournaments, teams, players, champions = await service.get_tournaments_overall(session)
+    tournaments, teams, players, champions = await service.get_tournaments_overall(session, workspace_id=workspace_id)
     return schemas.OverallStatistics(
         tournaments=tournaments,
         teams=teams,
@@ -260,7 +263,10 @@ async def get_tournaments_overall(session: AsyncSession) -> schemas.OverallStati
     )
 
 
-async def get_owal_standings(session: AsyncSession, season: typing.Optional[str] = None) -> schemas.OwalStandings:
+async def get_owal_standings(
+    session: AsyncSession, season: typing.Optional[str] = None, workspace_id: int | None = None,
+    *, grid: DivisionGrid,
+) -> schemas.OwalStandings:
     """
     Retrieves OWAL (Overwatch Anak League) standings.
 
@@ -270,7 +276,7 @@ async def get_owal_standings(session: AsyncSession, season: typing.Optional[str]
     Returns:
         An `OwalStandings` schema instance.
     """
-    seasons = await service.get_owal_seasons(session)
+    seasons = await service.get_owal_seasons(session, workspace_id=workspace_id)
     if not seasons:
         raise errors.ApiHTTPException(
             status_code=404,
@@ -282,17 +288,21 @@ async def get_owal_standings(session: AsyncSession, season: typing.Optional[str]
             ],
         )
 
-    return await get_owal_standings_by_season(session, season or seasons[0])
+    return await get_owal_standings_by_season(
+        session, season or seasons[0], workspace_id=workspace_id, grid=grid,
+    )
 
 
-async def get_owal_standings_by_season(session: AsyncSession, season: str) -> schemas.OwalStandings:
+async def get_owal_standings_by_season(
+    session: AsyncSession, season: str, workspace_id: int | None = None, *, grid: DivisionGrid,
+) -> schemas.OwalStandings:
     standings_output: list[schemas.OwalStanding] = []
     cache: dict[int, dict[enums.HeroClass, dict[int, schemas.OwalStandingDay]]] = {}
     user_cache: dict[int, models.User] = {}
     user_pydantic_cache: dict[int, schemas.UserRead] = {}
 
-    standings = await service.get_owal_standings(session, season)
-    days_tournament = await service.get_owal_days(session, season)
+    standings = await service.get_owal_standings(session, season, workspace_id=workspace_id)
+    days_tournament = await service.get_owal_days(session, season, workspace_id=workspace_id)
     for user, team, tournament, player in standings:
         cache.setdefault(user.id, {})
         cache[user.id].setdefault(player.role, {})
@@ -302,7 +312,7 @@ async def get_owal_standings_by_season(session: AsyncSession, season: str) -> sc
         cache[user.id][player.role][tournament.id] = schemas.OwalStandingDay(
             team=team.name,
             role=player.role,
-            division=player.div,
+            division=grid.resolve_division_number(player.rank),
             points=standing.win + standing.draw * 0.5 + standing.buchholz * 0.01,
             wins=standing.win,
             draws=standing.draw,
@@ -352,12 +362,16 @@ async def get_owal_standings_by_season(session: AsyncSession, season: str) -> sc
     )
 
 
-async def get_owal_seasons(session: AsyncSession) -> list[str]:
-    return await service.get_owal_seasons(session)
+async def get_owal_seasons(session: AsyncSession, workspace_id: int | None = None) -> list[str]:
+    return await service.get_owal_seasons(session, workspace_id=workspace_id)
 
 
-async def get_league_player_stacks(session: AsyncSession, season: str) -> list[schemas.LeaguePlayerStack]:
-    stacks, team_tournament_players, standings_dict = await service.get_league_player_stacks(session, season)
+async def get_league_player_stacks(
+    session: AsyncSession, season: str, workspace_id: int | None = None,
+) -> list[schemas.LeaguePlayerStack]:
+    stacks, team_tournament_players, standings_dict = await service.get_league_player_stacks(
+        session, season, workspace_id=workspace_id,
+    )
 
     user_pydantic_cache: dict[int, schemas.UserRead] = {}
 

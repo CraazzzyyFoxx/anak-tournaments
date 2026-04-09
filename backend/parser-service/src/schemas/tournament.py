@@ -14,6 +14,7 @@ class TournamentGroupRead(BaseRead):
 
 
 class TournamentRead(BaseRead):
+    workspace_id: int
     number: int | None
     name: str
     description: str | None

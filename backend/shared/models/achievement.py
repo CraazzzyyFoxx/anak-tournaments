@@ -16,11 +16,13 @@ __all__ = ("Achievement", "AchievementUser")
 
 class Achievement(db.TimeStampIntegerMixin):
     __tablename__ = "achievement"
+    __table_args__ = ({"schema": "achievements"},)
 
     name: Mapped[str] = mapped_column(String())
-    slug: Mapped[str] = mapped_column(String())
+    slug: Mapped[str] = mapped_column(String(), unique=True, index=True)
     description_ru: Mapped[str] = mapped_column(String())
     description_en: Mapped[str] = mapped_column(String())
+    image_url: Mapped[str | None] = mapped_column(String(), nullable=True)
     hero_id: Mapped[int | None] = mapped_column(
         ForeignKey(Hero.id, ondelete="CASCADE"), nullable=True
     )
@@ -29,9 +31,10 @@ class Achievement(db.TimeStampIntegerMixin):
 
 
 class AchievementUser(db.TimeStampIntegerMixin):
-    __tablename__ = "achievement_user"
+    __tablename__ = "user"
+    __table_args__ = ({"schema": "achievements"},)
 
-    user_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("players.user.id", ondelete="CASCADE"))
     achievement_id: Mapped[int] = mapped_column(
         ForeignKey(Achievement.id, ondelete="CASCADE")
     )
@@ -39,7 +42,7 @@ class AchievementUser(db.TimeStampIntegerMixin):
         ForeignKey(Tournament.id, ondelete="CASCADE"), nullable=True
     )
     match_id: Mapped[int | None] = mapped_column(
-        ForeignKey("match.id", ondelete="CASCADE"), nullable=True
+        ForeignKey("matches.match.id", ondelete="CASCADE"), nullable=True
     )
 
     tournament: Mapped[Tournament] = relationship()

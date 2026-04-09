@@ -6,45 +6,23 @@ import {
   BalancerConfig,
   BalancerConfigResponse
 } from "@/types/balancer.types";
-import { fetchWithAuth } from "@/lib/fetch-with-auth";
+import { apiFetch } from "@/lib/api-fetch";
 
-const BALANCER_API_PREFIX = (
+const BALANCER_STREAM_PREFIX = (
   process.env.NEXT_PUBLIC_BALANCER_API_URL || "http://localhost/api/balancer"
 ).replace(/\/$/, "");
 
-async function parseErrorMessage(response: Response): Promise<string> {
-  try {
-    const error = await response.json();
-    return error?.detail || error?.message || "Request failed";
-  } catch {
-    return "Request failed";
-  }
-}
-
-function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  return fetchWithAuth(url, { ...init, signal: controller.signal }).finally(() => clearTimeout(timeoutId));
-}
-
 export default class balancerService {
   static async getConfig(): Promise<BalancerConfigResponse> {
-    let response: Response;
     try {
-      response = await fetchWithTimeout(`${BALANCER_API_PREFIX}/config`, { method: "GET" }, 10_000);
+      const response = await apiFetch("balancer", "config", { timeout: 10_000 });
+      return response.json();
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         throw new Error("Failed to load balancer config: request timed out");
       }
       throw error;
     }
-
-    if (!response.ok) {
-      throw new Error(await parseErrorMessage(response));
-    }
-
-    return response.json();
   }
 
   static async createBalanceJob(file: File, config?: BalancerConfig): Promise<BalanceJobCreateResponse> {
@@ -55,52 +33,24 @@ export default class balancerService {
       formData.append("config", JSON.stringify(config));
     }
 
-    let response: Response;
     try {
-      response = await fetchWithTimeout(`${BALANCER_API_PREFIX}/jobs`, { method: "POST", body: formData }, 20_000);
+      const response = await apiFetch("balancer", "jobs", { method: "POST", body: formData, timeout: 20_000 });
+      return response.json();
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         throw new Error("Failed to create balancer job: request timed out");
       }
       throw error;
     }
-
-    if (!response.ok) {
-      throw new Error(await parseErrorMessage(response));
-    }
-
-    return response.json();
   }
 
   static async getBalanceJobStatus(jobId: string): Promise<BalanceJobStatusResponse> {
-    const response = await fetchWithTimeout(
-      `${BALANCER_API_PREFIX}/jobs/${jobId}`,
-      {
-        method: "GET"
-      },
-      10_000
-    );
-
-    if (!response.ok) {
-      throw new Error(await parseErrorMessage(response));
-    }
-
+    const response = await apiFetch("balancer", `jobs/${jobId}`, { timeout: 10_000 });
     return response.json();
   }
 
   static async getBalanceJobResult(jobId: string): Promise<BalanceJobResult> {
-    const response = await fetchWithTimeout(
-      `${BALANCER_API_PREFIX}/jobs/${jobId}/result`,
-      {
-        method: "GET"
-      },
-      20_000
-    );
-
-    if (!response.ok) {
-      throw new Error(await parseErrorMessage(response));
-    }
-
+    const response = await apiFetch("balancer", `jobs/${jobId}/result`, { timeout: 20_000 });
     return response.json();
   }
 
@@ -112,7 +62,7 @@ export default class balancerService {
       onOpen?: () => void;
     }
   ): () => void {
-    const source = new EventSource(`${BALANCER_API_PREFIX}/jobs/${jobId}/stream`, {
+    const source = new EventSource(`${BALANCER_STREAM_PREFIX}/jobs/${jobId}/stream`, {
       withCredentials: true
     });
     let isClosed = false;

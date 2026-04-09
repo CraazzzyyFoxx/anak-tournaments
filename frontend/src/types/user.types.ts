@@ -35,6 +35,7 @@ export interface User {
   created_at: Date;
   updated_at: Date | null;
   name: string;
+  avatar_url: string | null;
   discord: UserDiscord[];
   battle_tag: UserBattleTag[];
   twitch: UserTwitch[];

@@ -1,7 +1,10 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.division_grid import DivisionGrid
+
 from src import models, schemas
 from src.core import errors, pagination, utils
+from src.core.workspace import get_division_grid
 from src.services.tournament import flows as tournament_flows
 from src.services.user import flows as user_flows
 
@@ -9,7 +12,11 @@ from . import service
 
 
 async def to_pydantic(
-    session: AsyncSession, team: models.Team, entities: list[str]
+    session: AsyncSession,
+    team: models.Team,
+    entities: list[str],
+    *,
+    grid: DivisionGrid | None = None,
 ) -> schemas.TeamRead:
     """
     Converts a Team model instance to a Pydantic schema (TeamRead), including related entities.
@@ -33,9 +40,15 @@ async def to_pydantic(
             session, team.tournament, entities=[]
         )
     if "players" in entities:
+        if grid is None:
+            grid = await get_division_grid(
+                session, None, tournament_id=team.tournament_id
+            )
         players_entities = utils.prepare_entities(entities, "players")
         players_read = [
-            await to_pydantic_player(session, player, players_entities)
+            await to_pydantic_player(
+                session, player, players_entities, grid=grid
+            )
             for player in team.players
         ]
     if "captain" in entities:
@@ -68,7 +81,7 @@ async def to_pydantic(
 
 
 async def to_pydantic_player(
-    session: AsyncSession, player: models.Player, entities: list[str]
+    session: AsyncSession, player: models.Player, entities: list[str], *, grid: DivisionGrid
 ) -> schemas.PlayerRead:
     """
     Converts a Player model instance to a Pydantic schema (PlayerRead), including related entities.
@@ -99,7 +112,7 @@ async def to_pydantic_player(
 
     return schemas.PlayerRead(
         **player.to_dict(),
-        division=player.div,
+        division=grid.resolve_division_number(player.rank),
         user=user,
         tournament=tournament,
         team=team,
@@ -292,7 +305,9 @@ async def get_player(
 
 
 async def get_all(
-    session: AsyncSession, params: schemas.TeamFilterParams
+    session: AsyncSession,
+    params: schemas.TeamFilterParams,
+    workspace_id: int | None = None,
 ) -> pagination.Paginated[schemas.TeamRead]:
     """
     Retrieves a paginated list of teams based on filter parameters.
@@ -300,6 +315,7 @@ async def get_all(
     Parameters:
         session (AsyncSession): The SQLAlchemy async session.
         params (schemas.TeamFilterParams): Filter, pagination, and sorting parameters.
+        workspace_id (int | None): Optional workspace ID to filter teams by.
 
     Returns:
         pagination.Paginated[schemas.TeamRead]: A paginated list of Pydantic schemas representing the teams.
@@ -307,7 +323,7 @@ async def get_all(
     if params.tournament_id:
         await tournament_flows.get(session, params.tournament_id, [])
 
-    results, total = await service.get_all(session, params)
+    results, total = await service.get_all(session, params, workspace_id=workspace_id)
     return pagination.Paginated(
         results=[
             await to_pydantic(session, result, entities=params.entities)

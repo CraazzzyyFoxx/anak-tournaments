@@ -52,7 +52,7 @@ const CustomSelect = ({ items, placeholder, value, onSelect, className }: Custom
         <PopoverAnchor asChild>
           <div ref={anchorRef}>
             <Input
-              value={selectedItem}
+              value={selectedItem ?? ""}
               onFocus={() => setIsOpen(true)}
               onClick={() => setIsOpen(true)}
               onChange={() => {}}

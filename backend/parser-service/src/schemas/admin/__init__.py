@@ -7,6 +7,7 @@ from .hero import *
 from .gamemode import *
 from .map import *
 from .balancer import *
+from .achievement import *
 
 __all__ = (
     # Tournament schemas
@@ -56,4 +57,12 @@ __all__ = (
     "BalancerTeamRead",
     "BalanceRead",
     "BalanceExportResponse",
+    # Achievement schemas
+    "AchievementAdminRead",
+    "AchievementAdminCreate",
+    "AchievementAdminUpdate",
+    "AchievementListQueryParams",
+    "AchievementListParams",
+    "AchievementRegistryEntry",
+    "AchievementRegistryResponse",
 )

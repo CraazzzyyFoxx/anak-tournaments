@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Shield, Trophy, UserCircle2, Users } from "lucide-react";
+import { ArrowLeft, ArrowLeftRight, Shield, Sparkles, Star, StarHalf, Trophy, UserCircle2, Users } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { StatusIcon } from "@/components/admin/StatusIcon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -78,7 +79,6 @@ export default function AdminTeamWorkspacePage() {
       <AdminPageHeader
         title={team.name}
         description="Team workspace with roster details, captain ownership, and tournament context."
-        eyebrow="Team Workspace"
         meta={<Badge variant="secondary">Roster control</Badge>}
         actions={
           <div className="flex flex-wrap gap-2">
@@ -175,10 +175,10 @@ export default function AdminTeamWorkspacePage() {
                       </TableCell>
                       <TableCell className={adminDetailTableCell}>
                         <div className="flex flex-wrap gap-2">
-                          {player.primary ? <Badge variant="default">Primary</Badge> : null}
-                          {player.secondary ? <Badge variant="secondary">Secondary</Badge> : null}
-                          {player.is_newcomer ? <Badge variant="outline">Newcomer</Badge> : null}
-                          {player.is_substitution ? <Badge variant="outline">Sub</Badge> : null}
+                          {player.primary ? <StatusIcon icon={Star} label="Primary" variant="success" /> : null}
+                          {player.secondary ? <StatusIcon icon={StarHalf} label="Secondary" variant="muted" /> : null}
+                          {player.is_newcomer ? <StatusIcon icon={Sparkles} label="Newcomer" variant="warning" /> : null}
+                          {player.is_substitution ? <StatusIcon icon={ArrowLeftRight} label="Substitute" variant="info" /> : null}
                         </div>
                       </TableCell>
                     </TableRow>

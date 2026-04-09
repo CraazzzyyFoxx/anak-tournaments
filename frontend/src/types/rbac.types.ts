@@ -13,6 +13,7 @@ export interface RbacRole {
   name: string;
   description?: string | null;
   is_system: boolean;
+  workspace_id?: number | null;
   created_at: string;
   updated_at?: string | null;
 }
@@ -49,4 +50,23 @@ export interface UpsertRolePayload {
   name: string;
   description?: string | null;
   permission_ids: number[];
+  workspace_id?: number | null;
+}
+
+export type OAuthProvider = "discord" | "twitch" | "battlenet" | "google" | "github";
+
+export interface OAuthConnectionAdmin {
+  id: number;
+  provider: OAuthProvider;
+  provider_user_id: string;
+  email?: string | null;
+  username: string;
+  display_name?: string | null;
+  avatar_url?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+  auth_user_id: number;
+  auth_user_email?: string | null;
+  auth_user_username?: string | null;
+  token_expires_at?: string | null;
 }

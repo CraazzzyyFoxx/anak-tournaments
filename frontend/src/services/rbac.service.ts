@@ -1,37 +1,20 @@
-import { fetchWithAuth } from "@/lib/fetch-with-auth";
+import { apiFetch } from "@/lib/api-fetch";
 import type {
   AssignRolePayload,
   AuthAdminUser,
   AuthAdminUserDetail,
+  OAuthConnectionAdmin,
   RbacPermission,
   RbacRole,
   RbacRoleDetail,
   UpsertRolePayload,
 } from "@/types/rbac.types";
 
-const AUTH_SERVICE_URL =
-  process.env.NEXT_PUBLIC_AUTH_SERVICE_URL?.replace(/\/$/, "") || "http://localhost:8001";
-
-async function rbacFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const url = `${AUTH_SERVICE_URL}${path.startsWith("/") ? "" : "/"}${path}`;
-  const response = await fetchWithAuth(url, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers || {}),
-    },
+async function rbacFetch<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
+  const response = await apiFetch("auth", path, {
+    method: init?.method,
+    body: init?.body,
   });
-
-  if (!response.ok) {
-    let message = "Failed to complete RBAC request";
-    try {
-      const error = await response.json();
-      message = error?.detail || error?.message || message;
-    } catch {
-      // Ignore non-JSON errors.
-    }
-    throw new Error(message);
-  }
 
   if (response.status === 204) {
     return undefined as T;
@@ -61,8 +44,13 @@ export const rbacService = {
     return rbacFetch<AuthAdminUserDetail>(`/rbac/users/${userId}`);
   },
 
-  listRoles() {
-    return rbacFetch<RbacRole[]>("/rbac/roles");
+  listRoles(params?: { workspace_id?: number | null }) {
+    const searchParams = new URLSearchParams();
+    if (params?.workspace_id !== undefined && params.workspace_id !== null) {
+      searchParams.set("workspace_id", String(params.workspace_id));
+    }
+    const suffix = searchParams.toString() ? `?${searchParams.toString()}` : "";
+    return rbacFetch<RbacRole[]>(`/rbac/roles${suffix}`);
   },
 
   getRole(roleId: number) {
@@ -72,14 +60,14 @@ export const rbacService = {
   createRole(payload: UpsertRolePayload) {
     return rbacFetch<RbacRole>("/rbac/roles", {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: payload,
     });
   },
 
   updateRole(roleId: number, payload: Partial<UpsertRolePayload>) {
     return rbacFetch<RbacRole>(`/rbac/roles/${roleId}`, {
       method: "PATCH",
-      body: JSON.stringify(payload),
+      body: payload,
     });
   },
 
@@ -96,14 +84,23 @@ export const rbacService = {
   assignRole(payload: AssignRolePayload) {
     return rbacFetch<void>("/rbac/users/assign-role", {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: payload,
     });
   },
 
   removeRole(payload: AssignRolePayload) {
     return rbacFetch<void>("/rbac/users/remove-role", {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: payload,
     });
+  },
+
+  listOAuthConnections(params?: { search?: string; provider?: string }) {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set("search", params.search);
+    if (params?.provider) searchParams.set("provider", params.provider);
+
+    const suffix = searchParams.toString() ? `?${searchParams.toString()}` : "";
+    return rbacFetch<OAuthConnectionAdmin[]>(`/rbac/oauth-connections${suffix}`);
   },
 };

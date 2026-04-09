@@ -3,6 +3,8 @@ import typing
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.division_grid import DivisionGrid, division_case_expr
+
 from src import models, schemas
 from src.core import enums, pagination
 
@@ -119,7 +121,7 @@ async def get_all(
 
 
 async def get_heroes_playtime(
-    session: AsyncSession, params: schemas.HeroPlaytimePaginationParams
+    session: AsyncSession, params: schemas.HeroPlaytimePaginationParams, workspace_id: int | None = None
 ) -> typing.Sequence[tuple[models.Hero, float]]:
     """
     Retrieves a paginated list of heroes with their playtime statistics.
@@ -170,6 +172,17 @@ async def get_heroes_playtime(
             playtime_cte.join(models.Match, models.Match.id == models.MatchStatistics.match_id)
             .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
             .where(models.Encounter.tournament_id == params.tournament_id)
+        )
+
+    if workspace_id is not None:
+        if not params.tournament_id:
+            playtime_cte = (
+                playtime_cte.join(models.Match, models.Match.id == models.MatchStatistics.match_id)
+                .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
+            )
+        playtime_cte = (
+            playtime_cte.join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
+            .where(models.Tournament.workspace_id == workspace_id)
         )
 
     playtime_cte = playtime_cte.cte("playtime_cte")
@@ -226,7 +239,7 @@ async def get_heroes_stats(
 
 
 async def get_heroes_playtime_by_maps(
-    session: AsyncSession, maps_ids: list[int], user_id: int
+    session: AsyncSession, maps_ids: list[int], user_id: int, tournament_id: int | None = None,
 ) -> typing.Sequence[tuple[models.Hero, int, float]]:
     overall_play_time_subquery = (
         sa.select(sa.func.sum(models.MatchStatistics.value))
@@ -244,6 +257,11 @@ async def get_heroes_playtime_by_maps(
             )
         )
     )
+
+    if tournament_id is not None:
+        overall_play_time_subquery = overall_play_time_subquery.where(
+            models.Encounter.tournament_id == tournament_id
+        )
 
     query = (
         sa.select(
@@ -265,6 +283,13 @@ async def get_heroes_playtime_by_maps(
         .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
         .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
         .where(models.Match.map_id.in_(maps_ids))
+    )
+
+    if tournament_id is not None:
+        query = query.where(models.Encounter.tournament_id == tournament_id)
+
+    query = (
+        query
         .group_by(models.Hero.id, models.Match.map_id)
         .order_by(sa.text("playtime DESC"))
     )
@@ -279,6 +304,7 @@ async def get_user_hero_stats_by_maps(
     user_id: int,
     limit_per_map: int = 5,
     min_seconds: float = 60,
+    tournament_id: int | None = None,
 ) -> typing.Sequence[tuple[models.Hero, int, int, int, int, int, float, float, float]]:
     """Return top hero summaries per map for a given user.
 
@@ -294,7 +320,7 @@ async def get_user_hero_stats_by_maps(
     if not maps_ids:
         return []
 
-    hero_match = (
+    hero_match_q = (
         sa.select(
             models.MatchStatistics.hero_id.label("hero_id"),
             models.MatchStatistics.team_id.label("team_id"),
@@ -314,6 +340,17 @@ async def get_user_hero_stats_by_maps(
                 models.Match.map_id.in_(maps_ids),
             )
         )
+    )
+
+    if tournament_id is not None:
+        hero_match_q = (
+            hero_match_q
+            .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
+            .where(models.Encounter.tournament_id == tournament_id)
+        )
+
+    hero_match = (
+        hero_match_q
         .group_by(
             models.MatchStatistics.hero_id,
             models.MatchStatistics.team_id,
@@ -408,6 +445,9 @@ async def get_hero_leaderboard(
     tournament_id: int | None,
     stat: enums.LogStatsName,
     params: pagination.PaginationParams,
+    workspace_id: int | None = None,
+    *,
+    grid: DivisionGrid,
 ) -> tuple[typing.Sequence[typing.Any], int]:
     hero_pt_alias = sa.alias(models.MatchStatistics)
 
@@ -442,6 +482,19 @@ async def get_hero_leaderboard(
             .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
             .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
             .where(models.Encounter.tournament_id == tournament_id)
+        )
+
+    if workspace_id is not None:
+        if tournament_id is None:
+            base_select = (
+                base_select
+                .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
+                .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
+            )
+        base_select = (
+            base_select
+            .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
+            .where(models.Tournament.workspace_id == workspace_id)
         )
 
     eligible_cte = base_select.cte("eligible")
@@ -546,7 +599,7 @@ async def get_hero_leaderboard(
             models.Player.user_id,
             models.Player.name,
             models.Player.role,
-            models.Player.div,
+            division_case_expr(models.Player.rank, grid).label("div"),
             sa.func.row_number()
             .over(
                 partition_by=models.Player.user_id,

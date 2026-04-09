@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import schemas
 from src.core import config, db, enums, pagination
+from src.core.workspace import WorkspaceQuery
 
 from src.services.encounter import flows as encounter_flows
 
@@ -31,9 +32,10 @@ async def get_all_matches(
             "log_name",
         ]
     ] = Depends(),
+    workspace_id: WorkspaceQuery = None,
 ):
     return await encounter_flows.get_all_matches(
-        session, schemas.MatchSearchParams.from_query_params(params)
+        session, schemas.MatchSearchParams.from_query_params(params), workspace_id=workspace_id
     )
 
 

@@ -170,6 +170,7 @@ async def get_user(
     user: models.User,
     tournament_id: int | None = None,
     without_tournament: bool = False,
+    workspace_id: int | None = None,
 ) -> typing.Sequence[tuple[models.AchievementUser, int]]:
     """
     Retrieves a list of achievements earned by a specific user along with their rarity.
@@ -177,6 +178,7 @@ async def get_user(
     Parameters:
         session (AsyncSession): The SQLAlchemy async session.
         user (models.User): The user object for whom to retrieve achievements.
+        workspace_id (int | None): Optional workspace ID to filter achievements by.
 
     Returns:
         typing.Sequence[tuple[models.AchievementUser, int]]: A list of tuples, each containing an AchievementUser object and the rarity of the achievement.
@@ -206,6 +208,18 @@ async def get_user(
 
     if without_tournament:
         query = query.where(models.AchievementUser.tournament_id.is_(None))
+
+    if workspace_id is not None:
+        query = query.join(
+            models.Tournament,
+            models.AchievementUser.tournament_id == models.Tournament.id,
+            isouter=True,
+        ).where(
+            sa.or_(
+                models.Tournament.workspace_id == workspace_id,
+                models.AchievementUser.tournament_id.is_(None),
+            )
+        )
 
     results = await session.execute(query)
 

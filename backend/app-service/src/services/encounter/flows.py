@@ -146,7 +146,8 @@ async def get_encounter(
 
 
 async def get_all_encounters(
-    session: AsyncSession, params: schemas.EncounterSearchParams
+    session: AsyncSession, params: schemas.EncounterSearchParams,
+    workspace_id: int | None = None,
 ) -> pagination.Paginated[schemas.EncounterRead]:
     """
     Retrieves a paginated list of encounters and converts them to Pydantic schemas.
@@ -154,11 +155,12 @@ async def get_all_encounters(
     Parameters:
         session (AsyncSession): The SQLAlchemy async session.
         params (schemas.EncounterSearchParams): Search, pagination, and sorting parameters.
+        workspace_id (int | None): Optional workspace ID to filter encounters.
 
     Returns:
         pagination.Paginated[schemas.EncounterRead]: A paginated list of Pydantic schemas representing the encounters.
     """
-    encounters, total = await service.get_all_encounters(session, params)
+    encounters, total = await service.get_all_encounters(session, params, workspace_id=workspace_id)
     return pagination.Paginated(
         total=total,
         per_page=params.per_page,
@@ -171,7 +173,7 @@ async def get_all_encounters(
 
 
 async def get_all_matches(
-    session: AsyncSession, params: schemas.MatchSearchParams
+    session: AsyncSession, params: schemas.MatchSearchParams, workspace_id: int | None = None
 ) -> pagination.Paginated[schemas.MatchRead]:
     """
     Retrieves a paginated list of matches and converts them to Pydantic schemas.
@@ -179,11 +181,12 @@ async def get_all_matches(
     Parameters:
         session (AsyncSession): The SQLAlchemy async session.
         params (schemas.MatchSearchParams): Search, pagination, and sorting parameters.
+        workspace_id (int | None): Optional workspace ID to filter matches by workspace.
 
     Returns:
         pagination.Paginated[schemas.MatchRead]: A paginated list of Pydantic schemas representing the matches.
     """
-    matches, total = await service.get_all_matches(session, params)
+    matches, total = await service.get_all_matches(session, params, workspace_id=workspace_id)
     return pagination.Paginated(
         total=total,
         per_page=params.per_page,
@@ -311,7 +314,7 @@ async def get_match_with_stats(
 
 
 async def get_encounters_by_user(
-    session: AsyncSession, user_id: int, params: pagination.PaginationSortParams
+    session: AsyncSession, user_id: int, params: pagination.PaginationSortParams, workspace_id: int | None = None
 ) -> pagination.Paginated[schemas.EncounterReadWithUserStats]:
     """
     Retrieves a paginated list of encounters involving a specific user, including user statistics.
@@ -336,7 +339,7 @@ async def get_encounters_by_user(
     params.entities = [*match_entities, *params.entities]
 
     user = await user_flows.get(session, user_id, [])
-    encounters, total = await service.get_by_user(session, user.id, params)
+    encounters, total = await service.get_by_user(session, user.id, params, workspace_id=workspace_id)
     encounters_read: list[schemas.EncounterReadWithUserStats] = []
     encounters_cache: dict[int, models.Encounter] = {}
     matches_cache: dict[int, list[schemas.MatchReadWithUserStats]] = {}

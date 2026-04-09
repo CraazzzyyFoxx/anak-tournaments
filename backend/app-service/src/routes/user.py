@@ -8,6 +8,7 @@ from starlette.requests import Request
 
 from src import schemas
 from src.core import config, db, enums, pagination
+from src.core.workspace import WorkspaceQuery, get_division_grid
 from src.services.encounter import flows as encounter_flows
 from src.services.map import flows as map_flows
 from src.services.user import flows as user_flows
@@ -52,9 +53,11 @@ async def search_by_name(
 )
 async def get_overview(
     params: schemas.UserOverviewQueryParams = Depends(),
+    workspace_id: WorkspaceQuery = None,
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    return await user_flows.get_overview(session, schemas.UserOverviewParams.from_query_params(params))
+    grid = await get_division_grid(session, workspace_id)
+    return await user_flows.get_overview(session, schemas.UserOverviewParams.from_query_params(params), workspace_id=workspace_id, grid=grid)
 
 
 @router.get(
@@ -68,7 +71,8 @@ async def get_compare(
     params: schemas.UserCompareQueryParams = Depends(),
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    return await user_flows.get_compare(session, id, schemas.UserCompareParams.from_query_params(params))
+    grid = await get_division_grid(session, None)
+    return await user_flows.get_compare(session, id, schemas.UserCompareParams.from_query_params(params), grid=grid)
 
 
 @router.get(
@@ -82,7 +86,8 @@ async def get_hero_compare(
     params: schemas.UserHeroCompareQueryParams = Depends(),
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    return await user_flows.get_hero_compare(session, id, schemas.UserHeroCompareParams.from_query_params(params))
+    grid = await get_division_grid(session, None)
+    return await user_flows.get_hero_compare(session, id, schemas.UserHeroCompareParams.from_query_params(params), grid=grid)
 
 
 @router.get(
@@ -116,10 +121,11 @@ async def get_by_name(
 )
 @cache(
     ttl=cache_control_ttl(default=config.settings.users_cache_ttl),
-    key="fastapi:{request.url.path}",
+    key="fastapi:{request.url.path}/{request.query_params}",
 )
-async def get_profile(request: Request, id: int, session=Depends(db.get_async_session)):
-    profile = await user_flows.get_profile(session, id)
+async def get_profile(request: Request, id: int, workspace_id: WorkspaceQuery = None, session=Depends(db.get_async_session)):
+    grid = await get_division_grid(session, workspace_id)
+    profile = await user_flows.get_profile(session, id, workspace_id=workspace_id, grid=grid)
     return profile
 
 
@@ -131,10 +137,11 @@ async def get_profile(request: Request, id: int, session=Depends(db.get_async_se
 )
 @cache(
     ttl=cache_control_ttl(default=config.settings.users_cache_ttl),
-    key="fastapi:{request.url.path}",
+    key="fastapi:{request.url.path}/{request.query_params}",
 )
-async def get_tournaments(request: Request, id: int, session: AsyncSession = Depends(db.get_async_session)):
-    tournaments = await user_flows.get_tournaments(session, id)
+async def get_tournaments(request: Request, id: int, workspace_id: WorkspaceQuery = None, session: AsyncSession = Depends(db.get_async_session)):
+    grid = await get_division_grid(session, workspace_id)
+    tournaments = await user_flows.get_tournaments(session, id, workspace_id=workspace_id, grid=grid)
     return tournaments
 
 
@@ -154,7 +161,8 @@ async def get_tournament(
     tournament_id: int,
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    tournament = await user_flows.get_tournament_with_stats(session, id, tournament_id)
+    grid = await get_division_grid(session, None, tournament_id)
+    tournament = await user_flows.get_tournament_with_stats(session, id, tournament_id, grid=grid)
     return tournament
 
 
@@ -245,9 +253,10 @@ async def get_encounters(
     params: pagination.PaginationSortQueryParams[
         typing.Literal["id", "name", "home_team_id", "away_team_id", "closeness", "round"]
     ] = Depends(),
+    workspace_id: WorkspaceQuery = None,
 ):
     encounters = await encounter_flows.get_encounters_by_user(
-        session, id, pagination.PaginationSortParams.from_query_params(params)
+        session, id, pagination.PaginationSortParams.from_query_params(params), workspace_id=workspace_id
     )
     return encounters
 
@@ -269,6 +278,7 @@ async def get_heroes(
     params: pagination.PaginationQueryParams = Depends(),
     stats: list[enums.LogStatsName] = Query([]),
     tournament_id: int | None = Query(default=None, ge=1),
+    workspace_id: WorkspaceQuery = None,
     session: AsyncSession = Depends(db.get_async_session),
 ):
     heroes = await user_flows.get_heroes(
@@ -277,6 +287,7 @@ async def get_heroes(
         pagination.PaginationParams.from_query_params(params),
         stats,
         tournament_id=tournament_id,
+        workspace_id=workspace_id,
     )
     return heroes
 
@@ -295,9 +306,10 @@ async def get_teammates(
     request: Request,
     id: int,
     params: pagination.PaginationSortQueryParams[typing.Literal["id", "name", "winrate", "tournaments"]] = Depends(),
+    workspace_id: WorkspaceQuery = None,
     session: AsyncSession = Depends(db.get_async_session),
 ):
     teammates = await user_flows.get_best_teammates(
-        session, id, pagination.PaginationSortParams.from_query_params(params)
+        session, id, pagination.PaginationSortParams.from_query_params(params), workspace_id=workspace_id
     )
     return teammates

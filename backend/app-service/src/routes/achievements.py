@@ -8,6 +8,7 @@ from starlette.requests import Request
 
 from src import schemas
 from src.core import config, db, enums, errors, pagination
+from src.core.workspace import WorkspaceQuery
 
 from src.services.achievements import flows as achievements_flows
 
@@ -85,6 +86,7 @@ async def get_user_achievements(
     entities: list[str] = Query([]),
     tournament_id: int | None = Query(None),
     without_tournament: bool = Query(False),
+    workspace_id: WorkspaceQuery = None,
     session: AsyncSession = Depends(db.get_async_session),
 ):
     if tournament_id is not None and without_tournament:
@@ -104,4 +106,5 @@ async def get_user_achievements(
         entities,
         tournament_id=tournament_id,
         without_tournament=without_tournament,
+        workspace_id=workspace_id,
     )

@@ -1,9 +1,13 @@
 import { Hero, HeroLeaderboardEntry, HeroPlaytime } from "@/types/hero.types";
-import { PaginatedResponse } from "@/types/pagination.types";
+import { LookupItem, PaginatedResponse } from "@/types/pagination.types";
 import { LogStatsName } from "@/types/stats.types";
-import { customFetch } from "@/lib/custom_fetch";
+import { apiFetch } from "@/lib/api-fetch";
 
 export default class heroService {
+  static async lookup(): Promise<LookupItem[]> {
+    return apiFetch("app", "heroes/lookup").then((res) => res.json());
+  }
+
   static async getAll({
     page = 1,
     perPage = -1,
@@ -17,7 +21,7 @@ export default class heroService {
     order?: "asc" | "desc";
     query?: string;
   } = {}): Promise<PaginatedResponse<Hero>> {
-    return customFetch("heroes", {
+    return apiFetch("app","heroes", {
       query: {
         page,
         per_page: perPage,
@@ -35,7 +39,7 @@ export default class heroService {
     userId: number | string = "all",
     tournamentId: number | null = null
   ): Promise<PaginatedResponse<HeroPlaytime>> {
-    return customFetch(`heroes/statistics/playtime`, {
+    return apiFetch("app",`heroes/statistics/playtime`, {
       query: {
         page: page,
         per_page: perPage,
@@ -61,7 +65,7 @@ export default class heroService {
       perPage?: number;
     } = {}
   ): Promise<PaginatedResponse<HeroLeaderboardEntry>> {
-    return customFetch(`heroes/${heroId}/leaderboard`, {
+    return apiFetch("app",`heroes/${heroId}/leaderboard`, {
       query: {
         tournament_id: tournamentId ?? undefined,
         stat,

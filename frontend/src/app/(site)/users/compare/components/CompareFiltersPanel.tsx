@@ -4,7 +4,8 @@ import { useMemo } from "react";
 import Image from "next/image";
 
 import { CompareScope } from "@/app/(site)/users/compare/types";
-import { DIVISION_OPTIONS, ROLE_FILTER_OPTIONS } from "@/app/(site)/users/compare/constants";
+import { getDivisionOptions, ROLE_FILTER_OPTIONS } from "@/app/(site)/users/compare/constants";
+import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { parseOptionalInt, getMapIconSrc } from "@/app/(site)/users/compare/utils";
 import UserSearchCombobox from "@/app/(site)/users/compare/components/UserSearchCombobox";
 import SearchableImageSelect, {
@@ -72,6 +73,8 @@ const CompareFiltersPanel = ({
   isTournamentsError,
   updateParams
 }: CompareFiltersPanelProps) => {
+  const grid = useDivisionGrid();
+  const divisionOptions = getDivisionOptions(grid);
   const heroOptions: SearchableImageOption[] = useMemo(
     () =>
       heroes.map((hero) => ({
@@ -241,7 +244,7 @@ const CompareFiltersPanel = ({
               </SelectTrigger>
               <SelectContent className="liquid-glass-panel">
                 <SelectItem value="all">Any</SelectItem>
-                {DIVISION_OPTIONS.map((division) => (
+                {divisionOptions.map((division) => (
                   <SelectItem key={`min-${division}`} value={String(division)}>
                     <div className="flex items-center gap-2">
                       <Image
@@ -284,7 +287,7 @@ const CompareFiltersPanel = ({
               </SelectTrigger>
               <SelectContent className="liquid-glass-panel">
                 <SelectItem value="all">Any</SelectItem>
-                {DIVISION_OPTIONS.map((division) => (
+                {divisionOptions.map((division) => (
                   <SelectItem key={`max-${division}`} value={String(division)}>
                     <div className="flex items-center gap-2">
                       <Image

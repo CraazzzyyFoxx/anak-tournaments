@@ -1,6 +1,7 @@
 import { User } from "@/types/user.types";
 import { Team } from "@/types/team.types";
 import { Encounter } from "@/types/encounter.types";
+import { DivisionGrid } from "@/types/workspace.types";
 
 export interface TournamentGroup {
   id: number;
@@ -17,6 +18,7 @@ export interface Tournament {
   id: number;
   created_at: Date;
   updated_at: Date | null;
+  workspace_id: number;
   name: string;
   start_date: Date;
   end_date: Date;
@@ -29,6 +31,7 @@ export interface Tournament {
 
   groups: TournamentGroup[];
   participants_count: number | null;
+  division_grid: DivisionGrid | null;
 }
 
 export interface OwalStandingDay {

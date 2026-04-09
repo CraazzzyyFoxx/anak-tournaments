@@ -4,6 +4,7 @@ import userService from "@/services/user.service";
 import AchievementCard from "@/components/AchievementCard";
 import UserAchievementsFilter from "@/app/(site)/users/components/UserAchievementsFilter";
 import { Trophy } from "lucide-react";
+import { AchievementRarity } from "@/types/achievement.types";
 
 interface UserAchievementPageProps {
   user: User;
@@ -40,7 +41,7 @@ const UserAchievementPage = async ({ user, selectedTournamentId }: UserAchieveme
     userService.getUserAchievements(user.id, {
       tournamentId,
       withoutTournament
-    }),
+    }).catch(() => [] as AchievementRarity[]),
     userService.getUserProfile(user.id)
   ]);
 
@@ -62,7 +63,7 @@ const UserAchievementPage = async ({ user, selectedTournamentId }: UserAchieveme
       ) : (
         <div className="flex flex-col items-center justify-center gap-2 py-16 text-white/25">
           <Trophy className="h-8 w-8" />
-          <p className="text-sm">No achievements found for this filter.</p>
+          <p className="text-sm">У пользователя пока нет достижений.</p>
         </div>
       )}
     </div>

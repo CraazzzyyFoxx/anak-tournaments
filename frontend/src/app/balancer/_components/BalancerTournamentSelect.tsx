@@ -47,7 +47,7 @@ export function BalancerTournamentSelect() {
         <SelectContent>
           {(tournamentsQuery.data?.results ?? []).map((tournament) => (
             <SelectItem key={tournament.id} value={String(tournament.id)}>
-              {tournament.is_league ? tournament.name : `Tournament ${tournament.number}`}
+              {tournament.name}
             </SelectItem>
           ))}
         </SelectContent>

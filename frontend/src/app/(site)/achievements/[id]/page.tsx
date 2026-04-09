@@ -14,7 +14,7 @@ const AchievementPage = async (props: { params: Promise<{ id: number }> }) => {
       <div className="lg:ml-5 flex flex-row gap-4 items-center mb-8">
         <Image
           className="rounded-xl"
-          src={`/achievements/${data.slug}.webp`}
+          src={data.image_url ?? `/achievements/${data.slug}.webp`}
           width={100}
           height={100}
           alt={data.slug}

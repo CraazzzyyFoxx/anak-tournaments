@@ -3,6 +3,7 @@ from shared.models.gamemode import *
 from shared.models.hero import *
 from shared.models.map import *
 from shared.models.user import *
+from shared.models.workspace import *
 from shared.models.tournament import *
 from shared.models.team import *
 from shared.models.encounter import *

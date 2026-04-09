@@ -7,6 +7,8 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
+from shared.division_grid import DivisionGrid, division_case_expr
+
 from src import models, schemas
 from src.core import enums, utils
 
@@ -129,13 +131,17 @@ async def get_all(
         query = query.where(models.Tournament.is_league.is_(params.is_league))
         total_query = total_query.where(models.Tournament.is_league.is_(params.is_league))
 
+    if params.workspace_id is not None:
+        query = query.where(models.Tournament.workspace_id == params.workspace_id)
+        total_query = total_query.where(models.Tournament.workspace_id == params.workspace_id)
+
     result = await session.execute(query)
     total_result = await session.execute(total_query)
     return result.unique().scalars().all(), total_result.scalar_one()
 
 
 async def get_history_tournaments(
-    session: AsyncSession,
+    session: AsyncSession, workspace_id: int | None = None,
 ) -> typing.Sequence[tuple[models.Tournament, int, float, float]]:
     """
     Retrieves historical statistics for tournaments, including player count, average SR, and average closeness.
@@ -189,18 +195,21 @@ async def get_history_tournaments(
         .group_by(models.Tournament.id)
         .order_by(models.Tournament.number)
     )
+    if workspace_id is not None:
+        query = query.where(models.Tournament.workspace_id == workspace_id)
     result = await session.execute(query)
     return result.all()  # type: ignore
 
 
 async def get_avg_div_tournaments(
-    session: AsyncSession,
+    session: AsyncSession, workspace_id: int | None = None, *, grid: DivisionGrid,
 ) -> typing.Sequence[tuple[models.Tournament, enums.HeroClass, float]]:
     """
     Retrieves average division statistics for tournaments by role.
 
     Args:
         session: An SQLAlchemy `AsyncSession` for database interaction.
+        grid: The division grid used to compute divisions from rank.
 
     Returns:
         A sequence of tuples containing:
@@ -208,8 +217,9 @@ async def get_avg_div_tournaments(
         2. The role (e.g., tank, damage, support).
         3. The average division for the role in the tournament.
     """
+    div_expr = division_case_expr(models.Player.rank, grid)
     query = (
-        sa.select(models.Tournament, models.Player.role, sa.func.avg(models.Player.div))
+        sa.select(models.Tournament, models.Player.role, sa.func.avg(div_expr))
         .where(
             models.Player.tournament_id == models.Tournament.id,
             models.Tournament.number.isnot(None),
@@ -217,11 +227,13 @@ async def get_avg_div_tournaments(
         .group_by(models.Tournament.id, models.Player.role)
         .order_by(models.Tournament.number)
     )
+    if workspace_id is not None:
+        query = query.where(models.Tournament.workspace_id == workspace_id)
     result = await session.execute(query)
     return result.all()  # type: ignore
 
 
-async def get_tournaments_overall(session: AsyncSession) -> tuple[int, int, int, int]:
+async def get_tournaments_overall(session: AsyncSession, workspace_id: int | None = None) -> tuple[int, int, int, int]:
     """
     Retrieves overall statistics for tournaments, including counts of tournaments, teams, players, and champions.
 
@@ -235,20 +247,24 @@ async def get_tournaments_overall(session: AsyncSession) -> tuple[int, int, int,
         3. The total number of players.
         4. The total number of champions.
     """
+    ws_filters = []
+    if workspace_id is not None:
+        ws_filters.append(models.Tournament.workspace_id == workspace_id)
+
     tournaments_count_query = sa.select(sa.func.count(models.Tournament.id)).where(
-        models.Tournament.is_league.is_(False)
+        models.Tournament.is_league.is_(False), *ws_filters
     )
 
     teams_count_query = (
         sa.select(sa.func.count(models.Team.id))
         .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
-        .where(models.Tournament.is_league.is_(False))
+        .where(models.Tournament.is_league.is_(False), *ws_filters)
     )
 
     players_count_query = (
         sa.select(sa.func.count(sa.distinct(models.Player.user_id)))
         .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
-        .where(models.Tournament.is_league.is_(False))
+        .where(models.Tournament.is_league.is_(False), *ws_filters)
     )
 
     champions_count_query = (
@@ -266,6 +282,7 @@ async def get_tournaments_overall(session: AsyncSession) -> tuple[int, int, int,
                 models.TournamentGroup.is_groups.is_(False),
                 models.Player.is_substitution.is_(False),
                 models.Tournament.is_league.is_(False),
+                *ws_filters,
             )
         )
     )
@@ -284,6 +301,7 @@ async def get_tournaments_overall(session: AsyncSession) -> tuple[int, int, int,
 async def get_owal_standings(
     session: AsyncSession,
     season: str,
+    workspace_id: int | None = None,
 ) -> typing.Sequence[tuple[models.User, models.Team, models.Tournament, models.Player]]:
     """
     Retrieves OWAL (Overwatch Anak League) standings.
@@ -316,11 +334,13 @@ async def get_owal_standings(
             )
         )
     )
+    if workspace_id is not None:
+        query = query.where(models.Tournament.workspace_id == workspace_id)
     result = await session.execute(query)
     return result.unique().all()
 
 
-async def get_owal_days(session: AsyncSession, season: str) -> typing.Sequence[models.Tournament]:
+async def get_owal_days(session: AsyncSession, season: str, workspace_id: int | None = None) -> typing.Sequence[models.Tournament]:
     """
     Retrieves OWAL (Overwatch Anak League) days.
 
@@ -340,15 +360,21 @@ async def get_owal_days(session: AsyncSession, season: str) -> typing.Sequence[m
         )
         .order_by(models.Tournament.start_date)
     )
+    if workspace_id is not None:
+        query = query.where(models.Tournament.workspace_id == workspace_id)
     result = await session.execute(query)
     return result.unique().scalars().all()
 
 
-async def get_owal_seasons(session: AsyncSession) -> list[str]:
+async def get_owal_seasons(session: AsyncSession, workspace_id: int | None = None) -> list[str]:
+    ws_filters = []
+    if workspace_id is not None:
+        ws_filters.append(models.Tournament.workspace_id == workspace_id)
     query = sa.select(models.Tournament.name).where(
         sa.and_(
             models.Tournament.is_league.is_(True),
             models.Tournament.name.startswith("OWAL Season "),
+            *ws_filters,
         )
     )
     result = await session.execute(query)
@@ -388,7 +414,7 @@ async def get_bulk_tournament(
 
 
 async def get_league_player_stacks(
-    session: AsyncSession, season: str
+    session: AsyncSession, season: str, workspace_id: int | None = None,
 ) -> tuple[
     defaultdict[tuple[int, int], list[models.Player]],
     defaultdict[tuple[int, int], list[models.Player]],
@@ -406,6 +432,7 @@ async def get_league_player_stacks(
                         models.Tournament.is_finished.is_(True),
                         models.Tournament.name.startswith(season),
                         models.Player.is_substitution.is_(False),
+                        *([models.Tournament.workspace_id == workspace_id] if workspace_id is not None else []),
                     )
                 )
                 .options(

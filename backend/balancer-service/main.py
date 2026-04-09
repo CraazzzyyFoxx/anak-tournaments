@@ -3,12 +3,12 @@ from datetime import UTC, datetime
 
 import sentry_sdk
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import ORJSONResponse
 from src.core.config import config
 from src.core.job_store import close_job_store
-from src.middlewares.exception import ExceptionMiddleware
+from shared.core.middleware import ExceptionMiddleware, RequestSizeLimitMiddleware
 from src.views import router, task_router
 
 from shared.clients import AuthClient
@@ -25,14 +25,14 @@ from shared.schemas import HealthCheckResponse
 logger = setup_logging(
     service_name="balancer-service",
     log_level=config.log_level,
-    logs_root_path=config.LOGS_ROOT_PATH,
-    json_output=config.JSON_LOGGING,
+    logs_root_path=config.logs_root_path,
+    json_output=config.json_logging,
 )
 
 # Create module-level singleton for auth client
 auth_client = AuthClient(
-    base_url=config.AUTH_SERVICE_URL,
-    timeout=config.AUTH_SERVICE_TIMEOUT,
+    base_url=config.auth_service_url,
+    timeout=config.auth_service_timeout,
 )
 
 
@@ -40,27 +40,27 @@ auth_client = AuthClient(
 async def lifespan(app: FastAPI):
     """Application lifespan events"""
     # Initialize Sentry
-    if config.SENTRY_DSN:
+    if config.sentry_dsn:
         sentry_sdk.init(
-            dsn=config.SENTRY_DSN,
-            traces_sample_rate=config.SENTRY_TRACES_SAMPLE_RATE,
-            profiles_sample_rate=config.SENTRY_PROFILES_SAMPLE_RATE,
-            environment=config.ENVIRONMENT,
-            release=config.VERSION,
+            dsn=config.sentry_dsn,
+            traces_sample_rate=config.sentry_traces_sample_rate,
+            profiles_sample_rate=config.sentry_profiles_sample_rate,
+            environment=config.environment,
+            release=config.version,
         )
-        logger.info(f"✅ Sentry initialized (sampling={config.SENTRY_TRACES_SAMPLE_RATE})")
+        logger.info(f"Sentry initialized (sampling={config.sentry_traces_sample_rate})")
 
     # Setup OpenTelemetry tracing
     setup_tracing(
         service_name="balancer-service",
-        otlp_endpoint=config.OTLP_ENDPOINT,
-        enabled=config.TRACING_ENABLED,
+        otlp_endpoint=config.otlp_endpoint,
+        enabled=config.tracing_enabled,
     )
 
     await auth_client.start()  # Start connection pool
-    logger.info(f"Starting {config.PROJECT_NAME} - Balancer Service...")
-    logger.info(f"Environment: {config.ENVIRONMENT}")
-    logger.info(f"Port: {config.PORT}")
+    logger.info(f"Starting {config.project_name} - Balancer Service...")
+    logger.info(f"Environment: {config.environment}")
+    logger.info(f"Port: {config.port}")
 
     yield
 
@@ -70,14 +70,14 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title=config.PROJECT_NAME,
-    description=config.DESCRIPTION,
-    default_response_class=ORJSONResponse,
-    version=config.VERSION,
+    title=config.project_name,
+    description=config.description,
+    version=config.version,
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc",
     root_path="/api/balancer",
+    default_response_class=JSONResponse,
 )
 
 # Store auth_client on app state for dependency injection
@@ -91,14 +91,15 @@ Instrumentator().instrument(app).expose(app)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=config.CORS_ORIGINS,
-    allow_credentials=config.CORS_ALLOW_CREDENTIALS,
-    allow_methods=config.CORS_ALLOW_METHODS,
-    allow_headers=config.CORS_ALLOW_HEADERS,
+    allow_origins=config.cors_origins,
+    allow_credentials=config.cors_allow_credentials,
+    allow_methods=config.cors_allow_methods,
+    allow_headers=config.cors_allow_headers,
 )
 
 # Observability middleware
-app.add_middleware(ExceptionMiddleware)
+app.add_middleware(RequestSizeLimitMiddleware, max_content_length=10 * 1024 * 1024)  # 10MB limit
+app.add_middleware(ExceptionMiddleware, is_development=config.environment == "development")
 app.add_middleware(TimeMiddleware)
 app.add_middleware(CorrelationIdMiddleware)
 
@@ -113,7 +114,7 @@ async def health_check() -> HealthCheckResponse:
         status="ok",
         service="balancer-service",
         timestamp=int(datetime.now(UTC).timestamp()),
-        version=config.VERSION,
+        version=config.version,
     )
 
 
@@ -123,7 +124,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
-        port=config.PORT,
+        port=config.port,
         log_config=None,
         access_log=False,
         # reload=config.ENVIRONMENT == "development"

@@ -29,6 +29,7 @@ async def create_tournament(session: AsyncSession, data: admin_schemas.Tournamen
     if data.number is not None:
         result = await session.execute(
             select(models.Tournament).where(
+                models.Tournament.workspace_id == data.workspace_id,
                 models.Tournament.number == data.number,
                 models.Tournament.is_league == data.is_league,
             )
@@ -38,7 +39,7 @@ async def create_tournament(session: AsyncSession, data: admin_schemas.Tournamen
         if existing_tournament:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Tournament with this number already exists",
+                detail="Tournament with this number already exists in this workspace",
             )
 
     tournament = models.Tournament(**data.model_dump())

@@ -8,11 +8,21 @@ import {
   CircleAlert,
   ArrowLeft,
   CalendarDays,
+  CheckCircle,
   CheckCircle2,
+  Clock,
+  FileCheck2,
+  FileX2,
   FolderInput,
   Hash,
   History,
+  LayoutGrid,
   Layers3,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  ChevronsDownUp,
+  ChevronsUpDown,
   Link2,
   ListChecks,
   Loader2,
@@ -24,21 +34,23 @@ import {
   ShieldAlert,
   Trash2,
   Trophy,
+  Upload,
   Users,
   Wifi,
   WifiOff,
+  XCircle,
 } from "lucide-react";
 
-import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { StatusIcon } from "@/components/admin/StatusIcon";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { DatePicker } from "@/components/ui/date-picker";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -57,6 +69,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -248,12 +261,13 @@ function getStandingForm(standing: Standings): StandingFormState {
   };
 }
 
-const adminDetailTableShell = "max-h-96 overflow-y-auto rounded-xl border border-border/60 bg-background/40";
-const adminDetailTableHeaderRow = "border-border/60 hover:bg-transparent";
+const DETAIL_TABLE_PREVIEW = 8;
+const adminDetailTableShell = "overflow-hidden rounded-lg border border-border/40";
+const adminDetailTableHeaderRow = "hover:bg-transparent";
 const adminDetailTableHead =
-  "sticky top-0 z-10 h-11 bg-muted/30 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/90 first:pl-4 last:pr-4";
-const adminDetailTableRow = "border-border/50 transition-colors duration-200 hover:bg-muted/20";
-const adminDetailTableCell = "py-3.5 first:pl-4 last:pr-4 align-top";
+  "sticky top-0 z-10 h-8 bg-muted/20 text-[11px] font-medium text-muted-foreground/70 first:pl-3 last:pr-3";
+const adminDetailTableRow = "border-b border-border/30 transition-colors hover:bg-accent/20";
+const adminDetailTableCell = "py-2 text-[13px] first:pl-3 last:pr-3 align-middle";
 
 export default function AdminTournamentWorkspacePage() {
   const params = useParams<{ id: string }>();
@@ -318,6 +332,17 @@ export default function AdminTournamentWorkspacePage() {
   const retryLogMutation = useMutation({
     mutationFn: (recordId: number) => adminService.retryLogRecord(recordId),
     onSuccess: () => logHistoryQuery.refetch(),
+  });
+
+  const processAllLogsMutation = useMutation({
+    mutationFn: () => adminService.processAllTournamentLogs(tournamentId),
+    onSuccess: () => {
+      toast({ title: "Processing queued for all S3 logs" });
+      logHistoryQuery.refetch();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
   });
 
   const invalidateWorkspace = async () => {
@@ -386,6 +411,8 @@ export default function AdminTournamentWorkspacePage() {
   const [groupLookupPreview, setGroupLookupPreview] = useState<ChallongeTournamentLookup | null>(null);
   const [groupFormError, setGroupFormError] = useState<string | undefined>();
   const [groupPendingDelete, setGroupPendingDelete] = useState<TournamentGroup | null>(null);
+  const [groupCreateMode, setGroupCreateMode] = useState<"manual" | "import">("manual");
+  const [importChallongeSlug, setImportChallongeSlug] = useState("");
 
   const [teamDialogOpen, setTeamDialogOpen] = useState(false);
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
@@ -412,6 +439,9 @@ export default function AdminTournamentWorkspacePage() {
   });
   const [tournamentDeleteOpen, setTournamentDeleteOpen] = useState(false);
   const [standingPendingDelete, setStandingPendingDelete] = useState<Standings | null>(null);
+  const [standingsGroupFilter, setStandingsGroupFilter] = useState<string>("all");
+  const [standingsExpanded, setStandingsExpanded] = useState(false);
+  const [standingsSort, setStandingsSort] = useState<{ key: string; dir: "asc" | "desc" } | null>(null);
 
   // Discord channel state
   const [discordChannelDialogOpen, setDiscordChannelDialogOpen] = useState(false);
@@ -436,8 +466,11 @@ export default function AdminTournamentWorkspacePage() {
     setGroupFormData(getEmptyGroupForm());
     setGroupLookupPreview(null);
     setGroupFormError(undefined);
+    setGroupCreateMode("manual");
+    setImportChallongeSlug("");
     lookupChallongeMutation.reset();
     saveGroupMutation.reset();
+    importGroupsMutation.reset();
   };
 
   const resetTeamDialog = () => {
@@ -559,6 +592,18 @@ export default function AdminTournamentWorkspacePage() {
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const importGroupsMutation = useMutation({
+    mutationFn: (slug: string) => adminService.importGroupsFromChallonge(tournamentId, slug),
+    onSuccess: async () => {
+      await invalidateWorkspace();
+      resetGroupDialog();
+      toast({ title: "Groups imported from Challonge" });
+    },
+    onError: (error: Error) => {
+      setGroupFormError(error.message);
     },
   });
 
@@ -836,6 +881,16 @@ export default function AdminTournamentWorkspacePage() {
   const handleGroupSubmit = (event: FormEvent) => {
     event.preventDefault();
 
+    if (groupCreateMode === "import" && !editingGroup) {
+      const slug = normalizeChallongeSlug(importChallongeSlug);
+      if (!slug) {
+        setGroupFormError("Enter a Challonge slug or URL.");
+        return;
+      }
+      importGroupsMutation.mutate(slug);
+      return;
+    }
+
     if (!groupFormData.name.trim()) {
       setGroupFormError("Group name is required.");
       return;
@@ -1024,122 +1079,90 @@ export default function AdminTournamentWorkspacePage() {
   }
 
   return (
-    <div className="space-y-6">
-      <AdminPageHeader
-        title={tournament.name}
-        description="Manage tournament settings, groups, teams, encounters, and standings in one workspace."
-        eyebrow="Tournament Workspace"
-        meta={
-          <Badge variant={tournament.is_finished ? "outline" : "secondary"}>
-            {tournament.is_finished ? "Finished" : "Live ops"}
-          </Badge>
-        }
-        actions={
-          <div className="flex flex-wrap gap-2">
-            <Button asChild variant="outline">
-              <Link href="/admin/tournaments">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Tournaments
-              </Link>
-            </Button>
-            {canUpdateTournament ? (
-              <Button variant="outline" onClick={openTournamentDialog}>
-                <Pencil className="mr-2 h-4 w-4" />
-                Edit Tournament
+    <div className="space-y-4">
+      <Card className="border-border/40">
+        <CardHeader className="pb-3">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <div className="flex items-center gap-3">
+                <CardTitle className="text-lg font-semibold tracking-tight truncate">{tournament.name}</CardTitle>
+                {tournament.is_finished ? (
+                  <StatusIcon icon={CheckCircle} label="Finished" variant="muted" />
+                ) : (
+                  <StatusIcon icon={XCircle} label="Live ops" variant="success" />
+                )}
+              </div>
+              <CardDescription className="mt-1">
+                Manage tournament settings, groups, teams, encounters, and standings in one workspace.
+              </CardDescription>
+            </div>
+            <div className="flex flex-wrap gap-2 shrink-0">
+              <Button asChild variant="outline">
+                <Link href="/admin/tournaments">
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  Back to Tournaments
+                </Link>
               </Button>
-            ) : null}
-            {canUpdateTournament ? (
-              <Button
-                onClick={() => toggleFinishedMutation.mutate()}
-                disabled={toggleFinishedMutation.isPending}
-              >
-                <CheckCircle2 className="mr-2 h-4 w-4" />
-                {tournament.is_finished ? "Reopen Tournament" : "Mark as Finished"}
-              </Button>
-            ) : null}
-            {canDeleteTournament ? (
-              <Button
-                variant="destructive"
-                onClick={() => setTournamentDeleteOpen(true)}
-                disabled={deleteTournamentMutation.isPending}
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                Delete Tournament
-              </Button>
-            ) : null}
+              {canUpdateTournament ? (
+                <Button variant="outline" onClick={openTournamentDialog}>
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Edit Tournament
+                </Button>
+              ) : null}
+              {canUpdateTournament ? (
+                <Button
+                  onClick={() => toggleFinishedMutation.mutate()}
+                  disabled={toggleFinishedMutation.isPending}
+                >
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                  {tournament.is_finished ? "Reopen Tournament" : "Mark as Finished"}
+                </Button>
+              ) : null}
+              {canDeleteTournament ? (
+                <Button
+                  variant="destructive"
+                  onClick={() => setTournamentDeleteOpen(true)}
+                  disabled={deleteTournamentMutation.isPending}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete Tournament
+                </Button>
+              ) : null}
+            </div>
           </div>
-        }
-      />
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="border-t border-border/40 pt-3">
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[13px] text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <ShieldAlert className="size-3.5" />
+                {tournament.is_finished ? "Finished" : "Active"} · {tournament.is_league ? "League" : "Tournament"}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <CalendarDays className="size-3.5" />
+                {formatDate(tournament.start_date)} — {formatDate(tournament.end_date)}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Users className="size-3.5" />
+                {teams.length} teams · {tournament.participants_count ?? teams.length} participants
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Layers3 className="size-3.5" />
+                {groups.length} groups · {encounters.length} encounters · {standings.length} standings
+              </span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Status</CardDescription>
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <ShieldAlert className="h-5 w-5 text-muted-foreground" />
-              {tournament.is_finished ? "Finished" : "Active"}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Badge variant={tournament.is_league ? "outline" : "default"}>
-              {tournament.is_league ? "League" : "Tournament"}
-            </Badge>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Date Window</CardDescription>
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <CalendarDays className="h-5 w-5 text-muted-foreground" />
-              {formatDate(tournament.start_date)}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            Ends {formatDate(tournament.end_date)}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Participants</CardDescription>
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <Users className="h-5 w-5 text-muted-foreground" />
-              {tournament.participants_count ?? teams.length}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            {teams.length} teams loaded in this workspace
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Groups</CardDescription>
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <Layers3 className="h-5 w-5 text-muted-foreground" />
-              {groups.length}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            {encounters.length} encounters and {standings.length} standings rows tracked
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card className="border-border/70 bg-gradient-to-r from-background to-muted/20">
-        <CardHeader className="gap-3 md:flex-row md:items-start md:justify-between">
-          <div className="space-y-1">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <ListChecks className="h-4 w-4 text-muted-foreground" />
-              Setup Checklist
-            </CardTitle>
-            <CardDescription>
-              Use this sequence to go from empty tournament shell to a fully operable workspace.
-            </CardDescription>
+      <Card className="border-border/40">
+        <CardHeader className="flex flex-row items-center justify-between gap-3 py-3 px-4">
+          <div className="flex items-center gap-2 min-w-0">
+            <ListChecks className="size-4 text-muted-foreground shrink-0" />
+            <CardTitle className="text-sm font-semibold">Setup Checklist</CardTitle>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Badge variant={hasChallongeSource ? "secondary" : "outline"}>
-              <Link2 className="mr-1 h-3 w-3" />
-              {hasChallongeSource ? "Challonge linked" : "No Challonge link"}
-            </Badge>
+            <StatusIcon icon={Link2} label={hasChallongeSource ? "Challonge linked" : "No Challonge link"} variant={hasChallongeSource ? "success" : "muted"} />
             <Badge variant={completedEncounterCount > 0 ? "secondary" : "outline"}>
               {completedEncounterCount} completed encounters
             </Badge>
@@ -1154,9 +1177,11 @@ export default function AdminTournamentWorkspacePage() {
               >
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-sm font-medium">{item.label}</p>
-                  <Badge variant={item.done ? "secondary" : "outline"}>
-                    {item.done ? "Done" : "Pending"}
-                  </Badge>
+                  {item.done ? (
+                    <StatusIcon icon={CheckCircle} label="Done" variant="success" />
+                  ) : (
+                    <StatusIcon icon={Clock} label="Pending" variant="muted" />
+                  )}
                 </div>
                 <p className="mt-2 text-sm text-muted-foreground">{item.description}</p>
               </div>
@@ -1174,22 +1199,24 @@ export default function AdminTournamentWorkspacePage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="space-y-1">
-            <CardTitle>Groups</CardTitle>
-            <CardDescription>
-              Create groups manually, link them to Challonge, edit metadata, or remove them.
-            </CardDescription>
-            <div className="flex flex-wrap gap-2 pt-1">
-              <Badge variant="outline">{groups.length} total</Badge>
-              <Badge variant="outline">{linkedGroupCount} linked</Badge>
-              <Badge variant="outline">{manualGroupCount} manual</Badge>
+      <div className="grid gap-4 xl:grid-cols-2 items-start">
+      {/* ── LEFT: Groups + Discord stacked ──────────────────────────────────── */}
+      <div className="flex flex-col gap-4">
+      <Card className="border-border/40">
+        <CardHeader className="flex flex-row items-center justify-between gap-3 py-3 px-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <CardTitle className="text-sm font-semibold">Groups</CardTitle>
+            <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground/50">
+              <span>{groups.length} total</span>
+              <span>·</span>
+              <span>{linkedGroupCount} linked</span>
+              <span>·</span>
+              <span>{manualGroupCount} manual</span>
             </div>
           </div>
           {canUpdateTournament ? (
-            <Button onClick={openCreateGroupDialog}>
-              <Plus className="mr-2 h-4 w-4" />
+            <Button size="sm" onClick={openCreateGroupDialog}>
+              <Plus className="size-3.5" />
               Add Group
             </Button>
           ) : null}
@@ -1203,7 +1230,7 @@ export default function AdminTournamentWorkspacePage() {
                   <TableHead className={adminDetailTableHead}>Type</TableHead>
                   <TableHead className={adminDetailTableHead}>Challonge</TableHead>
                   <TableHead className={adminDetailTableHead}>Description</TableHead>
-                  <TableHead className={adminDetailTableHead}>Actions</TableHead>
+                  <TableHead className={`${adminDetailTableHead} text-right`}>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1214,9 +1241,11 @@ export default function AdminTournamentWorkspacePage() {
                         {group.name}
                       </TableCell>
                       <TableCell className={adminDetailTableCell}>
-                        <Badge variant={group.is_groups ? "secondary" : "outline"}>
-                          {getGroupTypeLabel(group.is_groups)}
-                        </Badge>
+                        {group.is_groups ? (
+                          <StatusIcon icon={LayoutGrid} label="Group stage" variant="info" />
+                        ) : (
+                          <StatusIcon icon={Trophy} label="Playoffs" variant="warning" />
+                        )}
                       </TableCell>
                       <TableCell className={adminDetailTableCell}>
                         {group.challonge_slug ? (
@@ -1237,7 +1266,7 @@ export default function AdminTournamentWorkspacePage() {
                         </span>
                       </TableCell>
                       <TableCell className={adminDetailTableCell}>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center justify-end gap-2">
                           {canUpdateTournament ? (
                             <Button
                               variant="ghost"
@@ -1284,16 +1313,88 @@ export default function AdminTournamentWorkspacePage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="space-y-1">
-            <CardTitle>Teams</CardTitle>
-            <CardDescription>
-              Add teams manually, edit seeded stats, delete teams, or sync them from linked Challonge data.
-            </CardDescription>
-            <div className="flex flex-wrap gap-2 pt-1">
-              <Badge variant="outline">{teams.length} teams</Badge>
-              <Badge variant="outline">{groupedTeamCount} assigned to groups</Badge>
+      {/* ── Discord Sync Channel ─────────────────────────────────────────────── */}
+      <Card className="border-border/40">
+        <CardHeader className="flex flex-row items-center justify-between gap-3 py-3 px-4">
+          <div className="flex items-center gap-2 min-w-0">
+            <MessageSquare className="size-4 text-muted-foreground shrink-0" />
+            <CardTitle className="text-sm font-semibold">Discord Sync</CardTitle>
+          </div>
+          {canUpdateTournament && (
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const ch = discordChannelQuery.data;
+                  setDiscordChannelForm({
+                    guild_id: ch?.guild_id ?? "",
+                    channel_id: ch?.channel_id ?? "",
+                    channel_name: ch?.channel_name ?? "",
+                    is_active: ch?.is_active ?? true,
+                  });
+                  setDiscordChannelDialogOpen(true);
+                }}
+              >
+                <Pencil className="size-3.5" />
+                {discordChannelQuery.data ? "Edit" : "Configure"}
+              </Button>
+              {discordChannelQuery.data && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setDiscordChannelDeleteOpen(true)}
+                >
+                  <Trash2 className="size-3.5" />
+                  Remove
+                </Button>
+              )}
+            </div>
+          )}
+        </CardHeader>
+        <CardContent>
+          {discordChannelQuery.isLoading ? (
+            <Skeleton className="h-10 w-full" />
+          ) : discordChannelQuery.data ? (
+            <div className="grid grid-cols-2 gap-3 text-[13px]">
+              <div>
+                <p className="text-[11px] text-muted-foreground/50">Guild</p>
+                <p className="font-mono text-[12px]">{discordChannelQuery.data.guild_id}</p>
+              </div>
+              <div>
+                <p className="text-[11px] text-muted-foreground/50">Channel</p>
+                <p className="font-mono text-[12px]">{discordChannelQuery.data.channel_id}</p>
+              </div>
+              <div>
+                <p className="text-[11px] text-muted-foreground/50">Name</p>
+                <p>{discordChannelQuery.data.channel_name ?? "—"}</p>
+              </div>
+              <div>
+                <p className="text-[11px] text-muted-foreground/50">Status</p>
+                {discordChannelQuery.data.is_active ? (
+                  <StatusIcon icon={Wifi} label="Active" variant="success" />
+                ) : (
+                  <StatusIcon icon={WifiOff} label="Inactive" variant="muted" />
+                )}
+              </div>
+            </div>
+          ) : (
+            <p className="text-[13px] text-muted-foreground">No Discord channel configured.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      </div>
+
+      {/* ── RIGHT: Teams ────────────────────────────────────────────────────── */}
+      <Card className="border-border/40">
+        <CardHeader className="flex flex-row items-center justify-between gap-3 py-3 px-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <CardTitle className="text-sm font-semibold">Teams</CardTitle>
+            <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground/50">
+              <span>{teams.length} teams</span>
+              <span>·</span>
+              <span>{groupedTeamCount} assigned to groups</span>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -1352,12 +1453,12 @@ export default function AdminTournamentWorkspacePage() {
                   <TableHead className={adminDetailTableHead}>Avg SR</TableHead>
                   <TableHead className={adminDetailTableHead}>Total SR</TableHead>
                   <TableHead className={adminDetailTableHead}>Players</TableHead>
-                  <TableHead className={adminDetailTableHead}>Actions</TableHead>
+                  <TableHead className={`${adminDetailTableHead} text-right`}>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {teams.length ? (
-                  teams.map((team) => (
+                  teams.slice(0, DETAIL_TABLE_PREVIEW).map((team) => (
                     <TableRow key={team.id} className={adminDetailTableRow}>
                       <TableCell className={adminDetailTableCell}>
                         <span className="font-medium">{team.name}</span>
@@ -1369,7 +1470,7 @@ export default function AdminTournamentWorkspacePage() {
                       <TableCell className={adminDetailTableCell}>{team.total_sr}</TableCell>
                       <TableCell className={adminDetailTableCell}>{team.players.length}</TableCell>
                       <TableCell className={adminDetailTableCell}>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center justify-end gap-2">
                           {canUpdateTeam ? (
                             <Button
                               variant="ghost"
@@ -1425,139 +1526,30 @@ export default function AdminTournamentWorkspacePage() {
               </TableBody>
             </Table>
           </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="space-y-1">
-            <CardTitle>Standings</CardTitle>
-            <CardDescription>
-              Edit or remove standings rows, then calculate or recalculate standings from encounter data.
-            </CardDescription>
-            <div className="flex flex-wrap gap-2 pt-1">
-              <Badge variant="outline">{standings.length} rows</Badge>
-              <Badge variant="outline">{completedEncounterCount} completed encounters</Badge>
+          {teams.length > DETAIL_TABLE_PREVIEW && (
+            <div className="border-t border-border/30 px-3 py-2">
+              <Link
+                href={`/admin/teams?tournament=${tournamentId}`}
+                className="text-[12px] text-muted-foreground/60 hover:text-foreground transition-colors"
+              >
+                Show all {teams.length} teams →
+              </Link>
             </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {canRecalculateStandings && standings.length === 0 ? (
-              <Button
-                variant="outline"
-                onClick={() => calculateStandingsMutation.mutate()}
-                disabled={calculateStandingsMutation.isPending || !canManageStandingsNow}
-              >
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Calculate Standings
-              </Button>
-            ) : null}
-            {canRecalculateStandings && standings.length > 0 ? (
-              <Button
-                variant="outline"
-                onClick={() => recalculateStandingsMutation.mutate()}
-                disabled={recalculateStandingsMutation.isPending || !canManageStandingsNow}
-              >
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Recalculate Standings
-              </Button>
-            ) : null}
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className={adminDetailTableShell}>
-            <Table>
-              <TableHeader>
-                <TableRow className={adminDetailTableHeaderRow}>
-                  <TableHead className={adminDetailTableHead}>Pos</TableHead>
-                  <TableHead className={adminDetailTableHead}>Team</TableHead>
-                  <TableHead className={adminDetailTableHead}>Group</TableHead>
-                  <TableHead className={adminDetailTableHead}>Points</TableHead>
-                  <TableHead className={adminDetailTableHead}>Record</TableHead>
-                  <TableHead className={adminDetailTableHead}>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {standings.length ? (
-                  standings.map((standing) => (
-                    <TableRow key={standing.id} className={adminDetailTableRow}>
-                      <TableCell className={adminDetailTableCell}>
-                        <div className="flex items-center gap-2 font-semibold">
-                          {standing.position === 1 ? (
-                            <Trophy className="h-4 w-4 text-yellow-500" />
-                          ) : null}
-                          {standing.position}
-                        </div>
-                      </TableCell>
-                      <TableCell className={`${adminDetailTableCell} font-medium`}>
-                        {standing.team?.name ?? "-"}
-                      </TableCell>
-                      <TableCell className={adminDetailTableCell}>{standing.group?.name ?? "-"}</TableCell>
-                      <TableCell className={adminDetailTableCell}>{standing.points}</TableCell>
-                      <TableCell className={adminDetailTableCell}>
-                        {standing.win}-{standing.draw}-{standing.lose}
-                      </TableCell>
-                      <TableCell className={adminDetailTableCell}>
-                        <div className="flex items-center gap-2">
-                          {canUpdateStanding ? (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              aria-label={`Edit standing for ${standing.team?.name ?? "team"}`}
-                              onClick={() => openEditStandingDialog(standing)}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                          ) : null}
-                          {canDeleteStanding ? (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="text-destructive"
-                              aria-label={`Delete standing for ${standing.team?.name ?? "team"}`}
-                              onClick={() => setStandingPendingDelete(standing)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          ) : null}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow className={adminDetailTableRow}>
-                    <TableCell className={adminDetailTableCell} colSpan={6}>
-                      <div className="flex flex-col gap-3 rounded-xl border border-dashed border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
-                        <span>No standings available yet. Complete at least one encounter, then calculate standings.</span>
-                        {canRecalculateStandings ? (
-                          <Button
-                            variant="outline"
-                            onClick={() => calculateStandingsMutation.mutate()}
-                            disabled={calculateStandingsMutation.isPending || !canManageStandingsNow}
-                          >
-                            <RefreshCw className="mr-2 h-4 w-4" />
-                            Calculate Standings
-                          </Button>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
+          )}
         </CardContent>
       </Card>
+      </div>
 
-      <Card>
-        <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="space-y-1">
-            <CardTitle>Encounters</CardTitle>
-            <CardDescription>
-              Create encounters manually, edit scores and status, or sync encounters from linked Challonge groups.
-            </CardDescription>
-            <div className="flex flex-wrap gap-2 pt-1">
-              <Badge variant="outline">{encounters.length} encounters</Badge>
-              <Badge variant="outline">{completedEncounterCount} completed</Badge>
+      {/* ── Encounters + Standings ──────────────────────────────────────────── */}
+      <div className="grid gap-4 xl:grid-cols-2 items-start">
+      <Card className="border-border/40">
+        <CardHeader className="flex flex-row items-center justify-between gap-3 py-3 px-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <CardTitle className="text-sm font-semibold">Encounters</CardTitle>
+            <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground/50">
+              <span>{encounters.length} encounters</span>
+              <span>·</span>
+              <span>{completedEncounterCount} completed</span>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -1590,12 +1582,12 @@ export default function AdminTournamentWorkspacePage() {
                   <TableHead className={adminDetailTableHead}>Score</TableHead>
                   <TableHead className={adminDetailTableHead}>Status</TableHead>
                   <TableHead className={adminDetailTableHead}>Logs</TableHead>
-                  <TableHead className={adminDetailTableHead}>Actions</TableHead>
+                  <TableHead className={`${adminDetailTableHead} text-right`}>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {encounters.length ? (
-                  encounters.map((encounter) => (
+                  encounters.slice(0, DETAIL_TABLE_PREVIEW).map((encounter) => (
                     <TableRow key={encounter.id} className={adminDetailTableRow}>
                       <TableCell className={adminDetailTableCell}>
                         <div className="space-y-1">
@@ -1615,22 +1607,20 @@ export default function AdminTournamentWorkspacePage() {
                       <TableCell className={adminDetailTableCell}>
                         {(() => {
                           const s = encounter.status?.toUpperCase() ?? "";
-                          return (
-                            <Badge variant={s === "COMPLETED" ? "default" : "outline"}>
-                              {s ? s.charAt(0) + s.slice(1).toLowerCase() : "—"}
-                            </Badge>
-                          );
+                          if (s === "COMPLETED") return <StatusIcon icon={CheckCircle} label="Completed" variant="success" />;
+                          if (s === "PENDING") return <StatusIcon icon={Clock} label="Pending" variant="warning" />;
+                          return <StatusIcon icon={CircleAlert} label={s ? s.charAt(0) + s.slice(1).toLowerCase() : "Unknown"} variant="muted" />;
                         })()}
                       </TableCell>
                       <TableCell className={adminDetailTableCell}>
                         {encounter.has_logs ? (
-                          <Badge variant="default">Available</Badge>
+                          <StatusIcon icon={FileCheck2} label="Available" variant="success" />
                         ) : (
-                          <Badge variant="outline">Missing</Badge>
+                          <StatusIcon icon={FileX2} label="Missing" variant="muted" />
                         )}
                       </TableCell>
                       <TableCell className={adminDetailTableCell}>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center justify-end gap-2">
                           {canUpdateEncounter ? (
                             <Button
                               variant="ghost"
@@ -1692,98 +1682,237 @@ export default function AdminTournamentWorkspacePage() {
               </TableBody>
             </Table>
           </div>
+          {encounters.length > DETAIL_TABLE_PREVIEW && (
+            <div className="border-t border-border/30 px-3 py-2">
+              <Link
+                href={`/admin/encounters?tournament=${tournamentId}`}
+                className="text-[12px] text-muted-foreground/60 hover:text-foreground transition-colors"
+              >
+                Show all {encounters.length} encounters →
+              </Link>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* ── Discord Sync Channel ─────────────────────────────────────────────── */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div className="space-y-1">
-            <CardTitle className="flex items-center gap-2 text-base font-semibold">
-              <MessageSquare className="h-4 w-4 text-muted-foreground" />
-              Discord Sync Channel
-            </CardTitle>
-            <CardDescription>
-              Discord channel where match logs are automatically collected.
-            </CardDescription>
+      {/* ── Standings ────────────────────────────────────────────────────────── */}
+      <Card className="border-border/40">
+        <CardHeader className="flex flex-row items-center justify-between gap-3 py-3 px-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <CardTitle className="text-sm font-semibold">Standings</CardTitle>
+            <span className="text-[12px] text-muted-foreground/50">{standings.length} standings</span>
           </div>
-          {canUpdateTournament && (
-            <div className="flex gap-2">
+          <div className="flex gap-2">
+            {standings.length > DETAIL_TABLE_PREVIEW ? (
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
-                onClick={() => {
-                  const ch = discordChannelQuery.data;
-                  setDiscordChannelForm({
-                    guild_id: ch?.guild_id ?? "",
-                    channel_id: ch?.channel_id ?? "",
-                    channel_name: ch?.channel_name ?? "",
-                    is_active: ch?.is_active ?? true,
-                  });
-                  setDiscordChannelDialogOpen(true);
-                }}
+                className="h-7 gap-1.5 text-xs text-muted-foreground"
+                onClick={() => setStandingsExpanded((prev) => !prev)}
               >
-                <Pencil className="mr-2 h-4 w-4" />
-                {discordChannelQuery.data ? "Edit" : "Configure"}
+                {standingsExpanded ? <ChevronsDownUp className="size-3.5" /> : <ChevronsUpDown className="size-3.5" />}
+                {standingsExpanded ? "Collapse" : "Expand all"}
               </Button>
-              {discordChannelQuery.data && (
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => setDiscordChannelDeleteOpen(true)}
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Remove
-                </Button>
-              )}
-            </div>
-          )}
+            ) : null}
+            {canRecalculateStandings && standings.length === 0 ? (
+              <Button variant="outline" size="sm" onClick={() => calculateStandingsMutation.mutate()} disabled={calculateStandingsMutation.isPending || !canManageStandingsNow}>
+                <RefreshCw className="size-3.5" /> Calculate
+              </Button>
+            ) : null}
+            {canRecalculateStandings && standings.length > 0 ? (
+              <Button variant="outline" size="sm" onClick={() => recalculateStandingsMutation.mutate()} disabled={recalculateStandingsMutation.isPending || !canManageStandingsNow}>
+                <RefreshCw className="size-3.5" /> Recalculate
+              </Button>
+            ) : null}
+          </div>
         </CardHeader>
         <CardContent>
-          {discordChannelQuery.isLoading ? (
-            <Skeleton className="h-12 w-full" />
-          ) : discordChannelQuery.data ? (
-            <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
-              <div className="space-y-1">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Guild ID</p>
-                <p className="font-mono">{discordChannelQuery.data.guild_id}</p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Channel ID</p>
-                <p className="font-mono">{discordChannelQuery.data.channel_id}</p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Channel Name</p>
-                <p>{discordChannelQuery.data.channel_name ?? "—"}</p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Status</p>
-                <Badge variant={discordChannelQuery.data.is_active ? "default" : "secondary"}>
-                  {discordChannelQuery.data.is_active ? "Active" : "Inactive"}
-                </Badge>
-              </div>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">No Discord sync channel configured for this tournament.</p>
-          )}
+          {(() => {
+            const standingGroups = Array.from(
+              new Map(standings.filter((s) => s.group).map((s) => [s.group!.id, s.group!.name])),
+            ).sort(([, a], [, b]) => {
+              const aIsPlayoff = /playoff/i.test(a);
+              const bIsPlayoff = /playoff/i.test(b);
+              if (aIsPlayoff !== bIsPlayoff) return aIsPlayoff ? 1 : -1;
+              return a.localeCompare(b);
+            });
+            const baseFiltered =
+              standingsGroupFilter === "all"
+                ? standings
+                : standings.filter((s) => String(s.group?.id) === standingsGroupFilter);
+
+            const sortedStandings = standingsSort
+              ? [...baseFiltered].sort((a, b) => {
+                  const { key, dir } = standingsSort;
+                  let cmp = 0;
+                  switch (key) {
+                    case "position": cmp = a.position - b.position; break;
+                    case "team": cmp = (a.team?.name ?? "").localeCompare(b.team?.name ?? ""); break;
+                    case "group": cmp = (a.group?.name ?? "").localeCompare(b.group?.name ?? ""); break;
+                    case "points": cmp = a.points - b.points; break;
+                    case "win": cmp = a.win - b.win; break;
+                    case "draw": cmp = a.draw - b.draw; break;
+                    case "lose": cmp = a.lose - b.lose; break;
+                  }
+                  return dir === "asc" ? cmp : -cmp;
+                })
+              : baseFiltered;
+
+            const visibleStandings = standingsExpanded
+              ? sortedStandings
+              : sortedStandings.slice(0, DETAIL_TABLE_PREVIEW);
+            const hasMoreStandings = sortedStandings.length > DETAIL_TABLE_PREVIEW;
+
+            function toggleSort(key: string) {
+              setStandingsSort((prev) => {
+                if (prev?.key === key) {
+                  return prev.dir === "asc" ? { key, dir: "desc" } : null;
+                }
+                return { key, dir: "asc" };
+              });
+            }
+
+            function SortIcon({ col }: { col: string }) {
+              if (standingsSort?.key !== col) return <ArrowUpDown className="size-3 opacity-40" />;
+              return standingsSort.dir === "asc"
+                ? <ArrowUp className="size-3" />
+                : <ArrowDown className="size-3" />;
+            }
+
+            return (
+              <>
+                {standingGroups.length > 1 ? (
+                  <div className="flex items-center gap-1.5 pb-3 flex-wrap">
+                    <Button
+                      variant={standingsGroupFilter === "all" ? "secondary" : "ghost"}
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => setStandingsGroupFilter("all")}
+                    >
+                      All
+                    </Button>
+                    {standingGroups.map(([id, name]) => (
+                      <Button
+                        key={id}
+                        variant={standingsGroupFilter === String(id) ? "secondary" : "ghost"}
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => setStandingsGroupFilter(String(id))}
+                      >
+                        {name}
+                      </Button>
+                    ))}
+                  </div>
+                ) : null}
+                <div className={adminDetailTableShell}>
+                  <Table>
+                    <TableHeader>
+                      <TableRow className={adminDetailTableHeaderRow}>
+                        {([
+                          ["position", "Pos"],
+                          ["team", "Team"],
+                          ["group", "Group"],
+                          ["points", "Pts"],
+                          ["win", "W"],
+                          ["draw", "D"],
+                          ["lose", "L"],
+                        ] as const).map(([key, label]) => (
+                          <TableHead
+                            key={key}
+                            className={`${adminDetailTableHead} cursor-pointer select-none`}
+                            onClick={() => toggleSort(key)}
+                          >
+                            <div className="flex items-center gap-1">
+                              {label}
+                              <SortIcon col={key} />
+                            </div>
+                          </TableHead>
+                        ))}
+                        <TableHead className={`${adminDetailTableHead} text-right`}>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {visibleStandings.length ? (
+                        visibleStandings.map((standing) => (
+                          <TableRow key={standing.id} className={adminDetailTableRow}>
+                            <TableCell className={adminDetailTableCell}>
+                              <div className="flex items-center gap-2 font-semibold">
+                                {standing.position === 1 ? <Trophy className="h-4 w-4 text-yellow-500" /> : null}
+                                {standing.position}
+                              </div>
+                            </TableCell>
+                            <TableCell className={`${adminDetailTableCell} font-medium`}>{standing.team?.name ?? "-"}</TableCell>
+                            <TableCell className={adminDetailTableCell}>{standing.group?.name ?? "-"}</TableCell>
+                            <TableCell className={adminDetailTableCell}>{standing.points}</TableCell>
+                            <TableCell className={adminDetailTableCell}>{standing.win}</TableCell>
+                            <TableCell className={adminDetailTableCell}>{standing.draw}</TableCell>
+                            <TableCell className={adminDetailTableCell}>{standing.lose}</TableCell>
+                            <TableCell className={adminDetailTableCell}>
+                              <div className="flex items-center justify-end gap-2">
+                                {canUpdateStanding ? (
+                                  <Button variant="ghost" size="icon" aria-label={`Edit standing for ${standing.team?.name ?? "team"}`} onClick={() => openEditStandingDialog(standing)}>
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                ) : null}
+                                {canDeleteStanding ? (
+                                  <Button variant="ghost" size="icon" className="text-destructive" aria-label={`Delete standing for ${standing.team?.name ?? "team"}`} onClick={() => setStandingPendingDelete(standing)}>
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                ) : null}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow className={adminDetailTableRow}>
+                          <TableCell className={adminDetailTableCell} colSpan={8}>
+                            <p className="text-sm text-muted-foreground py-2">No standings yet. Calculate after completing encounters.</p>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+                {!standingsExpanded && hasMoreStandings && (
+                  <div className="border-t border-border/30 px-3 py-2">
+                    <Link href={`/admin/standings?tournament=${tournamentId}`} className="text-[12px] text-muted-foreground/60 hover:text-foreground transition-colors">
+                      Show all {sortedStandings.length} standings →
+                    </Link>
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </CardContent>
       </Card>
+      </div>
 
       {/* ── Log Processing History ───────────────────────────────────────────── */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div className="space-y-1">
-            <CardTitle className="flex items-center gap-2 text-base font-semibold">
-              <History className="h-4 w-4 text-muted-foreground" />
-              Log Processing History
-            </CardTitle>
-            <CardDescription>
-              Recent match log uploads and processing results. Refreshes every 10 seconds.
-            </CardDescription>
+      <Card className="border-border/40">
+        <CardHeader className="flex flex-row items-center justify-between gap-3 py-3 px-4">
+          <div className="flex items-center gap-2 min-w-0">
+            <History className="size-4 text-muted-foreground shrink-0" />
+            <CardTitle className="text-sm font-semibold">Log Processing History</CardTitle>
           </div>
-          <Button variant="ghost" size="sm" onClick={() => logHistoryQuery.refetch()} disabled={logHistoryQuery.isFetching}>
-            <RefreshCw className={`h-4 w-4 ${logHistoryQuery.isFetching ? "animate-spin" : ""}`} />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1.5 text-xs"
+              disabled={processAllLogsMutation.isPending}
+              onClick={() => processAllLogsMutation.mutate()}
+            >
+              {processAllLogsMutation.isPending ? (
+                <Loader2 className="size-3 animate-spin" />
+              ) : (
+                <FolderInput className="size-3" />
+              )}
+              Process All S3 Logs
+            </Button>
+            <Button variant="ghost" size="icon" className="size-7" onClick={() => logHistoryQuery.refetch()} disabled={logHistoryQuery.isFetching}>
+              <RefreshCw className={`size-3.5 ${logHistoryQuery.isFetching ? "animate-spin" : ""}`} />
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           {logHistoryQuery.isLoading ? (
@@ -1809,19 +1938,20 @@ export default function AdminTournamentWorkspacePage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {logHistoryQuery.data.items.map((record) => {
+                  {logHistoryQuery.data.items.slice(0, DETAIL_TABLE_PREVIEW).map((record) => {
                     const duration =
                       record.started_at && record.finished_at
                         ? `${((new Date(record.finished_at).getTime() - new Date(record.started_at).getTime()) / 1000).toFixed(1)}s`
                         : record.status === "processing"
                         ? "In progress…"
                         : "—";
-                    const statusColors: Record<string, string> = {
-                      pending: "secondary",
-                      processing: "default",
-                      done: "outline",
-                      failed: "destructive",
+                    const statusIconMap: Record<string, { icon: typeof CheckCircle; variant: "success" | "info" | "muted" | "destructive" | "warning" }> = {
+                      pending: { icon: Clock, variant: "muted" },
+                      processing: { icon: Loader2, variant: "info" },
+                      done: { icon: CheckCircle, variant: "success" },
+                      failed: { icon: XCircle, variant: "destructive" },
                     };
+                    const statusInfo = statusIconMap[record.status] ?? { icon: CircleAlert, variant: "muted" as const };
                     return (
                       <TableRow key={record.id} className={adminDetailTableRow}>
                         <TableCell className={adminDetailTableCell}>
@@ -1831,9 +1961,7 @@ export default function AdminTournamentWorkspacePage() {
                           )}
                         </TableCell>
                         <TableCell className={adminDetailTableCell}>
-                          <Badge variant={(statusColors[record.status] as any) ?? "secondary"}>
-                            {record.status}
-                          </Badge>
+                          <StatusIcon icon={statusInfo.icon} label={record.status} variant={statusInfo.variant} />
                         </TableCell>
                         <TableCell className={adminDetailTableCell}>
                           <span className="capitalize text-muted-foreground text-sm">{record.source}</span>
@@ -1869,6 +1997,13 @@ export default function AdminTournamentWorkspacePage() {
                   })}
                 </TableBody>
               </Table>
+            </div>
+          )}
+          {logHistoryQuery.data && logHistoryQuery.data.items.length > DETAIL_TABLE_PREVIEW && (
+            <div className="border-t border-border/30 px-3 py-2">
+              <span className="text-[12px] text-muted-foreground/50">
+                Showing {DETAIL_TABLE_PREVIEW} of {logHistoryQuery.data.items.length} logs
+              </span>
             </div>
           )}
         </CardContent>
@@ -2033,31 +2168,17 @@ export default function AdminTournamentWorkspacePage() {
             </Label>
           </div>
 
-          <FieldGroup className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <Field>
-              <FieldLabel htmlFor="workspace-start-date">Start Date</FieldLabel>
-              <DatePicker
-                id="workspace-start-date"
-                value={tournamentFormData.start_date}
-                onChange={(value) =>
-                  setTournamentFormData((current) => ({ ...current, start_date: value }))
-                }
-                placeholder="June 01, 2025"
-              />
-            </Field>
-
-            <Field>
-              <FieldLabel htmlFor="workspace-end-date">End Date</FieldLabel>
-              <DatePicker
-                id="workspace-end-date"
-                value={tournamentFormData.end_date}
-                onChange={(value) =>
-                  setTournamentFormData((current) => ({ ...current, end_date: value }))
-                }
-                placeholder="June 30, 2025"
-              />
-            </Field>
-          </FieldGroup>
+          <Field>
+            <FieldLabel htmlFor="workspace-date-range">Date Range</FieldLabel>
+            <DateRangePicker
+              id="workspace-date-range"
+              startDate={tournamentFormData.start_date}
+              endDate={tournamentFormData.end_date}
+              onChange={(start, end) =>
+                setTournamentFormData((current) => ({ ...current, start_date: start, end_date: end }))
+              }
+            />
+          </Field>
         </div>
       </EntityFormDialog>
 
@@ -2070,117 +2191,281 @@ export default function AdminTournamentWorkspacePage() {
           }
         }}
         title={editingGroup ? "Edit Group" : "Create Group"}
-        description="Create a manual group or resolve a Challonge slug to link external metadata."
+        description={
+          editingGroup
+            ? "Edit group details and Challonge link."
+            : "Create a single group manually or import all groups from a two-stage Challonge bracket."
+        }
         onSubmit={handleGroupSubmit}
-        isSubmitting={saveGroupMutation.isPending}
-        submittingLabel={editingGroup ? "Updating group..." : "Creating group..."}
+        isSubmitting={
+          groupCreateMode === "import" && !editingGroup
+            ? importGroupsMutation.isPending
+            : saveGroupMutation.isPending
+        }
+        submittingLabel={
+          editingGroup
+            ? "Updating group..."
+            : groupCreateMode === "import"
+              ? "Importing groups..."
+              : "Creating group..."
+        }
         errorMessage={groupFormError}
-        isDirty={isGroupDirty}
+        isDirty={
+          groupCreateMode === "import" && !editingGroup
+            ? importChallongeSlug !== ""
+            : isGroupDirty
+        }
       >
-        <div className="space-y-4">
-          <div>
-            <Label htmlFor="workspace-group-name">Name</Label>
-            <Input
-              id="workspace-group-name"
-              value={groupFormData.name}
-              onChange={(event) =>
-                setGroupFormData((current) => ({ ...current, name: event.target.value }))
-              }
-            />
-          </div>
+        {!editingGroup ? (
+          <Tabs
+            value={groupCreateMode}
+            onValueChange={(v) => {
+              setGroupCreateMode(v as "manual" | "import");
+              setGroupFormError(undefined);
+              saveGroupMutation.reset();
+              importGroupsMutation.reset();
+            }}
+          >
+            <TabsList className="w-full">
+              <TabsTrigger value="manual" className="flex-1">Manual</TabsTrigger>
+              <TabsTrigger value="import" className="flex-1">Import from Challonge</TabsTrigger>
+            </TabsList>
 
-          <div>
-            <Label htmlFor="workspace-group-description">Description</Label>
-            <Textarea
-              id="workspace-group-description"
-              value={groupFormData.description}
-              onChange={(event) =>
-                setGroupFormData((current) => ({ ...current, description: event.target.value }))
-              }
-            />
-          </div>
+            <TabsContent value="manual">
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="workspace-group-name">Name</Label>
+                  <Input
+                    id="workspace-group-name"
+                    value={groupFormData.name}
+                    onChange={(event) =>
+                      setGroupFormData((current) => ({ ...current, name: event.target.value }))
+                    }
+                  />
+                </div>
 
-          <div>
-            <Label htmlFor="workspace-group-type">Type</Label>
-            <Select
-              value={groupFormData.is_groups ? "groups" : "playoffs"}
-              onValueChange={(value) =>
-                setGroupFormData((current) => ({ ...current, is_groups: value === "groups" }))
-              }
-            >
-              <SelectTrigger id="workspace-group-type">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="groups">Group stage</SelectItem>
-                <SelectItem value="playoffs">Playoffs</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+                <div>
+                  <Label htmlFor="workspace-group-description">Description</Label>
+                  <Textarea
+                    id="workspace-group-description"
+                    value={groupFormData.description}
+                    onChange={(event) =>
+                      setGroupFormData((current) => ({ ...current, description: event.target.value }))
+                    }
+                  />
+                </div>
 
-          <div className="space-y-3 rounded-xl border border-border/60 bg-muted/10 p-4">
-            <div className="space-y-1">
-              <Label htmlFor="workspace-group-challonge">Challonge slug or URL</Label>
-              <p className="text-sm text-muted-foreground">
-                Optional. Resolve a Challonge tournament to store its slug and ID without syncing data yet.
-              </p>
-            </div>
-            <div className="flex flex-col gap-2 sm:flex-row">
+                <div>
+                  <Label htmlFor="workspace-group-type">Type</Label>
+                  <Select
+                    value={groupFormData.is_groups ? "groups" : "playoffs"}
+                    onValueChange={(value) =>
+                      setGroupFormData((current) => ({ ...current, is_groups: value === "groups" }))
+                    }
+                  >
+                    <SelectTrigger id="workspace-group-type">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="groups">Group stage</SelectItem>
+                      <SelectItem value="playoffs">Playoffs</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-3 rounded-xl border border-border/60 bg-muted/10 p-4">
+                  <div className="space-y-1">
+                    <Label htmlFor="workspace-group-challonge">Challonge slug or URL</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Optional. Resolve a Challonge tournament to store its slug and ID without syncing data yet.
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Input
+                      id="workspace-group-challonge"
+                      value={groupFormData.challongeLookup}
+                      onChange={(event) => {
+                        const nextValue = event.target.value;
+                        setGroupLookupPreview(null);
+                        setGroupFormError(undefined);
+                        setGroupFormData((current) => ({
+                          ...current,
+                          challongeLookup: nextValue,
+                          challonge_id: null,
+                          challonge_slug: null,
+                        }));
+                      }}
+                      placeholder="group-a or https://challonge.com/group-a"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleResolveChallonge}
+                      disabled={lookupChallongeMutation.isPending}
+                    >
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      Resolve
+                    </Button>
+                    {(groupFormData.challonge_id || groupFormData.challonge_slug) && !lookupChallongeMutation.isPending ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => {
+                          setGroupLookupPreview(null);
+                          setGroupFormError(undefined);
+                          setGroupFormData((current) => ({
+                            ...current,
+                            challongeLookup: "",
+                            challonge_id: null,
+                            challonge_slug: null,
+                          }));
+                        }}
+                      >
+                        Clear link
+                      </Button>
+                    ) : null}
+                  </div>
+                  {groupFormData.challonge_id && groupFormData.challonge_slug ? (
+                    <div className="rounded-lg border border-border/60 bg-background/70 p-3 text-sm">
+                      <div className="font-medium">
+                        Linked Challonge tournament {groupLookupPreview?.name ? `- ${groupLookupPreview.name}` : ""}
+                      </div>
+                      <div className="text-muted-foreground">Slug: {groupFormData.challonge_slug}</div>
+                      <div className="text-muted-foreground">ID: {groupFormData.challonge_id}</div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="import">
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="import-challonge-slug">Challonge URL or Slug *</Label>
+                  <Input
+                    id="import-challonge-slug"
+                    placeholder="e.g. my-tournament or https://challonge.com/my-tournament"
+                    value={importChallongeSlug}
+                    onChange={(e) => {
+                      setImportChallongeSlug(e.target.value);
+                      setGroupFormError(undefined);
+                    }}
+                    required
+                  />
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  The Challonge bracket must have group stages enabled (two-stage format).
+                  All group stage groups (A, B, C...) and a Playoffs group will be created automatically.
+                </p>
+              </div>
+            </TabsContent>
+          </Tabs>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="workspace-group-name">Name</Label>
               <Input
-                id="workspace-group-challonge"
-                value={groupFormData.challongeLookup}
-                onChange={(event) => {
-                  const nextValue = event.target.value;
-                  setGroupLookupPreview(null);
-                  setGroupFormError(undefined);
-                  setGroupFormData((current) => ({
-                    ...current,
-                    challongeLookup: nextValue,
-                    challonge_id: null,
-                    challonge_slug: null,
-                  }));
-                }}
-                placeholder="group-a or https://challonge.com/group-a"
+                id="workspace-group-name"
+                value={groupFormData.name}
+                onChange={(event) =>
+                  setGroupFormData((current) => ({ ...current, name: event.target.value }))
+                }
               />
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleResolveChallonge}
-                disabled={lookupChallongeMutation.isPending}
+            </div>
+
+            <div>
+              <Label htmlFor="workspace-group-description">Description</Label>
+              <Textarea
+                id="workspace-group-description"
+                value={groupFormData.description}
+                onChange={(event) =>
+                  setGroupFormData((current) => ({ ...current, description: event.target.value }))
+                }
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="workspace-group-type">Type</Label>
+              <Select
+                value={groupFormData.is_groups ? "groups" : "playoffs"}
+                onValueChange={(value) =>
+                  setGroupFormData((current) => ({ ...current, is_groups: value === "groups" }))
+                }
               >
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Resolve
-              </Button>
-              {(groupFormData.challonge_id || groupFormData.challonge_slug) && !lookupChallongeMutation.isPending ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => {
+                <SelectTrigger id="workspace-group-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="groups">Group stage</SelectItem>
+                  <SelectItem value="playoffs">Playoffs</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-3 rounded-xl border border-border/60 bg-muted/10 p-4">
+              <div className="space-y-1">
+                <Label htmlFor="workspace-group-challonge">Challonge slug or URL</Label>
+                <p className="text-sm text-muted-foreground">
+                  Optional. Resolve a Challonge tournament to store its slug and ID without syncing data yet.
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Input
+                  id="workspace-group-challonge"
+                  value={groupFormData.challongeLookup}
+                  onChange={(event) => {
+                    const nextValue = event.target.value;
                     setGroupLookupPreview(null);
                     setGroupFormError(undefined);
                     setGroupFormData((current) => ({
                       ...current,
-                      challongeLookup: "",
+                      challongeLookup: nextValue,
                       challonge_id: null,
                       challonge_slug: null,
                     }));
                   }}
+                  placeholder="group-a or https://challonge.com/group-a"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleResolveChallonge}
+                  disabled={lookupChallongeMutation.isPending}
                 >
-                  Clear link
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Resolve
                 </Button>
+                {(groupFormData.challonge_id || groupFormData.challonge_slug) && !lookupChallongeMutation.isPending ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      setGroupLookupPreview(null);
+                      setGroupFormError(undefined);
+                      setGroupFormData((current) => ({
+                        ...current,
+                        challongeLookup: "",
+                        challonge_id: null,
+                        challonge_slug: null,
+                      }));
+                    }}
+                  >
+                    Clear link
+                  </Button>
+                ) : null}
+              </div>
+              {groupFormData.challonge_id && groupFormData.challonge_slug ? (
+                <div className="rounded-lg border border-border/60 bg-background/70 p-3 text-sm">
+                  <div className="font-medium">
+                    Linked Challonge tournament {groupLookupPreview?.name ? `- ${groupLookupPreview.name}` : ""}
+                  </div>
+                  <div className="text-muted-foreground">Slug: {groupFormData.challonge_slug}</div>
+                  <div className="text-muted-foreground">ID: {groupFormData.challonge_id}</div>
+                </div>
               ) : null}
             </div>
-            {groupFormData.challonge_id && groupFormData.challonge_slug ? (
-              <div className="rounded-lg border border-border/60 bg-background/70 p-3 text-sm">
-                <div className="font-medium">
-                  Linked Challonge tournament {groupLookupPreview?.name ? `- ${groupLookupPreview.name}` : ""}
-                </div>
-                <div className="text-muted-foreground">Slug: {groupFormData.challonge_slug}</div>
-                <div className="text-muted-foreground">ID: {groupFormData.challonge_id}</div>
-              </div>
-            ) : null}
           </div>
-        </div>
+        )}
       </EntityFormDialog>
 
       <EntityFormDialog

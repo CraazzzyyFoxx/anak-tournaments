@@ -1,18 +1,44 @@
 import typing
 
+import sqlalchemy as sa
 from cashews import cache
 from cashews.contrib.fastapi import cache_control_ttl
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 
-from src import schemas
+from src import models, schemas
 from src.core import config, db, enums, pagination
+from src.core.workspace import WorkspaceQuery, get_division_grid
 from src.services.standings import flows as standings_flows
 from src.services.tournament import flows as tournament_flows
 
-
 router = APIRouter(prefix="/tournaments", tags=[enums.RouteTag.TOURNAMENT])
+
+
+@router.get(
+    path="/lookup",
+    response_model=list[schemas.LookupItem],
+    description="Lightweight endpoint returning only id and name for dropdowns/selectors.",
+    summary="Lookup tournaments",
+)
+@cache(
+    ttl=cache_control_ttl(default=config.settings.tournaments_cache_ttl),
+    key="fastapi:{request.url.path}/{request.query_params}",
+)
+async def lookup_tournaments(
+    request: Request,
+    workspace_id: WorkspaceQuery = None,
+    is_league: bool | None = None,
+    session: AsyncSession = Depends(db.get_async_session),
+) -> list[schemas.LookupItem]:
+    query = sa.select(models.Tournament.id, models.Tournament.name).order_by(models.Tournament.id.desc()).limit(500)
+    if workspace_id is not None:
+        query = query.where(models.Tournament.workspace_id == workspace_id)
+    if is_league is not None:
+        query = query.where(models.Tournament.is_league.is_(is_league))
+    result = await session.execute(query)
+    return [schemas.LookupItem(id=row.id, name=row.name) for row in result.all()]
 
 
 @router.get(
@@ -79,9 +105,10 @@ async def get_all_tournaments(
 )
 async def get_statistics(
     request: Request,
+    workspace_id: WorkspaceQuery = None,
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    return await tournament_flows.get_history_tournaments(session)
+    return await tournament_flows.get_history_tournaments(session, workspace_id=workspace_id)
 
 
 @router.get(
@@ -96,9 +123,11 @@ async def get_statistics(
 )
 async def get_avg_div(
     request: Request,
+    workspace_id: WorkspaceQuery = None,
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    return await tournament_flows.get_avg_divisions_tournaments(session)
+    grid = await get_division_grid(session, workspace_id)
+    return await tournament_flows.get_avg_divisions_tournaments(session, workspace_id=workspace_id, grid=grid)
 
 
 @router.get(
@@ -113,9 +142,10 @@ async def get_avg_div(
 )
 async def get_most_players(
     request: Request,
+    workspace_id: WorkspaceQuery = None,
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    return await tournament_flows.get_tournaments_overall(session)
+    return await tournament_flows.get_tournaments_overall(session, workspace_id=workspace_id)
 
 
 @router.get(
@@ -130,9 +160,10 @@ async def get_most_players(
 )
 async def get_owal_seasons(
     request: Request,
+    workspace_id: WorkspaceQuery = None,
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    return await tournament_flows.get_owal_seasons(session)
+    return await tournament_flows.get_owal_seasons(session, workspace_id=workspace_id)
 
 
 @router.get(
@@ -148,11 +179,15 @@ async def get_owal_seasons(
 async def get_owal_standings(
     request: Request,
     season: typing.Optional[str] = Query(default=None),
+    workspace_id: WorkspaceQuery = None,
     session: AsyncSession = Depends(db.get_async_session),
 ):
+    grid = await get_division_grid(session, workspace_id)
     if season:
-        return await tournament_flows.get_owal_standings_by_season(session, season)
-    return await tournament_flows.get_owal_standings(session)
+        return await tournament_flows.get_owal_standings_by_season(
+            session, season, workspace_id=workspace_id, grid=grid,
+        )
+    return await tournament_flows.get_owal_standings(session, workspace_id=workspace_id, grid=grid)
 
 
 @router.get(
@@ -168,13 +203,14 @@ async def get_owal_standings(
 async def get_owal_player_stacks(
     request: Request,
     season: typing.Optional[str] = Query(default=None),
+    workspace_id: WorkspaceQuery = None,
     session: AsyncSession = Depends(db.get_async_session),
 ):
     if not season:
-        seasons = await tournament_flows.get_owal_seasons(session)
+        seasons = await tournament_flows.get_owal_seasons(session, workspace_id=workspace_id)
         season = seasons[0] if seasons else None
 
     if not season:
         return []
 
-    return await tournament_flows.get_league_player_stacks(session, season)
+    return await tournament_flows.get_league_player_stacks(session, season, workspace_id=workspace_id)

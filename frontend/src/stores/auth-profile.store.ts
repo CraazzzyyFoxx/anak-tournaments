@@ -1,5 +1,13 @@
 import { create } from "zustand";
-import { fetchWithAuth } from "@/lib/fetch-with-auth";
+import { getTokenFromCookies, refreshAccessToken } from "@/lib/auth-tokens";
+
+export type WorkspaceRbac = {
+  workspace_id: number;
+  slug: string;
+  memberRole: string;
+  roles: string[];
+  permissions: string[];
+};
 
 export type AuthProfile = {
   username: string;
@@ -7,6 +15,7 @@ export type AuthProfile = {
   roles: string[];
   permissions: string[];
   isSuperuser: boolean;
+  workspaces: WorkspaceRbac[];
 };
 
 export type AuthProfileStatus = "idle" | "loading" | "authenticated" | "anonymous" | "error";
@@ -58,7 +67,23 @@ export const useAuthProfileStore = create<AuthProfileState>((set, get) => ({
     }
 
     try {
-      const res = await fetchWithAuth("/api/auth/me", { method: "GET" });
+      const token = await getTokenFromCookies("aqt_access_token");
+      let res = await fetch("/api/auth/me", {
+        method: "GET",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+
+      // If 401, attempt token refresh and retry once
+      if (res.status === 401 && typeof window !== "undefined") {
+        const newToken = await refreshAccessToken();
+        if (newToken) {
+          res = await fetch("/api/auth/me", {
+            method: "GET",
+            headers: { Authorization: `Bearer ${newToken}` },
+          });
+        }
+      }
+
       const fetchedAt = Date.now();
 
       if (res.status === 401) {
@@ -82,6 +107,13 @@ export const useAuthProfileStore = create<AuthProfileState>((set, get) => ({
         roles?: string[];
         permissions?: string[];
         is_superuser?: boolean;
+        workspaces?: Array<{
+          workspace_id: number;
+          slug: string;
+          role: string;
+          rbac_roles?: string[];
+          rbac_permissions?: string[];
+        }>;
       } = await res.json();
       set({
         status: "authenticated",
@@ -90,7 +122,14 @@ export const useAuthProfileStore = create<AuthProfileState>((set, get) => ({
           avatarUrl: data.avatar_url ?? null,
           roles: data.roles ?? [],
           permissions: data.permissions ?? [],
-          isSuperuser: data.is_superuser ?? false
+          isSuperuser: data.is_superuser ?? false,
+          workspaces: (data.workspaces ?? []).map((ws) => ({
+            workspace_id: ws.workspace_id,
+            slug: ws.slug,
+            memberRole: ws.role,
+            roles: ws.rbac_roles ?? [],
+            permissions: ws.rbac_permissions ?? [],
+          })),
         },
         error: undefined,
         lastFetchedAt: fetchedAt

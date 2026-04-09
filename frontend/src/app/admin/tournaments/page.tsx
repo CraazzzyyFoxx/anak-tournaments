@@ -4,13 +4,13 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
-import { Plus, Pencil, Trash2, CheckCircle, XCircle } from "lucide-react";
+import { Plus, Pencil, Trash2, CheckCircle, XCircle, Crown, Trophy } from "lucide-react";
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { StatusIcon } from "@/components/admin/StatusIcon";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import tournamentService from "@/services/tournament.service";
 import adminService from "@/services/admin.service";
@@ -20,13 +20,32 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { DatePicker } from "@/components/ui/date-picker";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
+import { Field, FieldLabel } from "@/components/ui/field";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePermissions } from "@/hooks/usePermissions";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import { paginateResults, sortArray } from "@/lib/paginate-results";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 
-const emptyTournamentForm: TournamentCreateInput = {
+function normalizeChallongeSlug(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  try {
+    const url = new URL(trimmed.startsWith("http") ? trimmed : `https://${trimmed}`);
+    if (url.hostname.includes("challonge.com")) {
+      const segments = url.pathname.split("/").filter(Boolean);
+      return segments.at(-1) ?? trimmed;
+    }
+  } catch {
+    // fall back to raw slug handling
+  }
+
+  return trimmed.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean).at(-1) ?? trimmed;
+}
+
+const emptyTournamentForm: Omit<TournamentCreateInput, "workspace_id"> = {
   name: "",
   description: "",
   is_league: false,
@@ -49,6 +68,7 @@ export default function TournamentsPage() {
   const { toast } = useToast();
   const { hasPermission } = usePermissions();
   const queryClient = useQueryClient();
+  const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const canCreate = hasPermission("tournament.create");
   const canUpdate = hasPermission("tournament.update");
   const canDelete = hasPermission("tournament.delete");
@@ -57,11 +77,13 @@ export default function TournamentsPage() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
+  const [createMode, setCreateMode] = useState<"manual" | "challonge">("manual");
 
   // Form state
   const [formData, setFormData] = useState<TournamentCreateInput | TournamentUpdateInput>({
     ...emptyTournamentForm,
   });
+  const [challongeSlug, setChallongeSlug] = useState("");
 
   // Mutations
   const createMutation = useMutation({
@@ -71,6 +93,25 @@ export default function TournamentsPage() {
       setCreateDialogOpen(false);
       resetForm();
       toast({ title: "Tournament created successfully" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  });
+
+  const createWithGroupsMutation = useMutation({
+    mutationFn: (params: {
+      number: number;
+      challonge_slug: string;
+      is_league: boolean;
+      start_date: string;
+      end_date: string;
+    }) => adminService.createTournamentWithGroups(params),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tournaments"] });
+      setCreateDialogOpen(false);
+      resetForm();
+      toast({ title: "Tournament created with groups from Challonge" });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -107,10 +148,13 @@ export default function TournamentsPage() {
 
   const resetForm = () => {
     setFormData({ ...emptyTournamentForm });
+    setChallongeSlug("");
+    setCreateMode("manual");
   };
 
   const handleCreate = () => {
     createMutation.reset();
+    createWithGroupsMutation.reset();
     setCreateDialogOpen(true);
     resetForm();
   };
@@ -129,7 +173,23 @@ export default function TournamentsPage() {
 
   const handleSubmitCreate = (e: React.FormEvent) => {
     e.preventDefault();
-    createMutation.mutate(formData as TournamentCreateInput);
+    if (createMode === "challonge") {
+      const fd = formData as TournamentCreateInput;
+      if (!fd.number || !challongeSlug.trim() || !fd.start_date || !fd.end_date) return;
+      createWithGroupsMutation.mutate({
+        number: fd.number,
+        challonge_slug: normalizeChallongeSlug(challongeSlug),
+        is_league: fd.is_league,
+        start_date: fd.start_date,
+        end_date: fd.end_date,
+      });
+    } else {
+      if (!currentWorkspaceId) return;
+      createMutation.mutate({
+        ...formData,
+        workspace_id: currentWorkspaceId,
+      } as TournamentCreateInput);
+    }
   };
 
   const handleSubmitUpdate = (e: React.FormEvent) => {
@@ -149,8 +209,12 @@ export default function TournamentsPage() {
   };
 
   const editFormInitial = selectedTournament ? getTournamentEditForm(selectedTournament) : emptyTournamentForm;
-  const isCreateDirty = createDialogOpen && hasUnsavedChanges(formData, emptyTournamentForm);
+  const isCreateDirty = createDialogOpen && (hasUnsavedChanges(formData, emptyTournamentForm) || challongeSlug !== "");
   const isEditDirty = editDialogOpen && hasUnsavedChanges(formData, editFormInitial);
+
+  const activeCreateMutation = createMode === "challonge" ? createWithGroupsMutation : createMutation;
+  const isCreateSubmitting = activeCreateMutation.isPending;
+  const createErrorMessage = activeCreateMutation.isError ? activeCreateMutation.error.message : undefined;
 
   const columns: ColumnDef<Tournament>[] = [
     {
@@ -166,26 +230,21 @@ export default function TournamentsPage() {
     {
       accessorKey: "is_league",
       header: "Type",
-      cell: ({ row }) => (
-        <Badge variant={row.getValue("is_league") ? "default" : "secondary"}>
-          {row.getValue("is_league") ? "League" : "Tournament"}
-        </Badge>
-      )
+      cell: ({ row }) =>
+        row.getValue("is_league") ? (
+          <StatusIcon icon={Crown} label="League" variant="info" />
+        ) : (
+          <StatusIcon icon={Trophy} label="Tournament" variant="muted" />
+        )
     },
     {
       accessorKey: "is_finished",
       header: "Status",
       cell: ({ row }) =>
         row.getValue("is_finished") ? (
-          <Badge variant="outline" className="gap-1">
-            <CheckCircle className="h-3 w-3" />
-            Finished
-          </Badge>
+          <StatusIcon icon={CheckCircle} label="Finished" variant="muted" />
         ) : (
-          <Badge variant="default" className="gap-1">
-            <XCircle className="h-3 w-3" />
-            Active
-          </Badge>
+          <StatusIcon icon={XCircle} label="Active" variant="success" />
         )
     },
     {
@@ -260,83 +319,144 @@ export default function TournamentsPage() {
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}
         title="Create Tournament"
-        description="Create a new tournament"
+        description="Create a new tournament manually or import from Challonge"
         onSubmit={handleSubmitCreate}
-        isSubmitting={createMutation.isPending}
+        isSubmitting={isCreateSubmitting}
         submittingLabel="Creating tournament…"
-        errorMessage={createMutation.isError ? createMutation.error.message : undefined}
+        errorMessage={createErrorMessage}
         isDirty={isCreateDirty}
       >
-        <div className="space-y-4">
-          <div>
-            <Label htmlFor="name">Name *</Label>
-            <Input
-              id="name"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              required
-            />
-          </div>
+        <Tabs
+          value={createMode}
+          onValueChange={(v) => {
+            setCreateMode(v as "manual" | "challonge");
+            createMutation.reset();
+            createWithGroupsMutation.reset();
+          }}
+        >
+          <TabsList className="w-full">
+            <TabsTrigger value="manual" className="flex-1">Manual</TabsTrigger>
+            <TabsTrigger value="challonge" className="flex-1">From Challonge</TabsTrigger>
+          </TabsList>
 
-          <div>
-            <Label htmlFor="number">Number</Label>
-            <Input
-              id="number"
-              type="number"
-              value={(formData as TournamentCreateInput).number || ""}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  number: e.target.value ? parseInt(e.target.value) : undefined
-                })
-              }
-            />
-          </div>
+          <TabsContent value="manual">
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="name">Name *</Label>
+                <Input
+                  id="name"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  required
+                />
+              </div>
 
-          <div>
-            <Label htmlFor="description">Description</Label>
-            <Textarea
-              id="description"
-              value={formData.description ?? ""}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-            />
-          </div>
+              <div>
+                <Label htmlFor="number">Number</Label>
+                <Input
+                  id="number"
+                  type="number"
+                  value={(formData as TournamentCreateInput).number || ""}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      number: e.target.value ? parseInt(e.target.value) : undefined
+                    })
+                  }
+                />
+              </div>
 
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="is_league"
-              checked={(formData as TournamentCreateInput).is_league}
-              onCheckedChange={(checked) =>
-                setFormData({ ...formData, is_league: checked as boolean })
-              }
-            />
-            <Label htmlFor="is_league" className="cursor-pointer">
-              Is League
-            </Label>
-          </div>
+              <div>
+                <Label htmlFor="description">Description</Label>
+                <Textarea
+                  id="description"
+                  value={formData.description ?? ""}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                />
+              </div>
 
-          <FieldGroup className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <Field>
-              <FieldLabel htmlFor="start_date">Start Date *</FieldLabel>
-              <DatePicker
-                id="start_date"
-                value={formData.start_date}
-                onChange={(value) => setFormData({ ...formData, start_date: value })}
-                placeholder="June 01, 2025"
-              />
-            </Field>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="is_league"
+                  checked={(formData as TournamentCreateInput).is_league}
+                  onCheckedChange={(checked) =>
+                    setFormData({ ...formData, is_league: checked as boolean })
+                  }
+                />
+                <Label htmlFor="is_league" className="cursor-pointer">
+                  Is League
+                </Label>
+              </div>
 
-            <Field>
-              <FieldLabel htmlFor="end_date">End Date *</FieldLabel>
-              <DatePicker
-                id="end_date"
-                value={formData.end_date}
-                onChange={(value) => setFormData({ ...formData, end_date: value })}
-                placeholder="June 30, 2025"
-              />
-            </Field>
-          </FieldGroup>
-        </div>
+              <Field>
+                <FieldLabel htmlFor="date_range">Date Range *</FieldLabel>
+                <DateRangePicker
+                  id="date_range"
+                  startDate={formData.start_date}
+                  endDate={formData.end_date}
+                  onChange={(start, end) => setFormData({ ...formData, start_date: start, end_date: end })}
+                />
+              </Field>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="challonge">
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="challonge_slug">Challonge URL or Slug *</Label>
+                <Input
+                  id="challonge_slug"
+                  placeholder="e.g. my-tournament or https://challonge.com/my-tournament"
+                  value={challongeSlug}
+                  onChange={(e) => setChallongeSlug(e.target.value)}
+                  required
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  The Challonge bracket must have group stages enabled (two-stage). All groups will be created automatically.
+                </p>
+              </div>
+
+              <div>
+                <Label htmlFor="challonge_number">Number *</Label>
+                <Input
+                  id="challonge_number"
+                  type="number"
+                  value={(formData as TournamentCreateInput).number || ""}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      number: e.target.value ? parseInt(e.target.value) : undefined
+                    })
+                  }
+                  required
+                />
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="challonge_is_league"
+                  checked={(formData as TournamentCreateInput).is_league}
+                  onCheckedChange={(checked) =>
+                    setFormData({ ...formData, is_league: checked as boolean })
+                  }
+                />
+                <Label htmlFor="challonge_is_league" className="cursor-pointer">
+                  Is League
+                </Label>
+              </div>
+
+              <Field>
+                <FieldLabel htmlFor="challonge_date_range">Date Range *</FieldLabel>
+                <DateRangePicker
+                  id="challonge_date_range"
+                  startDate={formData.start_date}
+                  endDate={formData.end_date}
+                  onChange={(start, end) => setFormData({ ...formData, start_date: start, end_date: end })}
+                />
+              </Field>
+            </div>
+          </TabsContent>
+        </Tabs>
       </EntityFormDialog>
 
       {/* Edit Dialog */}
@@ -383,27 +503,15 @@ export default function TournamentsPage() {
             </Label>
           </div>
 
-          <FieldGroup className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <Field>
-              <FieldLabel htmlFor="edit-start_date">Start Date</FieldLabel>
-              <DatePicker
-                id="edit-start_date"
-                value={formData.start_date}
-                onChange={(value) => setFormData({ ...formData, start_date: value })}
-                placeholder="June 01, 2025"
-              />
-            </Field>
-
-            <Field>
-              <FieldLabel htmlFor="edit-end_date">End Date</FieldLabel>
-              <DatePicker
-                id="edit-end_date"
-                value={formData.end_date}
-                onChange={(value) => setFormData({ ...formData, end_date: value })}
-                placeholder="June 30, 2025"
-              />
-            </Field>
-          </FieldGroup>
+          <Field>
+            <FieldLabel htmlFor="edit-date_range">Date Range</FieldLabel>
+            <DateRangePicker
+              id="edit-date_range"
+              startDate={formData.start_date}
+              endDate={formData.end_date}
+              onChange={(start, end) => setFormData({ ...formData, start_date: start, end_date: end })}
+            />
+          </Field>
         </div>
       </EntityFormDialog>
 

@@ -39,19 +39,17 @@ export function DeleteConfirmDialog({
             <AlertTriangle className="h-5 w-5 text-destructive" />
             <AlertDialogTitle>{title}</AlertDialogTitle>
           </div>
-          <AlertDialogDescription className="space-y-2">
-            <p>{description}</p>
-            {cascadeInfo && cascadeInfo.length > 0 && (
-              <div className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-md">
-                <p className="font-medium text-destructive mb-2">This will also delete:</p>
-                <ul className="list-disc list-inside space-y-1 text-sm">
-                  {cascadeInfo.map((info, index) => (
-                    <li key={index}>{info}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </AlertDialogDescription>
+          <AlertDialogDescription>{description}</AlertDialogDescription>
+          {cascadeInfo && cascadeInfo.length > 0 && (
+            <div className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+              <p className="font-medium text-destructive mb-2">This will also delete:</p>
+              <ul className="list-disc list-inside space-y-1 text-sm">
+                {cascadeInfo.map((info, index) => (
+                  <li key={index}>{info}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>

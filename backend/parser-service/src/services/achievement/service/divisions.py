@@ -4,21 +4,26 @@ import sqlalchemy as sa
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.division_grid import DivisionGrid, division_case_expr
+
 from src import models
 from src.core import enums
 
 from . import crud
 
 
-async def calculate_i_need_more_power_achievements(session: AsyncSession, tournament: models.Tournament) -> None:
+async def calculate_i_need_more_power_achievements(
+    session: AsyncSession, tournament: models.Tournament, *, grid: DivisionGrid,
+) -> None:
     if not (achievement := await crud.get_achievement_or_log_error(session, "i-need-more-power")):
         return
 
     await crud.delete_user_achievements(session, achievement, tournament.id)
+    div_expr = division_case_expr(models.Player.rank, grid)
     query = (
         sa.select(models.Player.user_id)
         .select_from(models.Player)
-        .where(sa.and_(models.Player.tournament_id == tournament.id, models.Player.div <= 3))
+        .where(sa.and_(models.Player.tournament_id == tournament.id, div_expr <= 3))
     )
 
     result = await session.scalars(query)
@@ -30,7 +35,7 @@ async def calculate_i_need_more_power_achievements(session: AsyncSession, tourna
 
 
 async def calculate_captains_with_5_division_and_above_achievements(
-    session: AsyncSession, tournament: models.Tournament
+    session: AsyncSession, tournament: models.Tournament, *, grid: DivisionGrid,
 ) -> None:
     achievement_dps = await session.scalar(sa.select(models.Achievement).filter_by(slug="damage-above-5-division"))
     achievement_tank = await session.scalar(sa.select(models.Achievement).filter_by(slug="tank-above-5-division"))
@@ -58,7 +63,7 @@ async def calculate_captains_with_5_division_and_above_achievements(
     result = await session.scalars(query)
     for team in result.unique().all():
         for player in team.players:
-            if player.user_id == team.captain_id and player.div <= 5:
+            if player.user_id == team.captain_id and grid.resolve_division_number(player.rank) <= 5:
                 for player_ in team.players:
                     if player_.user_id != team.captain_id:
                         user_achievement = models.AchievementUser(
@@ -80,6 +85,8 @@ async def calculate_div_achievements(
     slug: str,
     difference: int,
     direction: typing.Literal["up", "down"] = "up",
+    *,
+    grid: DivisionGrid,
 ) -> None:
     achievement = await crud.get_achievement_or_log_error(session, slug)
     if not achievement:
@@ -87,14 +94,15 @@ async def calculate_div_achievements(
 
     await crud.delete_user_achievements(session, achievement)
 
+    div_expr = division_case_expr(models.Player.rank, grid)
     PlayerLag = (
         sa.select(
             models.Player.user_id.label("user_id"),
             models.Player.team_id.label("team_id"),
             models.Player.tournament_id.label("tournament_id"),
             models.Player.role.label("role"),
-            models.Player.div.label("current_div"),
-            sa.func.lag(models.Player.div)
+            div_expr.label("current_div"),
+            sa.func.lag(div_expr)
             .over(
                 partition_by=(models.Player.user_id, models.Player.role),
                 order_by=models.Player.tournament_id,
@@ -127,36 +135,37 @@ async def calculate_div_achievements(
     logger.info(f"Achievements '{slug}' created successfully for {len(to_insert)} users.")
 
 
-async def calculate_my_strength_is_growing_achievements(session: AsyncSession) -> None:
-    await calculate_div_achievements(session, slug="my-strength-is-growing", difference=1, direction="up")
+async def calculate_my_strength_is_growing_achievements(session: AsyncSession, *, grid: DivisionGrid) -> None:
+    await calculate_div_achievements(session, slug="my-strength-is-growing", difference=1, direction="up", grid=grid)
 
 
-async def calculate_not_good_enough_achievements(session: AsyncSession) -> None:
-    await calculate_div_achievements(session, slug="not-good-enough", difference=1, direction="down")
+async def calculate_not_good_enough_achievements(session: AsyncSession, *, grid: DivisionGrid) -> None:
+    await calculate_div_achievements(session, slug="not-good-enough", difference=1, direction="down", grid=grid)
 
 
-async def calculate_balance_from_anak_achievements(session: AsyncSession) -> None:
-    await calculate_div_achievements(session, slug="balance-from-anak", difference=4, direction="up")
+async def calculate_balance_from_anak_achievements(session: AsyncSession, *, grid: DivisionGrid) -> None:
+    await calculate_div_achievements(session, slug="balance-from-anak", difference=4, direction="up", grid=grid)
 
 
-async def calculate_critical_failure_achievements(session: AsyncSession) -> None:
-    await calculate_div_achievements(session, slug="critical-failure", difference=4, direction="down")
+async def calculate_critical_failure_achievements(session: AsyncSession, *, grid: DivisionGrid) -> None:
+    await calculate_div_achievements(session, slug="critical-failure", difference=4, direction="down", grid=grid)
 
 
 async def calculate_my_drill_will_pierce_the_sky_achievements(
-    session: AsyncSession,
+    session: AsyncSession, *, grid: DivisionGrid,
 ) -> None:
     if not (achievement := await crud.get_achievement_or_log_error(session, "my-drill-will-pierce-the-sky")):
         return
 
     await crud.delete_user_achievements(session, achievement)
 
+    div_expr = division_case_expr(models.Player.rank, grid)
     query = (
         sa.select(models.Player.user_id)
         .select_from(models.Player)
         .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
         .group_by(models.Player.user_id, models.Player.role)
-        .having(sa.func.max(models.Player.div) - sa.func.min(models.Player.div) >= 10)
+        .having(sa.func.max(div_expr) - sa.func.min(div_expr) >= 10)
     )
 
     result = await session.execute(query)
@@ -166,22 +175,23 @@ async def calculate_my_drill_will_pierce_the_sky_achievements(
     logger.info("Achievements 'My drill will pierce the sky' created successfully")
 
 
-async def calculate_im_fine_with_that_achievements(session: AsyncSession) -> None:
+async def calculate_im_fine_with_that_achievements(session: AsyncSession, *, grid: DivisionGrid) -> None:
     if not (achievement := await crud.get_achievement_or_log_error(session, "im-fine-with-that")):
         return
 
     await crud.delete_user_achievements(session, achievement)
 
+    div_expr = division_case_expr(models.Player.rank, grid)
     player_lag = (
         sa.select(
             models.Player.user_id.label("user_id"),
             models.Player.role.label("role"),
-            models.Player.div.label("div"),
+            div_expr.label("div"),
             models.Player.tournament_id.label("tournament_id"),
             sa.func.lag(models.Player.role)
             .over(partition_by=models.Player.user_id, order_by=models.Player.tournament_id)
             .label("prev_role"),
-            sa.func.lag(models.Player.div)
+            sa.func.lag(div_expr)
             .over(partition_by=models.Player.user_id, order_by=models.Player.tournament_id)
             .label("prev_div"),
         )

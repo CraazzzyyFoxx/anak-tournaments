@@ -26,7 +26,7 @@ const INITIAL_STATE: LogStreamState = {
  * The token is read from the `aqt_access_token` cookie so the EventSource
  * can authenticate (EventSource does not support custom headers).
  */
-export function useLogStream(enabled = true): LogStreamState {
+export function useLogStream(enabled = true, workspaceId: number | null = null): LogStreamState {
   const [state, setState] = useState<LogStreamState>(INITIAL_STATE);
   const esRef = useRef<EventSource | null>(null);
 
@@ -52,7 +52,10 @@ export function useLogStream(enabled = true): LogStreamState {
         return;
       }
 
-      const url = `/api/parser/admin/logs/stream?token=${encodeURIComponent(token)}`;
+      let url = `/api/parser/admin/logs/stream?token=${encodeURIComponent(token)}`;
+      if (workspaceId !== null) {
+        url += `&workspace_id=${workspaceId}`;
+      }
       const es = new EventSource(url);
       esRef.current = es;
 
@@ -103,7 +106,7 @@ export function useLogStream(enabled = true): LogStreamState {
       esRef.current = null;
       setState(INITIAL_STATE);
     };
-  }, [enabled]);
+  }, [enabled, workspaceId]);
 
   return state;
 }

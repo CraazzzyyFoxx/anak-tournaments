@@ -28,7 +28,7 @@ class BalancerTournamentSheet(db.TimeStampIntegerMixin):
         {"schema": "balancer"},
     )
 
-    tournament_id: Mapped[int] = mapped_column(ForeignKey("tournament.id", ondelete="CASCADE"), index=True)
+    tournament_id: Mapped[int] = mapped_column(ForeignKey("tournament.tournament.id", ondelete="CASCADE"), index=True)
     source_url: Mapped[str] = mapped_column(Text())
     sheet_id: Mapped[str] = mapped_column(String(255))
     gid: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -52,7 +52,7 @@ class BalancerApplication(db.TimeStampIntegerMixin):
         {"schema": "balancer"},
     )
 
-    tournament_id: Mapped[int] = mapped_column(ForeignKey("tournament.id", ondelete="CASCADE"), index=True)
+    tournament_id: Mapped[int] = mapped_column(ForeignKey("tournament.tournament.id", ondelete="CASCADE"), index=True)
     tournament_sheet_id: Mapped[int] = mapped_column(
         ForeignKey("balancer.tournament_sheet.id", ondelete="CASCADE"),
         index=True,
@@ -84,14 +84,14 @@ class BalancerPlayer(db.TimeStampIntegerMixin):
         {"schema": "balancer"},
     )
 
-    tournament_id: Mapped[int] = mapped_column(ForeignKey("tournament.id", ondelete="CASCADE"), index=True)
+    tournament_id: Mapped[int] = mapped_column(ForeignKey("tournament.tournament.id", ondelete="CASCADE"), index=True)
     application_id: Mapped[int] = mapped_column(
         ForeignKey("balancer.application.id", ondelete="CASCADE"),
         index=True,
     )
     battle_tag: Mapped[str] = mapped_column(String(255))
     battle_tag_normalized: Mapped[str] = mapped_column(String(255), index=True)
-    user_id: Mapped[int | None] = mapped_column(ForeignKey("user.id", ondelete="SET NULL"), nullable=True, index=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("players.user.id", ondelete="SET NULL"), nullable=True, index=True)
     role_entries_json: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
     is_flex: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
     primary_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -113,10 +113,10 @@ class BalancerBalance(db.TimeStampIntegerMixin):
         {"schema": "balancer"},
     )
 
-    tournament_id: Mapped[int] = mapped_column(ForeignKey("tournament.id", ondelete="CASCADE"), index=True)
+    tournament_id: Mapped[int] = mapped_column(ForeignKey("tournament.tournament.id", ondelete="CASCADE"), index=True)
     config_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     result_json: Mapped[dict[str, Any]] = mapped_column(JSON)
-    saved_by: Mapped[int | None] = mapped_column(ForeignKey("auth_user.id", ondelete="SET NULL"), nullable=True)
+    saved_by: Mapped[int | None] = mapped_column(ForeignKey("auth.user.id", ondelete="SET NULL"), nullable=True)
     saved_at: Mapped[db.DateTime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     exported_at: Mapped[db.DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     export_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -133,7 +133,7 @@ class BalancerTeam(db.TimeStampIntegerMixin):
 
     balance_id: Mapped[int] = mapped_column(ForeignKey("balancer.balance.id", ondelete="CASCADE"), index=True)
     exported_team_id: Mapped[int | None] = mapped_column(
-        ForeignKey("team.id", ondelete="SET NULL"),
+        ForeignKey("tournament.team.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )

@@ -38,7 +38,7 @@ const UserHeroesContainer = ({ userId }: UserHeroesContainerProps) => {
   const heroes = heroesQuery.data?.results ?? [];
 
   const filterSlot = (
-    <div className="w-52">
+    <div className="w-60">
       <SearchableImageSelect
         value={tournamentId ? String(tournamentId) : undefined}
         onValueChange={(val) => setTournamentId(val ? Number(val) : undefined)}

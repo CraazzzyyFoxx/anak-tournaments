@@ -12,6 +12,7 @@ class AchievementRead(BaseRead):
     slug: str
     description_ru: str
     description_en: str
+    image_url: str | None
     hero_id: int | None
     rarity: float
 

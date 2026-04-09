@@ -2,13 +2,9 @@
 
 import * as React from "react";
 import { CalendarIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupInput,
-} from "@/components/ui/input-group";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 interface DatePickerProps {
@@ -18,11 +14,8 @@ interface DatePickerProps {
   id?: string;
 }
 
-function formatDate(date: Date | undefined) {
-  if (!date) {
-    return "";
-  }
-
+function formatDisplay(date: Date | undefined): string {
+  if (!date) return "";
   return date.toLocaleDateString("en-US", {
     day: "2-digit",
     month: "long",
@@ -30,130 +23,59 @@ function formatDate(date: Date | undefined) {
   });
 }
 
-function isValidDate(date: Date | undefined) {
-  if (!date) {
-    return false;
-  }
-
-  return !Number.isNaN(date.getTime());
-}
-
-function parseDateValue(value?: string) {
-  if (!value) {
-    return undefined;
-  }
-
+function parseDateValue(value?: string): Date | undefined {
+  if (!value) return undefined;
   const date = new Date(`${value}T00:00:00`);
-  return isValidDate(date) ? date : undefined;
+  return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
-function toIsoDate(date: Date | undefined) {
-  if (!date) {
-    return "";
-  }
-
+function toIsoDate(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
-
   return `${year}-${month}-${day}`;
 }
 
-export function DatePicker({
-  value,
-  onChange,
-  placeholder = "June 01, 2025",
-  id,
-}: DatePickerProps) {
-  const parsedValue = React.useMemo(() => parseDateValue(value), [value]);
+export function DatePicker({ value, onChange, placeholder = "Pick a date", id }: DatePickerProps) {
   const [open, setOpen] = React.useState(false);
-  const [date, setDate] = React.useState<Date | undefined>(parsedValue);
-  const [month, setMonth] = React.useState<Date | undefined>(parsedValue);
-  const [inputValue, setInputValue] = React.useState(formatDate(parsedValue));
+  const selected = React.useMemo(() => parseDateValue(value), [value]);
 
-  React.useEffect(() => {
-    setDate(parsedValue);
-    setMonth(parsedValue);
-    setInputValue(formatDate(parsedValue));
-  }, [parsedValue]);
+  const currentYear = new Date().getFullYear();
 
   return (
-    <InputGroup>
-      <InputGroupInput
-        id={id}
-        value={inputValue}
-        placeholder={placeholder}
-        onChange={(event) => {
-          const nextValue = event.target.value;
-          const nextDate = new Date(nextValue);
-
-          setInputValue(nextValue);
-
-          if (!nextValue) {
-            setDate(undefined);
-            setMonth(undefined);
-            onChange("");
-            return;
-          }
-
-          if (isValidDate(nextDate)) {
-            setDate(nextDate);
-            setMonth(nextDate);
-            onChange(toIsoDate(nextDate));
-          }
-        }}
-        onBlur={() => {
-          if (!inputValue) {
-            return;
-          }
-
-          const nextDate = new Date(inputValue);
-
-          if (!isValidDate(nextDate)) {
-            setInputValue(formatDate(date));
-          }
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "ArrowDown") {
-            event.preventDefault();
-            setOpen(true);
-          }
-        }}
-      />
-      <InputGroupAddon align="inline-end">
-        <Popover open={open} onOpenChange={setOpen}>
-          <PopoverTrigger asChild>
-            <InputGroupButton
-              variant="ghost"
-              size="icon-xs"
-              aria-label="Select date"
-            >
-              <CalendarIcon />
-              <span className="sr-only">Select date</span>
-            </InputGroupButton>
-          </PopoverTrigger>
-          <PopoverContent
-            className="w-auto overflow-hidden p-0"
-            align="end"
-            alignOffset={-8}
-            sideOffset={10}
-          >
-            <Calendar
-              mode="single"
-              selected={date}
-              month={month}
-              onMonthChange={setMonth}
-              onSelect={(selectedDate) => {
-                setDate(selectedDate);
-                setMonth(selectedDate);
-                setInputValue(formatDate(selectedDate));
-                onChange(toIsoDate(selectedDate));
-                setOpen(false);
-              }}
-            />
-          </PopoverContent>
-        </Popover>
-      </InputGroupAddon>
-    </InputGroup>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          id={id}
+          variant="outline"
+          data-empty={!selected}
+          className={cn(
+            "w-full justify-start text-left font-normal",
+            "data-[empty=true]:text-muted-foreground"
+          )}
+        >
+          <CalendarIcon className="mr-2 h-4 w-4" />
+          {selected ? formatDisplay(selected) : <span>{placeholder}</span>}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <Calendar
+          mode="single"
+          captionLayout="dropdown"
+          selected={selected}
+          defaultMonth={selected}
+          onSelect={(date) => {
+            if (date) {
+              onChange(toIsoDate(date));
+            } else {
+              onChange("");
+            }
+            setOpen(false);
+          }}
+          startMonth={new Date(currentYear - 10, 0)}
+          endMonth={new Date(currentYear + 10, 11)}
+        />
+      </PopoverContent>
+    </Popover>
   );
 }

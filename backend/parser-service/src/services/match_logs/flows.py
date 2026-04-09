@@ -5,6 +5,8 @@ import sqlalchemy as sa
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.clients.s3 import S3Client
+
 from src import models
 from src.core import enums, errors, pagination
 from src.services.encounter import flows as encounter_flows
@@ -20,11 +22,12 @@ from . import service
 
 
 class MatchLogProcessor:
-    def __init__(self, tournament: models.Tournament, name: str, data_in: list[str]):
+    def __init__(self, tournament: models.Tournament, name: str, data_in: list[str], s3: S3Client):
         self.tournament: models.Tournament = tournament
         self.filename: str = name
         self.df: pd.DataFrame = self._load_and_format_data(data_in)
         self.heroes_map: dict[str, models.Hero] = {}  # Hero cache
+        self._s3 = s3
 
     def _load_and_format_data(self, data_in: list[str]) -> pd.DataFrame:
         parsed_rows = []
@@ -133,7 +136,7 @@ class MatchLogProcessor:
         if self._get_rows(enums.LogEventType.MatchEnd).empty:
             msg = f"Match log {self.filename} in tournament {self.tournament.name} is not finished"
             logger.error(msg)
-            await s3_service.async_client.delete_log(self.tournament.id, self.filename)
+            await s3_service.delete_log(self._s3, self.tournament.id, self.filename)
             if is_raise:
                 raise errors.ApiHTTPException(
                     status_code=400,
@@ -232,7 +235,7 @@ class MatchLogProcessor:
                     return team_db
 
         player_names_str = ", ".join([name for name, _ in players])
-        await s3_service.async_client.delete_log(self.tournament.id, self.filename)
+        await s3_service.delete_log(self._s3, self.tournament.id, self.filename)
         raise errors.ApiHTTPException(
             status_code=400,
             detail=[
@@ -799,7 +802,6 @@ class MatchLogProcessor:
             primary=player_data_source.primary if player_data_source else False,
             secondary=player_data_source.secondary if player_data_source else False,
             rank=player_data_source.rank if player_data_source else player_to_be_replaced.rank,
-            div=player_data_source.div if player_data_source else player_to_be_replaced.div,
             role=player_to_be_replaced.role,
             user=sub_user,
             tournament=self.tournament,
@@ -1028,7 +1030,9 @@ async def process_closeness(session: AsyncSession, payload: list[str]):
         logger.info(f"Row for encounter {encounter_name} in tournament {tournament.name} processed successfully")
 
 
-async def process_match_log(session: AsyncSession, tournament_id: int, filename: str, *, is_raise: bool = True) -> None:
+async def process_match_log(
+    session: AsyncSession, tournament_id: int, filename: str, s3: S3Client, *, is_raise: bool = True
+) -> None:
     from src.services.match_logs import log_records as record_service
 
     tournament = await tournament_flows.get(session, tournament_id, [])
@@ -1036,10 +1040,10 @@ async def process_match_log(session: AsyncSession, tournament_id: int, filename:
 
     record = await record_service.set_processing(session, tournament_id, filename)
 
-    data = await s3_service.async_client.get_log_by_filename(tournament.id, filename)
+    data = await s3_service.get_log_by_filename(s3, tournament.id, filename)
     decoded_lines = [line.decode() for line in data.split(b"\n") if line]
 
-    processor = MatchLogProcessor(tournament, filename.split("/")[-1], decoded_lines)
+    processor = MatchLogProcessor(tournament, filename.split("/")[-1], decoded_lines, s3)
     try:
         await processor.start(session, is_raise=is_raise)
         if record is not None:
@@ -1052,10 +1056,12 @@ async def process_match_log(session: AsyncSession, tournament_id: int, filename:
             raise e
 
 
-async def make_tournament_folder(session: AsyncSession, tournament: models.Tournament, filename: str) -> None:
+async def make_tournament_folder(
+    session: AsyncSession, tournament: models.Tournament, filename: str, s3: S3Client
+) -> None:
     tournament_folder = f"{tournament.id}/{filename}"
-    if not await s3_service.async_client.check_folder(tournament_folder):
-        await s3_service.async_client.create_folder(tournament_folder)
+    if not await s3.check_folder(tournament_folder):
+        await s3.create_folder(tournament_folder)
         logger.info(f"Folder {tournament_folder} created in S3")
     else:
         logger.info(f"Folder {tournament_folder} already exists in S3")

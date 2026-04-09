@@ -146,6 +146,7 @@ async def get_user_achievements(
     entities: list[str],
     tournament_id: int | None = None,
     without_tournament: bool = False,
+    workspace_id: int | None = None,
 ) -> list[schemas.UserAchievementRead]:
     """
     Retrieves a list of achievements earned by a specific user and converts them to Pydantic schemas.
@@ -154,6 +155,7 @@ async def get_user_achievements(
         session (AsyncSession): The SQLAlchemy async session.
         user_id (int): The ID of the user whose achievements are to be retrieved.
         entities (list[str]): A list of related entities to include (e.g., ["tournaments"]).
+        workspace_id (int | None): Optional workspace ID to filter achievements by.
 
     Returns:
         list[schemas.UserAchievementRead]: A list of Pydantic schemas representing the user's achievements.
@@ -166,6 +168,7 @@ async def get_user_achievements(
         user,
         tournament_id=tournament_id,
         without_tournament=without_tournament,
+        workspace_id=workspace_id,
     )
 
     for achievement, rarity in achievements:

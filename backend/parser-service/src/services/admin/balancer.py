@@ -15,6 +15,8 @@ from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared.division_grid import DEFAULT_GRID, DivisionGrid
+
 from src import models, schemas
 from src.core import config
 from src.schemas.admin import balancer as admin_schemas
@@ -796,39 +798,16 @@ def get_row_values(row: list[str], indexes: list[int] | None) -> list[str]:
     return [value for value in values if value]
 
 
-def resolve_rank_from_division(division_number: int | None) -> int | None:
+def resolve_rank_from_division(division_number: int | None, grid: DivisionGrid = DEFAULT_GRID) -> int | None:
     if division_number is None:
         return None
-
-    rank_map = {
-        20: 100,
-        19: 250,
-        18: 350,
-        17: 450,
-        16: 550,
-        15: 650,
-        14: 750,
-        13: 850,
-        12: 950,
-        11: 1050,
-        10: 1150,
-        9: 1250,
-        8: 1350,
-        7: 1450,
-        6: 1550,
-        5: 1650,
-        4: 1750,
-        3: 1850,
-        2: 1950,
-        1: 2000,
-    }
-    return rank_map.get(division_number)
+    return grid.resolve_rank_from_division(division_number)
 
 
-def resolve_division_from_rank(rank_value: int | None) -> int | None:
+def resolve_division_from_rank(rank_value: int | None, grid: DivisionGrid = DEFAULT_GRID) -> int | None:
     if rank_value is None:
         return None
-    return team_flows.resolve_player_div(rank_value)
+    return grid.resolve_division_number(rank_value)
 
 
 async def get_tournament_sheet(session: AsyncSession, tournament_id: int) -> models.BalancerTournamentSheet | None:

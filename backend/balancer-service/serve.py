@@ -18,11 +18,11 @@ from shared.schemas.events import BalancerJobEvent
 logger = setup_logging(
     service_name="balancer-worker",
     log_level=config.log_level,
-    logs_root_path=config.LOGS_ROOT_PATH,
-    json_output=config.JSON_LOGGING,
+    logs_root_path=config.logs_root_path,
+    json_output=config.json_logging,
 )
 
-broker = RabbitBroker(config.RABBITMQ_URL, logger=logger)
+broker = RabbitBroker(config.rabbitmq_url, logger=logger)
 app = FastStream(broker)
 
 

@@ -4,13 +4,13 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
-import { Plus, Pencil, Trash2, CheckCircle, Clock, AlertCircle } from "lucide-react";
+import { Plus, Pencil, Trash2, CheckCircle, Clock, AlertCircle, FileCheck2, FileX2 } from "lucide-react";
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { StatusIcon } from "@/components/admin/StatusIcon";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import encounterService from "@/services/encounter.service";
 import tournamentService from "@/services/tournament.service";
@@ -93,9 +93,7 @@ export default function EncountersPage() {
 
   const { data: teamsData } = useQuery({
     queryKey: ["teams", selectedTournamentId],
-    queryFn: () =>
-      selectedTournamentId ? teamService.getAll(selectedTournamentId) : Promise.resolve(null),
-    enabled: !!selectedTournamentId
+    queryFn: () => teamService.getAll(selectedTournamentId),
   });
 
   // Form state
@@ -255,12 +253,9 @@ export default function EncountersPage() {
       cell: ({ row }) => {
         const status = normalizeEncounterStatus(row.getValue<string>("status"));
 
-        return (
-          <Badge variant={status === "COMPLETED" ? "default" : "outline"} className="inline-flex items-center gap-1.5">
-            {getStatusIcon(status)}
-            {formatEncounterStatus(status)}
-          </Badge>
-        );
+        if (status === "COMPLETED") return <StatusIcon icon={CheckCircle} label="Completed" variant="success" />;
+        if (status === "PENDING") return <StatusIcon icon={Clock} label="Pending" variant="warning" />;
+        return <StatusIcon icon={AlertCircle} label={formatEncounterStatus(status)} variant="muted" />;
       }
     },
     {
@@ -269,9 +264,9 @@ export default function EncountersPage() {
       cell: ({ row }) => {
         const hasLogs = row.getValue<boolean>("has_logs");
         return hasLogs ? (
-          <Badge variant="default">Yes</Badge>
+          <StatusIcon icon={FileCheck2} label="Logs available" variant="success" />
         ) : (
-          <Badge variant="outline">No</Badge>
+          <StatusIcon icon={FileX2} label="No logs" variant="muted" />
         );
       }
     },
@@ -319,16 +314,19 @@ export default function EncountersPage() {
       <div className="flex items-center gap-4">
         <Label htmlFor="tournament-filter">Filter by Tournament:</Label>
         <Select
-          value={selectedTournamentId?.toString() || ""}
-          onValueChange={(value) => setSelectedTournamentId(value ? parseInt(value) : null)}
+          value={selectedTournamentId?.toString() || "all"}
+          onValueChange={(value) =>
+            setSelectedTournamentId(value === "all" ? null : parseInt(value))
+          }
         >
           <SelectTrigger className="w-[300px]">
-            <SelectValue placeholder="Select Tournament" />
+            <SelectValue placeholder="All Tournaments" />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value="all">All Tournaments</SelectItem>
             {tournamentsData?.results.map((tournament) => (
               <SelectItem key={tournament.id} value={tournament.id.toString()}>
-                {tournament.is_league ? tournament.name : `Tournament ${tournament.number}`}
+                {tournament.name}
               </SelectItem>
             ))}
           </SelectContent>
@@ -338,19 +336,11 @@ export default function EncountersPage() {
       <AdminDataTable
         queryKey={(page, search, pageSize, sortField, sortDir) => ["encounters", selectedTournamentId, page, search, pageSize, sortField, sortDir]}
         queryFn={async (page, search, pageSize, sortField, sortDir) => {
-          if (!selectedTournamentId) {
-            return { results: [], total: 0, page: 1, per_page: pageSize };
-          }
-
           return encounterService.getAll(page, search, selectedTournamentId, pageSize, sortField, sortDir);
         }}
         columns={columns}
         searchPlaceholder="Search encounters..."
-        emptyMessage={
-          selectedTournamentId
-            ? "No encounters found in this tournament."
-            : "Select a tournament to view encounters."
-        }
+        emptyMessage="No encounters found."
         onRowClick={(row) => router.push(`/encounters/${row.original.id}`)}
       />
 

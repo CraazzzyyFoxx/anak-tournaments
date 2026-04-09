@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UserRoleType } from "@/types/user.types";
 
-import { DIVISION_OPTIONS, ROLE_OPTIONS, SORT_OPTIONS, UsersOverviewOrderValue, UsersOverviewSortValue } from "./utils";
+import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
+import { getDivisionOptions, ROLE_OPTIONS, SORT_OPTIONS, UsersOverviewOrderValue, UsersOverviewSortValue } from "./utils";
 
 type UsersOverviewFiltersProps = {
   searchInput: string;
@@ -40,6 +41,8 @@ const UsersOverviewFilters = ({
   onOrderChange,
   onReset
 }: UsersOverviewFiltersProps) => {
+  const grid = useDivisionGrid();
+  const divisionOptions = getDivisionOptions(grid);
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -94,7 +97,7 @@ const UsersOverviewFilters = ({
             </SelectTrigger>
             <SelectContent className="liquid-glass-panel">
               <SelectItem value="all">All divisions</SelectItem>
-              {DIVISION_OPTIONS.map((division) => (
+              {divisionOptions.map((division) => (
                 <SelectItem key={`min-${division}`} value={String(division)}>
                   <div className="flex items-center gap-2">
                     <Image src={`/divisions/${division}.png`} alt={`Division ${division}`} width={20} height={20} className="h-5 w-5" />
@@ -122,7 +125,7 @@ const UsersOverviewFilters = ({
             </SelectTrigger>
             <SelectContent className="liquid-glass-panel">
               <SelectItem value="all">All divisions</SelectItem>
-              {DIVISION_OPTIONS.map((division) => (
+              {divisionOptions.map((division) => (
                 <SelectItem key={`max-${division}`} value={String(division)}>
                   <div className="flex items-center gap-2">
                     <Image src={`/divisions/${division}.png`} alt={`Division ${division}`} width={20} height={20} className="h-5 w-5" />

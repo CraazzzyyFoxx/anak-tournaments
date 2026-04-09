@@ -1,12 +1,17 @@
 """Admin routes for user and identity CRUD operations"""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.clients.s3 import S3Client, upload_avatar
 from src import models, schemas
 from src.core import auth, db, pagination
 from src.schemas.admin import user as admin_schemas
 from src.services.admin import user as admin_service
+
+
+def get_s3(request: Request) -> S3Client:
+    return request.app.state.s3
 
 router = APIRouter(
     prefix="/users",
@@ -179,3 +184,50 @@ async def delete_twitch_identity(
 ):
     """Delete Twitch identity (admin only)"""
     await admin_service.delete_twitch_identity(session, user_id, identity_id)
+
+
+# ─── Avatar Management ──────────────────────────────────────────────────────
+
+
+@router.post("/{user_id}/avatar", response_model=schemas.UserRead)
+async def upload_user_avatar(
+    user_id: int,
+    file: UploadFile,
+    session: AsyncSession = Depends(db.get_async_session),
+    auth_user: models.AuthUser = Depends(auth.require_permission("user", "update")),
+    s3: S3Client = Depends(get_s3),
+):
+    """Upload or replace avatar for a player user (admin only)"""
+    player_user = await admin_service.get_user_or_404(session, user_id)
+    file_data = await file.read()
+    result = await upload_avatar(
+        s3,
+        entity_type="players",
+        entity_id=user_id,
+        file_data=file_data,
+        content_type=file.content_type or "application/octet-stream",
+    )
+    if not result.success:
+        from fastapi import HTTPException, status
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result.error)
+
+    player_user.avatar_url = result.public_url
+    await session.commit()
+    await session.refresh(player_user)
+    return schemas.UserRead.model_validate(player_user, from_attributes=True)
+
+
+@router.delete("/{user_id}/avatar", response_model=schemas.UserRead)
+async def delete_user_avatar(
+    user_id: int,
+    session: AsyncSession = Depends(db.get_async_session),
+    auth_user: models.AuthUser = Depends(auth.require_permission("user", "update")),
+    s3: S3Client = Depends(get_s3),
+):
+    """Delete avatar for a player user (admin only)"""
+    player_user = await admin_service.get_user_or_404(session, user_id)
+    await s3.delete_prefix(f"avatars/players/{user_id}/")
+    player_user.avatar_url = None
+    await session.commit()
+    await session.refresh(player_user)
+    return schemas.UserRead.model_validate(player_user, from_attributes=True)

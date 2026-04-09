@@ -93,27 +93,27 @@ class AuthService:
         session: AsyncSession,
         user_id: int,
     ) -> tuple[list[str], list[dict[str, str]]]:
-        """Fetch roles and permissions for a user via explicit SQL.
+        """Fetch *global* roles and permissions for a user via explicit SQL.
 
-        This is async-safe and avoids ORM lazy-loading (which can raise
-        `greenlet_spawn has not been called` with AsyncSession).
+        Only returns roles where workspace_id IS NULL (global scope).
+        This is async-safe and avoids ORM lazy-loading.
         """
 
         roles_result = await session.execute(
             select(models.Role.name)
             .select_from(user_roles.join(models.Role, user_roles.c.role_id == models.Role.id))
-            .where(user_roles.c.user_id == user_id)
+            .where(user_roles.c.user_id == user_id, models.Role.workspace_id.is_(None))
         )
         roles = list(roles_result.scalars().all())
 
         perms_result = await session.execute(
             select(models.Permission.resource, models.Permission.action)
             .select_from(
-                user_roles.join(role_permissions, user_roles.c.role_id == role_permissions.c.role_id).join(
-                    models.Permission, role_permissions.c.permission_id == models.Permission.id
-                )
+                user_roles.join(role_permissions, user_roles.c.role_id == role_permissions.c.role_id)
+                .join(models.Permission, role_permissions.c.permission_id == models.Permission.id)
+                .join(models.Role, user_roles.c.role_id == models.Role.id)
             )
-            .where(user_roles.c.user_id == user_id)
+            .where(user_roles.c.user_id == user_id, models.Role.workspace_id.is_(None))
         )
 
         permissions: list[dict[str, str]] = []
@@ -126,6 +126,61 @@ class AuthService:
             permissions.append({"resource": resource, "action": action})
 
         return roles, permissions
+
+    @staticmethod
+    async def get_workspace_roles_and_permissions_db(
+        session: AsyncSession,
+        user_id: int,
+        workspace_ids: list[int],
+    ) -> dict[int, tuple[list[str], list[dict[str, str]]]]:
+        """Fetch workspace-scoped roles and permissions for a user.
+
+        Returns a dict mapping workspace_id -> (role_names, permissions).
+        """
+        if not workspace_ids:
+            return {}
+
+        rows = await session.execute(
+            select(models.Role.workspace_id, models.Role.name)
+            .select_from(user_roles.join(models.Role, user_roles.c.role_id == models.Role.id))
+            .where(
+                user_roles.c.user_id == user_id,
+                models.Role.workspace_id.in_(workspace_ids),
+            )
+        )
+
+        result: dict[int, tuple[list[str], list[dict[str, str]]]] = {
+            ws_id: ([], []) for ws_id in workspace_ids
+        }
+        for ws_id, role_name in rows.all():
+            result[ws_id][0].append(role_name)
+
+        perm_rows = await session.execute(
+            select(
+                models.Role.workspace_id,
+                models.Permission.resource,
+                models.Permission.action,
+            )
+            .select_from(
+                user_roles.join(role_permissions, user_roles.c.role_id == role_permissions.c.role_id)
+                .join(models.Permission, role_permissions.c.permission_id == models.Permission.id)
+                .join(models.Role, user_roles.c.role_id == models.Role.id)
+            )
+            .where(
+                user_roles.c.user_id == user_id,
+                models.Role.workspace_id.in_(workspace_ids),
+            )
+        )
+
+        seen_per_ws: dict[int, set[str]] = {ws_id: set() for ws_id in workspace_ids}
+        for ws_id, resource, action in perm_rows.all():
+            key = f"{resource}:{action}"
+            if key in seen_per_ws[ws_id]:
+                continue
+            seen_per_ws[ws_id].add(key)
+            result[ws_id][1].append({"resource": resource, "action": action})
+
+        return result
 
     @staticmethod
     def create_refresh_token() -> str:

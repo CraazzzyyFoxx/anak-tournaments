@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import tournamentService from "@/services/tournament.service";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 import TournamentCard from "@/app/(site)/tournaments/components/TournamentCard";
 import StatisticsCard from "@/components/StatisticsCard";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -77,10 +78,11 @@ const TournamentsPage = () => {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [sortBy, setSortBy] = useState<SortBy>('latest');
+  const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
 
   const { data: tournaments, isLoading } = useQuery({
-    queryKey: ["tournaments"],
-    queryFn: () => tournamentService.getAll(),
+    queryKey: ["tournaments", workspaceId],
+    queryFn: () => tournamentService.getAll(null, workspaceId),
   });
 
   // Filter and sort tournaments

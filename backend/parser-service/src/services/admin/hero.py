@@ -4,12 +4,15 @@ import re
 
 import sqlalchemy as sa
 from fastapi import HTTPException, status
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from shared.repository import BaseRepository
 
 from src import models
 from src.schemas import HeroRead
 from src.schemas.admin import hero as admin_schemas
+
+_repo = BaseRepository(models.Hero)
 
 
 def _slugify_name(name: str) -> str:
@@ -19,24 +22,13 @@ def _slugify_name(name: str) -> str:
 
 async def get_heroes(session: AsyncSession, params: admin_schemas.HeroListParams) -> dict:
     """Get paginated list of heroes"""
-    query = select(models.Hero)
-    count_query = select(sa.func.count(models.Hero.id))
-
+    filters: list[sa.ColumnElement[bool]] = []
     if params.search:
-        search_term = f"%{params.search}%"
-        query = query.where(models.Hero.name.ilike(search_term))
-        count_query = count_query.where(models.Hero.name.ilike(search_term))
-
+        filters.append(models.Hero.name.ilike(f"%{params.search}%"))
     if params.role:
-        query = query.where(models.Hero.type == params.role)
-        count_query = count_query.where(models.Hero.type == params.role)
+        filters.append(models.Hero.type == params.role)
 
-    query = params.apply_pagination_sort(query, models.Hero)
-
-    result = await session.execute(query)
-    total_result = await session.execute(count_query)
-    heroes = result.scalars().all()
-    total = total_result.scalar_one()
+    heroes, total = await _repo.get_all(session, params, filters=filters)
 
     return {
         "results": [HeroRead.model_validate(hero, from_attributes=True) for hero in heroes],
@@ -48,10 +40,8 @@ async def get_heroes(session: AsyncSession, params: admin_schemas.HeroListParams
 
 async def create_hero(session: AsyncSession, data: admin_schemas.HeroCreate) -> models.Hero:
     """Create a new hero"""
-    result = await session.execute(select(models.Hero).where(models.Hero.name == data.name))
-    existing_hero = result.scalar_one_or_none()
-
-    if existing_hero:
+    existing = await _repo.get_by(session, name=data.name)
+    if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Hero with name '{data.name}' already exists",
@@ -64,27 +54,18 @@ async def create_hero(session: AsyncSession, data: admin_schemas.HeroCreate) -> 
         type=data.role,
         color=data.color,
     )
-
-    session.add(hero)
-    await session.commit()
-    await session.refresh(hero)
-
-    return hero
+    return await _repo.create(session, hero)
 
 
 async def update_hero(session: AsyncSession, hero_id: int, data: admin_schemas.HeroUpdate) -> models.Hero:
     """Update hero fields"""
-    result = await session.execute(select(models.Hero).where(models.Hero.id == hero_id))
-    hero = result.scalar_one_or_none()
-
+    hero = await _repo.get(session, hero_id)
     if not hero:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Hero not found")
 
     if data.name and data.name != hero.name:
-        result = await session.execute(select(models.Hero).where(models.Hero.name == data.name))
-        existing_hero = result.scalar_one_or_none()
-
-        if existing_hero:
+        existing = await _repo.get_by(session, name=data.name)
+        if existing:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Hero with name '{data.name}' already exists",
@@ -93,24 +74,15 @@ async def update_hero(session: AsyncSession, hero_id: int, data: admin_schemas.H
     update_data = data.model_dump(exclude_unset=True)
     role = update_data.pop("role", None)
     if role is not None:
-        hero.type = role
+        update_data["type"] = role
 
-    for field_name, value in update_data.items():
-        setattr(hero, field_name, value)
-
-    await session.commit()
-    await session.refresh(hero)
-
-    return hero
+    return await _repo.update(session, hero, update_data)
 
 
 async def delete_hero(session: AsyncSession, hero_id: int) -> None:
     """Delete hero"""
-    result = await session.execute(select(models.Hero).where(models.Hero.id == hero_id))
-    hero = result.scalar_one_or_none()
-
+    hero = await _repo.get(session, hero_id)
     if not hero:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Hero not found")
 
-    await session.delete(hero)
-    await session.commit()
+    await _repo.delete(session, hero)

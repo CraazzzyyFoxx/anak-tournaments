@@ -8,7 +8,13 @@ export const ROLE_OPTIONS: Array<{ value: "all" | UserRoleType; label: string }>
   { value: "Support", label: "Support" }
 ];
 
+import { DivisionGrid } from "@/types/workspace.types";
+
 export const DIVISION_OPTIONS = Array.from({ length: 20 }, (_, index) => index + 1);
+
+export function getDivisionOptions(grid: DivisionGrid): number[] {
+  return [...grid.tiers].sort((a, b) => a.number - b.number).map((t) => t.number);
+}
 
 export const SORT_OPTIONS = [
   { value: "name", label: "Name" },

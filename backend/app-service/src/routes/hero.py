@@ -1,16 +1,37 @@
 import typing
 
+import sqlalchemy as sa
 from cashews import cache
 from cashews.contrib.fastapi import cache_control_ttl
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 
-from src import schemas
+from src import models, schemas
 from src.core import config, db, enums, pagination
+from src.core.workspace import WorkspaceQuery, get_division_grid
 from src.services.hero import flows as hero_flows
 
 router = APIRouter(prefix="/heroes", tags=[enums.RouteTag.HERO])
+
+
+@router.get(
+    path="/lookup",
+    response_model=list[schemas.LookupItem],
+    description="Lightweight endpoint returning only id and name for dropdowns/selectors.",
+    summary="Lookup heroes",
+)
+@cache(
+    ttl=cache_control_ttl(default=config.settings.heroes_cache_ttl),
+    key="fastapi:{request.url.path}/{request.query_params}",
+)
+async def lookup_heroes(
+    request: Request,
+    session: AsyncSession = Depends(db.get_async_session),
+) -> list[schemas.LookupItem]:
+    query = sa.select(models.Hero.id, models.Hero.name).order_by(models.Hero.name)
+    result = await session.execute(query)
+    return [schemas.LookupItem(id=row.id, name=row.name) for row in result.all()]
 
 
 @router.get(
@@ -57,10 +78,11 @@ async def get_all_heroes(
 async def get_statistics(
     request: Request,
     params: schemas.HeroPlaytimeQueryPaginationParams = Depends(),
+    workspace_id: WorkspaceQuery = None,
     session: AsyncSession = Depends(db.get_async_session),
 ):
     return await hero_flows.get_playtime(
-        session, schemas.HeroPlaytimePaginationParams.from_query_params(params)
+        session, schemas.HeroPlaytimePaginationParams.from_query_params(params), workspace_id=workspace_id
     )
 
 
@@ -78,10 +100,14 @@ async def get_hero_leaderboard(
     request: Request,
     hero_id: int,
     params: schemas.HeroLeaderboardQueryParams = Depends(),
+    workspace_id: WorkspaceQuery = None,
     session: AsyncSession = Depends(db.get_async_session),
 ):
+    grid = await get_division_grid(session, workspace_id)
     return await hero_flows.get_hero_leaderboard(
         session,
         hero_id=hero_id,
         params=schemas.HeroLeaderboardParams.from_query_params(params),
+        workspace_id=workspace_id,
+        grid=grid,
     )

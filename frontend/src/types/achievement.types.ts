@@ -10,6 +10,7 @@ export interface Achievement {
   slug: string;
   description_ru: string;
   description_en: string;
+  image_url: string | null;
 
   count: number | null;
   rarity: number;

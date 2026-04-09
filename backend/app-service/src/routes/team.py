@@ -7,6 +7,7 @@ from starlette.requests import Request
 
 from src import schemas
 from src.core import config, db, enums, pagination
+from src.core.workspace import WorkspaceQuery
 from src.services.team import flows as team_flows
 
 router = APIRouter(prefix="/teams", tags=[enums.RouteTag.TEAMS])
@@ -46,8 +47,11 @@ async def get_all(
     params: schemas.TeamFilterQueryParams[
         typing.Literal["id", "name", "total_sr", "avg_sr", "placement", "group"]
     ] = Depends(),
+    workspace_id: WorkspaceQuery = None,
     session=Depends(db.get_async_session),
 ):
     return await team_flows.get_all(
-        session, schemas.TeamFilterParams.from_query_params(params)
+        session,
+        schemas.TeamFilterParams.from_query_params(params),
+        workspace_id=workspace_id,
     )

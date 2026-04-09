@@ -2,11 +2,12 @@
 
 import { useMemo, useState } from "react";
 import { ColumnDef } from "@tanstack/react-table";
-import { Shield, UserCog } from "lucide-react";
+import { BadgeCheck, CheckCircle, Shield, ShieldAlert, UserCog, XCircle } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { StatusIcon } from "@/components/admin/StatusIcon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -104,11 +105,13 @@ export default function AccessAdminUsersPage() {
         const user = row.original;
         return (
           <div className="flex flex-wrap gap-2">
-            <Badge variant={user.is_active ? "default" : "secondary"}>
-              {user.is_active ? "Active" : "Inactive"}
-            </Badge>
-            {user.is_verified ? <Badge variant="outline">Verified</Badge> : null}
-            {user.is_superuser ? <Badge variant="destructive">Superuser</Badge> : null}
+            {user.is_active ? (
+              <StatusIcon icon={CheckCircle} label="Active" variant="success" />
+            ) : (
+              <StatusIcon icon={XCircle} label="Inactive" variant="muted" />
+            )}
+            {user.is_verified ? <StatusIcon icon={BadgeCheck} label="Verified" variant="info" /> : null}
+            {user.is_superuser ? <StatusIcon icon={ShieldAlert} label="Superuser" variant="destructive" /> : null}
           </div>
         );
       },
@@ -157,7 +160,6 @@ export default function AccessAdminUsersPage() {
       <AdminPageHeader
         title="Access Users"
         description="Manage auth accounts, review assigned roles, and inspect effective permissions."
-        eyebrow="Access Admin"
         meta={<Badge variant="secondary">RBAC</Badge>}
       />
 
@@ -205,11 +207,13 @@ export default function AccessAdminUsersPage() {
                     <p className="text-sm text-muted-foreground">@{userDetailQuery.data.username}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {userDetailQuery.data.is_superuser ? <Badge variant="destructive">Superuser</Badge> : null}
-                    <Badge variant={userDetailQuery.data.is_active ? "default" : "secondary"}>
-                      {userDetailQuery.data.is_active ? "Active" : "Inactive"}
-                    </Badge>
-                    {userDetailQuery.data.is_verified ? <Badge variant="outline">Verified</Badge> : null}
+                    {userDetailQuery.data.is_superuser ? <StatusIcon icon={ShieldAlert} label="Superuser" variant="destructive" /> : null}
+                    {userDetailQuery.data.is_active ? (
+                      <StatusIcon icon={CheckCircle} label="Active" variant="success" />
+                    ) : (
+                      <StatusIcon icon={XCircle} label="Inactive" variant="muted" />
+                    )}
+                    {userDetailQuery.data.is_verified ? <StatusIcon icon={BadgeCheck} label="Verified" variant="info" /> : null}
                   </div>
                 </div>
               </div>

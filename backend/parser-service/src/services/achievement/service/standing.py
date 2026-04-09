@@ -2,6 +2,8 @@ import sqlalchemy as sa
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.division_grid import DivisionGrid, division_case_expr
+
 from src import models
 
 from . import crud
@@ -425,7 +427,9 @@ async def calculate_revenge_achievement(session: AsyncSession, tournament: model
     )
 
 
-async def calculate_win_with_20_div_achievement(session: AsyncSession, tournament: models.Tournament) -> None:
+async def calculate_win_with_20_div_achievement(
+    session: AsyncSession, tournament: models.Tournament, *, grid: DivisionGrid,
+) -> None:
     achievement = await crud.get_achievement_or_log_error(session, "anchor-in-my-throat")
     if not achievement:
         return
@@ -440,7 +444,7 @@ async def calculate_win_with_20_div_achievement(session: AsyncSession, tournamen
         .where(
             sa.and_(
                 models.Team.tournament_id == tournament.id,
-                models.Player.div == 20,
+                division_case_expr(models.Player.rank, grid) == grid.max_division,
                 models.Standing.overall_position == 1,
                 models.Standing.buchholz.is_(None),
             )

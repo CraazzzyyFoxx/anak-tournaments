@@ -41,17 +41,14 @@ services:
         strip_path: false
         preserve_host: true
 
-  # Frontend is present in production compose; in dev it's often disabled.
-  # The route is still safe to keep: Kong will return 502 if frontend isn't running.
   - name: frontend
-    url: http://frontend:3000
+    url: http://host.docker.internal:3000
     routes:
       - name: frontend-web
         paths:
           - /
         strip_path: false
         preserve_host: true
-      # BFF routes served by Next.js — must be more specific than /api to win
       - name: frontend-api-account
         paths:
           - /api/account

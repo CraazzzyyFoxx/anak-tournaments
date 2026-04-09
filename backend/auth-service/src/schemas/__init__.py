@@ -2,6 +2,7 @@
 
 from .auth import (
     AuthUser,
+    AuthUserWorkspace,
     PasswordSetRequest,
     RefreshTokenRequest,
     ServiceToken,
@@ -12,10 +13,13 @@ from .auth import (
     UserLogin,
     UserRegister,
     UserUpdate,
+    WorkspaceMembership,
 )
 from .oauth import (
     LinkedPlayer,
     OAuthCallbackRequest,
+    OAuthConnectionAdminRead,
+    OAuthConnectionRead,
     OAuthProvider,
     OAuthProviderAvailability,
     OAuthURL,
@@ -49,12 +53,16 @@ __all__ = [
     "ServiceToken",
     "ServiceTokenPayload",
     "AuthUser",
+    "AuthUserWorkspace",
     "UserUpdate",
+    "WorkspaceMembership",
     "OAuthProvider",
     "OAuthProviderAvailability",
     "OAuthURL",
     "OAuthCallbackRequest",
     "OAuthUserInfo",
+    "OAuthConnectionRead",
+    "OAuthConnectionAdminRead",
     "PlayerLinkRequest",
     "PlayerLinkResponse",
     "LinkedPlayer",

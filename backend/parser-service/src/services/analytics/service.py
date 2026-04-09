@@ -3,6 +3,8 @@ import typing
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.division_grid import DEFAULT_GRID, division_case_expr
+
 from src import models
 
 
@@ -52,11 +54,11 @@ async def get_analytics(
                 partition_by=(models.Player.user_id, models.Player.role),
                 order_by=models.Tournament.id,
             ),
-            sa.func.lag(models.Player.div, 1).over(
+            sa.func.lag(division_case_expr(models.Player.rank, DEFAULT_GRID), 1).over(
                 partition_by=(models.Player.user_id, models.Player.role),
                 order_by=models.Tournament.id,
             ),
-            sa.func.lag(models.Player.div, 2).over(
+            sa.func.lag(division_case_expr(models.Player.rank, DEFAULT_GRID), 2).over(
                 partition_by=(models.Player.user_id, models.Player.role),
                 order_by=models.Tournament.id,
             ),

@@ -1,4 +1,4 @@
-import { parserFetch } from "@/lib/parser_fetch";
+import { apiFetch } from "@/lib/api-fetch";
 import {
   ApplicationUserExportResponse,
   BalanceExportResponse,
@@ -21,7 +21,7 @@ import {
 
 export default class balancerAdminService {
   static async getTournamentSheet(tournamentId: number): Promise<BalancerTournamentSheet | null> {
-    const response = await parserFetch(`admin/balancer/tournaments/${tournamentId}/sheet`);
+    const response = await apiFetch("parser",`admin/balancer/tournaments/${tournamentId}/sheet`);
     return response.json();
   }
 
@@ -29,7 +29,7 @@ export default class balancerAdminService {
     tournamentId: number,
     data: TournamentSheetUpsertInput,
   ): Promise<BalancerTournamentSheet> {
-    const response = await parserFetch(`admin/balancer/tournaments/${tournamentId}/sheet`, {
+    const response = await apiFetch("parser",`admin/balancer/tournaments/${tournamentId}/sheet`, {
       method: "PUT",
       body: data,
     });
@@ -37,7 +37,7 @@ export default class balancerAdminService {
   }
 
   static async syncTournamentSheet(tournamentId: number): Promise<SheetSyncResponse> {
-    const response = await parserFetch(`admin/balancer/tournaments/${tournamentId}/sheet/sync`, {
+    const response = await apiFetch("parser",`admin/balancer/tournaments/${tournamentId}/sheet/sync`, {
       method: "POST",
       body: {},
     });
@@ -48,7 +48,7 @@ export default class balancerAdminService {
     tournamentId: number,
     includeInactive = false,
   ): Promise<BalancerApplication[]> {
-    const response = await parserFetch(`admin/balancer/tournaments/${tournamentId}/applications`, {
+    const response = await apiFetch("parser",`admin/balancer/tournaments/${tournamentId}/applications`, {
       query: { include_inactive: includeInactive },
     });
     return response.json();
@@ -58,7 +58,7 @@ export default class balancerAdminService {
     tournamentId: number,
     data: BalancerPlayerCreateInput,
   ): Promise<BalancerPlayerRecord[]> {
-    const response = await parserFetch(`admin/balancer/tournaments/${tournamentId}/players`, {
+    const response = await apiFetch("parser",`admin/balancer/tournaments/${tournamentId}/players`, {
       method: "POST",
       body: data,
     });
@@ -66,7 +66,7 @@ export default class balancerAdminService {
   }
 
   static async listPlayers(tournamentId: number, inPoolOnly = false): Promise<BalancerPlayerRecord[]> {
-    const response = await parserFetch(`admin/balancer/tournaments/${tournamentId}/players`, {
+    const response = await apiFetch("parser",`admin/balancer/tournaments/${tournamentId}/players`, {
       query: { in_pool_only: inPoolOnly },
     });
     return response.json();
@@ -76,7 +76,7 @@ export default class balancerAdminService {
     playerId: number,
     data: BalancerPlayerUpdateInput,
   ): Promise<BalancerPlayerRecord> {
-    const response = await parserFetch(`admin/balancer/players/${playerId}`, {
+    const response = await apiFetch("parser",`admin/balancer/players/${playerId}`, {
       method: "PATCH",
       body: data,
     });
@@ -84,7 +84,7 @@ export default class balancerAdminService {
   }
 
   static async deletePlayer(playerId: number): Promise<void> {
-    await parserFetch(`admin/balancer/players/${playerId}`, {
+    await apiFetch("parser",`admin/balancer/players/${playerId}`, {
       method: "DELETE",
     });
   }
@@ -98,7 +98,7 @@ export default class balancerAdminService {
     formData.append("data", file);
     formData.append("match_application_roles", String(matchApplicationRoles));
 
-    const response = await parserFetch(`admin/balancer/tournaments/${tournamentId}/players/import/preview`, {
+    const response = await apiFetch("parser",`admin/balancer/tournaments/${tournamentId}/players/import/preview`, {
       method: "POST",
       body: formData,
     });
@@ -120,7 +120,7 @@ export default class balancerAdminService {
       formData.append("resolutions_json", JSON.stringify(resolutions));
     }
 
-    const response = await parserFetch(`admin/balancer/tournaments/${tournamentId}/players/import`, {
+    const response = await apiFetch("parser",`admin/balancer/tournaments/${tournamentId}/players/import`, {
       method: "POST",
       body: formData,
     });
@@ -128,12 +128,12 @@ export default class balancerAdminService {
   }
 
   static async exportPlayers(tournamentId: number): Promise<BalancerPlayerExportResponse> {
-    const response = await parserFetch(`admin/balancer/tournaments/${tournamentId}/players/export`);
+    const response = await apiFetch("parser",`admin/balancer/tournaments/${tournamentId}/players/export`);
     return response.json();
   }
 
   static async syncPlayerRolesFromApplications(tournamentId: number): Promise<BalancerPlayerRoleSyncResponse> {
-    const response = await parserFetch(`admin/balancer/tournaments/${tournamentId}/players/application-roles`, {
+    const response = await apiFetch("parser",`admin/balancer/tournaments/${tournamentId}/players/application-roles`, {
       method: "POST",
       body: {},
     });
@@ -141,12 +141,12 @@ export default class balancerAdminService {
   }
 
   static async getBalance(tournamentId: number): Promise<SavedBalance | null> {
-    const response = await parserFetch(`admin/balancer/tournaments/${tournamentId}/balance`);
+    const response = await apiFetch("parser",`admin/balancer/tournaments/${tournamentId}/balance`);
     return response.json();
   }
 
   static async saveBalance(tournamentId: number, data: BalanceSaveInput): Promise<SavedBalance> {
-    const response = await parserFetch(`admin/balancer/tournaments/${tournamentId}/balance`, {
+    const response = await apiFetch("parser",`admin/balancer/tournaments/${tournamentId}/balance`, {
       method: "PUT",
       body: data,
     });
@@ -154,7 +154,7 @@ export default class balancerAdminService {
   }
 
   static async exportBalance(balanceId: number): Promise<BalanceExportResponse> {
-    const response = await parserFetch(`admin/balancer/balances/${balanceId}/export`, {
+    const response = await apiFetch("parser",`admin/balancer/balances/${balanceId}/export`, {
       method: "POST",
       body: {},
     });
@@ -162,7 +162,7 @@ export default class balancerAdminService {
   }
 
   static async exportApplicationsToUsers(tournamentId: number): Promise<ApplicationUserExportResponse> {
-    const response = await parserFetch(`admin/balancer/tournaments/${tournamentId}/applications/export-users`, {
+    const response = await apiFetch("parser",`admin/balancer/tournaments/${tournamentId}/applications/export-users`, {
       method: "POST",
       body: {},
     });
@@ -177,7 +177,7 @@ export default class balancerAdminService {
     const formData = new FormData();
     formData.append("data", file);
     formData.append("payload_format", payloadFormat);
-    const response = await parserFetch(`admin/balancer/tournaments/${tournamentId}/teams/import`, {
+    const response = await apiFetch("parser",`admin/balancer/tournaments/${tournamentId}/teams/import`, {
       method: "POST",
       body: formData,
     });

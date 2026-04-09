@@ -1,30 +1,13 @@
-"""
-Database configuration for Discord bot
-"""
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from shared.core.db import Base, create_database
 
 from src.core.config import settings
 
-# Import shared base
-from shared.core.db import Base
-
-__all__ = [
-    "Base",
-    "async_session_maker",
-    "async_engine",
-]
-
-# Create async engine
-async_engine = create_async_engine(
-    url=settings.db_url_asyncpg,
-    pool_size=5,
-    max_overflow=10,
-    echo=False
+_db = create_database(
+    async_url=settings.db_url_asyncpg,
+    pool_size=settings.db_pool_size,
+    max_overflow=settings.db_max_overflow,
+    statement_timeout=settings.db_statement_timeout,
 )
 
-# Create session maker
-async_session_maker = async_sessionmaker(
-    async_engine,
-    class_=AsyncSession,
-    expire_on_commit=False
-)
+async_engine = _db.async_engine
+async_session_maker = _db.async_session_maker

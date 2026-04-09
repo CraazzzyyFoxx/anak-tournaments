@@ -4,8 +4,11 @@ Authentication routes
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import sqlalchemy as sa
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from loguru import logger
+from shared.clients.s3 import S3Client
+from shared.clients.s3.upload import upload_avatar
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 
@@ -14,6 +17,10 @@ from src.core import db
 from src.services import auth_service
 from src.services.oauth_service import OAuthService
 from src.services.session_cache import get_rbac, set_rbac
+
+
+def get_s3(request: Request) -> S3Client:
+    return request.app.state.s3
 
 router = APIRouter(tags=["Authentication"])
 
@@ -164,10 +171,53 @@ async def logout_all(
 
 @router.get("/me", response_model=schemas.AuthUser)
 async def get_current_user_info(
+    session: Annotated[AsyncSession, Depends(db.get_async_session)],
     current_user: Annotated[models.AuthUser, Depends(auth_service.get_current_active_user)],
 ):
-    """Get current user information"""
-    return current_user
+    """Get current user information including workspace RBAC."""
+    # Build base response from ORM
+    data = schemas.AuthUser.model_validate(current_user, from_attributes=True).model_dump()
+
+    # Fetch workspace memberships with RBAC data
+    workspace_rows = await session.execute(
+        sa.select(
+            models.WorkspaceMember.workspace_id,
+            models.Workspace.slug,
+            models.WorkspaceMember.role,
+        )
+        .join(models.Workspace, models.Workspace.id == models.WorkspaceMember.workspace_id)
+        .where(models.WorkspaceMember.auth_user_id == current_user.id)
+    )
+    ws_memberships = workspace_rows.all()
+    ws_ids = [row[0] for row in ws_memberships]
+
+    ws_rbac = await auth_service.AuthService.get_workspace_roles_and_permissions_db(
+        session, current_user.id, ws_ids
+    )
+
+    workspaces = []
+    for ws_id, slug, member_role in ws_memberships:
+        ws_data = ws_rbac.get(ws_id, ([], []))
+        # Convert permissions to "resource.action" strings
+        perm_strings = []
+        for p in ws_data[1]:
+            r, a = p.get("resource", ""), p.get("action", "")
+            if r == "*" and a == "*":
+                perm_strings.append("admin.*")
+            else:
+                perm_strings.append(f"{r}.{a}")
+        workspaces.append(
+            schemas.AuthUserWorkspace(
+                workspace_id=ws_id,
+                slug=slug,
+                role=member_role,
+                rbac_roles=ws_data[0],
+                rbac_permissions=perm_strings,
+            )
+        )
+
+    data["workspaces"] = [w.model_dump() for w in workspaces]
+    return schemas.AuthUser.model_validate(data)
 
 
 @router.patch("/me", response_model=schemas.AuthUser)
@@ -196,6 +246,51 @@ async def update_current_user(
     await session.refresh(current_user)
 
     logger.bind(user_id=str(current_user.id)).success("User profile updated")
+    return current_user
+
+
+@router.post("/me/avatar", response_model=schemas.AuthUser)
+async def upload_user_avatar(
+    file: UploadFile,
+    session: Annotated[AsyncSession, Depends(db.get_async_session)],
+    current_user: Annotated[models.AuthUser, Depends(auth_service.get_current_active_user)],
+    s3: S3Client = Depends(get_s3),
+):
+    """Upload or replace the current user's avatar image."""
+    file_data = await file.read()
+    content_type = file.content_type or "application/octet-stream"
+
+    result = await upload_avatar(
+        s3,
+        entity_type="users",
+        entity_id=current_user.id,
+        file_data=file_data,
+        content_type=content_type,
+    )
+    if not result.success:
+        raise HTTPException(status_code=400, detail=result.error)
+
+    current_user.avatar_url = result.public_url
+    await session.commit()
+    await session.refresh(current_user)
+
+    logger.bind(user_id=str(current_user.id)).info("Avatar updated")
+    return current_user
+
+
+@router.delete("/me/avatar", response_model=schemas.AuthUser)
+async def delete_user_avatar(
+    session: Annotated[AsyncSession, Depends(db.get_async_session)],
+    current_user: Annotated[models.AuthUser, Depends(auth_service.get_current_active_user)],
+    s3: S3Client = Depends(get_s3),
+):
+    """Delete the current user's avatar."""
+    await s3.delete_prefix(f"avatars/users/{current_user.id}/")
+    current_user.avatar_url = None
+    await session.commit()
+    await session.refresh(current_user)
+
+    logger.bind(user_id=str(current_user.id)).info("Avatar deleted")
     return current_user
 
 
@@ -231,9 +326,60 @@ async def validate_token(
     if cached is not None:
         roles = cached["roles"]
         permissions = cached["permissions"]
+        workspace_roles_cached = cached.get("workspace_roles")
     else:
+        roles = None
+        permissions = None
+        workspace_roles_cached = None
+
+    if roles is None:
         roles, permissions = await auth_service.AuthService.get_user_roles_and_permissions_db(session, current_user.id)
-        await set_rbac(current_user.id, roles, permissions)
+
+    # Fetch workspace memberships
+    workspace_rows = await session.execute(
+        sa.select(
+            models.WorkspaceMember.workspace_id,
+            models.Workspace.slug,
+            models.WorkspaceMember.role,
+        )
+        .join(models.Workspace, models.Workspace.id == models.WorkspaceMember.workspace_id)
+        .where(models.WorkspaceMember.auth_user_id == current_user.id)
+    )
+    ws_memberships = workspace_rows.all()
+    ws_ids = [row[0] for row in ws_memberships]
+
+    # Fetch workspace-scoped RBAC data
+    if workspace_roles_cached is not None:
+        ws_rbac = {
+            int(k): (v["roles"], v["permissions"])
+            for k, v in workspace_roles_cached.items()
+        }
+    else:
+        ws_rbac = await auth_service.AuthService.get_workspace_roles_and_permissions_db(
+            session, current_user.id, ws_ids
+        )
+
+    # Build cache payload
+    ws_cache: dict[str, dict] = {}
+    for ws_id in ws_ids:
+        ws_data = ws_rbac.get(ws_id, ([], []))
+        ws_cache[str(ws_id)] = {"roles": ws_data[0], "permissions": ws_data[1]}
+
+    await set_rbac(current_user.id, roles, permissions, workspace_roles=ws_cache)
+
+    workspaces = []
+    for row in ws_memberships:
+        ws_id, slug, member_role = row
+        ws_data = ws_rbac.get(ws_id, ([], []))
+        workspaces.append(
+            schemas.WorkspaceMembership(
+                workspace_id=ws_id,
+                slug=slug,
+                role=member_role,
+                rbac_roles=ws_data[0],
+                rbac_permissions=ws_data[1],
+            )
+        )
 
     return schemas.TokenPayload(
         sub=current_user.id,
@@ -242,4 +388,5 @@ async def validate_token(
         is_superuser=current_user.is_superuser,
         roles=roles,
         permissions=permissions,
+        workspaces=workspaces,
     )

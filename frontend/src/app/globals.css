@@ -180,34 +180,43 @@ body, html {
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
-@layer base {
-  .admin-theme {
-    --background: 0 0% 4%;
-    --foreground: 0 0% 96%;
-    --card: 0 0% 6%;
-    --card-foreground: 0 0% 96%;
-    --popover: 0 0% 6%;
-    --popover-foreground: 0 0% 96%;
-    --muted: 0 0% 10%;
-    --muted-foreground: 0 0% 64%;
-    --accent: 0 0% 10%;
-    --accent-foreground: 0 0% 96%;
-    --secondary: 0 0% 11%;
-    --secondary-foreground: 0 0% 96%;
-    --primary: 0 0% 94%;
-    --primary-foreground: 0 0% 6%;
-    --border: 0 0% 12%;
-    --input: 0 0% 12%;
-    --ring: 0 0% 72%;
-    --sidebar: 0 0% 6%;
-    --sidebar-foreground: 0 0% 96%;
-    --sidebar-primary: 0 0% 94%;
-    --sidebar-primary-foreground: 0 0% 6%;
-    --sidebar-accent: 0 0% 10%;
-    --sidebar-accent-foreground: 0 0% 96%;
-    --sidebar-border: 0 0% 12%;
-    --sidebar-ring: 0 0% 72%;
-  }
+/* Admin theme — OW2 Competitive: teal primary on dark blue-steel */
+.admin-theme {
+  --background: 225 30% 6%;
+  --foreground: 210 20% 95%;
+  --card: 215 20% 8%;
+  --card-foreground: 210 20% 95%;
+  --popover: 215 20% 8%;
+  --popover-foreground: 210 20% 95%;
+  --muted: 215 16% 13%;
+  --muted-foreground: 215 12% 50%;
+  --accent: 215 20% 16%;
+  --accent-foreground: 210 20% 95%;
+  --secondary: 215 24% 20%;
+  --secondary-foreground: 210 20% 95%;
+  --primary: 174 72% 46%;
+  --primary-foreground: 180 20% 5%;
+  --border: 215 16% 15%;
+  --input: 215 16% 15%;
+  --ring: 174 72% 46%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+
+  /* Chart palette — OW2 inspired */
+  --chart-1: 174 72% 46%;
+  --chart-2: 30 100% 50%;
+  --chart-3: 262 83% 58%;
+  --chart-4: 43 96% 56%;
+  --chart-5: 340 75% 55%;
+
+  --sidebar: hsl(225 30% 7%);
+  --sidebar-foreground: hsl(210 20% 92%);
+  --sidebar-primary: hsl(174 72% 46%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-accent: hsl(215 20% 12%);
+  --sidebar-accent-foreground: hsl(210 20% 92%);
+  --sidebar-border: hsl(215 16% 13%);
+  --sidebar-ring: hsl(174 72% 46%);
 }
 
 @layer utilities {

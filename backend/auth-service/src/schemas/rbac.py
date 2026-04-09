@@ -55,6 +55,7 @@ class RoleBase(BaseModel):
 class RoleCreate(RoleBase):
     """Schema for creating a role"""
     permission_ids: list[int] = Field(default_factory=list, description="List of permission IDs to assign")
+    workspace_id: int | None = Field(None, description="Workspace ID for scoped roles. NULL = global role")
 
 
 class RoleUpdate(BaseModel):
@@ -68,6 +69,7 @@ class RoleRead(RoleBase):
     """Schema for reading a role"""
     id: int
     is_system: bool
+    workspace_id: int | None = None
     created_at: datetime
     updated_at: datetime | None = None
 

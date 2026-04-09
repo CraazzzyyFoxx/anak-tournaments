@@ -30,7 +30,7 @@ class MapUpdate(BaseModel):
 class MapListQueryParams(
     pagination.PaginationSortQueryParams[typing.Literal["id", "name", "gamemode_id", "created_at", "updated_at"]]
 ):
-    per_page: int = Field(default=50, ge=-1, le=100)
+    per_page: int = Field(default=50, ge=-1, le=500)
     sort: typing.Literal["id", "name", "gamemode_id", "created_at", "updated_at"] = "id"
     search: str | None = None
     gamemode_id: int | None = None

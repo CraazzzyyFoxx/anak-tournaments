@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile
 from faststream.rabbit.fastapi import RabbitRouter
 from loguru import logger
+from shared.clients.s3 import S3Client
 from shared.messaging.config import (
     DISCORD_COMMANDS_QUEUE,
     PROCESS_TOURNAMENT_LOGS_QUEUE,
@@ -19,6 +20,10 @@ from src.services.match_logs import log_records as record_service
 from src.services.s3 import service as s3_service
 from src.services.tournament import flows as tournaments_flows
 from src.services.tournament import service as tournaments_service
+
+
+def get_s3(request: Request) -> S3Client:
+    return request.app.state.s3
 
 router = APIRouter(
     prefix="/logs",
@@ -44,9 +49,9 @@ async def process_all_logs(session=Depends(db.get_async_session)):
 
 
 @router.get("/{tournament_id}")
-async def get_tournament_logs(tournament_id: int, session=Depends(db.get_async_session)):
+async def get_tournament_logs(tournament_id: int, session=Depends(db.get_async_session), s3: S3Client = Depends(get_s3)):
     tournament = await tournaments_flows.get(session, tournament_id, [])
-    logs = await s3_service.async_client.get_logs_by_tournament(tournament.id)
+    logs = await s3_service.get_logs_by_tournament(s3, tournament.id)
     return {"tournament": tournament.name, "logs": logs}
 
 
@@ -65,13 +70,14 @@ async def process_logs_async(
     discord_username: str | None = Form(None),
     session=Depends(db.get_async_session),
     auth_user: models.AuthUser | None = Depends(auth.get_current_user_optional),
+    s3: S3Client = Depends(get_s3),
 ):
     if file.filename is None:
         raise HTTPException(status_code=400, detail="No file name provided")
 
     decoded_lines = decode_file_lines(file)
     tournament = await tournaments_flows.get(session, tournament_id, [])
-    state = await s3_service.async_client.upload_log(tournament.id, file.filename, decoded_lines)
+    state = await s3_service.upload_log(s3, tournament.id, file.filename, decoded_lines)
     if not state:
         raise HTTPException(status_code=400, detail="Failed to upload file")
 
@@ -136,8 +142,8 @@ async def process_logs_discord_message(
 
 
 @router.post("/{tournament_id}/{filename}")
-async def process_match_log(tournament_id: int, filename: str, session=Depends(db.get_async_session)):
-    await logs_flows.process_match_log(session, tournament_id, filename, is_raise=True)
+async def process_match_log(tournament_id: int, filename: str, session=Depends(db.get_async_session), s3: S3Client = Depends(get_s3)):
+    await logs_flows.process_match_log(session, tournament_id, filename, s3, is_raise=True)
     return {"message": f"Match log '{filename}' for tournament {tournament_id} processed successfully."}
 
 

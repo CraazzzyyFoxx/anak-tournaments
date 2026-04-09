@@ -4,21 +4,21 @@ import {
   TournamentOverall,
   PlayerStatistics
 } from "@/types/statistics.types";
-import { customFetch } from "@/lib/custom_fetch";
+import { apiFetch } from "@/lib/api-fetch";
 import { PaginatedResponse } from "@/types/pagination.types";
 
 export default class statisticsService {
   static async getTournaments(): Promise<TournamentStatistics[]> {
-    return customFetch(`tournaments/statistics/history`).then((res) => res.json());
+    return apiFetch("app",`tournaments/statistics/history`).then((res) => res.json());
   }
   static async getTournamentsDivision(): Promise<TournamentDivisionStatistics[]> {
-    return customFetch(`tournaments/statistics/division`).then((res) => res.json());
+    return apiFetch("app",`tournaments/statistics/division`).then((res) => res.json());
   }
   static async getOverallStatistics(): Promise<TournamentOverall> {
-    return customFetch(`tournaments/statistics/overall`).then((res) => res.json());
+    return apiFetch("app",`tournaments/statistics/overall`).then((res) => res.json());
   }
   static async getChampions(): Promise<PaginatedResponse<PlayerStatistics>> {
-    return customFetch(`statistics/champion`, {
+    return apiFetch("app",`statistics/champion`, {
       query: {
         sort: "value",
         order: "desc"
@@ -26,7 +26,7 @@ export default class statisticsService {
     }).then((res) => res.json());
   }
   static async getTopWinratePlayers(): Promise<PaginatedResponse<PlayerStatistics>> {
-    return customFetch(`statistics/winrate`, {
+    return apiFetch("app",`statistics/winrate`, {
       query: {
         sort: "value",
         order: "desc"

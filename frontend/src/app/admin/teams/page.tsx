@@ -211,7 +211,7 @@ export default function TeamsPage() {
         const tournament = row.getValue<any>("tournament");
         return tournament ? (
           <div className="text-sm text-muted-foreground">
-            {tournament.is_league ? tournament.name : `Tournament ${tournament.number}`}
+            {tournament.name}
           </div>
         ) : (
           "—"
@@ -274,7 +274,7 @@ export default function TeamsPage() {
             <SelectItem value="all">All Tournaments</SelectItem>
             {tournamentsData?.results.map((tournament) => (
               <SelectItem key={tournament.id} value={tournament.id.toString()}>
-                {tournament.is_league ? tournament.name : `Tournament ${tournament.number}`}
+                {tournament.name}
               </SelectItem>
             ))}
           </SelectContent>
@@ -284,10 +284,6 @@ export default function TeamsPage() {
       <AdminDataTable
         queryKey={(page, search, pageSize, sortField, sortDir) => ["teams", selectedTournamentId, page, search, pageSize, sortField, sortDir]}
         queryFn={async (page, search, pageSize, sortField, sortDir) => {
-          if (!selectedTournamentId) {
-            return { results: [], total: 0, page: 1, per_page: pageSize };
-          }
-
           const data = await teamService.getAll(selectedTournamentId);
           const filteredTeams = search
             ? data.results.filter((team) => team.name.toLowerCase().includes(search.toLowerCase()))
@@ -298,9 +294,7 @@ export default function TeamsPage() {
         }}
         columns={columns}
         searchPlaceholder="Search teams..."
-        emptyMessage={
-          selectedTournamentId ? "No teams found in this tournament." : "Select a tournament to view teams."
-        }
+        emptyMessage="No teams found."
         onRowClick={(row) => router.push(`/admin/teams/${row.original.id}`)}
       />
 
@@ -331,7 +325,7 @@ export default function TeamsPage() {
               <SelectContent>
                 {tournamentsData?.results.map((tournament) => (
                   <SelectItem key={tournament.id} value={tournament.id.toString()}>
-                    {tournament.is_league ? tournament.name : `Tournament ${tournament.number}`}
+                    {tournament.name}
                   </SelectItem>
                 ))}
               </SelectContent>

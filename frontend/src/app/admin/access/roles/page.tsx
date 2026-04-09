@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ColumnDef } from "@tanstack/react-table";
-import { MoreHorizontal, Pencil, Plus, ShieldAlert, Trash2 } from "lucide-react";
+import { Building2, Globe, Lock, MoreHorizontal, Pencil, Plus, ShieldAlert, Trash2, Wrench } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { StatusIcon } from "@/components/admin/StatusIcon";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { Badge } from "@/components/ui/badge";
@@ -23,14 +24,25 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useToast } from "@/hooks/use-toast";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import { paginateResults, sortArray } from "@/lib/paginate-results";
 import { rbacService } from "@/services/rbac.service";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { RbacRole, UpsertRolePayload } from "@/types/rbac.types";
 
 const PAGE_SIZE = 15;
+
+/** "global" = global roles (workspace_id IS NULL), number = workspace-scoped */
+type RoleScope = "global" | number;
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Something went wrong";
@@ -45,11 +57,31 @@ const emptyRoleForm: UpsertRolePayload = {
 export default function AccessAdminRolesPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { hasPermission } = usePermissions();
+  const { hasPermission, isSuperuser, isWorkspaceAdmin, getAdminWorkspaceIds } = usePermissions();
+
+  const { workspaces } = useWorkspaceStore();
+  const adminWorkspaceIds = getAdminWorkspaceIds();
+  const adminWorkspaces = workspaces.filter(
+    (ws) => isSuperuser || adminWorkspaceIds.includes(ws.id),
+  );
+
+  // Scope selector: "global" or a workspace id
+  const [selectedScope, setSelectedScope] = useState<RoleScope>("global");
+
+  // For global scope: use global RBAC permissions
+  // For workspace scope: user just needs to be workspace admin
   const canReadPermissions = hasPermission("permission.read");
-  const canCreateRole = hasPermission("role.create") && canReadPermissions;
-  const canUpdateRole = hasPermission("role.update") && canReadPermissions;
-  const canDeleteRole = hasPermission("role.delete");
+  const canManageInScope =
+    selectedScope === "global"
+      ? hasPermission("role.create") && canReadPermissions
+      : typeof selectedScope === "number" && isWorkspaceAdmin(selectedScope);
+  const canCreateRole = canManageInScope;
+  const canUpdateRole =
+    selectedScope === "global"
+      ? hasPermission("role.update") && canReadPermissions
+      : canManageInScope;
+  const canDeleteRole =
+    selectedScope === "global" ? hasPermission("role.delete") : canManageInScope;
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingRoleId, setEditingRoleId] = useState<number | null>(null);
@@ -144,13 +176,35 @@ export default function AccessAdminRolesPage() {
       cell: ({ row }) => row.original.description || <span className="text-muted-foreground">No description</span>,
     },
     {
+      id: "scope",
+      header: "Scope",
+      cell: ({ row }) => {
+        const role = row.original;
+        if (role.workspace_id) {
+          const ws = workspaces.find((w) => w.id === role.workspace_id);
+          return (
+            <div className="flex items-center gap-1.5">
+              <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-sm">{ws?.name ?? `#${role.workspace_id}`}</span>
+            </div>
+          );
+        }
+        return (
+          <div className="flex items-center gap-1.5">
+            <Globe className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-sm">Global</span>
+          </div>
+        );
+      },
+    },
+    {
       id: "system",
       header: "Type",
       cell: ({ row }) =>
         row.original.is_system ? (
-          <Badge variant="outline">System</Badge>
+          <StatusIcon icon={Lock} label="System" variant="muted" />
         ) : (
-          <Badge variant="secondary">Custom</Badge>
+          <StatusIcon icon={Wrench} label="Custom" variant="info" />
         ),
     },
     {
@@ -236,15 +290,24 @@ export default function AccessAdminRolesPage() {
       updateRoleMutation.mutate({ id: editingRoleId, payload: formData });
       return;
     }
-    createRoleMutation.mutate(formData);
+    // Include workspace_id when creating in workspace scope
+    const payload: UpsertRolePayload = {
+      ...formData,
+      workspace_id: selectedScope === "global" ? null : selectedScope,
+    };
+    createRoleMutation.mutate(payload);
   };
+
+  const scopeLabel =
+    selectedScope === "global"
+      ? "Global"
+      : workspaces.find((w) => w.id === selectedScope)?.name ?? "Workspace";
 
   return (
     <div className="space-y-6">
       <AdminPageHeader
         title="Roles"
         description="Create custom roles, inspect protected system roles, and manage permission bundles."
-        eyebrow="Access Admin"
         meta={<Badge variant="secondary">RBAC</Badge>}
         actions={
           canCreateRole ? (
@@ -263,12 +326,50 @@ export default function AccessAdminRolesPage() {
         }
       />
 
+      {/* Workspace scope selector */}
+      <div className="flex items-center gap-3">
+        <Label className="text-sm text-muted-foreground">Scope:</Label>
+        <Select
+          value={String(selectedScope)}
+          onValueChange={(value) =>
+            setSelectedScope(value === "global" ? "global" : Number(value))
+          }
+        >
+          <SelectTrigger className="w-[220px]">
+            <SelectValue placeholder="Select scope" />
+          </SelectTrigger>
+          <SelectContent>
+            {(isSuperuser || hasPermission("role.read")) && (
+              <SelectItem value="global">
+                <div className="flex items-center gap-2">
+                  <Globe className="h-3.5 w-3.5" />
+                  Global
+                </div>
+              </SelectItem>
+            )}
+            {adminWorkspaces.map((ws) => (
+              <SelectItem key={ws.id} value={String(ws.id)}>
+                <div className="flex items-center gap-2">
+                  <Building2 className="h-3.5 w-3.5" />
+                  {ws.name}
+                </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
       <AdminDataTable
         initialPageSize={PAGE_SIZE}
         pageSizeOptions={[10, 20, 50, 100]}
-        queryKey={(page, search, pageSize, sortField, sortDir) => ["access-admin", "roles", page, search, pageSize, sortField, sortDir]}
+        queryKey={(page, search, pageSize, sortField, sortDir) => [
+          "access-admin", "roles", selectedScope, page, search, pageSize, sortField, sortDir,
+        ]}
         queryFn={async (page, search, pageSize, sortField, sortDir) => {
-          const roles = await rbacService.listRoles();
+          const workspaceId = selectedScope === "global" ? undefined : selectedScope;
+          const roles = await rbacService.listRoles(
+            workspaceId !== undefined ? { workspace_id: workspaceId } : undefined,
+          );
           const filteredRoles = search
             ? roles.filter((role) => {
                 const haystack = `${role.name} ${role.description || ""}`.toLowerCase();
@@ -299,15 +400,15 @@ export default function AccessAdminRolesPage() {
             setFormData(emptyRoleForm);
           }
         }}
-        title={isEditing ? "Edit Role" : "Create Role"}
+        title={isEditing ? "Edit Role" : `Create Role (${scopeLabel})`}
         description={
           isEditing
             ? "Update role metadata and its permission bundle."
-            : "Create a new custom role and attach explicit permissions."
+            : `Create a new custom role in the ${scopeLabel} scope and attach explicit permissions.`
         }
         onSubmit={handleSubmit}
         isSubmitting={isSubmitting}
-        submittingLabel={isEditing ? "Updating role…" : "Creating role…"}
+        submittingLabel={isEditing ? "Updating role..." : "Creating role..."}
         errorMessage={
           (isEditing ? updateRoleMutation.error : createRoleMutation.error) instanceof Error
             ? (isEditing ? updateRoleMutation.error : createRoleMutation.error)?.message

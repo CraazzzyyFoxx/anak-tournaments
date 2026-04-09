@@ -4,9 +4,11 @@ RBAC (Role-Based Access Control) routes
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from loguru import logger
+from shared.models.oauth import OAuthConnection
 from shared.models.rbac import Permission, Role, role_permissions, user_roles
+from shared.models.workspace import WorkspaceMember
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -46,6 +48,27 @@ async def _invalidate_users_with_role(session: AsyncSession, role_id: int) -> No
     result = await session.execute(select(user_roles.c.user_id).where(user_roles.c.role_id == role_id))
     for uid in result.scalars().all():
         await invalidate_rbac(uid)
+
+
+def _check_workspace_admin(user: models.AuthUser, workspace_id: int) -> None:
+    """Raise 403 if user is not admin/owner of the given workspace."""
+    if not user.is_workspace_admin(workspace_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Workspace admin or owner role required",
+        )
+
+
+def _check_role_access(user: models.AuthUser, role: Role, required_action: str) -> None:
+    """Check access control for a role based on its scope (global vs workspace)."""
+    if role.workspace_id is not None:
+        _check_workspace_admin(user, role.workspace_id)
+    else:
+        if not user.has_permission("role", required_action):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Permission denied: role.{required_action} required",
+            )
 
 
 # Permission Routes
@@ -115,10 +138,24 @@ async def delete_permission(
 @router.get("/roles", response_model=list[schemas.RoleRead])
 async def list_roles(
     session: Annotated[AsyncSession, Depends(db.get_async_session)],
-    current_user: Annotated[models.AuthUser, Depends(auth_service.require_permission("role", "read"))],
+    current_user: Annotated[models.AuthUser, Depends(auth_service.get_current_active_user)],
+    workspace_id: Annotated[int | None, Query(description="Filter by workspace. Omit for global roles.")] = None,
 ):
-    """List all roles visible to RBAC operators."""
-    result = await session.execute(select(Role))
+    """List roles, optionally filtered by workspace scope."""
+    query = select(Role)
+
+    if workspace_id is not None:
+        # Workspace-scoped roles: user must be workspace admin/owner or have global role.read
+        if not current_user.is_workspace_admin(workspace_id) and not current_user.has_permission("role", "read"):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+        query = query.where(Role.workspace_id == workspace_id)
+    else:
+        # Global roles only: require role.read permission
+        if not current_user.has_permission("role", "read"):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied: role.read required")
+        query = query.where(Role.workspace_id.is_(None))
+
+    result = await session.execute(query)
     roles = result.scalars().all()
     return roles
 
@@ -127,7 +164,7 @@ async def list_roles(
 async def get_role(
     role_id: int,
     session: Annotated[AsyncSession, Depends(db.get_async_session)],
-    current_user: Annotated[models.AuthUser, Depends(auth_service.require_permission("role", "read"))],
+    current_user: Annotated[models.AuthUser, Depends(auth_service.get_current_active_user)],
 ):
     """Get role with permissions."""
     result = await session.execute(select(Role).where(Role.id == role_id).options(selectinload(Role.permissions)))
@@ -136,6 +173,14 @@ async def get_role(
     if not role:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
 
+    # Access control based on scope
+    if role.workspace_id is not None:
+        if not current_user.is_workspace_admin(role.workspace_id) and not current_user.has_permission("role", "read"):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    else:
+        if not current_user.has_permission("role", "read"):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied: role.read required")
+
     return role
 
 
@@ -143,15 +188,42 @@ async def get_role(
 async def create_role(
     role_data: schemas.RoleCreate,
     session: Annotated[AsyncSession, Depends(db.get_async_session)],
-    current_user: Annotated[models.AuthUser, Depends(auth_service.require_permission("role", "create"))],
+    current_user: Annotated[models.AuthUser, Depends(auth_service.get_current_active_user)],
 ):
-    """Create a new role."""
-    # Check if role already exists
-    result = await session.execute(select(Role).where(Role.name == role_data.name))
+    """Create a new role (global or workspace-scoped)."""
+    # Access control
+    if role_data.workspace_id is not None:
+        _check_workspace_admin(current_user, role_data.workspace_id)
+        # Verify workspace exists
+        ws_result = await session.execute(
+            select(models.Workspace.id).where(models.Workspace.id == role_data.workspace_id)
+        )
+        if not ws_result.scalar_one_or_none():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+    else:
+        if not current_user.has_permission("role", "create"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permission denied: role.create required",
+            )
+
+    # Check uniqueness within scope
+    uniqueness_query = select(Role).where(Role.name == role_data.name)
+    if role_data.workspace_id is not None:
+        uniqueness_query = uniqueness_query.where(Role.workspace_id == role_data.workspace_id)
+    else:
+        uniqueness_query = uniqueness_query.where(Role.workspace_id.is_(None))
+
+    result = await session.execute(uniqueness_query)
     if result.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Role with this name already exists")
 
-    role = Role(name=role_data.name, description=role_data.description, is_system=False)
+    role = Role(
+        name=role_data.name,
+        description=role_data.description,
+        is_system=False,
+        workspace_id=role_data.workspace_id,
+    )
 
     # Add permissions
     if role_data.permission_ids:
@@ -163,7 +235,7 @@ async def create_role(
     await session.commit()
     await session.refresh(role)
 
-    logger.info(f"Role created: {role.name}")
+    logger.info(f"Role created: {role.name} (workspace_id={role.workspace_id})")
     return role
 
 
@@ -172,7 +244,7 @@ async def update_role(
     role_id: int,
     role_data: schemas.RoleUpdate,
     session: Annotated[AsyncSession, Depends(db.get_async_session)],
-    current_user: Annotated[models.AuthUser, Depends(auth_service.require_permission("role", "update"))],
+    current_user: Annotated[models.AuthUser, Depends(auth_service.get_current_active_user)],
 ):
     """Update a role."""
     result = await session.execute(select(Role).where(Role.id == role_id).options(selectinload(Role.permissions)))
@@ -184,9 +256,18 @@ async def update_role(
     if role.is_system:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot modify system roles")
 
+    # Access control based on role's scope
+    _check_role_access(current_user, role, "update")
+
     if role_data.name is not None:
-        # Check if new name is already taken
-        result = await session.execute(select(Role).where(Role.name == role_data.name, Role.id != role_id))
+        # Check uniqueness within scope
+        uniqueness_query = select(Role).where(Role.name == role_data.name, Role.id != role_id)
+        if role.workspace_id is not None:
+            uniqueness_query = uniqueness_query.where(Role.workspace_id == role.workspace_id)
+        else:
+            uniqueness_query = uniqueness_query.where(Role.workspace_id.is_(None))
+
+        result = await session.execute(uniqueness_query)
         if result.scalar_one_or_none():
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Role with this name already exists")
         role.name = role_data.name
@@ -215,7 +296,7 @@ async def update_role(
 async def delete_role(
     role_id: int,
     session: Annotated[AsyncSession, Depends(db.get_async_session)],
-    current_user: Annotated[models.AuthUser, Depends(auth_service.require_permission("role", "delete"))],
+    current_user: Annotated[models.AuthUser, Depends(auth_service.get_current_active_user)],
 ):
     """Delete a role."""
     result = await session.execute(select(Role).where(Role.id == role_id))
@@ -226,6 +307,9 @@ async def delete_role(
 
     if role.is_system:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete system roles")
+
+    # Access control based on role's scope
+    _check_role_access(current_user, role, "delete")
 
     await _invalidate_users_with_role(session, role.id)
     await session.delete(role)
@@ -279,7 +363,7 @@ async def get_auth_user(
 async def assign_role_to_user(
     data: schemas.UserRoleAssign,
     session: Annotated[AsyncSession, Depends(db.get_async_session)],
-    current_user: Annotated[models.AuthUser, Depends(auth_service.require_permission("role", "assign"))],
+    current_user: Annotated[models.AuthUser, Depends(auth_service.get_current_active_user)],
 ):
     """Assign a role to a user."""
     # Check if user exists
@@ -293,6 +377,28 @@ async def assign_role_to_user(
     role = result.scalar_one_or_none()
     if not role:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
+
+    # Access control based on role's scope
+    if role.workspace_id is not None:
+        _check_workspace_admin(current_user, role.workspace_id)
+        # Target user must be a workspace member
+        member_result = await session.execute(
+            select(WorkspaceMember).where(
+                WorkspaceMember.workspace_id == role.workspace_id,
+                WorkspaceMember.auth_user_id == data.user_id,
+            )
+        )
+        if not member_result.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Target user must be a member of the workspace",
+            )
+    else:
+        if not current_user.has_permission("role", "assign"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permission denied: role.assign required",
+            )
 
     # Check if user already has this role
     if role in user.roles:
@@ -308,7 +414,7 @@ async def assign_role_to_user(
 async def remove_role_from_user(
     data: schemas.UserRoleRemove,
     session: Annotated[AsyncSession, Depends(db.get_async_session)],
-    current_user: Annotated[models.AuthUser, Depends(auth_service.require_permission("role", "assign"))],
+    current_user: Annotated[models.AuthUser, Depends(auth_service.get_current_active_user)],
 ):
     """Remove a role from a user."""
     # Check if user exists
@@ -324,6 +430,16 @@ async def remove_role_from_user(
     role = result.scalar_one_or_none()
     if not role:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
+
+    # Access control based on role's scope
+    if role.workspace_id is not None:
+        _check_workspace_admin(current_user, role.workspace_id)
+    else:
+        if not current_user.has_permission("role", "assign"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permission denied: role.assign required",
+            )
 
     # Check if user has this role
     if role not in user.roles:
@@ -359,3 +475,53 @@ async def get_user_roles(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     return user.roles
+
+
+@router.get("/oauth-connections", response_model=list[schemas.OAuthConnectionAdminRead])
+async def list_oauth_connections(
+    session: Annotated[AsyncSession, Depends(db.get_async_session)],
+    current_user: Annotated[models.AuthUser, Depends(auth_service.require_permission("auth_user", "read"))],
+    search: str | None = None,
+    provider: str | None = None,
+):
+    """List all OAuth connections across all users (admin view)."""
+
+    query = (
+        select(OAuthConnection)
+        .options(selectinload(OAuthConnection.auth_user))
+        .order_by(OAuthConnection.id.desc())
+    )
+
+    if provider:
+        query = query.where(OAuthConnection.provider == provider)
+
+    if search:
+        term = f"%{search}%"
+        query = query.where(
+            OAuthConnection.username.ilike(term)
+            | OAuthConnection.email.ilike(term)
+            | OAuthConnection.display_name.ilike(term)
+            | OAuthConnection.provider_user_id.ilike(term)
+        )
+
+    result = await session.execute(query)
+    connections = result.scalars().all()
+
+    return [
+        schemas.OAuthConnectionAdminRead(
+            id=conn.id,
+            provider=conn.provider,
+            provider_user_id=conn.provider_user_id,
+            email=conn.email,
+            username=conn.username,
+            display_name=conn.display_name,
+            avatar_url=conn.avatar_url,
+            created_at=conn.created_at,
+            updated_at=conn.updated_at,
+            auth_user_id=conn.auth_user_id,
+            auth_user_email=conn.auth_user.email if conn.auth_user else None,
+            auth_user_username=conn.auth_user.username if conn.auth_user else None,
+            token_expires_at=conn.token_expires_at,
+        )
+        for conn in connections
+    ]

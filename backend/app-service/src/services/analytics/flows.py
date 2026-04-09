@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models, schemas
 from src.core import errors, pagination
+from src.core.workspace import get_division_grid
 from src.services.team import flows as team_flows
 from src.services.user import flows as user_flows
 
@@ -101,6 +102,8 @@ async def get_analytics(
         sum([t.avg_sr for t in cache_teams.values()]) / max(len(cache_teams), 1)
     )
 
+    grid = await get_division_grid(session, None, tournament_id=tournament_id)
+
     for team_id, team in cache_teams.items():
         players = cache_players[team_id]
         team_read = await team_flows.to_pydantic(session, team, ["placement", "group"])
@@ -118,7 +121,7 @@ async def get_analytics(
                 players=[
                     schemas.PlayerAnalytics(
                         **(
-                            await team_flows.to_pydantic_player(session, player, [])
+                            await team_flows.to_pydantic_player(session, player, [], grid=grid)
                         ).model_dump(),
                         move_1=analytics.shift_one,
                         move_2=analytics.shift_two,
@@ -141,8 +144,9 @@ async def change_shift(
 ) -> schemas.PlayerAnalytics:
     analytics, calculated_shift = await service.change_shift(session, player_id, shift)
     player = await team_flows.get_player(session, player_id, [])
+    grid = await get_division_grid(session, None, tournament_id=player.tournament_id)
     return schemas.PlayerAnalytics(
-        **(await team_flows.to_pydantic_player(session, player, [])).model_dump(),
+        **(await team_flows.to_pydantic_player(session, player, [], grid=grid)).model_dump(),
         move_1=analytics.shift_one,
         move_2=analytics.shift_two,
         points=calculated_shift.shift,

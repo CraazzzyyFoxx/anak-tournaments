@@ -2,13 +2,25 @@
 const nextConfig = {
   // Only use standalone output in production builds
   ...(process.env.NODE_ENV === 'production' && { output: "standalone" }),
+  // Enable polling only inside Docker (native fs watcher doesn't work with bind mounts)
+  ...(process.env.DOCKER === '1' && { watchOptions: { pollIntervalMs: 1000 } }),
+  allowedDevOrigins: ['exultantly-peaceful-adjutant.cloudpub.ru'],
   async rewrites() {
     const apiUrl = process.env.NEXT_API_URL ?? process.env.NEXT_PUBLIC_API_URL;
+    const parserUrl = process.env.NEXT_PARSER_URL ?? process.env.NEXT_PUBLIC_PARSER_API_URL;
     return [
       {
         source: "/api/v1/:path*",
         destination: `${apiUrl}/:path*`,
       },
+      ...(parserUrl
+        ? [
+            {
+              source: "/api/parser/:path*",
+              destination: `${parserUrl}/:path*`,
+            },
+          ]
+        : []),
     ];
   },
   images: {
@@ -37,7 +49,13 @@ const nextConfig = {
         hostname: 'cdn.discordapp.com',
         port: '',
         pathname: '/**',
-      }
+      },
+      {
+        protocol: 'https',
+        hostname: 'minio.craazzzyyfoxx.me',
+        port: '',
+        pathname: '/aqt/**',
+      },
     ],
   },
 };

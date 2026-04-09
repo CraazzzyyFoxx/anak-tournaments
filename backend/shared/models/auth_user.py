@@ -18,7 +18,8 @@ ADMIN_EQUIVALENT_ROLE_NAMES = {"admin"}
 class AuthUser(db.TimeStampIntegerMixin):
     """User model for authentication"""
 
-    __tablename__ = "auth_user"
+    __tablename__ = "user"
+    __table_args__ = ({"schema": "auth"},)
 
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     username: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
@@ -35,7 +36,7 @@ class AuthUser(db.TimeStampIntegerMixin):
     player_links: Mapped[list["AuthUserPlayer"]] = relationship(
         back_populates="auth_user", cascade="all, delete-orphan"
     )
-    roles: Mapped[list["Role"]] = relationship(secondary="user_roles", back_populates="users", lazy="selectin")
+    roles: Mapped[list["Role"]] = relationship(secondary="auth.user_roles", back_populates="users", lazy="selectin")
     oauth_connections: Mapped[list["OAuthConnection"]] = relationship(
         back_populates="auth_user", cascade="all, delete-orphan", lazy="selectin"
     )
@@ -44,6 +45,8 @@ class AuthUser(db.TimeStampIntegerMixin):
         self,
         role_names: list[str],
         permissions: list[dict[str, str]],
+        workspaces: list[dict] | None = None,
+        workspace_rbac: dict[int, dict] | None = None,
     ) -> None:
         """Attach RBAC data from auth-service /validate response.
 
@@ -56,6 +59,62 @@ class AuthUser(db.TimeStampIntegerMixin):
         """
         object.__setattr__(self, "_cached_role_names", role_names)
         object.__setattr__(self, "_cached_permissions", permissions)
+        object.__setattr__(self, "_cached_workspaces", workspaces or [])
+        object.__setattr__(self, "_cached_workspace_rbac", workspace_rbac or {})
+
+    def get_workspace_ids(self) -> list[int]:
+        """Return workspace IDs the user is a member of."""
+        cached = getattr(self, "_cached_workspaces", None)
+        if cached is not None:
+            return [w["workspace_id"] for w in cached if "workspace_id" in w]
+        return []
+
+    def is_workspace_member(self, workspace_id: int) -> bool:
+        """Check if user is a member of a specific workspace."""
+        if self.is_superuser:
+            return True
+        return workspace_id in self.get_workspace_ids()
+
+    def get_workspace_role(self, workspace_id: int) -> str | None:
+        """Get user's role in a specific workspace."""
+        if self.is_superuser:
+            return "owner"
+        cached = getattr(self, "_cached_workspaces", None)
+        if cached is not None:
+            for w in cached:
+                if w.get("workspace_id") == workspace_id:
+                    return w.get("role")
+        return None
+
+    def is_workspace_admin(self, workspace_id: int) -> bool:
+        """Check if user is admin or owner of a workspace."""
+        if self.is_superuser:
+            return True
+        role = self.get_workspace_role(workspace_id)
+        return role in ("admin", "owner")
+
+    def has_workspace_permission(self, workspace_id: int, resource: str, action: str) -> bool:
+        """Check permission within a specific workspace context.
+
+        Checks: superuser -> admin role -> global permissions -> workspace-scoped permissions.
+        """
+        if self.is_superuser or self._has_admin_equivalent_role():
+            return True
+
+        # Check global permissions first
+        if self.has_permission(resource, action):
+            return True
+
+        # Check workspace-scoped permissions
+        ws_rbac: dict = getattr(self, "_cached_workspace_rbac", None) or {}
+        ws_data = ws_rbac.get(workspace_id)
+        if ws_data:
+            for p in ws_data.get("permissions", []):
+                pr, pa = p.get("resource", ""), p.get("action", "")
+                if (pr == resource or pr == "*") and (pa == action or pa == "*"):
+                    return True
+
+        return False
 
     def __repr__(self):
         return f"<AuthUser id={self.id} email={self.email}>"
@@ -107,9 +166,10 @@ class RefreshToken(db.TimeStampIntegerMixin):
     """Refresh token model for JWT authentication"""
 
     __tablename__ = "refresh_token"
+    __table_args__ = ({"schema": "auth"},)
 
     token: Mapped[str] = mapped_column(Text(), unique=True, index=True, nullable=False)
-    user_id: Mapped[int] = mapped_column(ForeignKey("auth_user.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("auth.user.id", ondelete="CASCADE"), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), nullable=False)
     is_revoked: Mapped[bool] = mapped_column(Boolean(), default=False, nullable=False)
 
@@ -127,10 +187,11 @@ class RefreshToken(db.TimeStampIntegerMixin):
 class AuthUserPlayer(db.TimeStampIntegerMixin):
     """Link between auth user and game player"""
 
-    __tablename__ = "auth_user_player"
+    __tablename__ = "user_player"
+    __table_args__ = ({"schema": "auth"},)
 
-    auth_user_id: Mapped[int] = mapped_column(ForeignKey("auth_user.id", ondelete="CASCADE"), nullable=False)
-    player_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"), nullable=False, unique=True)
+    auth_user_id: Mapped[int] = mapped_column(ForeignKey("auth.user.id", ondelete="CASCADE"), nullable=False)
+    player_id: Mapped[int] = mapped_column(ForeignKey("players.user.id", ondelete="CASCADE"), nullable=False, unique=True)
     is_primary: Mapped[bool] = mapped_column(Boolean(), default=True, nullable=False)
 
     # Relations

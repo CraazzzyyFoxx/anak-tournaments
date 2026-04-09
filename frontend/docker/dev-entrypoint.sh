@@ -2,16 +2,16 @@
 set -eu
 
 APP_DIR=/app
-LOCKFILE="$APP_DIR/package-lock.json"
-CHECKSUM_FILE="$APP_DIR/node_modules/.package-lock.cksum"
+LOCKFILE="$APP_DIR/bun.lock"
+CHECKSUM_FILE="$APP_DIR/node_modules/.bun-lock.cksum"
 
 log() {
   printf '%s %s\n' "[frontend-dev]" "$*"
 }
 
 install_dependencies() {
-  log "Installing dependencies with npm ci"
-  npm ci
+  log "Installing dependencies with bun install"
+  bun install --frozen-lockfile
   mkdir -p "$APP_DIR/node_modules"
   cksum "$LOCKFILE" > "$CHECKSUM_FILE"
 }
@@ -34,10 +34,7 @@ if [ -f "$LOCKFILE" ]; then
     log "Dependency checksum is missing"
     should_install=1
   elif [ "$current_checksum" != "$stored_checksum" ]; then
-    log "package-lock.json changed"
-    should_install=1
-  elif ! npm ls --depth=0 >/dev/null 2>&1; then
-    log "node_modules validation failed"
+    log "bun.lock changed"
     should_install=1
   fi
 
@@ -47,11 +44,11 @@ if [ -f "$LOCKFILE" ]; then
     log "Dependencies are up to date"
   fi
 else
-  log "package-lock.json not found; skipping dependency sync"
+  log "bun.lock not found; skipping dependency sync"
 fi
 
 if [ "$#" -eq 0 ]; then
-  set -- npm run dev -- --hostname 0.0.0.0 --port 3000
+  set -- bun run dev -- --hostname 0.0.0.0 --port 3000
 fi
 
 exec "$@"

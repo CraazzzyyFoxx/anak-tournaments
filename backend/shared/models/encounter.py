@@ -1,6 +1,6 @@
 import typing
 
-from sqlalchemy import Boolean, Enum, Float, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Enum, Float, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db, enums
@@ -15,6 +15,11 @@ __all__ = ("Encounter",)
 
 class Encounter(db.TimeStampIntegerMixin):
     __tablename__ = "encounter"
+
+    __table_args__ = (
+        Index("ix_encounter_tournament_group", "tournament_id", "tournament_group_id"),
+        {"schema": "tournament"},
+    )
 
     name: Mapped[str] = mapped_column(String())
     home_team_id: Mapped[int | None] = mapped_column(
@@ -33,7 +38,7 @@ class Encounter(db.TimeStampIntegerMixin):
         ForeignKey(Tournament.id, ondelete="CASCADE"), index=True
     )
     tournament_group_id: Mapped[int | None] = mapped_column(
-        ForeignKey(TournamentGroup.id, ondelete="CASCADE"), nullable=True
+        ForeignKey(TournamentGroup.id, ondelete="CASCADE"), nullable=True, index=True
     )
 
     challonge_id: Mapped[int | None] = mapped_column(Integer(), nullable=True)

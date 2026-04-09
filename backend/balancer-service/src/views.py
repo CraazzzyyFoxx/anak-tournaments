@@ -28,7 +28,7 @@ router = APIRouter(
     tags=["Balancer"],
     dependencies=[Depends(require_any_role("admin", "tournament_organizer"))],
 )
-task_router = RabbitRouter(config.RABBITMQ_URL, logger=logger)
+task_router = RabbitRouter(config.rabbitmq_url, logger=logger)
 
 TERMINAL_STATUSES = {"succeeded", "failed"}
 

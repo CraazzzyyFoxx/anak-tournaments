@@ -15,6 +15,7 @@ __all__ = (
     "ServiceTokenPayload",
     "AuthUser",
     "UserUpdate",
+    "WorkspaceMembership",
 )
 
 
@@ -70,6 +71,16 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
+class WorkspaceMembership(BaseModel):
+    """Schema for workspace membership info"""
+
+    workspace_id: int
+    slug: str
+    role: str
+    rbac_roles: list[str] = Field(default_factory=list)
+    rbac_permissions: list[dict[str, str]] = Field(default_factory=list)
+
+
 class TokenPayload(BaseModel):
     """Schema for JWT token payload"""
 
@@ -79,6 +90,7 @@ class TokenPayload(BaseModel):
     is_superuser: bool = False
     roles: list[str] = Field(default_factory=list)  # List of role names
     permissions: list[dict[str, str]] = Field(default_factory=list)  # List of {resource, action} dicts
+    workspaces: list[WorkspaceMembership] = Field(default_factory=list)
     exp: int | None = None
 
 
@@ -117,6 +129,16 @@ class PasswordSetRequest(BaseModel):
         return v
 
 
+class AuthUserWorkspace(BaseModel):
+    """Workspace RBAC info for authenticated user response."""
+
+    workspace_id: int
+    slug: str
+    role: str
+    rbac_roles: list[str] = Field(default_factory=list)
+    rbac_permissions: list[str] = Field(default_factory=list)
+
+
 class AuthUser(BaseModel):
     """Schema for authenticated user response"""
 
@@ -131,6 +153,7 @@ class AuthUser(BaseModel):
     is_verified: bool
     roles: list[str] = Field(default_factory=list)  # List of role names
     permissions: list[str] = Field(default_factory=list)  # List of "resource.action" strings
+    workspaces: list[AuthUserWorkspace] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime | None = None
 

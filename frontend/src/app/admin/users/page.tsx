@@ -2,13 +2,15 @@
 
 import { useState } from "react";
 import { ColumnDef } from "@tanstack/react-table";
-import { MoreHorizontal, Plus, Pencil, Trash2, UserPlus } from "lucide-react";
+import { MoreHorizontal, Plus, Minus, Pencil, Trash2, Upload } from "lucide-react";
+
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import { PlayerProfileDialog } from "@/components/admin/PlayerProfileDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,382 +31,246 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 import adminService from "@/services/admin.service";
-import type { User, UserDiscord, UserBattleTag, UserTwitch } from "@/types/user.types";
-import type { UserCreateInput, UserUpdateInput } from "@/types/admin.types";
+import type { User } from "@/types/user.types";
+import type { UserCreateInput, CsvUserImportParams } from "@/types/admin.types";
 import { usePermissions } from "@/hooks/usePermissions";
 import { hasUnsavedChanges } from "@/lib/form-change";
 
-interface IdentityManagementProps {
-  user: User;
-  onClose: () => void;
-  canEditIdentity: boolean;
-  canDeleteIdentity: boolean;
+
+const defaultImportParams: CsvUserImportParams = {
+  battle_tag_row: 1,
+  discord_row: 2,
+  twitch_row: 3,
+  smurf_row: 4,
+  start_row: 1,
+  delimiter: ",",
+  sheet_url: "",
+};
+
+interface ColumnStepperProps {
+  label: string;
+  value: number | null;
+  onChange: (value: number | null) => void;
+  required?: boolean;
 }
 
-function IdentityManagement({
-  user,
-  onClose,
-  canEditIdentity,
-  canDeleteIdentity,
-}: IdentityManagementProps) {
-  const queryClient = useQueryClient();
-  const [discordName, setDiscordName] = useState("");
-  const [battleTag, setBattleTag] = useState("");
-  const [twitchName, setTwitchName] = useState("");
-  const [editingDiscord, setEditingDiscord] = useState<number | null>(null);
-  const [editingBattleTag, setEditingBattleTag] = useState<number | null>(null);
-  const [editingTwitch, setEditingTwitch] = useState<number | null>(null);
-
-  const addDiscordMutation = useMutation({
-    mutationFn: (name: string) => adminService.addDiscordIdentity(user.id, { name }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
-      setDiscordName("");
-    },
-  });
-
-  const addBattleTagMutation = useMutation({
-    mutationFn: (battle_tag: string) => adminService.addBattleTagIdentity(user.id, { battle_tag }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
-      setBattleTag("");
-    },
-  });
-
-  const addTwitchMutation = useMutation({
-    mutationFn: (name: string) => adminService.addTwitchIdentity(user.id, { name }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
-      setTwitchName("");
-    },
-  });
-
-  const updateDiscordMutation = useMutation({
-    mutationFn: ({ id, name }: { id: number; name: string }) =>
-      adminService.updateDiscordIdentity(user.id, id, { name }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
-      setEditingDiscord(null);
-    },
-  });
-
-  const updateBattleTagMutation = useMutation({
-    mutationFn: ({ id, battle_tag }: { id: number; battle_tag: string }) =>
-      adminService.updateBattleTagIdentity(user.id, id, { battle_tag }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
-      setEditingBattleTag(null);
-    },
-  });
-
-  const updateTwitchMutation = useMutation({
-    mutationFn: ({ id, name }: { id: number; name: string }) =>
-      adminService.updateTwitchIdentity(user.id, id, { name }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
-      setEditingTwitch(null);
-    },
-  });
-
-  const deleteDiscordMutation = useMutation({
-    mutationFn: (id: number) => adminService.deleteDiscordIdentity(user.id, id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
-    },
-  });
-
-  const deleteBattleTagMutation = useMutation({
-    mutationFn: (id: number) => adminService.deleteBattleTagIdentity(user.id, id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
-    },
-  });
-
-  const deleteTwitchMutation = useMutation({
-    mutationFn: (id: number) => adminService.deleteTwitchIdentity(user.id, id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
-    },
-  });
+function ColumnStepper({ label, value, onChange, required }: ColumnStepperProps) {
+  const enabled = value != null;
 
   return (
-    <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+    <div className="flex items-center justify-between gap-3 rounded-lg border px-4 py-3">
+      <div className="flex items-center gap-3 min-w-0">
+        {!required && (
+          <Switch
+            checked={enabled}
+            onCheckedChange={(checked) => onChange(checked ? 1 : null)}
+          />
+        )}
+        <span className={`text-sm font-medium ${!enabled ? "text-muted-foreground" : ""}`}>
+          {label}
+        </span>
+      </div>
+      <div className="flex items-center gap-1">
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="h-8 w-8"
+          disabled={!enabled || (value ?? 0) <= 1}
+          onClick={() => onChange(Math.max(1, (value ?? 1) - 1))}
+        >
+          <Minus className="h-3 w-3" />
+        </Button>
+        <div className={`w-10 text-center tabular-nums text-sm font-medium ${!enabled ? "text-muted-foreground" : ""}`}>
+          {enabled ? value : "—"}
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="h-8 w-8"
+          disabled={!enabled}
+          onClick={() => onChange((value ?? 0) + 1)}
+        >
+          <Plus className="h-3 w-3" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+interface CsvImportDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+function CsvImportDialog({ open, onOpenChange }: CsvImportDialogProps) {
+  const queryClient = useQueryClient();
+  const [tab, setTab] = useState<string>("file");
+  const [file, setFile] = useState<File | null>(null);
+  const [params, setParams] = useState<CsvUserImportParams>({ ...defaultImportParams });
+
+  const importMutation = useMutation({
+    mutationFn: () => {
+      const submitParams = { ...params };
+      if (tab === "file") {
+        delete submitParams.sheet_url;
+      }
+      return adminService.bulkCreateUsersFromCsv(
+        submitParams,
+        tab === "file" ? file ?? undefined : undefined,
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+      onOpenChange(false);
+      setFile(null);
+      setParams({ ...defaultImportParams });
+    },
+  });
+
+  const canSubmit =
+    (tab === "file" && file !== null) || (tab === "sheet" && !!params.sheet_url);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Manage Identities - {user.name}</DialogTitle>
+          <DialogTitle>Import Users from CSV</DialogTitle>
           <DialogDescription>
-            Add, edit, or remove user identities (Discord, BattleTag, Twitch)
+            Upload a CSV file or provide a Google Sheets link to bulk-create users.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6">
-          {/* Discord Identities */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Discord</CardTitle>
-              <CardDescription>Discord usernames</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {user.discord?.map((identity: UserDiscord) => (
-                <div key={identity.id} className="flex items-center gap-2">
-                  {editingDiscord === identity.id ? (
-                    <>
-                      <Input
-                        defaultValue={identity.name}
-                        onBlur={(e) => {
-                          if (e.target.value && e.target.value !== identity.name) {
-                            updateDiscordMutation.mutate({ id: identity.id, name: e.target.value });
-                          } else {
-                            setEditingDiscord(null);
-                          }
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && e.currentTarget.value) {
-                            updateDiscordMutation.mutate({
-                              id: identity.id,
-                              name: e.currentTarget.value,
-                            });
-                          }
-                          if (e.key === "Escape") {
-                            setEditingDiscord(null);
-                          }
-                        }}
-                        autoFocus
-                      />
-                    </>
-                  ) : (
-                    <>
-                      <Badge variant="secondary" className="flex-1">
-                        {identity.name}
-                      </Badge>
-                      {canEditIdentity ? (
-                        <Button
-                          aria-label={`Edit Discord identity ${identity.name}`}
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => setEditingDiscord(identity.id)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                      ) : null}
-                      {canDeleteIdentity ? (
-                        <Button
-                          aria-label={`Delete Discord identity ${identity.name}`}
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => deleteDiscordMutation.mutate(identity.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      ) : null}
-                    </>
-                  )}
-                </div>
-              ))}
-              {canEditIdentity ? (
-                <div className="flex items-center gap-2">
-                  <Input
-                    placeholder="Add Discord username..."
-                    value={discordName}
-                    onChange={(e) => setDiscordName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && discordName) {
-                        addDiscordMutation.mutate(discordName);
-                      }
-                    }}
-                  />
-                  <Button
-                    onClick={() => discordName && addDiscordMutation.mutate(discordName)}
-                    disabled={!discordName || addDiscordMutation.isPending}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
+        <Tabs value={tab} onValueChange={setTab}>
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="file">CSV File</TabsTrigger>
+            <TabsTrigger value="sheet">Google Sheets</TabsTrigger>
+          </TabsList>
 
-          {/* BattleTag Identities */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">BattleTag</CardTitle>
-              <CardDescription>Battle.net tags (Name#1234)</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {user.battle_tag?.map((identity: UserBattleTag) => (
-                <div key={identity.id} className="flex items-center gap-2">
-                  {editingBattleTag === identity.id ? (
-                    <>
-                      <Input
-                        defaultValue={identity.battle_tag}
-                        onBlur={(e) => {
-                          if (e.target.value && e.target.value !== identity.battle_tag) {
-                            updateBattleTagMutation.mutate({
-                              id: identity.id,
-                              battle_tag: e.target.value,
-                            });
-                          } else {
-                            setEditingBattleTag(null);
-                          }
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && e.currentTarget.value) {
-                            updateBattleTagMutation.mutate({
-                              id: identity.id,
-                              battle_tag: e.currentTarget.value,
-                            });
-                          }
-                          if (e.key === "Escape") {
-                            setEditingBattleTag(null);
-                          }
-                        }}
-                        autoFocus
-                      />
-                    </>
-                  ) : (
-                    <>
-                      <Badge variant="secondary" className="flex-1">
-                        {identity.battle_tag}
-                      </Badge>
-                      {canEditIdentity ? (
-                        <Button
-                          aria-label={`Edit BattleTag identity ${identity.battle_tag}`}
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => setEditingBattleTag(identity.id)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                      ) : null}
-                      {canDeleteIdentity ? (
-                        <Button
-                          aria-label={`Delete BattleTag identity ${identity.battle_tag}`}
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => deleteBattleTagMutation.mutate(identity.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      ) : null}
-                    </>
-                  )}
-                </div>
-              ))}
-              {canEditIdentity ? (
-                <div className="flex items-center gap-2">
-                  <Input
-                    placeholder="Add BattleTag (Name#1234)..."
-                    value={battleTag}
-                    onChange={(e) => setBattleTag(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && battleTag) {
-                        addBattleTagMutation.mutate(battleTag);
-                      }
-                    }}
-                  />
-                  <Button
-                    onClick={() => battleTag && addBattleTagMutation.mutate(battleTag)}
-                    disabled={!battleTag || addBattleTagMutation.isPending}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
+          <TabsContent value="file" className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <Label htmlFor="csv-file">CSV File</Label>
+              <Input
+                id="csv-file"
+                type="file"
+                accept=".csv,.txt"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              />
+            </div>
+          </TabsContent>
 
-          {/* Twitch Identities */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Twitch</CardTitle>
-              <CardDescription>Twitch usernames</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {user.twitch?.map((identity: UserTwitch) => (
-                <div key={identity.id} className="flex items-center gap-2">
-                  {editingTwitch === identity.id ? (
-                    <>
-                      <Input
-                        defaultValue={identity.name}
-                        onBlur={(e) => {
-                          if (e.target.value && e.target.value !== identity.name) {
-                            updateTwitchMutation.mutate({ id: identity.id, name: e.target.value });
-                          } else {
-                            setEditingTwitch(null);
-                          }
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && e.currentTarget.value) {
-                            updateTwitchMutation.mutate({
-                              id: identity.id,
-                              name: e.currentTarget.value,
-                            });
-                          }
-                          if (e.key === "Escape") {
-                            setEditingTwitch(null);
-                          }
-                        }}
-                        autoFocus
-                      />
-                    </>
-                  ) : (
-                    <>
-                      <Badge variant="secondary" className="flex-1">
-                        {identity.name}
-                      </Badge>
-                      {canEditIdentity ? (
-                        <Button
-                          aria-label={`Edit Twitch identity ${identity.name}`}
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => setEditingTwitch(identity.id)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                      ) : null}
-                      {canDeleteIdentity ? (
-                        <Button
-                          aria-label={`Delete Twitch identity ${identity.name}`}
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => deleteTwitchMutation.mutate(identity.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      ) : null}
-                    </>
-                  )}
-                </div>
-              ))}
-              {canEditIdentity ? (
-                <div className="flex items-center gap-2">
-                  <Input
-                    placeholder="Add Twitch username..."
-                    value={twitchName}
-                    onChange={(e) => setTwitchName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && twitchName) {
-                        addTwitchMutation.mutate(twitchName);
-                      }
-                    }}
-                  />
-                  <Button
-                    onClick={() => twitchName && addTwitchMutation.mutate(twitchName)}
-                    disabled={!twitchName || addTwitchMutation.isPending}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
+          <TabsContent value="sheet" className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <Label htmlFor="sheet-url">Google Sheets URL</Label>
+              <Input
+                id="sheet-url"
+                placeholder="https://docs.google.com/spreadsheets/d/..."
+                value={params.sheet_url ?? ""}
+                onChange={(e) => setParams({ ...params, sheet_url: e.target.value })}
+              />
+              <p className="text-xs text-muted-foreground">
+                Sheet must be publicly accessible (or shared via link).
+              </p>
+            </div>
+          </TabsContent>
+        </Tabs>
+
+        <div className="space-y-3 pt-2">
+          <p className="text-sm font-medium">Column Mapping</p>
+          <div className="space-y-2">
+            <ColumnStepper
+              label="BattleTag"
+              value={params.battle_tag_row}
+              onChange={(v) => setParams({ ...params, battle_tag_row: v ?? 1 })}
+              required
+            />
+            <ColumnStepper
+              label="Discord"
+              value={params.discord_row}
+              onChange={(v) => setParams({ ...params, discord_row: v })}
+            />
+            <ColumnStepper
+              label="Twitch"
+              value={params.twitch_row}
+              onChange={(v) => setParams({ ...params, twitch_row: v })}
+            />
+            <ColumnStepper
+              label="Smurf"
+              value={params.smurf_row}
+              onChange={(v) => setParams({ ...params, smurf_row: v })}
+            />
+          </div>
         </div>
 
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="start-row">Start Row</Label>
+            <div className="flex items-center gap-1">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-9 w-9 shrink-0"
+                disabled={(params.start_row ?? 0) <= 0}
+                onClick={() => setParams({ ...params, start_row: Math.max(0, (params.start_row ?? 0) - 1) })}
+              >
+                <Minus className="h-3 w-3" />
+              </Button>
+              <div className="flex-1 text-center tabular-nums text-sm font-medium">
+                {params.start_row ?? 0}
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-9 w-9 shrink-0"
+                onClick={() => setParams({ ...params, start_row: (params.start_row ?? 0) + 1 })}
+              >
+                <Plus className="h-3 w-3" />
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Skip header rows (0 = no skip)
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="delimiter">Delimiter</Label>
+            <Input
+              id="delimiter"
+              value={params.delimiter ?? ","}
+              onChange={(e) =>
+                setParams({ ...params, delimiter: e.target.value })
+              }
+            />
+          </div>
+        </div>
+
+        {importMutation.error instanceof Error && (
+          <p className="text-sm text-destructive">{importMutation.error.message}</p>
+        )}
+
         <DialogFooter>
-          <Button onClick={onClose}>Close</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => importMutation.mutate()}
+            disabled={!canSubmit || importMutation.isPending}
+          >
+            {importMutation.isPending ? "Importing..." : "Import"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -415,34 +281,22 @@ export default function UsersAdminPage() {
   const queryClient = useQueryClient();
   const { hasPermission } = usePermissions();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [profileUser, setProfileUser] = useState<User | null>(null);
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
-  const [managingIdentities, setManagingIdentities] = useState<User | null>(null);
-  const [formData, setFormData] = useState<UserCreateInput | UserUpdateInput>({ name: "" });
+  const [createName, setCreateName] = useState("");
   const canCreate = hasPermission("user.create");
   const canUpdate = hasPermission("user.update");
   const canDelete = hasPermission("user.delete");
-  const canManageIdentities = canUpdate || canDelete;
-  const createFormInitial: UserCreateInput = { name: "" };
-  const editFormInitial: UserUpdateInput = editingUser ? { name: editingUser.name } : createFormInitial;
-  const isFormDirty = (createDialogOpen || !!editingUser) && hasUnsavedChanges(formData, editingUser ? editFormInitial : createFormInitial);
+  const canOpenProfile = canUpdate || canDelete;
+  const isCreateDirty = createDialogOpen && hasUnsavedChanges({ name: createName }, { name: "" });
 
   const createMutation = useMutation({
     mutationFn: (data: UserCreateInput) => adminService.createUser(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
       setCreateDialogOpen(false);
-      setFormData({ name: "" });
-    },
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: UserUpdateInput }) =>
-      adminService.updateUser(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
-      setEditingUser(null);
-      setFormData({ name: "" });
+      setCreateName("");
     },
   });
 
@@ -454,53 +308,121 @@ export default function UsersAdminPage() {
     },
   });
 
-  const openEditUserDialog = (user: User) => {
-    updateMutation.reset();
-    setEditingUser(user);
-    setFormData({ name: user.name });
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingUser) {
-      updateMutation.mutate({ id: editingUser.id, data: formData as UserUpdateInput });
-    } else {
-      createMutation.mutate(formData as UserCreateInput);
-    }
+    createMutation.mutate({ name: createName });
   };
 
   const columns: ColumnDef<User>[] = [
     {
       accessorKey: "id",
       header: "ID",
-      size: 80,
+      size: 60,
     },
     {
       accessorKey: "name",
       header: "Name",
+      cell: ({ row }) => {
+        const user = row.original;
+        const initials = user.name
+          .split(/[#\s]+/)
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((s) => s[0]?.toUpperCase())
+          .join("");
+        return (
+          <div className="flex items-center gap-2.5">
+            <Avatar className="h-7 w-7 text-[11px]">
+              <AvatarImage src={user.avatar_url ?? undefined} alt={user.name} />
+              <AvatarFallback className="bg-muted/60 text-muted-foreground font-medium">
+                {initials || "?"}
+              </AvatarFallback>
+            </Avatar>
+            <span className="font-medium truncate">{user.name}</span>
+          </div>
+        );
+      },
     },
     {
       id: "identities",
       header: "Identities",
       cell: ({ row }) => {
         const user = row.original;
-        const identityCount =
-          (user.discord?.length || 0) + (user.battle_tag?.length || 0) + (user.twitch?.length || 0);
+        const discordCount = user.discord?.length || 0;
+        const battleTagCount = user.battle_tag?.length || 0;
+        const twitchCount = user.twitch?.length || 0;
+        const totalCount = discordCount + battleTagCount + twitchCount;
+
+        if (totalCount === 0) {
+          return (
+            <span className="text-xs text-muted-foreground/50 italic">
+              No identities linked
+            </span>
+          );
+        }
+
         return (
-          <div className="flex gap-1">
-            {user.discord && user.discord.length > 0 && (
-              <Badge variant="outline">{user.discord.length} Discord</Badge>
-            )}
-            {user.battle_tag && user.battle_tag.length > 0 && (
-              <Badge variant="outline">{user.battle_tag.length} BattleTag</Badge>
-            )}
-            {user.twitch && user.twitch.length > 0 && (
-              <Badge variant="outline">{user.twitch.length} Twitch</Badge>
-            )}
-            {identityCount === 0 && (
-              <span className="text-sm text-muted-foreground">No identities</span>
-            )}
-          </div>
+          <TooltipProvider delayDuration={200}>
+            <div className="flex items-center gap-1.5">
+              {discordCount > 0 && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge
+                      className="border-[#5865F2]/30 bg-[#5865F2]/10 text-[#5865F2] hover:bg-[#5865F2]/20 gap-1.5 cursor-default"
+                      variant="outline"
+                    >
+                      <img src="/discord.png" alt="" className="h-3 w-3" />
+                      {discordCount}
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-xs">
+                    <p className="font-medium mb-1">Discord ({discordCount})</p>
+                    {user.discord.map((d) => (
+                      <p key={d.id} className="text-xs opacity-80">{d.name}</p>
+                    ))}
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              {battleTagCount > 0 && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge
+                      className="border-[#148EFF]/30 bg-[#148EFF]/10 text-[#148EFF] hover:bg-[#148EFF]/20 gap-1.5 cursor-default"
+                      variant="outline"
+                    >
+                      <img src="/battlenet.svg" alt="" className="h-3 w-3" />
+                      {battleTagCount}
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-xs">
+                    <p className="font-medium mb-1">BattleTag ({battleTagCount})</p>
+                    {user.battle_tag.map((bt) => (
+                      <p key={bt.id} className="text-xs opacity-80">{bt.battle_tag}</p>
+                    ))}
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              {twitchCount > 0 && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge
+                      className="border-[#9146FF]/30 bg-[#9146FF]/10 text-[#9146FF] hover:bg-[#9146FF]/20 gap-1.5 cursor-default"
+                      variant="outline"
+                    >
+                      <img src="/twitch.png" alt="" className="h-3 w-3" />
+                      {twitchCount}
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-xs">
+                    <p className="font-medium mb-1">Twitch ({twitchCount})</p>
+                    {user.twitch.map((tw) => (
+                      <p key={tw.id} className="text-xs opacity-80">{tw.name}</p>
+                    ))}
+                  </TooltipContent>
+                </Tooltip>
+              )}
+            </div>
+          </TooltipProvider>
         );
       },
     },
@@ -509,7 +431,7 @@ export default function UsersAdminPage() {
       size: 50,
       cell: ({ row }) => {
         const user = row.original;
-        if (!canManageIdentities && !canUpdate && !canDelete) {
+        if (!canOpenProfile && !canDelete) {
           return null;
         }
         return (
@@ -521,27 +443,19 @@ export default function UsersAdminPage() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>Actions</DropdownMenuLabel>
-              {canManageIdentities ? (
-                <DropdownMenuItem onClick={() => setManagingIdentities(user)}>
-                  <UserPlus className="mr-2 h-4 w-4" />
-                  Manage Identities
-                </DropdownMenuItem>
-              ) : null}
-              {(canManageIdentities && (canUpdate || canDelete)) ? <DropdownMenuSeparator /> : null}
-              {canUpdate ? (
-                <DropdownMenuItem
-                  onClick={() => openEditUserDialog(user)}
-                >
+              {canOpenProfile && (
+                <DropdownMenuItem onClick={() => setProfileUser(user)}>
                   <Pencil className="mr-2 h-4 w-4" />
-                  Edit
+                  Edit Profile
                 </DropdownMenuItem>
-              ) : null}
-              {canDelete ? (
+              )}
+              {canOpenProfile && canDelete && <DropdownMenuSeparator />}
+              {canDelete && (
                 <DropdownMenuItem onClick={() => setDeletingUser(user)} className="text-destructive">
                   <Trash2 className="mr-2 h-4 w-4" />
                   Delete
                 </DropdownMenuItem>
-              ) : null}
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         );
@@ -556,17 +470,25 @@ export default function UsersAdminPage() {
         description="Manage tournament identity records and linked Discord, BattleTag, and Twitch handles."
         actions={
           canCreate ? (
-            <Button
-              onClick={() => {
-                createMutation.reset();
-                updateMutation.reset();
-                setFormData({ name: "" });
-                setCreateDialogOpen(true);
-              }}
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              Create User
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setImportDialogOpen(true)}
+              >
+                <Upload className="mr-2 h-4 w-4" />
+                Import CSV
+              </Button>
+              <Button
+                onClick={() => {
+                  createMutation.reset();
+                  setCreateName("");
+                  setCreateDialogOpen(true);
+                }}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Create User
+              </Button>
+            </div>
           ) : null
         }
       />
@@ -577,42 +499,38 @@ export default function UsersAdminPage() {
         columns={columns}
         searchPlaceholder="Search users..."
         emptyMessage="No users found."
-        onRowClick={canManageIdentities ? (row) => setManagingIdentities(row.original) : undefined}
-        onRowDoubleClick={canUpdate ? (row) => openEditUserDialog(row.original) : undefined}
+        onRowClick={canOpenProfile ? (row) => setProfileUser(row.original) : undefined}
       />
 
-      {/* Create/Edit Dialog */}
+      {/* Create User Dialog */}
       <EntityFormDialog
-        open={createDialogOpen || !!editingUser}
+        open={createDialogOpen}
         onOpenChange={(open) => {
           if (!open) {
             setCreateDialogOpen(false);
-            setEditingUser(null);
-            setFormData({ name: "" });
+            setCreateName("");
           }
         }}
-        title={editingUser ? "Edit User" : "Create User"}
-        description={
-          editingUser ? "Update user information" : "Create a new user in the system"
-        }
-        onSubmit={handleSubmit}
-        isSubmitting={createMutation.isPending || updateMutation.isPending}
-        submittingLabel={editingUser ? "Updating player identity…" : "Creating player identity…"}
+        title="Create User"
+        description="Create a new player identity in the system."
+        onSubmit={handleCreateSubmit}
+        isSubmitting={createMutation.isPending}
+        submittingLabel="Creating player identity…"
         errorMessage={
-          (editingUser ? updateMutation.error : createMutation.error) instanceof Error
-            ? (editingUser ? updateMutation.error : createMutation.error)?.message
+          createMutation.error instanceof Error
+            ? createMutation.error.message
             : undefined
         }
-        isDirty={isFormDirty}
+        isDirty={isCreateDirty}
       >
         <div className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="name">Name</Label>
             <Input
               id="name"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="User name"
+              value={createName}
+              onChange={(e) => setCreateName(e.target.value)}
+              placeholder="Player name (e.g. Karnage#22778)"
               required
             />
           </div>
@@ -636,15 +554,21 @@ export default function UsersAdminPage() {
         />
       )}
 
-      {/* Identity Management Dialog */}
-      {managingIdentities && (
-        <IdentityManagement
-          user={managingIdentities}
-          onClose={() => setManagingIdentities(null)}
-          canEditIdentity={canUpdate}
-          canDeleteIdentity={canDelete}
+      {/* Unified Player Profile Dialog */}
+      {profileUser && (
+        <PlayerProfileDialog
+          user={profileUser}
+          onClose={() => setProfileUser(null)}
+          canEdit={canUpdate}
+          canDelete={canDelete}
         />
       )}
+
+      {/* CSV Import Dialog */}
+      <CsvImportDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+      />
     </div>
   );
 }

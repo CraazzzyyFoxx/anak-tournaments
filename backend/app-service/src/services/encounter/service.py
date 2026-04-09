@@ -6,6 +6,7 @@ from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from src import models, schemas
 from src.core import enums, pagination, utils
+from src.core.workspace import workspace_filter
 from src.services.map import service as map_service
 from src.services.team import service as team_service
 from src.services.tournament import service as tournament_service
@@ -296,7 +297,7 @@ async def get_by_user_with_teams(
 
 
 async def get_by_user(
-    session: AsyncSession, user_id: int, params: pagination.PaginationSortParams
+    session: AsyncSession, user_id: int, params: pagination.PaginationSortParams, workspace_id: int | None = None
 ) -> tuple[
     typing.Sequence[tuple[models.Encounter, models.Match, int, list[dict]]], int
 ]:
@@ -340,6 +341,14 @@ async def get_by_user(
         )
         .where(sa.and_(models.Player.user_id == user_id))
     )
+
+    if workspace_id is not None:
+        total_query = total_query.join(
+            models.Tournament, models.Encounter.tournament_id == models.Tournament.id
+        ).where(*workspace_filter(workspace_id))
+        encounters_query = encounters_query.join(
+            models.Tournament, models.Encounter.tournament_id == models.Tournament.id
+        ).where(*workspace_filter(workspace_id))
 
     encounters_query = params.apply_pagination_sort(encounters_query)
     encounters_query = encounters_query.subquery()
@@ -429,7 +438,8 @@ async def get_encounter(
 
 
 async def get_all_encounters(
-    session: AsyncSession, params: schemas.EncounterSearchParams
+    session: AsyncSession, params: schemas.EncounterSearchParams,
+    workspace_id: int | None = None,
 ) -> tuple[typing.Sequence[models.Encounter], int]:
     """
     Retrieves a paginated list of encounters based on search parameters.
@@ -437,6 +447,7 @@ async def get_all_encounters(
     Parameters:
         session (AsyncSession): The SQLAlchemy async session.
         params (schemas.EncounterSearchParams): Search, pagination, and sorting parameters.
+        workspace_id (int | None): Optional workspace ID to filter encounters.
 
     Returns:
         tuple[typing.Sequence[models.Encounter], int]: A tuple containing:
@@ -454,6 +465,13 @@ async def get_all_encounters(
     if params.tournament_id:
         query = query.where(sa.and_(models.Encounter.tournament_id == params.tournament_id))
         total_query = total_query.where(sa.and_(models.Encounter.tournament_id == params.tournament_id))
+
+    if workspace_id is not None:
+        if "tournament" not in params.entities:
+            query = query.join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
+            total_query = total_query.join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
+        query = query.where(*workspace_filter(workspace_id))
+        total_query = total_query.where(*workspace_filter(workspace_id))
 
     query = params.apply_pagination_sort(query)
 
@@ -590,7 +608,7 @@ async def get_by_team_group(
 
 
 async def get_all_matches(
-    session: AsyncSession, params: schemas.MatchSearchParams
+    session: AsyncSession, params: schemas.MatchSearchParams, workspace_id: int | None = None
 ) -> tuple[typing.Sequence[models.Match], int]:
     """
     Retrieves a paginated list of matches based on search parameters.
@@ -648,6 +666,15 @@ async def get_all_matches(
         total_query = total_query.where(
             sa.and_(models.Match.away_team_id == params.away_team_id)
         )
+
+    if workspace_id is not None:
+        if not encounter_joined:
+            query = query.join(models.Encounter, models.Match.encounter_id == models.Encounter.id)
+            total_query = total_query.join(models.Encounter, models.Match.encounter_id == models.Encounter.id)
+        query = query.join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
+        total_query = total_query.join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
+        query = query.where(models.Tournament.workspace_id == workspace_id)
+        total_query = total_query.where(models.Tournament.workspace_id == workspace_id)
 
     query = params.apply_pagination_sort(query, models.Match)
 

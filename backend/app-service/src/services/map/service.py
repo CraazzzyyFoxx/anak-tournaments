@@ -156,6 +156,13 @@ async def get_top_maps(
         .group_by(models.Map.id)
     )
 
+    if params.tournament_id:
+        subquery_query = (
+            subquery_query
+            .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
+            .where(models.Encounter.tournament_id == params.tournament_id)
+        )
+
     if params.gamemode_id:
         subquery_query = subquery_query.where(sa.and_(models.Map.gamemode_id == params.gamemode_id))
 

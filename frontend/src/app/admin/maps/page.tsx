@@ -32,7 +32,7 @@ import { Badge } from "@/components/ui/badge";
 import adminService from "@/services/admin.service";
 import type { MapRead } from "@/types/map.types";
 import type { MapCreateInput, MapUpdateInput } from "@/types/admin.types";
-import { customFetch } from "@/lib/custom_fetch";
+import { apiFetch } from "@/lib/api-fetch";
 import type { Gamemode } from "@/types/gamemode.types";
 import type { PaginatedResponse } from "@/types/pagination.types";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -93,7 +93,7 @@ export default function MapsAdminPage() {
   const { data: gamemodesData } = useQuery({
     queryKey: ["gamemodes"],
     queryFn: async () => {
-      const response = await customFetch("/gamemodes");
+      const response = await apiFetch("app","/gamemodes");
       const data = (await response.json()) as PaginatedResponse<Gamemode>;
       return data.results;
     },

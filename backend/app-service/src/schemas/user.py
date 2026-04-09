@@ -160,12 +160,14 @@ class UserMapsSummary(BaseModel):
 class UserMapsSearchQueryParams(pagination.PaginationSortSearchQueryParams):
     min_count: int | None = Field(default=None, ge=1)
     gamemode_id: int | None = None
+    tournament_id: int | None = None
 
 
 @dataclass
 class UserMapsSearchParams(pagination.PaginationSortSearchParams):
     min_count: int | None = None
     gamemode_id: int | None = None
+    tournament_id: int | None = None
 
     def apply_search(self, query: sa.Select, model: type) -> sa.Select:
         fields = self.fields if self.fields else ["name"]

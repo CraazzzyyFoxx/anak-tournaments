@@ -1,5 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.division_grid import DivisionGrid
+
 from src import models, schemas
 from src.core import errors, pagination
 
@@ -10,6 +12,9 @@ async def get_hero_leaderboard(
     session: AsyncSession,
     hero_id: int,
     params: schemas.HeroLeaderboardParams,
+    workspace_id: int | None = None,
+    *,
+    grid: DivisionGrid,
 ) -> pagination.Paginated[schemas.HeroLeaderboardEntry]:
     rows, total = await service.get_hero_leaderboard(
         session,
@@ -17,6 +22,8 @@ async def get_hero_leaderboard(
         tournament_id=params.tournament_id,
         stat=params.stat,
         params=pagination.PaginationParams(page=params.page, per_page=params.per_page),
+        workspace_id=workspace_id,
+        grid=grid,
     )
     return pagination.Paginated(
         page=params.page,
@@ -139,7 +146,7 @@ async def get_all(
 
 
 async def get_playtime(
-    session: AsyncSession, params: schemas.HeroPlaytimePaginationParams
+    session: AsyncSession, params: schemas.HeroPlaytimePaginationParams, workspace_id: int | None = None
 ) -> pagination.Paginated[schemas.HeroPlaytime]:
     """
     Retrieves a paginated list of heroes with their playtime statistics.
@@ -147,11 +154,12 @@ async def get_playtime(
     Parameters:
         session (AsyncSession): The SQLAlchemy async session.
         params (schemas.HeroPlaytimePaginationParams): Pagination and filtering parameters.
+        workspace_id (int | None): Optional workspace ID to filter by.
 
     Returns:
         pagination.Paginated[schemas.HeroPlaytime]: A paginated list of Pydantic schemas representing the heroes with their playtime percentages.
     """
-    heroes = await service.get_heroes_playtime(session, params)
+    heroes = await service.get_heroes_playtime(session, params, workspace_id=workspace_id)
     total = len(heroes)
     heroes = params.paginate_data(heroes)
     return pagination.Paginated(

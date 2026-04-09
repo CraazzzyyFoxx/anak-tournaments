@@ -34,6 +34,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePermissions } from "@/hooks/usePermissions";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import { paginateResults, sortArray } from "@/lib/paginate-results";
@@ -73,12 +74,39 @@ export default function StandingsPage() {
   const [recalculateDialogOpen, setRecalculateDialogOpen] = useState(false);
   const [selectedStanding, setSelectedStanding] = useState<Standings | null>(null);
   const [selectedTournamentId, setSelectedTournamentId] = useState<number | null>(null);
+  const [selectedGroupFilter, setSelectedGroupFilter] = useState<string>("all");
 
   // Fetch tournaments
   const { data: tournamentsData } = useQuery({
     queryKey: ["tournaments"],
     queryFn: () => tournamentService.getAll(null)
   });
+
+  // Fetch standings to extract groups for tabs
+  const { data: allStandings } = useQuery({
+    queryKey: ["standings", selectedTournamentId],
+    queryFn: () => tournamentService.getStandings(selectedTournamentId!),
+    enabled: !!selectedTournamentId
+  });
+
+  // Extract unique groups from standings
+  const groupTabs = (() => {
+    if (!allStandings || allStandings.length === 0) return [];
+    const groupMap = new Map<number, { id: number; name: string; is_groups: boolean }>();
+    for (const standing of allStandings) {
+      if (standing.group && !groupMap.has(standing.group_id)) {
+        groupMap.set(standing.group_id, {
+          id: standing.group_id,
+          name: standing.group.name,
+          is_groups: standing.group.is_groups
+        });
+      }
+    }
+    const groups = Array.from(groupMap.values());
+    const playoffGroups = groups.filter((g) => !g.is_groups).sort((a, b) => a.name.localeCompare(b.name));
+    const stageGroups = groups.filter((g) => g.is_groups).sort((a, b) => a.name.localeCompare(b.name));
+    return [...playoffGroups, ...stageGroups];
+  })();
 
   // Form state
   const [formData, setFormData] = useState<StandingUpdateInput>({
@@ -279,16 +307,20 @@ export default function StandingsPage() {
       <div className="flex items-center gap-4">
         <Label htmlFor="tournament-filter">Filter by Tournament:</Label>
         <Select
-          value={selectedTournamentId?.toString() || ""}
-          onValueChange={(value) => setSelectedTournamentId(value ? parseInt(value) : null)}
+          value={selectedTournamentId?.toString() || "all"}
+          onValueChange={(value) => {
+            setSelectedTournamentId(value === "all" ? null : parseInt(value));
+            setSelectedGroupFilter("all");
+          }}
         >
           <SelectTrigger className="w-[300px]">
-            <SelectValue placeholder="Select Tournament" />
+            <SelectValue placeholder="All Tournaments" />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value="all">All Tournaments</SelectItem>
             {tournamentsData?.results.map((tournament) => (
               <SelectItem key={tournament.id} value={tournament.id.toString()}>
-                {tournament.is_league ? tournament.name : `Tournament ${tournament.number}`}
+                {tournament.name}
               </SelectItem>
             ))}
           </SelectContent>
@@ -300,20 +332,39 @@ export default function StandingsPage() {
           <p className="text-sm text-muted-foreground">
             Showing standings for{" "}
             <span className="font-semibold">
-              {selectedTournament?.name || `Tournament ${selectedTournamentId}`}
+              {selectedTournament?.name ?? "—"}
             </span>
           </p>
         </div>
       ) : null}
 
+      {selectedTournamentId && groupTabs.length > 0 ? (
+        <Tabs value={selectedGroupFilter} onValueChange={setSelectedGroupFilter}>
+          <TabsList>
+            <TabsTrigger value="all">All</TabsTrigger>
+            {groupTabs.map((group) => (
+              <TabsTrigger key={group.id} value={group.id.toString()}>
+                {group.name}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+      ) : null}
+
       <AdminDataTable
-        queryKey={(page, search, pageSize, sortField, sortDir) => ["standings", selectedTournamentId, page, search, pageSize, sortField, sortDir]}
+        queryKey={(page, search, pageSize, sortField, sortDir) => ["standings-table", selectedTournamentId, selectedGroupFilter, allStandings?.length ?? 0, page, search, pageSize, sortField, sortDir]}
         queryFn={async (page, search, pageSize, sortField, sortDir) => {
-          if (!selectedTournamentId) {
+          if (!selectedTournamentId || !allStandings) {
             return { results: [], total: 0, page: 1, per_page: pageSize };
           }
 
-          const data = await tournamentService.getStandings(selectedTournamentId);
+          let data = allStandings;
+
+          if (selectedGroupFilter !== "all") {
+            const groupId = parseInt(selectedGroupFilter);
+            data = data.filter((standing) => standing.group_id === groupId);
+          }
+
           const normalizedSearch = search.trim().toLowerCase();
           const filtered = normalizedSearch
             ? data.filter((standing) =>
@@ -331,6 +382,7 @@ export default function StandingsPage() {
             ? "No standings found. Click 'Recalculate Standings' to generate them."
             : "Select a tournament to view standings."
         }
+
         onRowDoubleClick={canUpdate ? (row) => handleEdit(row.original) : undefined}
       />
 

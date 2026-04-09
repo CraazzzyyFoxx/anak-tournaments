@@ -1,6 +1,10 @@
 import {
+  Award,
   BarChart3,
+  Building2,
   Gamepad2,
+  KeyRound,
+  Layers,
   LayoutDashboard,
   Map,
   type LucideIcon,
@@ -9,6 +13,7 @@ import {
   Swords,
   Trophy,
   UserCircle,
+  UserCog,
   Users,
 } from "lucide-react";
 
@@ -21,6 +26,7 @@ export type AdminNavItem = {
   description: string;
   permissions?: AppPermission[];
   superuserOnly?: boolean;
+  workspaceAdminVisible?: boolean;
 };
 
 export type AdminNavGroup = {
@@ -115,6 +121,20 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         description: "Resolve Discord, BattleTag, and Twitch identities.",
         permissions: ["user.read"],
       },
+      {
+        title: "Divisions",
+        href: "/admin/divisions",
+        icon: Layers,
+        description: "Configure division grids and rank thresholds per workspace.",
+        workspaceAdminVisible: true,
+      },
+      {
+        title: "Achievements",
+        href: "/admin/achievements",
+        icon: Award,
+        description: "Manage achievement definitions and trigger calculations.",
+        permissions: ["achievement.read"],
+      },
     ],
   },
   {
@@ -159,6 +179,7 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         icon: Shield,
         description: "Role catalog and permission bundles.",
         permissions: accessRolesPermissions,
+        workspaceAdminVisible: true,
       },
       {
         title: "Permissions",
@@ -166,6 +187,27 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         icon: Shield,
         description: "Permission visibility and governance.",
         permissions: accessPermissionsPermissions,
+      },
+      {
+        title: "OAuth Connections",
+        href: "/admin/access/oauth",
+        icon: KeyRound,
+        description: "View OAuth provider connections linked to user accounts.",
+        permissions: accessUsersPermissions,
+      },
+      {
+        title: "Workspaces",
+        href: "/admin/workspaces",
+        icon: Building2,
+        description: "Manage workspaces and their settings.",
+        workspaceAdminVisible: true,
+      },
+      {
+        title: "Workspace Members",
+        href: "/admin/workspaces/members",
+        icon: UserCog,
+        description: "Manage workspace member access and roles.",
+        workspaceAdminVisible: true,
       },
       {
         title: "Settings",
@@ -182,11 +224,15 @@ export const adminRoutePermissions: Array<{
   prefix: string;
   permissions: AppPermission[];
   superuserOnly?: boolean;
+  workspaceAdminVisible?: boolean;
 }> = [
   { prefix: "/admin/access/users", permissions: accessUsersPermissions },
-  { prefix: "/admin/access/roles", permissions: accessRolesPermissions },
+  { prefix: "/admin/access/roles", permissions: accessRolesPermissions, workspaceAdminVisible: true },
+  { prefix: "/admin/access/oauth", permissions: accessUsersPermissions },
   { prefix: "/admin/access/permissions", permissions: accessPermissionsPermissions },
   { prefix: "/admin/access", permissions: accessAdminPermissions },
+  { prefix: "/admin/workspaces/members", permissions: [], workspaceAdminVisible: true },
+  { prefix: "/admin/workspaces", permissions: [], workspaceAdminVisible: true },
   { prefix: "/admin/settings", permissions: [], superuserOnly: true },
   { prefix: "/admin/balancer", permissions: ["team.import"] },
   { prefix: "/admin/tournaments", permissions: ["tournament.read"] },
@@ -199,6 +245,7 @@ export const adminRoutePermissions: Array<{
   { prefix: "/admin/gamemodes", permissions: ["gamemode.read"] },
   { prefix: "/admin/maps", permissions: ["map.read"] },
   { prefix: "/admin/achievements", permissions: ["achievement.read"] },
+  { prefix: "/admin/divisions", permissions: [], workspaceAdminVisible: true },
   { prefix: "/admin", permissions: adminEntryPermissions },
 ];
 
@@ -220,9 +267,32 @@ export function isAdminNavItemActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+/**
+ * Given all nav hrefs, returns the one that best matches the pathname
+ * (longest prefix). This prevents parent routes from being active when
+ * a more specific child route matches.
+ */
+export function getActiveAdminNavHref(pathname: string, allHrefs: string[]): string | null {
+  let best: string | null = null;
+  for (const href of allHrefs) {
+    if (href === "/admin") {
+      if (pathname === "/admin") best = href;
+      continue;
+    }
+    if (pathname === href || pathname.startsWith(`${href}/`)) {
+      if (!best || href.length > best.length) {
+        best = href;
+      }
+    }
+  }
+  return best;
+}
+
 export function getVisibleAdminNavigationGroups(
   isSuperuser: boolean,
   hasAnyPermission: (permissions: AppPermission[]) => boolean,
+  hasAdminRole = false,
+  canManageAnyWorkspace = false,
 ) {
   return adminNavigationGroups
     .filter((group) => !group.superuserOnly || isSuperuser)
@@ -233,11 +303,15 @@ export function getVisibleAdminNavigationGroups(
           return isSuperuser;
         }
 
+        if (item.workspaceAdminVisible) {
+          return isSuperuser || canManageAnyWorkspace;
+        }
+
         if (!item.permissions || item.permissions.length === 0) {
           return true;
         }
 
-        return isSuperuser || hasAnyPermission(item.permissions);
+        return isSuperuser || hasAdminRole || hasAnyPermission(item.permissions);
       }),
     }))
     .filter((group) => group.items.length > 0);

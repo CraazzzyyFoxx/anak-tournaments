@@ -3,6 +3,7 @@
 // ─── Tournament ──────────────────────────────────────────────────────────────
 
 export interface TournamentCreateInput {
+  workspace_id: number;
   name: string;
   number?: number;
   description?: string;
@@ -229,18 +230,37 @@ export interface MapUpdateInput {
 
 export interface AchievementCreateInput {
   name: string;
-  description?: string;
-  category?: string;
-  icon?: string;
-  hero_id?: number;
+  slug: string;
+  description_ru: string;
+  description_en: string;
+  image_url?: string | null;
+  hero_id?: number | null;
 }
 
 export interface AchievementUpdateInput {
   name?: string;
-  description?: string;
-  category?: string;
-  icon?: string;
-  hero_id?: number;
+  slug?: string;
+  description_ru?: string;
+  description_en?: string;
+  image_url?: string | null;
+  hero_id?: number | null;
+}
+
+export interface AchievementRegistryEntry {
+  slug: string;
+  category: string;
+  tournament_required: boolean;
+}
+
+export interface CalculationLogEntry {
+  type: "start" | "progress" | "info" | "complete" | "error";
+  slug?: string;
+  index?: number;
+  total?: number;
+  status?: "running" | "done" | "error";
+  message?: string;
+  slugs?: string[];
+  executed?: string[];
 }
 
 // ─── Discord Channel Sync ─────────────────────────────────────────────────────
@@ -290,6 +310,7 @@ export interface QueueDepth {
   messages_ready: number;
   messages_unacknowledged: number;
   consumers: number;
+  status: "ok" | "not_found" | "error";
 }
 
 export interface LogStreamEvent {
@@ -309,4 +330,17 @@ export interface BulkOperationResult {
   success: boolean;
   count: number;
   errors?: string[];
+}
+
+export interface CsvUserImportParams {
+  battle_tag_row: number;
+  discord_row: number | null;
+  twitch_row: number | null;
+  smurf_row: number | null;
+  start_row?: number;
+  delimiter?: string;
+  has_discord?: boolean;
+  has_smurf?: boolean;
+  has_twitch?: boolean;
+  sheet_url?: string;
 }

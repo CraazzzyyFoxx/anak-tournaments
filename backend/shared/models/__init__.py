@@ -2,6 +2,7 @@ from .gamemode import *
 from .hero import *
 from .map import *
 from .user import *
+from .workspace import *
 from .tournament import *
 from .team import *
 from .encounter import *

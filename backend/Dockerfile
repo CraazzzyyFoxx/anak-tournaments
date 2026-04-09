@@ -2,11 +2,6 @@ FROM python:3.13-slim
 
 ENV PYTHONUNBUFFERED=1
 
-# Install system dependencies for health checks
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app/
 
 # Install uv
@@ -65,6 +60,6 @@ WORKDIR /app/${APP_PATH}-service
 # Create logs directory
 RUN mkdir -p /logs
 
-# Health check
+# Health check — hits the /health endpoint exposed by each service
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD python -c "import sys; sys.exit(0)"
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT:-8000}/health')" || exit 1

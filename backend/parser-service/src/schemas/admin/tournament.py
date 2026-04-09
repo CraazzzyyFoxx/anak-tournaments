@@ -12,6 +12,7 @@ __all__ = (
 class TournamentCreate(BaseModel):
     """Schema for creating a tournament"""
 
+    workspace_id: int
     number: int | None = None
     name: str
     description: str | None = None

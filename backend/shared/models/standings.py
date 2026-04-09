@@ -1,4 +1,4 @@
-from sqlalchemy import Float, ForeignKey, Integer, UniqueConstraint
+from sqlalchemy import Float, ForeignKey, Index, Integer, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db
@@ -10,16 +10,20 @@ __all__ = ("Standing",)
 class Standing(db.TimeStampIntegerMixin):
     __tablename__ = "standing"
 
-    __table_args__ = (UniqueConstraint("tournament_id", "group_id", "team_id"),)
+    __table_args__ = (
+        UniqueConstraint("tournament_id", "group_id", "team_id"),
+        Index("ix_standing_tournament_position", "tournament_id", "overall_position"),
+        {"schema": "tournament"},
+    )
 
     tournament_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey(Tournament.id), index=True
+        Integer, ForeignKey(Tournament.id, ondelete="CASCADE"), index=True
     )
     group_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey(TournamentGroup.id), index=True
+        Integer, ForeignKey(TournamentGroup.id, ondelete="CASCADE"), index=True
     )
     team_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey(Team.id), index=True
+        Integer, ForeignKey(Team.id, ondelete="CASCADE"), index=True
     )
     position: Mapped[int] = mapped_column(Integer)
     overall_position: Mapped[int] = mapped_column(Integer, server_default="0")
@@ -34,4 +38,3 @@ class Standing(db.TimeStampIntegerMixin):
     tournament: Mapped[Tournament] = relationship(back_populates="standings")
     group: Mapped[TournamentGroup] = relationship()
     team: Mapped[Team] = relationship(back_populates="standings")
-

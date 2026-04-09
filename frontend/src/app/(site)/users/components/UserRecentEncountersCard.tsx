@@ -31,6 +31,11 @@ const getGroupLabel = (group?: TournamentGroup | null) => {
 
 const UserRecentEncountersCard = async ({ userId, userName, limit = 5 }: UserRecentEncountersCardProps) => {
   const encounters = await userService.getUserEncounters(userId, 1, limit);
+
+  if (encounters.results.length === 0) {
+    return null;
+  }
+
   const userSlug = userName.replace("#", "-");
 
   return (
@@ -50,39 +55,35 @@ const UserRecentEncountersCard = async ({ userId, userName, limit = 5 }: UserRec
       </CardHeader>
 
       <CardContent className="p-0">
-        {encounters.results.length > 0 ? (
-          <div className="divide-y divide-border/40">
-            {encounters.results.map((encounter: EncounterWithUserStats) => {
-              const tournamentLabel = getTournamentLabel(encounter.tournament);
-              const groupLabel = getGroupLabel(encounter.tournament_group);
-              const meta = groupLabel ? `${tournamentLabel} • ${groupLabel}` : tournamentLabel;
-              const score = `${encounter.score.home}-${encounter.score.away}`;
+        <div className="divide-y divide-border/40">
+          {encounters.results.map((encounter: EncounterWithUserStats) => {
+            const tournamentLabel = getTournamentLabel(encounter.tournament);
+            const groupLabel = getGroupLabel(encounter.tournament_group);
+            const meta = groupLabel ? `${tournamentLabel} • ${groupLabel}` : tournamentLabel;
+            const score = `${encounter.score.home}-${encounter.score.away}`;
 
-              return (
-                <Link
-                  key={encounter.id}
-                  href={`/encounters/${encounter.id}`}
-                  className="flex items-center justify-between gap-4 p-4 transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                >
-                  <div className="min-w-0">
-                    <div className="text-xs text-muted-foreground">{meta}</div>
-                    <div className="text-sm font-medium truncate">{encounter.name}</div>
-                  </div>
-                  <div className="flex items-center gap-3 shrink-0">
-                    <span className="text-sm font-semibold tabular-nums">{score}</span>
-                    {encounter.has_logs ? (
-                      <CirclePlus className="h-4 w-4 text-emerald-500" aria-label="Has logs" />
-                    ) : (
-                      <CircleMinus className="h-4 w-4 text-red-500" aria-label="No logs" />
-                    )}
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="p-4 text-sm text-muted-foreground">No encounters yet.</div>
-        )}
+            return (
+              <Link
+                key={encounter.id}
+                href={`/encounters/${encounter.id}`}
+                className="flex items-center justify-between gap-4 p-4 transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                <div className="min-w-0">
+                  <div className="text-xs text-muted-foreground">{meta}</div>
+                  <div className="text-sm font-medium truncate">{encounter.name}</div>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <span className="text-sm font-semibold tabular-nums">{score}</span>
+                  {encounter.has_logs ? (
+                    <CirclePlus className="h-4 w-4 text-emerald-500" aria-label="Has logs" />
+                  ) : (
+                    <CircleMinus className="h-4 w-4 text-red-500" aria-label="No logs" />
+                  )}
+                </div>
+              </Link>
+            );
+          })}
+        </div>
       </CardContent>
     </Card>
   );

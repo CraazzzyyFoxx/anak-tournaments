@@ -4,6 +4,7 @@ import { isServer, QueryClient, QueryClientProvider } from "@tanstack/react-quer
 import React from "react";
 
 import AuthBootstrap from "@/components/auth/AuthBootstrap";
+import WorkspaceBootstrap from "@/components/WorkspaceBootstrap";
 
 function makeQueryClient() {
   return new QueryClient({
@@ -32,6 +33,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthBootstrap />
+      <WorkspaceBootstrap />
       {children}
     </QueryClientProvider>
   );

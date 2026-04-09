@@ -29,7 +29,8 @@ async def get_all(
     session: AsyncSession,
     is_league: bool | None = None,
     is_finished: bool | None = None,
-    entities: list[str] | None = None
+    entities: list[str] | None = None,
+    workspace_id: int | None = None,
 ) -> typing.Sequence[models.Tournament]:
     query = (
         sa.select(models.Tournament)
@@ -41,7 +42,8 @@ async def get_all(
         query = query.where(models.Tournament.is_league.is_(is_league))
     if is_finished is not None:
         query = query.where(models.Tournament.is_finished.is_(is_finished))
-
+    if workspace_id is not None:
+        query = query.where(models.Tournament.workspace_id == workspace_id)
 
     result = await session.execute(query)
     return result.unique().scalars().all()

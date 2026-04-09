@@ -30,10 +30,11 @@ class LogProcessingSource(str, enum.Enum):
 class LogProcessingRecord(db.TimeStampIntegerMixin):
     """Tracks the processing state and uploader info for each match log file."""
 
-    __tablename__ = "log_processing_record"
+    __tablename__ = "record"
+    __table_args__ = ({"schema": "log_processing"},)
 
     tournament_id: Mapped[int] = mapped_column(
-        ForeignKey("tournament.id", ondelete="CASCADE"),
+        ForeignKey("tournament.tournament.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -49,7 +50,7 @@ class LogProcessingRecord(db.TimeStampIntegerMixin):
         default=LogProcessingSource.manual,
     )
     uploader_id: Mapped[int | None] = mapped_column(
-        ForeignKey("user.id", ondelete="SET NULL"),
+        ForeignKey("players.user.id", ondelete="SET NULL"),
         nullable=True,
     )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)

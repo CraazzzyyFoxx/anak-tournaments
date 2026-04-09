@@ -13,6 +13,23 @@ from src.schemas.admin import user as admin_schemas
 # ─── User CRUD ───────────────────────────────────────────────────────────────
 
 
+async def get_user_or_404(session: AsyncSession, user_id: int) -> models.User:
+    """Get a user by ID or raise 404."""
+    result = await session.execute(
+        select(models.User)
+        .where(models.User.id == user_id)
+        .options(
+            selectinload(models.User.discord),
+            selectinload(models.User.battle_tag),
+            selectinload(models.User.twitch),
+        )
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return user
+
+
 async def get_users(session: AsyncSession, params: admin_schemas.UserListParams) -> dict:
     """Get paginated list of users"""
     query = select(models.User).options(

@@ -1,6 +1,7 @@
 "use client";
 
-import type { CSSProperties, ReactNode } from "react";
+import { type CSSProperties, type ReactNode, useEffect } from "react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
@@ -15,6 +16,7 @@ import {
 } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { usePermissions } from "@/hooks/usePermissions";
 
 function LoadingState() {
@@ -37,6 +39,12 @@ function UnauthorizedState() {
         <p className="mt-2 text-sm text-muted-foreground">
           Please contact an administrator if you believe this is an error.
         </p>
+        <Link
+          href="/"
+          className="mt-6 inline-block rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+        >
+          Go Home
+        </Link>
       </div>
     </div>
   );
@@ -87,21 +95,29 @@ const sidebarShellStyle = {
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { isLoaded, isSuperuser, hasAnyPermission } = usePermissions();
+  const { isLoaded, isSuperuser, isAdmin, isOrganizer, isModerator, hasAnyPermission, canManageAnyWorkspace } = usePermissions();
+
+  useEffect(() => {
+    document.body.classList.add("admin-theme");
+    return () => document.body.classList.remove("admin-theme");
+  }, []);
 
   if (!isLoaded) {
     return <LoadingState />;
   }
 
   const matchingRoute = getMatchingAdminRoute(pathname);
+  const hasAdminRole = isAdmin || isOrganizer || isModerator;
 
   let hasAccess = false;
   if (matchingRoute?.superuserOnly) {
     hasAccess = isSuperuser;
+  } else if (matchingRoute?.workspaceAdminVisible) {
+    hasAccess = isSuperuser || canManageAnyWorkspace();
   } else if (matchingRoute?.permissions?.length) {
-    hasAccess = hasAnyPermission(matchingRoute.permissions);
+    hasAccess = hasAdminRole || hasAnyPermission(matchingRoute.permissions);
   } else {
-    hasAccess = isSuperuser || hasAnyPermission(adminEntryPermissions);
+    hasAccess = isSuperuser || hasAdminRole || hasAnyPermission(adminEntryPermissions);
   }
 
   if (!hasAccess) {
@@ -109,6 +125,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   }
 
   return (
+    <TooltipProvider delayDuration={300}>
     <SidebarProvider className="admin-theme" defaultOpen style={sidebarShellStyle}>
       <AdminSidebar />
       <SidebarInset className="min-h-svh min-w-0 bg-background/95 md:peer-data-[variant=inset]:border md:peer-data-[variant=inset]:border-border/50 md:peer-data-[variant=inset]:shadow-xl md:peer-data-[variant=inset]:shadow-black/10">
@@ -118,8 +135,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           <AdminBreadcrumb />
         </header>
 
-        <div className="flex flex-1 flex-col gap-5 overflow-x-hidden p-4 md:p-5">{children}</div>
+        <div className="flex flex-1 flex-col gap-4 overflow-x-hidden p-4">{children}</div>
       </SidebarInset>
     </SidebarProvider>
+    </TooltipProvider>
   );
 }

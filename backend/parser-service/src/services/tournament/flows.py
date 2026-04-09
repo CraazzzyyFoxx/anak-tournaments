@@ -20,6 +20,7 @@ async def to_pydantic(
         ]
     return schemas.TournamentRead(
         id=tournament.id,
+        workspace_id=tournament.workspace_id,
         start_date=tournament.start_date,
         end_date=tournament.end_date,
         number=tournament.number,

@@ -73,28 +73,36 @@ const UserOverviewPage = async ({ profile, tournamentId, user }: OverviewPagePro
 
   return (
     <div className="grid grid-cols-9 gap-8">
-      <div className="grid gap-8 grid-cols-1 lg:grid-cols-2 xl:grid-cols-1 col-span-9 xl:col-span-2">
+      <div className="grid gap-8 grid-cols-1 lg:grid-cols-2 xl:grid-cols-1 col-span-9 xl:col-span-2 content-start">
         <UserOverview profile={profile} />
-        <UserRoles roles={profile.roles} />
-        <UserBestTeammates className="xs:hidden xl:block" teammates={teammates.results} />
+        {profile.roles.length > 0 && <UserRoles roles={profile.roles} />}
+        {teammates.results.length > 0 && (
+          <UserBestTeammates className="xs:hidden xl:block" teammates={teammates.results} />
+        )}
       </div>
       <div className="col-span-9 xl:col-span-7">
         <div className="grid gap-8 grid-cols-1">
-          <UserLastTournamentCard tournament={tournament} tournaments={profile.tournaments} />
-          <UserBestTeammates className="xl:hidden block" teammates={teammates.results} />
-          <Card>
-            <CardHeader>
-              <div className="flex flex-row gap-2">
-                <Star />
-                <TypographyH4>Most played heroes</TypographyH4>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0 pb-4">
-              <div className="px-2 w-full">
-                <HeroPlaytimeChart heroes={profile.hero_statistics} />
-              </div>
-            </CardContent>
-          </Card>
+          {tournament && (
+            <UserLastTournamentCard tournament={tournament} tournaments={profile.tournaments} />
+          )}
+          {teammates.results.length > 0 && (
+            <UserBestTeammates className="xl:hidden block" teammates={teammates.results} />
+          )}
+          {profile.hero_statistics.length > 0 && (
+            <Card>
+              <CardHeader>
+                <div className="flex flex-row gap-2">
+                  <Star />
+                  <TypographyH4>Most played heroes</TypographyH4>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0 pb-4">
+                <div className="px-2 w-full">
+                  <HeroPlaytimeChart heroes={profile.hero_statistics} />
+                </div>
+              </CardContent>
+            </Card>
+          )}
           <UserRecentEncountersCard userId={user.id} userName={user.name} limit={5} />
         </div>
       </div>

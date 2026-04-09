@@ -115,6 +115,48 @@ export function usePermissions() {
   const hasAllPermissions = (permissions: AppPermission[]): boolean =>
     permissions.every((p) => hasPermission(p));
 
+  // ─── Workspace-scoped checks ────────────────────────────────────────────────
+
+  /** Check if user has a permission within a specific workspace (global + workspace-scoped). */
+  const hasWorkspacePermission = (workspaceId: number, permission: AppPermission): boolean => {
+    if (!isAuthenticated || !user) return false;
+    if (hasWildcard) return true;
+    // Check global permissions
+    if (user.permissions.includes(permission)) return true;
+    // Check workspace-scoped permissions
+    const ws = user.workspaces?.find((w) => w.workspace_id === workspaceId);
+    return ws?.permissions.includes(permission) ?? false;
+  };
+
+  /** Check if user is admin or owner of a specific workspace. */
+  const isWorkspaceAdmin = (workspaceId: number): boolean => {
+    if (!isAuthenticated || !user) return false;
+    if (user.isSuperuser) return true;
+    const ws = user.workspaces?.find((w) => w.workspace_id === workspaceId);
+    return ws?.memberRole === "admin" || ws?.memberRole === "owner";
+  };
+
+  /** Check if user can manage RBAC for any workspace. */
+  const canManageAnyWorkspace = (): boolean => {
+    if (!isAuthenticated || !user) return false;
+    if (user.isSuperuser) return true;
+    return (
+      user.workspaces?.some(
+        (w) => w.memberRole === "admin" || w.memberRole === "owner",
+      ) ?? false
+    );
+  };
+
+  /** Get workspaces user can admin. */
+  const getAdminWorkspaceIds = (): number[] => {
+    if (!isAuthenticated || !user) return [];
+    return (
+      user.workspaces
+        ?.filter((w) => w.memberRole === "admin" || w.memberRole === "owner")
+        .map((w) => w.workspace_id) ?? []
+    );
+  };
+
   // ─── Semantic shortcuts ─────────────────────────────────────────────────────
 
   return {
@@ -131,6 +173,12 @@ export function usePermissions() {
     hasPermission,
     hasAnyPermission,
     hasAllPermissions,
+
+    // Workspace-scoped checks
+    hasWorkspacePermission,
+    isWorkspaceAdmin,
+    canManageAnyWorkspace,
+    getAdminWorkspaceIds,
 
     // Semantic flags
     isSuperuser: user?.isSuperuser ?? false,

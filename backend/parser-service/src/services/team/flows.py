@@ -28,48 +28,6 @@ def resolve_hero_role_from_balancer(role: str) -> enums.HeroClass | None:
     )
 
 
-def resolve_player_div(value: float) -> int:
-    if value <= 199:
-        return 20
-    if value <= 299:
-        return 19
-    if value <= 399:
-        return 18
-    if value <= 499:
-        return 17
-    if value <= 599:
-        return 16
-    if value <= 699:
-        return 15
-    if value <= 799:
-        return 14
-    if value <= 899:
-        return 13
-    if value <= 999:
-        return 12
-    if value <= 1099:
-        return 11
-    if value <= 1199:
-        return 10
-    if value <= 1299:
-        return 9
-    if value <= 1399:
-        return 8
-    if value <= 1499:
-        return 7
-    if value <= 1599:
-        return 6
-    if value <= 1699:
-        return 5
-    if value <= 1799:
-        return 4
-    if value <= 1899:
-        return 3
-    if value <= 1999:
-        return 2
-
-    return 1
-
 
 async def get(session: AsyncSession, id: int, entities: list[str]) -> models.Team:
     team = await service.get(session, id, entities)
@@ -158,7 +116,6 @@ async def create_player(
     primary: bool,
     secondary: bool,
     rank: int,
-    div: int,
     role: enums.HeroClass,
     user: models.User,
     tournament: models.Tournament,
@@ -184,7 +141,6 @@ async def create_player(
         primary=primary,
         secondary=secondary,
         rank=rank,
-        div=div,
         role=role,
         user=user,
         tournament=tournament,
@@ -275,7 +231,6 @@ async def bulk_create_from_balancer(
                 secondary=player.secondary,
                 rank=player.rank,
                 role=role,
-                div=resolve_player_div(player.rank),
                 user=user,
                 tournament=tournament,
                 team=team,
@@ -308,7 +263,7 @@ async def _create_from_challonge_participant(
     participant: schemas.ChallongeParticipant,
     is_playoff: bool,
     name_mapper: dict[str, str],
-) -> models.ChallongeTeam:
+) -> models.ChallongeTeam | None:
     name = format_team_name(participant.name, name_mapper)
 
     challonge_id = participant.id
@@ -319,7 +274,13 @@ async def _create_from_challonge_participant(
     team = await service.get_by_name_and_tournament(session, tournament.id, name, [])
     if not team:
         name = format_team_name(participant.name, None)
-        team = await get_by_name_and_tournament(session, tournament.id, name, [])
+        team = await service.get_by_name_and_tournament(session, tournament.id, name, [])
+    if not team:
+        logger.warning(
+            f"Challonge participant '{participant.name}' (formatted: '{name}') "
+            f"not found in tournament {tournament.id}, skipping"
+        )
+        return None
 
     query = sa.select(models.ChallongeTeam).where(
         sa.and_(
@@ -362,7 +323,8 @@ async def bulk_create_for_tournament_from_challonge(
                     not group.is_groups,
                     name_mapper,
                 )
-                session.add(challonge_team)
+                if challonge_team:
+                    session.add(challonge_team)
     else:
         participants = await challonge_service.fetch_participants(tournament.challonge_id)
         for group in tournament.groups:
@@ -375,7 +337,8 @@ async def bulk_create_for_tournament_from_challonge(
                     not group.is_groups,
                     name_mapper,
                 )
-                session.add(challonge_team)
+                if challonge_team:
+                    session.add(challonge_team)
 
     await session.commit()
     logger.info(f"Teams for tournament {tournament.name} created successfully")

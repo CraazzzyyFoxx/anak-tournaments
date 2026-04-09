@@ -1,6 +1,7 @@
 "use client";
 
 import type { CSSProperties, ReactNode } from "react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { BalancerShell } from "@/app/balancer/_components/BalancerShell";
@@ -41,6 +42,12 @@ function UnauthorizedState() {
         <p className="mt-2 text-sm text-muted-foreground">
           Please contact an administrator if you believe this is an error.
         </p>
+        <Link
+          href="/"
+          className="mt-6 inline-block rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+        >
+          Go Home
+        </Link>
       </div>
     </div>
   );

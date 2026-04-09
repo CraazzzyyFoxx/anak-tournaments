@@ -1,5 +1,6 @@
 services:
   postgres:
+    profiles: ["db"]
     image: postgres:16-alpine
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
@@ -14,6 +15,14 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.10'
+          memory: 128M
 
   redis:
     image: redis/redis-stack:latest
@@ -28,6 +37,14 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
 
   rabbitmq:
     image: rabbitmq:3.13-management
@@ -46,6 +63,14 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 128M
 
   backend:
     image: registry.craazzzyyfoxx.me/aqt-backend:dev
@@ -63,8 +88,6 @@ services:
       - DEBUG=true
       - LOG_LEVEL=DEBUG
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
       rabbitmq:
@@ -88,6 +111,14 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.10'
+          memory: 128M
 
   auth:
     image: registry.craazzzyyfoxx.me/aqt-auth:dev
@@ -107,8 +138,6 @@ services:
       - 'SERVICE_CLIENTS=${SERVICE_CLIENTS:-{"discord-service":"dev-discord-service-secret"}}'
       - 'SERVICE_SCOPES=${SERVICE_SCOPES:-{"discord-service":["parser:logs"]}}'
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
       rabbitmq:
@@ -129,6 +158,14 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.10'
+          memory: 128M
 
   parser:
     image: registry.craazzzyyfoxx.me/aqt-parser:dev
@@ -146,8 +183,6 @@ services:
       - DEBUG=true
       - LOG_LEVEL=DEBUG
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
       rabbitmq:
@@ -170,6 +205,14 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.10'
+          memory: 128M
 
   balancer:
     image: registry.craazzzyyfoxx.me/aqt-balancer:dev
@@ -187,8 +230,6 @@ services:
       - DEBUG=true
       - LOG_LEVEL=DEBUG
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
       rabbitmq:
@@ -207,6 +248,14 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.10'
+          memory: 128M
 
   parser-worker:
     image: registry.craazzzyyfoxx.me/aqt-parser:dev
@@ -223,8 +272,6 @@ services:
       - DEBUG=true
       - LOG_LEVEL=DEBUG
     depends_on:
-      postgres:
-        condition: service_healthy
       rabbitmq:
         condition: service_healthy
       parser:
@@ -235,6 +282,14 @@ services:
       - ./logs/parser-worker:/logs
     networks:
       - app-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.10'
+          memory: 128M
 
   balancer-worker:
     image: registry.craazzzyyfoxx.me/aqt-balancer:dev
@@ -263,6 +318,14 @@ services:
       - ./logs/balancer-worker:/logs
     networks:
       - app-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.10'
+          memory: 128M
 
   discord:
     image: registry.craazzzyyfoxx.me/aqt-discord:dev
@@ -293,6 +356,14 @@ services:
       - ./logs/discord:/logs
     networks:
       - app-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.15'
+          memory: 128M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
 
   frontend:
     image: registry.craazzzyyfoxx.me/frontend:dev
@@ -303,9 +374,7 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=development
-      - WATCHPACK_POLLING=${WATCHPACK_POLLING:-true}
-      - CHOKIDAR_USEPOLLING=${CHOKIDAR_USEPOLLING:-true}
-      - CHOKIDAR_INTERVAL=${CHOKIDAR_INTERVAL:-1000}
+      - DOCKER=1
       - NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL}
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
       - NEXT_PUBLIC_AUTH_SERVICE_URL=${NEXT_PUBLIC_AUTH_SERVICE_URL}
@@ -323,10 +392,27 @@ services:
       balancer:
         condition: service_healthy
     volumes:
-      - ./frontend:/app
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
       - frontend-node-modules:/app/node_modules
-      - frontend-next:/app/.next
       - ./logs/frontend:/logs
+    tmpfs:
+      - /app/.next:size=512M
+    develop:
+      watch:
+        - path: ./frontend/package.json
+          action: rebuild
+        - path: ./frontend/bun.lock
+          action: rebuild
+        - path: ./frontend/next.config.mjs
+          action: sync
+          target: /app/next.config.mjs
+        - path: ./frontend/tailwind.config.ts
+          action: sync
+          target: /app/tailwind.config.ts
+        - path: ./frontend/tsconfig.json
+          action: sync
+          target: /app/tsconfig.json
     networks:
       - app-network
     healthcheck:
@@ -335,6 +421,14 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.50'
+          memory: 1024M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
 
   kong:
     image: kong:3.7
@@ -345,10 +439,16 @@ services:
       - KONG_PROXY_LISTEN=0.0.0.0:8000
       - KONG_ADMIN_LISTEN=0.0.0.0:8001
       - KONG_STATUS_LISTEN=0.0.0.0:8100
+      - KONG_NGINX_WORKER_PROCESSES=1
       - KONG_LOG_LEVEL=${KONG_LOG_LEVEL:-notice}
+      - KONG_DNS_ORDER=LAST,A,SRV,CNAME
+      - KONG_DNS_VALID_TTL=10
+      - KONG_DNS_STALE_TTL=0
     ports:
       - "${APP_PORT}:8000"
       - "${KONG_ADMIN_PORT:-8005}:8001"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./kong/kong.yml:/kong/kong.yml:ro
     depends_on:
@@ -360,8 +460,6 @@ services:
         condition: service_healthy
       balancer:
         condition: service_healthy
-      frontend:
-        condition: service_healthy
     networks:
       - app-network
     healthcheck:
@@ -369,13 +467,20 @@ services:
       interval: 10s
       timeout: 10s
       retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.10'
+          memory: 256M
 
 volumes:
   postgres-data:
   redis-data:
   rabbitmq-data:
   frontend-node-modules:
-  frontend-next:
 
 networks:
   app-network:

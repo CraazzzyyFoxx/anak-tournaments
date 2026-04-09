@@ -1,6 +1,8 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src import schemas
+from shared.division_grid import DEFAULT_GRID, DivisionGrid, resolve_grid
+
+from src import models, schemas
 from src.core import errors
 from src.services.tournament import flows as tournament_flows
 from src.services.tournament import service as tournament_service
@@ -407,9 +409,16 @@ async def calculate_to_bottom_achievements(session: AsyncSession) -> None:
         await service.calculate_to_bottom_achievements(session, tournament)
 
 
+async def _get_grid_for_tournament(session: AsyncSession, tournament: models.Tournament) -> DivisionGrid:
+    workspace = await session.get(models.Workspace, tournament.workspace_id)
+    workspace_grid_json = workspace.division_grid_json if workspace else None
+    return resolve_grid(workspace_grid_json, tournament.division_grid_json)
+
+
 async def calculate_i_need_more_power_achievements(session: AsyncSession) -> None:
     for tournament in await tournament_service.get_all(session):
-        await service.calculate_i_need_more_power_achievements(session, tournament)
+        grid = await _get_grid_for_tournament(session, tournament)
+        await service.calculate_i_need_more_power_achievements(session, tournament, grid=grid)
 
 
 async def calculate_accuracy_is_above_all_else_achievements(session: AsyncSession) -> None:
@@ -444,7 +453,8 @@ async def calculate_captains_with_5_division_and_above_achievements(
     session: AsyncSession,
 ) -> None:
     for tournament in await tournament_service.get_all(session):
-        await service.calculate_captains_with_5_division_and_above_achievements(session, tournament)
+        grid = await _get_grid_for_tournament(session, tournament)
+        await service.calculate_captains_with_5_division_and_above_achievements(session, tournament, grid=grid)
 
 
 async def calculate_reverse_sweep_champion_achievements(session: AsyncSession) -> None:
@@ -578,7 +588,8 @@ async def calculate_dirty_smurf_achievements(session: AsyncSession) -> None:
 
 async def calculate_win_with_20_div_achievement(session: AsyncSession) -> None:
     for tournament in await tournament_service.get_all(session):
-        await service.calculate_win_with_20_div_achievement(session, tournament)
+        grid = await _get_grid_for_tournament(session, tournament)
+        await service.calculate_win_with_20_div_achievement(session, tournament, grid=grid)
 
 
 async def calculate_freak_achievements(session: AsyncSession) -> None:
@@ -651,17 +662,27 @@ async def calculate_registered_achievements(
     if tournament_id is not None:
         tournament = await tournament_flows.get(session, tournament_id, [])
 
+    division_slugs = set(function_division_map.keys()) | {"anchor-in-my-throat"}
+
     executed: list[str] = []
     for slug in slugs_to_run:
         fn = registry[slug]
+        needs_grid = slug in division_slugs
 
         if not fn.tournament_required:
-            await fn.function(session)
+            if needs_grid:
+                await fn.function(session, grid=DEFAULT_GRID)
+            else:
+                await fn.function(session)
             executed.append(slug)
             continue
 
         if tournament is not None:
-            await fn.function(session, tournament)
+            if needs_grid:
+                grid = await _get_grid_for_tournament(session, tournament)
+                await fn.function(session, tournament, grid=grid)
+            else:
+                await fn.function(session, tournament)
             executed.append(slug)
             continue
 
@@ -671,7 +692,11 @@ async def calculate_registered_achievements(
             else await tournament_service.get_all(session)
         )
         for t in tournaments:
-            await fn.function(session, t)
+            if needs_grid:
+                grid = await _get_grid_for_tournament(session, t)
+                await fn.function(session, t, grid=grid)
+            else:
+                await fn.function(session, t)
         executed.append(slug)
 
     return executed

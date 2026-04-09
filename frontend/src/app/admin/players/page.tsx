@@ -3,15 +3,16 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { ArrowLeftRight, Plus, Pencil, Sparkles, Star, StarHalf, Trash2 } from "lucide-react";
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { StatusIcon } from "@/components/admin/StatusIcon";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { UserSearchCombobox } from "@/components/admin/UserSearchCombobox";
+import Image from "next/image";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import teamService from "@/services/team.service";
 import tournamentService from "@/services/tournament.service";
@@ -178,9 +179,7 @@ export default function PlayersPage() {
 
   const { data: teamsData } = useQuery({
     queryKey: ["teams", selectedTournamentId],
-    queryFn: () =>
-      selectedTournamentId ? teamService.getAll(selectedTournamentId) : Promise.resolve(null),
-    enabled: !!selectedTournamentId
+    queryFn: () => teamService.getAll(selectedTournamentId),
   });
 
   // Form state
@@ -319,7 +318,7 @@ export default function PlayersPage() {
     {
       accessorKey: "division",
       header: "Div",
-      cell: ({ row }) => <div>{row.getValue("division")}</div>
+      cell: ({ row }) => <div className="flex justify-start"><Image src={`/divisions/${row.getValue<number>("division")}.png`} alt={`Division ${row.getValue<number>("division")}`} width={28} height={28} /></div>
     },
     {
       accessorKey: "team",
@@ -335,10 +334,10 @@ export default function PlayersPage() {
       header: "Flags",
       cell: ({ row }) => (
         <div className="flex gap-1">
-          {row.original.is_newcomer && <Badge variant="secondary">New</Badge>}
-          {row.original.is_substitution && <Badge variant="secondary">Sub</Badge>}
-          {row.original.primary && <Badge variant="default">Primary</Badge>}
-          {row.original.secondary && <Badge variant="default">Secondary</Badge>}
+          {row.original.is_newcomer && <StatusIcon icon={Sparkles} label="Newcomer" variant="warning" />}
+          {row.original.is_substitution && <StatusIcon icon={ArrowLeftRight} label="Substitute" variant="info" />}
+          {row.original.primary && <StatusIcon icon={Star} label="Primary" variant="success" />}
+          {row.original.secondary && <StatusIcon icon={StarHalf} label="Secondary" variant="muted" />}
         </div>
       )
     },
@@ -386,16 +385,19 @@ export default function PlayersPage() {
       <div className="flex items-center gap-4">
         <Label htmlFor="tournament-filter">Filter by Tournament:</Label>
         <Select
-          value={selectedTournamentId?.toString() || ""}
-          onValueChange={(value) => setSelectedTournamentId(value ? parseInt(value) : null)}
+          value={selectedTournamentId?.toString() || "all"}
+          onValueChange={(value) =>
+            setSelectedTournamentId(value === "all" ? null : parseInt(value))
+          }
         >
           <SelectTrigger className="w-[300px]">
-            <SelectValue placeholder="Select Tournament" />
+            <SelectValue placeholder="All Tournaments" />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value="all">All Tournaments</SelectItem>
             {tournamentsData?.results.map((tournament) => (
               <SelectItem key={tournament.id} value={tournament.id.toString()}>
-                {tournament.is_league ? tournament.name : `Tournament ${tournament.number}`}
+                {tournament.name}
               </SelectItem>
             ))}
           </SelectContent>
@@ -405,10 +407,6 @@ export default function PlayersPage() {
       <AdminDataTable
         queryKey={(page, search, pageSize, sortField, sortDir) => ["players", selectedTournamentId, page, search, pageSize, sortField, sortDir]}
         queryFn={async (page, search, pageSize, sortField, sortDir) => {
-          if (!selectedTournamentId) {
-            return { results: [], total: 0, page: 1, per_page: pageSize };
-          }
-
           const data = await teamService.getAll(selectedTournamentId);
           const players = buildPlayerRows(data.results);
           const normalizedSearch = search.trim().toLowerCase();
@@ -421,11 +419,7 @@ export default function PlayersPage() {
         }}
         columns={columns}
         searchPlaceholder="Search players..."
-        emptyMessage={
-          selectedTournamentId
-            ? "No players found in this tournament."
-            : "Select a tournament to view players."
-        }
+        emptyMessage="No players found."
         onRowDoubleClick={canUpdate ? (row) => handleEdit(row.original) : undefined}
       />
 
