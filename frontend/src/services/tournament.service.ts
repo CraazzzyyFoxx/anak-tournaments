@@ -68,6 +68,7 @@ export default class tournamentService {
   }
   static async getActive(): Promise<PaginatedResponse<Tournament>> {
     return apiFetch("app", `tournaments`, {
+      skipWorkspace: true,
       query: {
         page: 1,
         per_page: -1,
