@@ -14,7 +14,7 @@
       "gridPos": { "x": 0, "y": 0, "w": 24, "h": 4 },
       "options": {
         "mode": "markdown",
-        "content": "Use the logs panel below and click the derived `TraceID` field to open the full trace in Tempo. Logs now include `service`, `queue`, `handler`, `correlation_id`, `trace_id`, `span_id`, `message_id`, and `job_id`."
+        "content": "Use the logs panel below and click the derived `TraceID` field to open the full trace in Tempo. The panel only shows sampled traces, because unsampled spans still have a `trace_id` in logs but do not exist in Tempo."
       }
     },
     {
@@ -25,7 +25,7 @@
       "datasource": { "type": "loki", "uid": "loki" },
       "targets": [
         {
-          "expr": "{job=\"app_services\"} |~ \"\\\"trace_id\\\"\\\\s*:\\\\s*\\\"[a-f0-9]+\\\"\"",
+          "expr": "{job=\"app_services\", trace_sampled=\"true\"} |~ \"\\\"trace_id\\\"\\\\s*:\\\\s*\\\"[a-f0-9]+\\\"\"",
           "refId": "A"
         }
       ],

@@ -17,11 +17,13 @@ from .correlation import get_correlation_id
 def _inject_observability_context(record: dict) -> None:
     span = trace.get_current_span()
     span_context = span.get_span_context()
+    is_sampled = bool(span_context.is_valid and span_context.trace_flags.sampled)
 
     record["extra"].update(
         correlation_id=get_correlation_id(),
         trace_id=f"{span_context.trace_id:032x}" if span_context.is_valid else None,
         span_id=f"{span_context.span_id:016x}" if span_context.is_valid else None,
+        trace_sampled=is_sampled,
     )
 
 

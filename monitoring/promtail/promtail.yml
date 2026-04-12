@@ -33,6 +33,7 @@ scrape_configs:
             handler: record.extra.handler
             trace_id: record.extra.trace_id
             span_id: record.extra.span_id
+            trace_sampled: record.extra.trace_sampled
             message_id: record.extra.message_id
             job_id: record.extra.job_id
             message: record.message
@@ -46,6 +47,7 @@ scrape_configs:
           status:
           queue:
           handler:
+          trace_sampled:
 
       # Use the log record's own timestamp (epoch float) as the Loki timestamp
       - timestamp:
