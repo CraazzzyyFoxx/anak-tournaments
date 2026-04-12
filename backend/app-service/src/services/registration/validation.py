@@ -224,7 +224,8 @@ def validate_registration_input(
     if additional_roles_config and additional_roles_config.enabled and additional_roles_config.required:
         if not partial or (provided_fields is not None and "roles" in provided_fields):
             roles = built_in_payload_values["roles"] or []
-            if not any(not getattr(role, "is_primary", False) for role in roles):
+            is_flex = bool(roles) and all(getattr(role, "is_primary", False) for role in roles)
+            if not is_flex and not any(not getattr(role, "is_primary", False) for role in roles):
                 _validation_error("At least one additional role is required.")
 
     custom_values = getattr(payload, "custom_fields", None) or {}

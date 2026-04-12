@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models
@@ -128,27 +129,30 @@ async def register(
                 priority=i,
             ))
 
-    registration = await reg_service.create_registration(
-        session,
-        tournament_id=tournament_id,
-        workspace_id=workspace_id,
-        auth_user_id=user.id,
-        user_id=user_player_id,
-        battle_tag=data.battle_tag,
-        smurf_tags=data.smurf_tags,
-        discord_nick=data.discord_nick,
-        twitch_nick=data.twitch_nick,
-        stream_pov=data.stream_pov,
-        notes=data.notes,
-        custom_fields=data.custom_fields,
-        auto_approve=form.auto_approve,
-    )
+    try:
+        registration = await reg_service.create_registration(
+            session,
+            tournament_id=tournament_id,
+            workspace_id=workspace_id,
+            auth_user_id=user.id,
+            user_id=user_player_id,
+            battle_tag=data.battle_tag,
+            smurf_tags=data.smurf_tags,
+            discord_nick=data.discord_nick,
+            twitch_nick=data.twitch_nick,
+            stream_pov=data.stream_pov,
+            notes=data.notes,
+            custom_fields=data.custom_fields,
+            auto_approve=form.auto_approve,
+        )
 
-    # Write normalized roles
-    for entry in role_entries:
-        entry.registration_id = registration.id
-        session.add(entry)
-    await session.commit()
+        # Write normalized roles
+        for entry in role_entries:
+            entry.registration_id = registration.id
+            session.add(entry)
+        await session.commit()
+    except IntegrityError:
+        raise HTTPException(status_code=409, detail="Already registered for this tournament")
 
     # Re-fetch with roles eagerly loaded
     from sqlalchemy.orm import selectinload

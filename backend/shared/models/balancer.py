@@ -287,7 +287,13 @@ class BalancerRegistration(db.TimeStampIntegerMixin):
 
     __tablename__ = "registration"
     __table_args__ = (
-        UniqueConstraint("tournament_id", "auth_user_id", name="uq_balancer_registration_user"),
+        Index(
+            "uq_balancer_registration_user",
+            "tournament_id",
+            "auth_user_id",
+            unique=True,
+            postgresql_where="deleted_at IS NULL",
+        ),
         Index(
             "uq_balancer_registration_tournament_tag_active",
             "tournament_id",
