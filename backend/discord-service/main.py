@@ -1,21 +1,29 @@
+import asyncio
+import time
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+import asyncpg
 import discord
 import httpx
-import asyncio
-import asyncpg
-import time
-from datetime import datetime, timedelta, UTC
-from typing import Any, Dict, Set
-
 from faststream.rabbit import RabbitBroker
 from faststream.rabbit.annotations import RabbitMessage
-
-from sqlalchemy import select
 from pydantic import ValidationError
+from shared.messaging.config import DISCORD_COMMANDS_QUEUE, PROCESS_MATCH_LOG_QUEUE
+from shared.models import Tournament, TournamentDiscordChannel
+from shared.models.log_processing import LogProcessingRecord, LogProcessingStatus
+from shared.observability import (
+    observe_message_processing,
+    publish_message,
+    setup_logging,
+    setup_tracing,
+    start_worker_metrics_server,
+)
+from shared.schemas.events import DiscordCommandEvent, ProcessMatchLogEvent
+from sqlalchemy import select
 
 from src.core.config import settings
 from src.core.db import async_session_maker
-
-from shared.observability import setup_logging
 
 # Setup structured logging (replaces old src.core.logging)
 logger = setup_logging(
@@ -24,11 +32,6 @@ logger = setup_logging(
     logs_root_path=settings.logs_root_path,
     json_output=settings.json_logging,
 )
-from shared.models import Tournament, TournamentDiscordChannel
-from shared.models.log_processing import LogProcessingRecord, LogProcessingStatus
-from shared.schemas.events import DiscordCommandEvent, ProcessMatchLogEvent
-from shared.messaging.config import DISCORD_COMMANDS_QUEUE, PROCESS_MATCH_LOG_QUEUE
-
 
 intents = discord.Intents.default()
 intents.messages = True
@@ -43,8 +46,8 @@ client = discord.Client(intents=intents, proxy=PROXY_CONF)
 rabbit_broker: RabbitBroker | None = None
 
 # Cache for active tournaments and their channels
-active_channels: Dict[int, int] = {}  # channel_id -> tournament_id
-processing_messages: Set[int] = set()  # message IDs being processed
+active_channels: dict[int, int] = {}  # channel_id -> tournament_id
+processing_messages: set[int] = set()  # message IDs being processed
 
 _service_token: str | None = None
 _service_token_expires_at: float = 0.0
@@ -110,7 +113,7 @@ async def get_tournament_discord_channels(tournament_id: int) -> list[int]:
         result = await session.execute(
             select(TournamentDiscordChannel.channel_id).where(
                 TournamentDiscordChannel.tournament_id == tournament_id,
-                TournamentDiscordChannel.is_active == True,
+                TournamentDiscordChannel.is_active,
             )
         )
         return list(result.scalars().all())
@@ -140,12 +143,12 @@ async def load_active_channels():
             select(TournamentDiscordChannel, Tournament)
             .join(Tournament, TournamentDiscordChannel.tournament_id == Tournament.id)
             .where(
-                TournamentDiscordChannel.is_active == True,
+                TournamentDiscordChannel.is_active,
                 (
-                    (Tournament.is_finished == False)
+                    (~Tournament.is_finished)
                     | (
-                        (Tournament.is_finished == True)
-                        & (Tournament.end_date != None)
+                        Tournament.is_finished
+                        & (Tournament.end_date.is_not(None))
                         & (Tournament.end_date >= one_day_ago)
                     )
                 ),
@@ -167,7 +170,7 @@ async def load_active_channels():
 _PROCESSING_RESULT_TIMEOUT = 120  # seconds before giving up
 
 # Futures waiting for pg_notify('log_processed', ...) keyed by (tournament_id, filename)
-_pending_results: Dict[tuple, asyncio.Future] = {}
+_pending_results: dict[tuple, asyncio.Future] = {}
 
 _pg_listener_conn: asyncpg.Connection | None = None
 
@@ -222,7 +225,7 @@ async def _wait_for_processing_result(tournament_id: int, filename: str) -> bool
     _pending_results[key] = fut
     try:
         return await asyncio.wait_for(fut, timeout=_PROCESSING_RESULT_TIMEOUT)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning(f"⏱️ Timed out waiting for processing result of {filename}")
         _pending_results.pop(key, None)
         return False
@@ -280,7 +283,12 @@ async def process_attachment(
         # Publish processing event to queue (worker picks it up asynchronously)
         if rabbit_broker is not None:
             event = ProcessMatchLogEvent(tournament_id=tournament_id, filename=attachment.filename)
-            await rabbit_broker.publish(event.model_dump(), PROCESS_MATCH_LOG_QUEUE)
+            await publish_message(
+                rabbit_broker,
+                event.model_dump(),
+                PROCESS_MATCH_LOG_QUEUE,
+                logger=logger.bind(tournament_id=tournament_id, filename=attachment.filename),
+            )
             logger.success(f"✅ {attachment.filename} uploaded and queued for processing")
         else:
             logger.warning(f"⚠️ RabbitMQ not available, skipping queue publish for {attachment.filename}")
@@ -384,67 +392,77 @@ def register_rabbit_handlers(broker: RabbitBroker) -> None:
     @broker.subscriber(DISCORD_COMMANDS_QUEUE)
     async def handle_discord_command(body: dict[str, Any], msg: RabbitMessage):
         await client.wait_until_ready()
+        async with observe_message_processing(
+            queue=DISCORD_COMMANDS_QUEUE,
+            handler="handle_discord_command",
+            message=msg,
+            logger=logger,
+        ) as observation:
+            try:
+                event = DiscordCommandEvent.model_validate(body)
 
-        try:
-            # Validate and parse the event using Pydantic
-            event = DiscordCommandEvent.model_validate(body)
-
-        except ValidationError as e:
-            logger.error(f"❌ Invalid discord command payload: {e}")
-            await msg.reject()  # Send to DLQ
-            return
-
-        try:
-            if event.action == "process_all":
-                channel_ids = await get_tournament_discord_channels(event.tournament_id)
-                if not channel_ids:
-                    logger.warning(f"⚠️ No active Discord channels found for tournament {event.tournament_id}")
-                    await msg.ack()
-                    return
-
-                logger.info(
-                    f"📩 RabbitMQ command: process_all for tournament {event.tournament_id} "
-                    f"({len(channel_ids)} channel(s))"
-                )
-                for channel_id in channel_ids:
-                    await process_channel_history(channel_id, event.tournament_id, limit=500)
-
-                await msg.ack()
-                return
-
-            # process_message action
-            if event.channel_id is None or event.message_id is None:
-                logger.error("❌ channel_id and message_id required for process_message action")
-                await msg.reject()
-                return
-
-            channel = await get_text_channel(event.channel_id)
-            if channel is None:
-                logger.error(f"❌ Channel {event.channel_id} not found for message fetch")
-                await msg.reject()
+            except ValidationError as e:
+                observation.set_status("invalid")
+                logger.error(f"❌ Invalid discord command payload: {e}")
+                await msg.reject()  # Send to DLQ
                 return
 
             try:
-                fetched_message = await channel.fetch_message(event.message_id)  # type: ignore[attr-defined]
-            except discord.NotFound:
-                logger.warning(f"⚠️ Message {event.message_id} not found in channel {event.channel_id}")
-                await msg.reject()
-                return
-            except discord.Forbidden:
-                logger.error(f"❌ No permission to fetch message {event.message_id} in channel {event.channel_id}")
-                await msg.reject()
-                return
+                if event.action == "process_all":
+                    channel_ids = await get_tournament_discord_channels(event.tournament_id)
+                    if not channel_ids:
+                        observation.set_status("no_channels")
+                        logger.warning(f"⚠️ No active Discord channels found for tournament {event.tournament_id}")
+                        await msg.ack()
+                        return
 
-            logger.info(
-                f"📩 RabbitMQ command: process_message channel={event.channel_id} message={event.message_id} "
-                f"tournament={event.tournament_id}"
-            )
-            await process_message(fetched_message, event.tournament_id)
-            await msg.ack()
+                    logger.info(
+                        f"📩 RabbitMQ command: process_all for tournament {event.tournament_id} "
+                        f"({len(channel_ids)} channel(s))"
+                    )
+                    for channel_id in channel_ids:
+                        await process_channel_history(channel_id, event.tournament_id, limit=500)
 
-        except Exception as e:
-            logger.error(f"❌ Error handling discord command: {e}")
-            await msg.nack()  # Requeue for retry
+                    await msg.ack()
+                    return
+
+                if event.channel_id is None or event.message_id is None:
+                    observation.set_status("invalid")
+                    logger.error("❌ channel_id and message_id required for process_message action")
+                    await msg.reject()
+                    return
+
+                channel = await get_text_channel(event.channel_id)
+                if channel is None:
+                    observation.set_status("not_found")
+                    logger.error(f"❌ Channel {event.channel_id} not found for message fetch")
+                    await msg.reject()
+                    return
+
+                try:
+                    fetched_message = await channel.fetch_message(event.message_id)  # type: ignore[attr-defined]
+                except discord.NotFound:
+                    observation.set_status("not_found")
+                    logger.warning(f"⚠️ Message {event.message_id} not found in channel {event.channel_id}")
+                    await msg.reject()
+                    return
+                except discord.Forbidden:
+                    observation.set_status("forbidden")
+                    logger.error(f"❌ No permission to fetch message {event.message_id} in channel {event.channel_id}")
+                    await msg.reject()
+                    return
+
+                logger.info(
+                    f"📩 RabbitMQ command: process_message channel={event.channel_id} message={event.message_id} "
+                    f"tournament={event.tournament_id}"
+                )
+                await process_message(fetched_message, event.tournament_id)
+                await msg.ack()
+
+            except Exception as e:
+                logger.error(f"❌ Error handling discord command: {e}")
+                await msg.nack()  # Requeue for retry
+                raise
 
 
 async def start_rabbitmq_listener() -> None:
@@ -533,7 +551,7 @@ async def on_message_edit(before: discord.Message, after: discord.Message):
 
     # Check if attachments were added
     if len(after.attachments) > len(before.attachments):
-        logger.info(f"📝 Message edited with new attachments")
+        logger.info("📝 Message edited with new attachments")
         await process_message(after, tournament_id)
 
 
@@ -553,6 +571,14 @@ async def main():
     """Main entry point"""
     try:
         logger.info("🚀 Starting Discord Log Collection Bot...")
+        setup_tracing(
+            service_name="discord-service",
+            otlp_endpoint=settings.otlp_endpoint,
+            enabled=settings.tracing_enabled,
+            sampler_name=settings.otel_traces_sampler,
+            sampler_arg=settings.otel_traces_sampler_arg,
+        )
+        start_worker_metrics_server(settings.worker_metrics_port)
         await start_rabbitmq_listener()
         await start_pg_listener()
         await client.start(settings.discord_token)

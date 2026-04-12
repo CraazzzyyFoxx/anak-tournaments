@@ -2,27 +2,28 @@ from contextlib import asynccontextmanager
 
 import sentry_sdk
 from fastapi import FastAPI
-from prometheus_fastapi_instrumentator import Instrumentator
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from prometheus_fastapi_instrumentator import Instrumentator
+from shared.clients import S3Client
+from shared.core.middleware import ExceptionMiddleware, RequestSizeLimitMiddleware
+from shared.observability import (
+    CorrelationIdMiddleware,
+    TimeMiddleware,
+    instrument_fastapi,
+    instrument_sqlalchemy,
+    setup_logging,
+    setup_tracing,
+)
 from starlette.requests import Request
 
-from shared.clients import S3Client
+from src.core import db
 from src.core.config import settings
 from src.core.db import init_db
 from src.core.redis import close_redis, init_redis
 from src.routes import router
-from shared.core.middleware import ExceptionMiddleware, RequestSizeLimitMiddleware
-
-from shared.observability import (
-    setup_logging,
-    CorrelationIdMiddleware,
-    TimeMiddleware,
-    setup_tracing,
-    instrument_fastapi,
-)
 
 # Setup structured logging (replaces old src.core.logging)
 logger = setup_logging(
@@ -58,7 +59,10 @@ async def lifespan(app: FastAPI):
         service_name="auth-service",
         otlp_endpoint=settings.otlp_endpoint,
         enabled=settings.tracing_enabled,
+        sampler_name=settings.otel_traces_sampler,
+        sampler_arg=settings.otel_traces_sampler_arg,
     )
+    instrument_sqlalchemy(db.engine)
 
     logger.info(f"Starting {settings.project_name} - Auth Service...")
     logger.info(f"Environment: {settings.environment}")

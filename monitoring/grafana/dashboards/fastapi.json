@@ -1,11 +1,26 @@
 {
   "title": "FastAPI Services",
   "uid": "fastapi-services",
-  "schemaVersion": 38,
-  "version": 1,
+  "schemaVersion": 39,
+  "version": 2,
   "refresh": "30s",
   "time": { "from": "now-1h", "to": "now" },
   "tags": ["fastapi", "backend"],
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "Service",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(http_requests_total, job)",
+        "regex": "/(app-service|auth-service|parser-service|balancer-service)/",
+        "multi": true,
+        "includeAll": true,
+        "current": { "selected": true, "text": "All", "value": "$__all" }
+      }
+    ]
+  },
   "panels": [
     {
       "id": 1,
@@ -15,48 +30,25 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "sum(rate(http_requests_total[2m])) by (instance)",
-          "legendFormat": "{{ instance }}",
+          "expr": "sum(rate(http_requests_total{job=~\"$service\"}[5m])) by (job)",
+          "legendFormat": "{{ job }}",
           "refId": "A"
         }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "reqps",
-          "custom": { "lineWidth": 2, "fillOpacity": 10 }
-        }
-      }
+      ]
     },
     {
       "id": 2,
-      "title": "Error Rate (4xx + 5xx)",
+      "title": "HTTP 5xx Rate",
       "type": "timeseries",
       "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "sum(rate(http_requests_total{status_code=~\"4..|5..\"}[2m])) by (instance, status_code)",
-          "legendFormat": "{{ instance }} {{ status_code }}",
+          "expr": "sum(rate(http_requests_total{job=~\"$service\", status_code=~\"5..\"}[5m])) by (job, handler)",
+          "legendFormat": "{{ job }} / {{ handler }}",
           "refId": "A"
         }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "reqps",
-          "color": { "mode": "palette-classic" },
-          "custom": { "lineWidth": 2, "fillOpacity": 10 }
-        },
-        "overrides": [
-          {
-            "matcher": { "id": "byRegexp", "options": ".*5..$" },
-            "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }]
-          },
-          {
-            "matcher": { "id": "byRegexp", "options": ".*4..$" },
-            "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }]
-          }
-        ]
-      }
+      ]
     },
     {
       "id": 3,
@@ -66,27 +58,21 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket[2m])) by (le, instance))",
-          "legendFormat": "p50 {{ instance }}",
+          "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{job=~\"$service\"}[5m])) by (job, le))",
+          "legendFormat": "p50 {{ job }}",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[2m])) by (le, instance))",
-          "legendFormat": "p95 {{ instance }}",
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job=~\"$service\"}[5m])) by (job, le))",
+          "legendFormat": "p95 {{ job }}",
           "refId": "B"
         },
         {
-          "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[2m])) by (le, instance))",
-          "legendFormat": "p99 {{ instance }}",
+          "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{job=~\"$service\"}[5m])) by (job, le))",
+          "legendFormat": "p99 {{ job }}",
           "refId": "C"
         }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s",
-          "custom": { "lineWidth": 2, "fillOpacity": 5 }
-        }
-      }
+      ]
     },
     {
       "id": 4,
@@ -96,149 +82,35 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "sum(http_requests_in_progress) by (instance)",
-          "legendFormat": "{{ instance }}",
+          "expr": "sum(http_requests_in_progress{job=~\"$service\"}) by (job)",
+          "legendFormat": "{{ job }}",
           "refId": "A"
         }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "custom": { "lineWidth": 2, "fillOpacity": 20 }
-        }
-      }
+      ]
     },
     {
       "id": 5,
-      "title": "Total Requests (last 1h)",
-      "type": "stat",
-      "gridPos": { "x": 0, "y": 16, "w": 6, "h": 4 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [
-        {
-          "expr": "sum(increase(http_requests_total[1h]))",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": { "unit": "short", "decimals": 0 }
-      },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
-    },
-    {
-      "id": 6,
-      "title": "Error Rate % (last 5m)",
-      "type": "stat",
-      "gridPos": { "x": 6, "y": 16, "w": 6, "h": 4 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [
-        {
-          "expr": "100 * sum(rate(http_requests_total{status_code=~\"5..\"}[5m])) / sum(rate(http_requests_total[5m]))",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent",
-          "decimals": 2,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "orange", "value": 1 },
-              { "color": "red", "value": 5 }
-            ]
-          },
-          "color": { "mode": "thresholds" }
-        }
-      },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
-    },
-    {
-      "id": 7,
-      "title": "p95 Latency (last 5m)",
-      "type": "stat",
-      "gridPos": { "x": 12, "y": 16, "w": 6, "h": 4 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [
-        {
-          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s",
-          "decimals": 3,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "orange", "value": 0.5 },
-              { "color": "red", "value": 2 }
-            ]
-          },
-          "color": { "mode": "thresholds" }
-        }
-      },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
-    },
-    {
-      "id": 8,
-      "title": "Current RPS",
-      "type": "stat",
-      "gridPos": { "x": 18, "y": 16, "w": 6, "h": 4 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [
-        {
-          "expr": "sum(rate(http_requests_total[2m]))",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": { "unit": "reqps", "decimals": 2 }
-      },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
-    },
-    {
-      "id": 9,
-      "title": "Top Slowest Endpoints (p95, last 5m)",
+      "title": "Top Slowest Endpoints (p95)",
       "type": "table",
-      "gridPos": { "x": 0, "y": 20, "w": 24, "h": 8 },
+      "gridPos": { "x": 0, "y": 16, "w": 24, "h": 10 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "topk(15, histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, handler, method, instance)))",
-          "legendFormat": "{{ instance }} {{ method }} {{ handler }}",
+          "expr": "topk(20, histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job=~\"$service\"}[5m])) by (job, handler, method, le)))",
           "refId": "A",
           "instant": true,
           "format": "table"
         }
       ],
-      "fieldConfig": {
-        "defaults": { "unit": "s" },
-        "overrides": [
-          {
-            "matcher": { "id": "byName", "options": "Value" },
-            "properties": [
-              { "id": "displayName", "value": "p95 latency" },
-              { "id": "custom.width", "value": 120 }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "sortBy": [{ "displayName": "p95 latency", "desc": true }]
-      },
       "transformations": [
         {
           "id": "organize",
           "options": {
             "excludeByName": { "Time": true, "__name__": true },
             "renameByName": {
+              "job": "Service",
               "handler": "Endpoint",
               "method": "Method",
-              "instance": "Service",
               "Value": "p95 latency"
             }
           }

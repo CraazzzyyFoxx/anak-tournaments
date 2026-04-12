@@ -28,6 +28,13 @@ scrape_configs:
           expressions:
             level: level
             service: extra.service
+            status: extra.status
+            queue: extra.queue
+            handler: extra.handler
+            trace_id: extra.trace_id
+            span_id: extra.span_id
+            message_id: extra.message_id
+            job_id: extra.job_id
             message: text
             correlation_id: extra.correlation_id
             timestamp: record.time.timestamp
@@ -36,6 +43,9 @@ scrape_configs:
       - labels:
           level:
           service:
+          status:
+          queue:
+          handler:
 
       # Use the log record's own timestamp (epoch float) as the Loki timestamp
       - timestamp:

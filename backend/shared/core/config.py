@@ -81,6 +81,9 @@ class BaseServiceSettings(BaseSettings):
     sentry_profiles_sample_rate: float = 0.1
     otlp_endpoint: str | None = None
     tracing_enabled: bool = False
+    otel_traces_sampler: str = "parentbased_traceidratio"
+    otel_traces_sampler_arg: float = 0.1
+    worker_metrics_port: int | None = None
 
     @property
     def db_url_asyncpg(self) -> str:

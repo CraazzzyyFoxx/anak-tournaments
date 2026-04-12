@@ -3,19 +3,22 @@ from datetime import UTC, datetime
 
 import sentry_sdk
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
-from fastapi.middleware.cors import CORSMiddleware
 from src.core.config import config
 from src.core.job_store import close_job_store
-from shared.core.middleware import ExceptionMiddleware, RequestSizeLimitMiddleware
 from src.views import router, task_router
 
 from shared.clients import AuthClient
+from shared.core.middleware import ExceptionMiddleware, RequestSizeLimitMiddleware
 from shared.observability import (
     CorrelationIdMiddleware,
     TimeMiddleware,
+    check_rabbitmq,
+    check_redis,
     instrument_fastapi,
+    make_health_response,
     setup_logging,
     setup_tracing,
 )
@@ -55,6 +58,8 @@ async def lifespan(app: FastAPI):
         service_name="balancer-service",
         otlp_endpoint=config.otlp_endpoint,
         enabled=config.tracing_enabled,
+        sampler_name=config.otel_traces_sampler,
+        sampler_arg=config.otel_traces_sampler_arg,
     )
 
     await auth_client.start()  # Start connection pool
@@ -107,14 +112,29 @@ app.include_router(router)
 app.include_router(task_router)
 
 
+@app.get("/health/live")
+async def live_health_check() -> HealthCheckResponse:
+    return make_health_response(
+        service="balancer-service",
+        version=config.version,
+        dependencies=[],
+        status="ok",
+        timestamp=int(datetime.now(UTC).timestamp()),
+    )
+
+
+@app.get("/health/ready")
 @app.get("/health")
 async def health_check() -> HealthCheckResponse:
-    """Health check endpoint"""
-    return HealthCheckResponse(
-        status="ok",
+    deps = [
+        await check_redis(config.redis_url),
+        await check_rabbitmq(config.rabbitmq_url),
+    ]
+    return make_health_response(
         service="balancer-service",
-        timestamp=int(datetime.now(UTC).timestamp()),
         version=config.version,
+        dependencies=deps,
+        timestamp=int(datetime.now(UTC).timestamp()),
     )
 
 

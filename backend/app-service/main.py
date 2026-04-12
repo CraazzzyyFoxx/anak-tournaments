@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
+import sentry_sdk
 from cashews import cache
 from cashews.contrib.fastapi import (
     CacheDeleteMiddleware,
@@ -8,30 +9,29 @@ from cashews.contrib.fastapi import (
     CacheRequestControlMiddleware,
 )
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.responses import JSONResponse
-
-import sentry_sdk
+from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
-
-from shared.schemas import HealthCheckResponse
 from shared.clients import AuthClient, S3Client
+from shared.core.middleware import ExceptionMiddleware, RequestSizeLimitMiddleware
 from shared.observability import (
-    setup_logging,
     CorrelationIdMiddleware,
     TimeMiddleware,
-    setup_tracing,
-    instrument_fastapi,
     check_postgres,
     check_redis,
+    instrument_fastapi,
+    instrument_sqlalchemy,
+    make_health_response,
+    setup_logging,
+    setup_tracing,
 )
-from src.routes import router
-from src.core import config, db
-from shared.core.middleware import ExceptionMiddleware, RequestSizeLimitMiddleware
+from shared.schemas import HealthCheckResponse
 from starlette.requests import Request
+
+from src.core import config, db
+from src.routes import router
 
 # Setup structured logging (replaces old logging setup)
 logger = setup_logging(
@@ -74,7 +74,10 @@ async def lifespan(_: FastAPI):
         service_name="app-service",
         otlp_endpoint=config.settings.otlp_endpoint,
         enabled=config.settings.tracing_enabled,
+        sampler_name=config.settings.otel_traces_sampler,
+        sampler_arg=config.settings.otel_traces_sampler_arg,
     )
+    instrument_sqlalchemy(db.engine)
 
     await auth_client.start()
     await s3_client.start()
@@ -135,9 +138,21 @@ cache.setup(config.settings.api_cache_url, prefix="fastapi:")
 cache.setup(config.settings.backend_cache_url, prefix="backend:")
 
 
+@app.get("/health/live")
+async def live_health_check() -> HealthCheckResponse:
+    return make_health_response(
+        service="app-service",
+        version=config.settings.version,
+        dependencies=[],
+        status="ok",
+        timestamp=int(datetime.now(UTC).timestamp()),
+    )
+
+
+@app.get("/health/ready")
 @app.get("/health")
 async def health_check() -> HealthCheckResponse:
-    """Enhanced health check endpoint with dependency checks"""
+    """Enhanced health check endpoint with dependency checks."""
     deps = []
 
     # Check PostgreSQL
@@ -146,17 +161,11 @@ async def health_check() -> HealthCheckResponse:
     # Check Redis
     deps.append(await check_redis(str(config.settings.redis_url)))
 
-    # Determine overall status
-    overall_status = "ok"
-    if any(d.status == "down" for d in deps):
-        overall_status = "degraded"
-
-    return HealthCheckResponse(
-        status=overall_status,
+    return make_health_response(
         service="app-service",
-        timestamp=int(datetime.now(UTC).timestamp()),
         version=config.settings.version,
         dependencies=deps,
+        timestamp=int(datetime.now(UTC).timestamp()),
     )
 
 

@@ -6,19 +6,20 @@ from faststream.rabbit import RabbitBroker
 from pydantic import ValidationError
 from src.core.config import config
 from src.core.job_store import JobStatus, get_job_store
+
+# New universal adapters (used alongside legacy paths during transition)
 from src.cpsat_bridge import run_cpsat
 from src.service import balance_teams
 
 from shared.messaging.config import BALANCER_JOBS_QUEUE
-from shared.observability import setup_logging
+from shared.observability import (
+    observe_message_processing,
+    setup_logging,
+    setup_tracing,
+    start_worker_metrics_server,
+)
 from shared.schemas.events import BalancerJobEvent
 
-# New universal adapters (used alongside legacy paths during transition)
-from src.cpsat_adapter import CpsatBalancer
-from src.genetic_adapter import GeneticBalancer
-
-# Setup structured logging for this standalone FastStream worker.
-# This runs separately from main.py (FastAPI), so it must call setup_logging() itself.
 logger = setup_logging(
     service_name="balancer-worker",
     log_level=config.log_level,
@@ -30,102 +31,123 @@ broker = RabbitBroker(config.rabbitmq_url, logger=logger)
 app = FastStream(broker)
 
 
+@app.on_startup
+async def setup_worker_observability() -> None:
+    setup_tracing(
+        service_name="balancer-worker",
+        otlp_endpoint=config.otlp_endpoint,
+        enabled=config.tracing_enabled,
+        sampler_name=config.otel_traces_sampler,
+        sampler_arg=config.otel_traces_sampler_arg,
+    )
+    start_worker_metrics_server(config.worker_metrics_port)
+
+
 @broker.subscriber(BALANCER_JOBS_QUEUE)
-async def process_balancer_job(body: dict[str, Any]) -> None:
-    try:
-        event = BalancerJobEvent.model_validate(body)
-    except ValidationError as exc:
-        logger.error(f"Invalid balancer job payload: {exc}")
-        return
+async def process_balancer_job(body: dict[str, Any], msg=None) -> None:
+    async with observe_message_processing(
+        queue=BALANCER_JOBS_QUEUE,
+        handler="process_balancer_job",
+        message=msg,
+        logger=logger,
+    ) as observation:
+        try:
+            event = BalancerJobEvent.model_validate(body)
+        except ValidationError as exc:
+            observation.set_status("invalid")
+            logger.error(f"Invalid balancer job payload: {exc}")
+            return
 
-    job_store = get_job_store()
+        job_store = get_job_store()
 
-    payload = await job_store.get_job_payload(event.job_id)
-    if payload is None:
-        logger.error(f"Job payload missing for job_id={event.job_id}")
-        return
+        payload = await job_store.get_job_payload(event.job_id)
+        if payload is None:
+            observation.set_status("missing_payload")
+            logger.error(f"Job payload missing for job_id={event.job_id}")
+            return
 
-    current_meta = await job_store.get_job_meta(event.job_id)
-    if current_meta and current_meta.get("status") in {"succeeded", "failed"}:
-        logger.info(f"Skipping already completed balancer job {event.job_id}")
-        return
+        current_meta = await job_store.get_job_meta(event.job_id)
+        if current_meta and current_meta.get("status") in {"succeeded", "failed"}:
+            observation.set_status("already_completed")
+            logger.info(f"Skipping already completed balancer job {event.job_id}")
+            return
 
-    await job_store.mark_running(event.job_id)
+        await job_store.mark_running(event.job_id)
 
-    event_queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
-    loop = asyncio.get_running_loop()
+        event_queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
+        loop = asyncio.get_running_loop()
 
-    def progress_callback(progress_payload: dict[str, Any]) -> None:
-        loop.call_soon_threadsafe(event_queue.put_nowait, progress_payload)
+        def progress_callback(progress_payload: dict[str, Any]) -> None:
+            loop.call_soon_threadsafe(event_queue.put_nowait, progress_payload)
 
-    async def consume_progress_events() -> None:
-        while True:
-            update = await event_queue.get()
-            if update is None:
-                break
+        async def consume_progress_events() -> None:
+            while True:
+                update = await event_queue.get()
+                if update is None:
+                    break
 
-            stage = str(update.get("stage", "running"))
-            status_value = str(update.get("status", "running"))
-            if status_value == "queued":
-                status: JobStatus = "queued"
-            elif status_value == "succeeded":
-                status = "succeeded"
-            elif status_value == "failed":
-                status = "failed"
+                stage = str(update.get("stage", "running"))
+                status_value = str(update.get("status", "running"))
+                if status_value == "queued":
+                    status: JobStatus = "queued"
+                elif status_value == "succeeded":
+                    status = "succeeded"
+                elif status_value == "failed":
+                    status = "failed"
+                else:
+                    status = "running"
+                message = str(update.get("message", ""))
+                level = str(update.get("level", "info"))
+                progress = update.get("progress")
+
+                await job_store.append_event(
+                    event.job_id,
+                    status=status,
+                    stage=stage,
+                    message=message,
+                    level=level,
+                    progress=progress,
+                    update_meta=True,
+                )
+
+        consume_task = asyncio.create_task(consume_progress_events())
+
+        try:
+            input_data = payload.get("data")
+            config_overrides = payload.get("config") or {}
+
+            if not isinstance(input_data, dict):
+                raise ValueError("Job payload does not contain valid player data")
+
+            algorithm = config_overrides.get("ALGORITHM", "genetic") if config_overrides else "genetic"
+
+            if algorithm == "cpsat":
+                max_solutions = config_overrides.get("MAX_CPSAT_SOLUTIONS", 3) if config_overrides else 3
+                await job_store.append_event(
+                    event.job_id,
+                    status="running",
+                    stage="solving",
+                    message="Running CP-SAT solver…",
+                    level="info",
+                    progress=None,
+                    update_meta=True,
+                )
+                variants = await asyncio.to_thread(run_cpsat, input_data, max_solutions)
+                result = {"variants": variants}
             else:
-                status = "running"
-            message = str(update.get("message", ""))
-            level = str(update.get("level", "info"))
-            progress = update.get("progress")
+                result_single = await asyncio.to_thread(balance_teams, input_data, config_overrides, progress_callback)
+                result = {"variants": [result_single]}
 
-            await job_store.append_event(
-                event.job_id,
-                status=status,
-                stage=stage,
-                message=message,
-                level=level,
-                progress=progress,
-                update_meta=True,
-            )
+            await event_queue.put(None)
+            await consume_task
 
-    consume_task = asyncio.create_task(consume_progress_events())
+            await job_store.mark_succeeded(event.job_id, result)
+            logger.success(f"Balancer job completed: {event.job_id}")
+        except Exception as exc:  # pragma: no cover - defensive worker guard
+            logger.exception(f"Balancer job failed ({event.job_id}): {exc}")
 
-    try:
-        input_data = payload.get("data")
-        config_overrides = payload.get("config") or {}
+            await event_queue.put(None)
+            await consume_task
 
-        if not isinstance(input_data, dict):
-            raise ValueError("Job payload does not contain valid player data")
-
-        algorithm = config_overrides.get("ALGORITHM", "genetic") if config_overrides else "genetic"
-
-        if algorithm == "cpsat":
-            max_solutions = config_overrides.get("MAX_CPSAT_SOLUTIONS", 3) if config_overrides else 3
-            await job_store.append_event(
-                event.job_id,
-                status="running",
-                stage="solving",
-                message="Running CP-SAT solver…",
-                level="info",
-                progress=None,
-                update_meta=True,
-            )
-            variants = await asyncio.to_thread(run_cpsat, input_data, max_solutions)
-            result = {"variants": variants}
-        else:
-            # genetic (original path)
-            result_single = await asyncio.to_thread(balance_teams, input_data, config_overrides, progress_callback)
-            result = {"variants": [result_single]}
-
-        await event_queue.put(None)
-        await consume_task
-
-        await job_store.mark_succeeded(event.job_id, result)
-        logger.success(f"Balancer job completed: {event.job_id}")
-    except Exception as exc:  # pragma: no cover - defensive worker guard
-        logger.exception(f"Balancer job failed ({event.job_id}): {exc}")
-
-        await event_queue.put(None)
-        await consume_task
-
-        await job_store.mark_failed(event.job_id, f"Balancer job failed: {exc}")
+            await job_store.mark_failed(event.job_id, f"Balancer job failed: {exc}")
+            raise

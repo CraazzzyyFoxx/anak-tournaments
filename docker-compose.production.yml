@@ -94,6 +94,27 @@ services:
     networks:
       - app-network
 
+  tempo:
+    image: grafana/tempo:2.7.0
+    restart: unless-stopped
+    command: ["-config.file=/etc/tempo.yml"]
+    volumes:
+      - ./monitoring/tempo/tempo.yml:/etc/tempo.yml:ro
+      - tempo_data:/var/tempo
+    networks:
+      - app-network
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.111.0
+    restart: unless-stopped
+    command: ["--config=/etc/otel-collector/config.yml"]
+    volumes:
+      - ./monitoring/otel/otel-collector.yml:/etc/otel-collector/config.yml:ro
+    depends_on:
+      - tempo
+    networks:
+      - app-network
+
   promtail:
     image: grafana/promtail:3.3.2
     restart: unless-stopped
@@ -115,6 +136,7 @@ services:
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_SERVER_ROOT_URL: "${GRAFANA_ROOT_URL:-http://localhost:3001}"
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: "/var/lib/grafana/dashboards/logs.json"
+      TEMPO_URL: "${TEMPO_URL:-http://tempo:3200}"
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
@@ -126,6 +148,7 @@ services:
     depends_on:
       - prometheus
       - loki
+      - tempo
 
   ss-local:
     image: teddysun/xray:latest
@@ -477,6 +500,7 @@ volumes:
   alertmanager_data:
   loki_data:
   grafana_data:
+  tempo_data:
 
 networks:
   app-network:

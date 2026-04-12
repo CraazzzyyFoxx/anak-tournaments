@@ -1,31 +1,32 @@
 from contextlib import asynccontextmanager
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
+import sentry_sdk
 from fastapi import FastAPI
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-
-import sentry_sdk
 from prometheus_fastapi_instrumentator import Instrumentator
-
-from shared.schemas import HealthCheckResponse
 from shared.clients import AuthClient, S3Client
+from shared.core.middleware import ExceptionMiddleware, RequestSizeLimitMiddleware
 from shared.observability import (
-    setup_logging,
     CorrelationIdMiddleware,
     TimeMiddleware,
-    setup_tracing,
-    instrument_fastapi,
     check_postgres,
-    check_redis,
     check_rabbitmq,
+    check_redis,
+    instrument_fastapi,
+    instrument_sqlalchemy,
+    make_health_response,
+    setup_logging,
+    setup_tracing,
 )
+from shared.schemas import HealthCheckResponse
+from starlette.requests import Request
+
 from src import routes
 from src.core import config, db
-from shared.core.middleware import ExceptionMiddleware, RequestSizeLimitMiddleware
-from starlette.requests import Request
 
 # Setup structured logging
 logger = setup_logging(
@@ -68,11 +69,14 @@ async def lifespan(_: FastAPI):
         service_name="parser-service",
         otlp_endpoint=config.settings.otlp_endpoint,
         enabled=config.settings.tracing_enabled,
+        sampler_name=config.settings.otel_traces_sampler,
+        sampler_arg=config.settings.otel_traces_sampler_arg,
     )
+    instrument_sqlalchemy(db.engine)
 
     await auth_client.start()
     await s3_client.start()
-    async with db.async_session_maker() as session:
+    async with db.async_session_maker():
         pass
     logger.info(f"Starting {config.settings.project_name} - Parser Service...")
     logger.info(f"Environment: {config.settings.environment}")
@@ -125,24 +129,31 @@ app.add_middleware(CorrelationIdMiddleware)
 app.include_router(routes.router)
 
 
+@app.get("/health/live")
+async def live_health_check() -> HealthCheckResponse:
+    return make_health_response(
+        service="parser-service",
+        version=config.settings.version,
+        dependencies=[],
+        status="ok",
+        timestamp=int(datetime.now(UTC).timestamp()),
+    )
+
+
+@app.get("/health/ready")
 @app.get("/health")
 async def health_check() -> HealthCheckResponse:
-    """Enhanced health check endpoint with dependency checks"""
+    """Enhanced health check endpoint with dependency checks."""
     deps = []
     deps.append(await check_postgres(db.async_session_maker))
     deps.append(await check_redis(str(config.settings.redis_url)))
     deps.append(await check_rabbitmq(config.settings.rabbitmq_url))
 
-    overall_status = "ok"
-    if any(d.status == "down" for d in deps):
-        overall_status = "degraded"
-
-    return HealthCheckResponse(
-        status=overall_status,
+    return make_health_response(
         service="parser-service",
-        timestamp=int(datetime.now(UTC).timestamp()),
         version=config.settings.version,
         dependencies=deps,
+        timestamp=int(datetime.now(UTC).timestamp()),
     )
 
 

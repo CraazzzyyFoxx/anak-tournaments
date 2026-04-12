@@ -7,13 +7,12 @@ from fastapi.responses import StreamingResponse
 from faststream.rabbit.fastapi import RabbitRouter
 from loguru import logger
 from pydantic import ValidationError
-from src.core.config import config
 from src.core.auth import require_any_role
+from src.core.config import config
 from src.core.job_store import get_job_store
 from src.schemas import (
-    BalancerConfigResponse,
     BalanceJobResult,
-    BalanceResponse,
+    BalancerConfigResponse,
     ConfigOverrides,
     CreateJobResponse,
     JobStatusResponse,
@@ -21,6 +20,7 @@ from src.schemas import (
 from src.service import get_balancer_config_payload
 
 from shared.messaging.config import BALANCER_JOBS_QUEUE
+from shared.observability import publish_message
 from shared.schemas.events import BalancerJobEvent
 
 router = APIRouter(
@@ -91,7 +91,7 @@ async def enqueue_balancer_job(file: UploadFile | None, config_raw: str | None) 
 
     try:
         event = BalancerJobEvent(job_id=job_id)
-        await task_router.broker.publish(event.model_dump(), BALANCER_JOBS_QUEUE)
+        await publish_message(task_router.broker, event.model_dump(), BALANCER_JOBS_QUEUE, logger=logger)
         logger.success(f"Balancer job queued: {job_id}")
     except Exception as exc:  # pragma: no cover - network/broker failure path
         logger.exception(f"Failed to enqueue balancer job {job_id}")

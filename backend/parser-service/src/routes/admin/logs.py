@@ -1,8 +1,7 @@
 """Admin routes for log processing monitoring: history, queue status, and SSE stream."""
 
 import asyncio
-import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -10,13 +9,14 @@ from fastapi.responses import EventSourceResponse
 from fastapi.sse import ServerSentEvent
 from loguru import logger
 from pydantic import BaseModel
+from shared.messaging.config import PROCESS_MATCH_LOG_QUEUE
+from shared.models.log_processing import LogProcessingStatus
+from shared.observability import publish_message
+from shared.schemas.events import ProcessMatchLogEvent
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import main
-from shared.messaging.config import PROCESS_MATCH_LOG_QUEUE
-from shared.models.log_processing import LogProcessingStatus
-from shared.schemas.events import ProcessMatchLogEvent
 from src import models
 from src.core import auth, config, db
 from src.routes.match_logs import task_router
@@ -199,7 +199,7 @@ async def retry_log_record(
     await session.refresh(record)
 
     event = ProcessMatchLogEvent(tournament_id=record.tournament_id, filename=record.filename)
-    await task_router.broker.publish(event.model_dump(), PROCESS_MATCH_LOG_QUEUE)
+    await publish_message(task_router.broker, event.model_dump(), PROCESS_MATCH_LOG_QUEUE, logger=logger)
 
     return LogRecordRead.model_validate(_record_to_dict(record))
 
@@ -232,7 +232,7 @@ async def stream_log_status(
                 recent = await _fetch_recent_records(session, limit=20, workspace_id=workspace_id)
 
                 payload_data = {
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "timestamp": datetime.now(UTC).isoformat(),
                     "queues": [q.model_dump() for q in queues],
                     "recent_logs": recent,
                 }

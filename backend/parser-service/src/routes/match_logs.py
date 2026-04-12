@@ -6,12 +6,13 @@ from shared.messaging.config import (
     DISCORD_COMMANDS_QUEUE,
     PROCESS_TOURNAMENT_LOGS_QUEUE,
 )
-from sqlalchemy import select
 from shared.models.log_processing import LogProcessingSource
+from shared.observability import publish_message
 from shared.schemas.events import (
     DiscordCommandEvent,
     ProcessTournamentLogsEvent,
 )
+from sqlalchemy import select
 
 from src import models
 from src.core import auth, config, db, enums
@@ -44,7 +45,7 @@ async def process_all_logs(session=Depends(db.get_async_session)):
     for tournament in tournaments:
         if tournament.id > 20:
             event = ProcessTournamentLogsEvent(tournament_id=tournament.id)
-            await task_router.broker.publish(event.model_dump(), PROCESS_TOURNAMENT_LOGS_QUEUE)
+            await publish_message(task_router.broker, event.model_dump(), PROCESS_TOURNAMENT_LOGS_QUEUE, logger=logger)
     return {"message": "Processing all logs for all tournaments"}
 
 
@@ -59,7 +60,7 @@ async def get_tournament_logs(tournament_id: int, session=Depends(db.get_async_s
 async def process_tournament_logs(tournament_id: int, session=Depends(db.get_async_session)):
     tournament = await tournaments_flows.get(session, tournament_id, [])
     event = ProcessTournamentLogsEvent(tournament_id=tournament.id)
-    await task_router.broker.publish(event.model_dump(), PROCESS_TOURNAMENT_LOGS_QUEUE)
+    await publish_message(task_router.broker, event.model_dump(), PROCESS_TOURNAMENT_LOGS_QUEUE, logger=logger)
     return {"message": f"Processing all logs for tournament '{tournament.name}'"}
 
 
@@ -119,7 +120,7 @@ async def process_logs_discord(tournament_id: int, session=Depends(db.get_async_
         action="process_all",
         tournament_id=tournament_id,
     )
-    await task_router.broker.publish(event.model_dump(), DISCORD_COMMANDS_QUEUE)
+    await publish_message(task_router.broker, event.model_dump(), DISCORD_COMMANDS_QUEUE, logger=logger)
     return {"message": f"Processing all logs for tournament '{tournament.name}'"}
 
 
@@ -137,7 +138,7 @@ async def process_logs_discord_message(
         message_id=message_id,
         tournament_id=tournament.id,
     )
-    await task_router.broker.publish(event.model_dump(), DISCORD_COMMANDS_QUEUE)
+    await publish_message(task_router.broker, event.model_dump(), DISCORD_COMMANDS_QUEUE, logger=logger)
     return {"message": f"Processing message {message_id} in channel {channel_id} for tournament '{tournament.name}'"}
 
 
