@@ -2,6 +2,7 @@
 
 import redis.asyncio as aioredis
 from loguru import logger
+from redis.exceptions import RedisError
 
 from src.core.config import settings
 
@@ -14,8 +15,12 @@ async def init_redis() -> None:
         settings.REDIS_URL,
         decode_responses=True,
     )
-    await _redis.ping()
-    logger.success("Redis connection established")
+    try:
+        await _redis.ping()
+    except RedisError as exc:
+        logger.warning(f"Redis unavailable during startup, continuing with DB fallback: {exc}")
+    else:
+        logger.success("Redis connection established")
 
 
 async def close_redis() -> None:

@@ -3,6 +3,7 @@
 import json
 
 from loguru import logger
+from redis.exceptions import RedisError
 
 from src.core.redis import get_redis
 
@@ -14,17 +15,34 @@ def _key(user_id: int) -> str:
     return f"{RBAC_KEY_PREFIX}{user_id}"
 
 
+def _log_redis_degraded(action: str, exc: Exception) -> None:
+    logger.warning(f"Redis unavailable during {action}; falling back gracefully: {exc}")
+
+
 async def get_rbac(user_id: int) -> dict | None:
     """Return cached RBAC payload or None on miss."""
-    redis = get_redis()
-    raw = await redis.get(_key(user_id))
+    try:
+        redis = get_redis()
+    except RuntimeError as exc:
+        _log_redis_degraded("RBAC cache read", exc)
+        return None
+
+    try:
+        raw = await redis.get(_key(user_id))
+    except (RedisError, OSError, RuntimeError) as exc:
+        _log_redis_degraded("RBAC cache read", exc)
+        return None
+
     if raw is None:
         return None
     try:
         return json.loads(raw)
     except (json.JSONDecodeError, TypeError):
         logger.warning(f"Corrupted RBAC cache for user {user_id}, evicting")
-        await redis.delete(_key(user_id))
+        try:
+            await redis.delete(_key(user_id))
+        except (RedisError, OSError, RuntimeError) as exc:
+            _log_redis_degraded("RBAC cache eviction", exc)
         return None
 
 
@@ -35,16 +53,34 @@ async def set_rbac(
     workspace_roles: dict | None = None,
 ) -> None:
     """Store RBAC data with TTL."""
-    redis = get_redis()
+    try:
+        redis = get_redis()
+    except RuntimeError as exc:
+        _log_redis_degraded("RBAC cache write", exc)
+        return
+
     data: dict = {"roles": roles, "permissions": permissions}
     if workspace_roles:
         data["workspace_roles"] = workspace_roles
     payload = json.dumps(data)
-    await redis.set(_key(user_id), payload, ex=RBAC_TTL_SECONDS)
+    try:
+        await redis.set(_key(user_id), payload, ex=RBAC_TTL_SECONDS)
+    except (RedisError, OSError, RuntimeError) as exc:
+        _log_redis_degraded("RBAC cache write", exc)
 
 
 async def invalidate_rbac(user_id: int) -> None:
     """Immediately remove cached RBAC for a user."""
-    redis = get_redis()
-    await redis.delete(_key(user_id))
+    try:
+        redis = get_redis()
+    except RuntimeError as exc:
+        _log_redis_degraded("RBAC cache invalidation", exc)
+        return
+
+    try:
+        await redis.delete(_key(user_id))
+    except (RedisError, OSError, RuntimeError) as exc:
+        _log_redis_degraded("RBAC cache invalidation", exc)
+        return
+
     logger.info(f"RBAC cache invalidated for user {user_id}")
