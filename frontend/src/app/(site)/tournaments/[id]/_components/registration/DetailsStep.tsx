@@ -24,11 +24,11 @@ export default function DetailsStep({
   const fields = form.built_in_fields;
   const showNotes = fields?.notes?.enabled !== false;
   const showStreamPov = fields?.stream_pov?.enabled === true;
-  const notesValidationError = getBuiltInFieldValidationError(
+  const notesValidationError = showNotes ? getBuiltInFieldValidationError(
     "notes",
     values.notes ?? "",
     fields?.notes,
-  );
+  ) : null;
 
   useEffect(() => {
     onFieldValidationChange("notes", notesValidationError);

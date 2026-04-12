@@ -112,9 +112,9 @@ export default function RegistrationWizard({
     const bts = linkedUser.battle_tag?.map((bt) => bt.battle_tag) ?? [];
     const dcs = linkedUser.discord?.map((d) => d.name) ?? [];
     const tws = linkedUser.twitch?.map((t) => t.name) ?? [];
-    if (bts.length > 0) init.battle_tag = bts[0];
-    if (dcs.length > 0) init.discord_nick = dcs[0];
-    if (tws.length > 0) init.twitch_nick = tws[0];
+    if (isEnabled("battle_tag") && bts.length > 0) init.battle_tag = bts[0];
+    if (isEnabled("discord_nick") && dcs.length > 0) init.discord_nick = dcs[0];
+    if (isEnabled("twitch_nick") && tws.length > 0) init.twitch_nick = tws[0];
     dispatch({ type: "INIT_VALUES", values: init });
   }, [linkedUser]);
 
@@ -144,13 +144,13 @@ export default function RegistrationWizard({
     mutationFn: () => {
       const rolesPayload = buildRolesPayload();
       const input: RegistrationCreateInput = {
-        battle_tag: state.values.battle_tag || undefined,
-        smurf_tags: state.smurfTags.length > 0 ? state.smurfTags : undefined,
-        discord_nick: state.values.discord_nick || undefined,
-        twitch_nick: state.values.twitch_nick || undefined,
+        battle_tag: isEnabled("battle_tag") ? (state.values.battle_tag || undefined) : undefined,
+        smurf_tags: isEnabled("smurf_tags") && state.smurfTags.length > 0 ? state.smurfTags : undefined,
+        discord_nick: isEnabled("discord_nick") ? (state.values.discord_nick || undefined) : undefined,
+        twitch_nick: isEnabled("twitch_nick") ? (state.values.twitch_nick || undefined) : undefined,
         roles: rolesPayload.length > 0 ? rolesPayload : undefined,
-        stream_pov: state.values.stream_pov === "true",
-        notes: state.values.notes || undefined,
+        stream_pov: isEnabled("stream_pov") ? state.values.stream_pov === "true" : undefined,
+        notes: isEnabled("notes") ? (state.values.notes || undefined) : undefined,
         custom_fields: Object.fromEntries(
           form.custom_fields
             .map((f) => [
@@ -215,26 +215,26 @@ export default function RegistrationWizard({
         return "Twitch is required.";
       }
       return (
-        getBuiltInFieldValidationError(
+        (isEnabled("battle_tag") ? getBuiltInFieldValidationError(
           "battle_tag",
           state.values.battle_tag ?? "",
           getBuiltInConfig("battle_tag"),
-        )
-        ?? getBuiltInListValidationError(
+        ) : null)
+        ?? (isEnabled("smurf_tags") ? getBuiltInListValidationError(
           "smurf_tags",
           state.smurfTags,
           getBuiltInConfig("smurf_tags"),
-        )
-        ?? getBuiltInFieldValidationError(
+        ) : null)
+        ?? (isEnabled("discord_nick") ? getBuiltInFieldValidationError(
           "discord_nick",
           state.values.discord_nick ?? "",
           getBuiltInConfig("discord_nick"),
-        )
-        ?? getBuiltInFieldValidationError(
+        ) : null)
+        ?? (isEnabled("twitch_nick") ? getBuiltInFieldValidationError(
           "twitch_nick",
           state.values.twitch_nick ?? "",
           getBuiltInConfig("twitch_nick"),
-        )
+        ) : null)
       );
     }
 
