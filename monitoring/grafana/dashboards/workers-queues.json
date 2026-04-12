@@ -21,7 +21,7 @@
       "title": "Worker p95 Duration",
       "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "worker:processing_p95_5m", "legendFormat": "{{ job }} / {{ queue }} / {{ handler }}" }]
+      "targets": [{ "expr": "histogram_quantile(0.95, sum by (job, queue, handler, le) (rate(worker_processing_duration_seconds_bucket[5m])))", "legendFormat": "{{ job }} / {{ queue }} / {{ handler }}" }]
     },
     {
       "id": 3,

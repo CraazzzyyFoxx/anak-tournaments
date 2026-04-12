@@ -12,6 +12,11 @@ distributor:
           endpoint: 0.0.0.0:4318
 
 ingester:
+  lifecycler:
+    ring:
+      replication_factor: 1
+      kvstore:
+        store: inmemory
   trace_idle_period: 10s
   max_block_bytes: 1048576
   max_block_duration: 5m
@@ -29,6 +34,9 @@ storage:
       path: /var/tempo/blocks
 
 metrics_generator:
+  ring:
+    kvstore:
+      store: inmemory
   registry:
     external_labels:
       source: tempo

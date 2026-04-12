@@ -65,7 +65,7 @@ class BaseServiceSettings(BaseSettings):
 
     # Logging
     log_level: str = "info"
-    logs_root_path: str = str(Path.cwd() / "logs")
+    logs_root_path: str = "/logs" if Path("/logs").exists() else str(Path.cwd() / "logs")
     json_logging: bool = True
 
     # S3 / MinIO (optional – only needed by services that use storage)

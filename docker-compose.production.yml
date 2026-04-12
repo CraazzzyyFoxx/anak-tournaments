@@ -217,6 +217,11 @@ services:
     env_file:
       - ./backend/env/common.env
       - ./backend/env/app.env
+    environment:
+      - TRACING_ENABLED=true
+      - OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_TRACES_SAMPLER=parentbased_traceidratio
+      - OTEL_TRACES_SAMPLER_ARG=0.1
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -244,6 +249,11 @@ services:
     env_file:
       - ./backend/env/common.env
       - ./backend/env/auth.env
+    environment:
+      - TRACING_ENABLED=true
+      - OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_TRACES_SAMPLER=parentbased_traceidratio
+      - OTEL_TRACES_SAMPLER_ARG=0.1
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -275,6 +285,11 @@ services:
     env_file:
       - ./backend/env/common.env
       - ./backend/env/parser.env
+    environment:
+      - TRACING_ENABLED=true
+      - OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_TRACES_SAMPLER=parentbased_traceidratio
+      - OTEL_TRACES_SAMPLER_ARG=0.1
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -308,6 +323,12 @@ services:
     env_file:
       - ./backend/env/common.env
       - ./backend/env/discord.env
+    environment:
+      - TRACING_ENABLED=true
+      - OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_TRACES_SAMPLER=parentbased_traceidratio
+      - OTEL_TRACES_SAMPLER_ARG=0.1
+      - WORKER_METRICS_PORT=9100
     depends_on:
       redis:
         condition: service_started
@@ -370,6 +391,11 @@ services:
     env_file:
       - ./backend/env/common.env
       - ./backend/env/balancer.env
+    environment:
+      - TRACING_ENABLED=true
+      - OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_TRACES_SAMPLER=parentbased_traceidratio
+      - OTEL_TRACES_SAMPLER_ARG=0.1
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -401,6 +427,12 @@ services:
     env_file:
       - ./backend/env/common.env
       - ./backend/env/parser.env
+    environment:
+      - TRACING_ENABLED=true
+      - OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_TRACES_SAMPLER=parentbased_traceidratio
+      - OTEL_TRACES_SAMPLER_ARG=0.1
+      - WORKER_METRICS_PORT=9100
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -430,6 +462,12 @@ services:
     env_file:
       - ./backend/env/common.env
       - ./backend/env/balancer.env
+    environment:
+      - TRACING_ENABLED=true
+      - OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_TRACES_SAMPLER=parentbased_traceidratio
+      - OTEL_TRACES_SAMPLER_ARG=0.1
+      - WORKER_METRICS_PORT=9100
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

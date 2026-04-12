@@ -87,6 +87,10 @@ services:
     environment:
       - DEBUG=true
       - LOG_LEVEL=DEBUG
+      - TRACING_ENABLED=true
+      - OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_TRACES_SAMPLER=parentbased_traceidratio
+      - OTEL_TRACES_SAMPLER_ARG=0.1
     depends_on:
       redis:
         condition: service_healthy
@@ -135,6 +139,10 @@ services:
     environment:
       - DEBUG=true
       - LOG_LEVEL=DEBUG
+      - TRACING_ENABLED=true
+      - OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_TRACES_SAMPLER=parentbased_traceidratio
+      - OTEL_TRACES_SAMPLER_ARG=0.1
       - 'SERVICE_CLIENTS=${SERVICE_CLIENTS:-{"discord-service":"dev-discord-service-secret"}}'
       - 'SERVICE_SCOPES=${SERVICE_SCOPES:-{"discord-service":["parser:logs"]}}'
     depends_on:
@@ -184,6 +192,10 @@ services:
     environment:
       - DEBUG=true
       - LOG_LEVEL=DEBUG
+      - TRACING_ENABLED=true
+      - OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_TRACES_SAMPLER=parentbased_traceidratio
+      - OTEL_TRACES_SAMPLER_ARG=0.1
     depends_on:
       redis:
         condition: service_healthy
@@ -233,6 +245,10 @@ services:
     environment:
       - DEBUG=true
       - LOG_LEVEL=DEBUG
+      - TRACING_ENABLED=true
+      - OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_TRACES_SAMPLER=parentbased_traceidratio
+      - OTEL_TRACES_SAMPLER_ARG=0.1
     depends_on:
       redis:
         condition: service_healthy
@@ -275,6 +291,11 @@ services:
     environment:
       - DEBUG=true
       - LOG_LEVEL=DEBUG
+      - TRACING_ENABLED=true
+      - OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_TRACES_SAMPLER=parentbased_traceidratio
+      - OTEL_TRACES_SAMPLER_ARG=0.1
+      - WORKER_METRICS_PORT=9100
       - WATCHFILES_FORCE_POLLING=true
       - WATCHFILES_POLL_DELAY_MS=5000
     depends_on:
@@ -311,6 +332,11 @@ services:
     environment:
       - DEBUG=true
       - LOG_LEVEL=DEBUG
+      - TRACING_ENABLED=true
+      - OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_TRACES_SAMPLER=parentbased_traceidratio
+      - OTEL_TRACES_SAMPLER_ARG=0.1
+      - WORKER_METRICS_PORT=9100
       - WATCHFILES_FORCE_POLLING=true
       - WATCHFILES_POLL_DELAY_MS=5000
     depends_on:
@@ -349,6 +375,11 @@ services:
     environment:
       - DEBUG=true
       - LOG_LEVEL=DEBUG
+      - TRACING_ENABLED=true
+      - OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_TRACES_SAMPLER=parentbased_traceidratio
+      - OTEL_TRACES_SAMPLER_ARG=0.1
+      - WORKER_METRICS_PORT=9100
       - SERVICE_CLIENT_ID=${DISCORD_SERVICE_CLIENT_ID:-discord-service}
       - SERVICE_CLIENT_SECRET=${DISCORD_SERVICE_CLIENT_SECRET:-dev-discord-service-secret}
       - WATCHFILES_FORCE_POLLING=true

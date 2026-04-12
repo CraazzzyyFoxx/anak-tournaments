@@ -41,7 +41,7 @@ datasources:
         filterByTraceID: true
         filterBySpanID: true
         customQuery: true
-        query: '{service=~".+"} | json | trace_id="${__trace.traceId}"'
+        query: '{job="app_services"} |= "\"trace_id\":\"${__trace.traceId}\""'
       serviceMap:
         datasourceUid: prometheus
       search:

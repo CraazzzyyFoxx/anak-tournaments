@@ -25,7 +25,7 @@
       "datasource": { "type": "loki", "uid": "loki" },
       "targets": [
         {
-          "expr": "{service=~\".+\"} | json | trace_id != \"\"",
+          "expr": "{job=\"app_services\"} |= \"\\\"trace_id\\\":\\\"\"",
           "refId": "A"
         }
       ],

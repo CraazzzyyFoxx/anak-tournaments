@@ -13,7 +13,7 @@
       "title": "HTTP Error Ratio",
       "gridPos": { "x": 0, "y": 0, "w": 6, "h": 5 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "100 * avg(service:http_error_ratio_5m{job=~\"app-service|auth-service|parser-service|balancer-service\"})", "refId": "A" }],
+      "targets": [{ "expr": "(100 * sum(rate(http_requests_total{job=~\"app-service|auth-service|parser-service|balancer-service\",status_code=~\"5..\"}[5m])) / clamp_min(sum(rate(http_requests_total{job=~\"app-service|auth-service|parser-service|balancer-service\"}[5m])), 0.001)) or vector(0)", "refId": "A" }],
       "fieldConfig": { "defaults": { "unit": "percent", "decimals": 2 } }
     },
     {
@@ -22,7 +22,7 @@
       "title": "HTTP p95 Latency",
       "gridPos": { "x": 6, "y": 0, "w": 6, "h": 5 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "max(service:http_latency_p95_5m{job=~\"app-service|auth-service|parser-service|balancer-service\"})", "refId": "A" }],
+      "targets": [{ "expr": "max(histogram_quantile(0.95, sum by (job, le) (rate(http_request_duration_seconds_bucket{job=~\"app-service|auth-service|parser-service|balancer-service\"}[5m]))))", "refId": "A" }],
       "fieldConfig": { "defaults": { "unit": "s", "decimals": 3 } }
     },
     {
@@ -31,7 +31,7 @@
       "title": "Worker Failures / min",
       "gridPos": { "x": 12, "y": 0, "w": 6, "h": 5 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "sum(rate(worker_messages_processed_total{status=\"error\"}[1m]))", "refId": "A" }],
+      "targets": [{ "expr": "sum(rate(worker_messages_processed_total{status=\"error\"}[1m])) or vector(0)", "refId": "A" }],
       "fieldConfig": { "defaults": { "unit": "ops", "decimals": 2 } }
     },
     {
@@ -40,7 +40,7 @@
       "title": "Redis Hit Ratio",
       "gridPos": { "x": 18, "y": 0, "w": 6, "h": 5 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "100 * redis:keyspace_hit_ratio_5m", "refId": "A" }],
+      "targets": [{ "expr": "(100 * sum(rate(redis_keyspace_hits_total[5m])) / clamp_min(sum(rate(redis_keyspace_hits_total[5m])) + sum(rate(redis_keyspace_misses_total[5m])), 0.001)) or vector(0)", "refId": "A" }],
       "fieldConfig": { "defaults": { "unit": "percent", "decimals": 2 } }
     },
     {
@@ -57,7 +57,7 @@
       "title": "Queue Depth",
       "gridPos": { "x": 12, "y": 5, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "rabbitmq:queue_depth", "legendFormat": "{{ queue }}" }]
+      "targets": [{ "expr": "sum by (queue) (rabbitmq_queue_messages{queue!~\".*\\\\.dlq\"})", "legendFormat": "{{ queue }}" }]
     },
     {
       "id": 7,
