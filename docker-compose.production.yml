@@ -42,8 +42,6 @@ services:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./monitoring/prometheus/rules:/etc/prometheus/rules:ro
       - prometheus_data:/prometheus
-    ports:
-      - "9090:9090"
     networks:
       - app-network
     depends_on:
@@ -60,8 +58,6 @@ services:
       - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - ./monitoring/secrets:/run/secrets:ro
       - alertmanager_data:/alertmanager
-    ports:
-      - "9093:9093"
     networks:
       - app-network
 
@@ -70,8 +66,6 @@ services:
     restart: unless-stopped
     environment:
       REDIS_ADDR: "redis:6379"
-    ports:
-      - "9121:9121"
     networks:
       - app-network
 
@@ -87,8 +81,6 @@ services:
       OUTPUT_FORMAT: "TTY"
       SKIP_QUEUES: "^$"
       INCLUDE_QUEUES: ".*"
-    ports:
-      - "9419:9419"
     networks:
       - app-network
 
@@ -99,8 +91,6 @@ services:
     volumes:
       - ./monitoring/loki/loki.yml:/etc/loki/loki.yml:ro
       - loki_data:/loki
-    ports:
-      - "3100:3100"
     networks:
       - app-network
 
