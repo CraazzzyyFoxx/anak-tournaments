@@ -97,9 +97,6 @@ app = FastAPI(
 # Store clients on app state for dependency injection
 app.state.s3 = s3_client
 
-# Instrument FastAPI for OpenTelemetry tracing
-instrument_fastapi(app)
-
 # Expose Prometheus /metrics endpoint
 Instrumentator().instrument(app).expose(app)
 
@@ -116,6 +113,10 @@ app.add_middleware(RequestSizeLimitMiddleware, max_content_length=10 * 1024 * 10
 app.add_middleware(ExceptionMiddleware, is_development=settings.environment == "development")
 app.add_middleware(TimeMiddleware)
 app.add_middleware(CorrelationIdMiddleware)
+
+# Instrument FastAPI after custom middleware registration so request logs are emitted
+# while the server span is still active.
+instrument_fastapi(app)
 
 
 @app.exception_handler(RequestValidationError)

@@ -22,7 +22,7 @@ datasources:
       maxLines: 1000
       derivedFields:
         - datasourceUid: tempo
-          matcherRegex: '"trace_id":"([a-f0-9]+)"'
+          matcherRegex: '"trace_id"\s*:\s*"([a-f0-9]+)"'
           name: TraceID
           url: '$${__value.raw}'
 
@@ -41,7 +41,7 @@ datasources:
         filterByTraceID: true
         filterBySpanID: true
         customQuery: true
-        query: '{job="app_services"} |= "\"trace_id\":\"${__trace.traceId}\""'
+        query: '{job="app_services"} |~ "\"trace_id\"\\s*:\\s*\"${__trace.traceId}\""'
       serviceMap:
         datasourceUid: prometheus
       search:
