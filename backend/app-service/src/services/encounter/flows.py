@@ -24,17 +24,18 @@ async def to_pydantic(
     Returns:
         schemas.EncounterRead: The Pydantic schema representing the encounter.
     """
-    tournament_group: schemas.TournamentGroupRead | None = None
+    stage: schemas.StageRead | None = None
+    stage_item: schemas.StageItemRead | None = None
     tournament: schemas.TournamentRead | None = None
     home_team: schemas.TeamRead | None = None
     away_team: schemas.TeamRead | None = None
     matches_read: list[schemas.MatchRead] = []
 
-    if "tournament_group" in entities:
-        tournament_group = await tournament_flows.to_pydantic_group(
-            session,
-            encounter.tournament_group,
-            utils.prepare_entities(entities, "tournament_group"),
+    if "stage" in entities and encounter.stage is not None:
+        stage = schemas.StageRead.model_validate(encounter.stage, from_attributes=True)
+    if "stage_item" in entities and encounter.stage_item is not None:
+        stage_item = schemas.StageItemRead.model_validate(
+            encounter.stage_item, from_attributes=True
         )
     if "tournament" in entities:
         tournament = await tournament_flows.to_pydantic(
@@ -42,10 +43,20 @@ async def to_pydantic(
             encounter.tournament,
             utils.prepare_entities(entities, "tournament"),
         )
-    if "teams" in entities:
-        teams_entities = utils.prepare_entities(entities, "teams")
+    if "teams" in entities or "home_team" in entities:
+        teams_entities = (
+            utils.prepare_entities(entities, "teams")
+            if "teams" in entities
+            else utils.prepare_entities(entities, "home_team")
+        )
         home_team = await team_flows.to_pydantic(
             session, encounter.home_team, teams_entities
+        )
+    if "teams" in entities or "away_team" in entities:
+        teams_entities = (
+            utils.prepare_entities(entities, "teams")
+            if "teams" in entities
+            else utils.prepare_entities(entities, "away_team")
         )
         away_team = await team_flows.to_pydantic(
             session, encounter.away_team, teams_entities
@@ -61,7 +72,8 @@ async def to_pydantic(
     return schemas.EncounterRead(
         **encounter.to_dict(),
         score=schemas.Score(home=encounter.home_score, away=encounter.away_score),
-        tournament_group=tournament_group,
+        stage=stage,
+        stage_item=stage_item,
         tournament=tournament,
         home_team=home_team,
         away_team=away_team,
@@ -88,10 +100,20 @@ async def to_pydantic_match(
     encounter: schemas.EncounterRead | None = None
     map_read: schemas.MapRead | None = None
 
-    if "teams" in entities:
-        teams_entities = utils.prepare_entities(entities, "teams")
+    if "teams" in entities or "home_team" in entities:
+        teams_entities = (
+            utils.prepare_entities(entities, "teams")
+            if "teams" in entities
+            else utils.prepare_entities(entities, "home_team")
+        )
         home_team = await team_flows.to_pydantic(
             session, match.home_team, teams_entities
+        )
+    if "teams" in entities or "away_team" in entities:
+        teams_entities = (
+            utils.prepare_entities(entities, "teams")
+            if "teams" in entities
+            else utils.prepare_entities(entities, "away_team")
         )
         away_team = await team_flows.to_pydantic(
             session, match.away_team, teams_entities

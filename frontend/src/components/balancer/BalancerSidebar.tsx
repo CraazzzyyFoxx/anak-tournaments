@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowUpRight, Check, ChevronsUpDown, Trophy } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Check, ChevronsUpDown, Trophy } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -333,6 +333,23 @@ export function BalancerSidebar() {
 
       {/* User footer */}
       <SidebarFooter className="border-t border-sidebar-border/70 px-2 py-2.5 group-data-[collapsible=icon]:px-1">
+        {/* Back to site */}
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              asChild
+              size="sm"
+              tooltip="Back to site"
+              className="h-8 rounded-lg px-2.5 text-sidebar-foreground/50 hover:text-sidebar-foreground/80 hover:bg-sidebar-accent/50"
+            >
+              <Link href="/">
+                <ArrowLeft className="size-4 text-sidebar-foreground/40" />
+                <span>Back to site</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton asChild size="lg" tooltip={user?.username ?? "Profile"} className="h-11 rounded-lg px-2.5 text-sidebar-foreground/82">

@@ -1,0 +1,103 @@
+"use client";
+
+import type { RegistrationForm } from "@/types/registration.types";
+import AccountCombobox from "./AccountCombobox";
+import SmurfTagsInput from "./SmurfTagsInput";
+
+interface AccountStepProps {
+  values: Record<string, string>;
+  onUpdate: (key: string, value: string) => void;
+  smurfTags: string[];
+  onSmurfTagsChange: (tags: string[]) => void;
+  onBuiltInValidationChange: (fieldKey: string, error: string | null) => void;
+  form: RegistrationForm;
+  battleTagSuggestions: string[];
+  discordSuggestions: string[];
+  twitchSuggestions: string[];
+}
+
+export default function AccountStep({
+  values,
+  onUpdate,
+  smurfTags,
+  onSmurfTagsChange,
+  onBuiltInValidationChange,
+  form,
+  battleTagSuggestions,
+  discordSuggestions,
+  twitchSuggestions,
+}: AccountStepProps) {
+  const fields = form.built_in_fields;
+  const showBattleTag = fields?.battle_tag?.enabled !== false;
+  const showSmurfTags = fields?.smurf_tags?.enabled !== false;
+  const showDiscord = fields?.discord_nick?.enabled !== false;
+  const showTwitch = fields?.twitch_nick?.enabled !== false;
+
+  return (
+    <div className="grid gap-4">
+      <div className="space-y-1">
+        <h3 className="text-xs font-medium uppercase tracking-[0.14em] text-white/55">Your Accounts</h3>
+        <p className="text-xs leading-5 text-white/42">
+          We&apos;ve pre-filled your linked accounts. Change them if needed.
+        </p>
+      </div>
+
+      {showBattleTag && (
+        <AccountCombobox
+          label="BattleTag"
+          placeholder="Player#1234"
+          value={values.battle_tag ?? ""}
+          onChange={(v) => onUpdate("battle_tag", v)}
+          suggestions={battleTagSuggestions}
+          icon="/battlenet.svg"
+          required={fields?.battle_tag?.required === true}
+          fieldKey="battle_tag"
+          config={fields?.battle_tag}
+          onValidationChange={(error) => onBuiltInValidationChange("battle_tag", error)}
+        />
+      )}
+
+      {showSmurfTags && (
+        <SmurfTagsInput
+          tags={smurfTags}
+          onChange={onSmurfTagsChange}
+          suggestions={battleTagSuggestions.filter((t) => t !== (values.battle_tag ?? ""))}
+          icon="/battlenet.svg"
+          required={fields?.smurf_tags?.required === true}
+          config={fields?.smurf_tags}
+          onValidationChange={(error) => onBuiltInValidationChange("smurf_tags", error)}
+        />
+      )}
+
+      {showDiscord && (
+        <AccountCombobox
+          label="Discord"
+          placeholder="username"
+          value={values.discord_nick ?? ""}
+          onChange={(v) => onUpdate("discord_nick", v)}
+          suggestions={discordSuggestions}
+          icon="/discord-white.svg"
+          required={fields?.discord_nick?.required === true}
+          fieldKey="discord_nick"
+          config={fields?.discord_nick}
+          onValidationChange={(error) => onBuiltInValidationChange("discord_nick", error)}
+        />
+      )}
+
+      {showTwitch && (
+        <AccountCombobox
+          label="Twitch"
+          placeholder="channel_name"
+          value={values.twitch_nick ?? ""}
+          onChange={(v) => onUpdate("twitch_nick", v)}
+          suggestions={twitchSuggestions}
+          icon="/twitch.png"
+          required={fields?.twitch_nick?.required === true}
+          fieldKey="twitch_nick"
+          config={fields?.twitch_nick}
+          onValidationChange={(error) => onBuiltInValidationChange("twitch_nick", error)}
+        />
+      )}
+    </div>
+  );
+}

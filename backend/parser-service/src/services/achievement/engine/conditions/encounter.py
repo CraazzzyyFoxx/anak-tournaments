@@ -1,7 +1,4 @@
-"""encounter_score / encounter_revenge — cross-encounter conditions.
-
-Grain: user_tournament.
-"""
+"""encounter_score / encounter_revenge â€” cross-encounter conditions."""
 
 from __future__ import annotations
 
@@ -14,6 +11,21 @@ from src import models
 
 from ..context import EvalContext
 from . import ResultSet, register
+from ._stage_filters import encounter_is_bracket
+
+
+def _encounter_query_with_stage_context() -> sa.Select:
+    return (
+        sa.select(models.Encounter.tournament_id)
+        .select_from(models.Encounter)
+        .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
+        .outerjoin(models.Stage, models.Stage.id == models.Encounter.stage_id)
+        .outerjoin(models.StageItem, models.StageItem.id == models.Encounter.stage_item_id)
+        .outerjoin(
+            models.TournamentGroup,
+            models.TournamentGroup.id == models.Encounter.tournament_group_id,
+        )
+    )
 
 
 @register("encounter_score")
@@ -22,26 +34,18 @@ async def execute_encounter_score(
     params: dict[str, Any],
     context: EvalContext,
 ) -> ResultSet:
-    """Encounter with specific score pattern. Grain: user_tournament.
-
-    params:
-        round_type: "final" | "any" — "final" means max round in tournament
-        scores: list of [home, away] pairs (e.g. [[2, 3], [3, 2]])
-        winner: bool (default true) — award to winning team only
-    """
+    """Encounter with specific score pattern. Grain: user_tournament."""
     round_type = params.get("round_type", "any")
     scores = params["scores"]
     winner_only = params.get("winner", True)
 
-    # Build score conditions
-    score_conditions = []
-    for home_s, away_s in scores:
-        score_conditions.append(
-            sa.and_(
-                models.Encounter.home_score == home_s,
-                models.Encounter.away_score == away_s,
-            )
+    score_conditions = [
+        sa.and_(
+            models.Encounter.home_score == home_s,
+            models.Encounter.away_score == away_s,
         )
+        for home_s, away_s in scores
+    ]
 
     base_where = [
         models.Tournament.workspace_id == context.workspace_id,
@@ -52,49 +56,74 @@ async def execute_encounter_score(
     if context.tournament:
         base_where.append(models.Encounter.tournament_id == context.tournament.id)
 
+    encounter_select = _encounter_query_with_stage_context()
+
     if round_type == "final":
-        # Subquery: max round per tournament (non-group stage)
-        max_round_sq = (
-            sa.select(
-                models.Encounter.tournament_id,
-                sa.func.max(models.Encounter.round).label("max_round"),
-            )
-            .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-            .join(
-                models.TournamentGroup,
-                models.TournamentGroup.id == models.Encounter.tournament_group_id,
+        bracket_clause = encounter_is_bracket(
+            encounter=models.Encounter,
+            stage=models.Stage,
+            stage_item=models.StageItem,
+            tournament_group=models.TournamentGroup,
+        )
+        stage_order = sa.func.coalesce(models.Stage.order, 0)
+
+        final_stage_sq = (
+            encounter_select.with_only_columns(
+                models.Encounter.tournament_id.label("tournament_id"),
+                sa.func.max(stage_order).label("final_stage_order"),
             )
             .where(
-                models.TournamentGroup.is_groups.is_(False),
+                models.Encounter.status == "COMPLETED",
                 models.Tournament.workspace_id == context.workspace_id,
+                bracket_clause,
             )
             .group_by(models.Encounter.tournament_id)
-        ).subquery("max_round")
+            .subquery("final_stage")
+        )
+
+        final_round_sq = (
+            _encounter_query_with_stage_context()
+            .with_only_columns(
+                models.Encounter.tournament_id.label("tournament_id"),
+                sa.func.max(models.Encounter.round).label("final_round"),
+            )
+            .join(
+                final_stage_sq,
+                sa.and_(
+                    models.Encounter.tournament_id == final_stage_sq.c.tournament_id,
+                    stage_order == final_stage_sq.c.final_stage_order,
+                ),
+            )
+            .where(
+                models.Encounter.status == "COMPLETED",
+                models.Tournament.workspace_id == context.workspace_id,
+                bracket_clause,
+            )
+            .group_by(models.Encounter.tournament_id)
+            .subquery("final_round")
+        )
 
         query = (
-            sa.select(
+            _encounter_query_with_stage_context()
+            .with_only_columns(
                 models.Player.user_id,
                 models.Encounter.tournament_id,
             )
-            .select_from(models.Encounter)
-            .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-            .join(max_round_sq, sa.and_(
-                models.Encounter.tournament_id == max_round_sq.c.tournament_id,
-                models.Encounter.round == max_round_sq.c.max_round,
-            ))
+            .join(
+                final_round_sq,
+                sa.and_(
+                    models.Encounter.tournament_id == final_round_sq.c.tournament_id,
+                    models.Encounter.round == final_round_sq.c.final_round,
+                ),
+            )
         )
     else:
-        query = (
-            sa.select(
-                models.Player.user_id,
-                models.Encounter.tournament_id,
-            )
-            .select_from(models.Encounter)
-            .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
+        query = _encounter_query_with_stage_context().with_only_columns(
+            models.Player.user_id,
+            models.Encounter.tournament_id,
         )
 
     if winner_only:
-        # Join winning team's players
         winning_team_id = sa.case(
             (
                 models.Encounter.home_score > models.Encounter.away_score,
@@ -110,7 +139,6 @@ async def execute_encounter_score(
             ),
         )
     else:
-        # Join all players from both teams
         query = query.join(
             models.Player,
             sa.and_(
@@ -137,15 +165,10 @@ async def execute_encounter_revenge(
     params: dict[str, Any],
     context: EvalContext,
 ) -> ResultSet:
-    """Team that lost to opponent earlier, then won. Grain: user_tournament.
-
-    Finds pairs (E1, E2) where E1.id < E2.id, same teams, E1 loser = E2 winner.
-    Awards to E2 winning team players.
-    """
+    """Team that lost to opponent earlier, then won. Grain: user_tournament."""
     e1 = sa.orm.aliased(models.Encounter, name="e1")
     e2 = sa.orm.aliased(models.Encounter, name="e2")
 
-    # Same pair of teams (order-independent)
     same_teams = sa.or_(
         sa.and_(
             e1.home_team_id == e2.home_team_id,
@@ -157,27 +180,14 @@ async def execute_encounter_revenge(
         ),
     )
 
-    # E1 winner's team_id
     e1_winner = sa.case(
         (e1.home_score > e1.away_score, e1.home_team_id),
         else_=e1.away_team_id,
     )
-    # E2 winner's team_id
     e2_winner = sa.case(
         (e2.home_score > e2.away_score, e2.home_team_id),
         else_=e2.away_team_id,
     )
-    # E1 loser = E2 winner (revenge!)
-    revenge_condition = e1_winner != e2_winner
-
-    base_where = [
-        e1.tournament_id == e2.tournament_id,
-        e1.id < e2.id,
-        same_teams,
-        revenge_condition,
-        e1.status == "COMPLETED",
-        e2.status == "COMPLETED",
-    ]
 
     query = (
         sa.select(
@@ -185,7 +195,17 @@ async def execute_encounter_revenge(
             e2.tournament_id,
         )
         .select_from(e1)
-        .join(e2, sa.and_(*base_where))
+        .join(
+            e2,
+            sa.and_(
+                e1.tournament_id == e2.tournament_id,
+                e1.id < e2.id,
+                same_teams,
+                e1_winner != e2_winner,
+                e1.status == "COMPLETED",
+                e2.status == "COMPLETED",
+            ),
+        )
         .join(models.Tournament, models.Tournament.id == e2.tournament_id)
         .join(
             models.Player,

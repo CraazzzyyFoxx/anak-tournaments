@@ -3,6 +3,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db
 from shared.models import Tournament, TournamentGroup, Team
+from shared.models.stage import Stage, StageItem
 
 __all__ = ("Standing",)
 
@@ -25,6 +26,12 @@ class Standing(db.TimeStampIntegerMixin):
     team_id: Mapped[int] = mapped_column(
         Integer, ForeignKey(Team.id, ondelete="CASCADE"), index=True
     )
+    stage_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey(Stage.id, ondelete="SET NULL"), nullable=True, index=True
+    )
+    stage_item_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey(StageItem.id, ondelete="SET NULL"), nullable=True, index=True
+    )
     position: Mapped[int] = mapped_column(Integer)
     overall_position: Mapped[int] = mapped_column(Integer, server_default="0")
     matches: Mapped[int] = mapped_column(Integer)
@@ -38,3 +45,5 @@ class Standing(db.TimeStampIntegerMixin):
     tournament: Mapped[Tournament] = relationship(back_populates="standings")
     group: Mapped[TournamentGroup] = relationship()
     team: Mapped[Team] = relationship(back_populates="standings")
+    stage: Mapped["Stage | None"] = relationship()
+    stage_item: Mapped["StageItem | None"] = relationship()

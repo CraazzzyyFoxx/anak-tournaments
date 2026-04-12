@@ -12,6 +12,8 @@ class EncounterCreate(BaseModel):
     name: str
     tournament_id: int
     tournament_group_id: int | None = None
+    stage_id: int | None = None
+    stage_item_id: int | None = None
     home_team_id: int
     away_team_id: int
     round: int
@@ -25,6 +27,8 @@ class EncounterUpdate(BaseModel):
 
     name: str | None = None
     tournament_group_id: int | None = None
+    stage_id: int | None = None
+    stage_item_id: int | None = None
     home_team_id: int | None = None
     away_team_id: int | None = None
     home_score: int | None = None

@@ -3,8 +3,9 @@ from pydantic import BaseModel
 from src.schemas import (
     BaseRead,
     EncounterRead,
+    StageItemRead,
+    StageRead,
     TeamRead,
-    TournamentGroupRead,
     TournamentRead,
 )
 
@@ -37,8 +38,9 @@ class StandingTeamDataWithRanking(StandingTeamData):
 
 class StandingRead(BaseRead):
     tournament_id: int
-    group_id: int
     team_id: int
+    stage_id: int | None = None
+    stage_item_id: int | None = None
     position: int
     overall_position: int
     matches: int
@@ -48,8 +50,12 @@ class StandingRead(BaseRead):
     points: float
     buchholz: float | None
     tb: int | None
+    ranking_context: dict[str, str | int | float | None] | None = None
+    tb_metrics: dict[str, int | float | None] | None = None
+    source_rule_profile: str | None = None
 
     team: TeamRead | None
-    group: TournamentGroupRead | None
+    stage: StageRead | None
+    stage_item: StageItemRead | None
     tournament: TournamentRead | None
     matches_history: list[EncounterRead]

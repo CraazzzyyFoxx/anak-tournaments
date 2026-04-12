@@ -1,10 +1,11 @@
 import React from "react";
 import Link from "next/link";
 import { ArrowRight, CircleMinus, CirclePlus } from "lucide-react";
+
 import userService from "@/services/user.service";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EncounterWithUserStats } from "@/types/user.types";
-import { Tournament, TournamentGroup } from "@/types/tournament.types";
+import { Tournament } from "@/types/tournament.types";
 
 export interface UserRecentEncountersCardProps {
   userId: number;
@@ -22,14 +23,14 @@ const getTournamentLabel = (tournament?: Tournament | null) => {
   return `Tournament ${tournament.number}`;
 };
 
-const getGroupLabel = (group?: TournamentGroup | null) => {
-  if (!group?.name) {
-    return "";
-  }
-  return group.name;
-};
+const getStageLabel = (encounter: EncounterWithUserStats) =>
+  encounter.stage_item?.name ?? encounter.stage?.name ?? "";
 
-const UserRecentEncountersCard = async ({ userId, userName, limit = 5 }: UserRecentEncountersCardProps) => {
+const UserRecentEncountersCard = async ({
+  userId,
+  userName,
+  limit = 5,
+}: UserRecentEncountersCardProps) => {
   const encounters = await userService.getUserEncounters(userId, 1, limit);
 
   if (encounters.results.length === 0) {
@@ -58,8 +59,10 @@ const UserRecentEncountersCard = async ({ userId, userName, limit = 5 }: UserRec
         <div className="divide-y divide-border/40">
           {encounters.results.map((encounter: EncounterWithUserStats) => {
             const tournamentLabel = getTournamentLabel(encounter.tournament);
-            const groupLabel = getGroupLabel(encounter.tournament_group);
-            const meta = groupLabel ? `${tournamentLabel} • ${groupLabel}` : tournamentLabel;
+            const stageLabel = getStageLabel(encounter);
+            const meta = stageLabel
+              ? `${tournamentLabel} - ${stageLabel}`
+              : tournamentLabel;
             const score = `${encounter.score.home}-${encounter.score.away}`;
 
             return (

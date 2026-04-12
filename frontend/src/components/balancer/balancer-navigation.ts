@@ -1,4 +1,4 @@
-import { ArrowLeftRight, ClipboardList, type LucideIcon, UserPlus, Users } from "lucide-react";
+import { ArrowLeftRight, FileSpreadsheet, type LucideIcon, UserPlus } from "lucide-react";
 
 import type { AppRole } from "@/hooks/usePermissions";
 
@@ -16,31 +16,36 @@ export const balancerNavigationItems: BalancerNavItem[] = [
     title: "Workspace",
     href: "/balancer",
     icon: ArrowLeftRight,
-    description: "Run balance candidates, tweak rosters, and export.",
-  },
-  {
-    title: "Applications",
-    href: "/balancer/applications",
-    icon: ClipboardList,
-    description: "Review and manage tournament applications.",
+    description: "Run balance candidates, tweak registrations, and export.",
   },
   {
     title: "Registrations",
     href: "/balancer/registrations",
     icon: UserPlus,
-    description: "Review and manage tournament registrations.",
+    description: "Manage registrations and balancer participation.",
   },
   {
-    title: "Player Pool",
-    href: "/balancer/pool",
-    icon: Users,
-    description: "Curate the player pool for balancing.",
+    title: "Google Sheets",
+    href: "/balancer/registrations/feed",
+    icon: FileSpreadsheet,
+    description: "Configure feed sync, mapping, and source ingestion.",
   },
 ];
 
 export function isBalancerNavItemActive(pathname: string, href: string) {
   if (href === "/balancer") {
     return pathname === "/balancer";
+  }
+
+  if (href === "/balancer/registrations/feed") {
+    return pathname === href || pathname.startsWith(`${href}/`);
+  }
+
+  if (href === "/balancer/registrations") {
+    return (
+      pathname === href ||
+      (pathname.startsWith(`${href}/`) && !pathname.startsWith("/balancer/registrations/feed"))
+    );
   }
 
   return pathname === href || pathname.startsWith(`${href}/`);

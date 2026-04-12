@@ -384,7 +384,7 @@ services:
       context: ./backend
       args:
         APP_PATH: parser
-    command: faststream run worker:app
+    command: faststream run serve:app
     env_file:
       - ./backend/env/common.env
       - ./backend/env/parser.env

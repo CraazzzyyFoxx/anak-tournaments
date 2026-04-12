@@ -11,6 +11,7 @@ import {
   Play,
   TestTube,
   Sprout,
+  RotateCcw,
   Eye,
   EyeOff,
   Upload,
@@ -253,6 +254,15 @@ export default function AchievementsPage() {
   const seedMutation = useMutation({
     mutationFn: () => adminService.seedAchievementRules(workspaceId!),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: cacheKey }),
+  });
+
+  const hardResetMutation = useMutation({
+    mutationFn: () => adminService.hardResetAchievementRules(workspaceId!),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: cacheKey });
+      queryClient.invalidateQueries({ queryKey: ["admin", "overrides", workspaceId] });
+      setEvaluationResult(data.run);
+    },
   });
 
   const evaluateMutation = useMutation({
@@ -502,6 +512,21 @@ export default function AchievementsPage() {
               >
                 <Sprout className={`mr-2 h-4 w-4 ${seedMutation.isPending ? "animate-spin" : ""}`} />
                 Seed Defaults
+              </Button>
+            )}
+            {canCreate && (
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  if (!window.confirm("Hard reset achievements for this workspace? This will replace the rule catalog, clear current results, and run a full reevaluation.")) {
+                    return;
+                  }
+                  hardResetMutation.mutate();
+                }}
+                disabled={hardResetMutation.isPending}
+              >
+                <RotateCcw className={`mr-2 h-4 w-4 ${hardResetMutation.isPending ? "animate-spin" : ""}`} />
+                Hard Reset
               </Button>
             )}
             {canCreate && (

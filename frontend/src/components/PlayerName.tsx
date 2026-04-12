@@ -2,7 +2,7 @@ import React from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Player } from "@/types/team.types";
-import { getPlayerType } from "@/utils/player";
+import { getPlayerSlug, getPlayerType } from "@/utils/player";
 import { User } from "@/types/user.types";
 
 const PlayerName = ({
@@ -20,7 +20,7 @@ const PlayerName = ({
   return (
     <div className="flex flex-col">
       <div className="flex flex-row gap-1 items-center">
-        <Link href={`/users/${player.name.replace("#", "-")}`}>
+        <Link href={`/users/${getPlayerSlug(player.name)}`}>
           <h4 className="text-base font-semibold">{name}</h4>
         </Link>
         {tag && !excludeBadge && (

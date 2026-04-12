@@ -1,0 +1,1219 @@
+from __future__ import annotations
+
+import csv
+import hashlib
+import io
+import re
+from datetime import UTC, datetime, timedelta
+from typing import Any
+from urllib.parse import parse_qs, urlparse
+from uuid import uuid4
+
+import httpx
+import sqlalchemy as sa
+from fastapi import HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.orm import selectinload
+
+from shared.division_grid import DEFAULT_GRID, DivisionGrid, resolve_grid
+
+from src import models
+
+BATTLE_TAG_RE = re.compile(r"[\w][\w ]{0,30}#[0-9]{3,}", re.UNICODE)
+ROLE_ORDER = ("tank", "dps", "support")
+
+DEFAULT_ROLE_VALUE_MAP: dict[str, str | None] = {
+    "support": "support",
+    "Ð¿Ð¾Ð´Ð´ÐµÑ€Ð¶ÐºÐ°": "support",
+    "Ñ‚Ð°Ð½Ðº": "tank",
+    "tank": "tank",
+    "dps": "dps",
+    "damage": "dps",
+    "Ð´Ð´": "dps",
+}
+
+DEFAULT_SUBROLE_VALUE_MAP = {
+    "hitscan": "hitscan",
+    "Ñ…Ð¸Ñ‚ÑÐºÐ°Ð½": "hitscan",
+    "projectile": "projectile",
+    "Ð¿Ñ€Ð¾Ð´Ð¶ÐµÐºÑ‚Ð°Ð¹Ð»": "projectile",
+    "main_heal": "main_heal",
+    "main heal": "main_heal",
+    "Ð¼ÐµÐ¹Ð½ Ñ…Ð¸Ð»": "main_heal",
+    "light_heal": "light_heal",
+    "light heal": "light_heal",
+    "Ð»Ð°Ð¹Ñ‚ Ñ…Ð¸Ð»": "light_heal",
+}
+
+DEFAULT_BOOLEAN_TRUE_VALUES = {
+    "1",
+    "true",
+    "yes",
+    "y",
+    "Ð´Ð°",
+    "Ð°Ð³Ð°",
+    "Ð±ÑƒÐ´Ñƒ",
+    "ÐºÐ¾Ð½ÐµÑ‡Ð½Ð¾",
+}
+
+DEFAULT_MAPPING_TARGETS = (
+    "source_record_key",
+    "display_name",
+    "battle_tag",
+    "submitted_at",
+    "smurf_tags",
+    "discord_nick",
+    "twitch_nick",
+    "stream_pov",
+    "notes",
+    "source_roles.primary",
+    "source_roles.additional",
+    "is_flex",
+    "admin_notes",
+    "roles.tank.rank_value",
+    "roles.tank.division_input",
+    "roles.tank.is_active",
+    "roles.tank.priority",
+    "roles.dps.rank_value",
+    "roles.dps.division_input",
+    "roles.dps.subrole",
+    "roles.dps.is_active",
+    "roles.dps.priority",
+    "roles.support.rank_value",
+    "roles.support.division_input",
+    "roles.support.subrole",
+    "roles.support.is_active",
+    "roles.support.priority",
+)
+
+
+def normalize_battle_tag(value: str | None) -> str | None:
+    if not value:
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    return re.sub(r"\s*#\s*", "#", text)
+
+
+def normalize_battle_tag_key(value: str | None) -> str | None:
+    normalized = normalize_battle_tag(value)
+    if not normalized:
+        return None
+    return normalized.replace(" ", "").strip().lower()
+
+
+def normalize_header(value: str | None) -> str:
+    return re.sub(r"\s+", " ", (value or "").strip()).lower()
+
+
+def unique_strings(values: list[str]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
+
+
+def build_header_keys(headers: list[str]) -> list[str]:
+    seen: dict[str, int] = {}
+    keys: list[str] = []
+    for index, header in enumerate(headers):
+        key_base = header.strip() or f"column_{index}"
+        occurrence = seen.get(key_base, 0)
+        seen[key_base] = occurrence + 1
+        keys.append(key_base if occurrence == 0 else f"{key_base}__{occurrence}")
+    return keys
+
+
+def row_to_json(headers: list[str], row: list[str]) -> dict[str, str]:
+    keys = build_header_keys(headers)
+    return {
+        key: row[index].strip() if index < len(row) else ""
+        for index, key in enumerate(keys)
+    }
+
+
+def extract_sheet_source(source_url: str) -> tuple[str, str | None]:
+    match = re.search(r"/spreadsheets/d/([^/]+)", source_url)
+    if not match:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Google Sheets URL")
+
+    sheet_id = match.group(1)
+    parsed = urlparse(source_url)
+    query = parse_qs(parsed.query)
+    gid = query.get("gid", [None])[0]
+    if gid is None and parsed.fragment.startswith("gid="):
+        gid = parsed.fragment.split("=", 1)[1]
+    return sheet_id, gid
+
+
+def build_csv_export_url(sheet_id: str, gid: str | None) -> str:
+    url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
+    return f"{url}&gid={gid}" if gid else url
+
+
+async def fetch_google_sheet_rows(
+    source_url: str,
+    *,
+    sheet_id: str | None = None,
+    gid: str | None = None,
+) -> list[list[str]]:
+    actual_sheet_id, actual_gid = (sheet_id, gid) if sheet_id else extract_sheet_source(source_url)
+    url = build_csv_export_url(actual_sheet_id, actual_gid)
+    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+        response = await client.get(url)
+        response.raise_for_status()
+    text = response.text.lstrip("\ufeff")
+    rows = list(csv.reader(io.StringIO(text)))
+    if not rows:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Google Sheet is empty")
+    return rows
+
+
+def parse_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    formats = (
+        "%m/%d/%Y %H:%M:%S",
+        "%d.%m.%Y %H:%M:%S",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S.%f",
+    )
+    for fmt in formats:
+        try:
+            return datetime.strptime(text, fmt).replace(tzinfo=UTC)
+        except ValueError:
+            continue
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
+
+
+def parse_integer(value: str | None) -> int | None:
+    if value is None:
+        return None
+    digits = re.sub(r"[^\d-]", "", value.strip())
+    if not digits:
+        return None
+    try:
+        return int(digits)
+    except ValueError:
+        return None
+
+
+def parse_boolean(value: str | None, value_mapping: dict[str, Any]) -> bool:
+    if value is None:
+        return False
+    normalized = normalize_header(value)
+    custom_booleans = {
+        normalize_header(key): bool(mapped_value)
+        for key, mapped_value in (value_mapping.get("booleans") or {}).items()
+    }
+    if normalized in custom_booleans:
+        return custom_booleans[normalized]
+    return normalized in DEFAULT_BOOLEAN_TRUE_VALUES or normalized.startswith("Ð´Ð°")
+
+
+def extract_battle_tags(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return unique_strings(
+        [normalize_battle_tag(match) for match in BATTLE_TAG_RE.findall(value) if normalize_battle_tag(match)]
+    )
+
+
+def map_role_token(value: str | None, value_mapping: dict[str, Any]) -> str | None:
+    if value is None:
+        return None
+    normalized = normalize_header(value)
+    custom_map = {
+        normalize_header(key): mapped_value
+        for key, mapped_value in (value_mapping.get("roles") or {}).items()
+    }
+    if normalized in custom_map:
+        mapped = custom_map[normalized]
+        return mapped if mapped in {"tank", "dps", "support"} else None
+    if normalized in {"tank", "Ñ‚Ð°Ð½Ðº"} or "Ñ‚Ð°Ð½Ðº" in normalized:
+        return "tank"
+    if normalized in {"dps", "damage"} or "Ð´Ð´" in normalized or "damage" in normalized:
+        return "dps"
+    if normalized in {"support", "ÑÐ°Ð¿", "Ð¿Ð¾Ð´Ð´ÐµÑ€Ð¶ÐºÐ°"} or "Ñ…Ð¸Ð»" in normalized or "support" in normalized:
+        return "support"
+    return None
+
+
+def map_subrole_token(value: str | None, value_mapping: dict[str, Any]) -> str | None:
+    if value is None:
+        return None
+    normalized = normalize_header(value)
+    custom_map = {
+        normalize_header(key): mapped_value
+        for key, mapped_value in (value_mapping.get("subroles") or {}).items()
+    }
+    mapped = custom_map.get(normalized)
+    if mapped:
+        return mapped
+    return DEFAULT_SUBROLE_VALUE_MAP.get(normalized)
+
+
+def parse_role_token_list(values: list[str], value_mapping: dict[str, Any]) -> list[str]:
+    roles: list[str] = []
+    for value in values:
+        for token in re.split(r"[,/\n]+", value):
+            role_code = map_role_token(token, value_mapping)
+            if role_code:
+                roles.append(role_code)
+    return unique_strings(roles)
+
+
+def build_default_value_mapping() -> dict[str, Any]:
+    return {
+        "booleans": {value: True for value in sorted(DEFAULT_BOOLEAN_TRUE_VALUES)},
+        "roles": DEFAULT_ROLE_VALUE_MAP,
+        "subroles": DEFAULT_SUBROLE_VALUE_MAP,
+    }
+
+
+def default_mapping_target(parser: str) -> dict[str, Any]:
+    return {"mode": "disabled", "parser": parser}
+
+
+def _set_target(mapping: dict[str, Any], target_key: str, *, parser: str, columns: list[str] | None = None) -> None:
+    if columns:
+        mapping["targets"][target_key] = {"mode": "columns", "columns": columns, "parser": parser}
+
+
+def suggest_mapping_from_headers(headers: list[str]) -> dict[str, Any]:
+    header_keys = build_header_keys(headers)
+    mapping = {
+        "targets": {
+            "source_record_key": default_mapping_target("battle_tag"),
+            "display_name": default_mapping_target("string"),
+            "battle_tag": default_mapping_target("battle_tag"),
+            "submitted_at": default_mapping_target("datetime"),
+            "smurf_tags": default_mapping_target("battle_tag_list"),
+            "discord_nick": default_mapping_target("string"),
+            "twitch_nick": default_mapping_target("string"),
+            "stream_pov": default_mapping_target("boolean"),
+            "notes": default_mapping_target("join_lines"),
+            "source_roles.primary": default_mapping_target("role_token"),
+            "source_roles.additional": default_mapping_target("role_token_list"),
+            "is_flex": default_mapping_target("boolean"),
+            "admin_notes": default_mapping_target("join_lines"),
+        }
+    }
+    for role in ("tank", "dps", "support"):
+        mapping["targets"][f"roles.{role}.rank_value"] = default_mapping_target("integer")
+        mapping["targets"][f"roles.{role}.division_input"] = default_mapping_target("division_to_rank")
+        mapping["targets"][f"roles.{role}.is_active"] = default_mapping_target("boolean")
+        mapping["targets"][f"roles.{role}.priority"] = default_mapping_target("integer")
+        if role != "tank":
+            mapping["targets"][f"roles.{role}.subrole"] = default_mapping_target("subrole_token")
+
+    def find_first(predicate: Any) -> str | None:
+        for index, header in enumerate(headers):
+            if predicate(normalize_header(header)):
+                return header_keys[index]
+        return None
+
+    def find_all(predicate: Any) -> list[str]:
+        return [header_keys[index] for index, header in enumerate(headers) if predicate(normalize_header(header))]
+
+    battle_tag_column = find_first(lambda header: header.startswith("Ð²Ð°Ñˆ battle tag") or "battle tag" in header)
+    if battle_tag_column:
+        _set_target(mapping, "source_record_key", parser="battle_tag", columns=[battle_tag_column])
+        _set_target(mapping, "display_name", parser="string", columns=[battle_tag_column])
+        _set_target(mapping, "battle_tag", parser="battle_tag", columns=[battle_tag_column])
+
+    _set_target(mapping, "submitted_at", parser="datetime", columns=[find_first(lambda header: "Ð¾Ñ‚Ð¼ÐµÑ‚ÐºÐ° Ð²Ñ€ÐµÐ¼ÐµÐ½Ð¸" in header)])
+    _set_target(mapping, "smurf_tags", parser="battle_tag_list", columns=[find_first(lambda header: "ÑÐ¼ÑƒÑ€Ñ„" in header)])
+    _set_target(mapping, "discord_nick", parser="string", columns=[find_first(lambda header: "Ð´Ð¸ÑÐºÐ¾Ñ€" in header)])
+    _set_target(mapping, "twitch_nick", parser="string", columns=[find_first(lambda header: "Ñ‚Ð²Ð¸Ñ‡" in header)])
+    _set_target(mapping, "stream_pov", parser="boolean", columns=[find_first(lambda header: "ÑÑ‚Ñ€Ð¸Ð¼" in header)])
+    _set_target(mapping, "notes", parser="join_lines", columns=[find_first(lambda header: "Ð»ÑŽÐ±Ð°Ñ Ð´Ð¾Ð¿." in header or "Ð¿Ñ€Ð¸Ð¼ÐµÑ‡" in header)])
+    _set_target(mapping, "source_roles.primary", parser="role_token", columns=[find_first(lambda header: header.startswith("ÑƒÐºÐ°Ð¶Ð¸Ñ‚Ðµ Ð²Ð°ÑˆÑƒ Ñ€Ð¾Ð»ÑŒ"))])
+
+    additional_role_columns = find_all(lambda header: header.startswith("Ð´Ð¾Ð¿Ð¾Ð»Ð½Ð¸Ñ‚ÐµÐ»ÑŒÐ½Ð°Ñ Ð¸Ð³Ñ€Ð¾Ð²Ð°Ñ Ñ€Ð¾Ð»ÑŒ"))
+    if additional_role_columns:
+        _set_target(mapping, "source_roles.additional", parser="role_token_list", columns=additional_role_columns)
+
+    return mapping
+
+
+def serialize_datetime(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC).isoformat()
+    return value.astimezone(UTC).isoformat()
+
+
+def serialize_parsed_fields(parsed_fields: dict[str, Any]) -> dict[str, Any]:
+    serialized = dict(parsed_fields)
+    serialized["submitted_at"] = serialize_datetime(parsed_fields.get("submitted_at"))
+    return serialized
+
+
+def get_selector_values(target_config: dict[str, Any] | None, row_json: dict[str, str]) -> list[str]:
+    if not target_config:
+        return []
+    mode = target_config.get("mode")
+    if mode == "disabled":
+        return []
+    if mode == "constant":
+        value = target_config.get("value")
+        return [] if value is None else [str(value)]
+    return [
+        row_json[column_name]
+        for column_name in target_config.get("columns") or []
+        if column_name in row_json and row_json[column_name].strip()
+    ]
+
+
+def parse_target_value(*, parser: str, values: list[str], value_mapping: dict[str, Any], grid: DivisionGrid) -> Any:
+    if parser == "string":
+        return values[0].strip() if values else None
+    if parser == "battle_tag":
+        return normalize_battle_tag(values[0]) if values else None
+    if parser == "battle_tag_list":
+        return extract_battle_tags("\n".join(values))
+    if parser == "boolean":
+        return parse_boolean(values[0] if values else None, value_mapping)
+    if parser == "integer":
+        return parse_integer(values[0]) if values else None
+    if parser == "datetime":
+        return parse_datetime(values[0] if values else None)
+    if parser == "role_token":
+        return map_role_token(values[0] if values else None, value_mapping)
+    if parser == "role_token_list":
+        return parse_role_token_list(values, value_mapping)
+    if parser == "subrole_token":
+        return map_subrole_token(values[0] if values else None, value_mapping)
+    if parser == "division_to_rank":
+        division_number = parse_integer(values[0] if values else None)
+        return grid.resolve_rank_from_division(division_number) if division_number is not None else None
+    if parser == "join_lines":
+        return "\n".join(value.strip() for value in values if value.strip()) or None
+    return values[0] if values else None
+
+
+def get_tournament_grid_from_rows(tournament_row: models.Tournament | None, workspace_row: models.Workspace | None) -> DivisionGrid:
+    return resolve_grid(
+        workspace_row.division_grid_json if workspace_row else None,
+        tournament_row.division_grid_json if tournament_row else None,
+    )
+
+
+async def get_tournament_grid(session: AsyncSession, tournament_id: int) -> DivisionGrid:
+    result = await session.execute(
+        sa.select(models.Tournament, models.Workspace)
+        .join(models.Workspace, models.Workspace.id == models.Tournament.workspace_id)
+        .where(models.Tournament.id == tournament_id)
+    )
+    row = result.first()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+    tournament_row, workspace_row = row
+    return get_tournament_grid_from_rows(tournament_row, workspace_row)
+
+
+def parse_sheet_row(
+    *,
+    headers: list[str],
+    row: list[str],
+    mapping_config: dict[str, Any] | None,
+    value_mapping: dict[str, Any] | None,
+    grid: DivisionGrid,
+) -> dict[str, Any] | None:
+    effective_mapping = mapping_config or suggest_mapping_from_headers(headers)
+    targets = effective_mapping.get("targets") or {}
+    row_json = row_to_json(headers, row)
+    effective_value_mapping = {**build_default_value_mapping(), **(value_mapping or {})}
+
+    flat_values: dict[str, Any] = {}
+    for target_key in DEFAULT_MAPPING_TARGETS:
+        target_config = targets.get(target_key)
+        values = get_selector_values(target_config, row_json)
+        parser = (target_config or {}).get("parser", "string")
+        flat_values[target_key] = parse_target_value(
+            parser=parser,
+            values=values,
+            value_mapping=effective_value_mapping,
+            grid=grid,
+        )
+
+    source_record_key = flat_values.get("source_record_key") or flat_values.get("battle_tag")
+    if isinstance(source_record_key, str):
+        source_record_key = normalize_battle_tag_key(source_record_key) or source_record_key.strip()
+    if not source_record_key:
+        return None
+
+    return {
+        "source_record_key": str(source_record_key),
+        "display_name": flat_values.get("display_name") or flat_values.get("battle_tag"),
+        "battle_tag": normalize_battle_tag(flat_values.get("battle_tag")),
+        "submitted_at": flat_values.get("submitted_at"),
+        "smurf_tags": flat_values.get("smurf_tags") or [],
+        "discord_nick": flat_values.get("discord_nick"),
+        "twitch_nick": flat_values.get("twitch_nick"),
+        "stream_pov": bool(flat_values.get("stream_pov", False)),
+        "notes": flat_values.get("notes"),
+        "source_roles": {
+            "primary": flat_values.get("source_roles.primary"),
+            "additional": flat_values.get("source_roles.additional") or [],
+        },
+        "is_flex": bool(flat_values.get("is_flex", False)),
+        "admin_notes": flat_values.get("admin_notes"),
+        "roles": {
+            "tank": {
+                "rank_value": flat_values.get("roles.tank.rank_value") or flat_values.get("roles.tank.division_input"),
+                "subrole": None,
+                "is_active": bool(flat_values.get("roles.tank.is_active", False)),
+                "priority": flat_values.get("roles.tank.priority"),
+            },
+            "dps": {
+                "rank_value": flat_values.get("roles.dps.rank_value") or flat_values.get("roles.dps.division_input"),
+                "subrole": flat_values.get("roles.dps.subrole"),
+                "is_active": bool(flat_values.get("roles.dps.is_active", False)),
+                "priority": flat_values.get("roles.dps.priority"),
+            },
+            "support": {
+                "rank_value": flat_values.get("roles.support.rank_value") or flat_values.get("roles.support.division_input"),
+                "subrole": flat_values.get("roles.support.subrole"),
+                "is_active": bool(flat_values.get("roles.support.is_active", False)),
+                "priority": flat_values.get("roles.support.priority"),
+            },
+        },
+    }
+
+
+def build_registration_role_payloads(parsed_fields: dict[str, Any]) -> list[dict[str, Any]]:
+    payloads: list[dict[str, Any]] = []
+    source_primary = parsed_fields.get("source_roles", {}).get("primary")
+    source_additional = parsed_fields.get("source_roles", {}).get("additional") or []
+    for fallback_priority, role_code in enumerate(ROLE_ORDER):
+        role_data = parsed_fields.get("roles", {}).get(role_code) or {}
+        rank_value = role_data.get("rank_value")
+        subrole = role_data.get("subrole")
+        is_active = role_data.get("is_active")
+        priority = role_data.get("priority")
+        declared_in_source = source_primary == role_code or role_code in source_additional
+        if rank_value is None and not is_active and not subrole and priority is None and not declared_in_source:
+            continue
+        payloads.append(
+            {
+                "role": role_code,
+                "subrole": subrole,
+                "is_primary": source_primary == role_code or (source_primary is None and fallback_priority == 0),
+                "priority": int(priority) if isinstance(priority, int) else fallback_priority,
+                "rank_value": rank_value,
+                "is_active": bool(is_active) if is_active is not None else rank_value is not None,
+            }
+        )
+    return payloads
+
+
+def registration_source(registration: models.BalancerRegistration) -> str:
+    return "google_sheets" if registration.google_sheet_binding is not None else "manual"
+
+
+def serialize_registration_for_export(registration: models.BalancerRegistration, export_uuid: str) -> dict[str, Any]:
+    role_entries = sorted(registration.roles, key=lambda role: role.priority)
+    role_map = {role.role: role for role in role_entries}
+
+    def build_class(role_code: str) -> dict[str, Any]:
+        role = role_map.get(role_code)
+        return {
+            "isActive": bool(role and role.is_active and role.rank_value is not None),
+            "rank": int(role.rank_value) if role and role.rank_value is not None else 0,
+            "priority": 0 if registration.is_flex else int(role.priority) if role else 99,
+            "subtype": role.subrole if role else None,
+        }
+
+    return {
+        "uuid": export_uuid,
+        "identity": {
+            "name": registration.battle_tag or registration.display_name or f"registration-{registration.id}",
+            "isFullFlex": bool(registration.is_flex),
+        },
+        "stats": {
+            "classes": {
+                "tank": build_class("tank"),
+                "dps": build_class("dps"),
+                "support": build_class("support"),
+            }
+        },
+    }
+
+
+async def ensure_tournament_exists(session: AsyncSession, tournament_id: int) -> models.Tournament:
+    result = await session.execute(sa.select(models.Tournament).where(models.Tournament.id == tournament_id))
+    tournament = result.scalar_one_or_none()
+    if tournament is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+    return tournament
+
+
+async def get_google_sheet_feed(
+    session: AsyncSession,
+    tournament_id: int,
+) -> models.BalancerRegistrationGoogleSheetFeed | None:
+    result = await session.execute(
+        sa.select(models.BalancerRegistrationGoogleSheetFeed).where(
+            models.BalancerRegistrationGoogleSheetFeed.tournament_id == tournament_id
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def require_google_sheet_feed(
+    session: AsyncSession,
+    tournament_id: int,
+) -> models.BalancerRegistrationGoogleSheetFeed:
+    feed = await get_google_sheet_feed(session, tournament_id)
+    if feed is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Google Sheets feed not configured")
+    return feed
+
+
+async def upsert_google_sheet_feed(
+    session: AsyncSession,
+    tournament_id: int,
+    *,
+    source_url: str,
+    title: str | None,
+    auto_sync_enabled: bool,
+    auto_sync_interval_seconds: int,
+    mapping_config_json: dict[str, Any] | None,
+    value_mapping_json: dict[str, Any] | None,
+) -> models.BalancerRegistrationGoogleSheetFeed:
+    tournament = await ensure_tournament_exists(session, tournament_id)
+    sheet_id, gid = extract_sheet_source(source_url)
+    feed = await get_google_sheet_feed(session, tournament_id)
+    if feed is None:
+        feed = models.BalancerRegistrationGoogleSheetFeed(
+            tournament_id=tournament.id,
+            source_url=source_url,
+            sheet_id=sheet_id,
+            gid=gid,
+            title=title,
+            auto_sync_enabled=auto_sync_enabled,
+            auto_sync_interval_seconds=auto_sync_interval_seconds,
+            mapping_config_json=mapping_config_json,
+            value_mapping_json=value_mapping_json,
+            last_sync_status="pending",
+        )
+        session.add(feed)
+    else:
+        feed.source_url = source_url
+        feed.sheet_id = sheet_id
+        feed.gid = gid
+        feed.title = title
+        feed.auto_sync_enabled = auto_sync_enabled
+        feed.auto_sync_interval_seconds = auto_sync_interval_seconds
+        if mapping_config_json is not None:
+            feed.mapping_config_json = mapping_config_json
+        if value_mapping_json is not None:
+            feed.value_mapping_json = value_mapping_json
+
+    await session.commit()
+    await session.refresh(feed)
+    return feed
+
+
+async def suggest_google_sheet_mapping(
+    session: AsyncSession,
+    tournament_id: int,
+    *,
+    source_url: str | None = None,
+) -> tuple[models.BalancerRegistrationGoogleSheetFeed | None, list[str], dict[str, Any]]:
+    feed = await get_google_sheet_feed(session, tournament_id)
+    url = source_url or (feed.source_url if feed else None)
+    if not url:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Google Sheets URL is required")
+    rows = await fetch_google_sheet_rows(url)
+    headers = rows[0]
+    return feed, headers, suggest_mapping_from_headers(headers)
+
+
+async def preview_google_sheet_mapping(
+    session: AsyncSession,
+    tournament_id: int,
+    *,
+    source_url: str | None = None,
+    mapping_config_json: dict[str, Any] | None = None,
+    value_mapping_json: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    feed = await get_google_sheet_feed(session, tournament_id)
+    url = source_url or (feed.source_url if feed else None)
+    if not url:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Google Sheets URL is required")
+
+    rows = await fetch_google_sheet_rows(url)
+    headers = rows[0]
+    sample_row = rows[1] if len(rows) > 1 else []
+    grid = await get_tournament_grid(session, tournament_id)
+    parsed = parse_sheet_row(
+        headers=headers,
+        row=sample_row,
+        mapping_config=mapping_config_json or (feed.mapping_config_json if feed else None),
+        value_mapping=value_mapping_json or (feed.value_mapping_json if feed else None),
+        grid=grid,
+    )
+    return {
+        "headers": headers,
+        "sample_raw_row": row_to_json(headers, sample_row),
+        "parsed_fields": serialize_parsed_fields(parsed or {}),
+    }
+
+
+async def list_registrations(
+    session: AsyncSession,
+    tournament_id: int,
+    *,
+    status_filter: str | None = None,
+    inclusion_filter: str | None = None,
+    source_filter: str | None = None,
+    include_deleted: bool = False,
+) -> list[models.BalancerRegistration]:
+    query = (
+        sa.select(models.BalancerRegistration)
+        .where(models.BalancerRegistration.tournament_id == tournament_id)
+        .options(
+            selectinload(models.BalancerRegistration.roles),
+            selectinload(models.BalancerRegistration.reviewer),
+            selectinload(models.BalancerRegistration.google_sheet_binding).selectinload(
+                models.BalancerRegistrationGoogleSheetBinding.feed
+            ),
+        )
+        .order_by(models.BalancerRegistration.submitted_at.desc(), models.BalancerRegistration.id.desc())
+    )
+    if not include_deleted:
+        query = query.where(models.BalancerRegistration.deleted_at.is_(None))
+    if status_filter and status_filter != "all":
+        query = query.where(models.BalancerRegistration.status == status_filter)
+    if inclusion_filter == "included":
+        query = query.where(models.BalancerRegistration.exclude_from_balancer.is_(False))
+    elif inclusion_filter == "excluded":
+        query = query.where(models.BalancerRegistration.exclude_from_balancer.is_(True))
+    if source_filter == "google_sheets":
+        query = query.where(models.BalancerRegistration.google_sheet_binding.has())
+    elif source_filter == "manual":
+        query = query.where(~models.BalancerRegistration.google_sheet_binding.has())
+    result = await session.execute(query)
+    return list(result.scalars().all())
+
+
+async def get_registration_by_id(session: AsyncSession, registration_id: int) -> models.BalancerRegistration:
+    result = await session.execute(
+        sa.select(models.BalancerRegistration)
+        .where(models.BalancerRegistration.id == registration_id)
+        .options(
+            selectinload(models.BalancerRegistration.roles),
+            selectinload(models.BalancerRegistration.reviewer),
+            selectinload(models.BalancerRegistration.google_sheet_binding),
+        )
+    )
+    registration = result.scalar_one_or_none()
+    if registration is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Registration not found")
+    return registration
+
+
+async def ensure_unique_battle_tag(
+    session: AsyncSession,
+    *,
+    tournament_id: int,
+    battle_tag: str | None,
+    exclude_registration_id: int | None = None,
+) -> None:
+    normalized = normalize_battle_tag_key(battle_tag)
+    if not normalized:
+        return
+    query = sa.select(models.BalancerRegistration.id).where(
+        models.BalancerRegistration.tournament_id == tournament_id,
+        models.BalancerRegistration.deleted_at.is_(None),
+        models.BalancerRegistration.battle_tag_normalized == normalized,
+    )
+    if exclude_registration_id is not None:
+        query = query.where(models.BalancerRegistration.id != exclude_registration_id)
+    existing_id = (await session.execute(query)).scalar_one_or_none()
+    if existing_id is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Registration with this BattleTag already exists")
+
+
+def replace_registration_roles(registration: models.BalancerRegistration, roles: list[dict[str, Any]]) -> None:
+    existing_by_role = {existing.role: existing for existing in registration.roles}
+    next_roles: list[models.BalancerRegistrationRole] = []
+    seen_roles: set[str] = set()
+
+    for index, role in enumerate(sorted(roles, key=lambda item: item.get("priority", 999))):
+        role_code = role.get("role")
+        if role_code not in {"tank", "dps", "support"} or role_code in seen_roles:
+            continue
+        seen_roles.add(role_code)
+
+        registration_role = existing_by_role.pop(role_code, None)
+        if registration_role is None:
+            registration_role = models.BalancerRegistrationRole(role=role_code)
+
+        registration_role.role = role_code
+        registration_role.subrole = role.get("subrole")
+        registration_role.is_primary = bool(role.get("is_primary", index == 0))
+        registration_role.priority = index
+        registration_role.rank_value = role.get("rank_value")
+        registration_role.is_active = bool(role.get("is_active", role.get("rank_value") is not None))
+        next_roles.append(registration_role)
+
+    registration.roles[:] = next_roles
+
+
+async def create_manual_registration(
+    session: AsyncSession,
+    *,
+    tournament_id: int,
+    workspace_id: int,
+    display_name: str | None,
+    battle_tag: str | None,
+    smurf_tags_json: list[str] | None,
+    discord_nick: str | None,
+    twitch_nick: str | None,
+    stream_pov: bool,
+    notes: str | None,
+    admin_notes: str | None,
+    is_flex: bool,
+    roles: list[dict[str, Any]],
+) -> models.BalancerRegistration:
+    battle_tag = normalize_battle_tag(battle_tag)
+    await ensure_unique_battle_tag(session, tournament_id=tournament_id, battle_tag=battle_tag)
+
+    registration = models.BalancerRegistration(
+        tournament_id=tournament_id,
+        workspace_id=workspace_id,
+        display_name=display_name or battle_tag,
+        battle_tag=battle_tag,
+        battle_tag_normalized=normalize_battle_tag_key(battle_tag),
+        smurf_tags_json=smurf_tags_json or None,
+        discord_nick=discord_nick,
+        twitch_nick=twitch_nick,
+        stream_pov=stream_pov,
+        notes=notes,
+        admin_notes=admin_notes,
+        is_flex=is_flex,
+        status="approved",
+        exclude_from_balancer=False,
+        submitted_at=datetime.now(UTC),
+        balancer_profile_overridden_at=datetime.now(UTC),
+    )
+    replace_registration_roles(registration, roles)
+    session.add(registration)
+    await session.commit()
+    return await get_registration_by_id(session, registration.id)
+
+
+async def update_registration_profile(
+    session: AsyncSession,
+    registration_id: int,
+    *,
+    display_name: str | None,
+    battle_tag: str | None,
+    smurf_tags_json: list[str] | None,
+    discord_nick: str | None,
+    twitch_nick: str | None,
+    stream_pov: bool | None,
+    notes: str | None,
+    admin_notes: str | None,
+    is_flex: bool | None,
+    roles: list[dict[str, Any]] | None,
+) -> models.BalancerRegistration:
+    registration = await get_registration_by_id(session, registration_id)
+    if battle_tag is not None:
+        normalized_battle_tag = normalize_battle_tag(battle_tag)
+        await ensure_unique_battle_tag(
+            session,
+            tournament_id=registration.tournament_id,
+            battle_tag=normalized_battle_tag,
+            exclude_registration_id=registration.id,
+        )
+        registration.battle_tag = normalized_battle_tag
+        registration.battle_tag_normalized = normalize_battle_tag_key(normalized_battle_tag)
+    if display_name is not None:
+        registration.display_name = display_name or registration.battle_tag
+    if smurf_tags_json is not None:
+        registration.smurf_tags_json = smurf_tags_json or None
+    if discord_nick is not None:
+        registration.discord_nick = discord_nick
+    if twitch_nick is not None:
+        registration.twitch_nick = twitch_nick
+    if stream_pov is not None:
+        registration.stream_pov = stream_pov
+    if notes is not None:
+        registration.notes = notes
+
+    override_changed = False
+    if admin_notes is not None:
+        registration.admin_notes = admin_notes
+        override_changed = True
+    if is_flex is not None:
+        registration.is_flex = is_flex
+        override_changed = True
+    if roles is not None:
+        replace_registration_roles(registration, roles)
+        override_changed = True
+    if override_changed:
+        registration.balancer_profile_overridden_at = datetime.now(UTC)
+
+    await session.commit()
+    return await get_registration_by_id(session, registration.id)
+
+
+async def approve_registration(
+    session: AsyncSession,
+    registration_id: int,
+    *,
+    reviewed_by: int | None,
+) -> models.BalancerRegistration:
+    registration = await get_registration_by_id(session, registration_id)
+    registration.status = "approved"
+    registration.reviewed_at = datetime.now(UTC)
+    registration.reviewed_by = reviewed_by
+    registration.exclude_from_balancer = False
+    registration.exclude_reason = None
+    await session.commit()
+    return await get_registration_by_id(session, registration.id)
+
+
+async def reject_registration(
+    session: AsyncSession,
+    registration_id: int,
+    *,
+    reviewed_by: int | None,
+) -> models.BalancerRegistration:
+    registration = await get_registration_by_id(session, registration_id)
+    registration.status = "rejected"
+    registration.reviewed_at = datetime.now(UTC)
+    registration.reviewed_by = reviewed_by
+    await session.commit()
+    return await get_registration_by_id(session, registration.id)
+
+
+async def bulk_approve_registrations(
+    session: AsyncSession,
+    tournament_id: int,
+    registration_ids: list[int],
+    *,
+    reviewed_by: int | None,
+) -> tuple[int, int]:
+    result = await session.execute(
+        sa.select(models.BalancerRegistration)
+        .where(
+            models.BalancerRegistration.tournament_id == tournament_id,
+            models.BalancerRegistration.deleted_at.is_(None),
+            models.BalancerRegistration.id.in_(registration_ids),
+            models.BalancerRegistration.status == "pending",
+        )
+    )
+    registrations = list(result.scalars().all())
+    now = datetime.now(UTC)
+    for registration in registrations:
+        registration.status = "approved"
+        registration.reviewed_at = now
+        registration.reviewed_by = reviewed_by
+        registration.exclude_from_balancer = False
+        registration.exclude_reason = None
+    await session.commit()
+    return len(registrations), len(registration_ids) - len(registrations)
+
+
+async def set_registration_exclusion(
+    session: AsyncSession,
+    registration_id: int,
+    *,
+    exclude_from_balancer: bool,
+    exclude_reason: str | None,
+) -> models.BalancerRegistration:
+    registration = await get_registration_by_id(session, registration_id)
+    registration.exclude_from_balancer = exclude_from_balancer
+    registration.exclude_reason = exclude_reason if exclude_from_balancer else None
+    await session.commit()
+    return await get_registration_by_id(session, registration.id)
+
+
+async def withdraw_registration(
+    session: AsyncSession,
+    registration_id: int,
+) -> models.BalancerRegistration:
+    registration = await get_registration_by_id(session, registration_id)
+    registration.status = "withdrawn"
+    await session.commit()
+    return await get_registration_by_id(session, registration.id)
+
+
+async def restore_registration(
+    session: AsyncSession,
+    registration_id: int,
+) -> models.BalancerRegistration:
+    registration = await get_registration_by_id(session, registration_id)
+    registration.status = "approved"
+    await session.commit()
+    return await get_registration_by_id(session, registration.id)
+
+
+async def soft_delete_registration(
+    session: AsyncSession,
+    registration_id: int,
+    *,
+    deleted_by: int | None,
+) -> models.BalancerRegistration:
+    registration = await get_registration_by_id(session, registration_id)
+    registration.deleted_at = datetime.now(UTC)
+    registration.deleted_by = deleted_by
+    await session.commit()
+    return registration
+
+
+def apply_sheet_fields_to_registration(
+    registration: models.BalancerRegistration,
+    parsed_fields: dict[str, Any],
+    *,
+    allow_balancer_overwrite: bool,
+) -> None:
+    registration.display_name = parsed_fields.get("display_name") or parsed_fields.get("battle_tag") or registration.display_name
+    if parsed_fields.get("battle_tag") is not None:
+        registration.battle_tag = parsed_fields["battle_tag"]
+        registration.battle_tag_normalized = normalize_battle_tag_key(parsed_fields["battle_tag"])
+    registration.smurf_tags_json = parsed_fields.get("smurf_tags") or None
+    registration.discord_nick = parsed_fields.get("discord_nick")
+    registration.twitch_nick = parsed_fields.get("twitch_nick")
+    registration.stream_pov = bool(parsed_fields.get("stream_pov", False))
+    registration.notes = parsed_fields.get("notes")
+
+    if allow_balancer_overwrite:
+        registration.is_flex = bool(parsed_fields.get("is_flex", False))
+        registration.admin_notes = parsed_fields.get("admin_notes")
+        replace_registration_roles(registration, build_registration_role_payloads(parsed_fields))
+
+
+async def sync_google_sheet_feed(
+    session: AsyncSession,
+    tournament_id: int,
+) -> tuple[models.BalancerRegistrationGoogleSheetFeed, int, int, int, int]:
+    feed = await require_google_sheet_feed(session, tournament_id)
+    grid = await get_tournament_grid(session, tournament_id)
+    tournament = await ensure_tournament_exists(session, tournament_id)
+    now = datetime.now(UTC)
+
+    try:
+        rows = await fetch_google_sheet_rows(feed.source_url, sheet_id=feed.sheet_id, gid=feed.gid)
+        headers = rows[0]
+        mapping_config = feed.mapping_config_json or suggest_mapping_from_headers(headers)
+        value_mapping = feed.value_mapping_json or build_default_value_mapping()
+
+        parsed_rows: dict[str, tuple[dict[str, str], dict[str, Any]]] = {}
+        for row in rows[1:]:
+            parsed_fields = parse_sheet_row(
+                headers=headers,
+                row=row,
+                mapping_config=mapping_config,
+                value_mapping=value_mapping,
+                grid=grid,
+            )
+            if not parsed_fields:
+                continue
+            parsed_rows[parsed_fields["source_record_key"]] = (row_to_json(headers, row), parsed_fields)
+
+        existing_bindings_result = await session.execute(
+            sa.select(models.BalancerRegistrationGoogleSheetBinding)
+            .where(models.BalancerRegistrationGoogleSheetBinding.feed_id == feed.id)
+            .options(
+                selectinload(models.BalancerRegistrationGoogleSheetBinding.registration).selectinload(
+                    models.BalancerRegistration.roles
+                )
+            )
+        )
+        existing_bindings = list(existing_bindings_result.scalars().all())
+        bindings_by_key = {binding.source_record_key: binding for binding in existing_bindings}
+
+        created = 0
+        updated = 0
+        withdrawn = 0
+        seen_keys: set[str] = set()
+
+        for source_record_key, (raw_row_json, parsed_fields) in parsed_rows.items():
+            seen_keys.add(source_record_key)
+            binding = bindings_by_key.get(source_record_key)
+            registration = binding.registration if binding else None
+
+            if registration is None:
+                battle_tag_key = normalize_battle_tag_key(parsed_fields.get("battle_tag"))
+                if battle_tag_key:
+                    reuse_result = await session.execute(
+                        sa.select(models.BalancerRegistration)
+                        .where(
+                            models.BalancerRegistration.tournament_id == tournament_id,
+                            models.BalancerRegistration.deleted_at.is_(None),
+                            models.BalancerRegistration.battle_tag_normalized == battle_tag_key,
+                        )
+                        .options(selectinload(models.BalancerRegistration.roles))
+                        .limit(1)
+                    )
+                    registration = reuse_result.scalar_one_or_none()
+
+            if registration is None:
+                registration = models.BalancerRegistration(
+                    tournament_id=tournament_id,
+                    workspace_id=tournament.workspace_id,
+                    display_name=parsed_fields.get("display_name") or parsed_fields.get("battle_tag"),
+                    battle_tag=parsed_fields.get("battle_tag"),
+                    battle_tag_normalized=normalize_battle_tag_key(parsed_fields.get("battle_tag")),
+                    smurf_tags_json=parsed_fields.get("smurf_tags") or None,
+                    discord_nick=parsed_fields.get("discord_nick"),
+                    twitch_nick=parsed_fields.get("twitch_nick"),
+                    stream_pov=bool(parsed_fields.get("stream_pov", False)),
+                    notes=parsed_fields.get("notes"),
+                    admin_notes=parsed_fields.get("admin_notes"),
+                    is_flex=bool(parsed_fields.get("is_flex", False)),
+                    status="approved",
+                    exclude_from_balancer=False,
+                    submitted_at=parsed_fields.get("submitted_at") or now,
+                )
+                replace_registration_roles(registration, build_registration_role_payloads(parsed_fields))
+                session.add(registration)
+                await session.flush()
+                created += 1
+            else:
+                allow_balancer_overwrite = registration.balancer_profile_overridden_at is None
+                apply_sheet_fields_to_registration(
+                    registration,
+                    parsed_fields,
+                    allow_balancer_overwrite=allow_balancer_overwrite,
+                )
+                if registration.status == "withdrawn":
+                    registration.status = "approved"
+                updated += 1
+
+            if binding is None:
+                binding = models.BalancerRegistrationGoogleSheetBinding(
+                    feed_id=feed.id,
+                    registration_id=registration.id,
+                    source_record_key=source_record_key,
+                )
+                session.add(binding)
+                bindings_by_key[source_record_key] = binding
+
+            binding.raw_row_json = raw_row_json
+            binding.parsed_fields_json = serialize_parsed_fields(parsed_fields)
+            binding.row_hash = hashlib.sha1(repr(raw_row_json).encode("utf-8")).hexdigest()
+            binding.last_seen_at = now
+
+        for binding in existing_bindings:
+            if binding.source_record_key in seen_keys:
+                continue
+            if binding.registration.status != "withdrawn":
+                binding.registration.status = "withdrawn"
+                withdrawn += 1
+
+        feed.header_row_json = headers
+        if feed.mapping_config_json is None:
+            feed.mapping_config_json = mapping_config
+        if feed.value_mapping_json is None:
+            feed.value_mapping_json = value_mapping
+        feed.last_synced_at = now
+        feed.last_sync_status = "success"
+        feed.last_error = None
+        await session.commit()
+        await session.refresh(feed)
+        return feed, created, updated, withdrawn, len(parsed_rows)
+    except HTTPException as exc:
+        feed.last_synced_at = now
+        feed.last_sync_status = "failed"
+        feed.last_error = str(exc.detail)
+        await session.commit()
+        raise
+    except httpx.HTTPError as exc:
+        feed.last_synced_at = now
+        feed.last_sync_status = "failed"
+        feed.last_error = str(exc)
+        await session.commit()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to fetch Google Sheet") from exc
+
+
+async def sync_due_google_sheet_feeds(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> list[dict[str, Any]]:
+    async with session_factory() as session:
+        result = await session.execute(
+            sa.select(models.BalancerRegistrationGoogleSheetFeed)
+            .where(models.BalancerRegistrationGoogleSheetFeed.auto_sync_enabled.is_(True))
+            .order_by(models.BalancerRegistrationGoogleSheetFeed.id.asc())
+        )
+        feeds = list(result.scalars().all())
+
+    now = datetime.now(UTC)
+    results: list[dict[str, Any]] = []
+    for feed in feeds:
+        interval = timedelta(seconds=max(int(feed.auto_sync_interval_seconds or 300), 30))
+        if feed.last_synced_at is not None and feed.last_synced_at > now - interval:
+            continue
+        async with session_factory() as session:
+            try:
+                _, created, updated, withdrawn, total = await sync_google_sheet_feed(session, feed.tournament_id)
+                results.append(
+                    {
+                        "tournament_id": feed.tournament_id,
+                        "status": "success",
+                        "created": created,
+                        "updated": updated,
+                        "withdrawn": withdrawn,
+                        "total": total,
+                    }
+                )
+            except Exception as exc:  # noqa: BLE001
+                results.append(
+                    {
+                        "tournament_id": feed.tournament_id,
+                        "status": "failed",
+                        "error": str(exc),
+                    }
+                )
+    return results
+
+
+async def list_active_registrations_for_balancer(
+    session: AsyncSession,
+    tournament_id: int,
+) -> list[models.BalancerRegistration]:
+    result = await session.execute(
+        sa.select(models.BalancerRegistration)
+        .where(
+            models.BalancerRegistration.tournament_id == tournament_id,
+            models.BalancerRegistration.deleted_at.is_(None),
+            models.BalancerRegistration.status == "approved",
+            models.BalancerRegistration.exclude_from_balancer.is_(False),
+        )
+        .options(selectinload(models.BalancerRegistration.roles))
+        .order_by(models.BalancerRegistration.battle_tag_normalized.asc().nullslast())
+    )
+    return list(result.scalars().all())
+
+
+async def export_active_registrations(
+    session: AsyncSession,
+    tournament_id: int,
+) -> dict[str, Any]:
+    registrations = await list_active_registrations_for_balancer(session, tournament_id)
+    payload_players: dict[str, Any] = {}
+    for registration in registrations:
+        export_uuid = str(uuid4())
+        payload_players[export_uuid] = serialize_registration_for_export(registration, export_uuid)
+    return {"format": "xv-1", "players": payload_players}

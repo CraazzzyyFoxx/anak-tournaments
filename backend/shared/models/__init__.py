@@ -4,13 +4,16 @@ from .map import *
 from .user import *
 from .workspace import *
 from .tournament import *
+from .stage import *
 from .team import *
 from .encounter import *
+from .encounter_map import *
 from .match import *
 from .standings import *
 from .achievement import *
 from .analytics import *
 from .auth_user import *
+from .challonge_sync import *
 from .discord_channel import *
 from .rbac import *
 from .oauth import *

@@ -22,7 +22,10 @@ import Image from "next/image";
 import { Card } from "@/components/ui/card";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Score } from "@/types/encounter.types";
-import { Tournament, TournamentGroup } from "@/types/tournament.types";
+import { Tournament } from "@/types/tournament.types";
+
+const getStageLabel = (encounter: EncounterWithUserStats) =>
+  encounter.stage_item?.name ?? encounter.stage?.name ?? "Unassigned";
 
 const columns: ColumnDef<EncounterWithUserStats>[] = [
   {
@@ -38,9 +41,9 @@ const columns: ColumnDef<EncounterWithUserStats>[] = [
     }
   },
   {
-    accessorKey: "tournament_group",
-    header: "Group",
-    cell: ({ row }) => <div>{row.getValue<TournamentGroup>("tournament_group").name}</div>
+    accessorKey: "stage",
+    header: "Stage",
+    cell: ({ row }) => <div>{getStageLabel(row.original)}</div>
   },
   {
     accessorKey: "name",

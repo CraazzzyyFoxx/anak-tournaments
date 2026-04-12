@@ -78,7 +78,7 @@ services:
       context: ./backend
       args:
         APP_PATH: app
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --loop uvloop --reload --reload-dir /app/app-service --reload-dir /app/shared
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --loop uvloop --reload --reload-delay 5 --reload-dir /app/app-service --reload-dir /app/shared
     ports:
       - "8000:8000"
     env_file:
@@ -126,7 +126,7 @@ services:
       context: ./backend
       args:
         APP_PATH: auth
-    command: uvicorn main:app --host 0.0.0.0 --port 8001 --loop uvloop --reload --reload-dir /app/auth-service --reload-dir /app/shared
+    command: uvicorn main:app --host 0.0.0.0 --port 8001 --loop uvloop --reload --reload-delay 5 --reload-dir /app/auth-service --reload-dir /app/shared
     ports:
       - "8001:8001"
     env_file:
@@ -175,7 +175,7 @@ services:
       context: ./backend
       args:
         APP_PATH: parser
-    command: uvicorn main:app --host 0.0.0.0 --port 8002 --loop uvloop --reload --reload-dir /app/parser-service --reload-dir /app/shared
+    command: uvicorn main:app --host 0.0.0.0 --port 8002 --loop uvloop --reload --reload-delay 5 --reload-dir /app/parser-service --reload-dir /app/shared
     ports:
       - "8002:8002"
     env_file:
@@ -224,7 +224,7 @@ services:
       context: ./backend
       args:
         APP_PATH: balancer
-    command: uvicorn main:app --host 0.0.0.0 --port 8003 --loop uvloop --reload --reload-dir /app/balancer-service --reload-dir /app/shared
+    command: uvicorn main:app --host 0.0.0.0 --port 8003 --loop uvloop --reload --reload-delay 5 --reload-dir /app/balancer-service --reload-dir /app/shared
     ports:
       - "8003:8003"
     env_file:
@@ -268,13 +268,15 @@ services:
       context: ./backend
       args:
         APP_PATH: parser
-    command: faststream run worker:app --reload --reload-dir /app/parser-service --reload-dir /app/shared
+    command: faststream run serve:app --reload --reload-dir /app/parser-service --reload-dir /app/shared
     env_file:
       - ./backend/env/common.env
       - ./backend/env/parser.env
     environment:
       - DEBUG=true
       - LOG_LEVEL=DEBUG
+      - WATCHFILES_FORCE_POLLING=true
+      - WATCHFILES_POLL_DELAY_MS=5000
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -309,6 +311,8 @@ services:
     environment:
       - DEBUG=true
       - LOG_LEVEL=DEBUG
+      - WATCHFILES_FORCE_POLLING=true
+      - WATCHFILES_POLL_DELAY_MS=5000
     depends_on:
       redis:
         condition: service_healthy
@@ -347,6 +351,8 @@ services:
       - LOG_LEVEL=DEBUG
       - SERVICE_CLIENT_ID=${DISCORD_SERVICE_CLIENT_ID:-discord-service}
       - SERVICE_CLIENT_SECRET=${DISCORD_SERVICE_CLIENT_SECRET:-dev-discord-service-secret}
+      - WATCHFILES_FORCE_POLLING=true
+      - WATCHFILES_POLL_DELAY_MS=5000
     depends_on:
       redis:
         condition: service_healthy

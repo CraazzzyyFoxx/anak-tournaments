@@ -2,8 +2,10 @@ import sqlalchemy as sa
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.division_grid import DEFAULT_GRID
+
 from src import models, schemas
-from src.core import enums, errors
+from src.core import enums, errors, utils
 from src.services.challonge import service as challonge_service
 from src.services.tournament import flows as tournament_flows
 from src.services.tournament import service as tournament_service
@@ -25,6 +27,78 @@ def resolve_hero_role_from_balancer(role: str) -> enums.HeroClass | None:
     raise errors.ApiHTTPException(
         status_code=400,
         detail=[errors.ApiExc(code="invalid_hero_role", msg=f"{role} is not a valid hero role.")],
+    )
+
+
+async def to_pydantic(
+    session: AsyncSession,
+    team: models.Team,
+    entities: list[str],
+) -> schemas.TeamRead:
+    tournament: schemas.TournamentRead | None = None
+    players_read: list[schemas.PlayerRead] = []
+    captain: schemas.UserRead | None = None
+    placement: int | None = None
+
+    if "tournament" in entities and team.tournament is not None:
+        tournament = await tournament_flows.to_pydantic(session, team.tournament, [])
+    if "players" in entities:
+        players_entities = utils.prepare_entities(entities, "players")
+        players_read = [
+            await to_pydantic_player(session, player, players_entities)
+            for player in team.players
+        ]
+    if "captain" in entities and team.captain is not None:
+        captain = await user_flows.to_pydantic(
+            session, team.captain, utils.prepare_entities(entities, "captain")
+        )
+    if "placement" in entities and getattr(team, "standings", None):
+        placement = team.standings[0].overall_position
+
+    return schemas.TeamRead(
+        id=team.id,
+        name=team.name,
+        avg_sr=team.avg_sr,
+        total_sr=team.total_sr,
+        tournament_id=team.tournament_id,
+        captain_id=team.captain_id,
+        tournament=tournament,
+        players=players_read,
+        captain=captain,
+        placement=placement,
+    )
+
+
+async def to_pydantic_player(
+    session: AsyncSession,
+    player: models.Player,
+    entities: list[str],
+) -> schemas.PlayerRead:
+    user: schemas.UserRead | None = None
+    tournament: schemas.TournamentRead | None = None
+    team: schemas.TeamRead | None = None
+
+    if "user" in entities and player.user is not None:
+        user = await user_flows.to_pydantic(
+            session, player.user, utils.prepare_entities(entities, "user")
+        )
+    if "tournament" in entities and player.tournament is not None:
+        tournament = await tournament_flows.to_pydantic(
+            session, player.tournament, []
+        )
+    if "team" in entities and player.team is not None:
+        team = await to_pydantic(session, player.team, [])
+
+    division = getattr(player, "division", None)
+    if division is None:
+        division = DEFAULT_GRID.resolve_division_number(player.rank)
+
+    return schemas.PlayerRead(
+        **player.to_dict(),
+        division=division,
+        tournament=tournament,
+        team=team,
+        user=user,
     )
 
 

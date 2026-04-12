@@ -21,6 +21,8 @@ __all__ = (
     "BalancerPlayerRoleEntry",
     "BalancerRegistration",
     "BalancerRegistrationForm",
+    "BalancerRegistrationGoogleSheetBinding",
+    "BalancerRegistrationGoogleSheetFeed",
     "BalancerRegistrationRole",
     "BalancerTeam",
     "BalancerTeamSlot",
@@ -177,11 +179,6 @@ class BalancerTeam(db.TimeStampIntegerMixin):
     slots: Mapped[list["BalancerTeamSlot"]] = relationship(back_populates="team")
 
 
-# ---------------------------------------------------------------------------
-# New normalized tables
-# ---------------------------------------------------------------------------
-
-
 class BalancerPlayerRoleEntry(db.TimeStampIntegerMixin):
     """Normalized role entry for a balancer player (replaces role_entries_json)."""
 
@@ -255,11 +252,6 @@ class BalancerTeamSlot(db.TimeStampIntegerMixin):
     player: Mapped["BalancerPlayer | None"] = relationship()
 
 
-# ---------------------------------------------------------------------------
-# Registration system
-# ---------------------------------------------------------------------------
-
-
 class BalancerRegistrationForm(db.TimeStampIntegerMixin):
     """Configuration of the registration form for a tournament."""
 
@@ -291,16 +283,24 @@ class BalancerRegistrationForm(db.TimeStampIntegerMixin):
 
 
 class BalancerRegistration(db.TimeStampIntegerMixin):
-    """A player's registration (application) for a tournament."""
+    """A player's registration for a tournament and balancer source-of-truth row."""
 
     __tablename__ = "registration"
     __table_args__ = (
         UniqueConstraint("tournament_id", "auth_user_id", name="uq_balancer_registration_user"),
         Index(
-            "ix_registration_battle_tag",
+            "uq_balancer_registration_tournament_tag_active",
             "tournament_id",
             "battle_tag_normalized",
-            postgresql_where="battle_tag_normalized IS NOT NULL",
+            unique=True,
+            postgresql_where="battle_tag_normalized IS NOT NULL AND deleted_at IS NULL",
+        ),
+        Index(
+            "ix_balancer_registration_tournament_active",
+            "tournament_id",
+            "status",
+            "exclude_from_balancer",
+            postgresql_where="deleted_at IS NULL",
         ),
         {"schema": "balancer"},
     )
@@ -317,7 +317,7 @@ class BalancerRegistration(db.TimeStampIntegerMixin):
     user_id: Mapped[int | None] = mapped_column(
         ForeignKey("players.user.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    # Built-in fields (all nullable — required-ness defined by form config)
+    display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     battle_tag: Mapped[str | None] = mapped_column(String(255), nullable=True)
     battle_tag_normalized: Mapped[str | None] = mapped_column(String(255), nullable=True)
     smurf_tags_json: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
@@ -325,9 +325,13 @@ class BalancerRegistration(db.TimeStampIntegerMixin):
     twitch_nick: Mapped[str | None] = mapped_column(String(255), nullable=True)
     stream_pov: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
     notes: Mapped[str | None] = mapped_column(Text(), nullable=True)
-    # Custom fields
+    exclude_from_balancer: Mapped[bool] = mapped_column(
+        Boolean(), nullable=False, server_default="false", default=False
+    )
+    exclude_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    admin_notes: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    is_flex: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
     custom_fields_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
-    # Status
     status: Mapped[str] = mapped_column(String(32), nullable=False, server_default="pending", default="pending")
     submitted_at: Mapped[db.DateTime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -336,19 +340,32 @@ class BalancerRegistration(db.TimeStampIntegerMixin):
     reviewed_by: Mapped[int | None] = mapped_column(
         ForeignKey("auth.user.id", ondelete="SET NULL"), nullable=True
     )
+    deleted_at: Mapped[db.DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by: Mapped[int | None] = mapped_column(
+        ForeignKey("auth.user.id", ondelete="SET NULL"), nullable=True
+    )
+    balancer_profile_overridden_at: Mapped[db.DateTime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     tournament: Mapped["Tournament"] = relationship()
     workspace: Mapped["Workspace"] = relationship()
     auth_user: Mapped["AuthUser | None"] = relationship(foreign_keys=[auth_user_id])
     user: Mapped["User | None"] = relationship()
     reviewer: Mapped["AuthUser | None"] = relationship(foreign_keys=[reviewed_by])
+    deleted_by_user: Mapped["AuthUser | None"] = relationship(foreign_keys=[deleted_by])
     roles: Mapped[list["BalancerRegistrationRole"]] = relationship(
         back_populates="registration", cascade="all, delete-orphan"
+    )
+    google_sheet_binding: Mapped["BalancerRegistrationGoogleSheetBinding | None"] = relationship(
+        back_populates="registration",
+        cascade="all, delete-orphan",
+        uselist=False,
     )
 
 
 class BalancerRegistrationRole(db.TimeStampIntegerMixin):
-    """Normalized role entry for a registration (3NF)."""
+    """Normalized role entry for a registration."""
 
     __tablename__ = "registration_role"
     __table_args__ = (
@@ -363,5 +380,68 @@ class BalancerRegistrationRole(db.TimeStampIntegerMixin):
     subrole: Mapped[str | None] = mapped_column(String(32), nullable=True)
     is_primary: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
     priority: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="0", default=0)
+    rank_value: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="true", default=True)
 
     registration: Mapped["BalancerRegistration"] = relationship(back_populates="roles")
+
+
+class BalancerRegistrationGoogleSheetFeed(db.TimeStampIntegerMixin):
+    __tablename__ = "registration_google_sheet_feed"
+    __table_args__ = (
+        UniqueConstraint("tournament_id", name="uq_balancer_registration_google_sheet_feed_tournament"),
+        {"schema": "balancer"},
+    )
+
+    tournament_id: Mapped[int] = mapped_column(
+        ForeignKey("tournament.tournament.id", ondelete="CASCADE"), index=True
+    )
+    source_url: Mapped[str] = mapped_column(Text())
+    sheet_id: Mapped[str] = mapped_column(String(255))
+    gid: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    auto_sync_enabled: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
+    auto_sync_interval_seconds: Mapped[int] = mapped_column(
+        Integer(),
+        nullable=False,
+        server_default="300",
+        default=300,
+    )
+    header_row_json: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    mapping_config_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    value_mapping_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    last_synced_at: Mapped[db.DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_sync_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text(), nullable=True)
+
+    tournament: Mapped["Tournament"] = relationship()
+    bindings: Mapped[list["BalancerRegistrationGoogleSheetBinding"]] = relationship(
+        back_populates="feed",
+        cascade="all, delete-orphan",
+    )
+
+
+class BalancerRegistrationGoogleSheetBinding(db.TimeStampIntegerMixin):
+    __tablename__ = "registration_google_sheet_binding"
+    __table_args__ = (
+        UniqueConstraint("feed_id", "source_record_key", name="uq_balancer_registration_google_sheet_binding_key"),
+        UniqueConstraint("registration_id", name="uq_balancer_registration_google_sheet_binding_registration"),
+        {"schema": "balancer"},
+    )
+
+    feed_id: Mapped[int] = mapped_column(
+        ForeignKey("balancer.registration_google_sheet_feed.id", ondelete="CASCADE"),
+        index=True,
+    )
+    registration_id: Mapped[int] = mapped_column(
+        ForeignKey("balancer.registration.id", ondelete="CASCADE"),
+        index=True,
+    )
+    source_record_key: Mapped[str] = mapped_column(String(255))
+    raw_row_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    parsed_fields_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    row_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    last_seen_at: Mapped[db.DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    feed: Mapped["BalancerRegistrationGoogleSheetFeed"] = relationship(back_populates="bindings")
+    registration: Mapped["BalancerRegistration"] = relationship(back_populates="google_sheet_binding")

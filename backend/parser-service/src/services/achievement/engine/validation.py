@@ -8,6 +8,8 @@ from shared.models.achievement import AchievementGrain
 
 from .conditions import get_registered_types
 
+SUBCONDITION_ONLY_TYPES = {"player_role", "player_flag", "player_div", "is_newcomer"}
+
 # Grain produced by each leaf condition type.
 LEAF_GRAINS: dict[str, AchievementGrain] = {
     # Match grain
@@ -31,7 +33,6 @@ LEAF_GRAINS: dict[str, AchievementGrain] = {
     "encounter_revenge": AchievementGrain.user_tournament,
     "bracket_path": AchievementGrain.user_tournament,
     "tournament_format": AchievementGrain.user_tournament,
-    "match_mvp_check": AchievementGrain.user_match,
     # Global grain
     "global_stat_sum": AchievementGrain.user,
     "tournament_count": AchievementGrain.user,
@@ -56,6 +57,20 @@ def validate_condition_tree(condition: dict[str, Any]) -> list[str]:
     return errors
 
 
+def validate_rule_definition(
+    condition_tree: dict[str, Any],
+    grain: AchievementGrain | str | None,
+) -> tuple[list[str], AchievementGrain | None]:
+    """Validate a full rule definition, including metadata consistency."""
+    errors = validate_condition_tree(condition_tree)
+    inferred_grain = infer_grain(condition_tree) if not errors else None
+    if inferred_grain is not None and grain is not None and AchievementGrain(grain) != inferred_grain:
+        errors.append(
+            f"rule.grain must match inferred grain '{inferred_grain.value}'"
+        )
+    return errors, inferred_grain
+
+
 def infer_grain(condition: dict[str, Any]) -> AchievementGrain:
     """Infer the resulting grain of a condition tree."""
     grains = _collect_grains(condition)
@@ -69,6 +84,8 @@ def _validate_node(
     node: dict[str, Any],
     errors: list[str],
     path: str,
+    *,
+    in_player_subcondition: bool = False,
 ) -> None:
     if not isinstance(node, dict):
         errors.append(f"{path}: expected dict, got {type(node).__name__}")
@@ -86,10 +103,18 @@ def _validate_node(
                 errors.append(f"{path}.{op}: must be a non-empty list")
                 return
             for i, child in enumerate(children):
-                _validate_node(child, errors, f"{path}.{op}[{i}]")
+                _validate_node(
+                    child,
+                    errors,
+                    f"{path}.{op}[{i}]",
+                    in_player_subcondition=in_player_subcondition,
+                )
             return
 
     if "NOT" in node:
+        if in_player_subcondition:
+            errors.append(f"{path}.NOT: NOT is not supported inside player sub-conditions")
+            return
         _validate_node(node["NOT"], errors, f"{path}.NOT")
         return
 
@@ -104,6 +129,14 @@ def _validate_node(
     all_valid = registered + ["player_role", "player_flag", "player_div"]
     if ctype not in all_valid:
         errors.append(f"{path}: unknown condition type '{ctype}'")
+        return
+
+    if in_player_subcondition and ctype not in SUBCONDITION_ONLY_TYPES:
+        errors.append(f"{path}: unsupported player sub-condition type '{ctype}'")
+        return
+
+    if not in_player_subcondition and ctype in SUBCONDITION_ONLY_TYPES:
+        errors.append(f"{path}: '{ctype}' cannot be used as a top-level condition")
         return
 
     params = node.get("params", {})
@@ -126,8 +159,9 @@ def _validate_leaf_params(
         _require_keys(params, ["stat", "op", "value"], errors, path)
     elif ctype == "match_criteria":
         _require_keys(params, ["field", "op", "value"], errors, path)
-        if params.get("field") not in ("closeness", "match_time", "time"):
-            errors.append(f"{path}.params.field: must be 'closeness', 'match_time', or 'time'")
+        valid_fields = ("closeness", "match_time", "time")
+        if params.get("field") not in valid_fields:
+            errors.append(f"{path}.params.field: must be one of {valid_fields}")
     elif ctype == "match_win":
         pass  # no params needed
     elif ctype == "standing_position":
@@ -148,12 +182,22 @@ def _validate_leaf_params(
             _require_keys(params, ["count_op", "count_value"], errors, path)
         sub = params.get("condition")
         if sub:
-            _validate_node(sub, errors, f"{path}.params.condition")
+            _validate_node(
+                sub,
+                errors,
+                f"{path}.params.condition",
+                in_player_subcondition=True,
+            )
     elif ctype == "captain_property":
         _require_keys(params, ["condition"], errors, path)
         sub = params.get("condition")
         if sub:
-            _validate_node(sub, errors, f"{path}.params.condition")
+            _validate_node(
+                sub,
+                errors,
+                f"{path}.params.condition",
+                in_player_subcondition=True,
+            )
     elif ctype == "hero_kd_best":
         pass  # all params optional
     elif ctype == "hero_stat":
@@ -208,6 +252,9 @@ def _collect_grains(node: dict[str, Any]) -> list[AchievementGrain]:
 
     ctype = node.get("type")
     if ctype and ctype in LEAF_GRAINS:
-        grains.append(LEAF_GRAINS[ctype])
+        if ctype == "distinct_count" and node.get("params", {}).get("scope") == "tournament":
+            grains.append(AchievementGrain.user_tournament)
+        else:
+            grains.append(LEAF_GRAINS[ctype])
 
     return grains

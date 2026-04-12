@@ -18,6 +18,7 @@ import teamService from "@/services/team.service";
 import adminService from "@/services/admin.service";
 import { Encounter } from "@/types/encounter.types";
 import { EncounterCreateInput, EncounterUpdateInput } from "@/types/admin.types";
+import { StageItem } from "@/types/tournament.types";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -47,7 +48,8 @@ function formatEncounterStatus(status?: string | null) {
 const emptyEncounterForm: EncounterCreateInput = {
   name: "",
   tournament_id: 0,
-  tournament_group_id: 0,
+  stage_id: null,
+  stage_item_id: null,
   home_team_id: 0,
   away_team_id: 0,
   round: 1,
@@ -56,18 +58,33 @@ const emptyEncounterForm: EncounterCreateInput = {
   status: "OPEN",
 };
 
-function getCreateEncounterForm(tournamentId: number | null): EncounterCreateInput {
-  return { ...emptyEncounterForm, tournament_id: tournamentId || 0 };
+function getCreateEncounterForm(
+  tournamentId: number | null,
+  defaultStageId: number | null,
+  defaultStageItemId: number | null,
+): EncounterCreateInput {
+  return {
+    ...emptyEncounterForm,
+    tournament_id: tournamentId || 0,
+    stage_id: defaultStageId,
+    stage_item_id: defaultStageItemId,
+  };
 }
 
 function getEditEncounterForm(encounter: Encounter): EncounterUpdateInput {
   return {
     name: encounter.name,
+    stage_id: encounter.stage_id,
+    stage_item_id: encounter.stage_item_id,
     home_score: encounter.score.home,
     away_score: encounter.score.away,
     status: normalizeEncounterStatus(encounter.status),
     round: encounter.round,
   };
+}
+
+function getEncounterStageLabel(encounter: Encounter): string {
+  return encounter.stage_item?.name ?? encounter.stage?.name ?? "—";
 }
 
 export default function EncountersPage() {
@@ -95,6 +112,23 @@ export default function EncountersPage() {
     queryKey: ["teams", selectedTournamentId],
     queryFn: () => teamService.getAll(selectedTournamentId),
   });
+
+  const { data: stagesData = [] } = useQuery({
+    queryKey: ["admin", "stages", selectedTournamentId],
+    queryFn: () => adminService.getStages(selectedTournamentId!),
+    enabled: selectedTournamentId != null,
+  });
+
+  const defaultStage = stagesData[0] ?? null;
+  const defaultStageItem = defaultStage?.items[0] ?? null;
+  const defaultStageId = defaultStage?.id ?? null;
+  const defaultStageItemId = defaultStageItem?.id ?? null;
+  const stageItemsById = new Map<number, StageItem>();
+  for (const stage of stagesData) {
+    for (const item of stage.items) {
+      stageItemsById.set(item.id, item);
+    }
+  }
 
   // Form state
   const [formData, setFormData] = useState<EncounterCreateInput | EncounterUpdateInput>({
@@ -144,7 +178,7 @@ export default function EncountersPage() {
   });
 
   const resetForm = () => {
-    setFormData(getCreateEncounterForm(selectedTournamentId));
+    setFormData(getCreateEncounterForm(selectedTournamentId, defaultStageId, defaultStageItemId));
   };
 
   const handleCreate = () => {
@@ -186,7 +220,11 @@ export default function EncountersPage() {
     }
   };
 
-  const createFormInitial = getCreateEncounterForm(selectedTournamentId);
+  const createFormInitial = getCreateEncounterForm(
+    selectedTournamentId,
+    defaultStageId,
+    defaultStageItemId,
+  );
   const editFormInitial = selectedEncounter ? getEditEncounterForm(selectedEncounter) : createFormInitial;
   const isCreateDirty = createDialogOpen && hasUnsavedChanges(formData, createFormInitial);
   const isEditDirty = editDialogOpen && hasUnsavedChanges(formData, editFormInitial);
@@ -209,13 +247,10 @@ export default function EncountersPage() {
       cell: ({ row }) => <div className="font-medium">{row.getValue("name")}</div>
     },
     {
-      accessorKey: "tournament_group",
-      header: "Group",
+      accessorKey: "stage",
+      header: "Stage",
       enableSorting: false,
-      cell: ({ row }) => {
-        const group = row.getValue<any>("tournament_group");
-        return group ? <div className="text-sm">{group.name}</div> : "—";
-      }
+      cell: ({ row }) => <div className="text-sm">{getEncounterStageLabel(row.original)}</div>
     },
     {
       accessorKey: "round",
@@ -303,7 +338,7 @@ export default function EncountersPage() {
         description="Manage tournament encounters and matches"
         actions={
           canCreate ? (
-            <Button onClick={handleCreate} disabled={!selectedTournamentId}>
+            <Button onClick={handleCreate} disabled={!selectedTournamentId || stagesData.length === 0}>
               <Plus className="mr-2 h-4 w-4" />
               Create Encounter
             </Button>
@@ -366,6 +401,68 @@ export default function EncountersPage() {
               required
               placeholder="e.g., Quarter Final 1"
             />
+          </div>
+
+          <div>
+            <Label htmlFor="stage_id">Stage *</Label>
+            <Select
+              value={(formData as EncounterCreateInput).stage_id?.toString() ?? ""}
+              onValueChange={(value) => {
+                const stage = stagesData.find((entry) => entry.id === Number(value)) ?? null;
+                setFormData({
+                  ...formData,
+                  stage_id: stage?.id ?? null,
+                  stage_item_id: stage?.items[0]?.id ?? null,
+                });
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select stage" />
+              </SelectTrigger>
+              <SelectContent>
+                {stagesData.map((stage) => (
+                  <SelectItem key={stage.id} value={stage.id.toString()}>
+                    {stage.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="stage_item_id">Stage Item</Label>
+            <Select
+              value={(formData as EncounterCreateInput).stage_item_id?.toString() ?? "none"}
+              onValueChange={(value) =>
+                setFormData((current) => {
+                  const nextStageItemId = value === "none" ? null : Number(value);
+                  const nextStageId =
+                    nextStageItemId != null
+                      ? stageItemsById.get(nextStageItemId)?.stage_id ?? current.stage_id ?? null
+                      : current.stage_id ?? null;
+                  return {
+                    ...current,
+                    stage_id: nextStageId,
+                    stage_item_id: nextStageItemId,
+                  };
+                })
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select stage item" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No stage item</SelectItem>
+                {stagesData
+                  .filter((stage) => stage.id === (formData as EncounterCreateInput).stage_id)
+                  .flatMap((stage) => stage.items)
+                  .map((item) => (
+                    <SelectItem key={item.id} value={item.id.toString()}>
+                      {item.name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div>
@@ -489,6 +586,68 @@ export default function EncountersPage() {
               value={(formData as EncounterUpdateInput).name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
             />
+          </div>
+
+          <div>
+            <Label htmlFor="edit-stage_id">Stage *</Label>
+            <Select
+              value={(formData as EncounterUpdateInput).stage_id?.toString() ?? ""}
+              onValueChange={(value) => {
+                const stage = stagesData.find((entry) => entry.id === Number(value)) ?? null;
+                setFormData({
+                  ...formData,
+                  stage_id: stage?.id ?? null,
+                  stage_item_id: stage?.items[0]?.id ?? null,
+                });
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select stage" />
+              </SelectTrigger>
+              <SelectContent>
+                {stagesData.map((stage) => (
+                  <SelectItem key={stage.id} value={stage.id.toString()}>
+                    {stage.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="edit-stage_item_id">Stage Item</Label>
+            <Select
+              value={(formData as EncounterUpdateInput).stage_item_id?.toString() ?? "none"}
+              onValueChange={(value) =>
+                setFormData((current) => {
+                  const nextStageItemId = value === "none" ? null : Number(value);
+                  const nextStageId =
+                    nextStageItemId != null
+                      ? stageItemsById.get(nextStageItemId)?.stage_id ?? current.stage_id ?? null
+                      : current.stage_id ?? null;
+                  return {
+                    ...current,
+                    stage_id: nextStageId,
+                    stage_item_id: nextStageItemId,
+                  };
+                })
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select stage item" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No stage item</SelectItem>
+                {stagesData
+                  .filter((stage) => stage.id === (formData as EncounterUpdateInput).stage_id)
+                  .flatMap((stage) => stage.items)
+                  .map((item) => (
+                    <SelectItem key={item.id} value={item.id.toString()}>
+                      {item.name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div>

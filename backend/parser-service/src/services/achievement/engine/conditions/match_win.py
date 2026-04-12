@@ -1,5 +1,8 @@
 """match_win — user's team won the match.
 
+Uses Player → Team → Match join (not MatchStatistics) so results don't depend
+on any particular stat row existing.
+
 Grain: user_match (user_id, tournament_id, match_id).
 """
 
@@ -22,36 +25,32 @@ async def execute(
     params: dict[str, Any],
     context: EvalContext,
 ) -> ResultSet:
+    # Winning team_id per match
+    winning_team = sa.case(
+        (models.Match.home_score > models.Match.away_score, models.Match.home_team_id),
+        else_=models.Match.away_team_id,
+    )
+
     query = (
         sa.select(
-            models.MatchStatistics.user_id,
+            models.Player.user_id,
             models.Encounter.tournament_id,
-            models.MatchStatistics.match_id,
+            models.Match.id.label("match_id"),
         )
-        .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
+        .select_from(models.Match)
         .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
         .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-        .join(models.Team, models.Team.id == models.MatchStatistics.team_id)
-        .where(
-            models.MatchStatistics.round == 0,
-            models.MatchStatistics.hero_id.is_(None),
-            models.MatchStatistics.name == "Eliminations",  # just need one stat row per user
-            models.Tournament.workspace_id == context.workspace_id,
-            sa.or_(
-                sa.and_(
-                    models.Encounter.home_team_id == models.Team.id,
-                    models.Encounter.home_score > models.Encounter.away_score,
-                ),
-                sa.and_(
-                    models.Encounter.away_team_id == models.Team.id,
-                    models.Encounter.away_score > models.Encounter.home_score,
-                ),
+        .join(
+            models.Player,
+            sa.and_(
+                models.Player.team_id == winning_team,
+                models.Player.tournament_id == models.Encounter.tournament_id,
             ),
         )
-        .group_by(
-            models.MatchStatistics.user_id,
-            models.Encounter.tournament_id,
-            models.MatchStatistics.match_id,
+        .where(
+            models.Match.home_score != models.Match.away_score,
+            models.Tournament.workspace_id == context.workspace_id,
+            models.Player.is_substitution.is_(False),
         )
     )
 

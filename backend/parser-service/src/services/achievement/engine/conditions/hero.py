@@ -74,6 +74,7 @@ async def execute_hero_kd_best(
     hero_slug = params.get("hero_slug")
     min_time = params.get("min_time", 600)
     min_matches = params.get("min_matches", 3)
+    min_match_time = params.get("min_match_time", 60)  # per-match minimum playtime
 
     # Base: per-user-per-match stats for hero
     hero_filter = []
@@ -146,26 +147,32 @@ async def execute_hero_kd_best(
         )
     ).subquery("user_match")
 
+    # Filter out matches where hero playtime is below per-match minimum
+    qualified_matches = (
+        sa.select(user_match)
+        .where(user_match.c.time_played >= min_match_time)
+    ).subquery("qualified_matches")
+
     # Aggregate across matches: per-user-per-hero-per-tournament
     agg = (
         sa.select(
-            user_match.c.user_id,
-            user_match.c.tournament_id,
-            user_match.c.hero_id,
+            qualified_matches.c.user_id,
+            qualified_matches.c.tournament_id,
+            qualified_matches.c.hero_id,
             (
-                sa.func.sum(user_match.c.eliminations)
-                / sa.func.nullif(sa.func.sum(user_match.c.deaths), 0)
+                sa.func.sum(qualified_matches.c.eliminations)
+                / sa.func.nullif(sa.func.sum(qualified_matches.c.deaths), 0)
             ).label("kd"),
-            sa.func.sum(user_match.c.time_played).label("total_time"),
+            sa.func.sum(qualified_matches.c.time_played).label("total_time"),
             sa.func.count().label("match_count"),
         )
         .group_by(
-            user_match.c.user_id,
-            user_match.c.tournament_id,
-            user_match.c.hero_id,
+            qualified_matches.c.user_id,
+            qualified_matches.c.tournament_id,
+            qualified_matches.c.hero_id,
         )
         .having(
-            sa.func.sum(user_match.c.time_played) >= min_time,
+            sa.func.sum(qualified_matches.c.time_played) >= min_time,
             sa.func.count() >= min_matches,
         )
     ).subquery("agg")

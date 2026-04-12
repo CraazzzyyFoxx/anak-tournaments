@@ -7,6 +7,7 @@ from src import models, schemas
 from src.core import auth, db
 from src.schemas.admin import team as admin_schemas
 from src.services.admin import team as admin_service
+from src.services.team import flows as team_flows
 
 router = APIRouter(
     prefix="/teams",
@@ -30,7 +31,9 @@ async def create_team(
 ):
     """Create a new team (admin/organizer only)"""
     team = await admin_service.create_team(session, data)
-    return schemas.TeamRead.model_validate(team, from_attributes=True)
+    return await team_flows.to_pydantic(
+        session, team, ["tournament", "players.user", "captain"]
+    )
 
 
 @router.get("/{team_id}", response_model=schemas.TeamRead)
@@ -41,7 +44,9 @@ async def get_team(
 ):
     """Get one team for admin workspace pages."""
     team = await admin_service.get_team(session, team_id)
-    return schemas.TeamRead.model_validate(team, from_attributes=True)
+    return await team_flows.to_pydantic(
+        session, team, ["tournament", "players.user", "captain"]
+    )
 
 
 @router.patch("/{team_id}", response_model=schemas.TeamRead)
@@ -53,7 +58,9 @@ async def update_team(
 ):
     """Update team fields (admin/organizer only)"""
     team = await admin_service.update_team(session, team_id, data)
-    return schemas.TeamRead.model_validate(team, from_attributes=True)
+    return await team_flows.to_pydantic(
+        session, team, ["tournament", "players.user", "captain"]
+    )
 
 
 @router.delete("/{team_id}", status_code=204)
@@ -78,7 +85,7 @@ async def add_player_to_team(
 ):
     """Add a player to a team (admin/organizer only)"""
     player = await admin_service.add_player_to_team(session, team_id, data)
-    return schemas.PlayerRead.model_validate(player, from_attributes=True)
+    return await team_flows.to_pydantic_player(session, player, ["user", "tournament"])
 
 
 @router.delete("/{team_id}/players/{player_id}", status_code=204)
@@ -103,7 +110,7 @@ async def create_player(
 ):
     """Create a new player (admin/organizer only)"""
     player = await admin_service.create_player(session, data)
-    return schemas.PlayerRead.model_validate(player, from_attributes=True)
+    return await team_flows.to_pydantic_player(session, player, ["user", "tournament"])
 
 
 @player_router.patch("/{player_id}", response_model=schemas.PlayerRead)
@@ -115,7 +122,7 @@ async def update_player(
 ):
     """Update player fields (admin/organizer only)"""
     player = await admin_service.update_player(session, player_id, data)
-    return schemas.PlayerRead.model_validate(player, from_attributes=True)
+    return await team_flows.to_pydantic_player(session, player, ["user", "tournament"])
 
 
 @player_router.delete("/{player_id}", status_code=204)

@@ -48,7 +48,7 @@ async def get(
         .options(*gamemode_entities(entities))
     )
     result = await session.execute(query)
-    return result.scalar_one_or_none()
+    return result.unique().scalar_one_or_none()
 
 
 async def get_all(

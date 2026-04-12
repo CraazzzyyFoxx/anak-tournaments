@@ -1,4 +1,5 @@
 import {
+  AdminRegistration,
   BalancerApplication,
   BalancerPlayerRecord,
   BalancerPlayerRoleEntry,
@@ -34,6 +35,22 @@ export type PlayerValidationIssue =
       applicationRoleCodes: BalancerRoleCode[];
       playerRoleCodes: BalancerRoleCode[];
     };
+
+export type PlayerRankHistoryPreviewEntry = {
+  role: BalancerRoleCode;
+  rank_value: number;
+  division_number: number | null;
+  tournament_id: number;
+  tournament_name: string;
+  tournament_number: number;
+  source_role: UserRoleType;
+};
+
+export type PlayerRankHistoryPreview = {
+  user_id: number;
+  entries: PlayerRankHistoryPreviewEntry[];
+  average_rank_value: number | null;
+};
 
 export const ROLE_LABELS: Record<BalancerRoleCode, string> = {
   tank: "Tank",
@@ -305,6 +322,76 @@ export function buildBalancerInput(players: BalancerPlayerRecord[]): Record<stri
   };
 }
 
+function getRegistrationDisplayName(registration: AdminRegistration): string {
+  return registration.battle_tag ?? registration.display_name ?? `registration-${registration.id}`;
+}
+
+export function isRegistrationIncludedInBalancer(registration: AdminRegistration): boolean {
+  return registration.status === "approved" && !registration.exclude_from_balancer && !registration.deleted_at;
+}
+
+export function isRegistrationAvailableForBalancer(registration: AdminRegistration): boolean {
+  return registration.status === "approved" && !registration.deleted_at;
+}
+
+export function createSyntheticPlayerFromRegistration(
+  registration: AdminRegistration,
+  grid: DivisionGrid = DEFAULT_DIVISION_GRID,
+): BalancerPlayerRecord {
+  const battleTag = getRegistrationDisplayName(registration);
+  return {
+    id: registration.id,
+    tournament_id: registration.tournament_id,
+    application_id: registration.id,
+    battle_tag: battleTag,
+    battle_tag_normalized: registration.battle_tag_normalized ?? battleTag.toLowerCase(),
+    user_id: registration.user_id,
+    role_entries_json: registration.roles.map((role) => ({
+      role: role.role,
+      subtype: role.subrole,
+      priority: role.priority,
+      division_number: resolveDivisionFromRankHelper(role.rank_value, grid),
+      rank_value: role.rank_value,
+      is_active: role.is_active,
+    })),
+    is_flex: registration.is_flex,
+    is_in_pool: isRegistrationIncludedInBalancer(registration),
+    admin_notes: registration.admin_notes,
+  };
+}
+
+export function createSyntheticApplicationFromRegistration(
+  registration: AdminRegistration,
+  player: BalancerPlayerRecord | null = null,
+): BalancerApplication {
+  const sortedRoles = [...registration.roles].sort((left, right) => left.priority - right.priority);
+  const primaryRole = sortedRoles.find((role) => role.is_primary)?.role ?? sortedRoles[0]?.role ?? null;
+  const additionalRoles = sortedRoles
+    .filter((role) => role.role !== primaryRole)
+    .map((role) => role.role);
+  const battleTag = getRegistrationDisplayName(registration);
+
+  return {
+    id: registration.id,
+    tournament_id: registration.tournament_id,
+    tournament_sheet_id: 0,
+    battle_tag: battleTag,
+    battle_tag_normalized: registration.battle_tag_normalized ?? battleTag.toLowerCase(),
+    smurf_tags_json: registration.smurf_tags_json ?? [],
+    twitch_nick: registration.twitch_nick,
+    discord_nick: registration.discord_nick,
+    stream_pov: registration.stream_pov,
+    last_tournament_text: null,
+    primary_role: primaryRole,
+    additional_roles_json: additionalRoles,
+    notes: registration.notes,
+    submitted_at: registration.submitted_at,
+    synced_at: registration.submitted_at ?? registration.reviewed_at ?? new Date(0).toISOString(),
+    is_active: isRegistrationAvailableForBalancer(registration),
+    player,
+  };
+}
+
 export function buildTeamNamesText(payload: InternalBalancePayload | null): string {
   if (!payload) {
     return "";
@@ -377,9 +464,10 @@ const USER_ROLE_TO_BALANCER: Record<UserRoleType, BalancerRoleCode> = {
  * Returns a map of { balancer role code -> SR rank } using the latest tournament per role.
  * Returns null if the user cannot be found.
  */
-export async function fetchPlayerRankHistory(
+export async function fetchPlayerRankHistoryPreview(
   battleTag: string,
-): Promise<Partial<Record<BalancerRoleCode, number>> | null> {
+  grid: DivisionGrid = DEFAULT_DIVISION_GRID,
+): Promise<PlayerRankHistoryPreview | null> {
   try {
     const lookupName = battleTag.replace("#", "-");
     const user = await userService.getUserByName(lookupName);
@@ -394,14 +482,14 @@ export async function fetchPlayerRankHistory(
     // Sort tournaments descending by number so we process newest first.
     const sorted = [...tournaments].sort((a, b) => b.number - a.number);
 
-    const latestPerRole: Partial<Record<BalancerRoleCode, number>> = {};
+    const latestPerRole = new Map<BalancerRoleCode, PlayerRankHistoryPreviewEntry>();
 
     for (const tournament of sorted) {
       const roleName = tournament.role as UserRoleType;
       const roleCode = USER_ROLE_TO_BALANCER[roleName];
       if (!roleCode) continue;
       // Already have a (newer) entry for this role
-      if (latestPerRole[roleCode] !== undefined) continue;
+      if (latestPerRole.has(roleCode)) continue;
 
       // Find this user's own Player record in the roster
       const playerRecord = tournament.players.find(
@@ -409,12 +497,49 @@ export async function fetchPlayerRankHistory(
       );
       const rankValue = playerRecord?.rank ?? null;
       if (rankValue !== null && rankValue > 0) {
-        latestPerRole[roleCode] = rankValue;
+        latestPerRole.set(roleCode, {
+          role: roleCode,
+          rank_value: rankValue,
+          division_number: resolveDivisionFromRankHelper(rankValue, grid),
+          tournament_id: tournament.id,
+          tournament_name: tournament.name,
+          tournament_number: tournament.number,
+          source_role: roleName,
+        });
       }
     }
 
-    return Object.keys(latestPerRole).length > 0 ? latestPerRole : null;
+    if (latestPerRole.size === 0) {
+      return null;
+    }
+
+    const entries = ROLE_ORDER
+      .map((role) => latestPerRole.get(role))
+      .filter((entry): entry is PlayerRankHistoryPreviewEntry => entry !== undefined);
+
+    const average_rank_value = entries.length > 0
+      ? Math.round(entries.reduce((sum, entry) => sum + entry.rank_value, 0) / entries.length)
+      : null;
+
+    return {
+      user_id: user.id,
+      entries,
+      average_rank_value,
+    };
   } catch {
     return null;
   }
+}
+
+export async function fetchPlayerRankHistory(
+  battleTag: string,
+): Promise<Partial<Record<BalancerRoleCode, number>> | null> {
+  const preview = await fetchPlayerRankHistoryPreview(battleTag);
+  if (!preview) {
+    return null;
+  }
+
+  return Object.fromEntries(
+    preview.entries.map((entry) => [entry.role, entry.rank_value]),
+  ) as Partial<Record<BalancerRoleCode, number>>;
 }

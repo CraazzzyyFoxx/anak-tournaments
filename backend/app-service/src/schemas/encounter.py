@@ -7,9 +7,10 @@ from src.schemas import (
     BaseRead,
     MapRead,
     Score,
+    StageItemRead,
+    StageRead,
     TeamRead,
     TeamWithMatchStats,
-    TournamentGroupRead,
     TournamentRead,
 )
 
@@ -30,14 +31,18 @@ class EncounterRead(BaseRead):
     away_team_id: int
     score: Score
     round: int
+    best_of: int = 3
     tournament_id: int
-    tournament_group_id: int | None
+    stage_id: int | None = None
+    stage_item_id: int | None = None
     challonge_id: int | None
     closeness: float | None
     has_logs: bool
     status: str
+    result_status: str = "none"
 
-    tournament_group: TournamentGroupRead | None
+    stage: StageRead | None
+    stage_item: StageItemRead | None
     tournament: TournamentRead | None
     home_team: TeamRead | None
     away_team: TeamRead | None

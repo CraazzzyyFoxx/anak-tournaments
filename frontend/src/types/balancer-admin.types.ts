@@ -226,6 +226,12 @@ export interface AdminCustomFieldDef {
   required: boolean;
   placeholder: string | null;
   options: string[] | null;
+  validation?: FieldValidationConfig | null;
+}
+
+export interface FieldValidationConfig {
+  regex?: string | null;
+  error_message?: string | null;
 }
 
 export interface BuiltInFieldConfig {
@@ -233,6 +239,7 @@ export interface BuiltInFieldConfig {
   required: boolean;
   /** Per-role subrole options. Only relevant for primary_role / additional_roles fields. */
   subroles?: Record<string, string[]>;
+  validation?: FieldValidationConfig | null;
 }
 
 export interface AdminRegistrationForm {
@@ -257,10 +264,12 @@ export interface AdminRegistrationFormUpsert {
 }
 
 export interface AdminRegistrationRole {
-  role: string;
-  subrole: string | null;
+  role: BalancerRoleCode;
+  subrole: BalancerRoleSubtype | null;
   is_primary: boolean;
   priority: number;
+  rank_value: number | null;
+  is_active: boolean;
 }
 
 export interface AdminRegistration {
@@ -269,23 +278,112 @@ export interface AdminRegistration {
   workspace_id: number;
   auth_user_id: number | null;
   user_id: number | null;
+  display_name: string | null;
   battle_tag: string | null;
-  smurf_tags_json: string[] | null;
+  battle_tag_normalized: string | null;
+  source: "manual" | "google_sheets";
+  source_record_key: string | null;
+  smurf_tags_json: string[];
   discord_nick: string | null;
   twitch_nick: string | null;
   stream_pov: boolean;
   roles: AdminRegistrationRole[];
   notes: string | null;
+  admin_notes: string | null;
   custom_fields_json: Record<string, unknown> | null;
+  is_flex: boolean;
   status: "pending" | "approved" | "rejected" | "withdrawn";
+  exclude_from_balancer: boolean;
+  exclude_reason: string | null;
+  deleted_at: string | null;
   submitted_at: string | null;
   reviewed_at: string | null;
   reviewed_by_username: string | null;
+  balancer_profile_overridden_at: string | null;
 }
 
-export interface AdminApproveResponse {
-  registration_id: number;
-  status: string;
-  application_id: number | null;
-  player_id: number | null;
+export interface AdminRegistrationCreateInput {
+  display_name?: string | null;
+  battle_tag?: string | null;
+  smurf_tags_json?: string[] | null;
+  discord_nick?: string | null;
+  twitch_nick?: string | null;
+  stream_pov?: boolean;
+  notes?: string | null;
+  admin_notes?: string | null;
+  is_flex?: boolean;
+  roles?: AdminRegistrationRole[];
+}
+
+export interface AdminRegistrationUpdateInput {
+  display_name?: string | null;
+  battle_tag?: string | null;
+  smurf_tags_json?: string[] | null;
+  discord_nick?: string | null;
+  twitch_nick?: string | null;
+  stream_pov?: boolean | null;
+  notes?: string | null;
+  admin_notes?: string | null;
+  is_flex?: boolean | null;
+  roles?: AdminRegistrationRole[] | null;
+}
+
+export interface AdminRegistrationExclusionInput {
+  exclude_from_balancer: boolean;
+  exclude_reason?: string | null;
+}
+
+export interface AdminGoogleSheetFeed {
+  id: number;
+  tournament_id: number;
+  source_url: string;
+  sheet_id: string;
+  gid: string | null;
+  title: string | null;
+  header_row_json: string[] | null;
+  mapping_config_json: Record<string, unknown> | null;
+  value_mapping_json: Record<string, unknown> | null;
+  auto_sync_enabled: boolean;
+  auto_sync_interval_seconds: number;
+  last_synced_at: string | null;
+  last_sync_status: string | null;
+  last_error: string | null;
+}
+
+export interface AdminGoogleSheetFeedUpsertInput {
+  source_url: string;
+  title?: string | null;
+  auto_sync_enabled?: boolean;
+  auto_sync_interval_seconds?: number;
+  mapping_config_json?: Record<string, unknown> | null;
+  value_mapping_json?: Record<string, unknown> | null;
+}
+
+export interface AdminGoogleSheetFeedSyncResponse {
+  created: number;
+  updated: number;
+  withdrawn: number;
+  total: number;
+  feed: AdminGoogleSheetFeed;
+}
+
+export interface AdminGoogleSheetMappingSuggestInput {
+  source_url?: string | null;
+}
+
+export interface AdminGoogleSheetMappingSuggestResponse {
+  headers: string[];
+  mapping_config_json: Record<string, unknown>;
+}
+
+export interface AdminGoogleSheetMappingPreviewInput {
+  source_url?: string | null;
+  mapping_config_json?: Record<string, unknown> | null;
+  value_mapping_json?: Record<string, unknown> | null;
+}
+
+export interface AdminGoogleSheetMappingPreviewResponse {
+  headers: string[];
+  sample_raw_row: Record<string, string>;
+  parsed_fields: Record<string, unknown>;
 }

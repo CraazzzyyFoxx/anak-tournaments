@@ -7,7 +7,7 @@ import typing
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.models.achievement import AchievementEvaluationResult, AchievementRule
+from shared.models.achievement import AchievementRule
 from src import schemas
 from src.core import errors, pagination
 from src.services.encounter import flows as encounter_flows
@@ -127,17 +127,17 @@ async def get_user_achievements(
 
     cache: dict[int, schemas.UserAchievementRead] = {}
 
-    for eval_result, rarity in results:
-        rule_id = eval_result.achievement_rule_id
-        rule = eval_result.rule
+    for result_row in results:
+        rule_id = result_row.rule.id
+        rule = result_row.rule
 
         if rule_id not in cache:
             cache[rule_id] = schemas.UserAchievementRead(
                 **rule.to_dict(),
-                rarity=rarity or 0.0,
+                rarity=result_row.rarity or 0.0,
                 count=1,
-                tournaments_ids=([eval_result.tournament_id] if eval_result.tournament_id else []),
-                matches_ids=[eval_result.match_id] if eval_result.match_id else [],
+                tournaments_ids=([result_row.tournament_id] if result_row.tournament_id else []),
+                matches_ids=[result_row.match_id] if result_row.match_id else [],
                 tournaments=[],
                 matches=[],
                 hero=None,
@@ -145,12 +145,12 @@ async def get_user_achievements(
         else:
             cache[rule_id].count += 1
             if (
-                eval_result.tournament_id
-                and eval_result.tournament_id not in cache[rule_id].tournaments_ids
+                result_row.tournament_id
+                and result_row.tournament_id not in cache[rule_id].tournaments_ids
             ):
-                cache[rule_id].tournaments_ids.append(eval_result.tournament_id)
-            if eval_result.match_id and eval_result.match_id not in cache[rule_id].matches_ids:
-                cache[rule_id].matches_ids.append(eval_result.match_id)
+                cache[rule_id].tournaments_ids.append(result_row.tournament_id)
+            if result_row.match_id and result_row.match_id not in cache[rule_id].matches_ids:
+                cache[rule_id].matches_ids.append(result_row.match_id)
 
     for achievement in cache.values():
         achievement.tournaments_ids.sort()

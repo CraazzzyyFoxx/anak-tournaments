@@ -10,6 +10,98 @@ from src.core import enums
 from src.schemas.admin import encounter as admin_schemas
 
 
+async def _resolve_stage_refs(
+    session: AsyncSession,
+    *,
+    tournament_id: int,
+    stage_id: int | None,
+    stage_item_id: int | None,
+    tournament_group_id: int | None,
+) -> tuple[int, int | None, int | None]:
+    resolved_group: models.TournamentGroup | None = None
+    resolved_stage_item: models.StageItem | None = None
+
+    if tournament_group_id is not None:
+        result = await session.execute(
+            select(models.TournamentGroup).where(
+                models.TournamentGroup.id == tournament_group_id,
+                models.TournamentGroup.tournament_id == tournament_id,
+            )
+        )
+        resolved_group = result.scalar_one_or_none()
+        if not resolved_group:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Tournament group not found",
+            )
+        if stage_id is None and resolved_group.stage_id is not None:
+            stage_id = resolved_group.stage_id
+
+    if stage_item_id is not None:
+        result = await session.execute(
+            select(models.StageItem)
+            .where(models.StageItem.id == stage_item_id)
+            .options(selectinload(models.StageItem.stage))
+        )
+        resolved_stage_item = result.scalar_one_or_none()
+        if not resolved_stage_item:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Stage item not found",
+            )
+        if resolved_stage_item.stage.tournament_id != tournament_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Stage item does not belong to this tournament",
+            )
+        if stage_id is None:
+            stage_id = resolved_stage_item.stage_id
+        elif stage_id != resolved_stage_item.stage_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Stage item does not belong to the selected stage",
+            )
+
+    if stage_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Encounter must be linked to a stage",
+        )
+
+    result = await session.execute(
+        select(models.Stage).where(
+            models.Stage.id == stage_id,
+            models.Stage.tournament_id == tournament_id,
+        )
+    )
+    resolved_stage = result.scalar_one_or_none()
+    if not resolved_stage:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stage not found")
+
+    if resolved_group is None:
+        if resolved_stage_item is not None:
+            result = await session.execute(
+                select(models.TournamentGroup).where(
+                    models.TournamentGroup.tournament_id == tournament_id,
+                    models.TournamentGroup.stage_id == resolved_stage.id,
+                    models.TournamentGroup.name == resolved_stage_item.name,
+                )
+            )
+            resolved_group = result.scalar_one_or_none()
+        if resolved_group is None:
+            result = await session.execute(
+                select(models.TournamentGroup).where(
+                    models.TournamentGroup.tournament_id == tournament_id,
+                    models.TournamentGroup.stage_id == resolved_stage.id,
+                )
+            )
+            groups = list(result.scalars().all())
+            if len(groups) == 1:
+                resolved_group = groups[0]
+
+    return stage_id, stage_item_id, resolved_group.id if resolved_group else None
+
+
 async def create_encounter(session: AsyncSession, data: admin_schemas.EncounterCreate) -> models.Encounter:
     """Create a new encounter"""
     # Verify tournament exists
@@ -32,15 +124,13 @@ async def create_encounter(session: AsyncSession, data: admin_schemas.EncounterC
     if not away_team:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Away team not found")
 
-    # Verify group if provided
-    if data.tournament_group_id:
-        result = await session.execute(
-            select(models.TournamentGroup).where(models.TournamentGroup.id == data.tournament_group_id)
-        )
-        group = result.scalar_one_or_none()
-
-        if not group:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament group not found")
+    stage_id, stage_item_id, tournament_group_id = await _resolve_stage_refs(
+        session,
+        tournament_id=data.tournament_id,
+        stage_id=data.stage_id,
+        stage_item_id=data.stage_item_id,
+        tournament_group_id=data.tournament_group_id,
+    )
 
     # Parse status
     try:
@@ -52,7 +142,9 @@ async def create_encounter(session: AsyncSession, data: admin_schemas.EncounterC
     encounter = models.Encounter(
         name=data.name,
         tournament_id=data.tournament_id,
-        tournament_group_id=data.tournament_group_id,
+        tournament_group_id=tournament_group_id,
+        stage_id=stage_id,
+        stage_item_id=stage_item_id,
         home_team_id=data.home_team_id,
         away_team_id=data.away_team_id,
         round=data.round,
@@ -79,6 +171,8 @@ async def update_encounter(
             selectinload(models.Encounter.home_team),
             selectinload(models.Encounter.away_team),
             selectinload(models.Encounter.tournament_group),
+            selectinload(models.Encounter.stage),
+            selectinload(models.Encounter.stage_item),
         )
     )
     encounter = result.scalar_one_or_none()
@@ -99,15 +193,19 @@ async def update_encounter(
         if result.scalar_one_or_none() is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Away team not found")
 
-    if "tournament_group_id" in update_data and update_data["tournament_group_id"] is not None:
-        result = await session.execute(
-            select(models.TournamentGroup).where(models.TournamentGroup.id == update_data["tournament_group_id"])
-        )
-        if result.scalar_one_or_none() is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Tournament group not found",
-            )
+    resolved_stage_id, resolved_stage_item_id, resolved_group_id = await _resolve_stage_refs(
+        session,
+        tournament_id=encounter.tournament_id,
+        stage_id=update_data.get("stage_id", encounter.stage_id),
+        stage_item_id=update_data.get("stage_item_id", encounter.stage_item_id),
+        tournament_group_id=update_data.get(
+            "tournament_group_id",
+            encounter.tournament_group_id,
+        ),
+    )
+    update_data["stage_id"] = resolved_stage_id
+    update_data["stage_item_id"] = resolved_stage_item_id
+    update_data["tournament_group_id"] = resolved_group_id
 
     # Handle status conversion
     if "status" in update_data:

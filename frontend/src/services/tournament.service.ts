@@ -1,5 +1,5 @@
 import { LookupItem, PaginatedResponse } from "@/types/pagination.types";
-import { OwalStack, OwalStandings, Standings, Tournament } from "@/types/tournament.types";
+import { OwalStack, OwalStandings, Stage, Standings, Tournament } from "@/types/tournament.types";
 import { apiFetch } from "@/lib/api-fetch";
 import { PlayerAnalytics, TournamentAnalytics } from "@/types/analytics.types";
 import { normalizePaginatedResponse } from "@/lib/normalize-paginated-response";
@@ -29,7 +29,7 @@ export default class tournamentService {
         per_page: -1,
         sort: "id",
         order: "desc",
-        entities: ["groups", "participants_count"],
+        entities: ["stages", "participants_count"],
       },
     })
       .then((response) => response.json())
@@ -86,15 +86,21 @@ export default class tournamentService {
   static async get(id: number): Promise<Tournament> {
     return apiFetch("app",`tournaments/${id}`, {
       query: {
-        entities: ["participants_count", "groups"],
+        entities: ["participants_count", "stages"],
       },
     }).then((response) => response.json());
   }
   static async getStandings(id: number): Promise<Standings[]> {
     return apiFetch("app",`tournaments/${id}/standings`, {
       query: {
-        entities: ["group", "team", "matches_history", "team.group"],
+        entities: ["stage", "stage_item", "team", "matches_history", "team.group"],
       },
     }).then((response) => response.json());
+  }
+
+  static async getStages(id: number): Promise<Stage[]> {
+    return apiFetch("app", `tournaments/${id}/stages`).then((response) =>
+      response.json()
+    );
   }
 }

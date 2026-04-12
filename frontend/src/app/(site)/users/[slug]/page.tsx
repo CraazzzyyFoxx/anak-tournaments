@@ -17,6 +17,7 @@ import {
 } from "@/app/(site)/users/pages/UserTournamentsPage";
 import UserAchievementPage from "@/app/(site)/users/pages/UserAchievementPage";
 import { SITE_NAME } from "@/config/site";
+import { decodePlayerSlug } from "@/utils/player";
 import { Skeleton } from "@/components/ui/skeleton";
 import UserTabsClient from "@/app/(site)/users/components/UserTabsClient";
 import UserLiquidGlassProvider from "@/app/(site)/users/components/UserLiquidGlassProvider";
@@ -51,7 +52,7 @@ export async function generateMetadata(props: {
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const params = await props.params;
-  const user = await userService.getUserByName(params.slug);
+  const user = await userService.getUserByName(decodePlayerSlug(params.slug));
 
   return {
     title: `${user.name} Overview | ${SITE_NAME}`,
@@ -75,7 +76,7 @@ export async function generateMetadata(props: {
 }
 
 const getUserAndProfile = cache(async (slug: string) => {
-  const user = await userService.getUserByName(slug);
+  const user = await userService.getUserByName(decodePlayerSlug(slug));
   const profile = await userService.getUserProfile(user.id);
   return { user, profile };
 });

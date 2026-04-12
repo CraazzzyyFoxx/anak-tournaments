@@ -51,7 +51,7 @@ def player_entities(entities_in: list[str], child: typing.Any | None = None) -> 
 async def get(session: AsyncSession, team_id: int, entities: list[str]) -> models.Team | None:
     query = sa.select(models.Team).where(sa.and_(models.Team.id == team_id)).options(*team_entities(entities))
     result = await session.execute(query)
-    return result.scalars().first()
+    return result.unique().scalars().first()
 
 
 async def get_by_name_and_tournament(
@@ -68,7 +68,7 @@ async def get_by_name_and_tournament(
         .options(*team_entities(entities))
     )
     result = await session.execute(query)
-    return result.scalars().first()
+    return result.unique().scalars().first()
 
 
 async def get_by_tournament(
@@ -94,7 +94,7 @@ async def get_by_tournament_challonge_id(
         )
     )
     result = await session.execute(query)
-    return result.scalars().first()
+    return result.unique().scalars().first()
 
 
 async def get_by_captain_tournament(
@@ -114,7 +114,7 @@ async def get_by_captain_tournament(
         .options(*team_entities(entities))
     )
     result = await session.execute(query)
-    return result.scalars().first()
+    return result.unique().scalars().first()
 
 
 async def get_by_players_by_ids_tournament(
@@ -138,7 +138,7 @@ async def get_by_players_by_ids_tournament(
         .having(sa.func.count(models.Player.id) >= 3)
     )
     result = await session.execute(query)
-    return result.scalars().first()
+    return result.unique().scalars().first()
 
 
 async def get_players_tournament(
@@ -167,7 +167,7 @@ async def get_player_by_user_and_tournament(
         )
     )
     result = await session.execute(query)
-    return result.scalar()
+    return result.unique().scalars().first()
 
 
 async def get_player_by_team_and_user(
@@ -317,4 +317,4 @@ async def get_teams_by_tournament(
         .where(sa.and_(models.Team.tournament_id == tournament_id))
     )
     result = await session.execute(query)
-    return result.scalars().all()
+    return result.unique().scalars().all()

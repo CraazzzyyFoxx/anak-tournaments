@@ -61,6 +61,16 @@ function getStandingForm(standing: Standings | null): StandingUpdateInput {
   };
 }
 
+function getStandingScopeKey(standing: Standings): string {
+  if (standing.stage_item_id != null) return `stage-item-${standing.stage_item_id}`;
+  if (standing.stage_id != null) return `stage-${standing.stage_id}`;
+  return `standing-${standing.id}`;
+}
+
+function getStandingScopeLabel(standing: Standings): string {
+  return standing.stage_item?.name ?? standing.stage?.name ?? "Unassigned";
+}
+
 export default function StandingsPage() {
   const { toast } = useToast();
   const { hasPermission } = usePermissions();
@@ -74,7 +84,7 @@ export default function StandingsPage() {
   const [recalculateDialogOpen, setRecalculateDialogOpen] = useState(false);
   const [selectedStanding, setSelectedStanding] = useState<Standings | null>(null);
   const [selectedTournamentId, setSelectedTournamentId] = useState<number | null>(null);
-  const [selectedGroupFilter, setSelectedGroupFilter] = useState<string>("all");
+  const [selectedScopeFilter, setSelectedScopeFilter] = useState<string>("all");
 
   // Fetch tournaments
   const { data: tournamentsData } = useQuery({
@@ -82,30 +92,33 @@ export default function StandingsPage() {
     queryFn: () => tournamentService.getAll(null)
   });
 
-  // Fetch standings to extract groups for tabs
+  // Fetch standings to extract stage/item tabs
   const { data: allStandings } = useQuery({
     queryKey: ["standings", selectedTournamentId],
     queryFn: () => tournamentService.getStandings(selectedTournamentId!),
     enabled: !!selectedTournamentId
   });
 
-  // Extract unique groups from standings
-  const groupTabs = (() => {
+  const scopeTabs = (() => {
     if (!allStandings || allStandings.length === 0) return [];
-    const groupMap = new Map<number, { id: number; name: string; is_groups: boolean }>();
+    const scopeMap = new Map<
+      string,
+      { id: string; name: string; stageOrder: number; itemOrder: number }
+    >();
     for (const standing of allStandings) {
-      if (standing.group && !groupMap.has(standing.group_id)) {
-        groupMap.set(standing.group_id, {
-          id: standing.group_id,
-          name: standing.group.name,
-          is_groups: standing.group.is_groups
-        });
-      }
+      const scopeId = getStandingScopeKey(standing);
+      if (scopeMap.has(scopeId)) continue;
+      scopeMap.set(scopeId, {
+        id: scopeId,
+        name: getStandingScopeLabel(standing),
+        stageOrder: standing.stage?.order ?? Number.MAX_SAFE_INTEGER,
+        itemOrder: standing.stage_item?.order ?? Number.MAX_SAFE_INTEGER
+      });
     }
-    const groups = Array.from(groupMap.values());
-    const playoffGroups = groups.filter((g) => !g.is_groups).sort((a, b) => a.name.localeCompare(b.name));
-    const stageGroups = groups.filter((g) => g.is_groups).sort((a, b) => a.name.localeCompare(b.name));
-    return [...playoffGroups, ...stageGroups];
+    return Array.from(scopeMap.values()).sort(
+      (a, b) =>
+        a.stageOrder - b.stageOrder || a.itemOrder - b.itemOrder || a.name.localeCompare(b.name)
+    );
   })();
 
   // Form state
@@ -142,7 +155,7 @@ export default function StandingsPage() {
   });
 
   const recalculateMutation = useMutation({
-    mutationFn: (tournamentId: number) => adminService.calculateStandings(tournamentId),
+    mutationFn: (tournamentId: number) => adminService.recalculateStandings(tournamentId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["standings"] });
       setRecalculateDialogOpen(false);
@@ -214,13 +227,10 @@ export default function StandingsPage() {
       }
     },
     {
-      accessorKey: "group",
-      header: "Group",
+      accessorKey: "stage",
+      header: "Stage",
       enableSorting: false,
-      cell: ({ row }) => {
-        const group = row.getValue<any>("group");
-        return group ? <div className="text-sm">{group.name}</div> : "—";
-      }
+      cell: ({ row }) => <div className="text-sm">{getStandingScopeLabel(row.original)}</div>
     },
     {
       accessorKey: "matches",
@@ -310,7 +320,7 @@ export default function StandingsPage() {
           value={selectedTournamentId?.toString() || "all"}
           onValueChange={(value) => {
             setSelectedTournamentId(value === "all" ? null : parseInt(value));
-            setSelectedGroupFilter("all");
+            setSelectedScopeFilter("all");
           }}
         >
           <SelectTrigger className="w-[300px]">
@@ -338,13 +348,13 @@ export default function StandingsPage() {
         </div>
       ) : null}
 
-      {selectedTournamentId && groupTabs.length > 0 ? (
-        <Tabs value={selectedGroupFilter} onValueChange={setSelectedGroupFilter}>
+      {selectedTournamentId && scopeTabs.length > 0 ? (
+        <Tabs value={selectedScopeFilter} onValueChange={setSelectedScopeFilter}>
           <TabsList>
             <TabsTrigger value="all">All</TabsTrigger>
-            {groupTabs.map((group) => (
-              <TabsTrigger key={group.id} value={group.id.toString()}>
-                {group.name}
+            {scopeTabs.map((scope) => (
+              <TabsTrigger key={scope.id} value={scope.id}>
+                {scope.name}
               </TabsTrigger>
             ))}
           </TabsList>
@@ -352,7 +362,7 @@ export default function StandingsPage() {
       ) : null}
 
       <AdminDataTable
-        queryKey={(page, search, pageSize, sortField, sortDir) => ["standings-table", selectedTournamentId, selectedGroupFilter, allStandings?.length ?? 0, page, search, pageSize, sortField, sortDir]}
+        queryKey={(page, search, pageSize, sortField, sortDir) => ["standings-table", selectedTournamentId, selectedScopeFilter, allStandings?.length ?? 0, page, search, pageSize, sortField, sortDir]}
         queryFn={async (page, search, pageSize, sortField, sortDir) => {
           if (!selectedTournamentId || !allStandings) {
             return { results: [], total: 0, page: 1, per_page: pageSize };
@@ -360,9 +370,8 @@ export default function StandingsPage() {
 
           let data = allStandings;
 
-          if (selectedGroupFilter !== "all") {
-            const groupId = parseInt(selectedGroupFilter);
-            data = data.filter((standing) => standing.group_id === groupId);
+          if (selectedScopeFilter !== "all") {
+            data = data.filter((standing) => getStandingScopeKey(standing) === selectedScopeFilter);
           }
 
           const normalizedSearch = search.trim().toLowerCase();

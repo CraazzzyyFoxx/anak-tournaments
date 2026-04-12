@@ -2,19 +2,29 @@ import typing
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, ForeignKey, Integer, String
+from sqlalchemy import JSON, Boolean, Enum, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from shared.core import db
+from shared.core import db, enums
 from shared.models.workspace import Workspace
 
 if typing.TYPE_CHECKING:
+    from shared.models.stage import Stage
     from shared.models.standings import Standing
 
 
 __all__ = (
     "Tournament",
     "TournamentGroup",
+)
+
+
+TOURNAMENT_STATUS_ENUM = Enum(
+    enums.TournamentStatus,
+    values_callable=lambda e: [x.value for x in e],
+    name="tournamentstatus",
+    schema="tournament",
+    create_type=False,
 )
 
 
@@ -36,20 +46,54 @@ class Tournament(db.TimeStampIntegerMixin):
     is_finished: Mapped[bool] = mapped_column(
         Boolean(), default=False, server_default="false", nullable=False
     )
+    status: Mapped[enums.TournamentStatus] = mapped_column(
+        TOURNAMENT_STATUS_ENUM,
+        default=enums.TournamentStatus.DRAFT,
+        server_default=enums.TournamentStatus.DRAFT.value,
+        nullable=False,
+    )
     start_date: Mapped[datetime | None] = mapped_column(
         db.DateTime(timezone=True), nullable=True
     )
     end_date: Mapped[datetime | None] = mapped_column(
         db.DateTime(timezone=True), nullable=True
     )
+    registration_opens_at: Mapped[datetime | None] = mapped_column(
+        db.DateTime(timezone=True), nullable=True
+    )
+    registration_closes_at: Mapped[datetime | None] = mapped_column(
+        db.DateTime(timezone=True), nullable=True
+    )
+    check_in_opens_at: Mapped[datetime | None] = mapped_column(
+        db.DateTime(timezone=True), nullable=True
+    )
+    check_in_closes_at: Mapped[datetime | None] = mapped_column(
+        db.DateTime(timezone=True), nullable=True
+    )
+    win_points: Mapped[float] = mapped_column(
+        Float(), default=1.0, server_default="1.0", nullable=False
+    )
+    draw_points: Mapped[float] = mapped_column(
+        Float(), default=0.5, server_default="0.5", nullable=False
+    )
+    loss_points: Mapped[float] = mapped_column(
+        Float(), default=0.0, server_default="0.0", nullable=False
+    )
     division_grid_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
     workspace: Mapped[Workspace] = relationship()
     groups: Mapped[list["TournamentGroup"]] = relationship(uselist=True, passive_deletes=True)
+    stages: Mapped[list["Stage"]] = relationship(uselist=True, passive_deletes=True)
     standings: Mapped[list["Standing"]] = relationship(uselist=True)
 
 
 class TournamentGroup(db.TimeStampIntegerMixin):
+    """Legacy model — being replaced by Stage + StageItem.
+
+    Kept during migration. New code should use Stage/StageItem instead.
+    The stage_id FK links this group to its corresponding Stage record.
+    """
+
     __tablename__ = "group"
     __table_args__ = ({"schema": "tournament"},)
 
@@ -61,5 +105,9 @@ class TournamentGroup(db.TimeStampIntegerMixin):
     is_groups: Mapped[bool] = mapped_column(Boolean(), default=False)
     challonge_id: Mapped[int | None] = mapped_column(Integer(), nullable=True)
     challonge_slug: Mapped[str | None] = mapped_column(String(), nullable=True)
+    stage_id: Mapped[int | None] = mapped_column(
+        ForeignKey("tournament.stage.id", ondelete="SET NULL"), nullable=True
+    )
 
     tournament: Mapped[Tournament] = relationship(back_populates="groups")
+    stage: Mapped["Stage | None"] = relationship(foreign_keys=[stage_id])

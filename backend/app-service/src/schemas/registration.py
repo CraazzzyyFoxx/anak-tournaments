@@ -7,10 +7,14 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-
 # ---------------------------------------------------------------------------
 # Registration form (config)
 # ---------------------------------------------------------------------------
+
+
+class FieldValidationConfig(BaseModel):
+    regex: str | None = None
+    error_message: str | None = None
 
 
 class CustomFieldDefinition(BaseModel):
@@ -20,12 +24,14 @@ class CustomFieldDefinition(BaseModel):
     required: bool = False
     placeholder: str | None = None
     options: list[str] | None = None
+    validation: FieldValidationConfig | None = None
 
 
 class BuiltInFieldConfig(BaseModel):
     enabled: bool = True
     required: bool = False
     subroles: dict[str, list[str]] | None = None
+    validation: FieldValidationConfig | None = None
 
 
 class RegistrationFormRead(BaseModel):
@@ -42,8 +48,10 @@ class RegistrationFormRead(BaseModel):
 
 class RegistrationFormUpsert(BaseModel):
     is_open: bool = False
+    auto_approve: bool = False
     opens_at: datetime | None = None
     closes_at: datetime | None = None
+    built_in_fields: dict[str, BuiltInFieldConfig] = Field(default_factory=dict)
     custom_fields: list[CustomFieldDefinition] = Field(default_factory=list)
 
 

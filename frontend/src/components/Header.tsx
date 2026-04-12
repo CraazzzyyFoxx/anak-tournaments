@@ -27,8 +27,10 @@ import UserMenu from "@/components/UserMenu";
 import WorkspaceSwitcher from "@/components/WorkspaceSwitcher";
 import ActiveEvents from "@/components/ActiveEvents";
 import { adminEntryPermissions } from "@/components/admin/admin-navigation";
+import { getPlayerSlug } from "@/utils/player";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { usePermissions } from "@/hooks/usePermissions";
+import { getCurrentPathForAuthRedirect } from "@/lib/auth-redirect";
 import { useAuthModalStore } from "@/stores/auth-modal.store";
 
 const tournament_components: { title: string; href: string; description: string }[] = [
@@ -124,9 +126,14 @@ const Header = () => {
   const { isOrganizer, isLoaded, isSuperuser, isModerator, hasAnyPermission } = usePermissions();
   const username = user?.username;
   const avatarUrl = user?.avatarUrl;
-  const profileHref = username ? `/users/${username}` : "/users";
+  const profileHref = username ? `/users/${getPlayerSlug(username)}` : "/users";
   const canAccessAdmin = isLoaded && (isSuperuser || isModerator || isOrganizer || hasAnyPermission(adminEntryPermissions));
   const canAccessOrganization = isLoaded && (canAccessAdmin || isOrganizer);
+  const handleLoginClick = () => {
+    const nextPath =
+      typeof window === "undefined" ? "/" : getCurrentPathForAuthRedirect(window.location);
+    openAuthModal(nextPath);
+  };
 
   const getVisibleItems = (
     items: {
@@ -215,7 +222,7 @@ const Header = () => {
         {username ? (
           <UserMenu username={username} avatarUrl={avatarUrl} profileHref={profileHref} />
         ) : (
-          <Button variant="outline" className="text-base" onClick={() => openAuthModal()}>
+          <Button variant="outline" className="text-base" onClick={handleLoginClick}>
             <LogIn className="h-5 w-5" />
             <span className="hidden sm:inline">Login</span>
           </Button>

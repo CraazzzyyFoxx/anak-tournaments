@@ -6,10 +6,11 @@ import { Activity, Calendar, ExternalLink, Users } from "lucide-react";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { TournamentChallongeLinkInline } from "@/app/(site)/tournaments/components/TournamentCard";
 import TournamentRegisterButton from "./_components/TournamentRegisterButton";
+import { getTournamentStatusMeta, isTournamentStatusEnded } from "@/lib/tournament-status";
 import { cn, formatDateRange } from "@/lib/utils";
 
 import TournamentSectionNav from "./_components/TournamentSectionNav";
-import { getTournament } from "./_data";
+import { getTournament, getTournamentStages } from "./_data";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +54,9 @@ export default async function TournamentLayout({
   const resolvedParams = await params;
   const tournamentId = Number(resolvedParams.id);
   const tournament = await getTournament(tournamentId);
+  const stages = await getTournamentStages(tournamentId);
+  const statusMeta = getTournamentStatusMeta(tournament.status);
+  const isEnded = isTournamentStatusEnded(tournament.status);
 
   return (
     <div className="grid grid-cols-1 gap-6 md:grid-cols-[220px_minmax(0,1fr)]">
@@ -60,7 +64,12 @@ export default async function TournamentLayout({
       <aside className="hidden md:block">
         <div className="sticky top-20">
           <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-2">
-            <TournamentSectionNav tournamentId={resolvedParams.id} variant="desktop" />
+            <TournamentSectionNav
+              tournamentId={resolvedParams.id}
+              status={tournament.status}
+              stages={stages}
+              variant="desktop"
+            />
           </div>
         </div>
       </aside>
@@ -91,12 +100,16 @@ export default async function TournamentLayout({
               )}
               <span className={cn(
                 "inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide",
-                tournament.is_finished ? "text-white/40" : "text-emerald-400"
+                statusMeta.badgeClassName
               )}>
-                {!tournament.is_finished && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                )}
-                {tournament.is_finished ? "Finished" : "Live"}
+                {statusMeta.dotClassName ? (
+                  <span className={cn(
+                    "h-1.5 w-1.5 rounded-full",
+                    statusMeta.dotClassName,
+                    tournament.status === "live" && "animate-pulse"
+                  )} />
+                ) : null}
+                {statusMeta.badgeLabel}
               </span>
             </div>
 
@@ -112,7 +125,7 @@ export default async function TournamentLayout({
                   </p>
                 )}
               </div>
-              {!tournament.is_finished && (
+              {!isEnded && (
                 <div className="shrink-0">
                   <TournamentRegisterButton
                     workspaceId={tournament.workspace_id}
@@ -125,7 +138,9 @@ export default async function TournamentLayout({
 
             {/* Meta tiles */}
             {(() => {
-              const hasChallonge = tournament.challonge_slug || tournament.groups.some(g => g.challonge_slug);
+              const hasChallonge =
+                Boolean(tournament.challonge_slug) ||
+                tournament.stages.some((stage) => Boolean(stage.challonge_slug));
               return (
                 <div className={cn("grid grid-cols-2 gap-3 mt-5", hasChallonge ? "lg:grid-cols-4" : "lg:grid-cols-3")}>
                   <div className="flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
@@ -152,11 +167,8 @@ export default async function TournamentLayout({
                     <Activity className="h-4 w-4 shrink-0 text-white/30" />
                     <div className="min-w-0">
                       <div className="text-[10px] text-white/40 uppercase tracking-wide mb-0.5">Status</div>
-                      <div className={cn(
-                        "text-sm font-medium",
-                        tournament.is_finished ? "text-white/60" : "text-emerald-400"
-                      )}>
-                        {tournament.is_finished ? "Finished" : "Ongoing"}
+                      <div className={cn("text-sm font-medium", statusMeta.textClassName)}>
+                        {statusMeta.label}
                       </div>
                     </div>
                   </div>
@@ -177,7 +189,12 @@ export default async function TournamentLayout({
 
           {/* Mobile nav */}
           <div className="md:hidden">
-            <TournamentSectionNav tournamentId={resolvedParams.id} variant="mobile" />
+            <TournamentSectionNav
+              tournamentId={resolvedParams.id}
+              status={tournament.status}
+              stages={stages}
+              variant="mobile"
+            />
           </div>
 
           <section className="min-w-0">{children}</section>

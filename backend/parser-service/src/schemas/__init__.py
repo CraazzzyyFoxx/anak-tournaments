@@ -6,6 +6,7 @@ from .gamemode import *
 from .hero import *
 from .logs_parser import *
 from .map import *
+from .stage import *
 from .standing import *
 from .team import *
 from .tournament import *

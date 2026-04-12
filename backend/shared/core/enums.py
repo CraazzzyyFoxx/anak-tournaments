@@ -110,6 +110,57 @@ def is_ascending_stat(stat: LogStatsName) -> bool:
     return LOG_STATS_DEFAULT_DIRECTION.get(stat, "desc") == "asc"
 
 
+class TournamentStatus(StrEnum):
+    REGISTRATION = "registration"
+    DRAFT = "draft"
+    CHECK_IN = "check_in"
+    LIVE = "live"
+    PLAYOFFS = "playoffs"
+    COMPLETED = "completed"
+    ARCHIVED = "archived"
+
+
+class StageType(StrEnum):
+    ROUND_ROBIN = "round_robin"
+    SINGLE_ELIMINATION = "single_elimination"
+    DOUBLE_ELIMINATION = "double_elimination"
+    SWISS = "swiss"
+
+
+class StageItemType(StrEnum):
+    GROUP = "group"
+    BRACKET_UPPER = "bracket_upper"
+    BRACKET_LOWER = "bracket_lower"
+    SINGLE_BRACKET = "single_bracket"
+
+
+class StageItemInputType(StrEnum):
+    FINAL = "final"
+    TENTATIVE = "tentative"
+    EMPTY = "empty"
+
+
+class EncounterResultStatus(StrEnum):
+    NONE = "none"
+    PENDING_CONFIRMATION = "pending_confirmation"
+    CONFIRMED = "confirmed"
+    DISPUTED = "disputed"
+
+
+class MapPoolEntryStatus(StrEnum):
+    AVAILABLE = "available"
+    PICKED = "picked"
+    BANNED = "banned"
+    PLAYED = "played"
+
+
+class MapPickSide(StrEnum):
+    HOME = "home"
+    AWAY = "away"
+    DECIDER = "decider"
+    ADMIN = "admin"
+
+
 class EncounterStatus(StrEnum):
     COMPLETED = "completed"
     PENDING = "pending"

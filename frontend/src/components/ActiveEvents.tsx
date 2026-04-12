@@ -10,6 +10,10 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import {
+  getTournamentStatusMeta,
+  isTournamentStatusActive,
+} from "@/lib/tournament-status";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import { WorkspaceAvatar } from "@/components/WorkspaceSwitcher";
 import tournamentService from "@/services/tournament.service";
@@ -34,11 +38,13 @@ export default function ActiveEvents() {
   const activeGroups = useMemo<WorkspaceGroup[]>(() => {
     if (!allTournaments?.results || workspaces.length === 0) return [];
 
-    const ongoing = allTournaments.results.filter((t) => !t.is_finished);
-    if (ongoing.length === 0) return [];
+    const active = allTournaments.results.filter((t) =>
+      isTournamentStatusActive(t.status)
+    );
+    if (active.length === 0) return [];
 
     const byWorkspace = new Map<number, Tournament[]>();
-    for (const t of ongoing) {
+    for (const t of active) {
       const list = byWorkspace.get(t.workspace_id) ?? [];
       list.push(t);
       byWorkspace.set(t.workspace_id, list);
@@ -63,7 +69,7 @@ export default function ActiveEvents() {
     }
 
     return groups.sort((a, b) => a.workspace.name.localeCompare(b.workspace.name));
-  }, [allTournaments?.results, workspaces]);
+  }, [allTournaments, workspaces]);
 
   const totalActive = activeGroups.reduce(
     (sum, g) => sum + g.tournaments.length,
@@ -87,7 +93,7 @@ export default function ActiveEvents() {
             <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
           </span>
           <span className="hidden sm:inline text-emerald-400">
-            {totalActive} Live
+            {totalActive} Active
           </span>
           <span className="sm:hidden text-emerald-400">{totalActive}</span>
         </button>
@@ -117,23 +123,36 @@ export default function ActiveEvents() {
               </div>
 
               <div className="flex flex-col gap-0.5">
-                {group.tournaments.map((t) => (
-                  <Link
-                    key={t.id}
-                    href={`/tournaments/${t.id}`}
-                    className={cn(
-                      "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm",
-                      "transition-colors hover:bg-accent"
-                    )}
-                  >
-                    <Radio className="size-3 shrink-0 text-emerald-400" />
-                    <span className="truncate flex-1">{t.name}</span>
-                    <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
-                      {t.registrations_count ?? 0}
-                      <Users className="inline ml-0.5 size-2.5" />
-                    </span>
-                  </Link>
-                ))}
+                {group.tournaments.map((t) => {
+                  const statusMeta = getTournamentStatusMeta(t.status);
+                  return (
+                    <Link
+                      key={t.id}
+                      href={`/tournaments/${t.id}`}
+                      className={cn(
+                        "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm",
+                        "transition-colors hover:bg-accent"
+                      )}
+                    >
+                      <Radio className="size-3 shrink-0 text-emerald-400" />
+                      <div className="min-w-0 flex-1">
+                        <span className="block truncate">{t.name}</span>
+                        <span
+                          className={cn(
+                            "block text-[10px] uppercase tracking-wide",
+                            statusMeta.badgeClassName
+                          )}
+                        >
+                          {statusMeta.badgeLabel}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+                        {t.registrations_count ?? 0}
+                        <Users className="inline ml-0.5 size-2.5" />
+                      </span>
+                    </Link>
+                  );
+                })}
               </div>
             </div>
           ))}

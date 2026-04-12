@@ -1,12 +1,15 @@
 """Admin routes for encounter CRUD operations"""
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models, schemas
 from src.core import auth, db
 from src.schemas.admin import encounter as admin_schemas
 from src.services.admin import encounter as admin_service
+from src.services.encounter import flows as encounter_flows
+from src.services.encounter import map_veto as map_veto_service
 
 router = APIRouter(
     prefix="/encounters",
@@ -22,7 +25,11 @@ async def create_encounter(
 ):
     """Create a new encounter (admin/organizer only)"""
     encounter = await admin_service.create_encounter(session, data)
-    return schemas.EncounterRead.model_validate(encounter, from_attributes=True)
+    return await encounter_flows.get_encounter(
+        session,
+        encounter.id,
+        ["tournament", "stage", "stage_item", "home_team", "away_team"],
+    )
 
 
 @router.patch("/{encounter_id}", response_model=schemas.EncounterRead)
@@ -34,7 +41,11 @@ async def update_encounter(
 ):
     """Update encounter fields (admin/organizer only)"""
     encounter = await admin_service.update_encounter(session, encounter_id, data)
-    return schemas.EncounterRead.model_validate(encounter, from_attributes=True)
+    return await encounter_flows.get_encounter(
+        session,
+        encounter.id,
+        ["tournament", "stage", "stage_item", "home_team", "away_team"],
+    )
 
 
 @router.delete("/{encounter_id}", status_code=204)
@@ -45,3 +56,24 @@ async def delete_encounter(
 ):
     """Delete encounter and all matches (admin/organizer only)"""
     await admin_service.delete_encounter(session, encounter_id)
+
+
+# ── Admin map pool management ────────────────────────────────────────────
+
+
+class AdminMapPoolAssign(BaseModel):
+    map_ids: list[int]
+
+
+@router.post("/{encounter_id}/map-pool")
+async def admin_assign_map_pool(
+    encounter_id: int,
+    data: AdminMapPoolAssign,
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_permission("match", "update")),
+):
+    """Admin directly assigns maps to an encounter (bypasses veto)."""
+    entries = await map_veto_service.initialize_map_pool(
+        session, encounter_id, data.map_ids,
+    )
+    return {"assigned": len(entries)}

@@ -7,14 +7,21 @@ Call `seed_workspace(session, workspace_id)` to create them.
 from __future__ import annotations
 
 from loguru import logger
+import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models.achievement import (
     AchievementCategory,
+    AchievementEvaluationResult,
     AchievementGrain,
     AchievementRule,
     AchievementScope,
+    EvaluationRun,
+    EvaluationRunTrigger,
 )
+
+from .runner import run_evaluation
+from .validation import infer_grain
 
 # Hero K/D definitions: (name, slug, description_ru_hero, description_en_hero)
 _HERO_KD_DEFS: list[tuple[str, str, str, str]] = [
@@ -195,7 +202,7 @@ def _overall_rules(workspace_id: int) -> list[AchievementRule]:
         AchievementRule(
             workspace_id=workspace_id, slug="honor-and-glory", name="Честь и слава",
             description_ru="Выиграть турнир", description_en="Win a tournament",
-            category=AchievementCategory.overall, scope=AchievementScope.glob, grain=AchievementGrain.user,
+            category=AchievementCategory.overall, scope=AchievementScope.glob, grain=AchievementGrain.user_tournament,
             condition_tree={"type": "standing_position", "params": {"op": "==", "value": 1}},
             depends_on=["tournament.standing"],
         ),
@@ -230,7 +237,7 @@ def _overall_rules(workspace_id: int) -> list[AchievementRule]:
         AchievementRule(
             workspace_id=workspace_id, slug="captain-jack-sparrow", name="Капитан Джек Воробей",
             description_ru="Быть капитаном", description_en="Be a team captain",
-            category=AchievementCategory.overall, scope=AchievementScope.glob, grain=AchievementGrain.user,
+            category=AchievementCategory.overall, scope=AchievementScope.glob, grain=AchievementGrain.user_tournament,
             condition_tree={"type": "is_captain"},
             depends_on=["tournament.player", "tournament.team"],
         ),
@@ -397,25 +404,56 @@ def _all_default_rules(workspace_id: int) -> list[AchievementRule]:
     ]
 
 
-async def seed_workspace(session: AsyncSession, workspace_id: int) -> int:
+def get_default_rule_slugs() -> list[str]:
+    """Return the canonical supported slug catalog in sorted order."""
+    return sorted(rule.slug for rule in _all_default_rules(0))
+
+
+async def seed_workspace(
+    session: AsyncSession,
+    workspace_id: int,
+    *,
+    replace_catalog: bool = False,
+) -> tuple[int, int]:
     """Seed a workspace with default achievement rules (upsert).
 
     If a rule with the same slug already exists in the workspace,
     updates its condition_tree, category, scope, grain, depends_on.
-    Otherwise creates a new rule. Returns count of created + updated rules.
-    """
-    import sqlalchemy as sa
+    Otherwise creates a new rule.
 
+    When replace_catalog=True, unsupported rules are deleted from the workspace.
+    Returns (upserted_count, removed_count).
+    """
     all_rules = _all_default_rules(workspace_id)
     count = 0
+    removed = 0
+    supported_slugs = {rule.slug for rule in all_rules}
+    existing_rules = list(
+        (
+            await session.execute(
+                sa.select(AchievementRule).where(
+                    AchievementRule.workspace_id == workspace_id,
+                )
+            )
+        ).scalars()
+    )
+    existing_by_slug = {rule.slug: rule for rule in existing_rules}
+
+    if replace_catalog:
+        for existing in existing_rules:
+            if existing.slug in supported_slugs:
+                continue
+            await session.delete(existing)
+            removed += 1
 
     for rule in all_rules:
-        existing = await session.scalar(
-            sa.select(AchievementRule).where(
-                AchievementRule.workspace_id == workspace_id,
-                AchievementRule.slug == rule.slug,
+        inferred_grain = infer_grain(rule.condition_tree)
+        if inferred_grain != rule.grain:
+            raise ValueError(
+                f"Seed rule '{rule.slug}' has grain '{rule.grain}' but infers '{inferred_grain.value}'"
             )
-        )
+
+        existing = existing_by_slug.get(rule.slug)
 
         if existing:
             existing.condition_tree = rule.condition_tree
@@ -431,6 +469,41 @@ async def seed_workspace(session: AsyncSession, workspace_id: int) -> int:
 
         count += 1
 
-    await session.commit()
-    logger.info(f"Seeded workspace {workspace_id} with {count} achievement rules (upsert)")
-    return count
+    await session.flush()
+    logger.info(
+        f"Seeded workspace {workspace_id} with {count} achievement rules (upsert), removed {removed}"
+    )
+    return count, removed
+
+
+async def hard_reset_workspace(
+    session: AsyncSession,
+    workspace_id: int,
+) -> tuple[int, int, int, EvaluationRun]:
+    """Replace the supported catalog, clear results, and fully re-evaluate the workspace."""
+    seeded, removed = await seed_workspace(
+        session,
+        workspace_id,
+        replace_catalog=True,
+    )
+
+    workspace_rule_ids = sa.select(AchievementRule.id).where(
+        AchievementRule.workspace_id == workspace_id
+    )
+    deleted_results = await session.execute(
+        sa.delete(AchievementEvaluationResult).where(
+            AchievementEvaluationResult.achievement_rule_id.in_(workspace_rule_ids)
+        )
+    )
+    cleared_results = deleted_results.rowcount or 0
+
+    run = await run_evaluation(
+        session=session,
+        workspace_id=workspace_id,
+        trigger=EvaluationRunTrigger.manual,
+    )
+    logger.info(
+        f"Hard-reset workspace {workspace_id}: seeded={seeded}, removed={removed}, "
+        f"cleared_results={cleared_results}, run={run.id}"
+    )
+    return seeded, removed, cleared_results, run

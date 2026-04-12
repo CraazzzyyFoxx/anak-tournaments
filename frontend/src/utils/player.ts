@@ -88,3 +88,11 @@ export const getPlayerSlug = (battleTag: string | null | undefined) => {
   }
   return battleTag.replace("#", "-");
 };
+
+/** Reverse of getPlayerSlug: converts a URL slug back to the stored player name.
+ *  "CraazzzyyFox-2130" → "CraazzzyyFox#2130"
+ *  Names without a numeric suffix are returned unchanged.
+ */
+export const decodePlayerSlug = (slug: string): string => {
+  return slug.replace(/-(\d+)$/, "#$1");
+};

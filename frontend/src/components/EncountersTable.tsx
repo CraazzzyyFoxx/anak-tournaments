@@ -16,10 +16,13 @@ import {
 } from "@/components/ui/table";
 import { PaginationControlled } from "@/components/ui/pagination-with-links";
 import { PaginatedResponse } from "@/types/pagination.types";
-import { Tournament, TournamentGroup } from "@/types/tournament.types";
+import { Tournament } from "@/types/tournament.types";
 import { ScrollArea, ScrollBar } from "./ui/scroll-area";
 import { useQuery } from "@tanstack/react-query";
 import encounterService from "@/services/encounter.service";
+
+const getStageLabel = (encounter: Encounter) =>
+  encounter.stage_item?.name ?? encounter.stage?.name ?? "Unassigned";
 
 const EncountersTable = ({
   data,
@@ -68,9 +71,9 @@ const EncountersTable = ({
       },
       ...columns,
       {
-        accessorKey: "tournament_group",
-        header: "Group",
-        cell: ({ row }) => <div className="text-white/55">{row.getValue<TournamentGroup>("tournament_group").name}</div>
+        accessorKey: "stage",
+        header: "Stage",
+        cell: ({ row }) => <div className="text-white/55">{getStageLabel(row.original)}</div>
       },
       {
         accessorKey: "round",

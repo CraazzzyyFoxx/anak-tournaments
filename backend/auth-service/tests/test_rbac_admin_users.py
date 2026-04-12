@@ -45,6 +45,7 @@ def _role(
     *,
     permissions: list[SimpleNamespace] | None = None,
     is_system: bool = True,
+    workspace_id: int | None = None,
 ) -> SimpleNamespace:
     now = datetime.now(UTC)
     return SimpleNamespace(
@@ -52,6 +53,7 @@ def _role(
         name=name,
         description=f"{name} role",
         is_system=is_system,
+        workspace_id=workspace_id,
         created_at=now,
         updated_at=None,
         permissions=permissions or [],
@@ -60,6 +62,7 @@ def _role(
 
 def _user(user_id: int, email: str, *, roles: list[SimpleNamespace]) -> SimpleNamespace:
     now = datetime.now(UTC)
+    role_names = [role.name for role in roles]
     return SimpleNamespace(
         id=user_id,
         email=email,
@@ -73,6 +76,7 @@ def _user(user_id: int, email: str, *, roles: list[SimpleNamespace]) -> SimpleNa
         created_at=now,
         updated_at=None,
         roles=roles,
+        has_permission=lambda _resource, _action: "admin" in role_names,
     )
 
 
@@ -243,7 +247,11 @@ def test_remove_role_route_blocks_removing_last_admin_assignment(monkeypatch: py
         assert role_id == 1
         return 1
 
+    async def fake_invalidate_rbac(_user_id):
+        return None
+
     monkeypatch.setattr("src.routes.rbac._count_users_with_role", fake_count_users_with_role, raising=False)
+    monkeypatch.setattr("src.routes.rbac.invalidate_rbac", fake_invalidate_rbac, raising=False)
 
     session = _FakeSession()
 
@@ -290,7 +298,11 @@ def test_remove_role_route_allows_admin_removal_when_another_assignment_exists(
         assert role_id == 1
         return 2
 
+    async def fake_invalidate_rbac(_user_id):
+        return None
+
     monkeypatch.setattr("src.routes.rbac._count_users_with_role", fake_count_users_with_role, raising=False)
+    monkeypatch.setattr("src.routes.rbac.invalidate_rbac", fake_invalidate_rbac, raising=False)
 
     session = _FakeSession()
 
@@ -359,3 +371,105 @@ def test_delete_role_route_rejects_system_roles() -> None:
 
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail == "Cannot delete system roles"
+
+
+def test_delete_oauth_connection_route_deletes_connection(monkeypatch: pytest.MonkeyPatch) -> None:
+    auth_user = SimpleNamespace(id=11, username="linked-user", hashed_password="hashed")
+    connection = SimpleNamespace(
+        id=21,
+        provider="discord",
+        auth_user_id=11,
+        auth_user=auth_user,
+    )
+
+    class _ScalarResult:
+        def __init__(self, value):
+            self._value = value
+
+        def scalar_one_or_none(self):
+            return self._value
+
+    class _FakeSession:
+        def __init__(self):
+            self.commit_called = False
+            self.deleted: list[object] = []
+
+        async def execute(self, _query):
+            return _ScalarResult(connection)
+
+        async def delete(self, value):
+            self.deleted.append(value)
+
+        async def commit(self):
+            self.commit_called = True
+
+    session = _FakeSession()
+
+    asyncio.run(
+        rbac_routes.delete_oauth_connection(
+            connection_id=21,
+            session=session,
+            current_user=SimpleNamespace(id=1, is_superuser=True),
+        )
+    )
+
+    assert session.deleted == [connection]
+    assert session.commit_called is True
+
+
+def test_delete_oauth_connection_route_blocks_last_passwordless_login() -> None:
+    auth_user = SimpleNamespace(id=15, username="oauth-only", hashed_password=None)
+    connection = SimpleNamespace(
+        id=31,
+        provider="twitch",
+        auth_user_id=15,
+        auth_user=auth_user,
+    )
+
+    class _ScalarValues:
+        def __init__(self, values):
+            self._values = values
+
+        def all(self):
+            return self._values
+
+    class _ScalarResult:
+        def __init__(self, value):
+            self._value = value
+
+        def scalar_one_or_none(self):
+            return self._value
+
+        def scalars(self):
+            return _ScalarValues(self._value)
+
+    class _FakeSession:
+        def __init__(self):
+            self._values = [connection, [31]]
+            self.commit_called = False
+            self.delete_called = False
+
+        async def execute(self, _query):
+            return _ScalarResult(self._values.pop(0))
+
+        async def delete(self, _value):
+            self.delete_called = True
+
+        async def commit(self):
+            self.commit_called = True
+
+    session = _FakeSession()
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(
+            rbac_routes.delete_oauth_connection(
+                connection_id=31,
+                session=session,
+                current_user=SimpleNamespace(id=1, is_superuser=True),
+            )
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Cannot unlink last OAuth provider for a passwordless account. Set a password first."
+    assert session.delete_called is False
+    assert session.commit_called is False

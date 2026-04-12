@@ -4,8 +4,9 @@ import { redirect } from "next/navigation";
 import TournamentTeamsPage, {
   TournamentTeamsPageSkeleton
 } from "@/app/(site)/tournaments/[id]/pages/TournamentTeamsPage";
+import type { TournamentStatus } from "@/types/tournament.types";
 
-import { getTournament } from "./_data";
+import { getTournament, getTournamentStages } from "./_data";
 
 type TournamentIndexPageProps = {
   params: Promise<{ id: string }>;
@@ -19,6 +20,29 @@ type TournamentIndexPageProps = {
 const isTab = (value: string | undefined) => {
   return value === "teams" || value === "participants" || value === "matches" || value === "heroes" || value === "standings";
 };
+
+const REGISTRATION_PHASES = new Set<TournamentStatus>(["draft", "registration", "check_in"]);
+const BRACKET_PHASES = new Set<TournamentStatus>(["live", "playoffs", "completed", "archived"]);
+
+function getDefaultTournamentPath({
+  tournamentId,
+  status,
+  hasStages,
+}: {
+  tournamentId: number;
+  status: TournamentStatus;
+  hasStages: boolean;
+}) {
+  if (BRACKET_PHASES.has(status) && hasStages) {
+    return `/tournaments/${tournamentId}/bracket`;
+  }
+
+  if (REGISTRATION_PHASES.has(status)) {
+    return `/tournaments/${tournamentId}/participants`;
+  }
+
+  return null;
+}
 
 export default async function TournamentIndexPage({
   params,
@@ -49,6 +73,16 @@ export default async function TournamentIndexPage({
   }
 
   const tournament = await getTournament(tournamentId);
+  const stages = await getTournamentStages(tournamentId);
+  const defaultPath = getDefaultTournamentPath({
+    tournamentId,
+    status: tournament.status,
+    hasStages: stages.length > 0,
+  });
+
+  if (defaultPath) {
+    redirect(defaultPath);
+  }
 
   return (
     <Suspense fallback={<TournamentTeamsPageSkeleton />}>

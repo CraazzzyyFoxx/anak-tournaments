@@ -20,7 +20,7 @@ from shared.models.achievement import (
 from src import models
 
 from .context import EvalContext
-from .differ import diff_and_apply
+from .differ import EvaluationSlice, diff_and_apply
 from .evaluator import evaluate
 
 
@@ -29,6 +29,7 @@ async def run_evaluation(
     workspace_id: int,
     trigger: EvaluationRunTrigger,
     tournament_id: int | None = None,
+    match_id: int | None = None,
     changed_tables: list[str] | None = None,
     rule_ids: list[int] | None = None,
 ) -> EvaluationRun:
@@ -39,6 +40,7 @@ async def run_evaluation(
         workspace_id: Workspace to evaluate.
         trigger: What triggered this run.
         tournament_id: If set, only evaluate for this tournament.
+        match_id: If set, only evaluate for this match.
         changed_tables: If set, only evaluate rules that depend on these tables.
         rule_ids: If set, only evaluate these specific rules.
     """
@@ -63,6 +65,8 @@ async def run_evaluation(
         tournament = None
         if tournament_id:
             tournament = await session.get(models.Tournament, tournament_id)
+        evaluation_slice = EvaluationSlice(tournament_id=tournament_id, match_id=match_id)
+        has_slice = tournament_id is not None or match_id is not None
 
         total_created = 0
         total_removed = 0
@@ -70,13 +74,27 @@ async def run_evaluation(
         for rule in rules:
             if not rule.enabled or not rule.condition_tree:
                 # Disabled or empty rule — remove all existing results
-                diff = await diff_and_apply(session, rule, set(), run_id)
+                diff = await diff_and_apply(
+                    session,
+                    rule,
+                    set(),
+                    run_id,
+                    evaluation_slice=evaluation_slice if has_slice else None,
+                )
                 total_removed += len(diff.to_delete)
                 if diff.to_delete:
                     logger.info(f"Rule '{rule.slug}' disabled/empty: removed {len(diff.to_delete)} results")
                 continue
 
             if rule.min_tournament_id and tournament and tournament.id < rule.min_tournament_id:
+                diff = await diff_and_apply(
+                    session,
+                    rule,
+                    set(),
+                    run_id,
+                    evaluation_slice=evaluation_slice if has_slice else None,
+                )
+                total_removed += len(diff.to_delete)
                 continue
 
             grid = await _resolve_grid(session, workspace_id, tournament)
@@ -90,7 +108,13 @@ async def run_evaluation(
 
             try:
                 results = await evaluate(session, rule.condition_tree, context)
-                diff = await diff_and_apply(session, rule, results, run_id)
+                diff = await diff_and_apply(
+                    session,
+                    rule,
+                    results,
+                    run_id,
+                    evaluation_slice=evaluation_slice if has_slice else None,
+                )
                 total_created += len(diff.to_insert)
                 total_removed += len(diff.to_delete)
 

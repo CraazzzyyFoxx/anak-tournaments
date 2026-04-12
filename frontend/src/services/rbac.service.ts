@@ -103,4 +103,10 @@ export const rbacService = {
     const suffix = searchParams.toString() ? `?${searchParams.toString()}` : "";
     return rbacFetch<OAuthConnectionAdmin[]>(`/rbac/oauth-connections${suffix}`);
   },
+
+  deleteOAuthConnection(connectionId: number) {
+    return rbacFetch<void>(`/rbac/oauth-connections/${connectionId}`, {
+      method: "DELETE",
+    });
+  },
 };

@@ -5,6 +5,7 @@ from cashews import cache
 from cashews.contrib.fastapi import cache_control_ttl
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from starlette.requests import Request
 
 from src import models, schemas
@@ -57,6 +58,29 @@ async def get_one(
     session=Depends(db.get_async_session),
 ):
     return await tournament_flows.get_read(session, id, entities)
+
+
+@router.get(
+    path="/{id}/stages",
+    response_model=list[schemas.StageRead],
+    description="Retrieve stages for a tournament with items and inputs.",
+    summary="Get tournament stages",
+)
+async def get_stages(
+    id: int,
+    session: AsyncSession = Depends(db.get_async_session),
+):
+    result = await session.execute(
+        sa.select(models.Stage)
+        .where(models.Stage.tournament_id == id)
+        .options(
+            selectinload(models.Stage.items)
+            .selectinload(models.StageItem.inputs)
+        )
+        .order_by(models.Stage.order)
+    )
+    stages = result.scalars().all()
+    return [schemas.StageRead.model_validate(s, from_attributes=True) for s in stages]
 
 
 @router.get(

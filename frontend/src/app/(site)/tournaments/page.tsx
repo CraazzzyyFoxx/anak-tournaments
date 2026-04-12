@@ -17,6 +17,11 @@ import {
 } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Trophy, Zap, Shield, Users } from "lucide-react";
+import {
+  isTournamentStatusActive,
+  TOURNAMENT_STATUS_OPTIONS,
+} from "@/lib/tournament-status";
+import type { TournamentStatus } from "@/types/tournament.types";
 
 const TournamentCardSkeleton = () => (
   <div className="flex flex-col rounded-xl border border-white/[0.07] bg-white/[0.02] p-5">
@@ -70,7 +75,7 @@ const TournamentsPageSkeleton = () => (
 
 export const dynamic = 'force-dynamic';
 
-type StatusFilter = 'all' | 'ongoing' | 'finished';
+type StatusFilter = 'all' | TournamentStatus;
 type TypeFilter = 'all' | 'standard' | 'league';
 type SortBy = 'latest' | 'oldest' | 'participants';
 
@@ -92,10 +97,8 @@ const TournamentsPage = () => {
     let filtered = tournaments.results;
 
     // Filter by status
-    if (statusFilter === 'ongoing') {
-      filtered = filtered.filter(t => !t.is_finished);
-    } else if (statusFilter === 'finished') {
-      filtered = filtered.filter(t => t.is_finished);
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter((t) => t.status === statusFilter);
     }
 
     // Filter by type
@@ -120,14 +123,14 @@ const TournamentsPage = () => {
     });
 
     return sorted;
-  }, [tournaments?.results, statusFilter, typeFilter, sortBy]);
+  }, [tournaments, statusFilter, typeFilter, sortBy]);
 
   // Calculate statistics
   const stats = useMemo(() => {
     if (!tournaments?.results) {
       return {
         total: 0,
-        ongoing: 0,
+        active: 0,
         leagues: 0,
         totalParticipants: 0,
       };
@@ -135,7 +138,7 @@ const TournamentsPage = () => {
 
     return {
       total: tournaments.total,
-      ongoing: tournaments.results.filter(t => !t.is_finished).length,
+      active: tournaments.results.filter((t) => isTournamentStatusActive(t.status)).length,
       leagues: tournaments.results.filter(t => t.is_league).length,
       totalParticipants: tournaments.results.reduce(
         (sum, t) => sum + (t.participants_count || 0), 0
@@ -162,24 +165,30 @@ const TournamentsPage = () => {
       {/* Statistics Summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatisticsCard name="Total Tournaments" value={stats.total} icon={<Trophy className="h-4 w-4" />} iconClassName="bg-indigo-500/10 text-indigo-400" />
-        <StatisticsCard name="Ongoing" value={stats.ongoing} icon={<Zap className="h-4 w-4" />} iconClassName="bg-emerald-500/10 text-emerald-400" />
+        <StatisticsCard name="Active" value={stats.active} icon={<Zap className="h-4 w-4" />} iconClassName="bg-emerald-500/10 text-emerald-400" />
         <StatisticsCard name="Leagues" value={stats.leagues} icon={<Shield className="h-4 w-4" />} iconClassName="bg-purple-500/10 text-purple-400" />
         <StatisticsCard name="Total Participants" value={stats.totalParticipants} icon={<Users className="h-4 w-4" />} iconClassName="bg-blue-500/10 text-blue-400" />
       </div>
 
       {/* Filter Controls */}
       <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
-        {/* Status Filters */}
-        <ToggleGroup
-          type="single"
+        {/* Status Filter */}
+        <Select
           value={statusFilter}
-          onValueChange={(value) => value && setStatusFilter(value as StatusFilter)}
-          variant="outline"
+          onValueChange={(value) => setStatusFilter(value as StatusFilter)}
         >
-          <ToggleGroupItem value="all">All</ToggleGroupItem>
-          <ToggleGroupItem value="ongoing">Ongoing</ToggleGroupItem>
-          <ToggleGroupItem value="finished">Finished</ToggleGroupItem>
-        </ToggleGroup>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="All statuses" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Statuses</SelectItem>
+            {TOURNAMENT_STATUS_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
         {/* Type Filters */}
         <ToggleGroup

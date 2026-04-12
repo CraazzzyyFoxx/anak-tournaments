@@ -1,24 +1,81 @@
 import typing
 from collections import defaultdict
+from collections.abc import Callable
+from dataclasses import dataclass, field
 
 import sqlalchemy as sa
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
+from shared.core import enums
+from shared.core.enums import StageType
 from src import models, schemas
 from src.services.encounter import service as encounter_service
+
+
+GROUP_STAGE_TYPES = {StageType.ROUND_ROBIN, StageType.SWISS}
+ELIMINATION_STAGE_TYPES = {
+    StageType.SINGLE_ELIMINATION,
+    StageType.DOUBLE_ELIMINATION,
+}
+
+RULE_PRESET_DEFAULTS: dict[str, list[str]] = {
+    "challonge_round_robin": [
+        "points",
+        "head_to_head",
+        "median_buchholz",
+        "match_wins",
+        "score_differential",
+    ],
+    "challonge_swiss": [
+        "points",
+        "median_buchholz",
+        "buchholz",
+        "match_wins",
+        "score_differential",
+    ],
+    "bracket_default": [
+        "points",
+        "head_to_head",
+        "median_buchholz",
+        "score_differential",
+        "match_wins",
+    ],
+}
+
+
+@dataclass
+class RankedStageTeam:
+    team_id: int
+    matches: int = 0
+    wins: int = 0
+    draws: int = 0
+    loses: int = 0
+    points: float = 0.0
+    opponents: list[int] = field(default_factory=list)
+    buchholz: float = 0.0
+    median_buchholz: float = 0.0
+    head_to_head: int = 0
+    score_differential: int = 0
 
 
 def standing_entities(in_entities: list[str]) -> list[_AbstractLoad]:
     entities = []
     if "tournament" in in_entities:
-        entities.append(sa.orm.joinedload(models.Standing.tournament))
+        entities.append(sa.orm.selectinload(models.Standing.tournament))
     if "group" in in_entities:
-        entities.append(sa.orm.joinedload(models.Standing.group))
+        entities.append(sa.orm.selectinload(models.Standing.group))
     if "team" in in_entities:
-        entities.append(sa.orm.joinedload(models.Standing.team))
-
+        entities.append(sa.orm.selectinload(models.Standing.team))
+    if "stage" in in_entities:
+        stage_entity = sa.orm.selectinload(models.Standing.stage)
+        entities.append(stage_entity)
+        entities.append(stage_entity.selectinload(models.Stage.items).selectinload(models.StageItem.inputs))
+    if "stage_item" in in_entities:
+        entities.append(
+            sa.orm.selectinload(models.Standing.stage_item).selectinload(models.StageItem.inputs)
+        )
     return entities
 
 
@@ -29,6 +86,12 @@ async def get_by_tournament(
         sa.select(models.Standing)
         .options(*standing_entities(entities))
         .where(sa.and_(models.Standing.tournament_id == tournament.id))
+        .order_by(
+            models.Standing.overall_position.desc(),
+            models.Standing.stage_id.asc().nullslast(),
+            models.Standing.stage_item_id.asc().nullslast(),
+            models.Standing.position.asc(),
+        )
     )
     result = await session.execute(query)
     standings = result.scalars().all()
@@ -37,159 +100,268 @@ async def get_by_tournament(
 
 
 async def delete_by_tournament(session: AsyncSession, tournament_id: int) -> None:
-    query = sa.delete(models.Standing).where(sa.and_(models.Standing.tournament_id == tournament_id))
+    query = sa.delete(models.Standing).where(
+        sa.and_(models.Standing.tournament_id == tournament_id)
+    )
     await session.execute(query)
     await session.commit()
     logger.info(f"Deleted standings for tournament {tournament_id}")
 
 
-def calculate_median_buchholz_for_teams_in_group(
-        players_in: dict[int, schemas.StandingTeamData],
-) -> dict[int, float]:
-    median_buchholz_scores: dict[int, float] = {}
+def _completed_encounters(
+    encounters: typing.Sequence[models.Encounter],
+) -> list[models.Encounter]:
+    return [
+        encounter
+        for encounter in encounters
+        if encounter.home_team_id is not None
+        and encounter.away_team_id is not None
+        and (
+            encounter.status == enums.EncounterStatus.COMPLETED
+            or encounter.result_status == enums.EncounterResultStatus.CONFIRMED
+            or encounter.home_score != 0
+            or encounter.away_score != 0
+        )
+    ]
 
-    for player in players_in.values():
-        opponent_scores = [players_in[opponent_id].points for opponent_id in player.opponents]
-        logger.debug(f"Player {player.id} raw opponent scores: {opponent_scores}")
 
+def _stage_settings(stage: models.Stage | None) -> dict:
+    raw = stage.settings_json if stage and stage.settings_json else {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _rule_profile(stage: models.Stage) -> str:
+    settings = _stage_settings(stage)
+    if isinstance(settings.get("ranking_preset"), str):
+        return settings["ranking_preset"]
+    if stage.stage_type == StageType.SWISS:
+        return "challonge_swiss"
+    if stage.stage_type == StageType.ROUND_ROBIN:
+        return "challonge_round_robin"
+    return "bracket_default"
+
+
+def _tiebreak_order(stage: models.Stage) -> list[str]:
+    settings = _stage_settings(stage)
+    explicit = settings.get("tiebreak_order")
+    if isinstance(explicit, list):
+        filtered = [str(metric) for metric in explicit if isinstance(metric, str)]
+        if filtered:
+            return filtered
+    return RULE_PRESET_DEFAULTS.get(_rule_profile(stage), RULE_PRESET_DEFAULTS["bracket_default"])
+
+
+def _manual_positions(stage: models.Stage) -> dict[int, int]:
+    settings = _stage_settings(stage)
+    raw = settings.get("manual_positions")
+    if not isinstance(raw, dict):
+        return {}
+    output: dict[int, int] = {}
+    for team_id, position in raw.items():
+        try:
+            output[int(team_id)] = int(position)
+        except (TypeError, ValueError):
+            continue
+    return output
+
+
+def _scoring(stage: models.Stage, tournament: models.Tournament) -> tuple[float, float, float]:
+    settings = _stage_settings(stage)
+    scoring = settings.get("scoring")
+    if isinstance(scoring, dict):
+        return (
+            float(scoring.get("win", tournament.win_points)),
+            float(scoring.get("draw", tournament.draw_points)),
+            float(scoring.get("loss", tournament.loss_points)),
+        )
+    return tournament.win_points, tournament.draw_points, tournament.loss_points
+
+
+def _metric_value(
+    team: RankedStageTeam,
+    metric: str,
+    *,
+    manual_positions: dict[int, int],
+) -> float | int:
+    if metric == "points":
+        return team.points
+    if metric == "match_wins":
+        return team.wins
+    if metric == "head_to_head":
+        return team.head_to_head
+    if metric == "buchholz":
+        return team.buchholz
+    if metric == "median_buchholz":
+        return team.median_buchholz
+    if metric in {"score_differential", "map_differential"}:
+        return team.score_differential
+    if metric == "wins_as_higher_stage_specific_metric":
+        return team.wins
+    if metric == "manual_override":
+        return -manual_positions.get(team.team_id, 10**9)
+    return 0
+
+
+def _sort_ranked_teams(
+    teams: list[RankedStageTeam],
+    *,
+    tiebreak_order: list[str],
+    manual_positions: dict[int, int],
+) -> list[RankedStageTeam]:
+    ordered = list(teams)
+    for metric in reversed(tiebreak_order):
+        reverse = metric != "manual_override"
+        ordered.sort(
+            key=lambda team: _metric_value(
+                team, metric, manual_positions=manual_positions
+            ),
+            reverse=reverse,
+        )
+    return ordered
+
+
+def _calculate_buchholz(
+    teams_by_id: dict[int, RankedStageTeam],
+) -> None:
+    for team in teams_by_id.values():
+        opponent_scores = [
+            teams_by_id[opponent_id].points
+            for opponent_id in team.opponents
+            if opponent_id in teams_by_id
+        ]
+        team.buchholz = float(sum(opponent_scores))
         if len(opponent_scores) > 2:
-            sorted_scores = sorted(opponent_scores)
-            trimmed_scores = sorted_scores[1:-1]
-            logger.debug(f"Player {player.id} trimmed scores (best/worst removed): {trimmed_scores}")
-            median_buchholz_scores[player.id] = sum(trimmed_scores)
+            trimmed = sorted(opponent_scores)[1:-1]
+            team.median_buchholz = float(sum(trimmed))
         else:
-            trimmed_scores = opponent_scores
-            median_buchholz_scores[player.id] = sum(trimmed_scores)
+            team.median_buchholz = float(sum(opponent_scores))
 
-        logger.debug(f"Player {player.id} median buchholz score: {median_buchholz_scores[player.id]}")
 
-    return median_buchholz_scores
+def _calculate_head_to_head(
+    teams_by_id: dict[int, RankedStageTeam],
+    encounters: typing.Sequence[models.Encounter],
+) -> None:
+    points_buckets: dict[float, set[int]] = defaultdict(set)
+    for team in teams_by_id.values():
+        points_buckets[team.points].add(team.team_id)
+
+    for team_ids in points_buckets.values():
+        if len(team_ids) < 2:
+            continue
+        for encounter in encounters:
+            if encounter.home_team_id not in team_ids or encounter.away_team_id not in team_ids:
+                continue
+            if encounter.home_score > encounter.away_score:
+                teams_by_id[encounter.home_team_id].head_to_head += 1
+            elif encounter.away_score > encounter.home_score:
+                teams_by_id[encounter.away_team_id].head_to_head += 1
 
 
 def prepare_teams_for_groups(
-        encounters: typing.Sequence[models.Encounter],
-) -> list[schemas.StandingTeamDataWithBuchholzTB]:
-    team_cache: dict[int, schemas.StandingTeamData] = {}
+    encounters: typing.Sequence[models.Encounter],
+    *,
+    win_points: float = 1.0,
+    draw_points: float = 0.5,
+    loss_points: float = 0.0,
+    tiebreak_order: list[str] | None = None,
+    manual_positions: dict[int, int] | None = None,
+) -> list[RankedStageTeam]:
+    completed_encounters = _completed_encounters(encounters)
+    team_cache: dict[int, RankedStageTeam] = {}
 
-    for encounter in encounters:
+    for encounter in completed_encounters:
         for team_id in (encounter.home_team_id, encounter.away_team_id):
             if team_id not in team_cache:
-                team_cache[team_id] = schemas.StandingTeamData(
-                    id=team_id, wins=0, draws=0, loses=0, points=0, opponents=[], matches=0,
-                )
+                team_cache[team_id] = RankedStageTeam(team_id=team_id)
 
-        home_team = team_cache[encounter.home_team_id]
-        away_team = team_cache[encounter.away_team_id]
+        home_team = team_cache[typing.cast(int, encounter.home_team_id)]
+        away_team = team_cache[typing.cast(int, encounter.away_team_id)]
 
         home_team.matches += 1
         away_team.matches += 1
-        home_team.opponents.append(away_team.id)
-        away_team.opponents.append(home_team.id)
+        home_team.opponents.append(away_team.team_id)
+        away_team.opponents.append(home_team.team_id)
+        home_team.score_differential += encounter.home_score - encounter.away_score
+        away_team.score_differential += encounter.away_score - encounter.home_score
 
         if encounter.home_score > encounter.away_score:
             home_team.wins += 1
-            home_team.points += 1
+            home_team.points += win_points
             away_team.loses += 1
+            away_team.points += loss_points
         elif encounter.home_score < encounter.away_score:
             away_team.wins += 1
-            away_team.points += 1
+            away_team.points += win_points
             home_team.loses += 1
+            home_team.points += loss_points
         else:
             home_team.draws += 1
-            home_team.points += 0.5
+            home_team.points += draw_points
             away_team.draws += 1
-            away_team.points += 0.5
+            away_team.points += draw_points
 
-    logger.debug(f"Team cache after processing encounters: {team_cache}")
-
-    buchholz_scores = calculate_median_buchholz_for_teams_in_group(team_cache)
-    tb_scores: dict[int, int] = {team_id: 0 for team_id in team_cache}
-    points_to_players: dict[float, list[int]] = {}
-
-    for player in team_cache.values():
-        points_to_players.setdefault(player.points, []).append(player.id)
-
-    for group_ids in points_to_players.values():
-        if len(group_ids) < 2: continue
-
-        for encounter in encounters:
-            p1_id, p2_id = encounter.home_team_id, encounter.away_team_id
-
-            if p1_id in group_ids and p2_id in group_ids:
-                if encounter.home_score > encounter.away_score:
-                    tb_scores[p1_id] += 1
-                elif encounter.home_score < encounter.away_score:
-                    tb_scores[p2_id] += 1
-
-    for player_id, tb in tb_scores.items():
-        logger.debug(f"Player {player_id} TB score (head-to-head wins): {tb}")
-
-    teams: list[schemas.StandingTeamDataWithBuchholzTB] = []
-    for player_data in team_cache.values():
-        teams.append(
-            schemas.StandingTeamDataWithBuchholzTB(
-                id=player_data.id,
-                wins=player_data.wins,
-                draws=player_data.draws,
-                loses=player_data.loses,
-                points=player_data.points,
-                opponents=player_data.opponents,
-                matches=player_data.matches,
-                buchholz=buchholz_scores.get(player_data.id, 0.0),
-                tb=tb_scores.get(player_data.id, 0),
-            )
-        )
-
-    sorted_teams = sorted(teams, key=lambda x: (x.points, x.tb, x.buchholz), reverse=True)
-    logger.info("Prepared teams for groups with sorted order based on points, TB, and Median-Buchholz")
-
-    return sorted_teams
+    _calculate_buchholz(team_cache)
+    _calculate_head_to_head(team_cache, completed_encounters)
+    return _sort_ranked_teams(
+        list(team_cache.values()),
+        tiebreak_order=tiebreak_order or RULE_PRESET_DEFAULTS["bracket_default"],
+        manual_positions=manual_positions or {},
+    )
 
 
 def prepare_teams_for_playoffs_double_elimination(
     encounters: typing.Sequence[models.Encounter],
 ) -> list[schemas.StandingTeamDataWithRanking]:
     logger.info("Preparing teams for double elimination playoffs")
-    participants = list({match.home_team_id for match in encounters} | {match.away_team_id for match in encounters})
+    completed_encounters = _completed_encounters(encounters)
+    participants = list(
+        {match.home_team_id for match in completed_encounters}
+        | {match.away_team_id for match in completed_encounters}
+    )
     data: dict[int, dict[str, float | int]] = {
-        participant: {"win": 0, "lose": 0, "placement": 0} for participant in participants
+        typing.cast(int, participant): {"win": 0, "lose": 0, "placement": 0}
+        for participant in participants
     }
 
-    last_game = sorted([e for e in encounters if e.round > 0], key=lambda x: x.round, reverse=True)[0]
-    if last_game.home_score > last_game.away_score:
-        data[last_game.home_team_id]["placement"] = 1
-        data[last_game.away_team_id]["placement"] = 2
-    else:
-        data[last_game.away_team_id]["placement"] = 1
-        data[last_game.home_team_id]["placement"] = 2
-
-    for encounter in encounters:
-        if encounter.home_score > encounter.away_score:
-            data[encounter.home_team_id]["win"] += 1
-            data[encounter.away_team_id]["lose"] += 1
+    upper_bracket = sorted(
+        [encounter for encounter in completed_encounters if encounter.round > 0],
+        key=lambda encounter: encounter.round,
+        reverse=True,
+    )
+    if upper_bracket:
+        last_game = upper_bracket[0]
+        if last_game.home_score > last_game.away_score:
+            data[typing.cast(int, last_game.home_team_id)]["placement"] = 1
+            data[typing.cast(int, last_game.away_team_id)]["placement"] = 2
         else:
-            data[encounter.away_team_id]["win"] += 1
-            data[encounter.home_team_id]["lose"] += 1
+            data[typing.cast(int, last_game.away_team_id)]["placement"] = 1
+            data[typing.cast(int, last_game.home_team_id)]["placement"] = 2
 
-    under_games: dict[int, list[models.Encounter]] = {}
-    global_placement: int = len(participants)
+    for encounter in completed_encounters:
+        if encounter.home_score > encounter.away_score:
+            data[typing.cast(int, encounter.home_team_id)]["win"] += 1
+            data[typing.cast(int, encounter.away_team_id)]["lose"] += 1
+        else:
+            data[typing.cast(int, encounter.away_team_id)]["win"] += 1
+            data[typing.cast(int, encounter.home_team_id)]["lose"] += 1
 
-    for encounter in [e for e in encounters if e.round < 0]:
-        under_games.setdefault(encounter.round, []).append(encounter)
+    lower_bracket_games: dict[int, list[models.Encounter]] = {}
+    global_placement = len(participants)
 
-    for matches in under_games.values():
-        lossers: list[int] = []
+    for encounter in [encounter for encounter in completed_encounters if encounter.round < 0]:
+        lower_bracket_games.setdefault(encounter.round, []).append(encounter)
+
+    for matches in lower_bracket_games.values():
+        losers: list[int] = []
         for match in matches:
             if match.home_score > match.away_score:
-                lossers.append(match.away_team_id)
+                losers.append(typing.cast(int, match.away_team_id))
             else:
-                lossers.append(match.home_team_id)
+                losers.append(typing.cast(int, match.home_team_id))
 
-        global_placement -= len(lossers) - 1
-
-        for loser in lossers:
+        global_placement -= len(losers) - 1
+        for loser in losers:
             data[loser]["placement"] = global_placement
-
         global_placement -= 1
 
     output: list[schemas.StandingTeamDataWithRanking] = []
@@ -197,17 +369,15 @@ def prepare_teams_for_playoffs_double_elimination(
         output.append(
             schemas.StandingTeamDataWithRanking(
                 id=team_id,
-                wins=team_data["win"],
-                loses=team_data["lose"],
+                wins=int(team_data["win"]),
+                loses=int(team_data["lose"]),
                 draws=0,
                 points=0,
                 ranking=team_data["placement"],
                 opponents=[],
-                matches=team_data["win"] + team_data["lose"],
+                matches=int(team_data["win"]) + int(team_data["lose"]),
             )
         )
-        logger.debug(f"Team {team_id} playoff stats: {team_data}")
-
     return output
 
 
@@ -215,189 +385,308 @@ def prepare_teams_for_playoffs_single_elimination(
     encounters: typing.Sequence[models.Encounter],
 ) -> list[schemas.StandingTeamDataWithRanking]:
     logger.info("Preparing teams for single elimination playoffs")
-    participants = list({m.home_team_id for m in encounters} | {m.away_team_id for m in encounters})
+    completed_encounters = _completed_encounters(encounters)
+    participants = list(
+        {match.home_team_id for match in completed_encounters}
+        | {match.away_team_id for match in completed_encounters}
+    )
 
     data: dict[int, dict[str, float | int]] = {
-        participant: {"win": 0, "lose": 0, "placement": 0} for participant in participants
+        typing.cast(int, participant): {"win": 0, "lose": 0, "placement": 0}
+        for participant in participants
+    }
+    round_of_loss: dict[int, int | None] = {
+        typing.cast(int, team): None for team in participants
     }
 
-    round_of_loss: dict[int, int | None] = {team: None for team in participants}
-
-    for enc in encounters:
-        if enc.home_score > enc.away_score:
-            winner_id = enc.home_team_id
-            loser_id = enc.away_team_id
+    for encounter in completed_encounters:
+        if encounter.home_score > encounter.away_score:
+            winner_id = typing.cast(int, encounter.home_team_id)
+            loser_id = typing.cast(int, encounter.away_team_id)
         else:
-            winner_id = enc.away_team_id
-            loser_id = enc.home_team_id
+            winner_id = typing.cast(int, encounter.away_team_id)
+            loser_id = typing.cast(int, encounter.home_team_id)
 
         data[winner_id]["win"] += 1
         data[loser_id]["lose"] += 1
 
         if round_of_loss[loser_id] is None:
-            round_of_loss[loser_id] = enc.round
-        logger.debug(f"Encounter round {enc.round}: Winner {winner_id}, Loser {loser_id}")
+            round_of_loss[loser_id] = encounter.round
 
-    valid_rounds = [enc.round for enc in encounters if enc.round > 0]
+    valid_rounds = [encounter.round for encounter in completed_encounters if encounter.round > 0]
     if not valid_rounds:
-        logger.warning("No valid rounds found for single elimination playoffs")
         return [
             schemas.StandingTeamDataWithRanking(
                 id=team_id,
-                wins=data[team_id]["win"],
-                loses=data[team_id]["lose"],
+                wins=int(data[team_id]["win"]),
+                loses=int(data[team_id]["lose"]),
                 draws=0,
                 points=0,
                 ranking=0,
                 opponents=[],
-                matches=data[team_id]["win"] + data[team_id]["lose"],
+                matches=int(data[team_id]["win"]) + int(data[team_id]["lose"]),
             )
             for team_id in data
         ]
 
     final_round = max(valid_rounds)
-    final_matches = [enc for enc in encounters if enc.round == final_round]
-    logger.info(f"Final round is {final_round} with {len(final_matches)} match(es)")
-
-    if len(final_matches) == 1:
-        final_match = final_matches[0]
+    final_matches = [
+        encounter for encounter in completed_encounters if encounter.round == final_round
+    ]
+    for final_match in final_matches:
         if final_match.home_score > final_match.away_score:
-            data[final_match.home_team_id]["placement"] = 1
-            data[final_match.away_team_id]["placement"] = 2
+            data[typing.cast(int, final_match.home_team_id)]["placement"] = 1
+            data[typing.cast(int, final_match.away_team_id)]["placement"] = 2
         else:
-            data[final_match.away_team_id]["placement"] = 1
-            data[final_match.home_team_id]["placement"] = 2
-    else:
-        for fm in final_matches:
-            if fm.home_score > fm.away_score:
-                data[fm.home_team_id]["placement"] = 1
-                data[fm.away_team_id]["placement"] = 2
-            else:
-                data[fm.away_team_id]["placement"] = 1
-                data[fm.home_team_id]["placement"] = 2
+            data[typing.cast(int, final_match.away_team_id)]["placement"] = 1
+            data[typing.cast(int, final_match.home_team_id)]["placement"] = 2
 
     round_losers: dict[int, list[int]] = defaultdict(list)
-    for team_id, r in round_of_loss.items():
-        if r is not None and data[team_id]["placement"] not in (1, 2):
-            round_losers[r].append(team_id)
+    for team_id, match_round in round_of_loss.items():
+        if match_round is not None and data[team_id]["placement"] not in (1, 2):
+            round_losers[match_round].append(team_id)
 
     current_place = 3
-    for r in sorted(round_losers.keys(), reverse=True):
-        losers_in_r = round_losers[r]
-        for team_id in losers_in_r:
+    for match_round in sorted(round_losers.keys(), reverse=True):
+        losers_in_round = round_losers[match_round]
+        for team_id in losers_in_round:
             data[team_id]["placement"] = current_place
-        logger.debug(f"Round {r} losers assigned placement {current_place} for teams: {losers_in_r}")
-        current_place += len(losers_in_r)
+        current_place += len(losers_in_round)
 
     output: list[schemas.StandingTeamDataWithRanking] = []
     for team_id, stats in data.items():
         output.append(
             schemas.StandingTeamDataWithRanking(
                 id=team_id,
-                wins=stats["win"],
-                loses=stats["lose"],
+                wins=int(stats["win"]),
+                loses=int(stats["lose"]),
                 draws=0,
                 points=0,
                 ranking=stats["placement"],
                 opponents=[],
-                matches=stats["win"] + stats["lose"],
+                matches=int(stats["win"]) + int(stats["lose"]),
             )
         )
-        logger.debug(f"Team {team_id} single elimination stats: {stats}")
-
     return output
 
 
-def calculate_for_groups(
-    group: models.TournamentGroup, encounters: typing.Sequence[models.Encounter]
-) -> list[models.Standing]:
-    standings = []
-    teams = prepare_teams_for_groups(encounters)
-    for position, team in enumerate(teams, 1):
-        standing = models.Standing(
-            tournament_id=group.tournament_id,
-            group_id=group.id,
-            team_id=team.id,
-            position=position,
-            matches=team.matches,
-            win=team.wins,
-            draw=team.draws,
-            lose=team.loses,
-            points=team.points,
-            buchholz=team.buchholz,
-            overall_position=-1,
-            tb=team.tb,
-        )
-        standings.append(standing)
-        logger.debug(f"Group standing for team {team.id}: position {position}")
-    return standings
+PLAYOFF_CALCULATORS: dict[
+    StageType,
+    Callable[
+        [typing.Sequence[models.Encounter]],
+        list[schemas.StandingTeamDataWithRanking],
+    ],
+] = {
+    StageType.SINGLE_ELIMINATION: prepare_teams_for_playoffs_single_elimination,
+    StageType.DOUBLE_ELIMINATION: prepare_teams_for_playoffs_double_elimination,
+}
 
 
-def calculate_for_playoffs(
-    group: models.TournamentGroup,
+def _infer_stage_type_from_encounters(
     encounters: typing.Sequence[models.Encounter],
-    tournament: models.Tournament,
-) -> list[models.Standing]:
-    logger.info(f"Calculating playoffs for tournament {tournament.id}")
-    if tournament.id <= 4:
-        logger.info("Using single elimination logic")
-        teams = prepare_teams_for_playoffs_single_elimination(encounters)
-    else:
-        logger.info("Using double elimination logic")
-        teams = prepare_teams_for_playoffs_double_elimination(encounters)
+) -> StageType:
+    has_negative = any(encounter.round < 0 for encounter in encounters)
+    return StageType.DOUBLE_ELIMINATION if has_negative else StageType.SINGLE_ELIMINATION
 
-    standings = []
-    for team in teams:
-        standing = models.Standing(
-            tournament_id=group.tournament_id,
-            group_id=group.id,
-            team_id=team.id,
-            position=team.ranking,
-            matches=team.matches,
-            win=team.wins,
-            draw=team.draws,
-            lose=team.loses,
-            points=team.points,
-            buchholz=None,
-            overall_position=team.ranking,
+
+def _resolve_compat_group_id(
+    tournament: models.Tournament,
+    stage: models.Stage,
+    stage_item: models.StageItem | None,
+) -> int:
+    groups = list(getattr(tournament, "groups", []) or [])
+    stage_candidates = [group for group in groups if group.stage_id == stage.id]
+
+    if stage_item is not None:
+        item_name = stage_item.name.strip().lower()
+        exact_match = [
+            group for group in stage_candidates if group.name.strip().lower() == item_name
+        ]
+        if exact_match:
+            return exact_match[0].id
+
+    if len(stage_candidates) == 1:
+        return stage_candidates[0].id
+
+    if stage_item is None:
+        stage_name_match = [
+            group for group in groups if group.name.strip().lower() == stage.name.strip().lower()
+        ]
+        if stage_name_match:
+            return stage_name_match[0].id
+
+    fallback_candidates = [
+        group
+        for group in groups
+        if group.is_groups == (stage.stage_type in GROUP_STAGE_TYPES)
+    ]
+    if stage_item is not None:
+        item_name = stage_item.name.strip().lower()
+        fallback_exact = [
+            group for group in fallback_candidates if group.name.strip().lower() == item_name
+        ]
+        if fallback_exact:
+            return fallback_exact[0].id
+
+    if stage_candidates:
+        return stage_candidates[0].id
+    if fallback_candidates:
+        return fallback_candidates[0].id
+    raise ValueError(
+        f"Could not resolve compatibility TournamentGroup for tournament={tournament.id} stage={stage.id}"
+    )
+
+
+def _build_group_stage_standings(
+    tournament: models.Tournament,
+    stage: models.Stage,
+    stage_item: models.StageItem | None,
+    encounters: typing.Sequence[models.Encounter],
+) -> list[models.Standing]:
+    if not encounters:
+        return []
+
+    tiebreak_order = _tiebreak_order(stage)
+    manual_positions = _manual_positions(stage)
+    win_points, draw_points, loss_points = _scoring(stage, tournament)
+    compat_group_id = _resolve_compat_group_id(tournament, stage, stage_item)
+
+    teams = prepare_teams_for_groups(
+        encounters,
+        win_points=win_points,
+        draw_points=draw_points,
+        loss_points=loss_points,
+        tiebreak_order=tiebreak_order,
+        manual_positions=manual_positions,
+    )
+
+    standings: list[models.Standing] = []
+    for position, team in enumerate(teams, 1):
+        standings.append(
+            models.Standing(
+                tournament_id=tournament.id,
+                group_id=compat_group_id,
+                team_id=team.team_id,
+                stage_id=stage.id,
+                stage_item_id=stage_item.id if stage_item is not None else None,
+                position=position,
+                overall_position=0,
+                matches=team.matches,
+                win=team.wins,
+                draw=team.draws,
+                lose=team.loses,
+                points=team.points,
+                buchholz=team.median_buchholz,
+                tb=team.head_to_head,
+                stage=stage,
+                stage_item=stage_item,
+            )
         )
-        standings.append(standing)
-        logger.debug(f"Playoff standing for team {team.id}: ranking {team.ranking}")
     return standings
 
 
-async def calculate_overall_positions(standings: list[models.Standing], has_playoffs: bool) -> list[models.Standing]:
-    logger.info("Calculating overall positions")
-    min_position = len(standings)
-    if has_playoffs:
-        min_position -= len([s for s in standings if s.overall_position != -1])
-    group_standings = [s for s in standings if s.overall_position == -1]
-    playoff_standings = [s for s in standings if s.overall_position != -1]
-    playoff_teams = [s.team_id for s in playoff_standings]
-    logger.debug(f"Group standings count: {len(group_standings)}, Playoff standings count: {len(playoff_standings)}")
-    sorted_standings = sorted(group_standings, key=lambda x: (x.points, x.buchholz))
-    for sorted_standing in sorted_standings:
-        if sorted_standing.team_id in playoff_teams:
-            for playoff_standing in playoff_standings:
-                if playoff_standing.team_id == sorted_standing.team_id:
-                    sorted_standing.overall_position = playoff_standing.overall_position
-                    break
-        else:
-            sorted_standing.overall_position = min_position
-            min_position -= 1
-        logger.debug(f"Team {sorted_standing.team_id} overall position set to {sorted_standing.overall_position}")
+def _build_elimination_stage_standings(
+    tournament: models.Tournament,
+    stage: models.Stage,
+    encounters: typing.Sequence[models.Encounter],
+) -> list[models.Standing]:
+    if not encounters:
+        return []
 
-    final_standings = [*sorted_standings, *playoff_standings]
-    logger.info("Overall positions calculated")
-    return final_standings
+    stage_type = stage.stage_type or _infer_stage_type_from_encounters(encounters)
+    calculator = PLAYOFF_CALCULATORS.get(
+        stage_type, prepare_teams_for_playoffs_single_elimination
+    )
+    compat_group_id = _resolve_compat_group_id(tournament, stage, None)
+    teams = calculator(encounters)
+
+    standings: list[models.Standing] = []
+    for team in teams:
+        standings.append(
+            models.Standing(
+                tournament_id=tournament.id,
+                group_id=compat_group_id,
+                team_id=team.id,
+                stage_id=stage.id,
+                stage_item_id=None,
+                position=int(team.ranking),
+                overall_position=int(team.ranking),
+                matches=team.matches,
+                win=team.wins,
+                draw=team.draws,
+                lose=team.loses,
+                points=team.points,
+                buchholz=None,
+                tb=None,
+                stage=stage,
+            )
+        )
+    return standings
+
+
+def _sort_for_overall(
+    standings: list[models.Standing], stage_order: dict[int, int]
+) -> list[models.Standing]:
+    return sorted(
+        standings,
+        key=lambda standing: (
+            stage_order.get(standing.stage_id or 0, 0),
+            standing.points,
+            standing.tb or 0,
+            standing.buchholz or 0,
+            -standing.position,
+        ),
+        reverse=True,
+    )
+
+
+def calculate_overall_positions(
+    standings: list[models.Standing],
+    stages: list[models.Stage],
+) -> list[models.Standing]:
+    stage_order = {stage.id: stage.order for stage in stages}
+    playoff_standings = [
+        standing
+        for standing in standings
+        if standing.stage is not None
+        and standing.stage.stage_type in ELIMINATION_STAGE_TYPES
+    ]
+    progressed_team_ids = {standing.team_id for standing in playoff_standings}
+
+    if playoff_standings:
+        for standing in playoff_standings:
+            standing.overall_position = standing.position
+
+        remaining = _sort_for_overall(
+            [
+                standing
+                for standing in standings
+                if standing.team_id not in progressed_team_ids
+            ],
+            stage_order,
+        )
+        next_position = len(playoff_standings) + len(remaining)
+        for standing in remaining:
+            standing.overall_position = next_position
+            next_position -= 1
+        return standings
+
+    remaining = _sort_for_overall(standings, stage_order)
+    next_position = len(remaining)
+    for standing in remaining:
+        standing.overall_position = next_position
+        next_position -= 1
+    return remaining
 
 
 def sort_matches(
     matches: typing.Sequence[models.Encounter],
 ) -> typing.Sequence[models.Encounter]:
+    if not matches:
+        return []
     max_abs_round = max(abs(match.round) for match in matches)
 
-    def sort_key(match):
+    def sort_key(match: models.Encounter) -> tuple[int, int, int]:
         final_flag = 1 if abs(match.round) == max_abs_round else 0
         return final_flag, abs(match.round), 0 if match.round > 0 else 1
 
@@ -407,30 +696,42 @@ def sort_matches(
 async def calculate_for_tournament(
     session: AsyncSession, tournament: models.Tournament
 ) -> typing.Sequence[models.Standing]:
-    has_groups = any(group.is_groups for group in tournament.groups)
-    has_playoffs = any(not group.is_groups for group in tournament.groups)
-    overall_standings: list[models.Standing] = []
-    for group in tournament.groups:
-        encounters = await encounter_service.get_by_tournament_group_id(session, tournament.id, group.id, [])
-        if not encounters:
-            logger.warning(f"No encounters found for group {group.id} in tournament {tournament.id}")
-            continue
+    stages = sorted(list(getattr(tournament, "stages", []) or []), key=lambda stage: stage.order)
+    all_standings: list[models.Standing] = []
 
-        encounters = sort_matches(encounters)
-        logger.info(f"Processing group {group.id} with {len(encounters)} encounters")
-        if group.is_groups:
-            standings = calculate_for_groups(group, encounters)
-            overall_standings.extend(standings)
-        else:
-            standings = calculate_for_playoffs(group, encounters, tournament)
-            overall_standings.extend(standings)
-    if has_groups:
-        logger.info(f"Calculating overall standings for tournament {tournament.number}")
-        standings = await calculate_overall_positions(overall_standings, has_playoffs)
-        session.add_all(standings)
-    else:
-        session.add_all(overall_standings)
+    for stage in stages:
+        stage_encounters = sort_matches(
+            await encounter_service.get_by_stage_id(session, tournament.id, stage.id, [])
+        )
+        if stage.stage_type in GROUP_STAGE_TYPES:
+            stage_items = sorted(stage.items, key=lambda item: item.order) if stage.items else []
+            if stage_items:
+                for stage_item in stage_items:
+                    item_encounters = [
+                        encounter
+                        for encounter in stage_encounters
+                        if encounter.stage_item_id == stage_item.id
+                    ]
+                    all_standings.extend(
+                        _build_group_stage_standings(
+                            tournament, stage, stage_item, item_encounters
+                        )
+                    )
+            else:
+                all_standings.extend(
+                    _build_group_stage_standings(
+                        tournament, stage, None, stage_encounters
+                    )
+                )
+        elif stage.stage_type in ELIMINATION_STAGE_TYPES:
+            all_standings.extend(
+                _build_elimination_stage_standings(tournament, stage, stage_encounters)
+            )
 
+    final_standings = calculate_overall_positions(all_standings, stages)
+    session.add_all(final_standings)
     await session.commit()
-    logger.info(f"Standings calculated and committed for tournament {tournament.id}")
-    return await get_by_tournament(session, tournament, ["team"])
+    logger.info(
+        f"Stage-first standings calculated and committed for tournament {tournament.id}"
+    )
+    return await get_by_tournament(session, tournament, ["team", "stage", "stage_item"])

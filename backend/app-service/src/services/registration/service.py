@@ -13,12 +13,19 @@ from sqlalchemy.orm import selectinload
 from src import models
 
 
-def _normalize_battle_tag(value: str | None) -> str | None:
+def _clean_battle_tag(value: str | None) -> str | None:
     if not value:
         return None
     text = value.strip()
     text = re.sub(r"\s*#\s*", "#", text)
-    return text.replace(" ", "").strip().lower()
+    return text.replace(" ", "").strip()
+
+
+def _normalize_battle_tag(value: str | None) -> str | None:
+    cleaned = _clean_battle_tag(value)
+    if not cleaned:
+        return None
+    return cleaned.lower()
 
 
 async def get_registration_form(
@@ -43,6 +50,7 @@ async def get_registration(
         .where(
             models.BalancerRegistration.tournament_id == tournament_id,
             models.BalancerRegistration.auth_user_id == auth_user_id,
+            models.BalancerRegistration.deleted_at.is_(None),
         )
         .options(selectinload(models.BalancerRegistration.roles))
     )
@@ -65,20 +73,26 @@ async def create_registration(
     custom_fields: dict[str, Any] | None,
     auto_approve: bool = False,
 ) -> models.BalancerRegistration:
+    cleaned_battle_tag = _clean_battle_tag(battle_tag)
+    cleaned_smurf_tags = [_clean_battle_tag(tag) for tag in (smurf_tags or [])]
+    cleaned_smurf_tags = [tag for tag in cleaned_smurf_tags if tag]
+
     registration = models.BalancerRegistration(
         tournament_id=tournament_id,
         workspace_id=workspace_id,
         auth_user_id=auth_user_id,
         user_id=user_id,
-        battle_tag=battle_tag,
-        battle_tag_normalized=_normalize_battle_tag(battle_tag),
-        smurf_tags_json=smurf_tags,
+        display_name=cleaned_battle_tag,
+        battle_tag=cleaned_battle_tag,
+        battle_tag_normalized=_normalize_battle_tag(cleaned_battle_tag),
+        smurf_tags_json=cleaned_smurf_tags or None,
         discord_nick=discord_nick,
         twitch_nick=twitch_nick,
         stream_pov=stream_pov,
         notes=notes,
         custom_fields_json=custom_fields,
         status="approved" if auto_approve else "pending",
+        exclude_from_balancer=False,
         submitted_at=datetime.now(UTC),
         reviewed_at=datetime.now(UTC) if auto_approve else None,
     )
@@ -95,9 +109,14 @@ async def update_registration(
 ) -> models.BalancerRegistration:
     for key, value in kwargs.items():
         if value is not None:
+            if key == "battle_tag":
+                value = _clean_battle_tag(value)
+            elif key == "smurf_tags":
+                cleaned_smurf_tags = [_clean_battle_tag(tag) for tag in value]
+                value = [tag for tag in cleaned_smurf_tags if tag] or None
             setattr(registration, key, value)
     if "battle_tag" in kwargs and kwargs["battle_tag"] is not None:
-        registration.battle_tag_normalized = _normalize_battle_tag(kwargs["battle_tag"])
+        registration.battle_tag_normalized = _normalize_battle_tag(registration.battle_tag)
     await session.commit()
     await session.refresh(registration)
     return registration
@@ -110,6 +129,7 @@ async def get_registration_count_by_tournament(
     result = await session.execute(
         sa.select(sa.func.count()).where(
             models.BalancerRegistration.tournament_id == tournament_id,
+            models.BalancerRegistration.deleted_at.is_(None),
             models.BalancerRegistration.status != "withdrawn",
         )
     )
@@ -120,5 +140,5 @@ async def withdraw_registration(
     session: AsyncSession,
     registration: models.BalancerRegistration,
 ) -> None:
-    await session.delete(registration)
+    registration.status = "withdrawn"
     await session.commit()

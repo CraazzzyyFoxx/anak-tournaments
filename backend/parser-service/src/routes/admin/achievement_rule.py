@@ -16,6 +16,7 @@ from shared.models.achievement import (
     EvaluationRun,
     EvaluationRunTrigger,
 )
+from shared.services.achievement_effective import build_effective_achievement_rows_subquery
 from src import models
 from src.core import auth, db
 from src.schemas.admin.achievement_rule import (
@@ -27,14 +28,17 @@ from src.schemas.admin.achievement_rule import (
     ConditionTypeInfo,
     EvaluateRequest,
     EvaluationRunRead,
+    HardResetResultRead,
     OverrideCreate,
     OverrideRead,
+    SeedResultRead,
 )
 from src.services.achievement.engine.runner import run_evaluation
-from src.services.achievement.engine.seeder import seed_workspace
+from src.services.achievement.engine.seeder import hard_reset_workspace, seed_workspace
 from src.services.achievement.engine.validation import (
     LEAF_GRAINS,
     infer_grain,
+    validate_rule_definition,
     validate_condition_tree,
 )
 
@@ -88,15 +92,33 @@ async def validate_condition_tree_endpoint(
 # ─── Seeding ─────────────────────────────────────────────────────────────────
 
 
-@router.post("/seed")
+@router.post("/seed", response_model=SeedResultRead)
 async def seed_default_rules(
     workspace_id: int,
     session: AsyncSession = Depends(db.get_async_session),
     _user: models.AuthUser = Depends(auth.require_permission("achievement", "write")),
 ):
     """Seed workspace with default 73 achievement rules."""
-    count = await seed_workspace(session, workspace_id)
-    return {"seeded": count}
+    seeded, removed = await seed_workspace(session, workspace_id)
+    await session.commit()
+    return {"seeded": seeded, "removed": removed}
+
+
+@router.post("/reset", response_model=HardResetResultRead)
+async def hard_reset_rules(
+    workspace_id: int,
+    session: AsyncSession = Depends(db.get_async_session),
+    _user: models.AuthUser = Depends(auth.require_permission("achievement", "write")),
+):
+    """Replace the catalog, clear effective results, and re-run a full evaluation."""
+    seeded, removed, cleared_results, run = await hard_reset_workspace(session, workspace_id)
+    await session.commit()
+    return {
+        "seeded": seeded,
+        "removed": removed,
+        "cleared_results": cleared_results,
+        "run": EvaluationRunRead.model_validate(run, from_attributes=True),
+    }
 
 
 # ─── Rule CRUD ───────────────────────────────────────────────────────────────
@@ -143,8 +165,7 @@ async def create_rule(
     session: AsyncSession = Depends(db.get_async_session),
     _user: models.AuthUser = Depends(auth.require_permission("achievement", "write")),
 ):
-    # Validate condition tree
-    errors = validate_condition_tree(body.condition_tree)
+    errors, _inferred_grain = validate_rule_definition(body.condition_tree, body.grain)
     if errors:
         raise HTTPException(status_code=400, detail={"validation_errors": errors})
 
@@ -184,8 +205,10 @@ async def update_rule(
 
     condition_tree_changed = "condition_tree" in update_data and update_data["condition_tree"] != rule.condition_tree
 
-    if "condition_tree" in update_data:
-        errors = validate_condition_tree(update_data["condition_tree"])
+    if "condition_tree" in update_data or "grain" in update_data:
+        next_condition_tree = update_data.get("condition_tree", rule.condition_tree)
+        next_grain = update_data.get("grain", rule.grain)
+        errors, _inferred_grain = validate_rule_definition(next_condition_tree, next_grain)
         if errors:
             raise HTTPException(status_code=400, detail={"validation_errors": errors})
 
@@ -283,18 +306,24 @@ async def get_rule_users(
     if not rule or rule.workspace_id != workspace_id:
         raise HTTPException(status_code=404, detail="Rule not found")
 
-    where_clauses = [AchievementEvaluationResult.achievement_rule_id == rule_id]
+    effective_rows = build_effective_achievement_rows_subquery(
+        workspace_id=workspace_id,
+        achievement_rule_ids=[rule_id],
+        name="admin_rule_users_effective_rows",
+    )
+
+    where_clauses = [effective_rows.c.achievement_rule_id == rule_id]
     if tournament_id is not None:
-        where_clauses.append(AchievementEvaluationResult.tournament_id == tournament_id)
+        where_clauses.append(effective_rows.c.tournament_id == tournament_id)
 
     total_query = sa.select(
-        sa.func.count(sa.distinct(AchievementEvaluationResult.user_id))
+        sa.func.count(sa.distinct(effective_rows.c.user_id))
     ).where(*where_clauses)
     total = await session.scalar(total_query) or 0
 
-    count_col = sa.func.count(AchievementEvaluationResult.id).label("count")
-    first_qualified_col = sa.func.min(AchievementEvaluationResult.qualified_at).label("first_qualified")
-    last_tournament_col = sa.func.max(AchievementEvaluationResult.tournament_id).label("last_tournament_id")
+    count_col = sa.func.count().label("count")
+    first_qualified_col = sa.func.min(effective_rows.c.qualified_at).label("first_qualified")
+    last_tournament_col = sa.func.max(effective_rows.c.tournament_id).label("last_tournament_id")
 
     sort_map = {
         "count": count_col,
@@ -307,16 +336,17 @@ async def get_rule_users(
 
     query = (
         sa.select(
-            AchievementEvaluationResult.user_id,
+            effective_rows.c.user_id,
             models.User.name.label("user_name"),
             count_col,
             last_tournament_col,
-            sa.func.max(AchievementEvaluationResult.match_id).label("last_match_id"),
+            sa.func.max(effective_rows.c.match_id).label("last_match_id"),
             first_qualified_col,
         )
-        .join(models.User, models.User.id == AchievementEvaluationResult.user_id)
+        .select_from(effective_rows)
+        .join(models.User, models.User.id == effective_rows.c.user_id)
         .where(*where_clauses)
-        .group_by(AchievementEvaluationResult.user_id, models.User.name)
+        .group_by(effective_rows.c.user_id, models.User.name)
         .order_by(order_expr)
         .offset((page - 1) * per_page)
         .limit(per_page)

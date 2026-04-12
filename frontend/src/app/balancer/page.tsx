@@ -33,10 +33,13 @@ import {
   buildTeamNamesText,
   buildVariantFromSavedBalance,
   convertBalanceResponseToInternalPayload,
+  createSyntheticApplicationFromRegistration,
+  createSyntheticPlayerFromRegistration,
   downloadPayload,
   fetchPlayerRankHistory,
   getActiveRoleEntries,
   getPlayerValidationIssues,
+  isRegistrationAvailableForBalancer,
   type BalanceVariant,
   type PlayerValidationIssue,
 } from "@/app/balancer/_components/workspace-helpers";
@@ -53,10 +56,17 @@ import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useToast } from "@/hooks/use-toast";
+import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { cn } from "@/lib/utils";
 import balancerAdminService from "@/services/balancer-admin.service";
 import balancerService from "@/services/balancer.service";
-import { BalanceSaveInput, BalancerApplication, BalancerPlayerRecord, BalancerRoleCode } from "@/types/balancer-admin.types";
+import {
+  BalanceSaveInput,
+  BalancerApplication,
+  BalancerPlayerRecord,
+  BalancerPlayerUpdateInput,
+  BalancerRoleCode,
+} from "@/types/balancer-admin.types";
 import { BalanceJobResult, BalancerConfig } from "@/types/balancer.types";
 
 const PRESET_LABELS: Record<string, string> = {
@@ -77,18 +87,55 @@ type PlayerValidationState = {
 type PoolView = "all" | "needs_fix" | "ready" | "excluded";
 type PoolSortValue = "added_desc" | "name_asc" | "division_asc" | "division_desc";
 
-type StatsFilterCardProps = {
+const ROLE_ACCENTS: Record<BalancerRoleCode, { text: string; card: string }> = {
+  tank: {
+    text: "text-sky-300",
+    card: "border-sky-300/20 bg-sky-500/10 text-sky-200",
+  },
+  dps: {
+    text: "text-orange-300",
+    card: "border-orange-300/20 bg-orange-500/10 text-orange-200",
+  },
+  support: {
+    text: "text-emerald-300",
+    card: "border-emerald-300/20 bg-emerald-500/10 text-emerald-200",
+  },
+};
+
+const TEAM_BADGE_ACCENTS = [
+  "border-blue-400/20 bg-blue-500/10 text-blue-200",
+  "border-rose-400/20 bg-rose-500/10 text-rose-200",
+  "border-emerald-400/20 bg-emerald-500/10 text-emerald-200",
+  "border-amber-400/20 bg-amber-500/10 text-amber-200",
+  "border-violet-400/20 bg-violet-500/10 text-violet-200",
+  "border-cyan-400/20 bg-cyan-500/10 text-cyan-200",
+  "border-lime-400/20 bg-lime-500/10 text-lime-200",
+  "border-fuchsia-400/20 bg-fuchsia-500/10 text-fuchsia-200",
+  "border-pink-400/20 bg-pink-500/10 text-pink-200",
+  "border-indigo-400/20 bg-indigo-500/10 text-indigo-200",
+];
+
+type WorkspaceCounterProps = {
   label: string;
   value: number;
-  helperText: string;
+  hint?: string;
   icon: LucideIcon;
-  iconClassName: string;
-  active?: boolean;
-  onClick: () => void;
 };
 
 function createVariantLabel(index: number): string {
   return `Balance ${index}`;
+}
+
+function splitBattleTag(battleTag: string): { name: string; suffix: string | null } {
+  const hashIndex = battleTag.indexOf("#");
+  if (hashIndex < 0) {
+    return { name: battleTag, suffix: null };
+  }
+
+  return {
+    name: battleTag.slice(0, hashIndex),
+    suffix: battleTag.slice(hashIndex),
+  };
 }
 
 function getPrimaryDivision(player: BalancerPlayerRecord): number {
@@ -118,42 +165,64 @@ function sortPlayerStates(playerStates: PlayerValidationState[], sortValue: Pool
   });
 }
 
-function StatsFilterCard({
-  label,
-  value,
-  helperText,
-  icon: Icon,
-  iconClassName,
-  active = false,
-  onClick,
-}: StatsFilterCardProps) {
+function calculateTeamAverageFromPayload(team: InternalBalancePayload["teams"][number]): number {
+  const players = [...team.roster.Tank, ...team.roster.Damage, ...team.roster.Support];
+  if (players.length === 0) {
+    return 0;
+  }
+
+  return Math.round(players.reduce((sum, player) => sum + player.rating, 0) / players.length);
+}
+
+function findPlayerAssignment(
+  payload: InternalBalancePayload | null,
+  selectedPlayerId: number | null,
+): {
+  teamId: number;
+  teamName: string;
+  roleKey: "Tank" | "Damage" | "Support";
+  teamIndex: number;
+} | null {
+  if (!payload || selectedPlayerId == null) {
+    return null;
+  }
+
+  for (const [teamIndex, team] of payload.teams.entries()) {
+    for (const roleKey of Object.keys(team.roster) as Array<"Tank" | "Damage" | "Support">) {
+      if (team.roster[roleKey].some((player) => Number(player.uuid) === selectedPlayerId)) {
+        return {
+          teamId: team.id,
+          teamName: team.name,
+          roleKey,
+          teamIndex,
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+function WorkspaceCounter({ label, value, hint, icon: Icon }: WorkspaceCounterProps) {
   return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={onClick}
-      className={cn(
-        "rounded-2xl border border-border/70 bg-card/80 p-4 text-left shadow-sm transition-all hover:border-primary/35 hover:shadow-md",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-        active && "border-primary/45 bg-primary/5 shadow-md",
-      )}
-    >
-      <div className="flex items-center gap-3">
-        <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl", iconClassName)}>
-          <Icon className="h-4 w-4" />
-        </div>
-        <div className="min-w-0">
-          <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
-          <p className="mt-1 text-xl font-semibold leading-none text-foreground">{value}</p>
-          <p className="mt-1 text-xs text-muted-foreground">{helperText}</p>
+    <div className="flex items-center gap-2.5 rounded-xl border border-white/8 bg-white/[0.02] px-3 py-2.5">
+      <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/8 bg-black/15 text-white/50">
+        <Icon className="h-4 w-4" />
+      </span>
+      <div>
+        <div className="text-[10px] uppercase tracking-[0.16em] text-white/30">{label}</div>
+        <div className="mt-0.5 flex items-baseline gap-1.5">
+          <span className="text-xl font-semibold leading-none text-white/88">{value}</span>
+          {hint ? <span className="text-[11px] text-white/30">{hint}</span> : null}
         </div>
       </div>
-    </button>
+    </div>
   );
 }
 
 export default function BalancerMainPage() {
   const tournamentId = useBalancerTournamentId();
+  const divisionGrid = useDivisionGrid();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -163,6 +232,7 @@ export default function BalancerMainPage() {
   const [jobProgress, setJobProgress] = useState<number | null>(null);
   const [variants, setVariants] = useState<BalanceVariant[]>([]);
   const [activeVariantId, setActiveVariantId] = useState<string | null>(null);
+  const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
   const [editingPlayerId, setEditingPlayerId] = useState<number | null>(null);
   const [pendingRankHistory, setPendingRankHistory] = useState<Partial<Record<BalancerRoleCode, number>> | null>(null);
   const [sidebarSearchQuery, setSidebarSearchQuery] = useState("");
@@ -171,6 +241,7 @@ export default function BalancerMainPage() {
   const [poolSort, setPoolSort] = useState<PoolSortValue>("added_desc");
   const [showSidebarFilters, setShowSidebarFilters] = useState(false);
   const [excludeInvalidPlayers, setExcludeInvalidPlayers] = useState(false);
+  const [collapsedTeamIds, setCollapsedTeamIds] = useState<number[]>([]);
 
   const balanceEditorRef = useRef<HTMLDivElement>(null);
   const importTeamsFileRef = useRef<HTMLInputElement>(null);
@@ -200,16 +271,9 @@ export default function BalancerMainPage() {
     staleTime: Number.POSITIVE_INFINITY,
   });
 
-  const applicationsQuery = useQuery({
-    queryKey: ["balancer-public", "applications", tournamentId],
-    queryFn: () => balancerAdminService.listApplications(tournamentId as number, true),
-    enabled: tournamentId !== null,
-    refetchOnWindowFocus: false,
-  });
-
-  const playersQuery = useQuery({
-    queryKey: ["balancer-public", "players", tournamentId],
-    queryFn: () => balancerAdminService.listPlayers(tournamentId as number),
+  const registrationsQuery = useQuery({
+    queryKey: ["balancer-admin", "registrations", tournamentId],
+    queryFn: () => balancerAdminService.listRegistrations(tournamentId as number, { include_deleted: false }),
     enabled: tournamentId !== null,
     refetchOnWindowFocus: false,
   });
@@ -222,8 +286,10 @@ export default function BalancerMainPage() {
   });
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setVariants([]);
     setActiveVariantId(null);
+    setSelectedPlayerId(null);
     clearJobState();
     setEditingPlayerId(null);
     setPendingRankHistory(null);
@@ -241,12 +307,30 @@ export default function BalancerMainPage() {
     }
 
     const savedVariant = buildVariantFromSavedBalance(savedBalanceQuery.data);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setVariants((current) => [savedVariant, ...current.filter((variant) => variant.source !== "saved")]);
     setActiveVariantId((current) => current ?? savedVariant.id);
   }, [savedBalanceQuery.data]);
 
-  const applications = applicationsQuery.data ?? [];
-  const players = playersQuery.data ?? [];
+  const registrations = registrationsQuery.data ?? [];
+  const registrationsById = useMemo(() => new Map(registrations.map((registration) => [registration.id, registration])), [registrations]);
+  const players = useMemo(
+    () => registrations.map((registration) => createSyntheticPlayerFromRegistration(registration, divisionGrid)),
+    [divisionGrid, registrations],
+  );
+  const playersById = useMemo(() => new Map(players.map((player) => [player.id, player])), [players]);
+  const applications = useMemo(
+    () =>
+      registrations
+        .filter((registration) => isRegistrationAvailableForBalancer(registration))
+        .map((registration) =>
+          createSyntheticApplicationFromRegistration(
+            registration,
+            playersById.get(registration.id)?.is_in_pool ? playersById.get(registration.id) ?? null : null,
+          ),
+        ),
+    [playersById, registrations],
+  );
   const poolPlayers = useMemo(() => players.filter((player) => player.is_in_pool), [players]);
   const excludedPlayers = useMemo(() => players.filter((player) => !player.is_in_pool), [players]);
   const applicationsById = useMemo(
@@ -343,13 +427,13 @@ export default function BalancerMainPage() {
     if (poolView === "excluded") {
       return {
         title: "No excluded players",
-        description: "Every player is currently included in the balancing pool.",
+        description: "Every player is currently included in the Balancing Pool.",
       };
     }
 
     return {
       title: "No players in the pool",
-      description: "Use the search above to add players from applications.",
+      description: "Use the search above to include approved registrations in the Balancing Pool.",
     };
   }, [normalizedSidebarSearchQuery, poolView]);
   const quickEditPlayer = players.find((player) => player.id === editingPlayerId) ?? null;
@@ -357,61 +441,129 @@ export default function BalancerMainPage() {
     () => variants.find((variant) => variant.id === activeVariantId) ?? null,
     [activeVariantId, variants],
   );
+  const selectedPlayer = players.find((player) => player.id === selectedPlayerId) ?? null;
+  const selectedRegistration = selectedPlayerId != null ? registrationsById.get(selectedPlayerId) ?? null : null;
+  const selectedPlayerAssignment = useMemo(
+    () => findPlayerAssignment(activeVariant?.payload ?? null, selectedPlayerId),
+    [activeVariant?.payload, selectedPlayerId],
+  );
+
+  useEffect(() => {
+    if (!activeVariant?.payload?.teams?.length) {
+      setCollapsedTeamIds([]);
+      return;
+    }
+
+    const teamIds = activeVariant.payload.teams.map((team) => team.id);
+    const expandedByDefault = new Set(teamIds.slice(0, 4));
+    setCollapsedTeamIds(teamIds.filter((teamId) => !expandedByDefault.has(teamId)));
+  }, [activeVariantId]);
+
+  const activeVariantTeamAverages = useMemo(
+    () => activeVariant?.payload.teams.map((team) => calculateTeamAverageFromPayload(team)) ?? [],
+    [activeVariant],
+  );
+  const activeVariantAverage = useMemo(() => {
+    if (activeVariantTeamAverages.length === 0) return null;
+    return Math.round(
+      activeVariantTeamAverages.reduce((sum, value) => sum + value, 0) / activeVariantTeamAverages.length,
+    );
+  }, [activeVariantTeamAverages]);
+  const activeVariantMin = activeVariantTeamAverages.length > 0 ? Math.min(...activeVariantTeamAverages) : null;
+  const activeVariantMax = activeVariantTeamAverages.length > 0 ? Math.max(...activeVariantTeamAverages) : null;
+  const activeVariantSpread =
+    activeVariantMin != null && activeVariantMax != null ? activeVariantMax - activeVariantMin : null;
+  const presetOptions = Object.keys(balancerConfigQuery.data?.presets ?? { DEFAULT: {} });
+  const flexPoolCount = useMemo(() => poolPlayers.filter((player) => player.is_flex).length, [poolPlayers]);
 
   const addPlayerMutation = useMutation({
     mutationFn: async (application: BalancerApplication) => {
       if (!tournamentId) {
         throw new Error("Select a tournament first");
       }
-      return balancerAdminService.createPlayersFromApplications(tournamentId, {
-        application_ids: [application.id],
+      return balancerAdminService.setRegistrationExclusion(application.id, {
+        exclude_from_balancer: false,
+        exclude_reason: null,
       });
     },
-    onSuccess: async (playersCreated, application) => {
-      const createdPlayer = playersCreated[0];
-      if (createdPlayer) {
-        setEditingPlayerId(createdPlayer.id);
-      }
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["balancer-public", "applications", tournamentId] }),
-        queryClient.invalidateQueries({ queryKey: ["balancer-public", "players", tournamentId] }),
-      ]);
-      toast({ title: "Player added to pool" });
+    onSuccess: async (registration, application) => {
+      setSelectedPlayerId(registration.id);
+      await queryClient.invalidateQueries({ queryKey: ["balancer-admin", "registrations", tournamentId] });
+      toast({ title: "Registration included in balancer" });
       fetchPlayerRankHistory(application.battle_tag)
         .then((history) => setPendingRankHistory(history))
         .catch(() => setPendingRankHistory(null));
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to add player", description: error.message, variant: "destructive" });
+      toast({ title: "Failed to include registration", description: error.message, variant: "destructive" });
     },
   });
 
   const updatePlayerMutation = useMutation({
-    mutationFn: ({ playerId, payload }: { playerId: number; payload: Parameters<typeof balancerAdminService.updatePlayer>[1] }) =>
-      balancerAdminService.updatePlayer(playerId, payload),
+    mutationFn: async ({
+      playerId,
+      payload,
+    }: {
+      playerId: number;
+      payload: BalancerPlayerUpdateInput;
+    }) => {
+      const roles = (payload.role_entries_json ?? []).map((entry) => ({
+        role: entry.role,
+        subrole: entry.subtype,
+        priority: entry.priority,
+        is_primary: entry.priority === 1,
+        rank_value: entry.rank_value,
+        is_active: entry.is_active,
+      }));
+      await balancerAdminService.updateRegistration(playerId, {
+        roles,
+        is_flex: payload.is_flex,
+        admin_notes: payload.admin_notes,
+      });
+      return balancerAdminService.setRegistrationExclusion(playerId, {
+        exclude_from_balancer: !(payload.is_in_pool ?? true),
+        exclude_reason: payload.is_in_pool ? null : "manual_exclusion",
+      });
+    },
     onSuccess: async () => {
       setEditingPlayerId(null);
-      await queryClient.invalidateQueries({ queryKey: ["balancer-public", "players", tournamentId] });
-      await queryClient.invalidateQueries({ queryKey: ["balancer-public", "applications", tournamentId] });
-      toast({ title: "Player updated" });
+      await queryClient.invalidateQueries({ queryKey: ["balancer-admin", "registrations", tournamentId] });
+      toast({ title: "Registration updated" });
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to update player", description: error.message, variant: "destructive" });
+      toast({ title: "Failed to update registration", description: error.message, variant: "destructive" });
     },
   });
 
   const removePlayerMutation = useMutation({
-    mutationFn: (playerId: number) => balancerAdminService.deletePlayer(playerId),
+    mutationFn: (playerId: number) =>
+      balancerAdminService.setRegistrationExclusion(playerId, {
+        exclude_from_balancer: true,
+        exclude_reason: "manual_exclusion",
+      }),
     onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["balancer-public", "applications", tournamentId] }),
-        queryClient.invalidateQueries({ queryKey: ["balancer-public", "players", tournamentId] }),
-      ]);
+      await queryClient.invalidateQueries({ queryKey: ["balancer-admin", "registrations", tournamentId] });
       setEditingPlayerId(null);
-      toast({ title: "Player removed from pool" });
+      toast({ title: "Registration excluded from balancer" });
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to remove player", description: error.message, variant: "destructive" });
+      toast({ title: "Failed to exclude registration", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const includePlayerMutation = useMutation({
+    mutationFn: (playerId: number) =>
+      balancerAdminService.setRegistrationExclusion(playerId, {
+        exclude_from_balancer: false,
+        exclude_reason: null,
+      }),
+    onSuccess: async (registration) => {
+      setSelectedPlayerId(registration.id);
+      await queryClient.invalidateQueries({ queryKey: ["balancer-admin", "registrations", tournamentId] });
+      toast({ title: "Registration added back to pool" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to include registration", description: error.message, variant: "destructive" });
     },
   });
 
@@ -543,8 +695,8 @@ export default function BalancerMainPage() {
   const emptyWorkspaceState = excludeInvalidPlayers && readyPlayers.length === 0 && invalidPlayerStates.length > 0
     ? {
         icon: UserX,
-        title: "All pool players have issues — nothing to balance",
-        description: "Every player in the pool has unresolved issues. Fix at least one player before running the balancer.",
+        title: "All included registrations have issues - nothing to balance",
+        description: "Every included registration has unresolved issues. Fix at least one before running the balancer.",
         actionLabel: "Review conflicts",
         actionVariant: "outline" as const,
         action: () => {
@@ -556,8 +708,8 @@ export default function BalancerMainPage() {
     : invalidPlayerStates.length > 0 && !excludeInvalidPlayers
     ? {
         icon: AlertTriangle,
-        title: `${invalidPlayerStates.length} player${invalidPlayerStates.length !== 1 ? "s" : ""} need review before balancing`,
-        description: "Resolve role conflicts and missing ranked roles in the player pool before you run the balancer.",
+        title: `${invalidPlayerStates.length} registration${invalidPlayerStates.length !== 1 ? "s" : ""} need review before balancing`,
+        description: "Resolve role conflicts and missing ranked roles in the included registrations before you run the balancer.",
         actionLabel: "Review conflicts",
         actionVariant: "outline" as const,
         action: () => {
@@ -569,9 +721,9 @@ export default function BalancerMainPage() {
     : poolPlayers.length === 0
       ? {
           icon: Search,
-          title: "Add players to the pool first",
-          description: "Use the application search to bring active applications into the player pool.",
-          actionLabel: "Browse applications",
+          title: "Include registrations first",
+          description: "Use the search to bring approved registrations into the Balancing Pool.",
+          actionLabel: "Browse available",
           actionVariant: "outline" as const,
           action: () => {
             setPoolView("all");
@@ -597,7 +749,7 @@ export default function BalancerMainPage() {
     return (
       <Alert>
         <AlertTitle>Select a tournament</AlertTitle>
-        <AlertDescription>Choose a tournament in the balancer header to work with applications and pool players.</AlertDescription>
+        <AlertDescription>Choose a tournament in the balancer header to work with registrations and the Balancing Pool.</AlertDescription>
       </Alert>
     );
   }
@@ -608,9 +760,9 @@ export default function BalancerMainPage() {
       <div className="flex min-h-0 flex-col">
         <Card className="flex min-h-0 flex-1 flex-col rounded-2xl border-border/70 bg-card/80 shadow-sm">
           <CardHeader>
-            <CardTitle>Player Pool</CardTitle>
+            <CardTitle>Balancing Pool</CardTitle>
             <CardDescription>
-              {poolPlayers.length} player{poolPlayers.length !== 1 ? "s" : ""} in pool
+              {poolPlayers.length} registration{poolPlayers.length !== 1 ? "s" : ""} included
               {excludedPlayers.length > 0 ? ` · ${excludedPlayers.length} excluded` : ""}
               {invalidPlayerStates.length > 0 ? ` · ${invalidPlayerStates.length} need fixes` : " · all clear"}
             </CardDescription>
@@ -651,21 +803,21 @@ export default function BalancerMainPage() {
               }}
               variant="outline"
               size="sm"
-              className="w-full rounded-xl border border-border/70 bg-muted/20 p-1"
+              className="w-full"
             >
-              <ToggleGroupItem value="all" className="flex-1 justify-between rounded-lg px-3 text-xs">
+              <ToggleGroupItem value="all" className="flex-1 justify-between px-3 text-xs shadow-none">
                 <span>All</span>
                 <span className="text-muted-foreground">{poolPlayers.length}</span>
               </ToggleGroupItem>
-              <ToggleGroupItem value="excluded" className="flex-1 justify-between rounded-lg px-3 text-xs">
+              <ToggleGroupItem value="excluded" className="flex-1 justify-between px-3 text-xs shadow-none">
                 <span>Excluded</span>
                 <span className="text-muted-foreground">{excludedPlayers.length}</span>
               </ToggleGroupItem>
-              <ToggleGroupItem value="needs_fix" className="flex-1 justify-between rounded-lg px-3 text-xs">
+              <ToggleGroupItem value="needs_fix" className="flex-1 justify-between px-3 text-xs shadow-none">
                 <span>Need Fix</span>
                 <span className="text-muted-foreground">{invalidPlayerStates.length}</span>
               </ToggleGroupItem>
-              <ToggleGroupItem value="ready" className="flex-1 justify-between rounded-lg px-3 text-xs">
+              <ToggleGroupItem value="ready" className="flex-1 justify-between px-3 text-xs shadow-none">
                 <span>Ready</span>
                 <span className="text-muted-foreground">{readyPlayers.length}</span>
               </ToggleGroupItem>
@@ -721,9 +873,9 @@ export default function BalancerMainPage() {
         {/* Stats Summary Strip */}
         <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
           <StatsFilterCard
-            label="Applications"
+            label="Available"
             value={applications.length}
-            helperText={`${addableApplications.length} ready to add`}
+            helperText={`${addableApplications.length} ready to include`}
             icon={Search}
             iconClassName="bg-primary/10 text-primary"
             active={activeSidebarSummary === "applications"}

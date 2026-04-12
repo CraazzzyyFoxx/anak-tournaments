@@ -8,6 +8,7 @@ from src import models, schemas
 from src.core import auth, db, pagination
 from src.schemas.admin import user as admin_schemas
 from src.services.admin import user as admin_service
+from src.services.user import flows as user_flows
 
 
 def get_s3(request: Request) -> S3Client:
@@ -44,7 +45,9 @@ async def create_user(
 ):
     """Create a new user (admin only)"""
     created_user = await admin_service.create_user(session, data)
-    return schemas.UserRead.model_validate(created_user, from_attributes=True)
+    return await user_flows.to_pydantic(
+        session, created_user, ["discord", "battle_tag", "twitch"]
+    )
 
 
 @router.patch("/{user_id}", response_model=schemas.UserRead)
@@ -56,7 +59,9 @@ async def update_user(
 ):
     """Update user fields (admin only)"""
     updated_user = await admin_service.update_user(session, user_id, data)
-    return schemas.UserRead.model_validate(updated_user, from_attributes=True)
+    return await user_flows.to_pydantic(
+        session, updated_user, ["discord", "battle_tag", "twitch"]
+    )
 
 
 @router.delete("/{user_id}", status_code=204)
@@ -213,8 +218,10 @@ async def upload_user_avatar(
 
     player_user.avatar_url = result.public_url
     await session.commit()
-    await session.refresh(player_user)
-    return schemas.UserRead.model_validate(player_user, from_attributes=True)
+    player_user = await admin_service.get_user_or_404(session, user_id)
+    return await user_flows.to_pydantic(
+        session, player_user, ["discord", "battle_tag", "twitch"]
+    )
 
 
 @router.delete("/{user_id}/avatar", response_model=schemas.UserRead)
@@ -229,5 +236,7 @@ async def delete_user_avatar(
     await s3.delete_prefix(f"avatars/players/{user_id}/")
     player_user.avatar_url = None
     await session.commit()
-    await session.refresh(player_user)
-    return schemas.UserRead.model_validate(player_user, from_attributes=True)
+    player_user = await admin_service.get_user_or_404(session, user_id)
+    return await user_flows.to_pydantic(
+        session, player_user, ["discord", "battle_tag", "twitch"]
+    )

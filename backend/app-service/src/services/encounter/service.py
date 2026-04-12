@@ -55,6 +55,20 @@ match_jsonb_object = sa.func.jsonb_build_object(
 )
 
 
+def _team_encounter_match_identity(
+    row: typing.Sequence[typing.Any],
+) -> tuple[int, int, int | None]:
+    team, encounter, match, *_ = row
+    return team.id, encounter.id, match.id if match is not None else None
+
+
+def _encounter_match_identity(
+    row: typing.Sequence[typing.Any],
+) -> tuple[int, int | None]:
+    encounter, match, *_ = row
+    return encounter.id, match.id if match is not None else None
+
+
 def encounter_entities(
     in_entities: list[str], child: typing.Any | None = None
 ) -> list[_AbstractLoad]:
@@ -77,23 +91,45 @@ def encounter_entities(
                 utils.prepare_entities(in_entities, "tournament"), tournament_entity
             )
         )
+    if "stage" in in_entities:
+        stage_entity = utils.join_entity(child, models.Encounter.stage)
+        entities.append(stage_entity)
+        stage_items_entity = utils.join_entity(stage_entity, models.Stage.items)
+        entities.append(stage_items_entity)
+        entities.append(utils.join_entity(stage_items_entity, models.StageItem.inputs))
+    if "stage_item" in in_entities:
+        stage_item_entity = utils.join_entity(child, models.Encounter.stage_item)
+        entities.append(stage_item_entity)
+        entities.append(utils.join_entity(stage_item_entity, models.StageItem.inputs))
     if "tournament_group" in in_entities:
         entities.append(utils.join_entity(child, models.Encounter.tournament_group))
     if "group" in in_entities:
         entities.append(utils.join_entity(child, models.Encounter.tournament_group))
-    if "teams" in in_entities:
+    include_teams = "teams" in in_entities
+    include_home_team = include_teams or "home_team" in in_entities
+    include_away_team = include_teams or "away_team" in in_entities
+    if include_home_team:
         home_team_entity = utils.join_entity(child, models.Encounter.home_team)
-        away_team_entity = utils.join_entity(child, models.Encounter.away_team)
         entities.append(home_team_entity)
+        home_team_entities = (
+            utils.prepare_entities(in_entities, "teams")
+            if include_teams
+            else utils.prepare_entities(in_entities, "home_team")
+        )
+        entities.extend(
+            team_service.team_entities(home_team_entities, home_team_entity)
+        )
+    if include_away_team:
+        away_team_entity = utils.join_entity(child, models.Encounter.away_team)
         entities.append(away_team_entity)
         entities.extend(
             team_service.team_entities(
-                utils.prepare_entities(in_entities, "teams"), home_team_entity
-            )
-        )
-        entities.extend(
-            team_service.team_entities(
-                utils.prepare_entities(in_entities, "teams"), away_team_entity
+                (
+                    utils.prepare_entities(in_entities, "teams")
+                    if include_teams
+                    else utils.prepare_entities(in_entities, "away_team")
+                ),
+                away_team_entity,
             )
         )
     if "matches" in in_entities:
@@ -123,19 +159,33 @@ def match_entities(
     """
     entities = []
 
-    if "teams" in in_entities:
+    include_teams = "teams" in in_entities
+    include_home_team = include_teams or "home_team" in in_entities
+    include_away_team = include_teams or "away_team" in in_entities
+    if include_home_team:
         home_team_entity = utils.join_entity(child, models.Match.home_team)
-        away_team_entity = utils.join_entity(child, models.Match.away_team)
         entities.append(home_team_entity)
+        entities.extend(
+            team_service.team_entities(
+                (
+                    utils.prepare_entities(in_entities, "teams")
+                    if include_teams
+                    else utils.prepare_entities(in_entities, "home_team")
+                ),
+                home_team_entity,
+            )
+        )
+    if include_away_team:
+        away_team_entity = utils.join_entity(child, models.Match.away_team)
         entities.append(away_team_entity)
         entities.extend(
             team_service.team_entities(
-                utils.prepare_entities(in_entities, "teams"), home_team_entity
-            )
-        )
-        entities.extend(
-            team_service.team_entities(
-                utils.prepare_entities(in_entities, "teams"), away_team_entity
+                (
+                    utils.prepare_entities(in_entities, "teams")
+                    if include_teams
+                    else utils.prepare_entities(in_entities, "away_team")
+                ),
+                away_team_entity,
             )
         )
     if "encounter" in in_entities:
@@ -181,6 +231,8 @@ def join_encounter_entities(query: sa.Select, in_entities: list[str]) -> sa.Sele
             models.TournamentGroup,
             models.Encounter.tournament_group_id == models.TournamentGroup.id,
         )
+    if "stage" in in_entities:
+        query = query.join(models.Stage, models.Encounter.stage_id == models.Stage.id)
 
     return query
 
@@ -205,7 +257,7 @@ async def get_match(
         .options(*match_entities(entities))
     )
     result = await session.execute(query)
-    return result.scalars().first()
+    return result.unique().scalars().first()
 
 
 async def get_by_user_with_teams(
@@ -293,7 +345,7 @@ async def get_by_user_with_teams(
     )
 
     result = await session.execute(query)
-    return result.all()  # type: ignore
+    return result.unique(_team_encounter_match_identity).all()  # type: ignore
 
 
 async def get_by_user(
@@ -411,7 +463,7 @@ async def get_by_user(
     query = params.apply_sort(query)
     result = await session.execute(query)
     total_result = await session.execute(total_query)
-    return result.all(), total_result.scalar_one()  # type: ignore
+    return result.unique(_encounter_match_identity).all(), total_result.scalar_one()  # type: ignore
 
 
 async def get_encounter(
@@ -434,7 +486,7 @@ async def get_encounter(
         .where(sa.and_(models.Encounter.id == id))
     )
     result = await session.execute(query)
-    return result.scalars().first()
+    return result.unique().scalars().first()
 
 
 async def get_all_encounters(
@@ -571,7 +623,7 @@ async def get_by_team(
     )
     query = join_encounter_entities(query, entities)
     result = await session.execute(query)
-    return result.scalars().all()
+    return result.unique().scalars().all()
 
 
 async def get_by_team_group(
@@ -604,7 +656,7 @@ async def get_by_team_group(
     )
     query = join_encounter_entities(query, entities)
     result = await session.execute(query)
-    return result.scalars().all()
+    return result.unique().scalars().all()
 
 
 async def get_all_matches(
@@ -703,4 +755,4 @@ async def get_match_bulk(
         .options(*match_entities(entities))
     )
     result = await session.execute(query)
-    return result.scalars().all()
+    return result.unique().scalars().all()

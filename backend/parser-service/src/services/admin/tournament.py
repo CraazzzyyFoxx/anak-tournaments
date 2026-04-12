@@ -1,20 +1,47 @@
 """Admin service layer for tournament CRUD operations"""
 
+from urllib.parse import urlparse
+
 from fastapi import HTTPException, status
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared.core import tournament_state
+from shared.core.enums import TournamentStatus
 from src import models
 from src.schemas.admin import tournament as admin_schemas
+from src.services.challonge import service as challonge_service
+
+
+def _normalize_challonge_slug(value: str) -> str:
+    slug = value.strip()
+    if not slug:
+        return ""
+
+    if "://" not in slug and "." not in slug:
+        return slug.strip("/")
+
+    candidate = slug if "://" in slug else f"https://{slug}"
+    parsed = urlparse(candidate)
+    if "challonge.com" in parsed.netloc:
+        path = parsed.path.strip("/")
+        if path:
+            return path.split("/")[-1]
+
+    return slug.strip("/").split("/")[-1]
 
 
 async def get_tournament(session: AsyncSession, tournament_id: int) -> models.Tournament:
-    """Get one tournament with groups loaded for admin workspaces."""
+    """Get one tournament with stages loaded for admin workspaces."""
     result = await session.execute(
         select(models.Tournament)
         .where(models.Tournament.id == tournament_id)
-        .options(selectinload(models.Tournament.groups))
+        .options(
+            selectinload(models.Tournament.stages)
+            .selectinload(models.Stage.items)
+            .selectinload(models.StageItem.inputs)
+        )
     )
     tournament = result.scalar_one_or_none()
 
@@ -46,9 +73,7 @@ async def create_tournament(session: AsyncSession, data: admin_schemas.Tournamen
 
     session.add(tournament)
     await session.commit()
-    await session.refresh(tournament)
-
-    return tournament
+    return await get_tournament(session, tournament.id)
 
 
 async def update_tournament(
@@ -59,7 +84,11 @@ async def update_tournament(
     result = await session.execute(
         select(models.Tournament)
         .where(models.Tournament.id == tournament_id)
-        .options(selectinload(models.Tournament.groups))
+        .options(
+            selectinload(models.Tournament.stages)
+            .selectinload(models.Stage.items)
+            .selectinload(models.StageItem.inputs)
+        )
     )
     tournament = result.scalar_one_or_none()
 
@@ -68,13 +97,22 @@ async def update_tournament(
 
     # Update fields
     update_data = data.model_dump(exclude_unset=True)
+    if "challonge_slug" in update_data:
+        raw_slug = update_data.pop("challonge_slug")
+        if raw_slug:
+            challonge_slug = _normalize_challonge_slug(raw_slug)
+            challonge_tournament = await challonge_service.fetch_tournament(challonge_slug)
+            tournament.challonge_slug = challonge_tournament.url
+            tournament.challonge_id = challonge_tournament.id
+        else:
+            tournament.challonge_slug = None
+            tournament.challonge_id = None
+
     for field, value in update_data.items():
         setattr(tournament, field, value)
 
     await session.commit()
-    await session.refresh(tournament)
-
-    return tournament
+    return await get_tournament(session, tournament_id)
 
 
 async def delete_tournament(session: AsyncSession, tournament_id: int) -> None:
@@ -91,11 +129,15 @@ async def delete_tournament(session: AsyncSession, tournament_id: int) -> None:
 
 
 async def toggle_finished(session: AsyncSession, tournament_id: int) -> models.Tournament:
-    """Toggle tournament is_finished flag"""
+    """Toggle tournament is_finished flag (legacy — prefer transition_status)"""
     result = await session.execute(
         select(models.Tournament)
         .where(models.Tournament.id == tournament_id)
-        .options(selectinload(models.Tournament.groups))
+        .options(
+            selectinload(models.Tournament.stages)
+            .selectinload(models.Stage.items)
+            .selectinload(models.StageItem.inputs)
+        )
     )
     tournament = result.scalar_one_or_none()
 
@@ -103,74 +145,44 @@ async def toggle_finished(session: AsyncSession, tournament_id: int) -> models.T
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
     tournament.is_finished = not tournament.is_finished
+    tournament.status = (
+        TournamentStatus.COMPLETED if tournament.is_finished else TournamentStatus.LIVE
+    )
 
     await session.commit()
-    await session.refresh(tournament)
-
-    return tournament
+    return await get_tournament(session, tournament_id)
 
 
-# ─── Tournament Group Management ─────────────────────────────────────────────
-
-
-async def create_group(
-    session: AsyncSession, tournament_id: int, data: admin_schemas.TournamentGroupCreate
-) -> models.TournamentGroup:
-    """Create a new tournament group"""
-    # Verify tournament exists
-    result = await session.execute(select(models.Tournament).where(models.Tournament.id == tournament_id))
+async def transition_status(
+    session: AsyncSession,
+    tournament_id: int,
+    target_status: TournamentStatus,
+    *,
+    force: bool = False,
+) -> models.Tournament:
+    """Transition tournament to a new status with state machine validation."""
+    result = await session.execute(
+        select(models.Tournament)
+        .where(models.Tournament.id == tournament_id)
+        .options(
+            selectinload(models.Tournament.stages)
+            .selectinload(models.Stage.items)
+            .selectinload(models.StageItem.inputs)
+        )
+    )
     tournament = result.scalar_one_or_none()
 
     if not tournament:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
-    # Create group
-    group = models.TournamentGroup(tournament_id=tournament_id, **data.model_dump())
+    if not force:
+        tournament_state.validate_transition(tournament.status, target_status)
 
-    session.add(group)
-    await session.commit()
-    await session.refresh(group)
-
-    return group
-
-
-async def update_group(
-    session: AsyncSession, tournament_id: int, group_id: int, data: admin_schemas.TournamentGroupUpdate
-) -> models.TournamentGroup:
-    """Update tournament group"""
-    result = await session.execute(
-        select(models.TournamentGroup).where(
-            models.TournamentGroup.id == group_id, models.TournamentGroup.tournament_id == tournament_id
-        )
-    )
-    group = result.scalar_one_or_none()
-
-    if not group:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament group not found")
-
-    # Update fields
-    update_data = data.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(group, field, value)
+    tournament.status = target_status
+    tournament.is_finished = tournament_state.is_finished_for_status(target_status)
 
     await session.commit()
-    await session.refresh(group)
-
-    return group
+    return await get_tournament(session, tournament_id)
 
 
-async def delete_group(session: AsyncSession, tournament_id: int, group_id: int) -> None:
-    """Delete tournament group"""
-    result = await session.execute(
-        select(models.TournamentGroup).where(
-            models.TournamentGroup.id == group_id, models.TournamentGroup.tournament_id == tournament_id
-        )
-    )
-    group = result.scalar_one_or_none()
-
-    if not group:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament group not found")
-
-    await session.execute(delete(models.Standing).where(models.Standing.group_id == group_id))
-    await session.delete(group)
-    await session.commit()
+# ─── Tournament Group Management ─────────────────────────────────────────────

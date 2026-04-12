@@ -30,7 +30,7 @@ async def create(
     return await tournament_flows.to_pydantic(session, tournament, [])
 
 
-@router.post(path="/create/with_groups")
+@router.post(path="/create/with_groups", response_model=schemas.TournamentRead)
 async def create_with_groups(
     number: int,
     challonge_slug: str,
@@ -39,6 +39,7 @@ async def create_with_groups(
     end_date: date,
     session=Depends(db.get_async_session),
 ):
-    return await tournament_flows.create_with_groups(
+    tournament = await tournament_flows.create_with_groups(
         session, number, is_league, start_date, end_date, challonge_slug
     )
+    return await tournament_flows.to_pydantic(session, tournament, [])

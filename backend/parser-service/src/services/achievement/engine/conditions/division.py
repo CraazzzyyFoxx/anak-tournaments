@@ -107,10 +107,14 @@ async def execute_div_change(
         if not current_div or not prev_div:
             continue
 
-        shift = current_div.number - prev_div.number
-        if direction == "up" and shift >= min_shift:
-            results.add((user_id, tournament_id))
-        elif direction == "down" and shift <= -min_shift:
+        # Division numbers: lower = better (div 1 = top, div 20 = bottom).
+        # "up" = improvement: prev_div.number > current_div.number
+        # "down" = degradation: current_div.number > prev_div.number
+        if direction == "up":
+            shift = prev_div.number - current_div.number
+        else:
+            shift = current_div.number - prev_div.number
+        if shift >= min_shift:
             results.add((user_id, tournament_id))
 
     return results

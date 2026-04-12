@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core import enums, auth
+from src.core import enums, auth, db
 
 from src.services.challonge import service as challonge_service
+from src.services.challonge import sync as challonge_sync
 
 router = APIRouter(
     prefix="/challonge",
@@ -24,3 +26,57 @@ async def get_participants_from_challonge(tournament_id: int):
 @router.get(path="/matches")
 async def get_matches_from_challonge(tournament_id: int):
     return await challonge_service.fetch_matches(tournament_id)
+
+
+# ── Bidirectional sync ───────────────────────────────────────────────────────
+
+
+@router.post(path="/sync/import/{tournament_id}")
+async def import_from_challonge(
+    tournament_id: int,
+    session: AsyncSession = Depends(db.get_async_session),
+):
+    """Full import: pull matches from Challonge and update local encounters."""
+    return await challonge_sync.import_tournament(session, tournament_id)
+
+
+@router.post(path="/sync/export/{tournament_id}")
+async def export_to_challonge(
+    tournament_id: int,
+    session: AsyncSession = Depends(db.get_async_session),
+):
+    """Full export: push all completed encounter results to Challonge."""
+    return await challonge_sync.export_tournament(session, tournament_id)
+
+
+@router.post(path="/sync/push-result/{encounter_id}")
+async def push_single_result(
+    encounter_id: int,
+    session: AsyncSession = Depends(db.get_async_session),
+):
+    """Push a single encounter result to Challonge."""
+    await challonge_sync.auto_push_on_confirm(session, encounter_id)
+    return {"status": "ok"}
+
+
+@router.get(path="/sync/log/{tournament_id}")
+async def get_sync_log(
+    tournament_id: int,
+    limit: int = 50,
+    session: AsyncSession = Depends(db.get_async_session),
+):
+    """View sync history for a tournament."""
+    logs = await challonge_sync.get_sync_log(session, tournament_id, limit)
+    return [
+        {
+            "id": log.id,
+            "created_at": log.created_at,
+            "direction": log.direction,
+            "entity_type": log.entity_type,
+            "entity_id": log.entity_id,
+            "challonge_id": log.challonge_id,
+            "status": log.status,
+            "error_message": log.error_message,
+        }
+        for log in logs
+    ]

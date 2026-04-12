@@ -19,6 +19,8 @@ __all__ = (
     "ConditionTreeValidateRequest",
     "ConditionTreeValidateResponse",
     "EvaluationRunRead",
+    "SeedResultRead",
+    "HardResetResultRead",
     "EvaluateRequest",
     "OverrideCreate",
     "OverrideRead",
@@ -123,6 +125,18 @@ class EvaluationRunRead(BaseModel):
     finished_at: datetime | None
     status: str
     error_message: str | None
+
+
+class SeedResultRead(BaseModel):
+    seeded: int
+    removed: int = 0
+
+
+class HardResetResultRead(BaseModel):
+    seeded: int
+    removed: int
+    cleared_results: int
+    run: EvaluationRunRead
 
 
 class EvaluateRequest(BaseModel):

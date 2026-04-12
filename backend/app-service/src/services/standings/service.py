@@ -24,6 +24,17 @@ def standing_entities(in_entities: list[str]) -> list[_AbstractLoad]:
         entities.append(sa.orm.joinedload(models.Standing.tournament))
     if "group" in in_entities:
         entities.append(sa.orm.joinedload(models.Standing.group))
+    if "stage" in in_entities:
+        stage = sa.orm.joinedload(models.Standing.stage)
+        entities.append(stage)
+        entities.append(stage.joinedload(models.Stage.items))
+        entities.append(
+            stage.joinedload(models.Stage.items).joinedload(models.StageItem.inputs)
+        )
+    if "stage_item" in in_entities:
+        stage_item = sa.orm.joinedload(models.Standing.stage_item)
+        entities.append(stage_item)
+        entities.append(stage_item.joinedload(models.StageItem.inputs))
     if "team" in in_entities:
         team = sa.orm.joinedload(models.Standing.team)
         entities.append(team)
@@ -55,7 +66,12 @@ async def get_by_tournament(
                 models.Standing.tournament_id == tournament.id,
             )
         )
-        .order_by(models.Standing.overall_position)
+        .order_by(
+            models.Standing.overall_position.desc(),
+            models.Standing.stage_id.asc().nullslast(),
+            models.Standing.stage_item_id.asc().nullslast(),
+            models.Standing.position.asc(),
+        )
     )
     result = await session.execute(query)
     return result.unique().scalars().all()

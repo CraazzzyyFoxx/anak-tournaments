@@ -1,9 +1,18 @@
 import { apiFetch } from "@/lib/api-fetch";
 import {
-  AdminApproveResponse,
   AdminRegistration,
+  AdminRegistrationCreateInput,
+  AdminRegistrationExclusionInput,
   AdminRegistrationForm,
   AdminRegistrationFormUpsert,
+  AdminRegistrationUpdateInput,
+  AdminGoogleSheetFeed,
+  AdminGoogleSheetFeedSyncResponse,
+  AdminGoogleSheetFeedUpsertInput,
+  AdminGoogleSheetMappingPreviewInput,
+  AdminGoogleSheetMappingPreviewResponse,
+  AdminGoogleSheetMappingSuggestInput,
+  AdminGoogleSheetMappingSuggestResponse,
   ApplicationUserExportResponse,
   BalanceExportResponse,
   BalanceSaveInput,
@@ -15,24 +24,21 @@ import {
   BalancerPlayerRecord,
   BalancerPlayerRoleSyncResponse,
   BalancerPlayerUpdateInput,
-  BalancerTournamentSheet,
   DuplicateResolution,
   DuplicateStrategy,
   SavedBalance,
-  SheetSyncResponse,
-  TournamentSheetUpsertInput,
 } from "@/types/balancer-admin.types";
 
 export default class balancerAdminService {
-  static async getTournamentSheet(tournamentId: number): Promise<BalancerTournamentSheet | null> {
+  static async getTournamentSheet(tournamentId: number): Promise<AdminGoogleSheetFeed | null> {
     const response = await apiFetch("parser",`admin/balancer/tournaments/${tournamentId}/sheet`);
     return response.json();
   }
 
   static async upsertTournamentSheet(
     tournamentId: number,
-    data: TournamentSheetUpsertInput,
-  ): Promise<BalancerTournamentSheet> {
+    data: AdminGoogleSheetFeedUpsertInput,
+  ): Promise<AdminGoogleSheetFeed> {
     const response = await apiFetch("parser",`admin/balancer/tournaments/${tournamentId}/sheet`, {
       method: "PUT",
       body: data,
@@ -40,10 +46,32 @@ export default class balancerAdminService {
     return response.json();
   }
 
-  static async syncTournamentSheet(tournamentId: number): Promise<SheetSyncResponse> {
+  static async syncTournamentSheet(tournamentId: number): Promise<AdminGoogleSheetFeedSyncResponse> {
     const response = await apiFetch("parser",`admin/balancer/tournaments/${tournamentId}/sheet/sync`, {
       method: "POST",
       body: {},
+    });
+    return response.json();
+  }
+
+  static async suggestTournamentSheetMapping(
+    tournamentId: number,
+    data: AdminGoogleSheetMappingSuggestInput = {},
+  ): Promise<AdminGoogleSheetMappingSuggestResponse> {
+    const response = await apiFetch("parser",`admin/balancer/tournaments/${tournamentId}/sheet/suggest-mapping`, {
+      method: "POST",
+      body: data,
+    });
+    return response.json();
+  }
+
+  static async previewTournamentSheetMapping(
+    tournamentId: number,
+    data: AdminGoogleSheetMappingPreviewInput,
+  ): Promise<AdminGoogleSheetMappingPreviewResponse> {
+    const response = await apiFetch("parser",`admin/balancer/tournaments/${tournamentId}/sheet/preview`, {
+      method: "POST",
+      body: data,
     });
     return response.json();
   }
@@ -210,24 +238,78 @@ export default class balancerAdminService {
 
   static async listRegistrations(
     tournamentId: number,
-    statusFilter?: string,
+    filters?: {
+      status_filter?: string;
+      inclusion_filter?: string;
+      source_filter?: string;
+      include_deleted?: boolean;
+    },
   ): Promise<AdminRegistration[]> {
-    const params = statusFilter ? `?status_filter=${statusFilter}` : "";
-    const response = await apiFetch("parser", `admin/balancer/tournaments/${tournamentId}/registrations${params}`);
+    const response = await apiFetch("parser", `admin/balancer/tournaments/${tournamentId}/registrations`, {
+      query: filters,
+    });
     return response.json();
   }
 
-  static async approveRegistration(registrationId: number): Promise<AdminApproveResponse> {
+  static async createManualRegistration(
+    tournamentId: number,
+    data: AdminRegistrationCreateInput,
+  ): Promise<AdminRegistration> {
+    const response = await apiFetch("parser", `admin/balancer/tournaments/${tournamentId}/registrations`, {
+      method: "POST",
+      body: data,
+    });
+    return response.json();
+  }
+
+  static async updateRegistration(
+    registrationId: number,
+    data: AdminRegistrationUpdateInput,
+  ): Promise<AdminRegistration> {
+    const response = await apiFetch("parser", `admin/balancer/registrations/${registrationId}`, {
+      method: "PATCH",
+      body: data,
+    });
+    return response.json();
+  }
+
+  static async approveRegistration(registrationId: number): Promise<AdminRegistration> {
     const response = await apiFetch("parser", `admin/balancer/registrations/${registrationId}/approve`, {
       method: "PATCH",
     });
     return response.json();
   }
 
-  static async rejectRegistration(registrationId: number): Promise<void> {
-    await apiFetch("parser", `admin/balancer/registrations/${registrationId}/reject`, {
+  static async rejectRegistration(registrationId: number): Promise<AdminRegistration> {
+    const response = await apiFetch("parser", `admin/balancer/registrations/${registrationId}/reject`, {
       method: "PATCH",
     });
+    return response.json();
+  }
+
+  static async setRegistrationExclusion(
+    registrationId: number,
+    data: AdminRegistrationExclusionInput,
+  ): Promise<AdminRegistration> {
+    const response = await apiFetch("parser", `admin/balancer/registrations/${registrationId}/exclusion`, {
+      method: "PATCH",
+      body: data,
+    });
+    return response.json();
+  }
+
+  static async withdrawRegistration(registrationId: number): Promise<AdminRegistration> {
+    const response = await apiFetch("parser", `admin/balancer/registrations/${registrationId}/withdraw`, {
+      method: "PATCH",
+    });
+    return response.json();
+  }
+
+  static async restoreRegistration(registrationId: number): Promise<AdminRegistration> {
+    const response = await apiFetch("parser", `admin/balancer/registrations/${registrationId}/restore`, {
+      method: "PATCH",
+    });
+    return response.json();
   }
 
   static async deleteRegistration(registrationId: number): Promise<void> {

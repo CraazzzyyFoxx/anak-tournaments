@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowUpRight, Check, ChevronsUpDown, LogOut, Search } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Check, ChevronsUpDown, LogOut, Search } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -229,6 +229,23 @@ export function AdminSidebar() {
             </SidebarMenu>
           </>
         )}
+
+        {/* Back to site */}
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              asChild
+              size="sm"
+              tooltip="Back to site"
+              className="h-7 rounded-md px-2.5 text-[12px] text-sidebar-foreground/40 hover:text-sidebar-foreground/70 hover:bg-sidebar-accent/40"
+            >
+              <Link href="/">
+                <ArrowLeft className="size-4 text-sidebar-foreground/30" />
+                <span>Back to site</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
 
         {/* User profile — Clerk-style with workspace in dropdown */}
         <div className="mt-1">

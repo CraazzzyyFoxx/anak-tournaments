@@ -22,11 +22,36 @@ class DiffResult:
     to_delete: list[int]  # IDs of evaluation_result rows to remove
 
 
+@dataclass(frozen=True)
+class EvaluationSlice:
+    """Scope a diff to a single tournament or match."""
+
+    tournament_id: int | None = None
+    match_id: int | None = None
+
+    def query_filters(self) -> list[sa.ColumnElement[bool]]:
+        filters: list[sa.ColumnElement[bool]] = []
+        if self.tournament_id is not None:
+            filters.append(AchievementEvaluationResult.tournament_id == self.tournament_id)
+        if self.match_id is not None:
+            filters.append(AchievementEvaluationResult.match_id == self.match_id)
+        return filters
+
+    def contains_key(self, key: tuple[int, ...]) -> bool:
+        _user_id, tournament_id, match_id = key
+        if self.tournament_id is not None and tournament_id != self.tournament_id:
+            return False
+        if self.match_id is not None and match_id != self.match_id:
+            return False
+        return True
+
+
 async def diff_and_apply(
     session: AsyncSession,
     rule: AchievementRule,
     new_results: ResultSet,
     run_id: str,
+    evaluation_slice: EvaluationSlice | None = None,
 ) -> DiffResult:
     """Compare new results with stored results and apply changes.
 
@@ -39,6 +64,8 @@ async def diff_and_apply(
         AchievementEvaluationResult.tournament_id,
         AchievementEvaluationResult.match_id,
     ).where(AchievementEvaluationResult.achievement_rule_id == rule.id)
+    if evaluation_slice is not None:
+        existing_query = existing_query.where(*evaluation_slice.query_filters())
 
     existing_rows = await session.execute(existing_query)
 
@@ -54,6 +81,8 @@ async def diff_and_apply(
     new_keys: dict[tuple[int, ...], tuple[int, ...]] = {}
     for result_tuple in new_results:
         key = _normalize_tuple(result_tuple)
+        if evaluation_slice is not None and not evaluation_slice.contains_key(key):
+            continue
         new_keys[key] = result_tuple
 
     new_key_set = set(new_keys.keys())

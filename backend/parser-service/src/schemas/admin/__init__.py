@@ -1,4 +1,5 @@
 from .tournament import *
+from .stage import *
 from .team import *
 from .encounter import *
 from .standing import *
@@ -13,8 +14,6 @@ __all__ = (
     # Tournament schemas
     "TournamentCreate",
     "TournamentUpdate",
-    "TournamentGroupCreate",
-    "TournamentGroupUpdate",
     # Team schemas
     "TeamCreate",
     "TeamUpdate",

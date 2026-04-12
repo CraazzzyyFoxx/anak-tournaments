@@ -29,7 +29,7 @@ export default class userService {
     }).then((res) => res.json());
   }
   static async getUserByName(name: string): Promise<User> {
-    return apiFetch("app",`users/${name}`, {
+    return apiFetch("app", `users/${encodeURIComponent(name)}`, {
       query: {
         entities: ["twitch", "discord", "battle_tag"]
       }
@@ -130,7 +130,7 @@ export default class userService {
         per_page: perPage,
         sort: sort,
         order: order,
-        entities: ["tournament", "matches.map", "tournament_group"]
+        entities: ["tournament", "stage", "stage_item", "matches.map"]
       }
     }).then((res) => res.json());
   }

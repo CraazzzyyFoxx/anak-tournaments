@@ -3,13 +3,14 @@ from __future__ import annotations
 import json
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models, schemas
 from src.core import auth, db
 from src.schemas.admin import balancer as admin_schemas
-from src.services.admin import balancer as balancer_service
+from src.services.admin import balancer as legacy_balancer_service
+from src.services.admin import balancer_registration as registration_service
 from src.services.team import flows as team_flows
 
 router = APIRouter(
@@ -19,53 +20,116 @@ router = APIRouter(
 )
 
 
-@router.get("/tournaments/{tournament_id}/sheet", response_model=admin_schemas.BalancerTournamentSheetRead | None)
+@router.get(
+    "/tournaments/{tournament_id}/sheet",
+    response_model=admin_schemas.BalancerGoogleSheetFeedRead | None,
+)
 async def get_tournament_sheet(
     tournament_id: int,
     session: AsyncSession = Depends(db.get_async_session),
     user: models.AuthUser = Depends(auth.require_permission("team", "read")),
 ):
-    sheet = await balancer_service.get_tournament_sheet(session, tournament_id)
-    if sheet is None:
+    feed = await registration_service.get_google_sheet_feed(session, tournament_id)
+    if feed is None:
         return None
-    return admin_schemas.BalancerTournamentSheetRead.model_validate(sheet, from_attributes=True)
+    return admin_schemas.BalancerGoogleSheetFeedRead.model_validate(feed, from_attributes=True)
 
 
-@router.put("/tournaments/{tournament_id}/sheet", response_model=admin_schemas.BalancerTournamentSheetRead)
+@router.put(
+    "/tournaments/{tournament_id}/sheet",
+    response_model=admin_schemas.BalancerGoogleSheetFeedRead,
+)
 async def upsert_tournament_sheet(
     tournament_id: int,
-    data: admin_schemas.BalancerTournamentSheetUpsert,
+    data: admin_schemas.BalancerGoogleSheetFeedUpsert,
     session: AsyncSession = Depends(db.get_async_session),
     user: models.AuthUser = Depends(auth.require_permission("team", "import")),
 ):
-    sheet = await balancer_service.upsert_tournament_sheet(session, tournament_id, data)
-    return admin_schemas.BalancerTournamentSheetRead.model_validate(sheet, from_attributes=True)
+    feed = await registration_service.upsert_google_sheet_feed(
+        session,
+        tournament_id,
+        source_url=data.source_url,
+        title=data.title,
+        auto_sync_enabled=data.auto_sync_enabled,
+        auto_sync_interval_seconds=data.auto_sync_interval_seconds,
+        mapping_config_json=data.mapping_config_json,
+        value_mapping_json=data.value_mapping_json,
+    )
+    return admin_schemas.BalancerGoogleSheetFeedRead.model_validate(feed, from_attributes=True)
 
 
-@router.post("/tournaments/{tournament_id}/sheet/sync", response_model=admin_schemas.SheetSyncResponse)
+@router.post(
+    "/tournaments/{tournament_id}/sheet/sync",
+    response_model=admin_schemas.BalancerGoogleSheetFeedSyncResponse,
+)
 async def sync_tournament_sheet(
     tournament_id: int,
     session: AsyncSession = Depends(db.get_async_session),
     user: models.AuthUser = Depends(auth.require_permission("team", "import")),
 ):
-    sheet, created, updated, deactivated, total = await balancer_service.sync_tournament_sheet(session, tournament_id)
-    return admin_schemas.SheetSyncResponse(
+    feed, created, updated, withdrawn, total = await registration_service.sync_google_sheet_feed(session, tournament_id)
+    return admin_schemas.BalancerGoogleSheetFeedSyncResponse(
         created=created,
         updated=updated,
-        deactivated=deactivated,
+        withdrawn=withdrawn,
         total=total,
-        sheet=admin_schemas.BalancerTournamentSheetRead.model_validate(sheet, from_attributes=True),
+        feed=admin_schemas.BalancerGoogleSheetFeedRead.model_validate(feed, from_attributes=True),
     )
+
+
+@router.post(
+    "/tournaments/{tournament_id}/sheet/suggest-mapping",
+    response_model=admin_schemas.BalancerGoogleSheetMappingSuggestResponse,
+)
+async def suggest_sheet_mapping(
+    tournament_id: int,
+    data: admin_schemas.BalancerGoogleSheetMappingSuggestRequest,
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_permission("team", "read")),
+):
+    _, headers, mapping = await registration_service.suggest_google_sheet_mapping(
+        session,
+        tournament_id,
+        source_url=data.source_url,
+    )
+    return admin_schemas.BalancerGoogleSheetMappingSuggestResponse(
+        headers=headers,
+        mapping_config_json=mapping,
+    )
+
+
+@router.post(
+    "/tournaments/{tournament_id}/sheet/preview",
+    response_model=admin_schemas.BalancerGoogleSheetMappingPreviewResponse,
+)
+async def preview_sheet_mapping(
+    tournament_id: int,
+    data: admin_schemas.BalancerGoogleSheetMappingPreviewRequest,
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_permission("team", "read")),
+):
+    preview = await registration_service.preview_google_sheet_mapping(
+        session,
+        tournament_id,
+        source_url=data.source_url,
+        mapping_config_json=data.mapping_config_json,
+        value_mapping_json=data.value_mapping_json,
+    )
+    return admin_schemas.BalancerGoogleSheetMappingPreviewResponse(**preview)
 
 
 @router.get("/tournaments/{tournament_id}/applications", response_model=list[admin_schemas.BalancerApplicationRead])
 async def list_applications(
     tournament_id: int,
-    include_inactive: bool = Query(default=False),
+    include_inactive: bool = False,
     session: AsyncSession = Depends(db.get_async_session),
     user: models.AuthUser = Depends(auth.require_permission("team", "read")),
 ):
-    applications = await balancer_service.list_applications(session, tournament_id, include_inactive=include_inactive)
+    applications = await legacy_balancer_service.list_applications(
+        session,
+        tournament_id,
+        include_inactive=include_inactive,
+    )
     return [
         admin_schemas.BalancerApplicationRead.model_validate(application, from_attributes=True)
         for application in applications
@@ -79,18 +143,18 @@ async def create_players_from_applications(
     session: AsyncSession = Depends(db.get_async_session),
     user: models.AuthUser = Depends(auth.require_permission("player", "create")),
 ):
-    players = await balancer_service.create_players_from_applications(session, tournament_id, data)
+    players = await legacy_balancer_service.create_players_from_applications(session, tournament_id, data)
     return [admin_schemas.BalancerPlayerRead.model_validate(player, from_attributes=True) for player in players]
 
 
 @router.get("/tournaments/{tournament_id}/players", response_model=list[admin_schemas.BalancerPlayerRead])
 async def list_players(
     tournament_id: int,
-    in_pool_only: bool = Query(default=False),
+    in_pool_only: bool = False,
     session: AsyncSession = Depends(db.get_async_session),
     user: models.AuthUser = Depends(auth.require_permission("player", "read")),
 ):
-    players = await balancer_service.list_players(session, tournament_id, in_pool_only=in_pool_only)
+    players = await legacy_balancer_service.list_players(session, tournament_id, in_pool_only=in_pool_only)
     return [admin_schemas.BalancerPlayerRead.model_validate(player, from_attributes=True) for player in players]
 
 
@@ -101,7 +165,7 @@ async def update_player(
     session: AsyncSession = Depends(db.get_async_session),
     user: models.AuthUser = Depends(auth.require_permission("player", "update")),
 ):
-    player = await balancer_service.update_player(session, player_id, data)
+    player = await legacy_balancer_service.update_player(session, player_id, data)
     return admin_schemas.BalancerPlayerRead.model_validate(player, from_attributes=True)
 
 
@@ -111,7 +175,7 @@ async def delete_player(
     session: AsyncSession = Depends(db.get_async_session),
     user: models.AuthUser = Depends(auth.require_permission("player", "delete")),
 ):
-    await balancer_service.delete_player(session, player_id)
+    await legacy_balancer_service.delete_player(session, player_id)
 
 
 @router.post(
@@ -126,7 +190,7 @@ async def preview_player_import(
     user: models.AuthUser = Depends(auth.require_permission("player", "update")),
 ):
     payload = json.loads((await data.read()).decode("utf-8"))
-    return await balancer_service.preview_player_import(
+    return await legacy_balancer_service.preview_player_import(
         session,
         tournament_id,
         payload,
@@ -134,7 +198,10 @@ async def preview_player_import(
     )
 
 
-@router.post("/tournaments/{tournament_id}/players/import", response_model=admin_schemas.BalancerPlayerImportResult)
+@router.post(
+    "/tournaments/{tournament_id}/players/import",
+    response_model=admin_schemas.BalancerPlayerImportResult,
+)
 async def import_players(
     tournament_id: int,
     data: UploadFile = File(...),
@@ -146,7 +213,7 @@ async def import_players(
 ):
     payload = json.loads((await data.read()).decode("utf-8"))
     resolutions = json.loads(resolutions_json) if resolutions_json else None
-    return await balancer_service.import_players(
+    return await legacy_balancer_service.import_players(
         session,
         tournament_id,
         payload,
@@ -162,7 +229,8 @@ async def export_players(
     session: AsyncSession = Depends(db.get_async_session),
     user: models.AuthUser = Depends(auth.require_permission("player", "read")),
 ):
-    return await balancer_service.export_players(session, tournament_id)
+    payload = await registration_service.export_active_registrations(session, tournament_id)
+    return admin_schemas.BalancerPlayerExportResponse(**payload)
 
 
 @router.post(
@@ -174,7 +242,7 @@ async def export_applications_to_users(
     session: AsyncSession = Depends(db.get_async_session),
     user: models.AuthUser = Depends(auth.require_permission("player", "import")),
 ):
-    return await balancer_service.export_applications_to_users(session, tournament_id)
+    return await legacy_balancer_service.export_applications_to_users(session, tournament_id)
 
 
 @router.post(
@@ -186,7 +254,7 @@ async def sync_player_roles_from_applications(
     session: AsyncSession = Depends(db.get_async_session),
     user: models.AuthUser = Depends(auth.require_permission("player", "update")),
 ):
-    return await balancer_service.sync_player_roles_from_applications(session, tournament_id)
+    return await legacy_balancer_service.sync_player_roles_from_applications(session, tournament_id)
 
 
 @router.get("/tournaments/{tournament_id}/balance", response_model=admin_schemas.BalanceRead | None)
@@ -195,7 +263,7 @@ async def get_balance(
     session: AsyncSession = Depends(db.get_async_session),
     user: models.AuthUser = Depends(auth.require_permission("team", "read")),
 ):
-    balance = await balancer_service.get_balance(session, tournament_id)
+    balance = await legacy_balancer_service.get_balance(session, tournament_id)
     if balance is None:
         return None
     return admin_schemas.BalanceRead.model_validate(balance, from_attributes=True)
@@ -208,7 +276,7 @@ async def save_balance(
     session: AsyncSession = Depends(db.get_async_session),
     user: models.AuthUser = Depends(auth.require_permission("team", "import")),
 ):
-    balance = await balancer_service.save_balance(session, tournament_id, data, user)
+    balance = await legacy_balancer_service.save_balance(session, tournament_id, data, user)
     return admin_schemas.BalanceRead.model_validate(balance, from_attributes=True)
 
 
@@ -218,7 +286,7 @@ async def export_balance(
     session: AsyncSession = Depends(db.get_async_session),
     user: models.AuthUser = Depends(auth.require_permission("team", "import")),
 ):
-    balance, removed_teams, imported_teams = await balancer_service.export_balance(session, balance_id)
+    balance, removed_teams, imported_teams = await legacy_balancer_service.export_balance(session, balance_id)
     return admin_schemas.BalanceExportResponse(
         success=True,
         removed_teams=removed_teams,

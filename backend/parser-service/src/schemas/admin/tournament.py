@@ -1,11 +1,12 @@
-from datetime import date
+from datetime import date, datetime
 from pydantic import BaseModel
+
+from shared.core.enums import TournamentStatus
 
 __all__ = (
     "TournamentCreate",
     "TournamentUpdate",
-    "TournamentGroupCreate",
-    "TournamentGroupUpdate",
+    "TournamentStatusTransition",
 )
 
 
@@ -17,8 +18,16 @@ class TournamentCreate(BaseModel):
     name: str
     description: str | None = None
     is_league: bool = False
+    status: TournamentStatus = TournamentStatus.DRAFT
     start_date: date
     end_date: date
+    registration_opens_at: datetime | None = None
+    registration_closes_at: datetime | None = None
+    check_in_opens_at: datetime | None = None
+    check_in_closes_at: datetime | None = None
+    win_points: float = 1.0
+    draw_points: float = 0.5
+    loss_points: float = 0.0
 
 
 class TournamentUpdate(BaseModel):
@@ -27,27 +36,22 @@ class TournamentUpdate(BaseModel):
     number: int | None = None
     name: str | None = None
     description: str | None = None
+    challonge_slug: str | None = None
     is_league: bool | None = None
     is_finished: bool | None = None
     start_date: date | None = None
     end_date: date | None = None
+    registration_opens_at: datetime | None = None
+    registration_closes_at: datetime | None = None
+    check_in_opens_at: datetime | None = None
+    check_in_closes_at: datetime | None = None
+    win_points: float | None = None
+    draw_points: float | None = None
+    loss_points: float | None = None
 
 
-class TournamentGroupCreate(BaseModel):
-    """Schema for creating a tournament group"""
+class TournamentStatusTransition(BaseModel):
+    """Schema for transitioning tournament status"""
 
-    name: str
-    description: str | None = None
-    is_groups: bool = True
-    challonge_id: int | None = None
-    challonge_slug: str | None = None
-
-
-class TournamentGroupUpdate(BaseModel):
-    """Schema for updating a tournament group"""
-
-    name: str | None = None
-    description: str | None = None
-    is_groups: bool | None = None
-    challonge_id: int | None = None
-    challonge_slug: str | None = None
+    status: TournamentStatus
+    force: bool = False

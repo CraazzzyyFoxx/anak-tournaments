@@ -14,7 +14,8 @@ export default class encounterService {
           "teams.placement",
           "teams.players.user",
           "tournament",
-          "tournament_group"
+          "stage",
+          "stage_item"
         ]
       }
     }).then((res) => res.json());
@@ -30,7 +31,8 @@ export default class encounterService {
           "map.gamemode",
           "encounter",
           "encounter.tournament",
-          "encounter.tournament_group"
+          "encounter.stage",
+          "encounter.stage_item"
         ]
       }
     }).then((res) => res.json());
@@ -50,7 +52,7 @@ export default class encounterService {
         query: query,
         sort: sort ?? "id",
         order: order,
-        entities: ["tournament", "tournament_group", "home_team", "away_team"],
+        entities: ["tournament", "stage", "stage_item", "home_team", "away_team"],
         fields: ["name"],
         tournament_id: tournamentId
       }
@@ -75,7 +77,8 @@ export default class encounterService {
           "map.gamemode",
           "encounter",
           "encounter.tournament",
-          "encounter.tournament_group"
+          "encounter.stage",
+          "encounter.stage_item"
         ],
         tournament_id: tournamentId
       }

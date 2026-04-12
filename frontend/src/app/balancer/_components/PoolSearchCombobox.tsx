@@ -155,8 +155,8 @@ export function PoolSearchCombobox({
           <Input
             value={value}
             onChange={(event) => onValueChange(event.target.value)}
-            placeholder="Search players or applications"
-            aria-label="Search players or applications"
+            placeholder="Search registrations"
+            aria-label="Search registrations"
             autoComplete="off"
             disabled={disabled}
             className="h-10 rounded-xl border-border/70 pl-9"
@@ -195,7 +195,7 @@ export function PoolSearchCombobox({
             </div>
 
             <div className="rounded-xl border border-dashed border-border/70 bg-background/80 px-3 py-2 text-xs text-muted-foreground">
-              Search filters both the current pool and active applications that can be added.
+              Search filters both the current pool and approved registrations that can be included.
             </div>
           </div>
         </div>
@@ -204,7 +204,7 @@ export function PoolSearchCombobox({
       {shouldShowSuggestions ? (
         <div className="overflow-hidden rounded-xl border border-border/70 bg-background/95 shadow-sm">
           <div className="flex items-center justify-between border-b border-border/60 px-3 py-2 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-            <span>{showApplicationShelf ? "Applications ready to add" : "Quick results"}</span>
+            <span>{showApplicationShelf ? "Registrations ready to include" : "Quick results"}</span>
             <span>{totalSuggestionCount} results</span>
           </div>
 
@@ -265,7 +265,7 @@ export function PoolSearchCombobox({
 
               {matchingApplications.length > 0 ? (
                 <div className="space-y-1">
-                  <p className="px-2 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">Add to Pool</p>
+                  <p className="px-2 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">Include</p>
                   {matchingApplications.map((application) => {
                     const roleCodes = getApplicationRoleCodes(application);
 
@@ -288,7 +288,7 @@ export function PoolSearchCombobox({
                           </div>
                         </div>
                         <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                          Add
+                          Include
                         </span>
                       </button>
                     );
@@ -299,8 +299,8 @@ export function PoolSearchCombobox({
               {totalSuggestionCount === 0 ? (
                 <div className="px-2 py-6 text-center text-sm text-muted-foreground">
                   {normalizedQuery.length > 0
-                    ? `No players or applications match "${value.trim()}".`
-                    : "No active applications are ready to add right now."}
+                    ? `No registrations match "${value.trim()}".`
+                    : "No approved registrations are ready to include right now."}
                 </div>
               ) : null}
             </div>

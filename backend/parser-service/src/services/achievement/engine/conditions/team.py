@@ -82,10 +82,41 @@ def _player_matches_div_condition(
         return True  # non-div conditions already filtered in SQL
 
     params = condition.get("params", {})
+    if rank is None:
+        return False
     div = grid.resolve_division(rank)
     if not div:
         return False
     return OPERATORS[params["op"]](div.number, params["value"])
+
+
+def _player_matches_condition(
+    player: Any,
+    condition: dict[str, Any],
+    grid,
+) -> bool:
+    if "AND" in condition:
+        return all(_player_matches_condition(player, child, grid) for child in condition["AND"])
+    if "OR" in condition:
+        return any(_player_matches_condition(player, child, grid) for child in condition["OR"])
+
+    ctype = condition.get("type")
+    params = condition.get("params", {})
+
+    if ctype == "player_role":
+        return player.role == HeroClass(params["role"])
+    if ctype == "player_flag":
+        flag = params["flag"]
+        if flag == "primary":
+            return bool(player.primary)
+        if flag == "secondary":
+            return bool(player.secondary)
+        return False
+    if ctype == "player_div":
+        return _player_matches_div_condition(player.rank, condition, grid)
+    if ctype == "is_newcomer":
+        return bool(player.is_newcomer)
+    return True
 
 
 @register("team_players_match")
@@ -184,19 +215,56 @@ async def execute_team_players_match(
         .where(models.Player.is_substitution.is_(False))
     )
 
-    result = await session.execute(players_query)
-    results = {(row[0], row[1]) for row in result}
+    if not (needs_grid and context.grid):
+        result = await session.execute(players_query)
+        return {(row[0], row[1]) for row in result}
 
-    # If sub-condition has player_div, do post-filtering with grid
-    if needs_grid and context.grid:
-        # Re-evaluate: for "all" mode, check that ALL players actually match div condition
-        # This is a refinement since SQL couldn't filter by division
-        # For simplicity, the SQL part already filtered by other conditions;
-        # grid check is applied as additional filter on the qualifying teams
-        pass  # Grid-based filtering for team_players_match is complex;
-        # in practice, div conditions are typically used at the individual level
+    team_players_query = (
+        sa.select(
+            models.Player.user_id,
+            models.Player.team_id,
+            models.Player.tournament_id,
+            models.Player.role,
+            models.Player.primary,
+            models.Player.secondary,
+            models.Player.is_newcomer,
+            models.Player.rank,
+        )
+        .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
+        .where(
+            models.Tournament.workspace_id == context.workspace_id,
+            models.Player.is_substitution.is_(False),
+        )
+    )
 
-    return results
+    if context.tournament:
+        team_players_query = team_players_query.where(models.Player.tournament_id == context.tournament.id)
+
+    team_players_result = await session.execute(team_players_query)
+    grouped_players: dict[tuple[int, int], list[Any]] = {}
+    for row in team_players_result:
+        grouped_players.setdefault((row.team_id, row.tournament_id), []).append(row)
+
+    qualifying_teams: set[tuple[int, int]] = set()
+    for team_key, team_players in grouped_players.items():
+        matching_count = sum(
+            1 for player in team_players
+            if _player_matches_condition(player, sub_condition, context.grid)
+        )
+        total_count = len(team_players)
+        if mode == "all" and matching_count == total_count:
+            qualifying_teams.add(team_key)
+        elif mode == "any" and matching_count >= 1:
+            qualifying_teams.add(team_key)
+        elif mode == "count" and OPERATORS[count_op](matching_count, count_value):
+            qualifying_teams.add(team_key)
+
+    return {
+        (player.user_id, player.tournament_id)
+        for team_key, team_players in grouped_players.items()
+        if team_key in qualifying_teams
+        for player in team_players
+    }
 
 
 @register("captain_property")
@@ -211,6 +279,7 @@ async def execute_captain_property(
     """
     sub_condition = params["condition"]
     sql_filters = _build_player_filter(sub_condition)
+    needs_grid = _needs_grid_check(sub_condition)
 
     # Find captains matching the sub-condition
     captain_query = (
@@ -218,6 +287,11 @@ async def execute_captain_property(
             models.Player.user_id.label("captain_user_id"),
             models.Player.team_id,
             models.Player.tournament_id,
+            models.Player.role,
+            models.Player.primary,
+            models.Player.secondary,
+            models.Player.is_newcomer,
+            models.Player.rank,
         )
         .join(models.Team, models.Team.id == models.Player.team_id)
         .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
@@ -232,7 +306,23 @@ async def execute_captain_property(
     if context.tournament:
         captain_query = captain_query.where(models.Player.tournament_id == context.tournament.id)
 
-    captain_sq = captain_query.subquery("captains")
+    if needs_grid and context.grid:
+        qualifying_captains: list[tuple[int, int, int]] = []
+        captain_result = await session.execute(captain_query)
+        for row in captain_result:
+            if _player_matches_condition(row, sub_condition, context.grid):
+                qualifying_captains.append((row.captain_user_id, row.team_id, row.tournament_id))
+        if not qualifying_captains:
+            return set()
+
+        captain_sq = sa.values(
+            sa.column("captain_user_id", sa.Integer),
+            sa.column("team_id", sa.Integer),
+            sa.column("tournament_id", sa.Integer),
+            name="captains",
+        ).data(qualifying_captains).alias("captains")
+    else:
+        captain_sq = captain_query.subquery("captains")
 
     # Get teammates (excluding captain)
     teammates_query = (

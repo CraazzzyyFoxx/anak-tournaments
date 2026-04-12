@@ -8,6 +8,7 @@ from sqlalchemy.orm import aliased, selectinload
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from shared.division_grid import DivisionGrid, division_case_expr
+from shared.services.achievement_effective import build_effective_achievement_rows_subquery
 
 from src import models
 from src.core import enums, pagination, utils
@@ -390,9 +391,13 @@ def _overview_achievements_count_expr(
     tournament_id: int | None = None,
     grid: DivisionGrid,
 ) -> sa.ScalarSelect:
-    query = sa.select(sa.func.count(sa.distinct(models.AchievementEvaluationResult.achievement_rule_id))).where(
-        models.AchievementEvaluationResult.user_id == user_id_column
+    effective_rows = build_effective_achievement_rows_subquery(
+        user_ids=None,
+        name="overview_effective_achievement_rows",
     )
+    query = sa.select(
+        sa.func.count(sa.distinct(effective_rows.c.achievement_rule_id))
+    ).where(effective_rows.c.user_id == user_id_column)
 
     if role is None and div_min is None and div_max is None and tournament_id is None:
         return query.scalar_subquery()
@@ -401,7 +406,7 @@ def _overview_achievements_count_expr(
     achievement_encounter = aliased(models.Encounter)
     tournament_scope = _compare_tournament_scope_exists(
         user_id_column,
-        models.AchievementEvaluationResult.tournament_id,
+        effective_rows.c.tournament_id,
         role=role,
         div_min=div_min,
         div_max=div_max,
@@ -413,7 +418,7 @@ def _overview_achievements_count_expr(
         .select_from(achievement_match)
         .join(achievement_encounter, achievement_encounter.id == achievement_match.encounter_id)
         .where(
-            achievement_match.id == models.AchievementEvaluationResult.match_id,
+            achievement_match.id == effective_rows.c.match_id,
             _compare_tournament_scope_exists(
                 user_id_column,
                 achievement_encounter.tournament_id,
@@ -990,13 +995,16 @@ async def get_overview_achievements_count(
     if not user_ids:
         return {}
 
+    effective_rows = build_effective_achievement_rows_subquery(
+        user_ids=user_ids,
+        name="overview_achievement_count_rows",
+    )
     query = (
         sa.select(
-            models.AchievementEvaluationResult.user_id,
-            sa.func.count(sa.distinct(models.AchievementEvaluationResult.achievement_rule_id)).label("achievements_count"),
+            effective_rows.c.user_id,
+            sa.func.count(sa.distinct(effective_rows.c.achievement_rule_id)).label("achievements_count"),
         )
-        .where(models.AchievementEvaluationResult.user_id.in_(user_ids))
-        .group_by(models.AchievementEvaluationResult.user_id)
+        .group_by(effective_rows.c.user_id)
     )
 
     result = await session.execute(query)

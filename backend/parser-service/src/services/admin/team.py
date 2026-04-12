@@ -30,6 +30,26 @@ async def get_team(session: AsyncSession, team_id: int) -> models.Team:
     return team
 
 
+async def get_player(session: AsyncSession, player_id: int) -> models.Player:
+    result = await session.execute(
+        select(models.Player)
+        .where(models.Player.id == player_id)
+        .options(
+            selectinload(models.Player.user),
+            selectinload(models.Player.tournament),
+        )
+    )
+    player = result.scalar_one_or_none()
+
+    if not player:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Player not found",
+        )
+
+    return player
+
+
 async def create_team(session: AsyncSession, data: admin_schemas.TeamCreate) -> models.Team:
     """Create a new team"""
     # Verify tournament exists
@@ -51,9 +71,7 @@ async def create_team(session: AsyncSession, data: admin_schemas.TeamCreate) -> 
 
     session.add(team)
     await session.commit()
-    await session.refresh(team)
-
-    return team
+    return await get_team(session, team.id)
 
 
 async def update_team(session: AsyncSession, team_id: int, data: admin_schemas.TeamUpdate) -> models.Team:
@@ -79,9 +97,7 @@ async def update_team(session: AsyncSession, team_id: int, data: admin_schemas.T
         setattr(team, field, value)
 
     await session.commit()
-    await session.refresh(team)
-
-    return team
+    return await get_team(session, team.id)
 
 
 async def delete_team(session: AsyncSession, team_id: int) -> None:
@@ -125,9 +141,7 @@ async def add_player_to_team(session: AsyncSession, team_id: int, data: admin_sc
 
     session.add(player)
     await session.commit()
-    await session.refresh(player)
-
-    return player
+    return await get_player(session, player.id)
 
 
 async def remove_player_from_team(session: AsyncSession, team_id: int, player_id: int) -> None:
@@ -168,9 +182,7 @@ async def create_player(session: AsyncSession, data: admin_schemas.PlayerCreate)
 
     session.add(player)
     await session.commit()
-    await session.refresh(player)
-
-    return player
+    return await get_player(session, player.id)
 
 
 async def update_player(session: AsyncSession, player_id: int, data: admin_schemas.PlayerUpdate) -> models.Player:
@@ -191,9 +203,7 @@ async def update_player(session: AsyncSession, player_id: int, data: admin_schem
         setattr(player, field, value)
 
     await session.commit()
-    await session.refresh(player)
-
-    return player
+    return await get_player(session, player.id)
 
 
 async def delete_player(session: AsyncSession, player_id: int) -> None:

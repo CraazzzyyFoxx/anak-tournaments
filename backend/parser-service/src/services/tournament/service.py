@@ -14,6 +14,12 @@ def tournament_entities(
     entities = []
     if "groups" in in_entities:
         entities.append(utils.join_entity(child, models.Tournament.groups))
+    if "stages" in in_entities:
+        stage_entity = utils.join_entity(child, models.Tournament.stages)
+        stage_items_entity = utils.join_entity(stage_entity, models.Stage.items)
+        entities.append(stage_entity)
+        entities.append(stage_items_entity)
+        entities.append(utils.join_entity(stage_items_entity, models.StageItem.inputs))
     return entities
 
 

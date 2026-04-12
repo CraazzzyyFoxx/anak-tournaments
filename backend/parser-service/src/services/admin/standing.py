@@ -9,23 +9,38 @@ from src import models
 from src.schemas.admin import standing as admin_schemas
 
 
-async def update_standing(
-    session: AsyncSession, standing_id: int, data: admin_schemas.StandingUpdate
-) -> models.Standing:
-    """Update standing fields"""
+async def get_standing(session: AsyncSession, standing_id: int) -> models.Standing:
     result = await session.execute(
         select(models.Standing)
         .where(models.Standing.id == standing_id)
         .options(
             selectinload(models.Standing.team),
             selectinload(models.Standing.group),
+            selectinload(models.Standing.stage)
+            .selectinload(models.Stage.items)
+            .selectinload(models.StageItem.inputs),
+            selectinload(models.Standing.stage_item).selectinload(
+                models.StageItem.inputs
+            ),
             selectinload(models.Standing.tournament),
         )
     )
     standing = result.scalar_one_or_none()
 
     if not standing:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Standing not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Standing not found",
+        )
+
+    return standing
+
+
+async def update_standing(
+    session: AsyncSession, standing_id: int, data: admin_schemas.StandingUpdate
+) -> models.Standing:
+    """Update standing fields"""
+    standing = await get_standing(session, standing_id)
 
     # Update fields
     update_data = data.model_dump(exclude_unset=True)
@@ -33,9 +48,7 @@ async def update_standing(
         setattr(standing, field, value)
 
     await session.commit()
-    await session.refresh(standing)
-
-    return standing
+    return await get_standing(session, standing.id)
 
 
 async def delete_standing(session: AsyncSession, standing_id: int) -> None:

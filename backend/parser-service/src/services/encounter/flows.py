@@ -3,13 +3,131 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from src import models, schemas
-from src.core import enums, errors
+from src.core import enums, errors, utils
 from src.services.challonge import service as challonge_service
+from src.services.map import flows as map_flows
 from src.services.team import flows as team_flows
 from src.services.tournament import flows as tournament_flows
 from src.services.tournament import service as tournament_service
 
 from . import service
+
+
+async def to_pydantic(
+    session: AsyncSession, encounter: models.Encounter, entities: list[str]
+) -> schemas.EncounterRead:
+    stage: schemas.StageRead | None = None
+    stage_item: schemas.StageItemRead | None = None
+    tournament: schemas.TournamentRead | None = None
+    home_team: schemas.TeamRead | None = None
+    away_team: schemas.TeamRead | None = None
+    matches_read: list[schemas.MatchRead] = []
+
+    if "stage" in entities and encounter.stage is not None:
+        stage = schemas.StageRead.model_validate(encounter.stage, from_attributes=True)
+    if "stage_item" in entities and encounter.stage_item is not None:
+        stage_item = schemas.StageItemRead.model_validate(
+            encounter.stage_item, from_attributes=True
+        )
+    if "tournament" in entities and encounter.tournament is not None:
+        tournament = await tournament_flows.to_pydantic(
+            session,
+            encounter.tournament,
+            utils.prepare_entities(entities, "tournament"),
+        )
+    if "teams" in entities or "home_team" in entities:
+        team_entities = (
+            utils.prepare_entities(entities, "teams")
+            if "teams" in entities
+            else utils.prepare_entities(entities, "home_team")
+        )
+        home_team = await team_flows.to_pydantic(
+            session, encounter.home_team, team_entities
+        )
+    if "teams" in entities or "away_team" in entities:
+        team_entities = (
+            utils.prepare_entities(entities, "teams")
+            if "teams" in entities
+            else utils.prepare_entities(entities, "away_team")
+        )
+        away_team = await team_flows.to_pydantic(
+            session, encounter.away_team, team_entities
+        )
+    if "matches" in entities:
+        matches_read = [
+            await to_pydantic_match(
+                session, match, utils.prepare_entities(entities, "matches")
+            )
+            for match in encounter.matches
+        ]
+
+    return schemas.EncounterRead(
+        **encounter.to_dict(),
+        score=schemas.Score(home=encounter.home_score, away=encounter.away_score),
+        stage=stage,
+        stage_item=stage_item,
+        tournament=tournament,
+        home_team=home_team,
+        away_team=away_team,
+        matches=matches_read,
+    )
+
+
+async def to_pydantic_match(
+    session: AsyncSession, match: models.Match, entities: list[str]
+) -> schemas.MatchRead:
+    home_team: schemas.TeamRead | None = None
+    away_team: schemas.TeamRead | None = None
+    encounter_read: schemas.EncounterRead | None = None
+    map_read: schemas.MapRead | None = None
+
+    if "teams" in entities or "home_team" in entities:
+        team_entities = (
+            utils.prepare_entities(entities, "teams")
+            if "teams" in entities
+            else utils.prepare_entities(entities, "home_team")
+        )
+        home_team = await team_flows.to_pydantic(session, match.home_team, team_entities)
+    if "teams" in entities or "away_team" in entities:
+        team_entities = (
+            utils.prepare_entities(entities, "teams")
+            if "teams" in entities
+            else utils.prepare_entities(entities, "away_team")
+        )
+        away_team = await team_flows.to_pydantic(session, match.away_team, team_entities)
+    if "encounter" in entities and match.encounter is not None:
+        encounter_read = await to_pydantic(
+            session, match.encounter, utils.prepare_entities(entities, "encounter")
+        )
+    if "map" in entities and match.map is not None:
+        map_read = await map_flows.to_pydantic(
+            session, match.map, utils.prepare_entities(entities, "map")
+        )
+
+    return schemas.MatchRead(
+        **match.to_dict(),
+        score=schemas.Score(home=match.home_score, away=match.away_score),
+        home_team=home_team,
+        away_team=away_team,
+        encounter=encounter_read,
+        map=map_read,
+    )
+
+
+async def get_encounter(
+    session: AsyncSession, encounter_id: int, entities: list[str]
+) -> schemas.EncounterRead:
+    encounter = await service.get_encounter(session, encounter_id, entities)
+    if not encounter:
+        raise errors.ApiHTTPException(
+            status_code=404,
+            detail=[
+                errors.ApiExc(
+                    code="not_found", msg=f"Encounter with id {encounter_id} not found"
+                )
+            ],
+        )
+    return await to_pydantic(session, encounter, entities)
 
 
 async def get_by_teams_ids(

@@ -8,6 +8,7 @@ import { Swords, ArrowLeft } from "lucide-react";
 import { SITE_NAME } from "@/config/site";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { MapVeto } from "@/app/(site)/encounters/[id]/components/MapVeto";
 
 export const dynamic = 'force-dynamic';
 
@@ -50,6 +51,7 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
   if (encounter.tournament.is_league) {
     name = encounter.tournament.name;
   }
+  const stageLabel = encounter.stage_item?.name ?? encounter.stage?.name ?? "Unassigned";
 
   return (
     <div className="flex flex-col gap-8">
@@ -70,9 +72,9 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
               <h4 className="scroll-m-20 text-xl font-semibold tracking-tight">{name}</h4>
             </div>
             <div className="flex flex-col">
-              <p className="leading-7 ">Group</p>
+              <p className="leading-7 ">Stage</p>
               <h4 className="scroll-m-20 text-xl font-semibold tracking-tight">
-                {encounter.tournament_group.name}
+                {stageLabel}
               </h4>
             </div>
           </div>
@@ -112,6 +114,7 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
         </Card>
         <EncounterTeamCard team={encounter.away_team} isHome={false} />
       </div>
+      <MapVeto encounterId={encounter.id} />
     </div>
   );
 };

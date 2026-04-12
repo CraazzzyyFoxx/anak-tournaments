@@ -7,8 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import schemas
 from src.core import config
-
-from . import flows
+from src.services.user import flows
 
 battle_tag_validator = re.compile(config.settings.battle_tag_regex, re.UNICODE)
 
@@ -56,10 +55,10 @@ async def create_or_update_player_from_csv(
 
 
 async def initial_parse(session: AsyncSession) -> None:
-    for i in range(3, 4 + 1):
+    for index in range(3, 4 + 1):
         await create_or_update_player_from_csv(
             session,
-            f"answers/{i}.csv",
+            f"answers/{index}.csv",
             battle_tag_row=1,
             discord_row=3,
             twitch_row=2,
@@ -67,11 +66,11 @@ async def initial_parse(session: AsyncSession) -> None:
             has_discord=False,
             has_smurf=False,
         )
-    for i in range(5, 23 + 1):
-        logger.warning(f"Processing {i}")
+    for index in range(5, 23 + 1):
+        logger.warning(f"Processing {index}")
         await create_or_update_player_from_csv(
             session,
-            f"answers/{i}.csv",
+            f"answers/{index}.csv",
             battle_tag_row=1,
             discord_row=4,
             twitch_row=3,
@@ -79,10 +78,10 @@ async def initial_parse(session: AsyncSession) -> None:
             has_discord=False,
             has_smurf=True,
         )
-    for i in range(24, 32 + 1):
+    for index in range(24, 32 + 1):
         await create_or_update_player_from_csv(
             session,
-            f"answers/{i}.csv",
+            f"answers/{index}.csv",
             battle_tag_row=1,
             discord_row=4,
             twitch_row=3,
@@ -100,10 +99,10 @@ async def initial_parse(session: AsyncSession) -> None:
         has_discord=False,
         has_smurf=True,
     )
-    for i in range(34, 37 + 1):
+    for index in range(34, 37 + 1):
         await create_or_update_player_from_csv(
             session,
-            f"answers/{i}.csv",
+            f"answers/{index}.csv",
             battle_tag_row=1,
             discord_row=4,
             twitch_row=3,

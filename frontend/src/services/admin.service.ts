@@ -1,6 +1,6 @@
 import { apiFetch } from "@/lib/api-fetch";
 import { PaginatedResponse } from "@/types/pagination.types";
-import { Tournament, TournamentGroup, Standings } from "@/types/tournament.types";
+import { Tournament, Standings, Stage } from "@/types/tournament.types";
 import { Team, Player } from "@/types/team.types";
 import { Encounter } from "@/types/encounter.types";
 import { User } from "@/types/user.types";
@@ -9,11 +9,14 @@ import { Achievement } from "@/types/achievement.types";
 import { Gamemode } from "@/types/gamemode.types";
 import { MapRead } from "@/types/map.types";
 import {
-  ChallongeTournamentLookup,
   TournamentCreateInput,
   TournamentUpdateInput,
-  TournamentGroupCreateInput,
-  TournamentGroupUpdateInput,
+  TournamentStatusTransitionInput,
+  StageCreateInput,
+  StageUpdateInput,
+  StageItemCreateInput,
+  StageItemInputCreateInput,
+  ChallongeSyncLogEntry,
   TeamCreateInput,
   TeamUpdateInput,
   PlayerCreateInput,
@@ -46,6 +49,7 @@ import {
   ConditionTreeValidateResponse,
   ConditionTypeInfo,
   EvaluationRunRead,
+  HardResetResultRead,
   BulkOperationResult,
   CsvUserImportParams,
   DiscordChannelRead,
@@ -53,6 +57,7 @@ import {
   LogHistoryResponse,
   LogProcessingRecord,
   QueueDepth,
+  SeedResultRead,
 } from "@/types/admin.types";
 
 class AdminService {
@@ -97,57 +102,6 @@ class AdminService {
       query: params,
     });
     return response.json();
-  }
-
-  async lookupChallongeTournament(slug: string): Promise<ChallongeTournamentLookup> {
-    const response = await apiFetch("parser","admin/tournaments/challonge/lookup", {
-      query: { slug }
-    });
-    return response.json();
-  }
-
-  async addTournamentGroup(
-    tournamentId: number,
-    data: TournamentGroupCreateInput
-  ): Promise<TournamentGroup> {
-    const response = await apiFetch("parser",`admin/tournaments/${tournamentId}/groups`, {
-      method: "POST",
-      body: data
-    });
-    return response.json();
-  }
-
-  async updateTournamentGroup(
-    tournamentId: number,
-    groupId: number,
-    data: TournamentGroupUpdateInput
-  ): Promise<TournamentGroup> {
-    const response = await apiFetch("parser",`admin/tournaments/${tournamentId}/groups/${groupId}`, {
-      method: "PATCH",
-      body: data
-    });
-    return response.json();
-  }
-
-  async importGroupsFromChallonge(
-    tournamentId: number,
-    slug: string
-  ): Promise<Tournament> {
-    const response = await apiFetch(
-      "parser",
-      `admin/tournaments/${tournamentId}/groups/import-challonge`,
-      {
-        method: "POST",
-        query: { slug },
-      }
-    );
-    return response.json();
-  }
-
-  async deleteTournamentGroup(tournamentId: number, groupId: number): Promise<void> {
-    await apiFetch("parser",`admin/tournaments/${tournamentId}/groups/${groupId}`, {
-      method: "DELETE"
-    });
   }
 
   async toggleTournamentFinished(tournamentId: number): Promise<Tournament> {
@@ -813,10 +767,19 @@ class AdminService {
     return response.json();
   }
 
-  async seedAchievementRules(workspaceId: number): Promise<{ seeded: number }> {
+  async seedAchievementRules(workspaceId: number): Promise<SeedResultRead> {
     const response = await apiFetch(
       "parser",
       `admin/ws/${workspaceId}/achievements/rules/seed`,
+      { method: "POST" },
+    );
+    return response.json();
+  }
+
+  async hardResetAchievementRules(workspaceId: number): Promise<HardResetResultRead> {
+    const response = await apiFetch(
+      "parser",
+      `admin/ws/${workspaceId}/achievements/rules/reset`,
       { method: "POST" },
     );
     return response.json();
@@ -950,6 +913,121 @@ class AdminService {
 
   async processAllTournamentLogs(tournamentId: number): Promise<{ message: string }> {
     const response = await apiFetch("parser", `logs/${tournamentId}`, { method: "POST" });
+    return response.json();
+  }
+
+  // ─── Tournament Status ──────────────────────────────────────────────────────
+
+  async transitionTournamentStatus(
+    id: number,
+    data: TournamentStatusTransitionInput
+  ): Promise<Tournament> {
+    const response = await apiFetch("parser", `admin/tournaments/${id}/status`, {
+      method: "PATCH",
+      body: data,
+    });
+    return response.json();
+  }
+
+  // ─── Stage Management ───────────────────────────────────────────────────────
+
+  async getStages(tournamentId: number): Promise<Stage[]> {
+    const response = await apiFetch("parser", `admin/stages/tournament/${tournamentId}`);
+    return response.json();
+  }
+
+  async getStage(stageId: number): Promise<Stage> {
+    const response = await apiFetch("parser", `admin/stages/${stageId}`);
+    return response.json();
+  }
+
+  async createStage(tournamentId: number, data: StageCreateInput): Promise<Stage> {
+    const response = await apiFetch("parser", `admin/stages/tournament/${tournamentId}`, {
+      method: "POST",
+      body: data,
+    });
+    return response.json();
+  }
+
+  async updateStage(stageId: number, data: StageUpdateInput): Promise<Stage> {
+    const response = await apiFetch("parser", `admin/stages/${stageId}`, {
+      method: "PATCH",
+      body: data,
+    });
+    return response.json();
+  }
+
+  async deleteStage(stageId: number): Promise<void> {
+    await apiFetch("parser", `admin/stages/${stageId}`, { method: "DELETE" });
+  }
+
+  async createStageItem(stageId: number, data: StageItemCreateInput): Promise<unknown> {
+    const response = await apiFetch("parser", `admin/stages/${stageId}/items`, {
+      method: "POST",
+      body: data,
+    });
+    return response.json();
+  }
+
+  async createStageItemInput(stageItemId: number, data: StageItemInputCreateInput): Promise<unknown> {
+    const response = await apiFetch("parser", `admin/stages/items/${stageItemId}/inputs`, {
+      method: "POST",
+      body: data,
+    });
+    return response.json();
+  }
+
+  async activateStage(stageId: number): Promise<Stage> {
+    const response = await apiFetch("parser", `admin/stages/${stageId}/activate`, {
+      method: "POST",
+    });
+    return response.json();
+  }
+
+  async generateBracket(stageId: number): Promise<{ generated: number }> {
+    const response = await apiFetch("parser", `admin/stages/${stageId}/generate`, {
+      method: "POST",
+    });
+    return response.json();
+  }
+
+  // ─── Admin Map Pool ─────────────────────────────────────────────────────────
+
+  async assignMapPool(encounterId: number, mapIds: number[]): Promise<{ assigned: number }> {
+    const response = await apiFetch("parser", `admin/encounters/${encounterId}/map-pool`, {
+      method: "POST",
+      body: { map_ids: mapIds },
+    });
+    return response.json();
+  }
+
+  // ─── Challonge Sync ─────────────────────────────────────────────────────────
+
+  async challongeImport(tournamentId: number): Promise<Record<string, unknown>> {
+    const response = await apiFetch("parser", `challonge/sync/import/${tournamentId}`, {
+      method: "POST",
+    });
+    return response.json();
+  }
+
+  async challongeExport(tournamentId: number): Promise<Record<string, unknown>> {
+    const response = await apiFetch("parser", `challonge/sync/export/${tournamentId}`, {
+      method: "POST",
+    });
+    return response.json();
+  }
+
+  async challongePushResult(encounterId: number): Promise<{ status: string }> {
+    const response = await apiFetch("parser", `challonge/sync/push-result/${encounterId}`, {
+      method: "POST",
+    });
+    return response.json();
+  }
+
+  async challongeSyncLog(tournamentId: number, limit = 50): Promise<ChallongeSyncLogEntry[]> {
+    const response = await apiFetch("parser", `challonge/sync/log/${tournamentId}`, {
+      query: { limit },
+    });
     return response.json();
   }
 }

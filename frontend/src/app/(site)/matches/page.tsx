@@ -32,6 +32,9 @@ import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { MapRead } from "@/types/map.types";
 import { Match, Score } from "@/types/encounter.types";
 
+const getStageLabel = (match: Match) =>
+  match.encounter?.stage_item?.name ?? match.encounter?.stage?.name ?? "Unassigned";
+
 const columns: ColumnDef<Match>[] = [
   {
     accessorKey: "map",
@@ -64,12 +67,12 @@ const columns: ColumnDef<Match>[] = [
     )
   },
   {
-    accessorKey: "Group",
-    header: "Group",
+    accessorKey: "stage",
+    header: "Stage",
     cell: ({ row }) => (
       <div className="px-3 py-2.5">
         <span className="inline-flex items-center rounded-full bg-white/[0.06] border border-white/[0.08] px-2 py-0.5 text-[11px] text-white/55">
-          {row.original.encounter?.tournament_group.name}
+          {getStageLabel(row.original)}
         </span>
       </div>
     )

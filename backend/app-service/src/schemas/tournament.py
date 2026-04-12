@@ -5,6 +5,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from src.core import enums, pagination
+from src.schemas.stage import StageRead
 from src.schemas import UserRead
 from src.schemas.base import BaseRead
 from src.schemas.division_grid import DivisionGridRead
@@ -38,10 +39,18 @@ class TournamentRead(BaseRead):
     challonge_slug: str | None
     is_league: bool
     is_finished: bool
+    status: enums.TournamentStatus
     start_date: datetime
     end_date: datetime
+    registration_opens_at: datetime | None = None
+    registration_closes_at: datetime | None = None
+    check_in_opens_at: datetime | None = None
+    check_in_closes_at: datetime | None = None
+    win_points: float = 1.0
+    draw_points: float = 0.5
+    loss_points: float = 0.0
 
-    groups: list[TournamentGroupRead]
+    stages: list[StageRead] = []
     participants_count: int | None
     registrations_count: int | None = None
     division_grid: DivisionGridRead | None = Field(

@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, ArrowRight, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, Check, Circle } from "lucide-react";
 
 import PlayerDivisionIcon from "@/components/PlayerDivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -8,69 +8,73 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { BalancerPlayerRecord, BalancerRoleCode } from "@/types/balancer-admin.types";
-import { ROLE_LABELS, isRoleEntryActive, type PlayerValidationIssue } from "@/app/balancer/_components/workspace-helpers";
+import {
+  ROLE_LABELS,
+  isRoleEntryActive,
+  type PlayerValidationIssue,
+} from "@/app/balancer/_components/workspace-helpers";
 
 type PoolPlayerCompactListProps = {
   playerStates: Array<{
     player: BalancerPlayerRecord;
     issues: PlayerValidationIssue[];
   }>;
-  editingPlayerId?: number | null;
+  selectedPlayerId?: number | null;
   onSelectPlayer?: (playerId: number | null) => void;
   maxHeightClassName?: string;
   emptyTitle?: string;
   emptyDescription?: string;
 };
 
+const ROLE_TEXT_ACCENTS: Record<BalancerRoleCode, string> = {
+  tank: "text-sky-300",
+  dps: "text-orange-300",
+  support: "text-emerald-300",
+};
+
 function sortRoleEntries(player: BalancerPlayerRecord) {
   return [...player.role_entries_json].sort((left, right) => left.priority - right.priority);
+}
+
+function splitBattleTag(battleTag: string): { name: string; suffix: string | null } {
+  const hashIndex = battleTag.indexOf("#");
+  if (hashIndex < 0) {
+    return { name: battleTag, suffix: null };
+  }
+
+  return {
+    name: battleTag.slice(0, hashIndex),
+    suffix: battleTag.slice(hashIndex),
+  };
 }
 
 function uniqueRoleCodes(roleCodes: BalancerRoleCode[]): BalancerRoleCode[] {
   return roleCodes.filter((roleCode, index) => roleCodes.indexOf(roleCode) === index);
 }
 
-function RoleIconGroup({ roleCodes }: { roleCodes: BalancerRoleCode[] }) {
+function roleIconTitle(roleCode: BalancerRoleCode): string {
+  return ROLE_LABELS[roleCode];
+}
+
+function RoleIconStrip({ roleCodes }: { roleCodes: BalancerRoleCode[] }) {
   if (roleCodes.length === 0) {
-    return <span className="text-[11px] text-muted-foreground">None</span>;
+    return <span className="text-[11px] text-white/28">No roles</span>;
   }
 
   return (
     <div className="flex items-center gap-1">
       {roleCodes.map((roleCode) => (
-        <span
-          key={roleCode}
-          className="flex h-7 w-7 items-center justify-center rounded-full border border-border/60 bg-background/90 shadow-sm"
-          title={ROLE_LABELS[roleCode]}
-        >
-          <PlayerRoleIcon role={ROLE_LABELS[roleCode]} size={16} />
+        <span key={roleCode} title={roleIconTitle(roleCode)} className="opacity-95">
+          <PlayerRoleIcon role={ROLE_LABELS[roleCode]} size={15} />
         </span>
       ))}
-      <span className="sr-only">{roleCodes.map((roleCode) => ROLE_LABELS[roleCode]).join(", ")}</span>
     </div>
-  );
-}
-
-function StatusBadge({ isValid }: { isValid: boolean }) {
-  return (
-    <Badge
-      variant="outline"
-      className={cn(
-        "h-6 shrink-0 gap-1 rounded-full px-2.5 text-[10px] uppercase tracking-[0.14em]",
-        isValid
-          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-          : "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-200",
-      )}
-    >
-      {isValid ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
-      {isValid ? "Ready" : "Need Fix"}
-    </Badge>
   );
 }
 
 export function PoolPlayerCompactList({
   playerStates,
-  editingPlayerId,
+  selectedPlayerId,
   onSelectPlayer,
   maxHeightClassName = "max-h-[32rem]",
   emptyTitle = "No players match the current filters",
@@ -78,10 +82,10 @@ export function PoolPlayerCompactList({
 }: PoolPlayerCompactListProps) {
   if (playerStates.length === 0) {
     return (
-      <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-border/70 bg-muted/15 px-4 py-8 text-center">
+      <div className="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-8 text-center">
         <div className="space-y-1.5">
-          <p className="text-sm font-medium text-foreground">{emptyTitle}</p>
-          <p className="text-xs text-muted-foreground">{emptyDescription}</p>
+          <p className="text-sm font-medium text-white/88">{emptyTitle}</p>
+          <p className="text-xs text-white/38">{emptyDescription}</p>
         </div>
       </div>
     );
@@ -89,97 +93,76 @@ export function PoolPlayerCompactList({
 
   return (
     <ScrollArea className={cn("min-h-0", maxHeightClassName)}>
-      <div className="space-y-2 pr-3">
+      <div className="space-y-1.5 pr-2">
         {playerStates.map(({ player, issues }) => {
-          const isEditing = player.id === editingPlayerId;
+          const isSelected = player.id === selectedPlayerId;
           const isValid = issues.length === 0;
           const sortedEntries = sortRoleEntries(player);
           const rankedEntries = sortedEntries.filter((entry) => isRoleEntryActive(entry) && entry.rank_value !== null);
           const rankedRoleCodes = uniqueRoleCodes(rankedEntries.map((entry) => entry.role));
           const primaryEntry = rankedEntries[0] ?? sortedEntries[0] ?? null;
           const divisionNumber = primaryEntry?.division_number ?? null;
-          const mismatchIssue = issues.find((issue) => issue.code === "application_role_mismatch");
-          const missingRankIssue = issues.find((issue) => issue.code === "missing_ranked_role");
+          const { name, suffix } = splitBattleTag(player.battle_tag);
+          const primaryRole = primaryEntry?.role ?? null;
           const issueSummary = issues.map((issue) => issue.message).join(" | ");
-          const ariaLabel = `${player.battle_tag}. ${isValid ? "Ready" : "Needs fixes"}${
-            issueSummary ? `. ${issueSummary}` : ""
-          }`;
 
           return (
             <button
               key={player.id}
               type="button"
-              aria-label={ariaLabel}
-              aria-pressed={isEditing}
-              title={issueSummary || `${player.battle_tag} is ready`}
-              onClick={onSelectPlayer ? () => onSelectPlayer(isEditing ? null : player.id) : undefined}
+              title={issueSummary || player.battle_tag}
+              aria-pressed={isSelected}
+              onClick={onSelectPlayer ? () => onSelectPlayer(isSelected ? null : player.id) : undefined}
               className={cn(
-                "w-full rounded-2xl border border-border/70 bg-background/85 p-3 text-left shadow-sm transition-all hover:border-primary/35 hover:bg-background",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                isEditing && "border-primary/50 bg-primary/5 ring-1 ring-primary/25",
+                "grid w-full grid-cols-[20px_auto_minmax(0,1fr)_auto] items-center gap-2 rounded-xl border px-2.5 py-2 text-left transition-all",
+                "border-white/6 bg-white/[0.02] hover:border-white/12 hover:bg-white/[0.04]",
+                isSelected && "border-violet-400/45 bg-violet-500/[0.08] shadow-[0_0_0_1px_rgba(139,92,246,0.18)]",
               )}
             >
-              <div className="flex items-start gap-3">
-                <div className="min-w-0 flex-1 space-y-2.5">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="truncate text-sm font-semibold text-foreground">{player.battle_tag}</span>
-                    {!player.is_in_pool ? (
-                      <Badge variant="outline" className="h-5 rounded-full px-2 text-[10px] uppercase tracking-[0.12em]">
-                        Excluded
-                      </Badge>
-                    ) : null}
-                    {player.is_flex ? (
-                      <Badge variant="secondary" className="h-5 rounded-full px-2 text-[10px] uppercase tracking-[0.12em]">
-                        Flex
-                      </Badge>
-                    ) : null}
-                    {divisionNumber !== null ? (
-                      <span
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border/60 bg-muted/30"
-                        title={`Division ${divisionNumber}`}
-                      >
-                        <PlayerDivisionIcon division={divisionNumber} width={24} height={24} />
-                      </span>
-                    ) : null}
-                  </div>
+              <span
+                className={cn(
+                  "flex h-5 w-5 items-center justify-center rounded-md border text-[10px]",
+                  isSelected
+                    ? "border-violet-300/50 bg-violet-500/18 text-violet-100"
+                    : "border-white/10 bg-black/15 text-white/55",
+                )}
+              >
+                {isSelected ? <Check className="h-3 w-3" /> : <Circle className="h-2.5 w-2.5 fill-current stroke-none" />}
+              </span>
 
-                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-                    <span className="font-medium uppercase tracking-[0.12em] text-foreground/70">Ranked</span>
-                    {rankedRoleCodes.length > 0 ? (
-                      <RoleIconGroup roleCodes={rankedRoleCodes} />
-                    ) : (
-                      <span className="rounded-full border border-border/60 bg-muted/30 px-2 py-1">No ranked roles</span>
-                    )}
-                  </div>
+              <RoleIconStrip roleCodes={rankedRoleCodes} />
 
-                  {mismatchIssue ? (
-                    <div
-                      className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-500/25 bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-900 dark:text-amber-100"
-                      title={mismatchIssue.message}
-                    >
-                      <span className="inline-flex items-center gap-1 font-medium uppercase tracking-[0.12em] text-amber-700 dark:text-amber-200">
-                        <AlertTriangle className="h-3.5 w-3.5" />
-                      </span>
-                      <span className="text-amber-700/80 dark:text-amber-200/80">Applied</span>
-                      <RoleIconGroup roleCodes={mismatchIssue.applicationRoleCodes} />
-                      <ArrowRight className="h-3.5 w-3.5 text-amber-700/70 dark:text-amber-200/70" />
-                      <span className="text-amber-700/80 dark:text-amber-200/80">Balancer</span>
-                      <RoleIconGroup roleCodes={mismatchIssue.playerRoleCodes} />
-                    </div>
-                  ) : null}
-
-                  {missingRankIssue ? (
-                    <div
-                      className="inline-flex items-center gap-1 rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-200"
-                      title={missingRankIssue.message}
-                    >
-                      <AlertTriangle className="h-3.5 w-3.5" />
-                      {missingRankIssue.message}
-                    </div>
+              <div className="min-w-0">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <span className="truncate text-[13px] font-medium text-white/88">{name}</span>
+                  {suffix ? <span className="shrink-0 text-[12px] text-white/28">{suffix}</span> : null}
+                  {!isValid ? <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-300" /> : null}
+                  {player.is_flex ? (
+                    <Badge className="h-5 shrink-0 rounded-full border-violet-300/20 bg-violet-500/12 px-1.5 text-[9px] uppercase tracking-[0.14em] text-violet-200 hover:bg-violet-500/12">
+                      Flex
+                    </Badge>
                   ) : null}
                 </div>
+              </div>
 
-                <StatusBadge isValid={isValid} />
+              <div className="flex items-center gap-2">
+                {divisionNumber != null ? (
+                  <span className="shrink-0" title={`Division ${divisionNumber}`}>
+                    <PlayerDivisionIcon division={divisionNumber} width={20} height={20} />
+                  </span>
+                ) : null}
+                {primaryEntry?.rank_value != null ? (
+                  <span
+                    className={cn(
+                      "min-w-10 text-right text-[13px] font-semibold tabular-nums text-cyan-300",
+                      primaryRole && ROLE_TEXT_ACCENTS[primaryRole],
+                    )}
+                  >
+                    {primaryEntry.rank_value}
+                  </span>
+                ) : (
+                  <span className="text-[12px] text-white/24">-</span>
+                )}
               </div>
             </button>
           );

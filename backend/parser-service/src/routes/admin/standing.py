@@ -7,6 +7,7 @@ from src import models, schemas
 from src.core import auth, db
 from src.schemas.admin import standing as admin_schemas
 from src.services.admin import standing as admin_service
+from src.services.standings import flows as standings_flows
 
 router = APIRouter(
     prefix="/standings",
@@ -23,7 +24,9 @@ async def update_standing(
 ):
     """Update standing fields (admin/organizer only)"""
     standing = await admin_service.update_standing(session, standing_id, data)
-    return schemas.StandingRead.model_validate(standing, from_attributes=True)
+    return await standings_flows.to_pydantic(
+        session, standing, ["team", "stage", "stage_item", "tournament"]
+    )
 
 
 @router.delete("/{standing_id}", status_code=204)

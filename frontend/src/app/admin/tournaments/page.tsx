@@ -57,6 +57,7 @@ function getTournamentEditForm(tournament: Tournament): TournamentUpdateInput {
   return {
     name: tournament.name,
     description: tournament.description || "",
+    challonge_slug: tournament.challonge_slug || "",
     is_finished: tournament.is_finished,
     start_date: new Date(tournament.start_date).toISOString().split("T")[0],
     end_date: new Date(tournament.end_date).toISOString().split("T")[0],
@@ -195,9 +196,15 @@ export default function TournamentsPage() {
   const handleSubmitUpdate = (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedTournament) {
+      const payload = formData as TournamentUpdateInput;
       updateMutation.mutate({
         id: selectedTournament.id,
-        data: formData as TournamentUpdateInput
+        data: {
+          ...payload,
+          challonge_slug: payload.challonge_slug
+            ? normalizeChallongeSlug(payload.challonge_slug)
+            : null,
+        }
       });
     }
   };
@@ -487,6 +494,18 @@ export default function TournamentsPage() {
               id="edit-description"
               value={formData.description ?? ""}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="edit-challonge-slug">Challonge URL or Slug</Label>
+            <Input
+              id="edit-challonge-slug"
+              placeholder="e.g. my-tournament or https://challonge.com/my-tournament"
+              value={(formData as TournamentUpdateInput).challonge_slug ?? ""}
+              onChange={(e) =>
+                setFormData({ ...formData, challonge_slug: e.target.value })
+              }
             />
           </div>
 

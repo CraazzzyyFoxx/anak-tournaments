@@ -525,3 +525,42 @@ async def list_oauth_connections(
         )
         for conn in connections
     ]
+
+
+@router.delete("/oauth-connections/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_oauth_connection(
+    connection_id: int,
+    session: Annotated[AsyncSession, Depends(db.get_async_session)],
+    current_user: Annotated[models.AuthUser, Depends(auth_service.require_permission("auth_user", "update"))],
+):
+    """Delete a specific OAuth connection from an auth user (admin view)."""
+
+    result = await session.execute(
+        select(OAuthConnection)
+        .where(OAuthConnection.id == connection_id)
+        .options(selectinload(OAuthConnection.auth_user))
+    )
+    connection = result.scalar_one_or_none()
+
+    if not connection:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="OAuth connection not found")
+
+    linked_user = connection.auth_user
+    if linked_user and not linked_user.hashed_password:
+        count_result = await session.execute(
+            select(OAuthConnection.id).where(OAuthConnection.auth_user_id == connection.auth_user_id)
+        )
+        connections_count = len(count_result.scalars().all())
+        if connections_count <= 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot unlink last OAuth provider for a passwordless account. Set a password first.",
+            )
+
+    await session.delete(connection)
+    await session.commit()
+    logger.info(
+        "OAuth connection deleted by admin: "
+        f"connection_id={connection.id} provider={connection.provider} auth_user_id={connection.auth_user_id} "
+        f"actor_user_id={current_user.id}"
+    )

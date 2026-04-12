@@ -1,26 +1,31 @@
-"""Achievement service v2 — reads from AchievementRule + AchievementEvaluationResult.
+"""Achievement service v2 based on rules + effective achievement rows."""
 
-Drop-in replacement for service.py during migration. Once verified,
-rename to service.py and remove the old one.
-"""
+from __future__ import annotations
 
 import typing
+from dataclasses import dataclass
+from datetime import datetime
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
-from shared.models.achievement import (
-    AchievementEvaluationResult,
-    AchievementOverride,
-    AchievementOverrideAction,
-    AchievementRule,
-)
+from shared.models.achievement import AchievementRule
+from shared.services.achievement_effective import build_effective_achievement_rows_subquery
 from src import models
 from src.core import pagination, utils
 
 # Subquery to count distinct users (players) in a workspace
 _player_count_subq = sa.select(sa.func.count(models.Player.user_id.distinct())).scalar_subquery()
+
+
+@dataclass(slots=True)
+class UserAchievementRow:
+    rule: AchievementRule
+    tournament_id: int | None
+    match_id: int | None
+    qualified_at: datetime
+    rarity: float | None
 
 
 def _player_count_for_workspace(workspace_id: int) -> sa.ScalarSelect:
@@ -32,27 +37,44 @@ def _player_count_for_workspace(workspace_id: int) -> sa.ScalarSelect:
     ).scalar_subquery()
 
 
+def _effective_rows_subq(
+    *,
+    workspace_id: int | None = None,
+    rule_ids: list[int] | None = None,
+    user_ids: list[int] | None = None,
+    name: str = "effective_achievement_rows",
+) -> sa.Subquery:
+    return build_effective_achievement_rows_subquery(
+        workspace_id=workspace_id,
+        achievement_rule_ids=rule_ids,
+        user_ids=user_ids,
+        name=name,
+    )
+
+
 def get_rarity_subq(
     workspace_id: int | None = None,
     rule_id: int | None = None,
 ) -> sa.Subquery:
     """Rarity = distinct users earned / total players (optionally per workspace)."""
     denominator = _player_count_for_workspace(workspace_id) if workspace_id else _player_count_subq
+    effective_rows = _effective_rows_subq(
+        workspace_id=workspace_id,
+        rule_ids=[rule_id] if rule_id is not None else None,
+        name="rarity_effective_rows",
+    )
 
-    rarity_subq = sa.select(
-        AchievementEvaluationResult.achievement_rule_id,
-        (
-            sa.func.count(sa.distinct(AchievementEvaluationResult.user_id))
-            / sa.func.nullif(denominator, 0)
-        ).label("rarity"),
-    ).group_by(AchievementEvaluationResult.achievement_rule_id)
-
-    if rule_id:
-        rarity_subq = rarity_subq.where(
-            AchievementEvaluationResult.achievement_rule_id == rule_id
+    return (
+        sa.select(
+            effective_rows.c.achievement_rule_id,
+            (
+                sa.func.count(sa.distinct(effective_rows.c.user_id))
+                / sa.func.nullif(denominator, 0)
+            ).label("rarity"),
         )
-
-    return rarity_subq.subquery()
+        .group_by(effective_rows.c.achievement_rule_id)
+        .subquery()
+    )
 
 
 def rule_entity(in_entities: list[str], child: typing.Any | None = None) -> list[_AbstractLoad]:
@@ -74,14 +96,19 @@ async def get(
 
     query = (
         sa.select(AchievementRule, rarity_subq.c.rarity)
-        .filter_by(id=id)
         .options(*rule_entity(entities))
-        .join(
+        .outerjoin(
             rarity_subq,
             AchievementRule.id == rarity_subq.c.achievement_rule_id,
         )
-        .where(AchievementRule.enabled.is_(True))
+        .where(
+            AchievementRule.id == id,
+            AchievementRule.enabled.is_(True),
+        )
     )
+
+    if workspace_id is not None:
+        query = query.where(AchievementRule.workspace_id == workspace_id)
 
     result = await session.execute(query)
     return result.first()
@@ -123,13 +150,19 @@ async def get_count_users(
     rule_ids: list[int],
 ) -> dict[int, int]:
     """Count distinct users per achievement rule."""
+    if not rule_ids:
+        return {}
+
+    effective_rows = _effective_rows_subq(
+        rule_ids=rule_ids,
+        name="count_effective_rows",
+    )
     query = (
         sa.select(
-            AchievementEvaluationResult.achievement_rule_id,
-            sa.func.count(sa.distinct(AchievementEvaluationResult.user_id)).label("count"),
+            effective_rows.c.achievement_rule_id,
+            sa.func.count(sa.distinct(effective_rows.c.user_id)).label("count"),
         )
-        .where(AchievementEvaluationResult.achievement_rule_id.in_(rule_ids))
-        .group_by(AchievementEvaluationResult.achievement_rule_id)
+        .group_by(effective_rows.c.achievement_rule_id)
     )
     results = await session.execute(query)
     return {row[0]: row[1] for row in results.all()}
@@ -141,20 +174,24 @@ async def get_users_for_rule(
     params: pagination.PaginationParams,
 ) -> tuple[list[tuple[models.User, int, int | None, int | None]], int]:
     """Paginated list of users who earned a specific achievement."""
+    effective_rows = _effective_rows_subq(
+        rule_ids=[rule_id],
+        name="rule_users_effective_rows",
+    )
+
     total_query = sa.select(
-        sa.func.count(sa.distinct(AchievementEvaluationResult.user_id))
-    ).where(AchievementEvaluationResult.achievement_rule_id == rule_id)
+        sa.func.count(sa.distinct(effective_rows.c.user_id))
+    )
 
     query = (
         sa.select(
             models.User,
-            sa.func.count(AchievementEvaluationResult.id).label("total"),
-            sa.func.max(AchievementEvaluationResult.tournament_id).label("last_tournament_id"),
-            sa.func.max(AchievementEvaluationResult.match_id).label("last_match_id"),
+            sa.func.count().label("total"),
+            sa.func.max(effective_rows.c.tournament_id).label("last_tournament_id"),
+            sa.func.max(effective_rows.c.match_id).label("last_match_id"),
         )
-        .select_from(AchievementEvaluationResult)
-        .join(models.User, models.User.id == AchievementEvaluationResult.user_id)
-        .where(AchievementEvaluationResult.achievement_rule_id == rule_id)
+        .select_from(effective_rows)
+        .join(models.User, models.User.id == effective_rows.c.user_id)
         .group_by(models.User.id)
         .order_by(sa.desc(sa.text("total")))
     )
@@ -162,7 +199,7 @@ async def get_users_for_rule(
 
     results = await session.execute(query)
     total = await session.scalar(total_query)
-    return [(r[0], r[1], r[2], r[3]) for r in results], total
+    return [(r[0], r[1], r[2], r[3]) for r in results], total or 0
 
 
 async def get_user_results(
@@ -171,66 +208,47 @@ async def get_user_results(
     workspace_id: int | None = None,
     tournament_id: int | None = None,
     without_tournament: bool = False,
-) -> typing.Sequence[tuple[AchievementEvaluationResult, float]]:
-    """Retrieve all achievement results for a user, with rarity.
-
-    Combines evaluation results + grant overrides, minus revoke overrides.
-    """
-    rarity_subq = (
-        sa.select(
-            AchievementEvaluationResult.achievement_rule_id,
-            (
-                sa.func.count(sa.distinct(AchievementEvaluationResult.user_id))
-                / sa.func.nullif(
-                    _player_count_for_workspace(workspace_id) if workspace_id else _player_count_subq,
-                    0,
-                )
-            ).label("rarity"),
-        )
-        .group_by(AchievementEvaluationResult.achievement_rule_id)
-        .subquery()
+) -> list[UserAchievementRow]:
+    """Retrieve all effective achievement results for a user, with rarity."""
+    effective_rows = _effective_rows_subq(
+        workspace_id=workspace_id,
+        user_ids=[user.id],
+        name="user_effective_rows",
     )
+    rarity_subq = get_rarity_subq(workspace_id=workspace_id)
 
     query = (
-        sa.select(AchievementEvaluationResult, rarity_subq.c.rarity)
-        .options(sa.orm.joinedload(AchievementEvaluationResult.rule))
-        .join(
+        sa.select(
+            AchievementRule,
+            effective_rows.c.tournament_id,
+            effective_rows.c.match_id,
+            effective_rows.c.qualified_at,
+            rarity_subq.c.rarity,
+        )
+        .select_from(effective_rows)
+        .join(AchievementRule, AchievementRule.id == effective_rows.c.achievement_rule_id)
+        .outerjoin(
             rarity_subq,
-            AchievementEvaluationResult.achievement_rule_id == rarity_subq.c.achievement_rule_id,
+            AchievementRule.id == rarity_subq.c.achievement_rule_id,
         )
-        .join(AchievementRule, AchievementRule.id == AchievementEvaluationResult.achievement_rule_id)
-        .where(
-            AchievementEvaluationResult.user_id == user.id,
-            AchievementRule.enabled.is_(True),
-        )
-        .order_by(sa.asc(rarity_subq.c.rarity))
+        .where(AchievementRule.enabled.is_(True))
+        .order_by(sa.asc(rarity_subq.c.rarity), AchievementRule.id.asc())
     )
-
-    if workspace_id is not None:
-        query = query.where(AchievementRule.workspace_id == workspace_id)
 
     if tournament_id is not None:
-        query = query.where(AchievementEvaluationResult.tournament_id == tournament_id)
+        query = query.where(effective_rows.c.tournament_id == tournament_id)
 
     if without_tournament:
-        query = query.where(AchievementEvaluationResult.tournament_id.is_(None))
-
-    # Exclude revoked overrides
-    revoke_subq = (
-        sa.select(AchievementOverride.achievement_rule_id, AchievementOverride.user_id)
-        .where(
-            AchievementOverride.action == AchievementOverrideAction.revoke,
-            AchievementOverride.user_id == user.id,
-        )
-        .subquery()
-    )
-    query = query.outerjoin(
-        revoke_subq,
-        sa.and_(
-            AchievementEvaluationResult.achievement_rule_id == revoke_subq.c.achievement_rule_id,
-            AchievementEvaluationResult.user_id == revoke_subq.c.user_id,
-        ),
-    ).where(revoke_subq.c.user_id.is_(None))
+        query = query.where(effective_rows.c.tournament_id.is_(None))
 
     results = await session.execute(query)
-    return results.all()
+    return [
+        UserAchievementRow(
+            rule=row[0],
+            tournament_id=row[1],
+            match_id=row[2],
+            qualified_at=row[3],
+            rarity=row[4],
+        )
+        for row in results.all()
+    ]

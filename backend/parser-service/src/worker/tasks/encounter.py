@@ -1,7 +1,6 @@
 from src.core import db
+from src.services.encounter import flows
 from src.services.tournament import service as tournament_service
-
-from . import flows
 
 
 async def bulk_create() -> None:

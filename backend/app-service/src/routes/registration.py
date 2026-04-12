@@ -17,6 +17,7 @@ from src.schemas.registration import (
     RegistrationUpdate,
 )
 from src.services.registration import service as reg_service
+from src.services.registration.validation import validate_registration_input
 
 router = APIRouter(
     prefix="/workspaces/{workspace_id}/tournaments/{tournament_id}/registration",
@@ -97,6 +98,8 @@ async def register(
 
     if form.workspace_id != workspace_id:
         raise HTTPException(status_code=400, detail="Tournament does not belong to this workspace")
+
+    validate_registration_input(form, data)
 
     existing = await reg_service.get_registration(session, tournament_id, user.id)
     if existing is not None:
@@ -182,11 +185,19 @@ async def update_my_registration(
     user: models.AuthUser = Depends(auth.get_current_active_user),
 ):
     """Update the current user's registration (only while status is pending)."""
+    form = await reg_service.get_registration_form(session, tournament_id)
+    if form is None:
+        raise HTTPException(status_code=404, detail="Registration form not found")
+    if form.workspace_id != workspace_id:
+        raise HTTPException(status_code=400, detail="Tournament does not belong to this workspace")
+
     reg = await reg_service.get_registration(session, tournament_id, user.id)
     if reg is None:
         raise HTTPException(status_code=404, detail="No registration found")
     if reg.status != "pending":
         raise HTTPException(status_code=400, detail="Cannot update a registration that is not pending")
+
+    validate_registration_input(form, data, partial=True)
 
     updated = await reg_service.update_registration(
         session,
@@ -203,13 +214,13 @@ async def withdraw_my_registration(
     session: AsyncSession = Depends(db.get_async_session),
     user: models.AuthUser = Depends(auth.get_current_active_user),
 ):
-    """Withdraw (delete) the current user's registration."""
+    """Withdraw the current user's registration."""
     reg = await reg_service.get_registration(session, tournament_id, user.id)
     if reg is None:
         raise HTTPException(status_code=404, detail="No registration found")
 
     await reg_service.withdraw_registration(session, reg)
-    return RegistrationStatusResponse(status="deleted", message="Registration deleted")
+    return RegistrationStatusResponse(status="withdrawn", message="Registration withdrawn")
 
 
 @router.get("/list", response_model=list[RegistrationRead])
@@ -225,6 +236,7 @@ async def list_registrations(
         .where(
             models.BalancerRegistration.tournament_id == tournament_id,
             models.BalancerRegistration.workspace_id == workspace_id,
+            models.BalancerRegistration.deleted_at.is_(None),
             models.BalancerRegistration.status == "approved",
         )
         .options(selectinload(models.BalancerRegistration.roles))

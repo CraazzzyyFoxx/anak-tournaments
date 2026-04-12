@@ -76,9 +76,7 @@ async def create_user(session: AsyncSession, data: admin_schemas.UserCreate) -> 
 
     session.add(user)
     await session.commit()
-    await session.refresh(user)
-
-    return user
+    return await get_user_or_404(session, user.id)
 
 
 async def update_user(session: AsyncSession, user_id: int, data: admin_schemas.UserUpdate) -> models.User:
@@ -114,9 +112,7 @@ async def update_user(session: AsyncSession, user_id: int, data: admin_schemas.U
         setattr(user, field, value)
 
     await session.commit()
-    await session.refresh(user)
-
-    return user
+    return await get_user_or_404(session, user.id)
 
 
 async def delete_user(session: AsyncSession, user_id: int) -> None:

@@ -5,12 +5,19 @@ export interface CustomFieldDefinition {
   required: boolean;
   placeholder: string | null;
   options: string[] | null;
+  validation?: FieldValidationConfig | null;
+}
+
+export interface FieldValidationConfig {
+  regex?: string | null;
+  error_message?: string | null;
 }
 
 export interface BuiltInFieldConfig {
   enabled: boolean;
   required: boolean;
   subroles?: Record<string, string[]>;
+  validation?: FieldValidationConfig | null;
 }
 
 export interface RegistrationForm {

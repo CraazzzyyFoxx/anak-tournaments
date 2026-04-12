@@ -13,10 +13,11 @@ from . import service
 async def to_pydantic(
     session: AsyncSession, tournament: models.Tournament, entities: list[str]
 ) -> schemas.TournamentRead:
-    groups: list[schemas.TournamentGroupRead] = []
-    if "groups" in entities:
-        groups = [
-            schemas.TournamentGroupRead.model_validate(group, from_attributes=True) for group in tournament.groups
+    stages: list[schemas.StageRead] = []
+    if "stages" in entities:
+        stages = [
+            schemas.StageRead.model_validate(stage, from_attributes=True)
+            for stage in sorted(tournament.stages, key=lambda item: item.order)
         ]
     return schemas.TournamentRead(
         id=tournament.id,
@@ -26,11 +27,19 @@ async def to_pydantic(
         number=tournament.number,
         is_league=tournament.is_league,
         is_finished=tournament.is_finished,
+        status=tournament.status,
         name=tournament.name,
         description=tournament.description,
         challonge_id=tournament.challonge_id,
         challonge_slug=tournament.challonge_slug,
-        groups=groups,
+        registration_opens_at=tournament.registration_opens_at,
+        registration_closes_at=tournament.registration_closes_at,
+        check_in_opens_at=tournament.check_in_opens_at,
+        check_in_closes_at=tournament.check_in_closes_at,
+        win_points=tournament.win_points,
+        draw_points=tournament.draw_points,
+        loss_points=tournament.loss_points,
+        stages=stages,
     )
 
 

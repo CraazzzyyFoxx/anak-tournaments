@@ -6,18 +6,18 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Calendar, Users, ExternalLink } from "lucide-react";
 import { cn, formatDateRange } from "@/lib/utils";
+import { getTournamentStatusMeta } from "@/lib/tournament-status";
 
 export const TournamentChallongeLink = ({ tournament }: { tournament: Tournament }) => {
-  let slug = tournament.challonge_slug;
-  const groups = tournament.groups.sort((a, b) => Number(a.is_groups) - Number(b.is_groups));
+  const slug =
+    tournament.challonge_slug ??
+    tournament.stages
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .find((stage) => stage.challonge_slug)?.challonge_slug;
 
   if (!slug) {
-    for (const group of groups) {
-      if (group.challonge_slug) {
-        slug = group.challonge_slug;
-        break;
-      }
-    }
+    return null;
   }
 
   return (
@@ -34,16 +34,15 @@ export const TournamentChallongeLink = ({ tournament }: { tournament: Tournament
 };
 
 export const TournamentChallongeLinkInline = ({ tournament }: { tournament: Tournament }) => {
-  let slug = tournament.challonge_slug;
-  const groups = tournament.groups.sort((a, b) => Number(a.is_groups) - Number(b.is_groups));
+  const slug =
+    tournament.challonge_slug ??
+    tournament.stages
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .find((stage) => stage.challonge_slug)?.challonge_slug;
 
   if (!slug) {
-    for (const group of groups) {
-      if (group.challonge_slug) {
-        slug = group.challonge_slug;
-        break;
-      }
-    }
+    return null;
   }
 
   return (
@@ -60,6 +59,7 @@ export const TournamentChallongeLinkInline = ({ tournament }: { tournament: Tour
 
 const TournamentCard = ({ tournament }: { tournament: Tournament }) => {
   const router = useRouter();
+  const statusMeta = getTournamentStatusMeta(tournament.status);
 
   const onClick = (event: React.MouseEvent) => {
     const isLinkClicked = (event.target as HTMLElement).closest("a");
@@ -83,12 +83,23 @@ const TournamentCard = ({ tournament }: { tournament: Tournament }) => {
               League
             </span>
           )}
-          {!tournament.is_finished && (
-            <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-emerald-400 uppercase tracking-wide">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              Live
-            </span>
-          )}
+          <span
+            className={cn(
+              "inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide",
+              statusMeta.badgeClassName
+            )}
+          >
+            {statusMeta.dotClassName ? (
+              <span
+                className={cn(
+                  "h-1.5 w-1.5 rounded-full",
+                  statusMeta.dotClassName,
+                  tournament.status === "live" && "animate-pulse"
+                )}
+              />
+            ) : null}
+            {statusMeta.badgeLabel}
+          </span>
         </div>
         {!tournament.is_league && (
           <span className="text-xs tabular-nums text-white/45">#{tournament.number}</span>
@@ -113,13 +124,7 @@ const TournamentCard = ({ tournament }: { tournament: Tournament }) => {
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between pt-3 border-t border-white/[0.06]">
-        <span className={cn(
-          "text-xs font-medium",
-          tournament.is_finished ? "text-white/45" : "text-emerald-400"
-        )}>
-          {tournament.is_finished ? "Finished" : "Ongoing"}
-        </span>
+      <div className="flex items-center justify-end pt-3 border-t border-white/[0.06]">
         <div onClick={(e) => e.stopPropagation()}>
           <TournamentChallongeLink tournament={tournament} />
         </div>

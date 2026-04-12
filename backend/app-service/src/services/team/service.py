@@ -105,7 +105,7 @@ async def get(
         .options(*team_entities(entities))
     )
     result = await session.execute(query)
-    return result.scalars().first()
+    return result.unique().scalars().first()
 
 
 async def get_by_name_and_tournament(
@@ -134,7 +134,7 @@ async def get_by_name_and_tournament(
         .options(*team_entities(entities))
     )
     result = await session.execute(query)
-    return result.scalars().first()
+    return result.unique().scalars().first()
 
 
 async def get_by_tournament(
@@ -187,7 +187,7 @@ async def get_by_tournament_challonge_id(
         )
     )
     result = await session.execute(query)
-    return result.scalars().first()
+    return result.unique().scalars().first()
 
 
 async def get_all(
@@ -271,7 +271,7 @@ async def get_player(
         .options(*player_entities(entities))
     )
     result = await session.execute(query)
-    return result.scalars().first()
+    return result.unique().scalars().first()
 
 
 async def get_player_by_user_and_tournament(
@@ -300,7 +300,7 @@ async def get_player_by_user_and_tournament(
         )
     )
     result = await session.execute(query)
-    return result.scalars().first()
+    return result.unique().scalars().first()
 
 
 async def get_player_all(

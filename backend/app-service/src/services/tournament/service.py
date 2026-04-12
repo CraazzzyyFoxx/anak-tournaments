@@ -1,22 +1,20 @@
+import re
 import typing
 from collections import defaultdict
 from itertools import combinations
-import re
 
 import sqlalchemy as sa
+from shared.division_grid import DivisionGrid, division_case_expr
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.strategy_options import _AbstractLoad
-
-from shared.division_grid import DivisionGrid, division_case_expr
 
 from src import models, schemas
 from src.core import enums, utils
 
-
 OWAL_SEASON_PATTERN = re.compile(r"^OWAL Season (\d+)$")
 
 
-def _parse_owal_season_name(tournament_name: str) -> typing.Optional[tuple[int, str]]:
+def _parse_owal_season_name(tournament_name: str) -> tuple[int, str] | None:
     season_name = tournament_name.split(" | ", 1)[0].strip()
     match = OWAL_SEASON_PATTERN.match(season_name)
     if not match:
@@ -38,6 +36,12 @@ def tournament_entities(in_entities: list[str], child: typing.Any | None = None)
     entities = []
     if "groups" in in_entities:
         entities.append(utils.join_entity(child, models.Tournament.groups))
+    if "stages" in in_entities:
+        stage_entity = utils.join_entity(child, models.Tournament.stages)
+        stage_items_entity = utils.join_entity(stage_entity, models.Stage.items)
+        entities.append(stage_entity)
+        entities.append(stage_items_entity)
+        entities.append(utils.join_entity(stage_items_entity, models.StageItem.inputs))
     return entities
 
 
@@ -410,7 +414,7 @@ async def get_bulk_tournament(
         .where(models.Tournament.id.in_(tournaments_ids))
     )
     result = await session.execute(query)
-    return result.scalars().all()
+    return result.unique().scalars().all()
 
 
 async def get_league_player_stacks(

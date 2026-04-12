@@ -61,6 +61,8 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
   if (match?.encounter?.tournament.is_league) {
     tournament_name = match?.encounter?.tournament.name;
   }
+  const stageLabel =
+    match?.encounter?.stage_item?.name ?? match?.encounter?.stage?.name ?? "Unassigned";
 
   const tabsTriggers: ReactNode[] = [];
   const tabsContent: ReactNode[] = [];
@@ -134,9 +136,9 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
             <h4 className="scroll-m-20 text-xl font-semibold tracking-tight">{tournament_name}</h4>
           </div>
           <div className="flex flex-col">
-            <p className="leading-7 ">Group</p>
+            <p className="leading-7 ">Stage</p>
             <h4 className="scroll-m-20 text-xl font-semibold tracking-tight">
-              {match?.encounter?.tournament_group.name}
+              {stageLabel}
             </h4>
           </div>
         </div>

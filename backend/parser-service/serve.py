@@ -18,12 +18,13 @@ from shared.schemas.events import (
 )
 
 from src.core import config, db
+from src.services.admin import balancer_registration as registration_balancer_service
 from src.services.achievement.engine.consumer import handle_achievement_evaluate
-from src.services.encounter import tasks as encounter_tasks
 from src.services.match_logs import flows as logs_flows
 from src.services.s3 import service as s3_service
-from src.services.standings import tasks as standings_tasks
 from src.services.tournament import flows as tournaments_flows
+from src.worker.tasks import encounter as encounter_tasks
+from src.worker.tasks import standings as standings_tasks
 
 logger = setup_logging(
     service_name="parser-worker",
@@ -33,7 +34,7 @@ logger = setup_logging(
 )
 
 broker = RabbitBroker(config.settings.rabbitmq_url, logger=logger)
-app = FastStream(broker, logger=logger)
+app = FastStream(broker)
 
 scheduler = AsyncIOScheduler()
 
@@ -46,13 +47,26 @@ s3_client = S3Client(
 )
 
 
+async def sync_registration_google_sheet_feeds() -> None:
+    results = await registration_balancer_service.sync_due_google_sheet_feeds(db.async_session_maker)
+    if not results:
+        return
+    logger.info("Registration Google Sheets sync completed", results=results)
+
+
 @app.on_startup
 async def start_scheduler() -> None:
     await s3_client.start()
     scheduler.add_job(encounter_tasks.bulk_create, "interval", minutes=2, id="encounter_sync")
     scheduler.add_job(standings_tasks.bulk_create_all, "interval", minutes=3, id="standings_sync")
+    scheduler.add_job(
+        sync_registration_google_sheet_feeds,
+        "interval",
+        minutes=5,
+        id="registration_google_sheet_sync",
+    )
     scheduler.start()
-    logger.info("Scheduler started: encounter sync every 2m, standings sync every 3m")
+    logger.info("Scheduler started: encounter sync every 2m, standings sync every 3m, registration sheet sync every 5m")
 
 
 @app.on_shutdown
@@ -63,8 +77,6 @@ async def stop_scheduler() -> None:
 
 @broker.subscriber(PROCESS_MATCH_LOG_QUEUE)
 async def process_match_log_async(data: dict) -> None:
-    # Generate a correlation ID for this consumer invocation so all log lines
-    # emitted during processing of this message share a traceable ID.
     correlation_id_ctx.set(str(uuid.uuid4()))
     event = ProcessMatchLogEvent.model_validate(data)
     logger.bind(tournament_id=event.tournament_id, filename=event.filename).info("Processing match log from queue")
@@ -73,16 +85,13 @@ async def process_match_log_async(data: dict) -> None:
             await logs_flows.process_match_log(
                 session, event.tournament_id, event.filename, s3_client, is_raise=True
             )
-            # Publish achievement evaluation event after successful processing
             tournament = await tournaments_flows.get(session, event.tournament_id, [])
             achievement_event = AchievementEvaluateEvent(
                 workspace_id=tournament.workspace_id,
                 tournament_id=event.tournament_id,
                 changed_tables=["matches.statistics", "matches.match", "tournament.encounter"],
             )
-            await broker.publish(
-                achievement_event.model_dump(), ACHIEVEMENT_EVALUATE_QUEUE
-            )
+            await broker.publish(achievement_event.model_dump(), ACHIEVEMENT_EVALUATE_QUEUE)
     except Exception:
         logger.exception(
             f"Failed to process match log "
@@ -93,7 +102,6 @@ async def process_match_log_async(data: dict) -> None:
 
 @broker.subscriber(PROCESS_TOURNAMENT_LOGS_QUEUE)
 async def process_tournament_log(data: dict) -> None:
-    # Generate a correlation ID for this consumer invocation.
     correlation_id_ctx.set(str(uuid.uuid4()))
     event = ProcessTournamentLogsEvent.model_validate(data)
     logger.bind(tournament_id=event.tournament_id).info("Processing tournament logs from queue")

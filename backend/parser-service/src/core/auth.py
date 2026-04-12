@@ -3,7 +3,7 @@
 from collections.abc import Callable
 from typing import Annotated, Any
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, WebSocket, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -161,3 +161,48 @@ async def get_current_user_optional(
         return await get_current_user(request=request, token=token, session=session)
     except HTTPException:
         return None
+
+
+def _get_websocket_token(websocket: WebSocket) -> str | None:
+    query_token = websocket.query_params.get("token")
+    if query_token:
+        return query_token.removeprefix("Bearer ").strip() or None
+
+    authorization = websocket.headers.get("authorization")
+    if authorization:
+        scheme, _, credentials = authorization.partition(" ")
+        if scheme.lower() == "bearer" and credentials:
+            return credentials.strip()
+
+    cookie_token = websocket.cookies.get("aqt_access_token")
+    if not cookie_token:
+        return None
+
+    cookie_token = cookie_token.removeprefix("Bearer ").strip()
+    return cookie_token or None
+
+
+async def get_websocket_user_optional(
+    websocket: WebSocket,
+    session: AsyncSession,
+) -> AuthUser | None:
+    token = _get_websocket_token(websocket)
+    if not token:
+        return None
+
+    import main
+
+    payload = await main.auth_client.validate_token(token)
+    if not payload:
+        return None
+
+    user_id_raw = payload.get("sub")
+    try:
+        user_id = int(user_id_raw)
+    except (TypeError, ValueError):
+        return None
+
+    if user_id <= 0:
+        return None
+
+    return await _resolve_user_from_db(user_id, payload, session=session)

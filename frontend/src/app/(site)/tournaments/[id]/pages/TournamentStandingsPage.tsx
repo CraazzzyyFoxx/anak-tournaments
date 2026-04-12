@@ -8,20 +8,26 @@ import { cn } from "@/lib/utils";
 const TournamentStandingsPage = async ({ tournament }: { tournament: Tournament }) => {
   const standings = await tournamentService.getStandings(tournament.id);
 
-  const groups: Record<number, string> = {};
-  const groupStandings: Record<number, Standings[]> = {};
-  const groupStandingsList: Standings[] = standings.filter((standing) => standing.group?.is_groups);
-  const playoffStandings = standings.filter((standing) => !standing.group?.is_groups);
-
-  standings.forEach((standing) => {
-    if (standing.group?.is_groups) {
-      groups[standing.group_id] = standing.group.name;
-      groupStandings[standing.group_id] = [];
-    }
-  });
+  const stageStandings = new Map<number, { name: string; standings: Standings[] }>();
+  const groupStandingsList = standings.filter((standing) =>
+    ["round_robin", "swiss"].includes(standing.stage?.stage_type ?? "")
+  );
+  const playoffStandings = standings.filter((standing) =>
+    ["single_elimination", "double_elimination"].includes(
+      standing.stage?.stage_type ?? ""
+    )
+  );
 
   for (const standing of groupStandingsList) {
-    groupStandings[standing.group_id].push(standing);
+    const key = standing.stage_item_id ?? standing.stage_id;
+    if (key == null) {
+      continue;
+    }
+    const name =
+      standing.stage_item?.name ?? standing.stage?.name ?? `Stage ${standing.stage_id}`;
+    const bucket = stageStandings.get(key) ?? { name, standings: [] };
+    bucket.standings.push(standing);
+    stageStandings.set(key, bucket);
   }
 
   return (
@@ -39,20 +45,23 @@ const TournamentStandingsPage = async ({ tournament }: { tournament: Tournament 
             </CardContent>
           </Card>
         )}
-        {Object.keys(groups).map((groupId) => {
-          const color = "text-group-" + groups[Number(groupId)].toLowerCase();
+        {Array.from(stageStandings.entries()).map(([stageScopeId, bucket]) => {
+          const color =
+            bucket.name.trim().length === 1
+              ? "text-group-" + bucket.name.toLowerCase()
+              : "text-white";
 
           return (
-            <Card key={groupId}>
+            <Card key={stageScopeId}>
               <CardHeader>
                 <CardTitle
                   className={cn(color, "scroll-m-20 text-2xl font-semibold tracking-tight")}
                 >
-                  Group {groups[Number(groupId)]}
+                  {bucket.name}
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
-                <StandingsTable standings={groupStandings[Number(groupId)]} is_groups={true} />
+                <StandingsTable standings={bucket.standings} is_groups={true} />
               </CardContent>
             </Card>
           );

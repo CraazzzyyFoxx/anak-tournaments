@@ -41,7 +41,8 @@ async def to_pydantic(
         schemas.StandingRead: The Pydantic schema representing the standing.
     """
     team: schemas.TeamRead | None = None
-    group: schemas.TournamentGroupRead | None = None
+    stage: schemas.StageRead | None = None
+    stage_item: schemas.StageItemRead | None = None
     tournament: schemas.TournamentRead | None = None
     matches_history: list[schemas.EncounterRead] = []
 
@@ -49,22 +50,55 @@ async def to_pydantic(
         team = await team_flows.to_pydantic(
             session, standing.team, utils.prepare_entities(entities, "team")
         )
-    if "group" in entities:
-        group = await tournament_flows.to_pydantic_group(session, standing.group, [])
+    if "stage" in entities and standing.stage is not None:
+        stage = schemas.StageRead.model_validate(standing.stage, from_attributes=True)
+    if "stage_item" in entities and standing.stage_item is not None:
+        stage_item = schemas.StageItemRead.model_validate(
+            standing.stage_item, from_attributes=True
+        )
     if "tournament" in entities:
         tournament = await tournament_flows.to_pydantic(
             session, standing.tournament, []
         )
     if "matches_history" in entities:
-        matches_history = await encounter_flows.get_encounters_by_team_group(
-            session, standing.team_id, standing.group_id, entities
+        team_matches = await encounter_flows.get_encounters_by_team(
+            session, standing.team_id, ["teams", "stage", "stage_item"]
         )
+        matches_history = [
+            encounter
+            for encounter in team_matches
+            if encounter.stage_id == standing.stage_id
+            and (
+                standing.stage_item_id is None
+                or encounter.stage_item_id == standing.stage_item_id
+            )
+        ]
+
+    source_rule_profile = None
+    if standing.stage is not None and isinstance(standing.stage.settings_json, dict):
+        ranking_preset = standing.stage.settings_json.get("ranking_preset")
+        if isinstance(ranking_preset, str):
+            source_rule_profile = ranking_preset
 
     return schemas.StandingRead(
         **standing.to_dict(),
         team=team,
-        group=group,
+        stage=stage,
+        stage_item=stage_item,
         tournament=tournament,
+        ranking_context={
+            "stage_type": standing.stage.stage_type.value if standing.stage else None,
+            "stage_name": standing.stage.name if standing.stage else None,
+            "stage_item_name": standing.stage_item.name if standing.stage_item else None,
+        },
+        tb_metrics={
+            "points": standing.points,
+            "match_wins": standing.win,
+            "head_to_head": standing.tb,
+            "median_buchholz": standing.buchholz,
+            "score_differential": standing.win * 2 - standing.lose,
+        },
+        source_rule_profile=source_rule_profile,
         matches_history=sort_matches(matches_history),
     )
 

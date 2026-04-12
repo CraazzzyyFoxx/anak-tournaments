@@ -14,6 +14,7 @@ from src import models
 
 from ..context import EvalContext
 from . import ResultSet, register
+from ._stage_filters import standing_is_elimination
 
 
 @register("consecutive")
@@ -38,6 +39,7 @@ async def execute_consecutive(
 
     if metric == "win":
         # Users who won (position == 1) in consecutive tournaments
+        # Only bracket/final standings (buchholz IS NULL) and non-league tournaments
         qualifying = (
             sa.select(
                 models.Player.user_id,
@@ -49,8 +51,11 @@ async def execute_consecutive(
                 models.Standing.tournament_id == models.Player.tournament_id,
             ))
             .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
+            .outerjoin(models.Stage, models.Stage.id == models.Standing.stage_id)
             .where(
                 models.Standing.overall_position == 1,
+                standing_is_elimination(standing=models.Standing, stage=models.Stage),
+                models.Tournament.is_league.is_(False),
                 models.Tournament.workspace_id == context.workspace_id,
                 models.Player.is_substitution.is_(False),
                 models.Tournament.number.isnot(None),
@@ -75,8 +80,11 @@ async def execute_consecutive(
                 models.Standing.tournament_id == models.Player.tournament_id,
             ))
             .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
+            .outerjoin(models.Stage, models.Stage.id == models.Standing.stage_id)
             .where(
                 op_fn(models.Standing.overall_position, position_value),
+                standing_is_elimination(standing=models.Standing, stage=models.Stage),
+                models.Tournament.is_league.is_(False),
                 models.Tournament.workspace_id == context.workspace_id,
                 models.Player.is_substitution.is_(False),
                 models.Tournament.number.isnot(None),
@@ -120,7 +128,11 @@ async def execute_stable_streak(
     params: dict[str, Any],
     context: EvalContext,
 ) -> ResultSet:
-    """N+ tournaments at same values for given fields. Grain: user.
+    """N+ consecutive participations at same values for given fields. Grain: user.
+
+    Uses segment-based detection (like the legacy code): a new segment starts when
+    any tracked field changes or when prev is NULL. Consecutive tournament numbers
+    are NOT required — skipping a tournament does not break the streak.
 
     params:
         fields: list of field names (e.g., ["role", "division"])
@@ -132,7 +144,7 @@ async def execute_stable_streak(
     if not context.grid:
         return set()
 
-    # Build player data with tournament ordering
+    # Build player data with tournament ordering (exclude leagues)
     query = (
         sa.select(
             models.Player.user_id,
@@ -144,6 +156,7 @@ async def execute_stable_streak(
         .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
         .where(
             models.Tournament.workspace_id == context.workspace_id,
+            models.Tournament.is_league.is_(False),
             models.Player.is_substitution.is_(False),
             models.Tournament.number.isnot(None),
         )
@@ -153,7 +166,7 @@ async def execute_stable_streak(
     result = await session.execute(query)
     rows = result.all()
 
-    # Process in Python: detect stable streaks per user
+    # Process in Python: detect stable streaks per user using segments
     from collections import defaultdict
 
     user_rows: dict[int, list] = defaultdict(list)
@@ -171,9 +184,9 @@ async def execute_stable_streak(
         entries.sort(key=lambda x: x["t_num"])
         streak = 1
         for i in range(1, len(entries)):
+            # Segment breaks when any tracked field changes (gaps are OK)
             same = all(entries[i].get(f) == entries[i - 1].get(f) for f in fields)
-            consecutive = entries[i]["t_num"] == entries[i - 1]["t_num"] + 1
-            if same and consecutive:
+            if same:
                 streak += 1
                 if streak >= min_streak:
                     qualifying_users.add((user_id,))

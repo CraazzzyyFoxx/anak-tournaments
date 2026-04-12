@@ -1,6 +1,12 @@
 import { MapRead } from "@/types/map.types";
 import { Team, TeamWithStats } from "@/types/team.types";
-import { Tournament, TournamentGroup } from "@/types/tournament.types";
+import {
+  EncounterResultStatus,
+  Stage,
+  StageItem,
+  Tournament,
+  TournamentGroup,
+} from "@/types/tournament.types";
 
 export interface Score {
   home: number;
@@ -16,19 +22,29 @@ export interface Encounter {
   away_team_id: number;
   score: Score;
   round: number;
+  best_of: number;
   tournament_id: number;
-  tournament_group_id: number | null;
+  tournament_group_id?: number | null;
+  stage_id: number | null;
+  stage_item_id: number | null;
   challonge_id: number | null;
   challonge_slug?: string | null;
   status: string;
   closeness: number | null;
   has_logs: boolean;
+  result_status: EncounterResultStatus;
+  submitted_by_id: number | null;
+  submitted_at: Date | null;
+  confirmed_by_id: number | null;
+  confirmed_at: Date | null;
 
   matches: Match[];
   home_team: Team;
   away_team: Team;
   tournament: Tournament;
-  tournament_group: TournamentGroup;
+  stage?: Stage | null;
+  stage_item?: StageItem | null;
+  tournament_group?: TournamentGroup | null;
 }
 
 export interface Match {

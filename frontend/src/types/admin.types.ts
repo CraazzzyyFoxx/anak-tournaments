@@ -2,40 +2,100 @@
 
 // ─── Tournament ──────────────────────────────────────────────────────────────
 
+import type {
+  StageItemType,
+  StageType,
+  StageItemInputType,
+  TournamentStatus
+} from "@/types/tournament.types";
+
 export interface TournamentCreateInput {
   workspace_id: number;
   name: string;
   number?: number;
   description?: string;
   is_league: boolean;
-  start_date: string; // ISO date string
-  end_date: string; // ISO date string
+  status?: TournamentStatus;
+  start_date: string;
+  end_date: string;
+  registration_opens_at?: string | null;
+  registration_closes_at?: string | null;
+  check_in_opens_at?: string | null;
+  check_in_closes_at?: string | null;
+  win_points?: number;
+  draw_points?: number;
+  loss_points?: number;
 }
 
 export interface TournamentUpdateInput {
   number?: number | null;
   name?: string;
   description?: string | null;
+  challonge_slug?: string | null;
   is_league?: boolean;
   is_finished?: boolean;
   start_date?: string;
   end_date?: string;
+  registration_opens_at?: string | null;
+  registration_closes_at?: string | null;
+  check_in_opens_at?: string | null;
+  check_in_closes_at?: string | null;
+  win_points?: number;
+  draw_points?: number;
+  loss_points?: number;
 }
 
-export interface TournamentGroupCreateInput {
+export interface TournamentStatusTransitionInput {
+  status: TournamentStatus;
+  force?: boolean;
+}
+
+// ─── Stage Admin ────────────────────────────────────────────────────────────
+
+export interface StageCreateInput {
   name: string;
   description?: string | null;
-  is_groups: boolean;
-  challonge_id?: number | null;
-  challonge_slug?: string | null;
+  stage_type: StageType;
+  order?: number;
+  settings_json?: Record<string, unknown> | null;
 }
 
-export interface TournamentGroupUpdateInput {
+export interface StageUpdateInput {
   name?: string;
   description?: string | null;
-  is_groups?: boolean;
-  challonge_id?: number | null;
-  challonge_slug?: string | null;
+  stage_type?: StageType;
+  order?: number;
+  settings_json?: Record<string, unknown> | null;
+}
+
+export interface StageItemCreateInput {
+  name: string;
+  type: StageItemType;
+  order?: number;
+}
+
+export interface StageItemInputCreateInput {
+  slot: number;
+  input_type?: StageItemInputType;
+  team_id?: number | null;
+  source_stage_item_id?: number | null;
+  source_position?: number | null;
+}
+
+// ─── Captain Submission ─────────────────────────────────────────────────────
+
+export interface ResultSubmissionInput {
+  home_score: number;
+  away_score: number;
+}
+
+export interface DisputeInput {
+  reason?: string | null;
+}
+
+export interface VetoActionInput {
+  map_id: number;
+  action: "ban" | "pick";
 }
 
 // ─── Team ────────────────────────────────────────────────────────────────────
@@ -88,7 +148,9 @@ export interface PlayerUpdateInput {
 
 export interface EncounterCreateInput {
   tournament_id: number;
-  tournament_group_id: number | null;
+  tournament_group_id?: number | null;
+  stage_id: number | null;
+  stage_item_id: number | null;
   home_team_id: number;
   away_team_id: number;
   round: number;
@@ -100,6 +162,8 @@ export interface EncounterCreateInput {
 
 export interface EncounterUpdateInput {
   tournament_group_id?: number | null;
+  stage_id?: number | null;
+  stage_item_id?: number | null;
   home_team_id?: number;
   away_team_id?: number;
   home_score?: number;
@@ -107,18 +171,6 @@ export interface EncounterUpdateInput {
   status?: string;
   round?: number;
   name?: string;
-}
-
-export interface ChallongeTournamentLookup {
-  id: number;
-  name: string;
-  url: string;
-  description: string;
-  state: string;
-  participants_count: number;
-  match_count?: number | null;
-  group_stages_enabled: boolean;
-  grand_finals_modifier?: string | null;
 }
 
 // ─── Standing ────────────────────────────────────────────────────────────────
@@ -197,14 +249,12 @@ export interface HeroUpdateInput {
 
 // ─── Gamemode ────────────────────────────────────────────────────────────────
 
-
 export interface Gamemode {
-  id: number
+  id: number;
   created_at: Date;
   updated_at?: Date | null;
-  name: string
+  name: string;
 }
-
 
 export interface GamemodeCreateInput {
   name: string;
@@ -337,6 +387,18 @@ export interface EvaluationRunRead {
   error_message: string | null;
 }
 
+export interface SeedResultRead {
+  seeded: number;
+  removed: number;
+}
+
+export interface HardResetResultRead {
+  seeded: number;
+  removed: number;
+  cleared_results: number;
+  run: EvaluationRunRead;
+}
+
 export interface ConditionTreeValidateResponse {
   valid: boolean;
   errors: string[];
@@ -370,6 +432,19 @@ export interface ConditionTypeInfo {
   description: string;
   required_params: string[];
   optional_params: string[];
+}
+
+// ─── Challonge Sync ─────────────────────────────────────────────────────────
+
+export interface ChallongeSyncLogEntry {
+  id: number;
+  created_at: string;
+  direction: "import" | "export";
+  entity_type: string;
+  entity_id: number | null;
+  challonge_id: number | null;
+  status: "success" | "failed" | "conflict";
+  error_message: string | null;
 }
 
 // ─── Discord Channel Sync ─────────────────────────────────────────────────────
