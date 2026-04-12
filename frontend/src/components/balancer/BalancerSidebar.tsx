@@ -94,7 +94,7 @@ function SidebarWorkspaceSwitcher() {
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
               size="lg"
-              className="h-11 rounded-xl bg-sidebar-accent/70 px-2.5 hover:bg-sidebar-accent data-[state=open]:bg-sidebar-accent"
+              className="h-11 rounded-xl bg-sidebar-accent/70 px-2.5 hover:bg-sidebar-accent data-[state=open]:bg-sidebar-accent group-data-[collapsible=icon]:justify-center"
             >
               {current?.icon_url ? (
                 <Avatar className="size-8 rounded-lg">
@@ -202,6 +202,16 @@ function SidebarTournamentSwitcher() {
   const tournaments = tournamentsQuery.data?.results ?? [];
   const current = tournaments.find((t) => t.id === validSelectedId);
 
+  // Auto-select the most recent tournament when none is selected
+  useEffect(() => {
+    if (validSelectedId !== null || tournaments.length === 0) return;
+    const latest = tournaments[0];
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tournament", String(latest.id));
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname);
+  }, [tournaments, validSelectedId, pathname, router, searchParams]);
+
   const handleSelect = (id: number) => {
     const params = new URLSearchParams(searchParams.toString());
     if (id === validSelectedId) {
@@ -220,7 +230,7 @@ function SidebarTournamentSwitcher() {
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
               size="lg"
-              className="h-10 rounded-lg px-2.5 text-sidebar-foreground/78 hover:text-sidebar-foreground"
+              className="h-10 rounded-lg px-2.5 text-sidebar-foreground/78 hover:text-sidebar-foreground group-data-[collapsible=icon]:justify-center"
             >
               <Trophy className="size-4 shrink-0" />
               <div className="grid flex-1 text-left leading-tight group-data-[collapsible=icon]:hidden">
@@ -285,13 +295,13 @@ export function BalancerSidebar() {
   return (
     <Sidebar collapsible="icon" variant="inset">
       {/* Workspace switcher */}
-      <SidebarHeader className="px-2.5 py-2.5 group-data-[collapsible=icon]:px-1">
+      <SidebarHeader className="px-2.5 py-2.5 group-data-[collapsible=icon]:px-0">
         <SidebarWorkspaceSwitcher />
       </SidebarHeader>
 
-      <SidebarContent className="px-2 py-0 group-data-[collapsible=icon]:px-1">
+      <SidebarContent className="px-2 py-0 group-data-[collapsible=icon]:px-0">
         {/* Tournament switcher */}
-        <SidebarGroup className="py-2">
+        <SidebarGroup className="py-2 group-data-[collapsible=icon]:px-0">
           <SidebarGroupLabel className="text-[11px] uppercase tracking-wider text-sidebar-foreground/45 group-data-[collapsible=icon]:hidden">
             Tournament
           </SidebarGroupLabel>
@@ -301,7 +311,7 @@ export function BalancerSidebar() {
         <SidebarSeparator />
 
         {/* Navigation */}
-        <SidebarGroup className="py-2">
+        <SidebarGroup className="py-2 group-data-[collapsible=icon]:px-0">
           <SidebarGroupLabel className="text-[11px] uppercase tracking-wider text-sidebar-foreground/45 group-data-[collapsible=icon]:hidden">
             Navigation
           </SidebarGroupLabel>
@@ -332,7 +342,7 @@ export function BalancerSidebar() {
       </SidebarContent>
 
       {/* User footer */}
-      <SidebarFooter className="border-t border-sidebar-border/70 px-2 py-2.5 group-data-[collapsible=icon]:px-1">
+      <SidebarFooter className="border-t border-sidebar-border/70 px-2 py-2.5 group-data-[collapsible=icon]:px-0">
         {/* Back to site */}
         <SidebarMenu>
           <SidebarMenuItem>
@@ -352,7 +362,7 @@ export function BalancerSidebar() {
 
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild size="lg" tooltip={user?.username ?? "Profile"} className="h-11 rounded-lg px-2.5 text-sidebar-foreground/82">
+            <SidebarMenuButton asChild size="lg" tooltip={user?.username ?? "Profile"} className="h-11 rounded-lg px-2.5 text-sidebar-foreground/82 group-data-[collapsible=icon]:justify-center">
               <Link href={profileHref}>
                 <Avatar className="size-7 rounded-lg">
                   <AvatarImage src={user?.avatarUrl ?? undefined} alt={user?.username ?? "User"} />

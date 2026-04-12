@@ -156,7 +156,7 @@ export default function TournamentSectionNav({
             const isDisabled = !isBracketEntry && isItemDisabled(item.tab);
             const href = isBracketEntry ? item.href : buildHref(item.tab);
             const Icon = item.icon;
-            const key = item.key ?? item.tab;
+            const key = "key" in item ? item.key : item.tab;
             const itemClassName = cn(
               "inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border px-4 text-sm font-medium transition-colors",
               isDisabled
@@ -168,7 +168,7 @@ export default function TournamentSectionNav({
             const content = (
               <>
                 <Icon className={cn("h-4 w-4", isDisabled && "text-white/20")} />
-                <span className="whitespace-nowrap">{item.label ?? item.title}</span>
+                <span className="whitespace-nowrap">{"label" in item ? item.label : item.title}</span>
               </>
             );
 
@@ -209,7 +209,7 @@ export default function TournamentSectionNav({
         const href = isBracketEntry ? item.href : buildHref(item.tab);
         const Icon = item.icon;
         const subtitle = isBracketEntry ? item.subtitle : undefined;
-        const key = item.key ?? item.tab;
+        const key = "key" in item ? item.key : item.tab;
         const itemClassName = cn(
           "group flex min-h-10 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
           isDisabled
@@ -231,7 +231,7 @@ export default function TournamentSectionNav({
               )}
             />
             <div className="min-w-0 flex-1">
-              <span className="block truncate">{item.label ?? item.title}</span>
+              <span className="block truncate">{"label" in item ? item.label : item.title}</span>
               {subtitle && (
                 <span className="mt-0.5 block truncate text-[10px] uppercase tracking-[0.18em] text-white/30">
                   {subtitle}

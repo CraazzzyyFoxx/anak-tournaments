@@ -86,7 +86,7 @@ export function ActiveTournamentCard({
               <Calendar className="size-3.5" />
               <span>{formatDate(tournament.start_date)} — {formatDate(tournament.end_date)}</span>
               {(tournament.groups?.length ?? 0) > 0 && (
-                <span className="ml-2">{tournament.groups.length} group{tournament.groups.length === 1 ? "" : "s"}</span>
+                <span className="ml-2">{tournament.groups!.length} group{tournament.groups!.length === 1 ? "" : "s"}</span>
               )}
             </div>
 

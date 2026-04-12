@@ -314,12 +314,13 @@ export default function RegistrationFormConfigPage() {
   });
 
   useEffect(() => {
-    if (formQuery.data) {
+    const data = formQuery.data;
+    if (data) {
       startTransition(() => {
-        setIsOpen(formQuery.data.is_open);
-        setAutoApprove(formQuery.data.auto_approve ?? false);
-        setBuiltInFields(getBuiltInConfig(formQuery.data.built_in_fields_json ?? {}));
-        setCustomFields((formQuery.data.custom_fields_json ?? []).map(hydrateCustomField));
+        setIsOpen(data.is_open);
+        setAutoApprove(data.auto_approve ?? false);
+        setBuiltInFields(getBuiltInConfig(data.built_in_fields_json ?? {}));
+        setCustomFields((data.custom_fields_json ?? []).map(hydrateCustomField));
         setHasChanges(false);
       });
     }

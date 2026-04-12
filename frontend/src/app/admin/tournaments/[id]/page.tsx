@@ -443,6 +443,7 @@ export default function AdminTournamentWorkspacePage() {
     number: null,
     name: "",
     description: "",
+    challonge_slug: "",
     is_league: false,
     is_finished: false,
     start_date: "",

@@ -17,7 +17,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import balancerAdminService from "@/services/balancer-admin.service";
-import type { AdminGoogleSheetFeed } from "@/types/balancer-admin.types";
+import type { AdminGoogleSheetFeed, AdminGoogleSheetMappingPreviewResponse } from "@/types/balancer-admin.types";
 
 function parseObjectInput(value: string): Record<string, unknown> | null {
   const trimmed = value.trim();
@@ -70,7 +70,7 @@ export default function BalancerRegistrationsFeedPage() {
   const [autoSyncIntervalSeconds, setAutoSyncIntervalSeconds] = useState("300");
   const [mappingJson, setMappingJson] = useState("");
   const [valueMappingJson, setValueMappingJson] = useState("");
-  const [mappingPreview, setMappingPreview] = useState<Record<string, unknown> | null>(null);
+  const [mappingPreview, setMappingPreview] = useState<AdminGoogleSheetMappingPreviewResponse | null>(null);
 
   const feedQuery = useQuery({
     queryKey: ["balancer-admin", "sheet", tournamentId],

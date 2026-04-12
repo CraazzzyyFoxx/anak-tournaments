@@ -115,7 +115,7 @@ export default function BalancerLayout({ children }: { children: ReactNode }) {
           <BalancerBreadcrumb />
         </header>
 
-        <div className="flex flex-1 flex-col gap-5 overflow-x-hidden p-4 xl:min-h-0 xl:overflow-hidden md:p-5">
+        <div className="flex flex-1 flex-col gap-4 overflow-x-hidden p-3 xl:min-h-0 xl:overflow-hidden md:p-4">
           <BalancerShell>{children}</BalancerShell>
         </div>
       </SidebarInset>
