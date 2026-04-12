@@ -31,6 +31,8 @@ class BaseServiceSettings(BaseSettings):
     # shadowsocks: ss-local sidecar exposes a local SOCKS5 port
     proxy_ss_local_host: str = "ss-local"
     proxy_ss_local_port: int = 1080
+    proxy_http_host: str = "ss-local"
+    proxy_http_port: int = 8080
 
     # Application
     project_name: str = "Anak Service"
@@ -79,6 +81,8 @@ class BaseServiceSettings(BaseSettings):
     sentry_dsn: str | None = None
     sentry_traces_sample_rate: float = 0.1
     sentry_profiles_sample_rate: float = 0.1
+    sentry_http_proxy: str | None = None
+    sentry_https_proxy: str | None = None
     otlp_endpoint: str | None = None
     tracing_enabled: bool = False
     otel_traces_sampler: str = "parentbased_traceidratio"
@@ -130,3 +134,21 @@ class BaseServiceSettings(BaseSettings):
         if self.proxy_username and self.proxy_password:
             auth = f"{self.proxy_username}:{self.proxy_password}@"
         return f"{scheme}://{auth}{self.proxy_ip}:{self.proxy_port}"
+
+    @property
+    def proxy_http_url(self) -> str:
+        return f"http://{self.proxy_http_host}:{self.proxy_http_port}"
+
+    @property
+    def sentry_http_proxy_url(self) -> str | None:
+        if self.sentry_http_proxy:
+            return self.sentry_http_proxy
+        if self.proxy_type == "shadowsocks":
+            return self.proxy_http_url
+        return None
+
+    @property
+    def sentry_https_proxy_url(self) -> str | None:
+        if self.sentry_https_proxy:
+            return self.sentry_https_proxy
+        return self.sentry_http_proxy_url

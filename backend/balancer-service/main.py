@@ -1,7 +1,6 @@
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
-import sentry_sdk
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -19,6 +18,7 @@ from shared.observability import (
     check_redis,
     instrument_fastapi,
     make_health_response,
+    setup_sentry,
     setup_logging,
     setup_tracing,
 )
@@ -43,15 +43,15 @@ auth_client = AuthClient(
 async def lifespan(app: FastAPI):
     """Application lifespan events"""
     # Initialize Sentry
-    if config.sentry_dsn:
-        sentry_sdk.init(
-            dsn=config.sentry_dsn,
-            traces_sample_rate=config.sentry_traces_sample_rate,
-            profiles_sample_rate=config.sentry_profiles_sample_rate,
-            environment=config.environment,
-            release=config.version,
-        )
-        logger.info(f"Sentry initialized (sampling={config.sentry_traces_sample_rate})")
+    setup_sentry(
+        dsn=config.sentry_dsn,
+        traces_sample_rate=config.sentry_traces_sample_rate,
+        profiles_sample_rate=config.sentry_profiles_sample_rate,
+        environment=config.environment,
+        release=config.version,
+        http_proxy=config.sentry_http_proxy_url,
+        https_proxy=config.sentry_https_proxy_url,
+    )
 
     # Setup OpenTelemetry tracing
     setup_tracing(

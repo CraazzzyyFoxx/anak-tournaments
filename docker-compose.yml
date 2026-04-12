@@ -96,6 +96,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      ss-local:
+        condition: service_healthy
     develop:
       watch:
         - path: ./backend/pyproject.toml
@@ -255,6 +257,8 @@ services:
       rabbitmq:
         condition: service_healthy
       backend:
+        condition: service_healthy
+      ss-local:
         condition: service_healthy
     volumes:
       - ./backend/balancer-service:/app/balancer-service

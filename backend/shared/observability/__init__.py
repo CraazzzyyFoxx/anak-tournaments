@@ -25,6 +25,7 @@ from .health import (
     make_health_response,
 )
 from .logging import get_logger, setup_logging
+from .sentry import setup_sentry
 from .time_middleware import TimeMiddleware
 from .tracing import instrument_fastapi, instrument_sqlalchemy, setup_tracing
 from .worker import observe_message_processing, publish_message, start_worker_metrics_server
@@ -32,6 +33,7 @@ from .worker import observe_message_processing, publish_message, start_worker_me
 __all__ = [
     "setup_logging",
     "get_logger",
+    "setup_sentry",
     "CORRELATION_ID_HEADER",
     "REQUEST_ID_HEADER",
     "CorrelationIdMiddleware",

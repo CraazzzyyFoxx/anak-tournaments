@@ -1,6 +1,5 @@
 from contextlib import asynccontextmanager
 
-import sentry_sdk
 from fastapi import FastAPI
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
@@ -14,6 +13,7 @@ from shared.observability import (
     TimeMiddleware,
     instrument_fastapi,
     instrument_sqlalchemy,
+    setup_sentry,
     setup_logging,
     setup_tracing,
 )
@@ -46,13 +46,14 @@ s3_client = S3Client(
 async def lifespan(app: FastAPI):
     """Application lifespan events"""
     # Initialize Sentry
-    if settings.sentry_dsn:
-        sentry_sdk.init(
-            dsn=settings.sentry_dsn,
-            traces_sample_rate=settings.sentry_traces_sample_rate,
-            profiles_sample_rate=settings.sentry_profiles_sample_rate,
-            environment=settings.environment,
-        )
+    setup_sentry(
+        dsn=settings.sentry_dsn,
+        traces_sample_rate=settings.sentry_traces_sample_rate,
+        profiles_sample_rate=settings.sentry_profiles_sample_rate,
+        environment=settings.environment,
+        http_proxy=settings.sentry_http_proxy_url,
+        https_proxy=settings.sentry_https_proxy_url,
+    )
 
     # Setup OpenTelemetry tracing
     setup_tracing(
