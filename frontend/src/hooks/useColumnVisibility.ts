@@ -30,9 +30,9 @@ function saveVisibility(
   }
 }
 
-export function useColumnVisibility(
+export function useColumnVisibility<T extends VisibilityColumn>(
   storageKey: string,
-  columns: VisibilityColumn[],
+  columns: T[],
 ) {
   const defaults = useMemo(() => {
     const d: Record<string, boolean> = {};

@@ -154,6 +154,12 @@ const STATUS_CONFIG: Record<string, { icon: typeof Clock; className: string; lab
   insufficient_data: { icon: AlertTriangle, className: "text-orange-500", label: "Incomplete" },
 };
 
+function formatSubmittedAt(value: string | null | undefined): string {
+  if (!value) return "-";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "-" : date.toLocaleString();
+}
+
 function RegistrationToggleBar({ tournamentId }: { tournamentId: number }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -465,10 +471,9 @@ function RegistrationProfileForm({
     }));
   };
 
-  const primaryRole = draft.is_flex
-    ? "flex"
+  const primaryRoleCode: BalancerRoleCode | "" = draft.is_flex
+    ? ""
     : (ROLE_OPTIONS.find((role) => draft.roles[role].enabled && draft.roles[role].is_primary) ?? "");
-  const primaryRoleCode = draft.is_flex ? "" : primaryRole;
   const primarySubrole =
     primaryRoleCode && primaryRoleCode !== "tank" ? draft.roles[primaryRoleCode].subrole : "";
   const additionalRoles: AdditionalRole[] = !draft.is_flex
@@ -479,7 +484,7 @@ function RegistrationProfileForm({
         }))
     : [];
   const isLastStep = step === ADMIN_FORM_STEPS.length - 1;
-  const canAdvance = step === 0 ? draft.battle_tag.trim().length > 0 : step === 1 ? draft.is_flex || primaryRole !== "" : true;
+  const canAdvance = step === 0 ? draft.battle_tag.trim().length > 0 : step === 1 ? draft.is_flex || primaryRoleCode !== "" : true;
 
   const selectFlexProfile = () => {
     setDraft((current) => ({
@@ -1208,7 +1213,7 @@ export default function BalancerRegistrationsPage() {
                         <TableCell><BalancerBadge registration={registration} /></TableCell>
                         <TableCell><CheckInBadge registration={registration} /></TableCell>
                         <TableCell className="text-sm text-muted-foreground">
-                          {registration.submitted_at ? new Date(registration.submitted_at).toLocaleString() : "-"}
+                          {formatSubmittedAt(registration.submitted_at)}
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-wrap gap-2">
