@@ -94,5 +94,13 @@ export const getPlayerSlug = (battleTag: string | null | undefined) => {
  *  Names without a numeric suffix are returned unchanged.
  */
 export const decodePlayerSlug = (slug: string): string => {
-  return slug.replace(/-(\d+)$/, "#$1");
+  let decodedSlug = slug;
+
+  try {
+    decodedSlug = decodeURIComponent(slug);
+  } catch {
+    decodedSlug = slug;
+  }
+
+  return decodedSlug.replace(/-(\d+)$/, "#$1");
 };
