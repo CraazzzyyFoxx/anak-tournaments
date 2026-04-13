@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint, func
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db
@@ -308,6 +309,13 @@ class BalancerRegistration(db.TimeStampIntegerMixin):
             "exclude_from_balancer",
             postgresql_where="deleted_at IS NULL",
         ),
+        Index(
+            "ix_balancer_registration_tournament_balancer_status",
+            "tournament_id",
+            "status",
+            "balancer_status",
+            postgresql_where="deleted_at IS NULL",
+        ),
         {"schema": "balancer"},
     )
 
@@ -339,6 +347,14 @@ class BalancerRegistration(db.TimeStampIntegerMixin):
     is_flex: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
     custom_fields_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, server_default="pending", default="pending")
+    balancer_status: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default="not_in_balancer", default="not_in_balancer"
+    )
+    checked_in: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
+    checked_in_at: Mapped[db.DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    checked_in_by: Mapped[int | None] = mapped_column(
+        ForeignKey("auth.user.id", ondelete="SET NULL"), nullable=True
+    )
     submitted_at: Mapped[db.DateTime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -360,6 +376,7 @@ class BalancerRegistration(db.TimeStampIntegerMixin):
     user: Mapped["User | None"] = relationship()
     reviewer: Mapped["AuthUser | None"] = relationship(foreign_keys=[reviewed_by])
     deleted_by_user: Mapped["AuthUser | None"] = relationship(foreign_keys=[deleted_by])
+    checked_in_by_user: Mapped["AuthUser | None"] = relationship(foreign_keys=[checked_in_by])
     roles: Mapped[list["BalancerRegistrationRole"]] = relationship(
         back_populates="registration", cascade="all, delete-orphan"
     )
@@ -368,6 +385,11 @@ class BalancerRegistration(db.TimeStampIntegerMixin):
         cascade="all, delete-orphan",
         uselist=False,
     )
+
+    @hybrid_property
+    def is_flex_computed(self) -> bool:
+        """True when the player selected at least one role and all selected roles are primary."""
+        return bool(self.roles) and all(role.is_primary for role in self.roles)
 
 
 class BalancerRegistrationRole(db.TimeStampIntegerMixin):

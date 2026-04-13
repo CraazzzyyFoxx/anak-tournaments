@@ -13,6 +13,16 @@ import {
   XCircle,
 } from "lucide-react";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { useColumnVisibility } from "@/hooks/useColumnVisibility";
@@ -32,6 +42,11 @@ const RESPONSIVE_CLASS: Record<string, string> = {
   sm: "hidden sm:table-cell",
   md: "hidden md:table-cell",
   lg: "hidden lg:table-cell",
+};
+
+const ALIGN_CLASS: Record<"left" | "center", string> = {
+  left: "text-left",
+  center: "text-center",
 };
 
 // ---------------------------------------------------------------------------
@@ -132,6 +147,7 @@ export default function TournamentParticipantsPage({
   const { user, status: authStatus } = useAuthProfile();
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
+  const [isWithdrawDialogOpen, setIsWithdrawDialogOpen] = useState(false);
 
   const isAuthenticated = authStatus === "authenticated" && user !== null;
 
@@ -171,6 +187,7 @@ export default function TournamentParticipantsPage({
         tournament.id,
       ),
     onSuccess: async () => {
+      setIsWithdrawDialogOpen(false);
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: [
@@ -199,8 +216,6 @@ export default function TournamentParticipantsPage({
 
   const registrations = listQuery.data ?? [];
   const myRegistration = myRegQuery.data;
-  const alreadyRegistered =
-    myRegistration != null && myRegistration.status !== "withdrawn";
   const form = formQuery.data ?? null;
 
   // Dynamic columns
@@ -227,13 +242,43 @@ export default function TournamentParticipantsPage({
   return (
     <div className="space-y-5">
       {/* My registration status */}
-      {myRegistration && alreadyRegistered && (
+      {myRegistration && (
         <MyRegistrationBar
           registration={myRegistration}
-          onWithdraw={() => withdrawMutation.mutate()}
+          onWithdraw={() => setIsWithdrawDialogOpen(true)}
           isWithdrawing={withdrawMutation.isPending}
         />
       )}
+
+      <AlertDialog
+        open={isWithdrawDialogOpen}
+        onOpenChange={setIsWithdrawDialogOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Withdraw registration?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Your application will be marked as withdrawn, and you will not be
+              able to register for this tournament again.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={withdrawMutation.isPending}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                withdrawMutation.mutate();
+              }}
+              disabled={withdrawMutation.isPending}
+              className="bg-red-600 text-white hover:bg-red-500"
+            >
+              {withdrawMutation.isPending ? "Withdrawing..." : "Confirm withdraw"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Header */}
       <div>
@@ -281,8 +326,9 @@ export default function TournamentParticipantsPage({
                   <th
                     key={col.id}
                     className={cn(
-                      "px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-white/40",
+                      "px-3 py-2.5 text-xs font-medium uppercase tracking-wider text-white/40",
                       RESPONSIVE_CLASS[col.responsive ?? "always"],
+                      ALIGN_CLASS[col.align ?? "left"],
                       col.widthClass,
                     )}
                   >
@@ -301,8 +347,9 @@ export default function TournamentParticipantsPage({
                     <td
                       key={col.id}
                       className={cn(
-                        "px-4 py-2.5",
+                        "px-3 py-2.5",
                         RESPONSIVE_CLASS[col.responsive ?? "always"],
+                        ALIGN_CLASS[col.align ?? "left"],
                         col.widthClass,
                       )}
                     >

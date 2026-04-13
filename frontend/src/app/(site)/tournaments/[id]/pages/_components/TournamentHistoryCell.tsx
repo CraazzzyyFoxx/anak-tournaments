@@ -39,9 +39,13 @@ export default function TournamentHistoryCell({
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="cursor-default text-xs text-white/60 underline decoration-white/20 decoration-dotted underline-offset-2">
-            {history.length} {history.length === 1 ? "tournament" : "tournaments"}
-          </span>
+          <button
+            type="button"
+            aria-label={`${history.length} previous ${history.length === 1 ? "tournament" : "tournaments"}`}
+            className="inline-flex items-center rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-xs font-medium text-white/65 transition hover:border-white/20 hover:bg-white/8 hover:text-white/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111113]"
+          >
+            {history.length}x
+          </button>
         </TooltipTrigger>
         <TooltipContent
           side="top"

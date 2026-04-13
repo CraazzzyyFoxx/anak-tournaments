@@ -121,6 +121,8 @@ class TournamentHistoryEntry(BaseModel):
 
 
 class RegistrationListRead(RegistrationRead):
+    balancer_status: str = "not_in_balancer"
+    checked_in: bool = False
     tournament_history: list[TournamentHistoryEntry] = Field(default_factory=list)
 
 

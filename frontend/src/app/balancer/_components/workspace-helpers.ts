@@ -179,7 +179,7 @@ export function buildApplicationSearchIndex(application: BalancerApplication): s
 }
 
 function isFlexApplication(application: BalancerApplication | null | undefined, applicationRoleCodes: BalancerRoleCode[]): boolean {
-  return application?.primary_role == null && applicationRoleCodes.length === 3;
+  return application?.primary_role == null && applicationRoleCodes.length > 0;
 }
 
 function roleSequencesMatch(
@@ -326,8 +326,17 @@ function getRegistrationDisplayName(registration: AdminRegistration): string {
   return registration.battle_tag ?? registration.display_name ?? `registration-${registration.id}`;
 }
 
+function isRegistrationFlex(registration: AdminRegistration): boolean {
+  return registration.roles.length > 0 && registration.roles.every((role) => role.is_primary);
+}
+
 export function isRegistrationIncludedInBalancer(registration: AdminRegistration): boolean {
-  return registration.status === "approved" && !registration.exclude_from_balancer && !registration.deleted_at;
+  return (
+    registration.status === "approved" &&
+    !registration.deleted_at &&
+    !registration.exclude_from_balancer &&
+    registration.balancer_status !== "not_in_balancer"
+  );
 }
 
 export function isRegistrationAvailableForBalancer(registration: AdminRegistration): boolean {
@@ -339,6 +348,7 @@ export function createSyntheticPlayerFromRegistration(
   grid: DivisionGrid = DEFAULT_DIVISION_GRID,
 ): BalancerPlayerRecord {
   const battleTag = getRegistrationDisplayName(registration);
+  const isFlex = isRegistrationFlex(registration);
   return {
     id: registration.id,
     tournament_id: registration.tournament_id,
@@ -354,7 +364,7 @@ export function createSyntheticPlayerFromRegistration(
       rank_value: role.rank_value,
       is_active: role.is_active,
     })),
-    is_flex: registration.is_flex,
+    is_flex: isFlex,
     is_in_pool: isRegistrationIncludedInBalancer(registration),
     admin_notes: registration.admin_notes,
   };
@@ -365,10 +375,11 @@ export function createSyntheticApplicationFromRegistration(
   player: BalancerPlayerRecord | null = null,
 ): BalancerApplication {
   const sortedRoles = [...registration.roles].sort((left, right) => left.priority - right.priority);
-  const primaryRole = sortedRoles.find((role) => role.is_primary)?.role ?? sortedRoles[0]?.role ?? null;
-  const additionalRoles = sortedRoles
-    .filter((role) => role.role !== primaryRole)
-    .map((role) => role.role);
+  const isFlex = isRegistrationFlex(registration);
+  const primaryRole = isFlex ? null : (sortedRoles.find((role) => role.is_primary)?.role ?? sortedRoles[0]?.role ?? null);
+  const additionalRoles = isFlex
+    ? sortedRoles.map((role) => role.role)
+    : sortedRoles.filter((role) => role.role !== primaryRole).map((role) => role.role);
   const battleTag = getRegistrationDisplayName(registration);
 
   return {

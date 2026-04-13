@@ -12,6 +12,7 @@ BalancerRoleSubtype = Literal["hitscan", "projectile", "main_heal", "light_heal"
 DuplicateResolution = Literal["replace", "skip"]
 DuplicateStrategy = Literal["manual", "replace_all", "skip_all"]
 RegistrationStatus = Literal["pending", "approved", "rejected", "withdrawn", "banned", "insufficient_data"]
+BalancerStatus = Literal["not_in_balancer", "incomplete", "ready"]
 RegistrationSource = Literal["manual", "google_sheets"]
 
 __all__ = (
@@ -47,6 +48,9 @@ __all__ = (
     "BalancerTournamentSheetRead",
     "BalancerTournamentSheetUpsert",
     "BulkApproveResponse",
+    "BulkBalancerStatusResponse",
+    "CheckInRequest",
+    "SetBalancerStatusRequest",
     "SheetSyncResponse",
 )
 
@@ -272,8 +276,12 @@ class BalancerRegistrationRead(BaseRead):
     custom_fields_json: dict[str, Any] | None = None
     is_flex: bool = False
     status: RegistrationStatus
+    balancer_status: BalancerStatus = "not_in_balancer"
     exclude_from_balancer: bool = False
     exclude_reason: str | None = None
+    checked_in: bool = False
+    checked_in_at: datetime | None = None
+    checked_in_by_username: str | None = None
     deleted_at: datetime | None = None
     submitted_at: datetime | None = None
     reviewed_at: datetime | None = None
@@ -311,6 +319,19 @@ class BalancerRegistrationUpdateRequest(BaseModel):
 class BalancerRegistrationExclusionRequest(BaseModel):
     exclude_from_balancer: bool
     exclude_reason: str | None = None
+
+
+class SetBalancerStatusRequest(BaseModel):
+    balancer_status: BalancerStatus
+
+
+class CheckInRequest(BaseModel):
+    checked_in: bool
+
+
+class BulkBalancerStatusResponse(BaseModel):
+    updated: int
+    skipped: int
 
 
 class BulkApproveResponse(BaseModel):

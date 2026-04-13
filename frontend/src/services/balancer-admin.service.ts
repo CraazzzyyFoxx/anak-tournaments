@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api-fetch";
+import type { BalancerStatus } from "@/types/balancer-admin.types";
 import {
   AdminRegistration,
   AdminRegistrationCreateInput,
@@ -325,6 +326,44 @@ export default class balancerAdminService {
     const response = await apiFetch("parser", `admin/balancer/tournaments/${tournamentId}/registrations/bulk-approve`, {
       method: "POST",
       body: { registration_ids: registrationIds },
+    });
+    return response.json();
+  }
+
+  // -- Balancer status management ------------------------------------------
+
+  static async setBalancerStatus(
+    registrationId: number,
+    balancerStatus: BalancerStatus,
+  ): Promise<AdminRegistration> {
+    const response = await apiFetch("parser", `admin/balancer/registrations/${registrationId}/balancer-status`, {
+      method: "PATCH",
+      body: { balancer_status: balancerStatus },
+    });
+    return response.json();
+  }
+
+  static async bulkAddToBalancer(
+    tournamentId: number,
+    registrationIds: number[],
+    balancerStatus: BalancerStatus = "ready",
+  ): Promise<{ updated: number; skipped: number }> {
+    const response = await apiFetch("parser", `admin/balancer/tournaments/${tournamentId}/registrations/bulk-add-to-balancer`, {
+      method: "POST",
+      body: { registration_ids: registrationIds, balancer_status: balancerStatus },
+    });
+    return response.json();
+  }
+
+  // -- Check-in management -------------------------------------------------
+
+  static async checkInRegistration(
+    registrationId: number,
+    checkedIn: boolean,
+  ): Promise<AdminRegistration> {
+    const response = await apiFetch("parser", `admin/balancer/registrations/${registrationId}/check-in`, {
+      method: "PATCH",
+      body: { checked_in: checkedIn },
     });
     return response.json();
   }

@@ -272,6 +272,8 @@ export interface AdminRegistrationRole {
   is_active: boolean;
 }
 
+export type BalancerStatus = "not_in_balancer" | "incomplete" | "ready";
+
 export interface AdminRegistration {
   id: number;
   tournament_id: number;
@@ -293,8 +295,12 @@ export interface AdminRegistration {
   custom_fields_json: Record<string, unknown> | null;
   is_flex: boolean;
   status: "pending" | "approved" | "rejected" | "withdrawn" | "banned" | "insufficient_data";
+  balancer_status: BalancerStatus;
   exclude_from_balancer: boolean;
   exclude_reason: string | null;
+  checked_in: boolean;
+  checked_in_at: string | null;
+  checked_in_by_username: string | null;
   deleted_at: string | null;
   submitted_at: string | null;
   reviewed_at: string | null;

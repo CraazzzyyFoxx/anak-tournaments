@@ -21,6 +21,9 @@ import type {
   RegistrationRole,
 } from "@/types/registration.types";
 
+import AdmissionBadge from "./AdmissionBadge";
+import BalancerStatusBadge from "./BalancerStatusBadge";
+import CheckInBadge from "./CheckInBadge";
 import StatusBadge from "./StatusBadge";
 import TournamentHistoryCell from "./TournamentHistoryCell";
 
@@ -39,6 +42,8 @@ export interface ColumnDefinition {
   responsive?: "always" | "sm" | "md" | "lg";
   /** Optional fixed width class for the column. */
   widthClass?: string;
+  /** Optional alignment override for header and cells. */
+  align?: "left" | "center";
 }
 
 // ---------------------------------------------------------------------------
@@ -86,7 +91,7 @@ function RolesCell({ roles }: { roles: RegistrationRole[] }) {
     return <span className="text-white/30">&mdash;</span>;
 
   return (
-    <div className="flex flex-wrap items-start gap-x-0.5 gap-y-2">
+    <div className="flex flex-wrap items-start justify-center gap-x-0.5 gap-y-2">
       {roles.map((r) => (
         <div
           key={`${r.role}-${r.subrole ?? "base"}-${r.priority}`}
@@ -254,6 +259,7 @@ interface BuiltInFieldDef {
   defaultVisible: boolean;
   responsive?: ColumnDefinition["responsive"];
   widthClass?: string;
+  align?: ColumnDefinition["align"];
   render: (reg: Registration) => ReactNode;
   searchValue?: (reg: Registration) => string | null;
 }
@@ -304,6 +310,7 @@ const BUILT_IN_FIELD_DEFS: Record<string, BuiltInFieldDef> = {
     label: "Roles",
     defaultVisible: true,
     responsive: "always",
+    align: "center",
     render: (reg) => <RolesCell roles={reg.roles} />,
     searchValue: (reg) =>
       reg.roles?.map((r) => r.role).join(" ") ?? null,
@@ -378,6 +385,7 @@ export function buildParticipantColumns(
         defaultVisible: def.defaultVisible,
         responsive: def.responsive ?? "sm",
         widthClass: def.widthClass,
+        align: def.align,
         render: (reg) => def.render(reg),
         searchValue: def.searchValue,
       });
@@ -394,6 +402,7 @@ export function buildParticipantColumns(
         defaultVisible: true,
         responsive: def.responsive ?? "sm",
         widthClass: def.widthClass,
+        align: def.align,
         render: (reg) => def.render(reg),
         searchValue: def.searchValue,
       });
@@ -432,6 +441,7 @@ export function buildParticipantColumns(
     category: "meta",
     defaultVisible: true,
     responsive: "md",
+    align: "center",
     render: (reg) => (
       <TournamentHistoryCell history={reg.tournament_history ?? []} />
     ),
@@ -447,14 +457,54 @@ export function buildParticipantColumns(
     render: (reg) => formatDate(reg.submitted_at),
   });
 
-  // Meta: status — always last (rightmost)
+  // Meta: registration status
   columns.push({
     id: "_status",
     label: "Status",
     category: "meta",
     defaultVisible: true,
     responsive: "always",
+    align: "center",
     render: (reg) => <StatusBadge status={reg.status} />,
+  });
+
+  // Meta: balancer status
+  columns.push({
+    id: "_balancer_status",
+    label: "Balancer",
+    category: "meta",
+    defaultVisible: true,
+    responsive: "md",
+    align: "center",
+    render: (reg) => <BalancerStatusBadge status={reg.balancer_status} />,
+  });
+
+  // Meta: check-in status
+  columns.push({
+    id: "_check_in",
+    label: "Check-in",
+    category: "meta",
+    defaultVisible: true,
+    responsive: "md",
+    align: "center",
+    render: (reg) => <CheckInBadge checkedIn={reg.checked_in} />,
+  });
+
+  // Meta: admission composite — always last (rightmost)
+  columns.push({
+    id: "_admission",
+    label: "Admission",
+    category: "meta",
+    defaultVisible: true,
+    responsive: "always",
+    align: "center",
+    render: (reg) => (
+      <AdmissionBadge
+        registrationStatus={reg.status}
+        balancerStatus={reg.balancer_status}
+        checkedIn={reg.checked_in}
+      />
+    ),
   });
 
   return columns;

@@ -39,6 +39,8 @@ export type RegistrationStatus =
   | "banned"
   | "insufficient_data";
 
+export type BalancerStatus = "not_in_balancer" | "incomplete" | "ready";
+
 export interface TournamentHistoryEntry {
   tournament_id: number;
   tournament_name: string;
@@ -61,6 +63,8 @@ export interface Registration {
   notes: string | null;
   custom_fields_json: Record<string, unknown> | null;
   status: RegistrationStatus;
+  balancer_status?: BalancerStatus;
+  checked_in?: boolean;
   submitted_at: string | null;
   reviewed_at: string | null;
   tournament_history?: TournamentHistoryEntry[];

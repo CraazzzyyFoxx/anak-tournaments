@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException
+from shared.division_grid import resolve_grid
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from shared.division_grid import resolve_grid
 
 from src import models
 from src.core import auth, db
@@ -108,6 +107,8 @@ async def register(
 
     existing = await reg_service.get_registration(session, tournament_id, user.id)
     if existing is not None:
+        if existing.status == "withdrawn":
+            raise HTTPException(status_code=409, detail="Withdrawn registrations cannot be submitted again")
         raise HTTPException(status_code=409, detail="Already registered for this tournament")
 
     # Resolve player profile from auth_user (explicit query to avoid lazy load)
@@ -260,6 +261,8 @@ async def list_registrations(
     return [
         RegistrationListRead(
             **_reg_to_read(r).model_dump(),
+            balancer_status=r.balancer_status,
+            checked_in=r.checked_in,
             tournament_history=history_map.get(r.id, []),
         )
         for r in registrations

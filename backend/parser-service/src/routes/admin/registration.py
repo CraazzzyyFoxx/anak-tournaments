@@ -41,6 +41,7 @@ def _serialize_registration(
     registration: models.BalancerRegistration,
 ) -> admin_schemas.BalancerRegistrationRead:
     binding = registration.google_sheet_binding
+    sorted_roles = sorted(registration.roles, key=lambda item: (item.priority, item.role))
     return admin_schemas.BalancerRegistrationRead(
         id=registration.id,
         tournament_id=registration.tournament_id,
@@ -59,19 +60,24 @@ def _serialize_registration(
         notes=registration.notes,
         admin_notes=registration.admin_notes,
         custom_fields_json=registration.custom_fields_json,
-        is_flex=registration.is_flex,
+        is_flex=registration.is_flex_computed,
         status=registration.status,
+        balancer_status=registration.balancer_status,
         exclude_from_balancer=registration.exclude_from_balancer,
         exclude_reason=registration.exclude_reason,
+        checked_in=registration.checked_in,
+        checked_in_at=registration.checked_in_at,
+        checked_in_by_username=(
+            registration.checked_in_by_user.username
+            if registration.checked_in_by_user
+            else None
+        ),
         deleted_at=registration.deleted_at,
         submitted_at=registration.submitted_at,
         reviewed_at=registration.reviewed_at,
         reviewed_by_username=registration.reviewer.username if registration.reviewer else None,
         balancer_profile_overridden_at=registration.balancer_profile_overridden_at,
-        roles=[
-            _serialize_registration_role(role)
-            for role in sorted(registration.roles, key=lambda item: (item.priority, item.role))
-        ],
+        roles=[_serialize_registration_role(role) for role in sorted_roles],
     )
 
 
@@ -316,3 +322,70 @@ async def bulk_approve_registrations(
         reviewed_by=user.id,
     )
     return admin_schemas.BulkApproveResponse(approved=approved, skipped=skipped)
+
+
+# ---------------------------------------------------------------------------
+# Balancer status management
+# ---------------------------------------------------------------------------
+
+
+@router.patch("/registrations/{registration_id}/balancer-status", response_model=admin_schemas.BalancerRegistrationRead)
+async def set_balancer_status(
+    registration_id: int,
+    data: admin_schemas.SetBalancerStatusRequest,
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_permission("team", "update")),
+):
+    registration = await registration_service.set_balancer_status(
+        session,
+        registration_id,
+        balancer_status=data.balancer_status,
+    )
+    return _serialize_registration(registration)
+
+
+@router.post(
+    "/tournaments/{tournament_id}/registrations/bulk-add-to-balancer",
+    response_model=admin_schemas.BulkBalancerStatusResponse,
+)
+async def bulk_add_to_balancer(
+    tournament_id: int,
+    data: dict[str, Any],
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_permission("team", "import")),
+):
+    registration_ids = [int(rid) for rid in data.get("registration_ids", [])]
+    balancer_status = data.get("balancer_status", "ready")
+    updated, skipped = await registration_service.bulk_add_to_balancer(
+        session,
+        tournament_id,
+        registration_ids,
+        balancer_status=balancer_status,
+    )
+    return admin_schemas.BulkBalancerStatusResponse(updated=updated, skipped=skipped)
+
+
+# ---------------------------------------------------------------------------
+# Check-in management
+# ---------------------------------------------------------------------------
+
+
+@router.patch("/registrations/{registration_id}/check-in", response_model=admin_schemas.BalancerRegistrationRead)
+async def toggle_check_in(
+    registration_id: int,
+    data: admin_schemas.CheckInRequest,
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_permission("team", "update")),
+):
+    if data.checked_in:
+        registration = await registration_service.check_in_registration(
+            session,
+            registration_id,
+            checked_in_by=user.id,
+        )
+    else:
+        registration = await registration_service.uncheck_in_registration(
+            session,
+            registration_id,
+        )
+    return _serialize_registration(registration)

@@ -88,11 +88,12 @@ export function useBalancerMutations({
 
   const updatePlayerMutation = useMutation({
     mutationFn: async ({ playerId, payload }: { playerId: number; payload: BalancerPlayerUpdateInput }) => {
-      const roles = (payload.role_entries_json ?? []).map((entry) => ({
+      const sortedEntries = [...(payload.role_entries_json ?? [])].sort((left, right) => left.priority - right.priority);
+      const roles = sortedEntries.map((entry, index) => ({
         role: entry.role,
         subrole: entry.subtype,
         priority: entry.priority,
-        is_primary: entry.priority === 1,
+        is_primary: payload.is_flex ? true : index === 0,
         rank_value: entry.rank_value,
         is_active: entry.is_active,
       }));

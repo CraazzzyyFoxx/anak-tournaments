@@ -54,6 +54,7 @@ export default function TournamentRegisterButton({ workspaceId, tournamentId, to
 
   if (formQuery.isLoading) return null;
   if (!form) return null;
+  if (isAuthenticated && myRegQuery.isLoading) return null;
 
   if (!form.is_open) {
     return (
@@ -64,11 +65,12 @@ export default function TournamentRegisterButton({ workspaceId, tournamentId, to
     );
   }
 
-  if (myReg && myReg.status !== "withdrawn") {
+  if (myReg) {
     const statusMap: Record<string, { icon: typeof Clock; label: string; className: string }> = {
       pending: { icon: Clock, label: "Pending", className: "border-amber-500/20 bg-amber-500/10 text-amber-400" },
       approved: { icon: CheckCircle2, label: "Registered", className: "border-emerald-500/20 bg-emerald-500/10 text-emerald-400" },
       rejected: { icon: XCircle, label: "Rejected", className: "border-red-500/20 bg-red-500/10 text-red-400" },
+      withdrawn: { icon: XCircle, label: "Withdrawn", className: "border-white/10 bg-white/5 text-white/55" },
     };
     const config = statusMap[myReg.status] ?? statusMap.pending;
     const StatusIcon = config.icon;

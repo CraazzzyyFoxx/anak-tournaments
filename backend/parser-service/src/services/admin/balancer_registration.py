@@ -501,6 +501,7 @@ def build_registration_role_payloads(parsed_fields: dict[str, Any]) -> list[dict
     payloads: list[dict[str, Any]] = []
     source_primary = parsed_fields.get("source_roles", {}).get("primary")
     source_additional = parsed_fields.get("source_roles", {}).get("additional") or []
+    is_full_flex = bool(parsed_fields.get("is_flex", False))
     for fallback_priority, role_code in enumerate(ROLE_ORDER):
         role_data = parsed_fields.get("roles", {}).get(role_code) or {}
         rank_value = role_data.get("rank_value")
@@ -514,7 +515,7 @@ def build_registration_role_payloads(parsed_fields: dict[str, Any]) -> list[dict
             {
                 "role": role_code,
                 "subrole": subrole,
-                "is_primary": source_primary == role_code or (source_primary is None and fallback_priority == 0),
+                "is_primary": is_full_flex or source_primary == role_code or (source_primary is None and fallback_priority == 0),
                 "priority": int(priority) if isinstance(priority, int) else fallback_priority,
                 "rank_value": rank_value,
                 "is_active": bool(is_active) if is_active is not None else rank_value is not None,
@@ -530,13 +531,14 @@ def registration_source(registration: models.BalancerRegistration) -> str:
 def serialize_registration_for_export(registration: models.BalancerRegistration, export_uuid: str) -> dict[str, Any]:
     role_entries = sorted(registration.roles, key=lambda role: role.priority)
     role_map = {role.role: role for role in role_entries}
+    is_full_flex = registration.is_flex_computed
 
     def build_class(role_code: str) -> dict[str, Any]:
         role = role_map.get(role_code)
         return {
             "isActive": bool(role and role.is_active and role.rank_value is not None),
             "rank": int(role.rank_value) if role and role.rank_value is not None else 0,
-            "priority": 0 if registration.is_flex else int(role.priority) if role else 99,
+            "priority": 0 if is_full_flex else int(role.priority) if role else 99,
             "subtype": role.subrole if role else None,
         }
 
@@ -544,7 +546,7 @@ def serialize_registration_for_export(registration: models.BalancerRegistration,
         "uuid": export_uuid,
         "identity": {
             "name": registration.battle_tag or registration.display_name or f"registration-{registration.id}",
-            "isFullFlex": bool(registration.is_flex),
+            "isFullFlex": is_full_flex,
         },
         "stats": {
             "classes": {
@@ -721,6 +723,7 @@ async def get_registration_by_id(session: AsyncSession, registration_id: int) ->
         .options(
             selectinload(models.BalancerRegistration.roles),
             selectinload(models.BalancerRegistration.reviewer),
+            selectinload(models.BalancerRegistration.checked_in_by_user),
             selectinload(models.BalancerRegistration.google_sheet_binding),
         )
     )
@@ -778,6 +781,14 @@ def replace_registration_roles(registration: models.BalancerRegistration, roles:
     registration.roles[:] = next_roles
 
 
+def registration_has_active_roles(registration: models.BalancerRegistration | Any) -> bool:
+    return any(bool(getattr(role, "is_active", False)) for role in getattr(registration, "roles", []))
+
+
+def included_balancer_status(registration: models.BalancerRegistration | Any) -> str:
+    return "ready" if registration_has_active_roles(registration) else "incomplete"
+
+
 async def create_manual_registration(
     session: AsyncSession,
     *,
@@ -816,6 +827,7 @@ async def create_manual_registration(
         balancer_profile_overridden_at=datetime.now(UTC),
     )
     replace_registration_roles(registration, roles)
+    registration.is_flex = registration.is_flex_computed
     session.add(registration)
     await session.commit()
     return await get_registration_by_id(session, registration.id)
@@ -869,6 +881,7 @@ async def update_registration_profile(
         override_changed = True
     if roles is not None:
         replace_registration_roles(registration, roles)
+        registration.is_flex = registration.is_flex_computed
         override_changed = True
     if override_changed:
         registration.balancer_profile_overridden_at = datetime.now(UTC)
@@ -887,6 +900,8 @@ async def approve_registration(
     registration.status = "approved"
     registration.reviewed_at = datetime.now(UTC)
     registration.reviewed_by = reviewed_by
+    # Keep exclude_from_balancer for backward compat but do NOT
+    # auto-add to balancer.  Admin must explicitly set balancer_status.
     registration.exclude_from_balancer = False
     registration.exclude_reason = None
     await session.commit()
@@ -944,7 +959,14 @@ async def set_registration_exclusion(
 ) -> models.BalancerRegistration:
     registration = await get_registration_by_id(session, registration_id)
     registration.exclude_from_balancer = exclude_from_balancer
-    registration.exclude_reason = exclude_reason if exclude_from_balancer else None
+    if exclude_from_balancer:
+        registration.balancer_status = "not_in_balancer"
+        registration.exclude_reason = exclude_reason
+    else:
+        registration.exclude_reason = None
+        registration.balancer_status = (
+            included_balancer_status(registration) if registration.status == "approved" else "not_in_balancer"
+        )
     await session.commit()
     return await get_registration_by_id(session, registration.id)
 
@@ -982,6 +1004,94 @@ async def soft_delete_registration(
     return registration
 
 
+VALID_BALANCER_STATUSES = {"not_in_balancer", "incomplete", "ready"}
+
+
+async def set_balancer_status(
+    session: AsyncSession,
+    registration_id: int,
+    *,
+    balancer_status: str,
+) -> models.BalancerRegistration:
+    if balancer_status not in VALID_BALANCER_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid balancer_status: {balancer_status}",
+        )
+    registration = await get_registration_by_id(session, registration_id)
+    if balancer_status != "not_in_balancer" and registration.status != "approved":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Registration must be approved before adding to balancer",
+        )
+    if balancer_status == "ready" and not registration_has_active_roles(registration):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Registration must have at least one active role before it can be ready",
+        )
+    registration.balancer_status = balancer_status
+    # Keep exclude_from_balancer in sync during transition period
+    registration.exclude_from_balancer = balancer_status == "not_in_balancer"
+    registration.exclude_reason = None
+    await session.commit()
+    return await get_registration_by_id(session, registration.id)
+
+
+async def check_in_registration(
+    session: AsyncSession,
+    registration_id: int,
+    *,
+    checked_in_by: int | None,
+) -> models.BalancerRegistration:
+    registration = await get_registration_by_id(session, registration_id)
+    registration.checked_in = True
+    registration.checked_in_at = datetime.now(UTC)
+    registration.checked_in_by = checked_in_by
+    await session.commit()
+    return await get_registration_by_id(session, registration.id)
+
+
+async def uncheck_in_registration(
+    session: AsyncSession,
+    registration_id: int,
+) -> models.BalancerRegistration:
+    registration = await get_registration_by_id(session, registration_id)
+    registration.checked_in = False
+    registration.checked_in_at = None
+    registration.checked_in_by = None
+    await session.commit()
+    return await get_registration_by_id(session, registration.id)
+
+
+async def bulk_add_to_balancer(
+    session: AsyncSession,
+    tournament_id: int,
+    registration_ids: list[int],
+    *,
+    balancer_status: str = "ready",
+) -> tuple[int, int]:
+    if balancer_status not in VALID_BALANCER_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid balancer_status: {balancer_status}",
+        )
+    result = await session.execute(
+        sa.select(models.BalancerRegistration).where(
+            models.BalancerRegistration.tournament_id == tournament_id,
+            models.BalancerRegistration.deleted_at.is_(None),
+            models.BalancerRegistration.id.in_(registration_ids),
+            models.BalancerRegistration.status == "approved",
+        )
+    )
+    registrations = list(result.scalars().all())
+    for registration in registrations:
+        registration.balancer_status = included_balancer_status(registration) if balancer_status == "ready" else balancer_status
+        registration.exclude_from_balancer = balancer_status == "not_in_balancer"
+        registration.exclude_reason = None
+    await session.commit()
+    return len(registrations), len(registration_ids) - len(registrations)
+
+
 def apply_sheet_fields_to_registration(
     registration: models.BalancerRegistration,
     parsed_fields: dict[str, Any],
@@ -999,9 +1109,9 @@ def apply_sheet_fields_to_registration(
     registration.notes = parsed_fields.get("notes")
 
     if allow_balancer_overwrite:
-        registration.is_flex = bool(parsed_fields.get("is_flex", False))
         registration.admin_notes = parsed_fields.get("admin_notes")
         replace_registration_roles(registration, build_registration_role_payloads(parsed_fields))
+        registration.is_flex = registration.is_flex_computed
 
 
 async def sync_google_sheet_feed(
@@ -1088,6 +1198,7 @@ async def sync_google_sheet_feed(
                     submitted_at=parsed_fields.get("submitted_at") or now,
                 )
                 replace_registration_roles(registration, build_registration_role_payloads(parsed_fields))
+                registration.is_flex = registration.is_flex_computed
                 session.add(registration)
                 await session.flush()
                 created += 1
