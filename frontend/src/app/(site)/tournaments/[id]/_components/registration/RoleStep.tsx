@@ -24,6 +24,7 @@ interface RoleStepProps {
   primaryRoleError?: string | null;
   secondaryRolesError?: string | null;
   form: RegistrationForm;
+  hideHelperText?: boolean;
 }
 
 const ROLE_ACCENTS: Record<
@@ -75,6 +76,7 @@ export default function RoleStep({
   primaryRoleError = null,
   secondaryRolesError = null,
   form,
+  hideHelperText = false,
 }: RoleStepProps) {
   const isAdditionalRolesRequired =
     form.built_in_fields?.additional_roles?.enabled !== false
@@ -159,20 +161,24 @@ export default function RoleStep({
 
   return (
     <div className="grid gap-5">
-      <div className="space-y-1">
-        <h3 className="text-xs font-medium text-white/85">Choose Your Role</h3>
-        <p className="max-w-[40rem] text-xs leading-5 text-white/42">
-          Set your primary role first. Then choose secondary roles we can assign you to if a
-          team is short on them during balancing.
-        </p>
-      </div>
+      {!hideHelperText ? (
+        <div className="space-y-1">
+          <h3 className="text-xs font-medium text-white/85">Choose Your Role</h3>
+          <p className="max-w-[40rem] text-xs leading-5 text-white/42">
+            Set your primary role first. Then choose secondary roles we can assign you to if a
+            team is short on them during balancing.
+          </p>
+        </div>
+      ) : null}
 
       <section className="space-y-2.5">
         <div className="space-y-0.5">
           <h4 className="text-xs font-medium uppercase tracking-[0.14em] text-white/55">Primary Role</h4>
-          <p className="text-xs leading-5 text-white/42">
-            This is the role we should place you on by default.
-          </p>
+          {!hideHelperText ? (
+            <p className="text-xs leading-5 text-white/42">
+              This is the role we should place you on by default.
+            </p>
+          ) : null}
         </div>
 
         {primaryRoleError && (
@@ -255,9 +261,11 @@ export default function RoleStep({
                   {isAdditionalRolesRequired ? "Required" : "Optional"}
                 </span>
               </div>
-              <p className="max-w-[40rem] text-xs leading-5 text-white/42">
-                {secondaryRolesDescription}
-              </p>
+              {!hideHelperText ? (
+                <p className="max-w-[40rem] text-xs leading-5 text-white/42">
+                  {secondaryRolesDescription}
+                </p>
+              ) : null}
             </div>
 
           <button

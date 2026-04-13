@@ -8,11 +8,9 @@ import { AlertTriangle, CheckCircle2, Shuffle, Users } from "lucide-react";
 import { BalanceActionsBar } from "@/app/balancer/_components/BalanceActionsBar";
 import { BalancingPoolSidebar, type BalancingPoolSidebarHandle } from "@/app/balancer/_components/BalancingPoolSidebar";
 import { PlayerEditModal } from "@/app/balancer/_components/PlayerEditModal";
-import { PlayerPreviewSheet } from "@/app/balancer/_components/PlayerPreviewSheet";
 import { PresetRunPanel } from "@/app/balancer/_components/PresetRunPanel";
 import { TeamDistributionPanel } from "@/app/balancer/_components/TeamDistributionPanel";
 import { VariantSelector } from "@/app/balancer/_components/VariantSelector";
-import { WorkspaceCounter } from "@/app/balancer/_components/WorkspaceCounter";
 import { useBalancerTournamentId } from "@/app/balancer/_components/useBalancerTournamentId";
 import { useBalancerJob } from "@/app/balancer/_components/useBalancerJob";
 import { useBalancerMutations } from "@/app/balancer/_components/useBalancerMutations";
@@ -267,9 +265,6 @@ export default function BalancerMainPage() {
     [activeVariantId, variants],
   );
   const quickEditPlayer = players.find((p) => p.id === editingPlayerId) ?? null;
-  const selectedPlayer = players.find((p) => p.id === selectedPlayerId) ?? null;
-  const selectedRegistration =
-    selectedPlayerId != null ? (registrationsById.get(selectedPlayerId) ?? null) : null;
 
   const presetOptions = Object.keys(balancerConfigQuery.data?.presets ?? { DEFAULT: {} });
 
@@ -321,6 +316,10 @@ export default function BalancerMainPage() {
   }, []);
   const handleFocusBrowseAvailable = useCallback(() => {
     sidebarRef.current?.focusBrowseAvailable();
+  }, []);
+  const handleOpenPlayerEditor = useCallback((playerId: number | null) => {
+    setSelectedPlayerId(playerId);
+    setEditingPlayerId(playerId);
   }, []);
 
 
@@ -388,14 +387,6 @@ export default function BalancerMainPage() {
       ) : null}
 
       <div className="flex min-h-0 w-full flex-1 flex-col gap-3 pb-4">
-        {/* Compact workspace counters */}
-        <div className="flex items-center gap-1.5">
-          <WorkspaceCounter label="Pool" value={poolPlayers.length} icon={Users} />
-          <WorkspaceCounter label="Ready" value={readyPlayers.length} icon={CheckCircle2} />
-          <WorkspaceCounter label="Need Fix" value={invalidPlayerStates.length} icon={AlertTriangle} />
-          <WorkspaceCounter label="Flex" value={flexPoolCount} icon={Shuffle} />
-        </div>
-
         <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[380px_minmax(0,1fr)]">
           {/* Left sidebar — key resets internal state on tournament switch */}
           <BalancingPoolSidebar
@@ -405,7 +396,7 @@ export default function BalancerMainPage() {
             applications={applications}
             addableApplications={addableApplications}
             selectedPlayerId={selectedPlayerId}
-            onSelectPlayer={setSelectedPlayerId}
+            onSelectPlayer={handleOpenPlayerEditor}
             onAddFromApplication={(application) => addPlayerMutation.mutate(application)}
             isAddingPlayer={addPlayerMutation.isPending}
             missingRankCount={missingRankPlayerStates.length}
@@ -414,6 +405,12 @@ export default function BalancerMainPage() {
           {/* Main content */}
           <div className="flex min-h-0 flex-col gap-3">
             <PresetRunPanel
+              counters={[
+                { label: "Pool", value: poolPlayers.length, icon: Users },
+                { label: "Ready", value: readyPlayers.length, icon: CheckCircle2 },
+                { label: "Need Fix", value: invalidPlayerStates.length, icon: AlertTriangle },
+                { label: "Flex", value: flexPoolCount, icon: Shuffle },
+              ]}
               presetOptions={presetOptions}
               selectedPreset={selectedPreset}
               onSelectPreset={setSelectedPreset}
@@ -495,7 +492,7 @@ export default function BalancerMainPage() {
                       }}
                       divisionGrid={divisionGrid}
                       selectedPlayerId={selectedPlayerId}
-                      onSelectPlayer={setSelectedPlayerId}
+                      onSelectPlayer={handleOpenPlayerEditor}
                       collapsedTeamIds={collapsedTeamIds}
                       onToggleTeam={handleToggleTeam}
                     />
@@ -566,25 +563,6 @@ export default function BalancerMainPage() {
               </div>
             ) : null}
           </div>
-
-          {/* Player preview sheet */}
-          <PlayerPreviewSheet
-            selectedPlayer={selectedPlayer}
-            selectedRegistration={selectedRegistration}
-            allPlayerValidationStates={allPlayerValidationStates}
-            activeVariantPayload={activeVariant?.payload ?? null}
-            onClose={() => setSelectedPlayerId(null)}
-            onEditPlayer={setEditingPlayerId}
-            onTogglePool={(player) => {
-              if (player.is_in_pool) {
-                removePlayerMutation.mutate(player.id);
-              } else {
-                includePlayerMutation.mutate(player.id);
-              }
-            }}
-            isRemovePending={removePlayerMutation.isPending}
-            isIncludePending={includePlayerMutation.isPending}
-          />
         </div>
       </div>
     </>

@@ -1,11 +1,13 @@
 "use client";
 
-import { type Dispatch, type SetStateAction, useMemo, useState } from "react";
+import { type Dispatch, type ReactNode, type SetStateAction, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  ArrowLeft,
+  ArrowRight,
   BadgeInfo,
   Check,
   CheckCircle2,
@@ -15,6 +17,7 @@ import {
   Loader2,
   Lock,
   MessageSquareText,
+  Search,
   RadioTower,
   Pencil,
   ShieldBan,
@@ -28,9 +31,17 @@ import {
 } from "lucide-react";
 
 import FieldLabel from "@/app/(site)/tournaments/[id]/_components/registration/FieldLabel";
+import PublicRoleStep from "@/app/(site)/tournaments/[id]/_components/registration/RoleStep";
+import SmurfTagsInput from "@/app/(site)/tournaments/[id]/_components/registration/SmurfTagsInput";
 import StepIndicator from "@/app/(site)/tournaments/[id]/_components/registration/StepIndicator";
+import type { AdditionalRole } from "@/app/(site)/tournaments/[id]/_components/registration/types";
 import { useBalancerTournamentId } from "@/app/balancer/_components/useBalancerTournamentId";
-import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import BalancerRegistrationsColumnPicker from "@/app/balancer/registrations/_components/BalancerRegistrationsColumnPicker";
+import RegistrationRowActions from "@/app/balancer/registrations/_components/RegistrationRowActions";
+import {
+  type BalancerRegistrationColumnDefinition,
+  buildBalancerRegistrationColumns,
+} from "@/app/balancer/registrations/_components/balancerRegistrationColumns";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -40,7 +51,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -49,7 +59,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
+import { useColumnVisibility } from "@/hooks/useColumnVisibility";
 import { useToast } from "@/hooks/use-toast";
 import balancerAdminService from "@/services/balancer-admin.service";
 import type {
@@ -59,13 +69,25 @@ import type {
   BalancerRoleCode,
   BalancerRoleSubtype,
 } from "@/types/balancer-admin.types";
-import type { DivisionGrid } from "@/types/workspace.types";
-import { resolveDivisionFromRankHelper } from "@/app/balancer/_components/workspace-helpers";
+import type { RegistrationForm } from "@/types/registration.types";
 import { cn } from "@/lib/utils";
 
 type RegistrationStatusFilter = "all" | "pending" | "approved" | "rejected" | "withdrawn" | "banned" | "insufficient_data";
 type InclusionFilter = "all" | "included" | "excluded";
 type SourceFilter = "all" | "manual" | "google_sheets";
+
+const RESPONSIVE_CLASS: Record<NonNullable<BalancerRegistrationColumnDefinition["responsive"]>, string> = {
+  always: "",
+  sm: "hidden sm:table-cell",
+  md: "hidden md:table-cell",
+  lg: "hidden lg:table-cell",
+};
+
+const ALIGN_CLASS: Record<NonNullable<BalancerRegistrationColumnDefinition["align"]>, string> = {
+  left: "text-left",
+  center: "text-center",
+  right: "text-right",
+};
 
 const ROLE_OPTIONS: BalancerRoleCode[] = ["tank", "dps", "support"];
 const ROLE_LABELS: Record<BalancerRoleCode, string> = {
@@ -90,28 +112,38 @@ const ADMIN_FORM_STEPS = [
   { label: "Details" },
 ];
 
-const ADMIN_ROLE_ACCENTS: Record<BalancerRoleCode, { tile: string; selectedCard: string; badge: string }> = {
-  tank: {
-    tile: "bg-sky-500/18 text-sky-200",
-    selectedCard: "border-sky-400/60 bg-sky-500/[0.08] shadow-[0_0_0_1px_rgba(56,189,248,0.12)]",
-    badge: "border-sky-400/20 bg-sky-500/10 text-sky-200",
+const ADMIN_ROLE_FORM: RegistrationForm = {
+  id: 0,
+  tournament_id: 0,
+  workspace_id: 0,
+  is_open: true,
+  opens_at: null,
+  closes_at: null,
+  built_in_fields: {
+    primary_role: {
+      enabled: true,
+      required: true,
+      subroles: {
+        dps: ["hitscan", "projectile"],
+        support: ["main_heal", "light_heal"],
+      },
+    },
+    additional_roles: {
+      enabled: true,
+      required: false,
+      subroles: {
+        dps: ["hitscan", "projectile"],
+        support: ["main_heal", "light_heal"],
+      },
+    },
   },
-  dps: {
-    tile: "bg-orange-500/18 text-orange-200",
-    selectedCard: "border-orange-400/60 bg-orange-500/[0.08] shadow-[0_0_0_1px_rgba(249,115,22,0.12)]",
-    badge: "border-orange-400/20 bg-orange-500/10 text-orange-200",
-  },
-  support: {
-    tile: "bg-emerald-500/18 text-emerald-200",
-    selectedCard: "border-emerald-400/60 bg-emerald-500/[0.08] shadow-[0_0_0_1px_rgba(16,185,129,0.12)]",
-    badge: "border-emerald-400/20 bg-emerald-500/10 text-emerald-200",
-  },
+  custom_fields: [],
 };
 
 const ADMIN_INPUT_CLASS =
-  "h-11 rounded-xl border-white/10 bg-white/[0.03] text-white placeholder:text-white/28 focus-visible:ring-0 focus-visible:border-white/20";
+  "h-9 rounded-lg border-white/10 bg-white/[0.03] px-3 text-sm text-white placeholder:text-white/28 focus-visible:ring-0 focus-visible:border-white/20";
 const ADMIN_TEXTAREA_CLASS =
-  "min-h-[120px] rounded-xl border-white/10 bg-white/[0.03] text-white placeholder:text-white/28 focus-visible:ring-0 focus-visible:border-white/20";
+  "min-h-[96px] rounded-lg border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/28 focus-visible:ring-0 focus-visible:border-white/20";
 
 const STATUS_CONFIG: Record<string, { icon: typeof Clock; className: string; label: string }> = {
   pending: { icon: Clock, className: "text-amber-500", label: "Pending" },
@@ -199,7 +231,6 @@ function RolesCell({ roles }: { roles: AdminRegistration["roles"] }) {
             className="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs"
             title={role.rank_value != null ? `${role.role} ${role.rank_value}` : role.role}
           >
-            <PlayerRoleIcon role={role.role === "dps" ? "Damage" : role.role === "tank" ? "Tank" : "Support"} size={14} />
             <span>{role.role}</span>
             {role.rank_value != null ? <span className="text-muted-foreground">{role.rank_value}</span> : null}
           </div>
@@ -234,6 +265,7 @@ function CheckInBadge({ registration }: { registration: AdminRegistration }) {
     </Badge>
   );
 }
+
 
 type ManualDraft = {
   display_name: string;
@@ -340,22 +372,6 @@ function buildRolePayload(roles: ManualDraft["roles"], isFlex: boolean): AdminRe
   });
 }
 
-function getDivisionLabel(rankValue: string, divisionGrid: DivisionGrid): string | null {
-  if (!rankValue.trim()) {
-    return null;
-  }
-  const parsedRankValue = Number(rankValue);
-  if (!Number.isFinite(parsedRankValue)) {
-    return null;
-  }
-  const divisionNumber = resolveDivisionFromRankHelper(parsedRankValue, divisionGrid);
-  if (divisionNumber === null) {
-    return null;
-  }
-  const division = divisionGrid.tiers.find((tier) => tier.number === divisionNumber);
-  return division?.name ?? `Division ${divisionNumber}`;
-}
-
 const EMPTY_MANUAL_DRAFT: ManualDraft = createEmptyManualDraft();
 
 function FeedStatus({ feed }: { feed: AdminGoogleSheetFeed | null | undefined }) {
@@ -418,11 +434,23 @@ function FeedSummaryCard({
 function RegistrationProfileForm({
   draft,
   setDraft,
-  divisionGrid,
+  step,
+  onStepChange,
+  onCancel,
+  onSubmit,
+  submitPending,
+  submitLabel,
+  submitIcon,
 }: {
   draft: ManualDraft;
   setDraft: Dispatch<SetStateAction<ManualDraft>>;
-  divisionGrid: DivisionGrid;
+  step: number;
+  onStepChange: (step: number) => void;
+  onCancel: () => void;
+  onSubmit: () => void;
+  submitPending: boolean;
+  submitLabel: string;
+  submitIcon: ReactNode;
 }) {
   const updateRoleDraft = (
     role: BalancerRoleCode,
@@ -437,85 +465,97 @@ function RegistrationProfileForm({
     }));
   };
 
-  const setPrimaryRole = (targetRole: BalancerRoleCode, checked: boolean) => {
+  const primaryRole = draft.is_flex
+    ? "flex"
+    : (ROLE_OPTIONS.find((role) => draft.roles[role].enabled && draft.roles[role].is_primary) ?? "");
+  const primaryRoleCode = draft.is_flex ? "" : primaryRole;
+  const primarySubrole =
+    primaryRoleCode && primaryRoleCode !== "tank" ? draft.roles[primaryRoleCode].subrole : "";
+  const additionalRoles: AdditionalRole[] = !draft.is_flex
+    ? ROLE_OPTIONS.filter((role) => draft.roles[role].enabled && !draft.roles[role].is_primary)
+        .map((role) => ({
+          code: role,
+          subrole: draft.roles[role].subrole,
+        }))
+    : [];
+  const isLastStep = step === ADMIN_FORM_STEPS.length - 1;
+  const canAdvance = step === 0 ? draft.battle_tag.trim().length > 0 : step === 1 ? draft.is_flex || primaryRole !== "" : true;
+
+  const selectFlexProfile = () => {
     setDraft((current) => ({
       ...current,
+      is_flex: true,
       roles: Object.fromEntries(
-        ROLE_OPTIONS.map((candidateRole) => [
-          candidateRole,
+        ROLE_OPTIONS.map((role) => [
+          role,
           {
-            ...current.roles[candidateRole],
-            is_primary: checked === true ? candidateRole === targetRole && current.roles[candidateRole].enabled : false,
+            ...current.roles[role],
+            enabled: true,
+            is_primary: true,
           },
         ]),
       ) as ManualDraft["roles"],
     }));
   };
 
-  const selectedRoles = ROLE_OPTIONS.filter((role) => draft.roles[role].enabled);
-  const primaryRoles = selectedRoles.filter((role) => draft.roles[role].is_primary);
+  const selectPrimaryRole = (role: BalancerRoleCode) => {
+    setDraft((current) => ({
+      ...current,
+      is_flex: false,
+      roles: Object.fromEntries(
+        ROLE_OPTIONS.map((candidateRole) => [
+          candidateRole,
+          {
+            ...current.roles[candidateRole],
+            enabled: candidateRole === role ? true : current.roles[candidateRole].enabled,
+            is_primary: candidateRole === role,
+          },
+        ]),
+      ) as ManualDraft["roles"],
+    }));
+  };
+
+  const setAdditionalRolesList = (roles: AdditionalRole[]) => {
+    setDraft((current) => ({
+      ...current,
+      roles: Object.fromEntries(
+        ROLE_OPTIONS.map((role) => {
+          const entry = roles.find((candidate) => candidate.code === role);
+          const isPrimary = !current.is_flex && primaryRoleCode === role;
+          return [
+            role,
+            {
+              ...current.roles[role],
+              enabled: isPrimary || Boolean(entry),
+              is_primary: isPrimary,
+              subrole: entry?.subrole ?? (isPrimary ? current.roles[role].subrole : ""),
+            },
+          ];
+        }),
+      ) as ManualDraft["roles"],
+    }));
+  };
 
   return (
-    <div className="overflow-hidden rounded-[30px] border border-white/10 bg-[#09090f]">
-      <div className="relative overflow-hidden border-b border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.12),transparent_35%),linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0))] px-6 py-6 sm:px-7">
-        <div className="pointer-events-none absolute inset-y-0 right-0 w-1/2 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.08),transparent_55%)]" />
-        <div className="relative space-y-5">
-          <div className="space-y-2">
-            <FieldLabel label="Admin Registration Flow" icon={<BadgeInfo className="size-3.5" />} />
-            <div className="space-y-2">
-              <h3 className="text-2xl font-semibold tracking-tight text-white">Fixed multi-step editor</h3>
-              <p className="max-w-3xl text-sm leading-6 text-white/50">
-                Built-in admin fields stay pinned in one view and follow the public registration rhythm. Only custom fields are
-                expected to vary outside this shell.
-              </p>
-            </div>
-          </div>
-
-          <StepIndicator steps={ADMIN_FORM_STEPS} current={0} />
-
-          <div className="grid gap-3 md:grid-cols-3">
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-              <FieldLabel label="Accounts" icon={<UserRound className="size-3.5" />} />
-              <p className="mt-3 text-2xl font-semibold text-white">{draft.battle_tag.trim() || "New participant"}</p>
-              <p className="mt-1 text-sm text-white/45">Primary identity stays visible at the top just like the public flow.</p>
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-              <FieldLabel label="Roles" icon={<RadioTower className="size-3.5" />} />
-              <p className="mt-3 text-2xl font-semibold text-white">{selectedRoles.length}</p>
-              <p className="mt-1 text-sm text-white/45">
-                {draft.is_flex
-                  ? "Flex is enabled, so every selected role will be saved as primary."
-                  : `${primaryRoles.length} primary role${primaryRoles.length === 1 ? "" : "s"} selected.`}
-              </p>
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-              <FieldLabel label="Admin Notes" icon={<MessageSquareText className="size-3.5" />} />
-              <p className="mt-3 text-sm leading-6 text-white/55">
-                Public and internal notes stay in the fixed details block, so the edit surface remains predictable.
-              </p>
-            </div>
-          </div>
-        </div>
+    <div className="space-y-6">
+      <div className="space-y-5 border-b border-white/10 pb-5">
+        <StepIndicator steps={ADMIN_FORM_STEPS} current={step} />
       </div>
 
-      <div className="grid gap-6 px-6 py-6 sm:px-7">
-        <section className="rounded-[26px] border border-white/10 bg-white/[0.02] p-5 sm:p-6">
-          <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-            <div className="space-y-2">
-              <FieldLabel label="Accounts" icon={<UserRound className="size-3.5" />} />
-              <div>
-                <h4 className="text-lg font-semibold text-white">Identity and contact handles</h4>
-                <p className="text-sm leading-6 text-white/45">
-                  Same order as the public registration, but with every admin field visible all the time.
-                </p>
-              </div>
-            </div>
-            <div className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs uppercase tracking-[0.16em] text-white/40">
-              Step 1
+      <div className="grid gap-6">
+        {step === 0 ? (
+        <section className="space-y-4">
+          <div className="space-y-2">
+            <FieldLabel label="Accounts" icon={<UserRound className="size-3.5" />} />
+            <div>
+              <h4 className="text-base font-semibold text-white">Identity and contact handles</h4>
+              <p className="text-sm leading-5 text-white/45">
+                Only the registration identity fields that matter in admin editing.
+              </p>
             </div>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid gap-3 lg:grid-cols-2">
             <div className="space-y-2">
               <FieldLabel label="Display Name" icon={<UserRound className="size-3.5" />} />
               <Input
@@ -535,12 +575,12 @@ function RegistrationProfileForm({
               />
             </div>
             <div className="space-y-2 lg:col-span-2">
-              <FieldLabel label="Smurf BattleTags" icon={<BadgeInfo className="size-3.5" />} />
-              <Input
-                className={ADMIN_INPUT_CLASS}
-                value={draft.smurf_tags}
-                onChange={(event) => setDraft((current) => ({ ...current, smurf_tags: event.target.value }))}
-                placeholder="Smurf BattleTags, comma-separated"
+              <SmurfTagsInput
+                tags={normalizeSmurfTags(draft.smurf_tags)}
+                onChange={(tags) => setDraft((current) => ({ ...current, smurf_tags: tags.join(", ") }))}
+                suggestions={[]}
+                icon="/battlenet.svg"
+                label="Smurf BattleTags"
               />
             </div>
             <div className="space-y-2">
@@ -563,232 +603,61 @@ function RegistrationProfileForm({
             </div>
           </div>
         </section>
+        ) : null}
 
-        <section className="rounded-[26px] border border-white/10 bg-white/[0.02] p-5 sm:p-6">
-          <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-            <div className="space-y-2">
-              <FieldLabel label="Roles" icon={<RadioTower className="size-3.5" />} />
-              <div>
-                <h4 className="text-lg font-semibold text-white">Role profile and balancer signals</h4>
-                <p className="text-sm leading-6 text-white/45">
-                  Public role selection styling, with the full admin payload pinned: rank, priority, subrole and primary state.
-                </p>
-              </div>
-            </div>
-            <div className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs uppercase tracking-[0.16em] text-white/40">
-              Step 2
+        {step === 1 ? (
+        <section className="space-y-4">
+          <div className="space-y-2">
+            <FieldLabel label="Roles" icon={<RadioTower className="size-3.5" />} />
+            <div>
+              <h4 className="text-base font-semibold text-white">Role profile</h4>
+              <p className="text-sm leading-5 text-white/45">
+                This step uses the same role selector as the public registration form.
+              </p>
             </div>
           </div>
 
-          <div className="grid gap-4">
-            {ROLE_OPTIONS.map((role) => {
-              const roleDraft = draft.roles[role];
-              const divisionLabel = getDivisionLabel(roleDraft.rank_value, divisionGrid);
-              const accents = ADMIN_ROLE_ACCENTS[role];
-
-              return (
-                <div
-                  key={role}
-                  className={cn(
-                    "rounded-[24px] border p-4 transition-all sm:p-5",
-                    roleDraft.enabled
-                      ? accents.selectedCard
-                      : "border-white/10 bg-black/20 hover:border-white/16 hover:bg-white/[0.03]",
-                  )}
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div className="flex items-start gap-3">
-                      <div className="pt-1">
-                        <Checkbox
-                          checked={roleDraft.enabled}
-                          onCheckedChange={(checked) =>
-                            updateRoleDraft(role, (current) => ({
-                              ...current,
-                              enabled: checked === true,
-                              is_primary: checked === true ? current.is_primary : false,
-                            }))
-                          }
-                        />
-                      </div>
-                      <div className="flex items-start gap-3">
-                        <div
-                          className={cn(
-                            "flex size-12 shrink-0 items-center justify-center rounded-2xl border border-white/10",
-                            accents.tile,
-                          )}
-                        >
-                          <PlayerRoleIcon role={ROLE_LABELS[role]} size={20} />
-                        </div>
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-base font-semibold text-white">{ROLE_LABELS[role]}</span>
-                            <Badge
-                              variant="outline"
-                              className={cn("rounded-full px-2.5 py-1 text-[10px] uppercase tracking-[0.14em]", accents.badge)}
-                            >
-                              {roleDraft.enabled ? "Selected" : "Optional"}
-                            </Badge>
-                          </div>
-                          <p className="text-sm leading-6 text-white/45">
-                            {role === "tank"
-                              ? "Single-role card with rank and primary preference."
-                              : "Balancer-facing role card with subrole and ordering controls."}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="outline" className="rounded-full border-white/10 bg-black/20 px-2.5 py-1 text-white/55">
-                        {roleDraft.enabled ? divisionLabel ?? "Division pending rank" : "Role disabled"}
-                      </Badge>
-                      {roleDraft.enabled ? (
-                        <Badge variant="outline" className="rounded-full border-white/10 bg-black/20 px-2.5 py-1 text-white/55">
-                          Priority {roleDraft.priority || "?"}
-                        </Badge>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  {roleDraft.enabled ? (
-                    <div className="mt-5 grid gap-4">
-                      <div className="grid gap-4 lg:grid-cols-3">
-                        <div className="space-y-2">
-                          <FieldLabel label="Rank Value" />
-                          <Input
-                            className={ADMIN_INPUT_CLASS}
-                            inputMode="numeric"
-                            value={roleDraft.rank_value}
-                            onChange={(event) => updateRoleDraft(role, (current) => ({ ...current, rank_value: event.target.value }))}
-                            placeholder="e.g. 1450"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <FieldLabel label="Priority" />
-                          <Input
-                            className={ADMIN_INPUT_CLASS}
-                            inputMode="numeric"
-                            value={roleDraft.priority}
-                            onChange={(event) => updateRoleDraft(role, (current) => ({ ...current, priority: event.target.value }))}
-                            placeholder="1"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <FieldLabel label="Subrole" />
-                          {role === "tank" ? (
-                            <div className="flex h-11 items-center rounded-xl border border-white/10 bg-black/20 px-3 text-sm text-white/38">
-                              Tank does not use a subrole.
-                            </div>
-                          ) : (
-                            <Select
-                              value={roleDraft.subrole || "none"}
-                              onValueChange={(value) =>
-                                updateRoleDraft(role, (current) => ({
-                                  ...current,
-                                  subrole: value === "none" ? "" : (value as BalancerRoleSubtype),
-                                }))
-                              }
-                            >
-                              <SelectTrigger className={ADMIN_INPUT_CLASS}>
-                                <SelectValue placeholder="Optional" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="none">None</SelectItem>
-                                {SUBROLE_OPTIONS[role].map((option) => (
-                                  <SelectItem key={option.value} value={option.value}>
-                                    {option.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div>
-                            <FieldLabel label="Primary Role" />
-                            <p className="mt-2 text-sm leading-6 text-white/45">
-                              {draft.is_flex
-                                ? "Flex mode is authoritative here: every enabled role will be saved as primary."
-                                : "Use a single explicit primary role when flex is disabled."}
-                            </p>
-                          </div>
-                          <label
-                            className={cn(
-                              "flex items-center gap-3 rounded-full border px-4 py-2 text-sm font-medium transition-colors",
-                              draft.is_flex
-                                ? "cursor-not-allowed border-white/10 bg-white/[0.03] text-white/30"
-                                : "cursor-pointer border-white/10 bg-white/[0.03] text-white/80 hover:border-white/20",
-                            )}
-                          >
-                            <Checkbox
-                              checked={roleDraft.is_primary}
-                              disabled={draft.is_flex}
-                              onCheckedChange={(checked) => setPrimaryRole(role, checked === true)}
-                            />
-                            Primary role
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="mt-4 rounded-[24px] border border-white/10 bg-black/20 p-4 sm:p-5">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div className="max-w-2xl">
-                <FieldLabel label="Flex" icon={<RadioTower className="size-3.5" />} />
-                <h5 className="mt-2 text-base font-semibold text-white">Make the role profile fully flex</h5>
-                <p className="mt-1 text-sm leading-6 text-white/45">
-                  When enabled, all selected roles are saved as primary. Individual primary toggles stay visible but are locked to
-                  keep the payload unambiguous.
-                </p>
-              </div>
-              <Switch
-                checked={draft.is_flex}
-                onCheckedChange={(checked) =>
-                  setDraft((current) => ({
-                    ...current,
-                    is_flex: checked,
-                    roles: checked
-                      ? Object.fromEntries(
-                          ROLE_OPTIONS.map((role) => [
-                            role,
-                            {
-                              ...current.roles[role],
-                              is_primary: current.roles[role].enabled ? true : current.roles[role].is_primary,
-                            },
-                          ]),
-                        ) as ManualDraft["roles"]
-                      : current.roles,
-                  }))
-                }
-              />
-            </div>
-          </div>
+          <PublicRoleStep
+            isFlex={draft.is_flex}
+            primaryRole={primaryRoleCode}
+            subrole={primarySubrole}
+            additionalRoles={additionalRoles}
+            onSetFlex={(isFlex) => {
+              if (isFlex) {
+                selectFlexProfile();
+              } else {
+                setDraft((current) => ({ ...current, is_flex: false }));
+              }
+            }}
+            onSetPrimaryRole={(role) => selectPrimaryRole(role as BalancerRoleCode)}
+            onSetSubrole={(subrole) => {
+              if (!primaryRoleCode || primaryRoleCode === "tank") {
+                return;
+              }
+              updateRoleDraft(primaryRoleCode as BalancerRoleCode, (current) => ({ ...current, subrole: subrole as BalancerRoleSubtype | "" }));
+            }}
+            onSetAdditionalRoles={setAdditionalRolesList}
+            primaryRoleError={null}
+            secondaryRolesError={null}
+            form={ADMIN_ROLE_FORM}
+            hideHelperText
+          />
         </section>
+        ) : null}
 
-        <section className="rounded-[26px] border border-white/10 bg-white/[0.02] p-5 sm:p-6">
-          <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-            <div className="space-y-2">
-              <FieldLabel label="Details" icon={<MessageSquareText className="size-3.5" />} />
-              <div>
-                <h4 className="text-lg font-semibold text-white">Notes, broadcast flags and admin context</h4>
-                <p className="text-sm leading-6 text-white/45">
-                  Public-facing notes and internal annotations are grouped together like the final step of the public flow.
-                </p>
-              </div>
-            </div>
-            <div className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs uppercase tracking-[0.16em] text-white/40">
-              Step 3
+        {step === 2 ? (
+        <section className="space-y-4">
+          <div className="space-y-2">
+            <FieldLabel label="Details" icon={<MessageSquareText className="size-3.5" />} />
+            <div>
+              <h4 className="text-base font-semibold text-white">Details and notes</h4>
+              <p className="text-sm leading-5 text-white/45">
+                Final step for notes and stream availability.
+              </p>
             </div>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid gap-3 lg:grid-cols-2">
             <div className="space-y-2">
               <FieldLabel label="Public Notes" icon={<MessageSquareText className="size-3.5" />} />
               <Textarea
@@ -809,32 +678,56 @@ function RegistrationProfileForm({
             </div>
           </div>
 
-          <div className="mt-4 grid gap-4 lg:grid-cols-2">
-            <div className="rounded-[24px] border border-white/10 bg-black/20 p-4 sm:p-5">
-              <div className="flex items-start justify-between gap-4">
-                <div className="max-w-md">
-                  <FieldLabel label="Stream POV" icon={<RadioTower className="size-3.5" />} />
-                  <h5 className="mt-2 text-base font-semibold text-white">Participant can stream</h5>
-                  <p className="mt-1 text-sm leading-6 text-white/45">
-                    Keeps the broadcast capability in the fixed admin details block instead of a separate control strip.
-                  </p>
-                </div>
-                <Switch
-                  checked={draft.stream_pov}
-                  onCheckedChange={(checked) => setDraft((current) => ({ ...current, stream_pov: checked }))}
-                />
-              </div>
+          <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+            <div>
+              <FieldLabel label="Stream POV" icon={<RadioTower className="size-3.5" />} />
+              <p className="mt-1 text-sm text-white/45">Participant can provide a point-of-view stream.</p>
             </div>
-            <div className="rounded-[24px] border border-dashed border-white/10 bg-black/20 p-4 sm:p-5">
-              <FieldLabel label="Layout Rule" icon={<BadgeInfo className="size-3.5" />} />
-              <h5 className="mt-2 text-base font-semibold text-white">Built-in admin fields stay fixed</h5>
-              <p className="mt-1 text-sm leading-6 text-white/45">
-                This editor keeps every built-in admin field in a predictable order. Custom fields are the only part expected to
-                grow or collapse beyond this frame.
-              </p>
-            </div>
+            <Switch
+              checked={draft.stream_pov}
+              onCheckedChange={(checked) => setDraft((current) => ({ ...current, stream_pov: checked }))}
+            />
           </div>
         </section>
+        ) : null}
+
+        <div className="flex flex-col gap-3 border-t border-white/10 pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-[0.16em] text-white/38">
+              Step {step + 1} of {ADMIN_FORM_STEPS.length}
+            </p>
+            <p className="mt-1 text-sm text-white/52">{ADMIN_FORM_STEPS[step]?.label}</p>
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <Button
+              variant="outline"
+              className="border-white/10 bg-white/[0.03] text-white hover:bg-white/[0.06] hover:text-white"
+              onClick={onCancel}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="outline"
+              className="border-white/10 bg-white/[0.03] text-white hover:bg-white/[0.06] hover:text-white"
+              onClick={() => onStepChange(Math.max(step - 1, 0))}
+              disabled={step === 0}
+            >
+              <ArrowLeft className="mr-2 size-4" />
+              Back
+            </Button>
+            {isLastStep ? (
+              <Button className="min-w-[170px] bg-white text-black hover:bg-white/90" onClick={onSubmit} disabled={submitPending || !canAdvance}>
+                {submitPending ? <Loader2 className="mr-2 size-4 animate-spin" /> : submitIcon}
+                {submitLabel}
+              </Button>
+            ) : (
+              <Button className="min-w-[170px] bg-white text-black hover:bg-white/90" onClick={() => onStepChange(step + 1)} disabled={!canAdvance}>
+                Next
+                <ArrowRight className="ml-2 size-4" />
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -842,7 +735,6 @@ function RegistrationProfileForm({
 
 export default function BalancerRegistrationsPage() {
   const tournamentId = useBalancerTournamentId();
-  const divisionGrid = useDivisionGrid();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const searchParams = useSearchParams();
@@ -857,9 +749,14 @@ export default function BalancerRegistrationsPage() {
   );
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [createOpen, setCreateOpen] = useState(false);
+  const [createStep, setCreateStep] = useState(0);
   const [manualDraft, setManualDraft] = useState<ManualDraft>(EMPTY_MANUAL_DRAFT);
   const [editingRegistration, setEditingRegistration] = useState<AdminRegistration | null>(null);
+  const [editStep, setEditStep] = useState(0);
   const [editingDraft, setEditingDraft] = useState<ManualDraft>(EMPTY_MANUAL_DRAFT);
+  const allColumns = useMemo(() => buildBalancerRegistrationColumns(), []);
+  const { visibleColumns, visibility, toggleColumn, resetToDefaults } =
+    useColumnVisibility("balancer-registrations-table-columns", allColumns);
 
   const registrationsQuery = useQuery({
     queryKey: ["balancer-admin", "registrations", tournamentId, statusFilter, inclusionFilter, sourceFilter],
@@ -900,6 +797,7 @@ export default function BalancerRegistrationsPage() {
     onSuccess: async () => {
       await invalidateRegistrations();
       setCreateOpen(false);
+      setCreateStep(0);
       setManualDraft(createEmptyManualDraft());
       toast({ title: "Manual registration created" });
     },
@@ -928,6 +826,7 @@ export default function BalancerRegistrationsPage() {
     },
     onSuccess: async () => {
       await invalidateRegistrations();
+      setEditStep(0);
       setEditingRegistration(null);
       setEditingDraft(createEmptyManualDraft());
       toast({ title: "Registration updated" });
@@ -1047,23 +946,26 @@ export default function BalancerRegistrationsPage() {
       return registrations;
     }
     return registrations.filter((registration) =>
-      [
-        registration.display_name,
-        registration.battle_tag,
-        registration.discord_nick,
-        registration.twitch_nick,
-        registration.notes,
-        registration.admin_notes,
-        registration.source,
-        registration.source_record_key,
-        ...registration.roles.map((role) => role.role),
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(query),
+      allColumns.some((column) => {
+        if (!column.searchValue) {
+          return false;
+        }
+        const value = column.searchValue(registration);
+        return value?.toLowerCase().includes(query) ?? false;
+      }),
     );
-  }, [registrations, searchQuery]);
+  }, [allColumns, registrations, searchQuery]);
+
+  const selectableIds = useMemo(
+    () =>
+      filteredRegistrations
+        .filter((registration) => registration.status === "pending")
+        .map((registration) => registration.id),
+    [filteredRegistrations],
+  );
+
+  const allSelectableRowsChecked =
+    selectableIds.length > 0 && selectableIds.every((registrationId) => selectedIds.has(registrationId));
 
   const pendingCount = registrations.filter((registration) => registration.status === "pending").length;
   const feedHref = searchParams.toString()
@@ -1095,7 +997,10 @@ export default function BalancerRegistrationsPage() {
               </CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={() => setCreateOpen(true)}>
+              <Button variant="outline" onClick={() => {
+                setCreateStep(0);
+                setCreateOpen(true);
+              }}>
                 <UserPlus className="mr-2 h-4 w-4" />
                 Create registration
               </Button>
@@ -1114,16 +1019,18 @@ export default function BalancerRegistrationsPage() {
             </div>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-4">
-            <div className="md:col-span-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative min-w-[220px] flex-1">
+              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/30" />
               <Input
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 placeholder="Search registrations"
+                className="pl-9"
               />
             </div>
             <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as RegistrationStatusFilter)}>
-              <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
+              <SelectTrigger className="w-[170px]"><SelectValue placeholder="Status" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All statuses</SelectItem>
                 <SelectItem value="pending">Pending</SelectItem>
@@ -1134,58 +1041,91 @@ export default function BalancerRegistrationsPage() {
                 <SelectItem value="insufficient_data">Incomplete</SelectItem>
               </SelectContent>
             </Select>
-            <div className="grid grid-cols-2 gap-3">
-              <Select value={inclusionFilter} onValueChange={(value) => setInclusionFilter(value as InclusionFilter)}>
-                <SelectTrigger><SelectValue placeholder="Participation" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All participation</SelectItem>
-                  <SelectItem value="included">Included</SelectItem>
-                  <SelectItem value="excluded">Excluded</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={sourceFilter} onValueChange={(value) => setSourceFilter(value as SourceFilter)}>
-                <SelectTrigger><SelectValue placeholder="Source" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All sources</SelectItem>
-                  <SelectItem value="manual">Manual</SelectItem>
-                  <SelectItem value="google_sheets">Google Sheets</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <Select value={inclusionFilter} onValueChange={(value) => setInclusionFilter(value as InclusionFilter)}>
+              <SelectTrigger className="w-[170px]"><SelectValue placeholder="Participation" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All participation</SelectItem>
+                <SelectItem value="included">Included</SelectItem>
+                <SelectItem value="excluded">Excluded</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={sourceFilter} onValueChange={(value) => setSourceFilter(value as SourceFilter)}>
+              <SelectTrigger className="w-[170px]"><SelectValue placeholder="Source" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All sources</SelectItem>
+                <SelectItem value="manual">Manual</SelectItem>
+                <SelectItem value="google_sheets">Google Sheets</SelectItem>
+              </SelectContent>
+            </Select>
+            <BalancerRegistrationsColumnPicker
+              columns={allColumns}
+              visibility={visibility}
+              onToggle={toggleColumn}
+              onReset={resetToDefaults}
+            />
           </div>
         </CardHeader>
 
         <CardContent className="min-h-0 flex-1 overflow-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-10" />
-                <TableHead>Participant</TableHead>
-                <TableHead>Source</TableHead>
-                <TableHead>Roles</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Balancer</TableHead>
-                <TableHead>Check-in</TableHead>
-                <TableHead>Submitted</TableHead>
-                <TableHead className="w-[320px]">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredRegistrations.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={9} className="py-8 text-center text-sm text-muted-foreground">
-                    No registrations match the current filters.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredRegistrations.map((registration) => {
+          <div className="overflow-x-auto overflow-hidden rounded-xl border border-white/[0.07]">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-white/[0.07] bg-white/[0.02]">
+                  <th className="w-10 px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-white/40">
+                    <Checkbox
+                      checked={allSelectableRowsChecked}
+                      onCheckedChange={(checked) =>
+                        setSelectedIds((current) => {
+                          const next = new Set(current);
+                          if (checked) {
+                            selectableIds.forEach((registrationId) => next.add(registrationId));
+                          } else {
+                            selectableIds.forEach((registrationId) => next.delete(registrationId));
+                          }
+                          return next;
+                        })
+                      }
+                      disabled={selectableIds.length === 0}
+                      aria-label="Select visible pending registrations"
+                    />
+                  </th>
+                  {visibleColumns.map((column) => (
+                    <th
+                      key={column.id}
+                      className={cn(
+                        "px-3 py-2.5 text-xs font-medium uppercase tracking-wider text-white/40",
+                        RESPONSIVE_CLASS[column.responsive ?? "always"],
+                        ALIGN_CLASS[column.align ?? "left"],
+                        column.widthClass,
+                      )}
+                    >
+                      {column.label}
+                    </th>
+                  ))}
+                  <th className="w-[112px] px-3 py-2.5 text-right text-xs font-medium uppercase tracking-wider text-white/40">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredRegistrations.length === 0 ? (
+                  <tr>
+                    <td colSpan={visibleColumns.length + 2} className="py-10 text-center text-sm text-white/40">
+                      No registrations match the current filters.
+                    </td>
+                  </tr>
+                ) : (
+                filteredRegistrations.map((registration, index) => {
+                  const selectable = registration.status === "pending";
                   const statusConfig = STATUS_CONFIG[registration.status];
                   const StatusIcon = statusConfig.icon;
-                  const selectable = registration.status === "pending";
                   const inBalancer = registration.balancer_status === "ready";
                   return (
-                    <TableRow key={registration.id}>
-                        <TableCell>
+                    <tr
+                      key={registration.id}
+                      className="border-b border-white/4 transition-colors hover:bg-white/[0.02]"
+                    >
+                        <td className="px-3 py-2.5 align-top">
                           {selectable ? (
                             <Checkbox
                               checked={selectedIds.has(registration.id)}
@@ -1200,9 +1140,55 @@ export default function BalancerRegistrationsPage() {
                                   return next;
                                 })
                               }
+                              aria-label={`Select registration ${registration.id}`}
                             />
                           ) : null}
-                        </TableCell>
+                        </td>
+                        {visibleColumns.map((column) => (
+                          <td
+                            key={column.id}
+                            className={cn(
+                              "px-3 py-2.5 align-top",
+                              RESPONSIVE_CLASS[column.responsive ?? "always"],
+                              ALIGN_CLASS[column.align ?? "left"],
+                              column.widthClass,
+                            )}
+                          >
+                            {column.render(registration, index)}
+                          </td>
+                        ))}
+                        <td className="px-3 py-2.5 align-top">
+                          <RegistrationRowActions
+                            registration={registration}
+                            onEdit={(selectedRegistration) => {
+                              setEditStep(0);
+                              setEditingRegistration(selectedRegistration);
+                              setEditingDraft(buildManualDraftFromRegistration(selectedRegistration));
+                            }}
+                            onApprove={(registrationId) => approveMutation.mutate(registrationId)}
+                            onReject={(registrationId) => rejectMutation.mutate(registrationId)}
+                            onToggleBalancer={(selectedRegistration) =>
+                              balancerStatusMutation.mutate({
+                                registrationId: selectedRegistration.id,
+                                balancerStatus:
+                                  selectedRegistration.balancer_status === "ready"
+                                    ? "not_in_balancer"
+                                    : "ready",
+                              })
+                            }
+                            onToggleCheckIn={(selectedRegistration) =>
+                              checkInMutation.mutate({
+                                registrationId: selectedRegistration.id,
+                                checkedIn: !selectedRegistration.checked_in,
+                              })
+                            }
+                            onWithdraw={(registrationId) => withdrawMutation.mutate(registrationId)}
+                            onRestore={(registrationId) => restoreMutation.mutate(registrationId)}
+                            onDelete={(registrationId) => deleteMutation.mutate(registrationId)}
+                          />
+                        </td>
+                        {false && (
+                          <>
                         <TableCell>
                           <div className="space-y-1">
                             <div className="font-medium">{registration.battle_tag ?? registration.display_name ?? `Registration #${registration.id}`}</div>
@@ -1243,6 +1229,7 @@ export default function BalancerRegistrationsPage() {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => {
+                                  setEditStep(0);
                                   setEditingRegistration(registration);
                                   setEditingDraft(buildManualDraftFromRegistration(registration));
                                 }}
@@ -1294,12 +1281,15 @@ export default function BalancerRegistrationsPage() {
                             </Button>
                           </div>
                         </TableCell>
-                    </TableRow>
+                          </>
+                        )}
+                    </tr>
                   );
                 })
               )}
-            </TableBody>
-          </Table>
+              </tbody>
+            </table>
+          </div>
         </CardContent>
       </Card>
 
@@ -1308,40 +1298,35 @@ export default function BalancerRegistrationsPage() {
         onOpenChange={(open) => {
           setCreateOpen(open);
           if (!open) {
+            setCreateStep(0);
             setManualDraft(createEmptyManualDraft());
           }
         }}
       >
-        <DialogContent className="max-w-5xl gap-0 overflow-hidden border-white/10 bg-[#06070c] p-0 text-white shadow-[0_30px_120px_rgba(0,0,0,0.55)] sm:rounded-[30px]">
-          <DialogHeader className="border-b border-white/10 px-6 py-5 text-left sm:px-7">
-            <DialogTitle className="text-2xl font-semibold tracking-tight text-white">Create Manual Registration</DialogTitle>
-            <DialogDescription className="mt-2 max-w-3xl text-sm leading-6 text-white/50">
+        <DialogContent className="max-w-3xl gap-0 overflow-hidden border-white/10 bg-[#06070c] p-0 text-white shadow-[0_20px_70px_rgba(0,0,0,0.48)] sm:rounded-[20px]">
+          <DialogHeader className="border-b border-white/10 px-4 py-3.5 text-left sm:px-5">
+            <DialogTitle className="text-xl font-semibold tracking-tight text-white">Create Manual Registration</DialogTitle>
+            <DialogDescription className="mt-1 max-w-2xl text-sm leading-5 text-white/50">
               Open the same multi-step visual shell used by the public flow, but keep every admin field available in one fixed editor.
             </DialogDescription>
           </DialogHeader>
-          <div className="max-h-[calc(100vh-16rem)] overflow-y-auto px-6 py-6 sm:px-7">
-            <RegistrationProfileForm draft={manualDraft} setDraft={setManualDraft} divisionGrid={divisionGrid} />
-          </div>
-          <DialogFooter className="border-t border-white/10 px-6 py-5 sm:px-7">
-            <Button
-              variant="outline"
-              className="border-white/10 bg-white/[0.03] text-white hover:bg-white/[0.06] hover:text-white"
-              onClick={() => {
+          <div className="max-h-[calc(100vh-12rem)] overflow-y-auto px-4 py-3.5 sm:px-5">
+            <RegistrationProfileForm
+              draft={manualDraft}
+              setDraft={setManualDraft}
+              step={createStep}
+              onStepChange={setCreateStep}
+              onCancel={() => {
                 setCreateOpen(false);
+                setCreateStep(0);
                 setManualDraft(createEmptyManualDraft());
               }}
-            >
-              Cancel
-            </Button>
-            <Button
-              className="min-w-[170px] bg-white text-black hover:bg-white/90"
-              onClick={() => createMutation.mutate()}
-              disabled={createMutation.isPending || !manualDraft.battle_tag.trim()}
-            >
-              {createMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
-              Create
-            </Button>
-          </DialogFooter>
+              onSubmit={() => createMutation.mutate()}
+              submitPending={createMutation.isPending}
+              submitLabel="Create"
+              submitIcon={<UserPlus className="mr-2 size-4" />}
+            />
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -1349,41 +1334,36 @@ export default function BalancerRegistrationsPage() {
         open={editingRegistration !== null}
         onOpenChange={(open) => {
           if (!open) {
+            setEditStep(0);
             setEditingRegistration(null);
             setEditingDraft(createEmptyManualDraft());
           }
         }}
       >
-        <DialogContent className="max-w-5xl gap-0 overflow-hidden border-white/10 bg-[#06070c] p-0 text-white shadow-[0_30px_120px_rgba(0,0,0,0.55)] sm:rounded-[30px]">
-          <DialogHeader className="border-b border-white/10 px-6 py-5 text-left sm:px-7">
-            <DialogTitle className="text-2xl font-semibold tracking-tight text-white">Edit Registration</DialogTitle>
-            <DialogDescription className="mt-2 max-w-3xl text-sm leading-6 text-white/50">
+        <DialogContent className="max-w-3xl gap-0 overflow-hidden border-white/10 bg-[#06070c] p-0 text-white shadow-[0_20px_70px_rgba(0,0,0,0.48)] sm:rounded-[20px]">
+          <DialogHeader className="border-b border-white/10 px-4 py-3.5 text-left sm:px-5">
+            <DialogTitle className="text-xl font-semibold tracking-tight text-white">Edit Registration</DialogTitle>
+            <DialogDescription className="mt-1 max-w-2xl text-sm leading-5 text-white/50">
               Update balancer-facing participant data in the fixed admin editor, while keeping the public multi-step look and hierarchy.
             </DialogDescription>
           </DialogHeader>
-          <div className="max-h-[calc(100vh-16rem)] overflow-y-auto px-6 py-6 sm:px-7">
-            <RegistrationProfileForm draft={editingDraft} setDraft={setEditingDraft} divisionGrid={divisionGrid} />
-          </div>
-          <DialogFooter className="border-t border-white/10 px-6 py-5 sm:px-7">
-            <Button
-              variant="outline"
-              className="border-white/10 bg-white/[0.03] text-white hover:bg-white/[0.06] hover:text-white"
-              onClick={() => {
+          <div className="max-h-[calc(100vh-12rem)] overflow-y-auto px-4 py-3.5 sm:px-5">
+            <RegistrationProfileForm
+              draft={editingDraft}
+              setDraft={setEditingDraft}
+              step={editStep}
+              onStepChange={setEditStep}
+              onCancel={() => {
+                setEditStep(0);
                 setEditingRegistration(null);
                 setEditingDraft(createEmptyManualDraft());
               }}
-            >
-              Cancel
-            </Button>
-            <Button
-              className="min-w-[170px] bg-white text-black hover:bg-white/90"
-              onClick={() => updateMutation.mutate()}
-              disabled={updateMutation.isPending || !editingDraft.battle_tag.trim()}
-            >
-              {updateMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Pencil className="mr-2 h-4 w-4" />}
-              Save changes
-            </Button>
-          </DialogFooter>
+              onSubmit={() => updateMutation.mutate()}
+              submitPending={updateMutation.isPending}
+              submitLabel="Save changes"
+              submitIcon={<Pencil className="mr-2 size-4" />}
+            />
+          </div>
         </DialogContent>
       </Dialog>
     </div>

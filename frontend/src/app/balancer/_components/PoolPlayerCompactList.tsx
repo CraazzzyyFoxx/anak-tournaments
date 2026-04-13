@@ -112,7 +112,7 @@ export function PoolPlayerCompactList({
               type="button"
               title={issueSummary || player.battle_tag}
               aria-pressed={isSelected}
-              onClick={onSelectPlayer ? () => onSelectPlayer(isSelected ? null : player.id) : undefined}
+              onClick={onSelectPlayer ? () => onSelectPlayer(player.id) : undefined}
               className={cn(
                 "grid w-full grid-cols-[20px_auto_minmax(0,1fr)_auto] items-center gap-2 rounded-xl border px-2.5 py-2 text-left transition-all",
                 "border-white/6 bg-white/[0.02] hover:border-white/12 hover:bg-white/[0.04]",

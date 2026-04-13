@@ -1,12 +1,22 @@
+import type { LucideIcon } from "lucide-react";
 import { Loader2, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { PANEL_CLASS, PRESET_LABELS } from "./balancer-page-helpers";
+import { WorkspaceCounter } from "./WorkspaceCounter";
+
+type CounterItem = {
+  label: string;
+  value: number;
+  icon: LucideIcon;
+};
 
 type PresetRunPanelProps = {
+  counters: CounterItem[];
   presetOptions: string[];
   selectedPreset: string;
   onSelectPreset: (preset: string) => void;
@@ -22,6 +32,7 @@ type PresetRunPanelProps = {
 };
 
 export function PresetRunPanel({
+  counters,
   presetOptions,
   selectedPreset,
   onSelectPreset,
@@ -38,41 +49,46 @@ export function PresetRunPanel({
   return (
     <div className={cn(PANEL_CLASS, "px-4 py-3")}>
       <div className="flex flex-col gap-3">
-        {/* Preset chips + Run button */}
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex flex-wrap gap-1.5">
-            {presetOptions.map((preset) => {
-              const isSelected = preset === selectedPreset;
-              return (
-                <button
-                  key={preset}
-                  type="button"
-                  onClick={() => onSelectPreset(preset)}
-                  className={cn(
-                    "rounded-lg border px-2.5 py-1.5 text-sm transition",
-                    isSelected
-                      ? "border-violet-400/40 bg-violet-500/14 text-white"
-                      : "border-white/8 bg-white/2 text-white/58 hover:bg-white/5 hover:text-white",
-                  )}
-                >
-                  {PRESET_LABELS[preset] ?? preset}
-                </button>
-              );
-            })}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {counters.map((counter) => (
+              <WorkspaceCounter
+                key={counter.label}
+                label={counter.label}
+                value={counter.value}
+                icon={counter.icon}
+              />
+            ))}
           </div>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <div className="min-w-[180px] flex-1 sm:w-[220px] sm:flex-none">
+              <Select value={selectedPreset} onValueChange={onSelectPreset}>
+                <SelectTrigger className="h-11 rounded-xl border-white/10 bg-black/15 text-sm text-white/82">
+                  <SelectValue placeholder="Preset" />
+                </SelectTrigger>
+                <SelectContent>
+                  {presetOptions.map((preset) => (
+                    <SelectItem key={preset} value={preset}>
+                      {PRESET_LABELS[preset] ?? preset}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-          <Button
-            onClick={onRunBalance}
-            disabled={!canRunBalance}
-            className="ml-auto h-11 rounded-xl bg-violet-500 px-6 text-sm font-semibold text-white hover:bg-violet-400"
-          >
-            {isRunPending ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Sparkles className="mr-2 h-4 w-4" />
-            )}
-            Run balance
-          </Button>
+            <Button
+              onClick={onRunBalance}
+              disabled={!canRunBalance}
+              className="h-11 rounded-xl bg-violet-500 px-6 text-sm font-semibold text-white hover:bg-violet-400"
+            >
+              {isRunPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="mr-2 h-4 w-4" />
+              )}
+              Run balance
+            </Button>
+          </div>
         </div>
 
         {/* Skip invalid players — conditional sub-row */}

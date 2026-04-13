@@ -23,13 +23,13 @@ import { CSS } from "@dnd-kit/utilities";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -515,14 +515,11 @@ function SortableRoleEntry({
                   "h-2 w-full cursor-pointer appearance-none rounded-full bg-white/8",
                   !entry.is_active && "cursor-not-allowed opacity-50",
                 )}
-                style={{ accentColor: accent.sliderColor }}
+                style={{
+                  accentColor: accent.sliderColor,
+                  background: `linear-gradient(90deg, ${accent.sliderColor} 0%, ${accent.sliderColor} ${rankFillPercent}%, rgba(255,255,255,0.08) ${rankFillPercent}%, rgba(255,255,255,0.08) 100%)`,
+                }}
               />
-              <div className="h-1.5 rounded-full bg-white/8">
-                <div
-                  className={cn("h-full rounded-full transition-all", accent.line)}
-                  style={{ width: `${rankFillPercent}%` }}
-                />
-              </div>
             </div>
           </div>
 
@@ -780,34 +777,14 @@ export function PlayerEditModal({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[960px] overflow-hidden border-white/10 bg-[#12111d]/95 p-0 shadow-2xl shadow-black/50 backdrop-blur-xl [&>button:last-child]:right-5 [&>button:last-child]:top-5 [&>button:last-child]:z-20 [&>button:last-child]:flex [&>button:last-child]:h-9 [&>button:last-child]:w-9 [&>button:last-child]:items-center [&>button:last-child]:justify-center [&>button:last-child]:rounded-xl [&>button:last-child]:border [&>button:last-child]:border-white/10 [&>button:last-child]:bg-black/30 [&>button:last-child]:p-0 [&>button:last-child]:text-white/60 [&>button:last-child]:backdrop-blur-sm [&>button:last-child]:hover:bg-white/8 [&>button:last-child]:hover:text-white [&>button:last-child]:data-[state=open]:bg-black/30 [&>button:last-child]:data-[state=open]:text-white/60">
-        {onRemove ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="absolute right-[4.25rem] top-5 h-9 w-9 rounded-xl border border-white/10 bg-black/20 text-white/55 hover:bg-white/5 hover:text-white"
-              >
-                <MoreHorizontal className="h-4 w-4" />
-                <span className="sr-only">Player actions</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                className="text-destructive focus:text-destructive"
-                onClick={() => onRemove(player.id)}
-              >
-                <Trash2 className="h-4 w-4" />
-                Exclude from balancer
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : null}
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="right"
+        className="w-full overflow-hidden border-white/10 bg-[#12111d]/95 p-0 text-white shadow-2xl shadow-black/50 backdrop-blur-xl sm:max-w-[960px] [&>button:last-child]:right-5 [&>button:last-child]:top-5 [&>button:last-child]:z-20 [&>button:last-child]:flex [&>button:last-child]:h-9 [&>button:last-child]:w-9 [&>button:last-child]:items-center [&>button:last-child]:justify-center [&>button:last-child]:rounded-xl [&>button:last-child]:border [&>button:last-child]:border-white/10 [&>button:last-child]:bg-black/30 [&>button:last-child]:p-0 [&>button:last-child]:text-white/60 [&>button:last-child]:backdrop-blur-sm [&>button:last-child]:hover:bg-white/8 [&>button:last-child]:hover:text-white [&>button:last-child]:data-[state=open]:bg-black/30 [&>button:last-child]:data-[state=open]:text-white/60"
+      >
+        
 
-        <DialogHeader
+        <SheetHeader
           className={cn(
             "border-b border-white/8 px-5 pb-4 pt-5 sm:px-6 sm:pb-5 sm:pt-6",
             onRemove ? "pr-32 sm:pr-36" : "pr-20 sm:pr-24",
@@ -816,30 +793,23 @@ export function PlayerEditModal({
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-2">
-                <DialogTitle className="text-3xl font-semibold tracking-tight text-white">
+                <SheetTitle className="text-3xl font-semibold tracking-tight text-white">
                   {player.battle_tag}
-                </DialogTitle>
+                </SheetTitle>
                 {isFlex ? (
                   <Badge className="border-emerald-400/25 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/10">
                     Flex
                   </Badge>
                 ) : null}
               </div>
-              <DialogDescription className="max-w-2xl text-sm text-white/55">
+              <SheetDescription className="max-w-2xl text-sm text-white/55">
                 Roles, ratings, and balancer participation. Preview history before applying it to this registration.
-              </DialogDescription>
+              </SheetDescription>
             </div>
 
-            <div className="rounded-2xl border border-violet-400/20 bg-violet-500/[0.08] px-4 py-3 text-right shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/35">
-                Avg SR
-              </div>
-              <div className="text-3xl font-semibold text-violet-300">
-                {averageRankValue ?? "-"}
-              </div>
-            </div>
+          
           </div>
-        </DialogHeader>
+        </SheetHeader>
 
         <div className="space-y-5 px-5 py-5 sm:px-6">
           <div className="grid gap-3 lg:grid-cols-2">
@@ -1040,7 +1010,7 @@ export function PlayerEditModal({
           </div>
         </div>
 
-        <DialogFooter className="border-t border-white/8 px-5 py-4 sm:px-6 sm:justify-between">
+        <SheetFooter className="border-t border-white/8 px-5 py-4 sm:justify-between sm:space-x-0 sm:px-6">
           <div className="text-xs text-white/35">
             Manual edits always win until you explicitly load and apply new history values.
           </div>
@@ -1061,8 +1031,8 @@ export function PlayerEditModal({
               Save
             </Button>
           </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   );
 }

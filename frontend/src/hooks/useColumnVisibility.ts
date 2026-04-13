@@ -1,6 +1,9 @@
 import { useCallback, useMemo, useState } from "react";
 
-import type { ColumnDefinition } from "@/app/(site)/tournaments/[id]/pages/_components/participantsColumns";
+interface VisibilityColumn {
+  id: string;
+  defaultVisible: boolean;
+}
 
 function loadVisibility(
   storageKey: string,
@@ -29,7 +32,7 @@ function saveVisibility(
 
 export function useColumnVisibility(
   storageKey: string,
-  columns: ColumnDefinition[],
+  columns: VisibilityColumn[],
 ) {
   const defaults = useMemo(() => {
     const d: Record<string, boolean> = {};
