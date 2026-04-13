@@ -436,13 +436,14 @@ export default function AccessAdminUsersPage() {
                           </div>
                           <Button
                             disabled={selectedAnalyticsUserId == null || assignLinkedPlayerMutation.isPending}
-                            onClick={() =>
+                            onClick={() => {
+                              if (selectedAnalyticsUserId == null) return;
                               assignLinkedPlayerMutation.mutate({
                                 userId: userDetailQuery.data!.id,
                                 player_id: selectedAnalyticsUserId,
                                 is_primary: assignAsPrimary,
-                              })
-                            }
+                              });
+                            }}
                           >
                             <Link2 className="mr-2 h-4 w-4" />
                             Assign Account
