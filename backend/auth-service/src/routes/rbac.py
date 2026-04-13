@@ -16,6 +16,7 @@ from sqlalchemy.orm import selectinload
 from src import models, schemas
 from src.core import db
 from src.services import auth_service
+from src.services.player_link_service import PlayerLinkService
 from src.services.session_cache import invalidate_rbac
 
 router = APIRouter(prefix="/rbac", tags=["RBAC"])
@@ -36,6 +37,27 @@ def _effective_permissions(user: models.AuthUser) -> list[str]:
         for permission in role.permissions
     }
     return sorted(keys)
+
+
+def _linked_players_payload(user: models.AuthUser) -> list[schemas.AuthUserLinkedPlayerRead]:
+    player_links = sorted(
+        user.player_links,
+        key=lambda link: (
+            not link.is_primary,
+            link.created_at,
+            link.player_id,
+        ),
+    )
+    return [
+        schemas.AuthUserLinkedPlayerRead(
+            player_id=link.player_id,
+            player_name=link.player.name,
+            is_primary=link.is_primary,
+            linked_at=link.created_at.isoformat(),
+        )
+        for link in player_links
+        if link.player is not None
+    ]
 
 
 async def _count_users_with_role(session: AsyncSession, role_id: int) -> int:
@@ -334,8 +356,17 @@ async def list_auth_users(
         role_id=role_id,
         is_active=is_active,
         is_superuser=is_superuser,
+        include_player_links=True,
     )
-    return [schemas.AuthUserListRead.model_validate(user, from_attributes=True) for user in users]
+    return [
+        schemas.AuthUserListRead.model_validate(
+            {
+                **schemas.AuthUserListRead.model_validate(user, from_attributes=True).model_dump(),
+                "linked_players": _linked_players_payload(user),
+            }
+        )
+        for user in users
+    ]
 
 
 @router.get("/users/{user_id}", response_model=schemas.AuthUserDetailRead)
@@ -346,7 +377,7 @@ async def get_auth_user(
 ):
     """Get auth-user detail with assigned roles and effective permissions."""
 
-    user = await auth_service.AuthService.get_user_with_rbac(session, user_id)
+    user = await auth_service.AuthService.get_user_with_rbac(session, user_id, include_player_links=True)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -354,8 +385,43 @@ async def get_auth_user(
         )
 
     payload = schemas.AuthUserListRead.model_validate(user, from_attributes=True).model_dump()
+    payload["linked_players"] = _linked_players_payload(user)
     payload["effective_permissions"] = _effective_permissions(user)
     return schemas.AuthUserDetailRead.model_validate(payload)
+
+
+@router.post("/users/{user_id}/linked-players", status_code=status.HTTP_204_NO_CONTENT)
+async def assign_linked_player_to_auth_user(
+    user_id: int,
+    data: schemas.AuthUserPlayerLinkAssign,
+    session: Annotated[AsyncSession, Depends(db.get_async_session)],
+    current_user: Annotated[models.AuthUser, Depends(auth_service.require_permission("auth_user", "update"))],
+):
+    """Assign a player account from the analytics system to an auth user."""
+
+    result = await session.execute(select(models.AuthUser).where(models.AuthUser.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    await PlayerLinkService.admin_link_player(session, user_id, data.player_id, data.is_primary)
+
+
+@router.delete("/users/{user_id}/linked-players/{player_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_linked_player_from_auth_user(
+    user_id: int,
+    player_id: int,
+    session: Annotated[AsyncSession, Depends(db.get_async_session)],
+    current_user: Annotated[models.AuthUser, Depends(auth_service.require_permission("auth_user", "update"))],
+):
+    """Remove a player account link from an auth user."""
+
+    result = await session.execute(select(models.AuthUser).where(models.AuthUser.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    await PlayerLinkService.admin_unlink_player(session, user_id, player_id)
 
 
 # User Role Assignment Routes

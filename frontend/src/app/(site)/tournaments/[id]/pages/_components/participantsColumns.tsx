@@ -1,0 +1,461 @@
+"use client";
+
+import type { ReactNode } from "react";
+import { ExternalLink } from "lucide-react";
+
+import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
+import type {
+  CustomFieldDefinition,
+  Registration,
+  RegistrationForm,
+  RegistrationRole,
+} from "@/types/registration.types";
+
+import StatusBadge from "./StatusBadge";
+import TournamentHistoryCell from "./TournamentHistoryCell";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export interface ColumnDefinition {
+  id: string;
+  label: string;
+  category: "meta" | "built_in" | "custom";
+  defaultVisible: boolean;
+  render: (reg: Registration, index: number) => ReactNode;
+  searchValue?: (reg: Registration) => string | null;
+  /** Breakpoint at which column becomes visible. "always" = never hidden. */
+  responsive?: "always" | "sm" | "md" | "lg";
+  /** Optional fixed width class for the column. */
+  widthClass?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Role helpers — icon-only, larger icons
+// ---------------------------------------------------------------------------
+
+const ROLE_TO_ICON: Record<string, string> = {
+  tank: "Tank",
+  dps: "Damage",
+  support: "Support",
+};
+
+const ROLE_LABELS: Record<string, string> = {
+  tank: "Tank",
+  dps: "DPS",
+  support: "Support",
+};
+
+const SUBROLE_LABELS: Record<string, string> = {
+  hitscan: "Hitscan",
+  projectile: "Projectile",
+  main_heal: "Main Heal",
+  light_heal: "Light Heal",
+  main_tank: "Main Tank",
+  off_tank: "Off Tank",
+  flanker: "Flanker",
+  flex_dps: "Flex DPS",
+  flex_support: "Flex Support",
+};
+
+const SUBROLE_SHORT_LABELS: Record<string, string> = {
+  hitscan: "HS",
+  projectile: "PROJ",
+  main_heal: "MH",
+  light_heal: "LH",
+  main_tank: "MT",
+  off_tank: "OT",
+  flanker: "FLK",
+  flex_dps: "FD",
+  flex_support: "FS",
+};
+
+function RolesCell({ roles }: { roles: RegistrationRole[] }) {
+  if (!roles || roles.length === 0)
+    return <span className="text-white/30">&mdash;</span>;
+
+  return (
+    <div className="flex flex-wrap items-start gap-x-0.5 gap-y-2">
+      {roles.map((r) => (
+        <div
+          key={`${r.role}-${r.subrole ?? "base"}-${r.priority}`}
+          className="inline-flex min-w-7 flex-col items-center gap-0.5"
+          title={[
+            ROLE_LABELS[r.role] ?? r.role,
+            r.subrole ? SUBROLE_LABELS[r.subrole] ?? r.subrole : null,
+            r.is_primary ? "Primary" : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        >
+          <span
+            className={cn(
+              "relative inline-flex h-8 w-8 items-center justify-center p-1",
+              r.is_primary
+                ? "after:absolute after:bottom-0 after:left-1/2 after:h-0.5 after:w-4 after:-translate-x-1/2 after:rounded-full after:bg-emerald-300/90"
+                : "text-white/70",
+            )}
+          >
+            <PlayerRoleIcon
+              role={ROLE_TO_ICON[r.role] ?? r.role}
+              size={20}
+            />
+          </span>
+          {r.subrole ? (
+            <span className="text-center text-[8px] font-semibold leading-none tracking-[0.12em] text-white/45 uppercase">
+              {SUBROLE_SHORT_LABELS[r.subrole] ?? SUBROLE_LABELS[r.subrole] ?? r.subrole}
+            </span>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const MAX_VISIBLE_SMURF_TAGS = 3;
+
+function SmurfTagsCell({
+  tags,
+}: {
+  tags: string[] | null | undefined;
+}) {
+  const smurfTags = tags?.filter(Boolean) ?? [];
+
+  if (smurfTags.length === 0) {
+    return <span className="text-white/30">&mdash;</span>;
+  }
+
+  const visibleTags = smurfTags.slice(0, MAX_VISIBLE_SMURF_TAGS);
+  const hiddenCount = smurfTags.length - visibleTags.length;
+
+  return (
+    <div className="flex max-w-[220px] flex-col items-start gap-1">
+      {visibleTags.map((tag, index) => (
+        <span
+          key={`${tag}-${index}`}
+          className="block max-w-full truncate text-xs leading-5 text-white/50"
+          title={tag}
+        >
+          {tag}
+        </span>
+      ))}
+
+      {hiddenCount > 0 ? (
+        <Dialog>
+          <DialogTrigger asChild>
+            <button
+              type="button"
+              className="text-xs font-medium text-emerald-300/80 transition hover:text-emerald-200"
+            >
+              +{hiddenCount} more
+            </button>
+          </DialogTrigger>
+          <DialogContent className="border-white/[0.08] bg-[#111113] sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-white">Smurf BattleTags</DialogTitle>
+              <DialogDescription className="text-white/50">
+                All registered smurf BattleTags for this participant.
+              </DialogDescription>
+            </DialogHeader>
+            <ScrollArea className="max-h-[320px] pr-2">
+              <div className="flex flex-col gap-2">
+                {smurfTags.map((tag, index) => (
+                  <div
+                    key={`${tag}-${index}`}
+                    className="rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/80"
+                  >
+                    {tag}
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Custom field value renderer
+// ---------------------------------------------------------------------------
+
+function renderCustomFieldValue(
+  field: CustomFieldDefinition,
+  value: unknown,
+): ReactNode {
+  if (value === null || value === undefined)
+    return <span className="text-white/30">&mdash;</span>;
+
+  switch (field.type) {
+    case "checkbox":
+      return (
+        <span className="text-white/60">{value ? "Yes" : "No"}</span>
+      );
+    case "url":
+      return (
+        <a
+          href={String(value)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-white/60 underline decoration-white/20 hover:text-white/80"
+        >
+          <span className="max-w-[120px] truncate">{String(value)}</span>
+          <ExternalLink className="size-3 shrink-0" />
+        </a>
+      );
+    case "select":
+      return (
+        <span className="inline-flex items-center rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-xs font-medium text-white/60">
+          {String(value)}
+        </span>
+      );
+    default:
+      return <span className="text-white/60">{String(value)}</span>;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Date formatter
+// ---------------------------------------------------------------------------
+
+function formatDate(iso: string | null): ReactNode {
+  if (!iso) return <span className="text-white/30">&mdash;</span>;
+  const d = new Date(iso);
+  return (
+    <span className="text-white/50 tabular-nums text-xs">
+      {d.toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      })}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Built-in field mapping
+// ---------------------------------------------------------------------------
+
+interface BuiltInFieldDef {
+  id: string;
+  label: string;
+  defaultVisible: boolean;
+  responsive?: ColumnDefinition["responsive"];
+  widthClass?: string;
+  render: (reg: Registration) => ReactNode;
+  searchValue?: (reg: Registration) => string | null;
+}
+
+const BUILT_IN_FIELD_DEFS: Record<string, BuiltInFieldDef> = {
+  battle_tag: {
+    id: "battle_tag",
+    label: "BattleTag",
+    defaultVisible: true,
+    responsive: "always",
+    render: (reg) => (
+      <span className="font-medium text-white/80">
+        {reg.battle_tag ?? "\u2014"}
+      </span>
+    ),
+    searchValue: (reg) => reg.battle_tag,
+  },
+  smurf_tags: {
+    id: "smurf_tags",
+    label: "Smurfs",
+    defaultVisible: true,
+    responsive: "md",
+    render: (reg) => <SmurfTagsCell tags={reg.smurf_tags_json} />,
+    searchValue: (reg) => reg.smurf_tags_json?.join(" ") ?? null,
+  },
+  discord_nick: {
+    id: "discord_nick",
+    label: "Discord",
+    defaultVisible: false,
+    responsive: "sm",
+    render: (reg) => (
+      <span className="text-white/50">{reg.discord_nick ?? "\u2014"}</span>
+    ),
+    searchValue: (reg) => reg.discord_nick,
+  },
+  twitch_nick: {
+    id: "twitch_nick",
+    label: "Twitch",
+    defaultVisible: false,
+    responsive: "md",
+    render: (reg) => (
+      <span className="text-white/50">{reg.twitch_nick ?? "\u2014"}</span>
+    ),
+    searchValue: (reg) => reg.twitch_nick,
+  },
+  primary_role: {
+    id: "roles",
+    label: "Roles",
+    defaultVisible: true,
+    responsive: "always",
+    render: (reg) => <RolesCell roles={reg.roles} />,
+    searchValue: (reg) =>
+      reg.roles?.map((r) => r.role).join(" ") ?? null,
+  },
+  additional_roles: {
+    // Merged into primary_role column — skip as standalone
+    id: "_skip_additional_roles",
+    label: "Additional Roles",
+    defaultVisible: false,
+    render: () => null,
+  },
+  stream_pov: {
+    id: "stream_pov",
+    label: "Stream POV",
+    defaultVisible: false,
+    responsive: "lg",
+    render: (reg) => (
+      <span className="text-white/60">{reg.stream_pov ? "Yes" : "No"}</span>
+    ),
+  },
+  notes: {
+    id: "notes",
+    label: "Notes",
+    defaultVisible: true,
+    responsive: "md",
+    widthClass: "max-w-50",
+    render: (reg) =>
+      reg.notes ? (
+        <span className="block max-w-50 whitespace-pre-wrap wrap-break-word text-xs text-white/50">
+          {reg.notes}
+        </span>
+      ) : (
+        <span className="text-white/30">&mdash;</span>
+      ),
+    searchValue: (reg) => reg.notes,
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Main builder
+// ---------------------------------------------------------------------------
+
+export function buildParticipantColumns(
+  form: RegistrationForm | null,
+): ColumnDefinition[] {
+  const columns: ColumnDefinition[] = [];
+
+  // Meta: row number
+  columns.push({
+    id: "_index",
+    label: "#",
+    category: "meta",
+    defaultVisible: true,
+    responsive: "always",
+    render: (_reg, index) => (
+      <span className="text-white/30 tabular-nums">{index + 1}</span>
+    ),
+  });
+
+  // Built-in fields from form config
+  if (form?.built_in_fields) {
+    for (const [key, config] of Object.entries(form.built_in_fields)) {
+      if (!config.enabled) continue;
+      const def = BUILT_IN_FIELD_DEFS[key];
+      if (!def || def.id === "_skip_additional_roles") continue;
+      if (key === "additional_roles") continue;
+
+      columns.push({
+        id: def.id,
+        label: def.label,
+        category: "built_in",
+        defaultVisible: def.defaultVisible,
+        responsive: def.responsive ?? "sm",
+        widthClass: def.widthClass,
+        render: (reg) => def.render(reg),
+        searchValue: def.searchValue,
+      });
+    }
+  } else {
+    // Fallback when no form config
+    for (const key of ["battle_tag", "smurf_tags", "primary_role", "notes"]) {
+      const def = BUILT_IN_FIELD_DEFS[key];
+      if (!def) continue;
+      columns.push({
+        id: def.id,
+        label: def.label,
+        category: "built_in",
+        defaultVisible: true,
+        responsive: def.responsive ?? "sm",
+        widthClass: def.widthClass,
+        render: (reg) => def.render(reg),
+        searchValue: def.searchValue,
+      });
+    }
+  }
+
+  // Custom fields from form config
+  if (form?.custom_fields) {
+    for (const field of form.custom_fields) {
+      columns.push({
+        id: `custom_${field.key}`,
+        label: field.label,
+        category: "custom",
+        defaultVisible: false,
+        responsive: "md",
+        render: (reg) =>
+          renderCustomFieldValue(
+            field,
+            reg.custom_fields_json?.[field.key] ?? null,
+          ),
+        searchValue:
+          field.type === "text" || field.type === "select"
+            ? (reg) => {
+                const v = reg.custom_fields_json?.[field.key];
+                return v != null ? String(v) : null;
+              }
+            : undefined,
+      });
+    }
+  }
+
+  // Meta: tournament history
+  columns.push({
+    id: "_history",
+    label: "History",
+    category: "meta",
+    defaultVisible: true,
+    responsive: "md",
+    render: (reg) => (
+      <TournamentHistoryCell history={reg.tournament_history ?? []} />
+    ),
+  });
+
+  // Meta: registration date
+  columns.push({
+    id: "_submitted_at",
+    label: "Registered",
+    category: "meta",
+    defaultVisible: false,
+    responsive: "md",
+    render: (reg) => formatDate(reg.submitted_at),
+  });
+
+  // Meta: status — always last (rightmost)
+  columns.push({
+    id: "_status",
+    label: "Status",
+    category: "meta",
+    defaultVisible: true,
+    responsive: "always",
+    render: (reg) => <StatusBadge status={reg.status} />,
+  });
+
+  return columns;
+}

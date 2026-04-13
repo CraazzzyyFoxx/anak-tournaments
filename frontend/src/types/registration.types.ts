@@ -31,6 +31,21 @@ export interface RegistrationForm {
   custom_fields: CustomFieldDefinition[];
 }
 
+export type RegistrationStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "withdrawn"
+  | "banned"
+  | "insufficient_data";
+
+export interface TournamentHistoryEntry {
+  tournament_id: number;
+  tournament_name: string;
+  role: string | null;
+  division: number | null;
+}
+
 export interface Registration {
   id: number;
   tournament_id: number;
@@ -45,9 +60,10 @@ export interface Registration {
   roles: RegistrationRole[];
   notes: string | null;
   custom_fields_json: Record<string, unknown> | null;
-  status: "pending" | "approved" | "rejected" | "withdrawn";
+  status: RegistrationStatus;
   submitted_at: string | null;
   reviewed_at: string | null;
+  tournament_history?: TournamentHistoryEntry[];
 }
 
 export interface RegistrationRole {

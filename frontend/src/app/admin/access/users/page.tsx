@@ -2,14 +2,16 @@
 
 import { useMemo, useState } from "react";
 import { ColumnDef } from "@tanstack/react-table";
-import { BadgeCheck, CheckCircle, Shield, ShieldAlert, UserCog, XCircle } from "lucide-react";
+import { BadgeCheck, CheckCircle, Link2, Shield, ShieldAlert, Trash2, UserCog, XCircle } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { StatusIcon } from "@/components/admin/StatusIcon";
+import { UserSearchCombobox } from "@/components/admin/UserSearchCombobox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -25,11 +27,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useToast } from "@/hooks/use-toast";
 import { paginateResults, sortArray } from "@/lib/paginate-results";
 import { rbacService } from "@/services/rbac.service";
 import type { AuthAdminUser } from "@/types/rbac.types";
+import type { MinimizedUser } from "@/types/user.types";
 
 const PAGE_SIZE = 15;
 
@@ -42,9 +46,13 @@ export default function AccessAdminUsersPage() {
   const { toast } = useToast();
   const { hasPermission } = usePermissions();
   const canAssignRoles = hasPermission("role.assign") && hasPermission("role.read");
+  const canManageLinkedPlayers = hasPermission("auth_user.update");
 
   const [managingUserId, setManagingUserId] = useState<number | null>(null);
   const [selectedRoleId, setSelectedRoleId] = useState<string>("");
+  const [selectedAnalyticsUserId, setSelectedAnalyticsUserId] = useState<number | null>(null);
+  const [selectedAnalyticsUserName, setSelectedAnalyticsUserName] = useState("");
+  const [assignAsPrimary, setAssignAsPrimary] = useState(true);
 
   const rolesQuery = useQuery({
     queryKey: ["access-admin", "roles", "all"],
@@ -89,6 +97,42 @@ export default function AccessAdminUsersPage() {
     },
   });
 
+  const assignLinkedPlayerMutation = useMutation({
+    mutationFn: (payload: { userId: number; player_id: number; is_primary: boolean }) =>
+      rbacService.assignLinkedPlayer(payload.userId, {
+        player_id: payload.player_id,
+        is_primary: payload.is_primary,
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["access-admin", "users"] }),
+        queryClient.invalidateQueries({ queryKey: ["access-admin", "users", managingUserId] }),
+      ]);
+      setSelectedAnalyticsUserId(null);
+      setSelectedAnalyticsUserName("");
+      setAssignAsPrimary(true);
+      toast({ title: "Linked analytics account assigned" });
+    },
+    onError: (error) => {
+      toast({ title: "Error", description: getErrorMessage(error), variant: "destructive" });
+    },
+  });
+
+  const removeLinkedPlayerMutation = useMutation({
+    mutationFn: (payload: { userId: number; playerId: number }) =>
+      rbacService.removeLinkedPlayer(payload.userId, payload.playerId),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["access-admin", "users"] }),
+        queryClient.invalidateQueries({ queryKey: ["access-admin", "users", managingUserId] }),
+      ]);
+      toast({ title: "Linked analytics account removed" });
+    },
+    onError: (error) => {
+      toast({ title: "Error", description: getErrorMessage(error), variant: "destructive" });
+    },
+  });
+
   const columns: ColumnDef<AuthAdminUser>[] = [
     {
       accessorKey: "email",
@@ -97,6 +141,27 @@ export default function AccessAdminUsersPage() {
     {
       accessorKey: "username",
       header: "Username",
+    },
+    {
+      id: "linkedPlayers",
+      header: "Linked Account",
+      cell: ({ row }) => {
+        const linkedPlayers = row.original.linked_players ?? [];
+        if (linkedPlayers.length === 0) {
+          return <span className="text-sm text-muted-foreground">Not linked</span>;
+        }
+
+        return (
+          <div className="flex flex-wrap gap-2">
+            {linkedPlayers.map((player) => (
+              <Badge key={player.player_id} variant={player.is_primary ? "default" : "outline"}>
+                {player.player_name}
+                {player.is_primary ? " (Primary)" : ""}
+              </Badge>
+            ))}
+          </div>
+        );
+      },
     },
     {
       id: "status",
@@ -183,6 +248,9 @@ export default function AccessAdminUsersPage() {
           if (!open) {
             setManagingUserId(null);
             setSelectedRoleId("");
+            setSelectedAnalyticsUserId(null);
+            setSelectedAnalyticsUserName("");
+            setAssignAsPrimary(true);
           }
         }}
       >
@@ -191,8 +259,8 @@ export default function AccessAdminUsersPage() {
               <DialogTitle>Manage Access</DialogTitle>
               <DialogDescription>
                 {canAssignRoles
-                  ? "Assign or remove roles and review effective permissions for this auth account."
-                  : "Review assigned roles and effective permissions for this auth account."}
+                  ? "Assign roles, manage linked analytics accounts, and review effective permissions for this auth account."
+                  : "Review linked analytics accounts, assigned roles, and effective permissions for this auth account."}
               </DialogDescription>
             </DialogHeader>
 
@@ -292,25 +360,118 @@ export default function AccessAdminUsersPage() {
                   ) : null}
                 </div>
 
-                <div className="space-y-4 rounded-lg border border-border/60 bg-card/60 p-4">
-                  <div>
-                    <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                      Effective Permissions
-                    </h3>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Computed union of all permissions granted by assigned roles.
-                    </p>
+                <div className="space-y-6">
+                  <div className="space-y-4 rounded-lg border border-border/60 bg-card/60 p-4">
+                    <div>
+                      <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                        Linked Player Accounts
+                      </h3>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Links from this auth account to `players.user` records through `AuthUserPlayer`.
+                      </p>
+                    </div>
+
+                    <div className="space-y-3">
+                      {(userDetailQuery.data.linked_players ?? []).length > 0 ? (
+                      (userDetailQuery.data.linked_players ?? []).map((player) => (
+                          <div
+                            key={player.player_id}
+                            className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border/60 p-3"
+                          >
+                            <div>
+                              <p className="font-medium">{player.player_name}</p>
+                              <p className="text-sm text-muted-foreground">
+                                Player ID: {player.player_id}
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {player.is_primary ? <Badge variant="secondary">Primary</Badge> : null}
+                              {canManageLinkedPlayers ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={removeLinkedPlayerMutation.isPending}
+                                  onClick={() =>
+                                    removeLinkedPlayerMutation.mutate({
+                                      userId: userDetailQuery.data!.id,
+                                      playerId: player.player_id,
+                                    })
+                                  }
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  Unlink
+                                </Button>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No linked player accounts.</p>
+                      )}
+                    </div>
+
+                    {canManageLinkedPlayers ? (
+                      <div className="rounded-md border border-dashed border-border p-4">
+                        <div className="space-y-3">
+                          <p className="text-sm font-medium">Assign analytics account</p>
+                          <UserSearchCombobox
+                            value={selectedAnalyticsUserId ?? undefined}
+                            selectedName={selectedAnalyticsUserName || undefined}
+                            placeholder="Select analytics account"
+                            searchPlaceholder="Search analytics account..."
+                            onSelect={(user: MinimizedUser | undefined) => {
+                              setSelectedAnalyticsUserId(user?.id ?? null);
+                              setSelectedAnalyticsUserName(user?.name ?? "");
+                            }}
+                          />
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id="assign-linked-player-primary"
+                              checked={assignAsPrimary}
+                              onCheckedChange={(checked) => setAssignAsPrimary(Boolean(checked))}
+                            />
+                            <Label htmlFor="assign-linked-player-primary" className="cursor-pointer">
+                              Mark as primary
+                            </Label>
+                          </div>
+                          <Button
+                            disabled={selectedAnalyticsUserId == null || assignLinkedPlayerMutation.isPending}
+                            onClick={() =>
+                              assignLinkedPlayerMutation.mutate({
+                                userId: userDetailQuery.data!.id,
+                                player_id: selectedAnalyticsUserId,
+                                is_primary: assignAsPrimary,
+                              })
+                            }
+                          >
+                            <Link2 className="mr-2 h-4 w-4" />
+                            Assign Account
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
 
-                  <div className="flex max-h-96 flex-wrap gap-2 overflow-y-auto pr-1">
-                    {userDetailQuery.data.effective_permissions.map((permission) => (
-                      <Badge key={permission} variant="outline">
-                        {permission}
-                      </Badge>
-                    ))}
-                    {userDetailQuery.data.effective_permissions.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">No effective permissions.</p>
-                    ) : null}
+                  <div className="space-y-4 rounded-lg border border-border/60 bg-card/60 p-4">
+                    <div>
+                      <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                        Effective Permissions
+                      </h3>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Computed union of all permissions granted by assigned roles.
+                      </p>
+                    </div>
+
+                    <div className="flex max-h-96 flex-wrap gap-2 overflow-y-auto pr-1">
+                      {userDetailQuery.data.effective_permissions.map((permission) => (
+                        <Badge key={permission} variant="outline">
+                          {permission}
+                        </Badge>
+                      ))}
+                      {userDetailQuery.data.effective_permissions.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No effective permissions.</p>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
               </div>

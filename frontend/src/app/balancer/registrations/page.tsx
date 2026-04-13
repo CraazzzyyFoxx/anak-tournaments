@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  AlertTriangle,
   Check,
   CheckCircle2,
   Clock,
@@ -13,6 +14,7 @@ import {
   Loader2,
   Lock,
   Pencil,
+  ShieldBan,
   ShieldX,
   Trash2,
   Undo2,
@@ -55,7 +57,7 @@ import type {
 import type { DivisionGrid } from "@/types/workspace.types";
 import { resolveDivisionFromRankHelper } from "@/app/balancer/_components/workspace-helpers";
 
-type RegistrationStatusFilter = "all" | "pending" | "approved" | "rejected" | "withdrawn";
+type RegistrationStatusFilter = "all" | "pending" | "approved" | "rejected" | "withdrawn" | "banned" | "insufficient_data";
 type InclusionFilter = "all" | "included" | "excluded";
 type SourceFilter = "all" | "manual" | "google_sheets";
 
@@ -81,6 +83,8 @@ const STATUS_CONFIG: Record<string, { icon: typeof Clock; className: string; lab
   approved: { icon: CheckCircle2, className: "text-emerald-500", label: "Approved" },
   rejected: { icon: XCircle, className: "text-red-500", label: "Rejected" },
   withdrawn: { icon: Undo2, className: "text-muted-foreground", label: "Withdrawn" },
+  banned: { icon: ShieldBan, className: "text-red-500", label: "Banned" },
+  insufficient_data: { icon: AlertTriangle, className: "text-orange-500", label: "Incomplete" },
 };
 
 function RegistrationToggleBar({ tournamentId }: { tournamentId: number }) {
@@ -809,6 +813,8 @@ export default function BalancerRegistrationsPage() {
                 <SelectItem value="approved">Approved</SelectItem>
                 <SelectItem value="rejected">Rejected</SelectItem>
                 <SelectItem value="withdrawn">Withdrawn</SelectItem>
+                <SelectItem value="banned">Banned</SelectItem>
+                <SelectItem value="insufficient_data">Incomplete</SelectItem>
               </SelectContent>
             </Select>
             <div className="grid grid-cols-2 gap-3">

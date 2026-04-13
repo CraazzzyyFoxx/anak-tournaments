@@ -29,7 +29,9 @@ from .oauth import (
 )
 from .rbac import (
     AuthUserDetailRead,
+    AuthUserLinkedPlayerRead,
     AuthUserListRead,
+    AuthUserPlayerLinkAssign,
     PermissionBase,
     PermissionCreate,
     PermissionRead,
@@ -68,6 +70,8 @@ __all__ = [
     "LinkedPlayer",
     "AuthUserListRead",
     "AuthUserDetailRead",
+    "AuthUserLinkedPlayerRead",
+    "AuthUserPlayerLinkAssign",
     "PermissionBase",
     "PermissionCreate",
     "PermissionRead",

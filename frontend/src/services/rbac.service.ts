@@ -1,5 +1,6 @@
 import { apiFetch } from "@/lib/api-fetch";
 import type {
+  AssignLinkedPlayerPayload,
   AssignRolePayload,
   AuthAdminUser,
   AuthAdminUserDetail,
@@ -9,6 +10,20 @@ import type {
   RbacRoleDetail,
   UpsertRolePayload,
 } from "@/types/rbac.types";
+
+function normalizeAuthAdminUser(user: AuthAdminUser): AuthAdminUser {
+  return {
+    ...user,
+    linked_players: user.linked_players ?? [],
+  };
+}
+
+function normalizeAuthAdminUserDetail(user: AuthAdminUserDetail): AuthAdminUserDetail {
+  return {
+    ...normalizeAuthAdminUser(user),
+    effective_permissions: user.effective_permissions ?? [],
+  };
+}
 
 async function rbacFetch<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
   const response = await apiFetch("auth", path, {
@@ -37,11 +52,11 @@ export const rbacService = {
     if (params?.is_superuser !== undefined) searchParams.set("is_superuser", String(params.is_superuser));
 
     const suffix = searchParams.toString() ? `?${searchParams.toString()}` : "";
-    return rbacFetch<AuthAdminUser[]>(`/rbac/users${suffix}`);
+    return rbacFetch<AuthAdminUser[]>(`/rbac/users${suffix}`).then((users) => users.map(normalizeAuthAdminUser));
   },
 
   getUser(userId: number) {
-    return rbacFetch<AuthAdminUserDetail>(`/rbac/users/${userId}`);
+    return rbacFetch<AuthAdminUserDetail>(`/rbac/users/${userId}`).then(normalizeAuthAdminUserDetail);
   },
 
   listRoles(params?: { workspace_id?: number | null }) {
@@ -92,6 +107,19 @@ export const rbacService = {
     return rbacFetch<void>("/rbac/users/remove-role", {
       method: "POST",
       body: payload,
+    });
+  },
+
+  assignLinkedPlayer(userId: number, payload: AssignLinkedPlayerPayload) {
+    return rbacFetch<void>(`/rbac/users/${userId}/linked-players`, {
+      method: "POST",
+      body: payload,
+    });
+  },
+
+  removeLinkedPlayer(userId: number, playerId: number) {
+    return rbacFetch<void>(`/rbac/users/${userId}/linked-players/${playerId}`, {
+      method: "DELETE",
     });
   },
 

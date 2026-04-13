@@ -60,7 +60,23 @@ def _role(
     )
 
 
-def _user(user_id: int, email: str, *, roles: list[SimpleNamespace]) -> SimpleNamespace:
+def _linked_player(player_id: int, name: str, *, is_primary: bool = True) -> SimpleNamespace:
+    now = datetime.now(UTC)
+    return SimpleNamespace(
+        player_id=player_id,
+        player=SimpleNamespace(id=player_id, name=name),
+        is_primary=is_primary,
+        created_at=now,
+    )
+
+
+def _user(
+    user_id: int,
+    email: str,
+    *,
+    roles: list[SimpleNamespace],
+    player_links: list[SimpleNamespace] | None = None,
+) -> SimpleNamespace:
     now = datetime.now(UTC)
     role_names = [role.name for role in roles]
     return SimpleNamespace(
@@ -76,19 +92,29 @@ def _user(user_id: int, email: str, *, roles: list[SimpleNamespace]) -> SimpleNa
         created_at=now,
         updated_at=None,
         roles=roles,
+        player_links=player_links or [],
         has_permission=lambda _resource, _action: "admin" in role_names,
     )
 
 
 def test_list_auth_users_route_returns_user_summaries(monkeypatch: pytest.MonkeyPatch) -> None:
     admin_role = _role(1, "admin")
-    users = [_user(7, "ada@example.com", roles=[admin_role])]
+    users = [_user(7, "ada@example.com", roles=[admin_role], player_links=[_linked_player(12, "AdaPlayer")])]
 
-    async def fake_list_users_with_rbac(session, search=None, role_id=None, is_active=None, is_superuser=None):
+    async def fake_list_users_with_rbac(
+        session,
+        search=None,
+        role_id=None,
+        is_active=None,
+        is_superuser=None,
+        *,
+        include_player_links=False,
+    ):
         assert search == "ada"
         assert role_id == 1
         assert is_active is True
         assert is_superuser is False
+        assert include_player_links is True
         return users
 
     monkeypatch.setattr(
@@ -109,6 +135,7 @@ def test_list_auth_users_route_returns_user_summaries(monkeypatch: pytest.Monkey
 
     assert len(response) == 1
     assert response[0].email == "ada@example.com"
+    assert response[0].linked_players[0].player_name == "AdaPlayer"
     assert response[0].roles[0].name == "admin"
 
 
@@ -173,10 +200,12 @@ def test_get_auth_user_route_returns_effective_permissions(monkeypatch: pytest.M
         SimpleNamespace(resource="*", action="*"),
     ]
     admin_role = _role(1, "admin", permissions=permissions)
-    user = _user(9, "grace@example.com", roles=[admin_role])
+    linked_player = _linked_player(42, "GracePlayer")
+    user = _user(9, "grace@example.com", roles=[admin_role], player_links=[linked_player])
 
-    async def fake_get_user_with_rbac(session, user_id):
+    async def fake_get_user_with_rbac(session, user_id, *, include_player_links=False):
         assert user_id == 9
+        assert include_player_links is True
         return user
 
     monkeypatch.setattr(
@@ -194,12 +223,17 @@ def test_get_auth_user_route_returns_effective_permissions(monkeypatch: pytest.M
 
     assert response.email == "grace@example.com"
     assert response.roles[0].name == "admin"
+    assert len(response.linked_players) == 1
+    assert response.linked_players[0].player_id == 42
+    assert response.linked_players[0].player_name == "GracePlayer"
+    assert response.linked_players[0].is_primary is True
     assert response.effective_permissions == ["admin.*", "team.read", "team.update"]
 
 
 def test_get_auth_user_route_raises_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def fake_get_user_with_rbac(session, user_id):
+    async def fake_get_user_with_rbac(session, user_id, *, include_player_links=False):
         assert user_id == 404
+        assert include_player_links is True
         return None
 
     monkeypatch.setattr(
@@ -218,6 +252,85 @@ def test_get_auth_user_route_raises_not_found(monkeypatch: pytest.MonkeyPatch) -
 
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "User not found"
+
+
+def test_assign_linked_player_to_auth_user_route_calls_admin_link_service(monkeypatch: pytest.MonkeyPatch) -> None:
+    user = _user(9, "grace@example.com", roles=[])
+
+    class _ScalarResult:
+        def __init__(self, value):
+            self._value = value
+
+        def scalar_one_or_none(self):
+            return self._value
+
+    class _FakeSession:
+        async def execute(self, _query):
+            return _ScalarResult(user)
+
+    async def fake_admin_link_player(session, auth_user_id, player_id, is_primary):
+        assert session is fake_session
+        assert auth_user_id == 9
+        assert player_id == 42
+        assert is_primary is False
+        return SimpleNamespace()
+
+    fake_session = _FakeSession()
+
+    monkeypatch.setattr(
+        "src.routes.rbac.PlayerLinkService.admin_link_player",
+        fake_admin_link_player,
+    )
+
+    response = asyncio.run(
+        rbac_routes.assign_linked_player_to_auth_user(
+            user_id=9,
+            data=SimpleNamespace(player_id=42, is_primary=False),
+            session=fake_session,
+            current_user=SimpleNamespace(is_superuser=True),
+        )
+    )
+
+    assert response is None
+
+
+def test_remove_linked_player_from_auth_user_route_calls_admin_unlink_service(monkeypatch: pytest.MonkeyPatch) -> None:
+    user = _user(9, "grace@example.com", roles=[])
+
+    class _ScalarResult:
+        def __init__(self, value):
+            self._value = value
+
+        def scalar_one_or_none(self):
+            return self._value
+
+    class _FakeSession:
+        async def execute(self, _query):
+            return _ScalarResult(user)
+
+    async def fake_admin_unlink_player(session, auth_user_id, player_id):
+        assert session is fake_session
+        assert auth_user_id == 9
+        assert player_id == 42
+        return None
+
+    fake_session = _FakeSession()
+
+    monkeypatch.setattr(
+        "src.routes.rbac.PlayerLinkService.admin_unlink_player",
+        fake_admin_unlink_player,
+    )
+
+    response = asyncio.run(
+        rbac_routes.remove_linked_player_from_auth_user(
+            user_id=9,
+            player_id=42,
+            session=fake_session,
+            current_user=SimpleNamespace(is_superuser=True),
+        )
+    )
+
+    assert response is None
 
 
 def test_remove_role_route_blocks_removing_last_admin_assignment(monkeypatch: pytest.MonkeyPatch) -> None:

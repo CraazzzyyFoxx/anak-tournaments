@@ -11,7 +11,7 @@ BalancerRole = Literal["tank", "dps", "support"]
 BalancerRoleSubtype = Literal["hitscan", "projectile", "main_heal", "light_heal"]
 DuplicateResolution = Literal["replace", "skip"]
 DuplicateStrategy = Literal["manual", "replace_all", "skip_all"]
-RegistrationStatus = Literal["pending", "approved", "rejected", "withdrawn"]
+RegistrationStatus = Literal["pending", "approved", "rejected", "withdrawn", "banned", "insufficient_data"]
 RegistrationSource = Literal["manual", "google_sheets"]
 
 __all__ = (

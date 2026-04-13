@@ -113,6 +113,17 @@ class RegistrationRead(BaseModel):
     reviewed_at: datetime | None = None
 
 
+class TournamentHistoryEntry(BaseModel):
+    tournament_id: int
+    tournament_name: str
+    role: str | None = None
+    division: int | None = None
+
+
+class RegistrationListRead(RegistrationRead):
+    tournament_history: list[TournamentHistoryEntry] = Field(default_factory=list)
+
+
 class RegistrationStatusResponse(BaseModel):
     status: str
     message: str

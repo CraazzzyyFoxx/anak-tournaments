@@ -216,21 +216,33 @@ class AuthService:
             ) from e
 
     @staticmethod
-    def _user_query_with_rbac():
+    def _user_query_with_rbac(*, include_player_links: bool = False):
         """Select AuthUser with roles + permissions eagerly loaded.
 
         This avoids async SQLAlchemy lazy-loads (which would raise
         `greenlet_spawn has not been called` when accessing relationships).
         """
 
-        return select(models.AuthUser).options(
+        query = select(models.AuthUser).options(
             selectinload(models.AuthUser.roles).selectinload(models.Role.permissions)
         )
+        if include_player_links:
+            query = query.options(
+                selectinload(models.AuthUser.player_links).selectinload(models.AuthUserPlayer.player)
+            )
+        return query
 
     @staticmethod
-    async def get_user_with_rbac(session: AsyncSession, user_id: int) -> models.AuthUser | None:
+    async def get_user_with_rbac(
+        session: AsyncSession,
+        user_id: int,
+        *,
+        include_player_links: bool = False,
+    ) -> models.AuthUser | None:
         """Load a user with roles + permissions eagerly loaded."""
-        result = await session.execute(AuthService._user_query_with_rbac().where(models.AuthUser.id == user_id))
+        result = await session.execute(
+            AuthService._user_query_with_rbac(include_player_links=include_player_links).where(models.AuthUser.id == user_id)
+        )
         return result.scalar_one_or_none()
 
     @staticmethod
@@ -240,10 +252,14 @@ class AuthService:
         role_id: int | None = None,
         is_active: bool | None = None,
         is_superuser: bool | None = None,
+        *,
+        include_player_links: bool = False,
     ) -> list[models.AuthUser]:
         """List auth users with roles and permissions eagerly loaded."""
 
-        query = AuthService._user_query_with_rbac().order_by(models.AuthUser.id.desc())
+        query = AuthService._user_query_with_rbac(include_player_links=include_player_links).order_by(
+            models.AuthUser.id.desc()
+        )
 
         if search:
             term = f"%{search}%"

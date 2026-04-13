@@ -7,15 +7,19 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.division_grid import resolve_grid
+
 from src import models
 from src.core import auth, db
 from src.schemas.registration import (
     RegistrationCreate,
     RegistrationFormRead,
+    RegistrationListRead,
     RegistrationRead,
     RegistrationRoleRead,
     RegistrationStatusResponse,
     RegistrationUpdate,
+    TournamentHistoryEntry,
 )
 from src.services.registration import service as reg_service
 from src.services.registration.validation import validate_registration_input
@@ -227,23 +231,141 @@ async def withdraw_my_registration(
     return RegistrationStatusResponse(status="withdrawn", message="Registration withdrawn")
 
 
-@router.get("/list", response_model=list[RegistrationRead])
+@router.get("/list", response_model=list[RegistrationListRead])
 async def list_registrations(
     workspace_id: int,
     tournament_id: int,
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    """Public list of approved registrations for a tournament."""
+    """Public list of registrations for a tournament (all statuses, non-deleted)."""
     from sqlalchemy.orm import selectinload
+
     result = await session.execute(
         sa.select(models.BalancerRegistration)
         .where(
             models.BalancerRegistration.tournament_id == tournament_id,
             models.BalancerRegistration.workspace_id == workspace_id,
             models.BalancerRegistration.deleted_at.is_(None),
-            models.BalancerRegistration.status == "approved",
         )
         .options(selectinload(models.BalancerRegistration.roles))
         .order_by(models.BalancerRegistration.submitted_at.asc())
     )
-    return [_reg_to_read(r) for r in result.scalars().all()]
+    registrations = result.scalars().all()
+
+    # Build tournament history for each participant
+    history_map = await _build_tournament_history(
+        session, registrations, tournament_id, workspace_id,
+    )
+
+    return [
+        RegistrationListRead(
+            **_reg_to_read(r).model_dump(),
+            tournament_history=history_map.get(r.id, []),
+        )
+        for r in registrations
+    ]
+
+
+async def _build_tournament_history(
+    session: AsyncSession,
+    registrations: list[models.BalancerRegistration],
+    current_tournament_id: int,
+    workspace_id: int,
+) -> dict[int, list[TournamentHistoryEntry]]:
+    """Batch-query past tournament participation from the analytics system.
+
+    Uses tournament.player (the analytics table) — if a player record exists,
+    they definitely participated. No extra checks needed.
+
+    Resolution order to find player user_id (players.user.id):
+    1. user_id on the registration itself
+    2. auth_user_id → AuthUserPlayer → player_id
+
+    Returns a mapping of registration_id -> list of history entries.
+    """
+    # --- Step 1: resolve analytics user_id for every registration ---
+    auth_ids_to_resolve: list[int] = []
+    for r in registrations:
+        if r.user_id is None and r.auth_user_id is not None:
+            auth_ids_to_resolve.append(r.auth_user_id)
+
+    auth_to_player: dict[int, int] = {}
+    if auth_ids_to_resolve:
+        link_result = await session.execute(
+            sa.select(
+                models.AuthUserPlayer.auth_user_id,
+                models.AuthUserPlayer.player_id,
+            ).where(
+                models.AuthUserPlayer.auth_user_id.in_(auth_ids_to_resolve),
+                models.AuthUserPlayer.is_primary.is_(True),
+            )
+        )
+        for auth_id, player_id in link_result:
+            auth_to_player[auth_id] = player_id
+
+    # Build reverse map: analytics_user_id -> list of registration ids
+    player_to_reg_ids: dict[int, list[int]] = {}
+    for r in registrations:
+        uid = r.user_id
+        if uid is None and r.auth_user_id is not None:
+            uid = auth_to_player.get(r.auth_user_id)
+        if uid is not None:
+            player_to_reg_ids.setdefault(uid, []).append(r.id)
+
+    player_ids = list(player_to_reg_ids.keys())
+    if not player_ids:
+        return {}
+
+    workspace = await session.get(models.Workspace, workspace_id)
+    workspace_grid_json = workspace.division_grid_json if workspace else None
+
+    # --- Step 2: query tournament.player for participation history ---
+    result = await session.execute(
+        sa.select(models.Player)
+        .join(
+            models.Tournament,
+            models.Player.tournament_id == models.Tournament.id,
+        )
+        .where(
+            models.Player.user_id.in_(player_ids),
+            models.Player.tournament_id != current_tournament_id,
+            models.Tournament.workspace_id == workspace_id,
+        )
+        .add_columns(
+            models.Tournament.name.label("tournament_name"),
+            models.Tournament.division_grid_json.label("tournament_grid_json"),
+        )
+    )
+
+    history_map: dict[int, list[TournamentHistoryEntry]] = {}
+
+    for row in result:
+        player: models.Player = row[0]
+        tournament_name: str = row[1]
+        tournament_grid_json: dict | None = row[2]
+
+        role_str = player.role.value if player.role else None
+        division = None
+        if player.rank is not None:
+            grid = resolve_grid(workspace_grid_json, tournament_grid_json)
+            division = grid.resolve_division_number(player.rank)
+
+        entry = TournamentHistoryEntry(
+            tournament_id=player.tournament_id,
+            tournament_name=tournament_name,
+            role=role_str,
+            division=division,
+        )
+        for reg_id in player_to_reg_ids.get(player.user_id, []):
+            history_map.setdefault(reg_id, []).append(entry)
+
+    # Deduplicate: a player can have multiple Player records per tournament
+    # (e.g. substitution). Keep unique by tournament_id.
+    for reg_id, entries in history_map.items():
+        seen: dict[int, TournamentHistoryEntry] = {}
+        for e in entries:
+            if e.tournament_id not in seen:
+                seen[e.tournament_id] = e
+        history_map[reg_id] = list(seen.values())
+
+    return history_map

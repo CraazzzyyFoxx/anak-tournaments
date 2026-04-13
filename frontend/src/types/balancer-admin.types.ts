@@ -292,7 +292,7 @@ export interface AdminRegistration {
   admin_notes: string | null;
   custom_fields_json: Record<string, unknown> | null;
   is_flex: boolean;
-  status: "pending" | "approved" | "rejected" | "withdrawn";
+  status: "pending" | "approved" | "rejected" | "withdrawn" | "banned" | "insufficient_data";
   exclude_from_balancer: boolean;
   exclude_reason: string | null;
   deleted_at: string | null;

@@ -32,9 +32,17 @@ export interface AuthAdminUser {
   is_active: boolean;
   is_superuser: boolean;
   is_verified: boolean;
+  linked_players: AuthAdminLinkedPlayer[];
   roles: RbacRole[];
   created_at: string;
   updated_at?: string | null;
+}
+
+export interface AuthAdminLinkedPlayer {
+  player_id: number;
+  player_name: string;
+  is_primary: boolean;
+  linked_at: string;
 }
 
 export interface AuthAdminUserDetail extends AuthAdminUser {
@@ -44,6 +52,11 @@ export interface AuthAdminUserDetail extends AuthAdminUser {
 export interface AssignRolePayload {
   user_id: number;
   role_id: number;
+}
+
+export interface AssignLinkedPlayerPayload {
+  player_id: number;
+  is_primary: boolean;
 }
 
 export interface UpsertRolePayload {
