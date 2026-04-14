@@ -447,10 +447,11 @@ export function DivisionGridMappingEditor({ versions, canEdit }: Props) {
                         (valid ? (
                           <CheckCircle2 className="h-4 w-4 text-green-500" />
                         ) : (
-                          <AlertCircle
-                            className="h-4 w-4 text-destructive"
+                          <span
                             title={`Weights sum to ${row.targets.reduce((s, t) => s + t.weight, 0).toFixed(2)}, must be 1.00`}
-                          />
+                          >
+                            <AlertCircle className="h-4 w-4 text-destructive" />
+                          </span>
                         ))}
                     </div>
                   </div>
