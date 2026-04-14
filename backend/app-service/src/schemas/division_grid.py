@@ -6,6 +6,7 @@ from src.schemas.base import BaseRead
 
 __all__ = (
     "DivisionGridTierRead",
+    "DivisionGridTierWrite",
     "DivisionGridVersionRead",
     "DivisionGridRead",
     "DivisionGridCreate",

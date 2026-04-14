@@ -1,10 +1,10 @@
 import React from "react";
 import { UserRole as UserRoleType } from "@/types/user.types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import Image from "next/image";
 import { TypographyH4 } from "@/components/ui/typography";
 import { Goal } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import DivisionIcon from "@/components/DivisionIcon";
 
 export interface UserRolesProps {
   roles: UserRoleType[];
@@ -53,7 +53,7 @@ export const UserRole = async ({ role }: UserRoleProps) => {
   const winrate = role.maps_won / role.maps;
   return (
     <div className="flex flex-row gap-3 items-center rounded-lg p-2 transition-colors hover:bg-muted/30">
-      <Image src={`/divisions/${role.division}.png`} width={40} height={40} alt="Division" />
+      <DivisionIcon division={role.division} width={40} height={40} />
       <div className="flex flex-col">
         <small className="text-sm text-muted-foreground font-semibold tabular-nums">
           {role.role} ({role.tournaments})

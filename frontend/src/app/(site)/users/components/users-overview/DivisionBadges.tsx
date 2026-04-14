@@ -3,6 +3,7 @@ import Image from "next/image";
 
 import { UserOverviewRow } from "@/types/user.types";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
+import DivisionIcon from "@/components/DivisionIcon";
 
 const DivisionBadges = ({ user }: { user: UserOverviewRow }) => {
   const grid = useDivisionGrid();
@@ -14,16 +15,16 @@ const DivisionBadges = ({ user }: { user: UserOverviewRow }) => {
   return (
     <div className="flex flex-wrap justify-center gap-2">
       {user.roles.map((role) => {
-        const tier = grid.tiers.find((t) => t.number === role.division);
-        const iconPath =
-          tier?.icon_url ??
-          `https://minio.craazzzyyfoxx.me/aqt/assets/divisions/default-${role.division}.png`;
-        const tierName = tier?.name ?? `Division ${role.division}`;
+        const tierName =
+          grid.tiers.find((t) => t.number === role.division)?.name ?? `Division ${role.division}`;
         return (
-          <div key={`${user.id}-${role.role}-${role.division}`} className="relative h-10 w-10" title={`${role.role} • ${tierName}`}>
-            <Image
-              src={iconPath}
-              alt={`${role.role} division icon`}
+          <div
+            key={`${user.id}-${role.role}-${role.division}`}
+            className="relative h-10 w-10"
+            title={`${role.role} • ${tierName}`}
+          >
+            <DivisionIcon
+              division={role.division}
               width={40}
               height={40}
               className="h-10 w-10 rounded-full border border-border/60 bg-background/50 p-0.5 shadow-sm"

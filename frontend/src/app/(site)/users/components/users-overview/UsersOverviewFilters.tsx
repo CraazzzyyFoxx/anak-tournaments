@@ -43,6 +43,12 @@ const UsersOverviewFilters = ({
 }: UsersOverviewFiltersProps) => {
   const grid = useDivisionGrid();
   const divisionOptions = getDivisionOptions(grid);
+
+  const resolveIconUrl = (divisionNumber: number) => {
+    const tier = grid.tiers.find((t) => t.number === divisionNumber);
+    return tier?.icon_url ?? `https://minio.craazzzyyfoxx.me/aqt/assets/divisions/default-${divisionNumber}.png`;
+  };
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -85,7 +91,7 @@ const UsersOverviewFilters = ({
               <div className="flex items-center gap-2">
                 {divMinInput ? (
                   <Image
-                    src={`/divisions/${divMinInput}.png`}
+                    src={resolveIconUrl(Number(divMinInput))}
                     alt={`Division ${divMinInput}`}
                     width={22}
                     height={22}
@@ -100,7 +106,7 @@ const UsersOverviewFilters = ({
               {divisionOptions.map((division) => (
                 <SelectItem key={`min-${division}`} value={String(division)}>
                   <div className="flex items-center gap-2">
-                    <Image src={`/divisions/${division}.png`} alt={`Division ${division}`} width={20} height={20} className="h-5 w-5" />
+                    <Image src={resolveIconUrl(division)} alt={`Division ${division}`} width={20} height={20} className="h-5 w-5" />
                     <span>Division {division}</span>
                   </div>
                 </SelectItem>
@@ -113,7 +119,7 @@ const UsersOverviewFilters = ({
               <div className="flex items-center gap-2">
                 {divMaxInput ? (
                   <Image
-                    src={`/divisions/${divMaxInput}.png`}
+                    src={resolveIconUrl(Number(divMaxInput))}
                     alt={`Division ${divMaxInput}`}
                     width={22}
                     height={22}
@@ -128,7 +134,7 @@ const UsersOverviewFilters = ({
               {divisionOptions.map((division) => (
                 <SelectItem key={`max-${division}`} value={String(division)}>
                   <div className="flex items-center gap-2">
-                    <Image src={`/divisions/${division}.png`} alt={`Division ${division}`} width={20} height={20} className="h-5 w-5" />
+                    <Image src={resolveIconUrl(division)} alt={`Division ${division}`} width={20} height={20} className="h-5 w-5" />
                     <span>Division {division}</span>
                   </div>
                 </SelectItem>

@@ -4,7 +4,7 @@ import { User, UserProfile } from "@/types/user.types";
 import { getPlayerImage } from "@/utils/player";
 import { cn } from "@/lib/utils";
 import UserBattleTags from "@/app/(site)/users/components/UserBattleTags";
-import UserAuraReporter from "@/app/(site)/users/components/UserAuraReporter";
+import UserHeaderAura from "@/app/(site)/users/components/UserHeaderAura";
 
 export interface UserHeaderProps {
   profile: UserProfile;
@@ -53,14 +53,13 @@ const UserHeader = ({ profile, user }: UserHeaderProps) => {
         .division
     : 1;
   const primaryRoleDivision = Math.min(20, Math.max(1, primaryRoleDivisionRaw));
-  const divisionIconSrc = `/divisions/${primaryRoleDivision}.png`;
   const avatarSrc = getPlayerImage(profile, user);
 
   const winrate = profile.maps_total > 0 ? (profile.maps_won / profile.maps_total) * 100 : null;
 
   return (
     <section className="liquid-glass-panel relative overflow-hidden rounded-2xl border p-4 md:p-6">
-      <UserAuraReporter avatarSrc={avatarSrc} divisionIconSrc={divisionIconSrc} />
+      <UserHeaderAura avatarSrc={avatarSrc} division={primaryRoleDivision} />
       <div className="pointer-events-none absolute inset-0">
         <div
           className="absolute -top-24 -left-24 h-72 w-72 rounded-full blur-3xl"

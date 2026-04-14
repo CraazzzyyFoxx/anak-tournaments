@@ -13,7 +13,7 @@ import {
 import { CircleMinus, CirclePlus, Recycle } from "lucide-react";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import PlayerName from "@/components/PlayerName";
-import Image from "next/image";
+import DivisionIcon from "@/components/DivisionIcon";
 import { sortTeamPlayers } from "@/utils/player";
 
 const EncounterTeamCard = ({ team, isHome }: { team: Team; isHome: boolean }) => {
@@ -65,12 +65,7 @@ const EncounterTeamCard = ({ team, isHome }: { team: Team; isHome: boolean }) =>
                   </TableCell>
                   <TableCell>
                     <div className="flex justify-center">
-                      <Image
-                        src={`/divisions/${player.division}.png`}
-                        alt="Division"
-                        width={32}
-                        height={32}
-                      />
+                      <DivisionIcon division={player.division} width={32} height={32} />
                     </div>
                   </TableCell>
                   <TableCell>

@@ -15,6 +15,7 @@ import PlayerName from "@/components/PlayerName";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { PerformanceBadge } from "@/components/PerformanceBagde";
 import { ScrollBar, ScrollArea } from "@/components/ui/scroll-area";
+import DivisionIcon from "@/components/DivisionIcon";
 
 interface MatchTeamTableProps {
   team: TeamWithStats;
@@ -83,12 +84,7 @@ const MatchTeamTable = ({ team, isHome, maxHeroes, matchRound }: MatchTeamTableP
               </TableCell>
               <TableCell>
                 <div className="flex justify-center">
-                  <Image
-                    src={`/divisions/${player.division}.png`}
-                    alt="Division"
-                    width={32}
-                    height={32}
-                  />
+                  <DivisionIcon division={player.division} width={32} height={32} />
                 </div>
               </TableCell>
               <TableCell>

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CopyPlus, Plus, Save, Star, Upload } from "lucide-react";
+import { Check, ChevronDown, CopyPlus, Plus, Save, Star, Upload } from "lucide-react";
 import Image from "next/image";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
@@ -10,11 +10,22 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/usePermissions";
 import workspaceService from "@/services/workspace.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
-import type { DivisionGridEntity, DivisionGridVersion, DivisionTier } from "@/types/workspace.types";
+import type {
+  DivisionGridEntity,
+  DivisionGridVersion,
+  DivisionTier
+} from "@/types/workspace.types";
 
 function buildDefaultTiers(): DivisionTier[] {
   return Array.from({ length: 20 }, (_, index) => {
@@ -26,7 +37,7 @@ function buildDefaultTiers(): DivisionTier[] {
       sort_order: index,
       rank_min: number === 1 ? 2000 : index * 100,
       rank_max: number === 1 ? null : index * 100 + 99,
-      icon_url: `https://minio.craazzzyyfoxx.me/aqt/assets/divisions/default-${number}.png`,
+      icon_url: `https://minio.craazzzyyfoxx.me/aqt/assets/divisions/default-${number}.png`
     };
   }).sort((a, b) => a.number - b.number);
 }
@@ -39,7 +50,7 @@ function emptyTier(number: number, index: number): DivisionTier {
     sort_order: index,
     rank_min: 0,
     rank_max: 99,
-    icon_url: `https://minio.craazzzyyfoxx.me/aqt/assets/divisions/default-${number}.png`,
+    icon_url: `https://minio.craazzzyyfoxx.me/aqt/assets/divisions/default-${number}.png`
   };
 }
 
@@ -50,7 +61,7 @@ function buildEditorState(selectedVersion: DivisionGridVersion | null): {
   if (!selectedVersion) {
     return {
       label: "Draft",
-      tiers: buildDefaultTiers(),
+      tiers: buildDefaultTiers()
     };
   }
 
@@ -58,7 +69,7 @@ function buildEditorState(selectedVersion: DivisionGridVersion | null): {
     label: `${selectedVersion.label} Copy`,
     tiers: [...selectedVersion.tiers]
       .sort((a, b) => a.number - b.number)
-      .map((tier, index) => ({ ...tier, sort_order: tier.sort_order ?? index })),
+      .map((tier, index) => ({ ...tier, sort_order: tier.sort_order ?? index }))
   };
 }
 
@@ -75,7 +86,7 @@ function DivisionGridEditorCard({
   gridId,
   canEdit,
   selectedVersion,
-  onSaved,
+  onSaved
 }: DivisionGridEditorCardProps) {
   const { toast } = useToast();
   const initialState = useMemo(() => buildEditorState(selectedVersion), [selectedVersion]);
@@ -93,15 +104,15 @@ function DivisionGridEditorCard({
           sort_order: index,
           rank_min: tier.rank_min,
           rank_max: tier.rank_max,
-          icon_url: tier.icon_url,
-        })),
+          icon_url: tier.icon_url
+        }))
       }),
     onSuccess: async () => {
       await onSaved();
       toast({ title: "Draft version created" });
     },
     onError: (error: Error) =>
-      toast({ title: "Error", description: error.message, variant: "destructive" }),
+      toast({ title: "Error", description: error.message, variant: "destructive" })
   });
 
   const updateTier = (index: number, field: keyof DivisionTier, value: string | number | null) => {
@@ -112,8 +123,10 @@ function DivisionGridEditorCard({
 
   const uploadIcon = async (index: number, file: File) => {
     const tier = tiers[index];
+    const slugBase = tier.slug || `division-${tier.number}`;
+    const randomHash = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
     const upload = await workspaceService.uploadDivisionIcon(
-      tier.slug || `division-${tier.number}`,
+      `${slugBase}-${randomHash}`,
       file,
       workspaceId
     );
@@ -128,7 +141,11 @@ function DivisionGridEditorCard({
         <CardDescription>Create a new immutable version from the current tier set.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <Input value={label} onChange={(event) => setLabel(event.target.value)} placeholder="Version label" />
+        <Input
+          value={label}
+          onChange={(event) => setLabel(event.target.value)}
+          placeholder="Version label"
+        />
 
         <div className="rounded-md border">
           <div className="grid grid-cols-[60px_52px_1fr_110px_110px_1.2fr_100px_40px] gap-2 border-b bg-muted/40 px-4 py-2 text-xs font-medium text-muted-foreground">
@@ -149,16 +166,23 @@ function DivisionGridEditorCard({
               <Input
                 inputMode="numeric"
                 value={tier.number}
-                onChange={(event) => updateTier(index, "number", Number.parseInt(event.target.value, 10) || 0)}
+                onChange={(event) =>
+                  updateTier(index, "number", Number.parseInt(event.target.value, 10) || 0)
+                }
               />
               <div className="flex items-center justify-center">
-                <Image src={tier.icon_url} alt={tier.name} width={28} height={28} className="rounded-full" />
+                <Image src={tier.icon_url} alt={tier.name} width={32} height={32} />
               </div>
-              <Input value={tier.name} onChange={(event) => updateTier(index, "name", event.target.value)} />
+              <Input
+                value={tier.name}
+                onChange={(event) => updateTier(index, "name", event.target.value)}
+              />
               <Input
                 inputMode="numeric"
                 value={tier.rank_min}
-                onChange={(event) => updateTier(index, "rank_min", Number.parseInt(event.target.value, 10) || 0)}
+                onChange={(event) =>
+                  updateTier(index, "rank_min", Number.parseInt(event.target.value, 10) || 0)
+                }
               />
               <Input
                 inputMode="numeric"
@@ -171,7 +195,10 @@ function DivisionGridEditorCard({
                   )
                 }
               />
-              <Input value={tier.icon_url} onChange={(event) => updateTier(index, "icon_url", event.target.value)} />
+              <Input
+                value={tier.icon_url}
+                onChange={(event) => updateTier(index, "icon_url", event.target.value)}
+              />
               <label className="inline-flex cursor-pointer items-center justify-center">
                 <input
                   type="file"
@@ -207,7 +234,10 @@ function DivisionGridEditorCard({
             onClick={() =>
               setTiers((current) => [
                 ...current,
-                emptyTier((Math.max(...current.map((tier) => tier.number)) || 0) + 1, current.length),
+                emptyTier(
+                  (Math.max(...current.map((tier) => tier.number)) || 0) + 1,
+                  current.length
+                )
               ])
             }
             disabled={!canEdit}
@@ -215,7 +245,10 @@ function DivisionGridEditorCard({
             <Plus className="mr-2 h-4 w-4" />
             Add Tier
           </Button>
-          <Button onClick={() => saveVersionMutation.mutate()} disabled={!canEdit || saveVersionMutation.isPending}>
+          <Button
+            onClick={() => saveVersionMutation.mutate()}
+            disabled={!canEdit || saveVersionMutation.isPending}
+          >
             <Save className="mr-2 h-4 w-4" />
             Save New Version
           </Button>
@@ -234,41 +267,50 @@ export default function DivisionsAdminPage() {
   const fetchWorkspaces = useWorkspaceStore((s) => s.fetchWorkspaces);
   const workspace = getCurrentWorkspace();
 
-  const canEdit = isSuperuser || (currentWorkspaceId !== null && isWorkspaceAdmin(currentWorkspaceId));
+  const canEdit =
+    isSuperuser || (currentWorkspaceId !== null && isWorkspaceAdmin(currentWorkspaceId));
 
   const gridsQuery = useQuery({
     queryKey: ["division-grids", currentWorkspaceId],
     queryFn: () => workspaceService.getDivisionGrids(currentWorkspaceId!),
-    enabled: currentWorkspaceId !== null,
+    enabled: currentWorkspaceId !== null
   });
+
+  const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
 
   const grids = gridsQuery.data ?? [];
   const activeGrid = grids[0] ?? null;
   const versions = activeGrid?.versions ?? [];
 
-  const selectedVersion = useMemo<DivisionGridVersion | null>(() => {
+  const defaultVersionId = useMemo(() => {
     if (!workspace || versions.length === 0) return null;
     return (
-      versions.find((version) => version.id === workspace.default_division_grid_version_id) ??
-      versions.find((version) => version.status === "published") ??
-      versions[versions.length - 1] ??
-      null
+      (
+        versions.find((v) => v.id === workspace.default_division_grid_version_id) ??
+        versions.find((v) => v.status === "published") ??
+        versions[versions.length - 1] ??
+        null
+      )?.id ?? null
     );
   }, [versions, workspace]);
+
+  const effectiveVersionId = selectedVersionId ?? defaultVersionId;
+  const selectedVersion = versions.find((v) => v.id === effectiveVersionId) ?? null;
 
   const createGridMutation = useMutation({
     mutationFn: async () => {
       if (!currentWorkspaceId) return null;
       return workspaceService.createDivisionGrid(currentWorkspaceId, {
         slug: "default",
-        name: `${workspace?.name ?? "Workspace"} Division Grid`,
+        name: `${workspace?.name ?? "Workspace"} Division Grid`
       });
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["division-grids", currentWorkspaceId] });
       toast({ title: "Division grid created" });
     },
-    onError: (error: Error) => toast({ title: "Error", description: error.message, variant: "destructive" }),
+    onError: (error: Error) =>
+      toast({ title: "Error", description: error.message, variant: "destructive" })
   });
 
   const cloneMutation = useMutation({
@@ -280,7 +322,8 @@ export default function DivisionsAdminPage() {
       await queryClient.invalidateQueries({ queryKey: ["division-grids", currentWorkspaceId] });
       toast({ title: "Version cloned" });
     },
-    onError: (error: Error) => toast({ title: "Error", description: error.message, variant: "destructive" }),
+    onError: (error: Error) =>
+      toast({ title: "Error", description: error.message, variant: "destructive" })
   });
 
   const publishMutation = useMutation({
@@ -292,25 +335,32 @@ export default function DivisionsAdminPage() {
       await queryClient.invalidateQueries({ queryKey: ["division-grids", currentWorkspaceId] });
       toast({ title: "Version published" });
     },
-    onError: (error: Error) => toast({ title: "Error", description: error.message, variant: "destructive" }),
+    onError: (error: Error) =>
+      toast({ title: "Error", description: error.message, variant: "destructive" })
   });
 
   const setDefaultMutation = useMutation({
     mutationFn: async () => {
       if (!workspace || !selectedVersion) return null;
       return workspaceService.update(workspace.id, {
-        default_division_grid_version_id: selectedVersion.id,
+        default_division_grid_version_id: selectedVersion.id
       });
     },
     onSuccess: async () => {
       await fetchWorkspaces();
       toast({ title: "Workspace default updated" });
     },
-    onError: (error: Error) => toast({ title: "Error", description: error.message, variant: "destructive" }),
+    onError: (error: Error) =>
+      toast({ title: "Error", description: error.message, variant: "destructive" })
   });
 
   if (!currentWorkspaceId) {
-    return <AdminPageHeader title="Divisions" description="Select a workspace to manage division grids." />;
+    return (
+      <AdminPageHeader
+        title="Divisions"
+        description="Select a workspace to manage division grids."
+      />
+    );
   }
 
   return (
@@ -322,21 +372,36 @@ export default function DivisionsAdminPage() {
           canEdit ? (
             <div className="flex gap-2">
               {!activeGrid && (
-                <Button onClick={() => createGridMutation.mutate()} disabled={createGridMutation.isPending}>
+                <Button
+                  onClick={() => createGridMutation.mutate()}
+                  disabled={createGridMutation.isPending}
+                >
                   <Plus className="mr-2 h-4 w-4" />
                   Create Grid
                 </Button>
               )}
               {selectedVersion && (
                 <>
-                  <Button variant="outline" onClick={() => cloneMutation.mutate()} disabled={cloneMutation.isPending}>
+                  <Button
+                    variant="outline"
+                    onClick={() => cloneMutation.mutate()}
+                    disabled={cloneMutation.isPending}
+                  >
                     <CopyPlus className="mr-2 h-4 w-4" />
                     Clone Version
                   </Button>
-                  <Button variant="outline" onClick={() => publishMutation.mutate()} disabled={publishMutation.isPending}>
+                  <Button
+                    variant="outline"
+                    onClick={() => publishMutation.mutate()}
+                    disabled={publishMutation.isPending}
+                  >
                     Publish
                   </Button>
-                  <Button variant="outline" onClick={() => setDefaultMutation.mutate()} disabled={setDefaultMutation.isPending}>
+                  <Button
+                    variant="outline"
+                    onClick={() => setDefaultMutation.mutate()}
+                    disabled={setDefaultMutation.isPending}
+                  >
                     <Star className="mr-2 h-4 w-4" />
                     Set Default
                   </Button>
@@ -353,26 +418,61 @@ export default function DivisionsAdminPage() {
           <CardDescription>
             {activeGrid ? (
               <>
-                Grid <span className="font-medium">{activeGrid.name}</span> with {versions.length} version(s).
+                Grid <span className="font-medium">{activeGrid.name}</span> with {versions.length}{" "}
+                version(s).
               </>
             ) : (
               "No division grid created for this workspace yet."
             )}
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          {selectedVersion ? (
+        <CardContent className="flex flex-wrap items-center gap-4">
+          {versions.length > 0 ? (
             <>
-              <Badge variant="outline">Version {selectedVersion.version}</Badge>
-              <Badge variant={selectedVersion.status === "published" ? "default" : "secondary"}>
-                {selectedVersion.status}
-              </Badge>
-              {workspace?.default_division_grid_version_id === selectedVersion.id && (
-                <Badge variant="secondary">Workspace Default</Badge>
+              <Select
+                value={effectiveVersionId?.toString() ?? ""}
+                onValueChange={(value) => setSelectedVersionId(Number(value))}
+              >
+                <SelectTrigger className="w-90">
+                  <SelectValue placeholder="Select version" />
+                </SelectTrigger>
+                <SelectContent>
+                  {versions
+                    .slice()
+                    .sort((a, b) => b.version - a.version)
+                    .map((version) => (
+                      <SelectItem key={version.id} value={version.id.toString()}>
+                        <span className="flex items-center gap-2">
+                          v{version.version} — {version.label}
+                          {version.status === "published" && (
+                            <Badge variant="default" className="ml-1 text-[10px] px-1.5 py-0">
+                              published
+                            </Badge>
+                          )}
+                          {workspace?.default_division_grid_version_id === version.id && (
+                            <Star className="h-3 w-3 text-yellow-500" />
+                          )}
+                        </span>
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              {selectedVersion && (
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="outline">Version {selectedVersion.version}</Badge>
+                  <Badge variant={selectedVersion.status === "published" ? "default" : "secondary"}>
+                    {selectedVersion.status}
+                  </Badge>
+                  {workspace?.default_division_grid_version_id === selectedVersion.id && (
+                    <Badge variant="secondary">Workspace Default</Badge>
+                  )}
+                </div>
               )}
             </>
           ) : (
-            <span className="text-sm text-muted-foreground">Create a grid to start versioning.</span>
+            <span className="text-sm text-muted-foreground">
+              Create a grid to start versioning.
+            </span>
           )}
         </CardContent>
       </Card>
@@ -385,7 +485,9 @@ export default function DivisionsAdminPage() {
           canEdit={canEdit}
           selectedVersion={selectedVersion}
           onSaved={async () => {
-            await queryClient.invalidateQueries({ queryKey: ["division-grids", currentWorkspaceId] });
+            await queryClient.invalidateQueries({
+              queryKey: ["division-grids", currentWorkspaceId]
+            });
           }}
         />
       )}
@@ -394,28 +496,47 @@ export default function DivisionsAdminPage() {
         <Card>
           <CardHeader>
             <CardTitle>Versions</CardTitle>
-            <CardDescription>Published and draft versions available in this workspace grid.</CardDescription>
+            <CardDescription>
+              Published and draft versions available in this workspace grid.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {versions
               .slice()
               .sort((a, b) => b.version - a.version)
-              .map((version) => (
-                <div key={version.id} className="flex items-center justify-between rounded-lg border p-3">
-                  <div>
-                    <div className="font-medium">{version.label}</div>
-                    <div className="text-sm text-muted-foreground">
-                      Version {version.version} • {version.tiers.length} tiers
+              .map((version) => {
+                const isSelected = version.id === effectiveVersionId;
+                return (
+                  <button
+                    key={version.id}
+                    type="button"
+                    className={`flex w-full items-center justify-between rounded-lg border p-3 text-left transition-colors ${
+                      isSelected
+                        ? "border-primary bg-primary/5 ring-1 ring-primary/20"
+                        : "hover:bg-muted/50"
+                    }`}
+                    onClick={() => setSelectedVersionId(version.id)}
+                  >
+                    <div>
+                      <div className="flex items-center gap-2 font-medium">
+                        {version.label}
+                        {isSelected && <Check className="h-4 w-4 text-primary" />}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        Version {version.version} • {version.tiers.length} tiers
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant={version.status === "published" ? "default" : "secondary"}>{version.status}</Badge>
-                    {workspace?.default_division_grid_version_id === version.id && (
-                      <Badge variant="outline">Default</Badge>
-                    )}
-                  </div>
-                </div>
-              ))}
+                    <div className="flex items-center gap-2">
+                      <Badge variant={version.status === "published" ? "default" : "secondary"}>
+                        {version.status}
+                      </Badge>
+                      {workspace?.default_division_grid_version_id === version.id && (
+                        <Badge variant="outline">Default</Badge>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
           </CardContent>
         </Card>
       )}
