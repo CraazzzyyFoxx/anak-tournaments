@@ -77,7 +77,7 @@ class DivisionGridVersion(db.TimeStampIntegerMixin):
     )
     tiers: Mapped[list["DivisionGridTier"]] = relationship(
         back_populates="version",
-        passive_deletes=True,
+        cascade="all, delete-orphan",
         order_by="DivisionGridTier.sort_order",
         lazy="selectin",
     )

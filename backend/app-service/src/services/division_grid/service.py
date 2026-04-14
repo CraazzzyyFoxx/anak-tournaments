@@ -153,6 +153,35 @@ async def get_version(session: AsyncSession, version_id: int) -> models.Division
     return version
 
 
+async def delete_version(session: AsyncSession, version_id: int) -> None:
+    version = await get_version(session, version_id)
+
+    workspace_uses = await session.scalar(
+        sa.select(sa.func.count()).where(
+            models.Workspace.default_division_grid_version_id == version_id
+        )
+    )
+    if workspace_uses:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot delete version: it is set as the workspace default",
+        )
+
+    tournament_uses = await session.scalar(
+        sa.select(sa.func.count()).where(
+            models.Tournament.division_grid_version_id == version_id
+        )
+    )
+    if tournament_uses:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot delete version: used by {tournament_uses} tournament(s)",
+        )
+
+    await session.delete(version)
+    await session.flush()
+
+
 async def publish_version(session: AsyncSession, version_id: int) -> models.DivisionGridVersion:
     version = await get_version(session, version_id)
     version.status = "published"

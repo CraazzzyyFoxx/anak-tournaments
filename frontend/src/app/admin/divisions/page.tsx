@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronDown, CopyPlus, Plus, Save, Star, Upload } from "lucide-react";
+import { Check, CopyPlus, Plus, Save, Star, Trash2, Upload } from "lucide-react";
 import Image from "next/image";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
@@ -21,11 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/usePermissions";
 import workspaceService from "@/services/workspace.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
-import type {
-  DivisionGridEntity,
-  DivisionGridVersion,
-  DivisionTier
-} from "@/types/workspace.types";
+import type { DivisionGridVersion, DivisionTier } from "@/types/workspace.types";
 
 function buildDefaultTiers(): DivisionTier[] {
   return Array.from({ length: 20 }, (_, index) => {
@@ -81,6 +77,9 @@ type DivisionGridEditorCardProps = {
   onSaved: () => Promise<void>;
 };
 
+// Navigable column indices: 0=#, 1=name, 2=rank_min, 3=rank_max
+const NAV_COLS = 4;
+
 function DivisionGridEditorCard({
   workspaceId,
   gridId,
@@ -92,6 +91,48 @@ function DivisionGridEditorCard({
   const initialState = useMemo(() => buildEditorState(selectedVersion), [selectedVersion]);
   const [label, setLabel] = useState(initialState.label);
   const [tiers, setTiers] = useState<DivisionTier[]>(initialState.tiers);
+
+  // Keyboard navigation refs: key = `${row}-${col}`
+  const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
+  const setRef = useCallback(
+    (row: number, col: number) => (el: HTMLInputElement | null) => {
+      const key = `${row}-${col}`;
+      if (el) inputRefs.current.set(key, el);
+      else inputRefs.current.delete(key);
+    },
+    []
+  );
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>, row: number, col: number) => {
+      const input = e.currentTarget;
+      const focus = (r: number, c: number) => {
+        const target = inputRefs.current.get(`${r}-${c}`);
+        if (target) {
+          e.preventDefault();
+          target.focus();
+          target.select();
+        }
+      };
+      switch (e.key) {
+        case "ArrowDown":
+        case "Enter":
+          focus(row + 1, col);
+          break;
+        case "ArrowUp":
+          focus(row - 1, col);
+          break;
+        case "ArrowLeft":
+          if (input.selectionStart === 0 && col > 0) focus(row, col - 1);
+          break;
+        case "ArrowRight":
+          if (input.selectionStart === input.value.length && col < NAV_COLS - 1)
+            focus(row, col + 1);
+          break;
+      }
+    },
+    []
+  );
 
   const saveVersionMutation = useMutation({
     mutationFn: async () =>
@@ -148,57 +189,72 @@ function DivisionGridEditorCard({
         />
 
         <div className="rounded-md border">
-          <div className="grid grid-cols-[60px_52px_1fr_110px_110px_1.2fr_100px_40px] gap-2 border-b bg-muted/40 px-4 py-2 text-xs font-medium text-muted-foreground">
+          <div className="grid grid-cols-[56px_48px_200px_1fr_40px_36px] gap-2 border-b bg-muted/40 px-4 py-2 text-xs font-medium text-muted-foreground">
             <span>#</span>
             <span>Icon</span>
             <span>Name</span>
-            <span>Rank Min</span>
-            <span>Rank Max</span>
-            <span>Icon URL</span>
+            <span>Rank Range</span>
             <span>Upload</span>
             <span />
           </div>
-          {tiers.map((tier, index) => (
+          {tiers.map((tier, rowIndex) => (
             <div
-              key={`${tier.slug ?? tier.number}-${index}`}
-              className="grid grid-cols-[60px_52px_1fr_110px_110px_1.2fr_100px_40px] gap-2 border-b px-4 py-2 last:border-b-0"
+              key={`${tier.slug ?? tier.number}-${rowIndex}`}
+              className="grid grid-cols-[56px_48px_200px_1fr_40px_36px] gap-2 border-b px-4 py-1.5 last:border-b-0"
             >
+              {/* # */}
               <Input
+                ref={setRef(rowIndex, 0)}
                 inputMode="numeric"
+                className="h-8 text-center tabular-nums"
                 value={tier.number}
-                onChange={(event) =>
-                  updateTier(index, "number", Number.parseInt(event.target.value, 10) || 0)
+                onChange={(e) =>
+                  updateTier(rowIndex, "number", Number.parseInt(e.target.value, 10) || 0)
                 }
+                onKeyDown={(e) => handleKeyDown(e, rowIndex, 0)}
               />
+              {/* Icon */}
               <div className="flex items-center justify-center">
-                <Image src={tier.icon_url} alt={tier.name} width={32} height={32} />
+                <Image src={tier.icon_url} alt={tier.name} width={28} height={28} />
               </div>
+              {/* Name */}
               <Input
+                ref={setRef(rowIndex, 1)}
+                className="h-8"
                 value={tier.name}
-                onChange={(event) => updateTier(index, "name", event.target.value)}
+                onChange={(e) => updateTier(rowIndex, "name", e.target.value)}
+                onKeyDown={(e) => handleKeyDown(e, rowIndex, 1)}
               />
-              <Input
-                inputMode="numeric"
-                value={tier.rank_min}
-                onChange={(event) =>
-                  updateTier(index, "rank_min", Number.parseInt(event.target.value, 10) || 0)
-                }
-              />
-              <Input
-                inputMode="numeric"
-                value={tier.rank_max ?? ""}
-                onChange={(event) =>
-                  updateTier(
-                    index,
-                    "rank_max",
-                    event.target.value === "" ? null : Number.parseInt(event.target.value, 10) || 0
-                  )
-                }
-              />
-              <Input
-                value={tier.icon_url}
-                onChange={(event) => updateTier(index, "icon_url", event.target.value)}
-              />
+              {/* Rank range: min — max */}
+              <div className="flex items-center gap-1.5">
+                <Input
+                  ref={setRef(rowIndex, 2)}
+                  inputMode="numeric"
+                  className="h-8 w-24 tabular-nums"
+                  value={tier.rank_min}
+                  onChange={(e) =>
+                    updateTier(rowIndex, "rank_min", Number.parseInt(e.target.value, 10) || 0)
+                  }
+                  onKeyDown={(e) => handleKeyDown(e, rowIndex, 2)}
+                />
+                <span className="shrink-0 text-xs text-muted-foreground">—</span>
+                <Input
+                  ref={setRef(rowIndex, 3)}
+                  inputMode="numeric"
+                  className="h-8 w-24 tabular-nums"
+                  placeholder="∞"
+                  value={tier.rank_max ?? ""}
+                  onChange={(e) =>
+                    updateTier(
+                      rowIndex,
+                      "rank_max",
+                      e.target.value === "" ? null : Number.parseInt(e.target.value, 10) || 0
+                    )
+                  }
+                  onKeyDown={(e) => handleKeyDown(e, rowIndex, 3)}
+                />
+              </div>
+              {/* Upload */}
               <label className="inline-flex cursor-pointer items-center justify-center">
                 <input
                   type="file"
@@ -206,23 +262,21 @@ function DivisionGridEditorCard({
                   accept="image/png,image/webp,image/jpeg,image/gif"
                   onChange={(event) => {
                     const file = event.target.files?.[0];
-                    if (file) {
-                      void uploadIcon(index, file);
-                    }
+                    if (file) void uploadIcon(rowIndex, file);
                   }}
                 />
-                <span className="inline-flex h-9 w-9 items-center justify-center rounded-md border">
-                  <Upload className="h-4 w-4" />
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-md border hover:bg-muted">
+                  <Upload className="h-3.5 w-3.5" />
                 </span>
               </label>
+              {/* Delete */}
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() =>
-                  setTiers((current) => current.filter((_, currentIndex) => currentIndex !== index))
-                }
+                className="h-8 w-8"
+                onClick={() => setTiers((current) => current.filter((_, i) => i !== rowIndex))}
               >
-                x
+                ×
               </Button>
             </div>
           ))}
@@ -234,10 +288,7 @@ function DivisionGridEditorCard({
             onClick={() =>
               setTiers((current) => [
                 ...current,
-                emptyTier(
-                  (Math.max(...current.map((tier) => tier.number)) || 0) + 1,
-                  current.length
-                )
+                emptyTier((Math.max(...current.map((t) => t.number)) || 0) + 1, current.length)
               ])
             }
             disabled={!canEdit}
@@ -337,6 +388,17 @@ export default function DivisionsAdminPage() {
     },
     onError: (error: Error) =>
       toast({ title: "Error", description: error.message, variant: "destructive" })
+  });
+
+  const deleteVersionMutation = useMutation({
+    mutationFn: (versionId: number) => workspaceService.deleteDivisionGridVersion(versionId),
+    onSuccess: async (_, versionId) => {
+      if (selectedVersionId === versionId) setSelectedVersionId(null);
+      await queryClient.invalidateQueries({ queryKey: ["division-grids", currentWorkspaceId] });
+      toast({ title: "Version deleted" });
+    },
+    onError: (error: Error) =>
+      toast({ title: "Cannot delete", description: error.message, variant: "destructive" })
   });
 
   const setDefaultMutation = useMutation({
@@ -506,16 +568,21 @@ export default function DivisionsAdminPage() {
               .sort((a, b) => b.version - a.version)
               .map((version) => {
                 const isSelected = version.id === effectiveVersionId;
+                const isDefault = workspace?.default_division_grid_version_id === version.id;
+                const isDeleting =
+                  deleteVersionMutation.isPending && deleteVersionMutation.variables === version.id;
                 return (
-                  <button
+                  <div
                     key={version.id}
-                    type="button"
-                    className={`flex w-full items-center justify-between rounded-lg border p-3 text-left transition-colors ${
+                    role="button"
+                    tabIndex={0}
+                    className={`flex w-full cursor-pointer items-center justify-between rounded-lg border p-3 text-left transition-colors ${
                       isSelected
                         ? "border-primary bg-primary/5 ring-1 ring-primary/20"
                         : "hover:bg-muted/50"
                     }`}
                     onClick={() => setSelectedVersionId(version.id)}
+                    onKeyDown={(e) => e.key === "Enter" && setSelectedVersionId(version.id)}
                   >
                     <div>
                       <div className="flex items-center gap-2 font-medium">
@@ -530,11 +597,23 @@ export default function DivisionsAdminPage() {
                       <Badge variant={version.status === "published" ? "default" : "secondary"}>
                         {version.status}
                       </Badge>
-                      {workspace?.default_division_grid_version_id === version.id && (
-                        <Badge variant="outline">Default</Badge>
+                      {isDefault && <Badge variant="outline">Default</Badge>}
+                      {canEdit && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          disabled={isDeleting}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteVersionMutation.mutate(version.id);
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
                       )}
                     </div>
-                  </button>
+                  </div>
                 );
               })}
           </CardContent>

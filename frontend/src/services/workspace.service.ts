@@ -4,16 +4,16 @@ import {
   DivisionGridMappingRule,
   DivisionGridVersion,
   Workspace,
-  WorkspaceMember,
+  WorkspaceMember
 } from "@/types/workspace.types";
 
 export default class workspaceService {
   static async getAll(): Promise<Workspace[]> {
-    return apiFetch("app","workspaces").then((r) => r.json());
+    return apiFetch("app", "workspaces").then((r) => r.json());
   }
 
   static async getById(id: number): Promise<Workspace> {
-    return apiFetch("app",`workspaces/${id}`).then((r) => r.json());
+    return apiFetch("app", `workspaces/${id}`).then((r) => r.json());
   }
 
   static async create(data: {
@@ -22,9 +22,9 @@ export default class workspaceService {
     description?: string;
     icon_url?: string;
   }): Promise<Workspace> {
-    return apiFetch("app","workspaces", {
+    return apiFetch("app", "workspaces", {
       method: "POST",
-      body: data,
+      body: data
     }).then((r) => r.json());
   }
 
@@ -38,16 +38,14 @@ export default class workspaceService {
       default_division_grid_version_id?: number | null;
     }
   ): Promise<Workspace> {
-    return apiFetch("app",`workspaces/${id}`, {
+    return apiFetch("app", `workspaces/${id}`, {
       method: "PATCH",
-      body: data,
+      body: data
     }).then((r) => r.json());
   }
 
   static async getMembers(workspaceId: number): Promise<WorkspaceMember[]> {
-    return apiFetch("app",`workspaces/${workspaceId}/members`).then((r) =>
-      r.json()
-    );
+    return apiFetch("app", `workspaces/${workspaceId}/members`).then((r) => r.json());
   }
 
   static async addMember(
@@ -55,9 +53,9 @@ export default class workspaceService {
     authUserId: number,
     role: string = "member"
   ): Promise<WorkspaceMember> {
-    return apiFetch("app",`workspaces/${workspaceId}/members`, {
+    return apiFetch("app", `workspaces/${workspaceId}/members`, {
       method: "POST",
-      body: { auth_user_id: authUserId, role },
+      body: { auth_user_id: authUserId, role }
     }).then((r) => r.json());
   }
 
@@ -66,18 +64,15 @@ export default class workspaceService {
     authUserId: number,
     role: string
   ): Promise<WorkspaceMember> {
-    return apiFetch("app",`workspaces/${workspaceId}/members/${authUserId}`, {
+    return apiFetch("app", `workspaces/${workspaceId}/members/${authUserId}`, {
       method: "PATCH",
-      body: { role },
+      body: { role }
     }).then((r) => r.json());
   }
 
-  static async removeMember(
-    workspaceId: number,
-    authUserId: number
-  ): Promise<void> {
-    await apiFetch("app",`workspaces/${workspaceId}/members/${authUserId}`, {
-      method: "DELETE",
+  static async removeMember(workspaceId: number, authUserId: number): Promise<void> {
+    await apiFetch("app", `workspaces/${workspaceId}/members/${authUserId}`, {
+      method: "DELETE"
     });
   }
 
@@ -86,13 +81,13 @@ export default class workspaceService {
     formData.append("file", file);
     return apiFetch("app", `workspaces/${workspaceId}/icon`, {
       method: "POST",
-      body: formData,
+      body: formData
     }).then((r) => r.json());
   }
 
   static async deleteIcon(workspaceId: number): Promise<Workspace> {
     return apiFetch("app", `workspaces/${workspaceId}/icon`, {
-      method: "DELETE",
+      method: "DELETE"
     }).then((r) => r.json());
   }
 
@@ -106,12 +101,17 @@ export default class workspaceService {
   ): Promise<DivisionGridEntity> {
     return apiFetch("app", `workspaces/${workspaceId}/division-grids`, {
       method: "POST",
-      body: data,
+      body: data
     }).then((r) => r.json());
   }
 
-  static async getDivisionGridVersions(workspaceId: number, gridId: number): Promise<DivisionGridVersion[]> {
-    return apiFetch("app", `workspaces/${workspaceId}/division-grids/${gridId}/versions`).then((r) => r.json());
+  static async getDivisionGridVersions(
+    workspaceId: number,
+    gridId: number
+  ): Promise<DivisionGridVersion[]> {
+    return apiFetch("app", `workspaces/${workspaceId}/division-grids/${gridId}/versions`).then(
+      (r) => r.json()
+    );
   }
 
   static async createDivisionGridVersion(
@@ -132,22 +132,26 @@ export default class workspaceService {
   ): Promise<DivisionGridVersion> {
     return apiFetch("app", `workspaces/${workspaceId}/division-grids/${gridId}/versions`, {
       method: "POST",
-      body: data,
+      body: data
     }).then((r) => r.json());
   }
 
   static async publishDivisionGridVersion(versionId: number): Promise<DivisionGridVersion> {
     return apiFetch("app", `division-grid-versions/${versionId}/publish`, {
       method: "POST",
-      body: {},
+      body: {}
     }).then((r) => r.json());
   }
 
   static async cloneDivisionGridVersion(versionId: number): Promise<DivisionGridVersion> {
     return apiFetch("app", `division-grid-versions/${versionId}/clone`, {
       method: "POST",
-      body: {},
+      body: {}
     }).then((r) => r.json());
+  }
+
+  static async deleteDivisionGridVersion(versionId: number): Promise<void> {
+    await apiFetch("app", `division-grid-versions/${versionId}`, { method: "DELETE" });
   }
 
   static async uploadDivisionIcon(
@@ -160,7 +164,7 @@ export default class workspaceService {
     return apiFetch("app", `admin/assets/divisions/${slug}`, {
       method: "POST",
       body: formData,
-      query: { workspace_id: workspaceId },
+      query: { workspace_id: workspaceId }
     }).then((r) => r.json());
   }
 
@@ -175,7 +179,9 @@ export default class workspaceService {
     is_complete: boolean;
     rules: DivisionGridMappingRule[];
   }> {
-    return apiFetch("app", `division-grid-mappings/${sourceVersionId}/${targetVersionId}`).then((r) => r.json());
+    return apiFetch("app", `division-grid-mappings/${sourceVersionId}/${targetVersionId}`).then(
+      (r) => r.json()
+    );
   }
 
   static async putDivisionGridMapping(
@@ -192,7 +198,7 @@ export default class workspaceService {
   }> {
     return apiFetch("app", `division-grid-mappings/${sourceVersionId}/${targetVersionId}`, {
       method: "PUT",
-      body: data,
+      body: data
     }).then((r) => r.json());
   }
 }
