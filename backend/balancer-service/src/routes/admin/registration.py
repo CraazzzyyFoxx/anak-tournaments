@@ -8,6 +8,12 @@ import sqlalchemy as sa
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.balancer_registration_statuses import (
+    StatusMeta,
+    build_unknown_status_meta,
+    get_status_metas_map,
+)
+
 from src import models
 from src.core import auth, db
 from src.schemas.admin import balancer as admin_schemas
@@ -39,9 +45,21 @@ def _serialize_registration_role(
 
 def _serialize_registration(
     registration: models.BalancerRegistration,
+    *,
+    status_meta_map: dict[str, dict[str, StatusMeta]] | None = None,
 ) -> admin_schemas.BalancerRegistrationRead:
     binding = registration.google_sheet_binding
     sorted_roles = sorted(registration.roles, key=lambda item: (item.priority, item.role))
+    resolved_status_meta = (
+        status_meta_map["registration"].get(registration.status)
+        if status_meta_map is not None
+        else None
+    ) or build_unknown_status_meta("registration", registration.status)
+    resolved_balancer_status_meta = (
+        status_meta_map["balancer"].get(registration.balancer_status)
+        if status_meta_map is not None
+        else None
+    ) or build_unknown_status_meta("balancer", registration.balancer_status)
     return admin_schemas.BalancerRegistrationRead(
         id=registration.id,
         tournament_id=registration.tournament_id,
@@ -63,6 +81,8 @@ def _serialize_registration(
         is_flex=registration.is_flex_computed,
         status=registration.status,
         balancer_status=registration.balancer_status,
+        status_meta=admin_schemas.StatusMetaRead(**resolved_status_meta),
+        balancer_status_meta=admin_schemas.StatusMetaRead(**resolved_balancer_status_meta),
         exclude_from_balancer=registration.exclude_from_balancer,
         exclude_reason=registration.exclude_reason,
         checked_in=registration.checked_in,
@@ -170,7 +190,14 @@ async def list_registrations(
         source_filter=source_filter,
         include_deleted=include_deleted,
     )
-    return [_serialize_registration(registration) for registration in registrations]
+    status_meta_map = await get_status_metas_map(
+        session,
+        workspace_id=registrations[0].workspace_id,
+    ) if registrations else None
+    return [
+        _serialize_registration(registration, status_meta_map=status_meta_map)
+        for registration in registrations
+    ]
 
 
 @router.post(
@@ -200,7 +227,8 @@ async def create_manual_registration(
         is_flex=data.is_flex,
         roles=[role.model_dump() for role in data.roles],
     )
-    return _serialize_registration(registration)
+    status_meta_map = await get_status_metas_map(session, workspace_id=registration.workspace_id)
+    return _serialize_registration(registration, status_meta_map=status_meta_map)
 
 
 @router.patch("/registrations/{registration_id}", response_model=admin_schemas.BalancerRegistrationRead)
@@ -222,9 +250,12 @@ async def update_registration(
         notes=data.notes,
         admin_notes=data.admin_notes,
         is_flex=data.is_flex,
+        status_value=data.status,
+        balancer_status_value=data.balancer_status,
         roles=[role.model_dump() for role in data.roles] if data.roles is not None else None,
     )
-    return _serialize_registration(registration)
+    status_meta_map = await get_status_metas_map(session, workspace_id=registration.workspace_id)
+    return _serialize_registration(registration, status_meta_map=status_meta_map)
 
 
 @router.patch("/registrations/{registration_id}/approve", response_model=admin_schemas.BalancerRegistrationRead)
@@ -238,7 +269,8 @@ async def approve_registration(
         registration_id,
         reviewed_by=user.id,
     )
-    return _serialize_registration(registration)
+    status_meta_map = await get_status_metas_map(session, workspace_id=registration.workspace_id)
+    return _serialize_registration(registration, status_meta_map=status_meta_map)
 
 
 @router.patch("/registrations/{registration_id}/reject", response_model=admin_schemas.BalancerRegistrationRead)
@@ -252,7 +284,8 @@ async def reject_registration(
         registration_id,
         reviewed_by=user.id,
     )
-    return _serialize_registration(registration)
+    status_meta_map = await get_status_metas_map(session, workspace_id=registration.workspace_id)
+    return _serialize_registration(registration, status_meta_map=status_meta_map)
 
 
 @router.patch("/registrations/{registration_id}/exclusion", response_model=admin_schemas.BalancerRegistrationRead)
@@ -268,7 +301,8 @@ async def set_registration_exclusion(
         exclude_from_balancer=data.exclude_from_balancer,
         exclude_reason=data.exclude_reason,
     )
-    return _serialize_registration(registration)
+    status_meta_map = await get_status_metas_map(session, workspace_id=registration.workspace_id)
+    return _serialize_registration(registration, status_meta_map=status_meta_map)
 
 
 @router.patch("/registrations/{registration_id}/withdraw", response_model=admin_schemas.BalancerRegistrationRead)
@@ -278,7 +312,8 @@ async def withdraw_registration(
     user: models.AuthUser = Depends(auth.require_permission("team", "update")),
 ):
     registration = await registration_service.withdraw_registration(session, registration_id)
-    return _serialize_registration(registration)
+    status_meta_map = await get_status_metas_map(session, workspace_id=registration.workspace_id)
+    return _serialize_registration(registration, status_meta_map=status_meta_map)
 
 
 @router.patch("/registrations/{registration_id}/restore", response_model=admin_schemas.BalancerRegistrationRead)
@@ -288,7 +323,8 @@ async def restore_registration(
     user: models.AuthUser = Depends(auth.require_permission("team", "update")),
 ):
     registration = await registration_service.restore_registration(session, registration_id)
-    return _serialize_registration(registration)
+    status_meta_map = await get_status_metas_map(session, workspace_id=registration.workspace_id)
+    return _serialize_registration(registration, status_meta_map=status_meta_map)
 
 
 @router.delete("/registrations/{registration_id}", status_code=204)
@@ -341,7 +377,8 @@ async def set_balancer_status(
         registration_id,
         balancer_status=data.balancer_status,
     )
-    return _serialize_registration(registration)
+    status_meta_map = await get_status_metas_map(session, workspace_id=registration.workspace_id)
+    return _serialize_registration(registration, status_meta_map=status_meta_map)
 
 
 @router.post(
@@ -388,4 +425,5 @@ async def toggle_check_in(
             session,
             registration_id,
         )
-    return _serialize_registration(registration)
+    status_meta_map = await get_status_metas_map(session, workspace_id=registration.workspace_id)
+    return _serialize_registration(registration, status_meta_map=status_meta_map)

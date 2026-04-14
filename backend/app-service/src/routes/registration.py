@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException
+from shared.balancer_registration_statuses import build_unknown_status_meta, get_status_metas_map
 from shared.division_grid import resolve_grid
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -43,7 +44,11 @@ def _form_to_read(form: models.BalancerRegistrationForm) -> RegistrationFormRead
     )
 
 
-def _reg_to_read(reg: models.BalancerRegistration) -> RegistrationRead:
+def _reg_to_read(
+    reg: models.BalancerRegistration,
+    *,
+    status_meta_map: dict[str, dict[str, dict[str, object]]] | None = None,
+) -> RegistrationRead:
     roles = [
         RegistrationRoleRead(
             role=r.role,
@@ -69,6 +74,11 @@ def _reg_to_read(reg: models.BalancerRegistration) -> RegistrationRead:
         notes=reg.notes,
         custom_fields_json=reg.custom_fields_json,
         status=reg.status,
+        status_meta=(
+            status_meta_map["registration"].get(reg.status)
+            if status_meta_map is not None
+            else None
+        ) or build_unknown_status_meta("registration", reg.status),
         submitted_at=reg.submitted_at,
         reviewed_at=reg.reviewed_at,
     )
@@ -167,8 +177,8 @@ async def register(
         .options(selectinload(models.BalancerRegistration.roles))
     )
     registration = result.scalar_one()
-
-    return _reg_to_read(registration)
+    status_meta_map = await get_status_metas_map(session, workspace_id=workspace_id)
+    return _reg_to_read(registration, status_meta_map=status_meta_map)
 
 
 @router.get("/me", response_model=RegistrationRead | None)
@@ -182,7 +192,8 @@ async def get_my_registration(
     reg = await reg_service.get_registration(session, tournament_id, user.id)
     if reg is None:
         return None
-    return _reg_to_read(reg)
+    status_meta_map = await get_status_metas_map(session, workspace_id=workspace_id)
+    return _reg_to_read(reg, status_meta_map=status_meta_map)
 
 
 @router.patch("/me", response_model=RegistrationRead)
@@ -213,7 +224,8 @@ async def update_my_registration(
         reg,
         **data.model_dump(exclude_unset=True),
     )
-    return _reg_to_read(updated)
+    status_meta_map = await get_status_metas_map(session, workspace_id=workspace_id)
+    return _reg_to_read(updated, status_meta_map=status_meta_map)
 
 
 @router.delete("/me", response_model=RegistrationStatusResponse)
@@ -252,6 +264,7 @@ async def list_registrations(
         .order_by(models.BalancerRegistration.submitted_at.asc())
     )
     registrations = result.scalars().all()
+    status_meta_map = await get_status_metas_map(session, workspace_id=workspace_id)
 
     # Build tournament history for each participant
     history_map = await _build_tournament_history(
@@ -260,8 +273,10 @@ async def list_registrations(
 
     return [
         RegistrationListRead(
-            **_reg_to_read(r).model_dump(),
+            **_reg_to_read(r, status_meta_map=status_meta_map).model_dump(),
             balancer_status=r.balancer_status,
+            balancer_status_meta=status_meta_map["balancer"].get(r.balancer_status)
+            or build_unknown_status_meta("balancer", r.balancer_status),
             checked_in=r.checked_in,
             tournament_history=history_map.get(r.id, []),
         )

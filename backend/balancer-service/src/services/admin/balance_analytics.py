@@ -7,12 +7,12 @@ records when a balance is exported to a tournament.
 from __future__ import annotations
 
 import math
-from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src import models, schemas
+from src import models
+from src.schemas.team import InternalBalancerTeamsPayload
 
 
 ROLE_NAME_TO_CODE: dict[str, str] = {
@@ -29,7 +29,7 @@ ROLE_NAME_TO_CODE: dict[str, str] = {
 async def create_balance_snapshot(
     session: AsyncSession,
     balance: models.BalancerBalance,
-    payload: schemas.InternalBalancerTeamsPayload,
+    payload: InternalBalancerTeamsPayload,
     exported_teams: dict[str, models.Team],
 ) -> models.AnalyticsBalanceSnapshot | None:
     """Create analytics snapshot at balance export time.
@@ -68,11 +68,9 @@ async def create_balance_snapshot(
                 player_count += 1
                 discomfort = player.discomfort or 0
                 total_discomfort += discomfort
-                # Check off-role: if player has preferences, check if assigned role matches first pref
                 if player.preferences:
                     first_pref = player.preferences[0].strip().lower()
                     assigned = role_name.strip().lower()
-                    # Normalize "damage" -> "dps" for comparison
                     if first_pref in ("damage", "dps"):
                         first_pref = "dps"
                     if assigned in ("damage", "dps"):
@@ -107,7 +105,6 @@ async def create_balance_snapshot(
     session.add(snapshot)
     await session.flush()
 
-    # Create per-player snapshots
     # Build player lookup
     bp_result = await session.execute(
         sa.select(models.BalancerPlayer).where(
@@ -126,12 +123,10 @@ async def create_balance_snapshot(
             role_code = ROLE_NAME_TO_CODE.get(role_name, role_name.lower())
 
             for player in players:
-                # Find user_id via battle_tag
                 name_normalized = player.name.replace(" ", "").strip().lower()
                 bp = bp_lookup.get(name_normalized)
                 user_id = bp.user_id if bp else None
 
-                # Determine preferred role
                 preferred_role: str | None = None
                 was_off_role = False
                 if player.preferences:

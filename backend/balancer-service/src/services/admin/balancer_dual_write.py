@@ -1,63 +1,16 @@
-"""Dual-write helpers for the balancer subsystem.
+"""Write helpers for the balancer subsystem.
 
-These functions synchronize data from the legacy JSON columns to the new
-normalized relational tables (player_role_entry, team_slot, balance_variant).
-They are called alongside existing JSON writes during the transition period.
-
-Once all reads are migrated to relational tables, the JSON columns can be
-dropped and these helpers become the sole write path.
+These functions synchronize data to the normalized relational tables
+(team_slot, balance_variant).
 """
 
 from __future__ import annotations
 
-from typing import Any
-
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src import models, schemas
-
-
-# ---------------------------------------------------------------------------
-# Player role entries  (replaces role_entries_json)
-# ---------------------------------------------------------------------------
-
-
-async def sync_player_role_entries(
-    session: AsyncSession,
-    player: models.BalancerPlayer,
-) -> None:
-    """Write normalized role entries from player.role_entries_json.
-
-    Deletes existing entries and re-inserts from the JSON source-of-truth.
-    This is safe during the dual-write period because the JSON column is
-    always written first.
-    """
-    role_entries_json: list[dict[str, Any]] = player.role_entries_json or []
-
-    # Delete existing
-    await session.execute(
-        sa.delete(models.BalancerPlayerRoleEntry).where(
-            models.BalancerPlayerRoleEntry.player_id == player.id
-        )
-    )
-
-    # Insert from JSON
-    for entry in role_entries_json:
-        role = entry.get("role")
-        if not role:
-            continue
-        session.add(
-            models.BalancerPlayerRoleEntry(
-                player_id=player.id,
-                role=role,
-                subtype=entry.get("subtype"),
-                priority=entry.get("priority", 1),
-                rank_value=entry.get("rank_value"),
-                division_number=entry.get("division_number"),
-                is_active=entry.get("is_active", True),
-            )
-        )
+from src import models
+from src.schemas.team import InternalBalancerTeamsPayload
 
 
 # ---------------------------------------------------------------------------
@@ -79,7 +32,7 @@ ROLE_NAME_TO_CODE: dict[str, str] = {
 async def sync_balance_variants_and_slots(
     session: AsyncSession,
     balance: models.BalancerBalance,
-    payload: schemas.InternalBalancerTeamsPayload,
+    payload: InternalBalancerTeamsPayload,
     *,
     algorithm: str = "unknown",
 ) -> None:
@@ -140,7 +93,6 @@ async def sync_balance_variants_and_slots(
         for role_name, players in team_data.roster.items():
             role_code = ROLE_NAME_TO_CODE.get(role_name, role_name.lower())
             for player_data in players:
-                # Try to find the BalancerPlayer by name
                 name_normalized = player_data.name.replace(" ", "").strip().lower()
                 bp = player_lookup.get(name_normalized)
 

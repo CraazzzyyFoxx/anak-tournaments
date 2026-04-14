@@ -101,7 +101,12 @@ export function useBalancerMutations({
         roles,
         is_flex: payload.is_flex,
         admin_notes: payload.admin_notes,
+        status: payload.registration_status ?? undefined,
+        balancer_status: payload.registration_balancer_status ?? undefined,
       });
+      if (payload.is_in_pool === undefined) {
+        return null;
+      }
       return balancerAdminService.setRegistrationExclusion(playerId, {
         exclude_from_balancer: !(payload.is_in_pool ?? true),
         exclude_reason: payload.is_in_pool ? null : "manual_exclusion",

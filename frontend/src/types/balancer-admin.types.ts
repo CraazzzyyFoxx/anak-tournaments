@@ -208,6 +208,8 @@ export interface BalancerPlayerUpdateInput {
   is_in_pool?: boolean | null;
   is_flex?: boolean | null;
   admin_notes?: string | null;
+  registration_status?: string | null;
+  registration_balancer_status?: string | null;
 }
 
 export interface BalanceSaveInput {
@@ -272,7 +274,56 @@ export interface AdminRegistrationRole {
   is_active: boolean;
 }
 
-export type BalancerStatus = "not_in_balancer" | "incomplete" | "ready";
+export type BalancerStatus = string;
+export type StatusScope = "registration" | "balancer";
+export type StatusKind = "builtin" | "custom";
+
+export interface StatusMeta {
+  value: string;
+  scope: StatusScope;
+  is_builtin: boolean;
+  kind: StatusKind;
+  is_override: boolean;
+  can_edit: boolean;
+  can_delete: boolean;
+  can_reset: boolean;
+  icon_slug: string | null;
+  icon_color: string | null;
+  name: string;
+  description: string | null;
+}
+
+export interface BalancerCustomStatus {
+  id: number;
+  workspace_id: number | null;
+  scope: StatusScope;
+  slug: string;
+  kind: StatusKind;
+  is_override: boolean;
+  can_delete: boolean;
+  can_reset: boolean;
+  icon_slug: string | null;
+  icon_color: string | null;
+  name: string;
+  description: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface BalancerCustomStatusCreateInput {
+  scope: StatusScope;
+  icon_slug?: string | null;
+  icon_color?: string | null;
+  name: string;
+  description?: string | null;
+}
+
+export interface BalancerCustomStatusUpdateInput {
+  icon_slug?: string | null;
+  icon_color?: string | null;
+  name?: string | null;
+  description?: string | null;
+}
 
 export interface AdminRegistration {
   id: number;
@@ -294,8 +345,10 @@ export interface AdminRegistration {
   admin_notes: string | null;
   custom_fields_json: Record<string, unknown> | null;
   is_flex: boolean;
-  status: "pending" | "approved" | "rejected" | "withdrawn" | "banned" | "insufficient_data";
+  status: string;
+  status_meta: StatusMeta;
   balancer_status: BalancerStatus;
+  balancer_status_meta: StatusMeta;
   exclude_from_balancer: boolean;
   exclude_reason: string | null;
   checked_in: boolean;
@@ -331,6 +384,8 @@ export interface AdminRegistrationUpdateInput {
   notes?: string | null;
   admin_notes?: string | null;
   is_flex?: boolean | null;
+  status?: string | null;
+  balancer_status?: string | null;
   roles?: AdminRegistrationRole[] | null;
 }
 

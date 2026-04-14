@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import csv
-import io
 import json
+import logging
 import re
 from datetime import UTC, datetime
 from typing import Any
-from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
 
 import httpx
@@ -17,149 +15,49 @@ from sqlalchemy.orm import selectinload
 
 from shared.division_grid import DEFAULT_GRID, DivisionGrid
 
-from src import models, schemas
-from src.core import config
+from src import models
 from src.schemas.admin import balancer as admin_schemas
+from src.schemas.team import InternalBalancerTeamsPayload
+from src.schemas.user import UserCSV
 from src.services.admin.balance_analytics import create_balance_snapshot
-from src.services.admin.balancer_dual_write import sync_balance_variants_and_slots, sync_player_role_entries
-from src.services.team import flows as team_flows
-from src.services.user import flows as user_flows
-from src.services.user import service as user_service
+from src.services.admin.balancer_dual_write import sync_balance_variants_and_slots
+from src.services.admin.balancer_utils import (
+    DEFAULT_ROLE_MAPPING,
+    DEFAULT_SORT_PRIORITY_SENTINEL,
+    GOOGLE_SHEET_FETCH_TIMEOUT,
+    UNKNOWN_PRIORITY_SENTINEL,
+    VALID_ROLE_SUBTYPES,
+    VALID_ROLES,
+    build_csv_export_url,
+    extract_battle_tags as _extract_battle_tags,
+    extract_sheet_source,
+    fetch_csv_rows,
+    normalize_battle_tag,
+    normalize_battle_tag_key,
+    normalize_header,
+    parse_boolean_value,
+    parse_submitted_at,
+    row_to_json,
+    unique_strings,
+)
+import src.services.team as team_flows
+import src.services.user as user_flows
+import src.services.user as user_service
 
-BATTLE_TAG_RE = re.compile(config.settings.battle_tag_regex, re.UNICODE)
+logger = logging.getLogger(__name__)
 
-DEFAULT_ROLE_MAPPING: dict[str, str | None] = {
-    "Лайт хил (Мерси, Кирико)": "support",
-    "Лайт хил (Мерси, Зен, Люсио, Брига, Мойра)": "support",
-    "Лайт хил (Мерси, Зен, Люсио, Брига)": "support",
-    "Лайт хил (Мерси, Иллари, Зен, Люсио, Брига, Мойра)": "support",
-    "Оба Подкласса Хила": "support",
-    "Мейн хил (Ана, Батист, Мойра)": "support",
-    "Мейн хил (Юнона, Ана, Батист, Мойра)": "support",
-    "Танк": "tank",
-    "Танк.": "tank",
-    "Оба Подкласса Танка.": "tank",
-    "ОффТанк (Заря, Дива, Хог, Сигма)": "tank",
-    "МейнТанк (Рейнхард, Винстон, Ориса, Хэммонд)": "tank",
-    "Оба Подкласса ДД": "dps",
-    "Dps": "dps",
-    "Проджектайл ДД (Генджи, Фара, Ханзо, Торбьерн, Джанкрет, Эхо, Мей, Рипер, Сомбра, Симметра, Трейсер)": "dps",
-    "Хитскан ДД (Маккри, Вдова, Солдат76, Эш)": "dps",
-    "Хитскан ДД (Кэс, Вдова, Солдат76, Эш)": "dps",
-    "Я флекс, могу играть абсолютно на всем": None,
-}
+BATTLE_TAG_RE = re.compile(r"([\w0-9]{2,12}#[0-9]{4,})", re.UNICODE)
 
-STREAM_TRUE_VALUES = {
-    "1",
-    "true",
-    "yes",
-    "y",
-    "да",
-    "ага",
-    "буду",
-    "конечно",
-}
-
-VALID_ROLES = {"tank", "dps", "support"}
-VALID_ROLE_SUBTYPES = {
-    "tank": set(),
-    "dps": {"hitscan", "projectile"},
-    "support": {"main_heal", "light_heal"},
-}
 EXPORT_ROLE_ORDER = ["dps", "tank", "support"]
 EXPORT_ROLE_PRIORITY = {role: index for index, role in enumerate(EXPORT_ROLE_ORDER)}
 
 
-def normalize_battle_tag(value: str | None) -> str:
-    text = (value or "").strip()
-    text = re.sub(r"\s*#\s*", "#", text)
-    return text
-
-
-def normalize_battle_tag_key(value: str | None) -> str:
-    return normalize_battle_tag(value).replace(" ", "").strip().lower()
-
-
-def normalize_header(value: str) -> str:
-    return re.sub(r"\s+", " ", value or "").strip().lower()
-
-
-def extract_sheet_source(source_url: str) -> tuple[str, str | None]:
-    match = re.search(r"/spreadsheets/d/([^/]+)", source_url)
-    if not match:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Google Sheets URL")
-
-    sheet_id = match.group(1)
-    parsed = urlparse(source_url)
-    query = parse_qs(parsed.query)
-    gid = query.get("gid", [None])[0]
-    if gid is None and parsed.fragment.startswith("gid="):
-        gid = parsed.fragment.split("=", 1)[1]
-
-    return sheet_id, gid
-
-
-def build_csv_export_url(sheet_id: str, gid: str | None) -> str:
-    base_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
-    if gid:
-        return f"{base_url}&gid={gid}"
-    return base_url
-
-
-def parse_submitted_at(value: str | None) -> datetime | None:
-    if not value:
-        return None
-
-    text = value.strip()
-    if not text:
-        return None
-
-    formats = (
-        "%m/%d/%Y %H:%M:%S",
-        "%d.%m.%Y %H:%M:%S",
-        "%Y-%m-%d %H:%M:%S",
-        "%Y-%m-%dT%H:%M:%S",
-        "%Y-%m-%dT%H:%M:%S.%f",
-    )
-    for fmt in formats:
-        try:
-            return datetime.strptime(text, fmt).replace(tzinfo=UTC)
-        except ValueError:
-            continue
-
-    try:
-        parsed = datetime.fromisoformat(text)
-        if parsed.tzinfo is None:
-            return parsed.replace(tzinfo=UTC)
-        return parsed.astimezone(UTC)
-    except ValueError:
-        return None
-
-
 def parse_bool(value: str | None) -> bool:
-    if value is None:
-        return False
-    normalized = normalize_header(value)
-    return normalized in STREAM_TRUE_VALUES or normalized.startswith("да")
-
-
-def unique_strings(values: list[str]) -> list[str]:
-    seen: set[str] = set()
-    result: list[str] = []
-    for value in values:
-        if not value:
-            continue
-        if value in seen:
-            continue
-        seen.add(value)
-        result.append(value)
-    return result
+    return parse_boolean_value(value)
 
 
 def extract_battle_tags(value: str | None) -> list[str]:
-    if not value:
-        return []
-    return unique_strings([normalize_battle_tag(match) for match in BATTLE_TAG_RE.findall(value)])
+    return _extract_battle_tags(value, BATTLE_TAG_RE)
 
 
 def map_role(raw_role: str | None, role_mapping: dict[str, str | None]) -> str | None:
@@ -378,7 +276,7 @@ def normalize_role_entries(
         else:
             prepared_entries.append(entry.model_dump())
 
-    prepared_entries.sort(key=lambda item: item.get("priority") if item.get("priority") is not None else 999)
+    prepared_entries.sort(key=lambda item: item.get("priority") if item.get("priority") is not None else DEFAULT_SORT_PRIORITY_SENTINEL)
 
     for entry in prepared_entries:
         role = entry.get("role")
@@ -530,16 +428,33 @@ def map_existing_role_entries_to_application(
     return normalize_role_entries(mapped_entries)
 
 
-def sync_legacy_player_fields(player: models.BalancerPlayer) -> None:
-    role_entries = normalize_role_entries(player.role_entries_json or [])
-    active_role_entries = [entry for entry in role_entries if entry.get("is_active", True)]
-    primary_entry = active_role_entries[0] if active_role_entries else None
+async def _write_player_role_entries(
+    session: AsyncSession,
+    player: models.BalancerPlayer,
+    role_entries: list[dict[str, Any]],
+) -> None:
+    """Write normalized role entries directly to BalancerPlayerRoleEntry table.
 
-    player.role_entries_json = role_entries
-    player.primary_role = primary_entry["role"] if primary_entry else None
-    player.secondary_roles_json = [entry["role"] for entry in active_role_entries[1:]]
-    player.division_number = primary_entry.get("division_number") if primary_entry else None
-    player.rank_value = primary_entry.get("rank_value") if primary_entry else None
+    Deletes existing entries for the player and re-inserts from the provided list.
+    This is the sole write path — no JSON column intermediate.
+    """
+    await session.execute(
+        sa.delete(models.BalancerPlayerRoleEntry).where(
+            models.BalancerPlayerRoleEntry.player_id == player.id
+        )
+    )
+    for entry in normalize_role_entries(role_entries):
+        session.add(
+            models.BalancerPlayerRoleEntry(
+                player_id=player.id,
+                role=entry["role"],
+                subtype=entry.get("subtype"),
+                priority=entry["priority"],
+                rank_value=entry.get("rank_value"),
+                division_number=entry.get("division_number"),
+                is_active=entry.get("is_active", True),
+            )
+        )
 
 
 def extract_players_dict(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -570,7 +485,7 @@ def build_role_entries_from_classes(classes: dict[str, Any]) -> list[dict[str, A
         rank_raw = stats.get("rank")
         rank_value = int(rank_raw) if isinstance(rank_raw, int | float) and int(rank_raw) > 0 else None
         priority_raw = stats.get("priority")
-        priority = int(priority_raw) if isinstance(priority_raw, int | float) else 99
+        priority = int(priority_raw) if isinstance(priority_raw, int | float) else UNKNOWN_PRIORITY_SENTINEL
         is_active = bool(stats.get("isActive", False))
 
         if not is_active and rank_value is None and "priority" not in stats:
@@ -664,7 +579,9 @@ async def resolve_import_context(
         sa.select(models.BalancerApplication)
         .where(models.BalancerApplication.tournament_id == tournament_id)
         .where(models.BalancerApplication.is_active.is_(True))
-        .options(selectinload(models.BalancerApplication.player))
+        .options(
+            selectinload(models.BalancerApplication.player).selectinload(models.BalancerPlayer.role_entries)
+        )
         .order_by(models.BalancerApplication.battle_tag_normalized.asc())
     )
     active_applications = list(result.scalars().all())
@@ -702,7 +619,17 @@ async def resolve_import_context(
 
 
 def serialize_player_for_export(player: models.BalancerPlayer, export_uuid: str) -> dict[str, Any]:
-    role_entries = normalize_role_entries(player.role_entries_json or [])
+    role_entries = [
+        {
+            "role": e.role,
+            "subtype": e.subtype,
+            "priority": e.priority,
+            "rank_value": e.rank_value,
+            "division_number": e.division_number,
+            "is_active": e.is_active,
+        }
+        for e in sorted(player.role_entries, key=lambda e: e.priority)
+    ]
     if player.is_flex:
         export_priorities = {role: 0 for role in EXPORT_ROLE_ORDER}
     else:
@@ -770,20 +697,6 @@ def detect_column_mapping(headers: list[str]) -> dict[str, Any]:
         mapping.pop("additional_roles")
 
     return mapping
-
-
-def row_to_json(headers: list[str], row: list[str]) -> dict[str, str]:
-    result: dict[str, str] = {}
-    seen: dict[str, int] = {}
-
-    for index, header in enumerate(headers):
-        key_base = header.strip() or f"column_{index}"
-        occurrence = seen.get(key_base, 0)
-        seen[key_base] = occurrence + 1
-        key = key_base if occurrence == 0 else f"{key_base}__{occurrence}"
-        result[key] = row[index].strip() if index < len(row) else ""
-
-    return result
 
 
 def get_row_value(row: list[str], index: int | None) -> str | None:
@@ -872,15 +785,10 @@ async def upsert_tournament_sheet(
 
 async def fetch_google_sheet_rows(sheet: models.BalancerTournamentSheet) -> list[list[str]]:
     url = build_csv_export_url(sheet.sheet_id, sheet.gid)
-    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+    async with httpx.AsyncClient(timeout=GOOGLE_SHEET_FETCH_TIMEOUT, follow_redirects=True) as client:
         response = await client.get(url)
         response.raise_for_status()
-
-    text = response.text.lstrip("\ufeff")
-    rows = list(csv.reader(io.StringIO(text)))
-    if not rows:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Google Sheet is empty")
-    return rows
+    return fetch_csv_rows(response.text)
 
 
 def build_application_payload(
@@ -1048,7 +956,7 @@ async def resolve_public_user_id_for_application(
     session: AsyncSession,
     application: models.BalancerApplication,
 ) -> int | None:
-    user_payload = schemas.UserCSV(
+    user_payload = UserCSV(
         battle_tag=application.battle_tag,
         discord=application.discord_nick,
         twitch=application.twitch_nick,
@@ -1078,7 +986,7 @@ async def create_players_from_applications(
     if not applications:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Applications not found")
 
-    created_players: list[models.BalancerPlayer] = []
+    created_players: list[tuple[models.BalancerPlayer, list[dict[str, Any]]]] = []
     for application in applications:
         if application.player is not None:
             continue
@@ -1092,19 +1000,16 @@ async def create_players_from_applications(
             battle_tag=application.battle_tag,
             battle_tag_normalized=application.battle_tag_normalized,
             user_id=user_id,
-            role_entries_json=role_entries,
             is_flex=False,
             is_in_pool=True,
         )
-        sync_legacy_player_fields(player)
         session.add(player)
-        created_players.append(player)
+        created_players.append((player, role_entries))
 
     await session.flush()
 
-    # Dual-write: sync to normalized player_role_entry table
-    for player in created_players:
-        await sync_player_role_entries(session, player)
+    for player, role_entries in created_players:
+        await _write_player_role_entries(session, player, role_entries)
 
     await session.commit()
 
@@ -1126,6 +1031,7 @@ async def list_players(
     query = (
         sa.select(models.BalancerPlayer)
         .where(models.BalancerPlayer.tournament_id == tournament_id)
+        .options(selectinload(models.BalancerPlayer.role_entries))
         .order_by(models.BalancerPlayer.battle_tag_normalized.asc())
     )
     if in_pool_only:
@@ -1150,22 +1056,21 @@ async def update_player(
     player = await get_player(session, player_id)
     update_data = data.model_dump(exclude_unset=True)
 
+    role_entries: list[dict[str, Any]] | None = None
     if "role_entries_json" in update_data:
-        player.role_entries_json = normalize_role_entries(update_data["role_entries_json"])
+        role_entries = update_data.pop("role_entries_json")
 
     if "is_flex" in update_data:
         player.is_flex = bool(update_data["is_flex"])
 
     for field, value in update_data.items():
-        if field in ("role_entries_json", "is_flex"):
+        if field == "is_flex":
             continue
         setattr(player, field, value)
 
-    sync_legacy_player_fields(player)
-
-    # Dual-write: sync to normalized player_role_entry table
     await session.flush()
-    await sync_player_role_entries(session, player)
+    if role_entries is not None:
+        await _write_player_role_entries(session, player, role_entries)
 
     await session.commit()
     await session.refresh(player)
@@ -1222,7 +1127,17 @@ async def preview_player_import(
                 application_id=application.id,
                 existing_player_id=existing_player.id,
                 imported_role_entries_json=imported_role_entries,
-                existing_role_entries_json=normalize_role_entries(existing_player.role_entries_json),
+                existing_role_entries_json=[
+                    {
+                        "role": e.role,
+                        "subtype": e.subtype,
+                        "priority": e.priority,
+                        "rank_value": e.rank_value,
+                        "division_number": e.division_number,
+                        "is_active": e.is_active,
+                    }
+                    for e in sorted(existing_player.role_entries, key=lambda e: e.priority)
+                ],
                 imported_is_in_pool=imported_player["is_in_pool"],
                 existing_is_in_pool=existing_player.is_in_pool,
                 imported_admin_notes=imported_player["admin_notes"],
@@ -1261,6 +1176,7 @@ async def import_players(
     skipped_no_ranked_roles = sum(1 for entry in skipped_entries if entry["reason"] == "no_ranked_roles")
     unresolved_duplicates: list[str] = []
     resolutions = resolutions or {}
+    pending_role_writes: list[tuple[models.BalancerPlayer, list[dict[str, Any]]]] = []
 
     for imported_player in imported_players:
         application = applications.get(imported_player["battle_tag_normalized"])
@@ -1283,13 +1199,12 @@ async def import_players(
                 battle_tag=application.battle_tag,
                 battle_tag_normalized=application.battle_tag_normalized,
                 user_id=user_id,
-                role_entries_json=imported_role_entries,
                 is_flex=bool(imported_player["is_flex"]) if imported_player["is_flex"] is not None else False,
                 is_in_pool=imported_player["is_in_pool"],
                 admin_notes=imported_player["admin_notes"],
             )
-            sync_legacy_player_fields(player)
             session.add(player)
+            pending_role_writes.append((player, imported_role_entries))
             created += 1
             continue
 
@@ -1311,13 +1226,12 @@ async def import_players(
         existing_player.battle_tag = application.battle_tag
         existing_player.battle_tag_normalized = application.battle_tag_normalized
         existing_player.user_id = user_id
-        existing_player.role_entries_json = imported_role_entries
         if imported_player["is_flex"] is not None:
             existing_player.is_flex = imported_player["is_flex"]
         existing_player.is_in_pool = imported_player["is_in_pool"]
         if imported_player["admin_notes"] is not None:
             existing_player.admin_notes = imported_player["admin_notes"]
-        sync_legacy_player_fields(existing_player)
+        pending_role_writes.append((existing_player, imported_role_entries))
         replaced += 1
 
     if unresolved_duplicates:
@@ -1326,14 +1240,9 @@ async def import_players(
             detail=f"Unresolved duplicate players: {', '.join(unresolved_duplicates)}",
         )
 
-    # Dual-write: sync all touched players to normalized tables
     await session.flush()
-    all_players_result = await session.execute(
-        sa.select(models.BalancerPlayer).where(models.BalancerPlayer.tournament_id == tournament_id)
-    )
-    for player in all_players_result.scalars().all():
-        if player.role_entries_json:
-            await sync_player_role_entries(session, player)
+    for player, role_entries in pending_role_writes:
+        await _write_player_role_entries(session, player, role_entries)
 
     await session.commit()
     return admin_schemas.BalancerPlayerImportResult(
@@ -1370,22 +1279,41 @@ async def sync_player_roles_from_applications(
     result = await session.execute(
         sa.select(models.BalancerPlayer)
         .where(models.BalancerPlayer.tournament_id == tournament_id)
-        .options(selectinload(models.BalancerPlayer.application))
+        .options(
+            selectinload(models.BalancerPlayer.application),
+            selectinload(models.BalancerPlayer.role_entries),
+        )
         .order_by(models.BalancerPlayer.battle_tag_normalized.asc())
     )
     players = list(result.scalars().all())
 
     updated = 0
     skipped = 0
+    pending_role_writes: list[tuple[models.BalancerPlayer, list[dict[str, Any]]]] = []
     for player in players:
         application = player.application
         if application is None or not application.is_active:
             skipped += 1
             continue
 
-        player.role_entries_json = map_existing_role_entries_to_application(application, player.role_entries_json)
-        sync_legacy_player_fields(player)
+        existing_entries = [
+            {
+                "role": e.role,
+                "subtype": e.subtype,
+                "priority": e.priority,
+                "rank_value": e.rank_value,
+                "division_number": e.division_number,
+                "is_active": e.is_active,
+            }
+            for e in player.role_entries
+        ]
+        role_entries = map_existing_role_entries_to_application(application, existing_entries)
+        pending_role_writes.append((player, role_entries))
         updated += 1
+
+    await session.flush()
+    for player, role_entries in pending_role_writes:
+        await _write_player_role_entries(session, player, role_entries)
 
     await session.commit()
     return admin_schemas.BalancerPlayerRoleSyncResponse(updated=updated, skipped=skipped)
@@ -1403,13 +1331,14 @@ async def export_applications_to_users(
     for application in applications:
         smurfs = [tag for tag in (application.smurf_tags_json or []) if BATTLE_TAG_RE.match(tag)]
         try:
-            payload = schemas.UserCSV(
+            payload = UserCSV(
                 battle_tag=application.battle_tag,
                 discord=application.discord_nick,
                 twitch=application.twitch_nick,
                 smurfs=smurfs,
             )
         except Exception:
+            logger.exception("Failed to build user payload for application %s", application.battle_tag)
             skipped += 1
             continue
 
@@ -1434,7 +1363,7 @@ async def get_balance(session: AsyncSession, tournament_id: int) -> models.Balan
 
 def materialize_balance_teams(
     balance_id: int,
-    payload: schemas.InternalBalancerTeamsPayload,
+    payload: InternalBalancerTeamsPayload,
 ) -> list[models.BalancerTeam]:
     teams: list[models.BalancerTeam] = []
     for sort_order, team in enumerate(payload.teams):
@@ -1462,7 +1391,7 @@ async def save_balance(
     auth_user: models.AuthUser,
 ) -> models.BalancerBalance:
     await ensure_tournament_exists(session, tournament_id)
-    payload = schemas.InternalBalancerTeamsPayload.model_validate(data.result_json)
+    payload = InternalBalancerTeamsPayload.model_validate(data.result_json)
     if not payload.teams:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Balance result does not contain teams")
 
@@ -1493,7 +1422,6 @@ async def save_balance(
     session.add_all(materialize_balance_teams(balance.id, payload))
     await session.flush()
 
-    # Dual-write: sync balance variants and team slots
     algorithm = (data.config_json or {}).get("ALGORITHM", "unknown") if data.config_json else "unknown"
     await sync_balance_variants_and_slots(session, balance, payload, algorithm=algorithm)
 
@@ -1509,7 +1437,7 @@ async def ensure_public_user_for_application(
     session: AsyncSession,
     application: models.BalancerApplication,
 ) -> models.User:
-    payload = schemas.UserCSV(
+    payload = UserCSV(
         battle_tag=application.battle_tag,
         discord=application.discord_nick,
         twitch=application.twitch_nick,
@@ -1524,7 +1452,7 @@ async def ensure_public_user_for_application(
 async def ensure_public_users_for_balance(
     session: AsyncSession,
     tournament_id: int,
-    payload: schemas.InternalBalancerTeamsPayload,
+    payload: InternalBalancerTeamsPayload,
 ) -> None:
     normalized_tags = unique_strings(
         [
@@ -1566,7 +1494,7 @@ async def export_balance(session: AsyncSession, balance_id: int) -> tuple[models
     if balance is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Balance not found")
 
-    payload = schemas.InternalBalancerTeamsPayload.model_validate(balance.result_json)
+    payload = InternalBalancerTeamsPayload.model_validate(balance.result_json)
 
     linked_team_ids = [team.exported_team_id for team in balance.teams if team.exported_team_id is not None]
     removed_teams = len(linked_team_ids)
@@ -1601,11 +1529,11 @@ async def export_balance(session: AsyncSession, balance_id: int) -> tuple[models
         balance.export_status = "success"
         balance.export_error = None
 
-        # Create analytics snapshot
         await create_balance_snapshot(session, balance, payload, public_teams)
 
         await session.commit()
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Failed to export balance %s", balance.id)
         balance.export_status = "failed"
         balance.export_error = str(exc)
         await session.commit()

@@ -22,7 +22,6 @@ from shared.schemas.events import (
 
 from src.core import config, db
 from src.services.achievement.engine.consumer import handle_achievement_evaluate
-from src.services.admin import balancer_registration as registration_balancer_service
 from src.services.match_logs import flows as logs_flows
 from src.services.s3 import service as s3_service
 from src.services.tournament import flows as tournaments_flows
@@ -49,14 +48,6 @@ s3_client = S3Client(
     public_url=config.settings.s3_public_url,
 )
 
-
-async def sync_registration_google_sheet_feeds() -> None:
-    results = await registration_balancer_service.sync_due_google_sheet_feeds(db.async_session_maker)
-    if not results:
-        return
-    logger.info("Registration Google Sheets sync completed", results=results)
-
-
 @app.on_startup
 async def start_scheduler() -> None:
     setup_tracing(
@@ -70,14 +61,8 @@ async def start_scheduler() -> None:
     await s3_client.start()
     scheduler.add_job(encounter_tasks.bulk_create, "interval", minutes=2, id="encounter_sync")
     scheduler.add_job(standings_tasks.bulk_create_all, "interval", minutes=3, id="standings_sync")
-    scheduler.add_job(
-        sync_registration_google_sheet_feeds,
-        "interval",
-        minutes=5,
-        id="registration_google_sheet_sync",
-    )
     scheduler.start()
-    logger.info("Scheduler started: encounter sync every 2m, standings sync every 3m, registration sheet sync every 5m")
+    logger.info("Scheduler started: encounter sync every 2m, standings sync every 3m")
 
 
 @app.on_shutdown

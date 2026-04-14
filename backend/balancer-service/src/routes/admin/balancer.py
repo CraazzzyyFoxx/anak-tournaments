@@ -6,12 +6,13 @@ from typing import Literal
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src import models, schemas
+from src import models
 from src.core import auth, db
 from src.schemas.admin import balancer as admin_schemas
+from src.schemas.team import BalancerTeam, InternalBalancerTeamsPayload
 from src.services.admin import balancer as legacy_balancer_service
 from src.services.admin import balancer_registration as registration_service
-from src.services.team import flows as team_flows
+import src.services.team as team_flows
 
 router = APIRouter(
     prefix="/balancer",
@@ -313,9 +314,9 @@ async def import_teams_from_json(
     )
 
     if use_atravkovs:
-        teams = [schemas.BalancerTeam.model_validate(team) for team in payload["data"]["teams"]]
+        teams = [BalancerTeam.model_validate(team) for team in payload["data"]["teams"]]
     else:
-        internal_payload = schemas.InternalBalancerTeamsPayload.model_validate(payload)
+        internal_payload = InternalBalancerTeamsPayload.model_validate(payload)
         teams = [team.to_balancer_team() for team in internal_payload.teams]
 
     await team_flows.bulk_create_from_balancer(session, tournament_id, teams)

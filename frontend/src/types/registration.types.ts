@@ -31,15 +31,24 @@ export interface RegistrationForm {
   custom_fields: CustomFieldDefinition[];
 }
 
-export type RegistrationStatus =
-  | "pending"
-  | "approved"
-  | "rejected"
-  | "withdrawn"
-  | "banned"
-  | "insufficient_data";
+export type RegistrationStatus = string;
 
-export type BalancerStatus = "not_in_balancer" | "incomplete" | "ready";
+export type BalancerStatus = string;
+
+export interface StatusMeta {
+  value: string;
+  scope: "registration" | "balancer";
+  is_builtin: boolean;
+  kind: "builtin" | "custom";
+  is_override: boolean;
+  can_edit: boolean;
+  can_delete: boolean;
+  can_reset: boolean;
+  icon_slug: string | null;
+  icon_color: string | null;
+  name: string;
+  description: string | null;
+}
 
 export interface TournamentHistoryEntry {
   tournament_id: number;
@@ -63,7 +72,9 @@ export interface Registration {
   notes: string | null;
   custom_fields_json: Record<string, unknown> | null;
   status: RegistrationStatus;
+  status_meta?: StatusMeta;
   balancer_status?: BalancerStatus;
+  balancer_status_meta?: StatusMeta;
   checked_in?: boolean;
   submitted_at: string | null;
   reviewed_at: string | null;

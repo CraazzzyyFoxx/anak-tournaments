@@ -11,9 +11,9 @@ from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, MagicMock, patch
 
 REPO_BACKEND_ROOT = Path(__file__).resolve().parents[2]
-PARSER_SERVICE_ROOT = REPO_BACKEND_ROOT / "parser-service"
+BALANCER_SERVICE_ROOT = REPO_BACKEND_ROOT / "balancer-service"
 
-for candidate in (str(REPO_BACKEND_ROOT), str(PARSER_SERVICE_ROOT)):
+for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
@@ -150,6 +150,76 @@ class SetBalancerStatusTests(IsolatedAsyncioTestCase):
                 await svc.set_balancer_status(session, 1, balancer_status="ready")
 
         self.assertEqual(ctx.exception.status_code, 409)
+
+
+class UpdateRegistrationProfileBalancerStatusTests(IsolatedAsyncioTestCase):
+    async def test_profile_update_demotes_ready_when_active_role_has_no_rank(self) -> None:
+        reg = _make_registration(
+            status="approved",
+            balancer_status="ready",
+            roles=[
+                SimpleNamespace(role="tank", is_primary=True, is_active=True, rank_value=2500),
+                SimpleNamespace(role="support", is_primary=False, is_active=False, rank_value=None),
+            ],
+        )
+        session = _mock_session_with_registration(reg)
+
+        updated_roles = [
+            {"role": "tank", "is_primary": True, "is_active": True, "rank_value": 2500},
+            {"role": "support", "is_primary": False, "is_active": True, "rank_value": None},
+        ]
+
+        with patch.object(svc, "get_registration_by_id", AsyncMock(return_value=reg)):
+            result = await svc.update_registration_profile(
+                session,
+                1,
+                display_name=None,
+                battle_tag=None,
+                smurf_tags_json=None,
+                discord_nick=None,
+                twitch_nick=None,
+                stream_pov=None,
+                notes=None,
+                admin_notes=None,
+                is_flex=None,
+                roles=updated_roles,
+            )
+
+        self.assertEqual(result.balancer_status, "incomplete")
+
+    async def test_profile_update_promotes_to_ready_when_unranked_roles_are_disabled(self) -> None:
+        reg = _make_registration(
+            status="approved",
+            balancer_status="incomplete",
+            roles=[
+                SimpleNamespace(role="tank", is_primary=True, is_active=True, rank_value=2500),
+                SimpleNamespace(role="support", is_primary=False, is_active=True, rank_value=None),
+            ],
+        )
+        session = _mock_session_with_registration(reg)
+
+        updated_roles = [
+            {"role": "tank", "is_primary": True, "is_active": True, "rank_value": 2500},
+            {"role": "support", "is_primary": False, "is_active": False, "rank_value": None},
+        ]
+
+        with patch.object(svc, "get_registration_by_id", AsyncMock(return_value=reg)):
+            result = await svc.update_registration_profile(
+                session,
+                1,
+                display_name=None,
+                battle_tag=None,
+                smurf_tags_json=None,
+                discord_nick=None,
+                twitch_nick=None,
+                stream_pov=None,
+                notes=None,
+                admin_notes=None,
+                is_flex=None,
+                roles=updated_roles,
+            )
+
+        self.assertEqual(result.balancer_status, "ready")
 
 
 # ---------------------------------------------------------------------------

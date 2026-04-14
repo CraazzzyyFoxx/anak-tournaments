@@ -1,15 +1,18 @@
 import asyncio
 from typing import Any
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from faststream import FastStream
 from faststream.rabbit import RabbitBroker
 from pydantic import ValidationError
 from src.core.config import config
+from src.core import db
 from src.core.job_store import JobStatus, get_job_store
 
 # New universal adapters (used alongside legacy paths during transition)
 from src.cpsat_bridge import run_cpsat
 from src.service import balance_teams
+from src.services.admin import balancer_registration as registration_balancer_service
 
 from shared.messaging.config import BALANCER_JOBS_QUEUE
 from shared.observability import (
@@ -29,6 +32,14 @@ logger = setup_logging(
 
 broker = RabbitBroker(config.rabbitmq_url, logger=logger)
 app = FastStream(broker)
+scheduler = AsyncIOScheduler()
+
+
+async def sync_registration_google_sheet_feeds() -> None:
+    results = await registration_balancer_service.sync_due_google_sheet_feeds(db.async_session_maker)
+    if not results:
+        return
+    logger.info("Registration Google Sheets sync completed", results=results)
 
 
 @app.on_startup
@@ -41,6 +52,19 @@ async def setup_worker_observability() -> None:
         sampler_arg=config.otel_traces_sampler_arg,
     )
     start_worker_metrics_server(config.worker_metrics_port)
+    scheduler.add_job(
+        sync_registration_google_sheet_feeds,
+        "interval",
+        minutes=5,
+        id="registration_google_sheet_sync",
+    )
+    scheduler.start()
+    logger.info("Scheduler started: registration sheet sync every 5m")
+
+
+@app.on_shutdown
+async def stop_scheduler() -> None:
+    scheduler.shutdown(wait=False)
 
 
 @broker.subscriber(BALANCER_JOBS_QUEUE)

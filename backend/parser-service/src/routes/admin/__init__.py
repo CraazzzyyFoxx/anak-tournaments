@@ -9,8 +9,6 @@ from .user import router as user_router
 from .hero import router as hero_router
 from .gamemode import router as gamemode_router
 from .map import router as map_router
-from .balancer import router as balancer_router
-from .registration import router as registration_router
 from .discord_channel import router as discord_channel_router
 from .logs import router as logs_router
 from .achievement_rule import override_router as achievement_override_router
@@ -31,8 +29,6 @@ admin_router.include_router(user_router)
 admin_router.include_router(hero_router)
 admin_router.include_router(gamemode_router)
 admin_router.include_router(map_router)
-admin_router.include_router(balancer_router)
-admin_router.include_router(registration_router)
 admin_router.include_router(discord_channel_router)
 admin_router.include_router(logs_router)
 admin_router.include_router(achievement_rule_router)

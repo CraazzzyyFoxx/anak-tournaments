@@ -5,14 +5,16 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from src.schemas import BaseRead
+from src.schemas.base import BaseRead
 
 BalancerRole = Literal["tank", "dps", "support"]
 BalancerRoleSubtype = Literal["hitscan", "projectile", "main_heal", "light_heal"]
 DuplicateResolution = Literal["replace", "skip"]
 DuplicateStrategy = Literal["manual", "replace_all", "skip_all"]
-RegistrationStatus = Literal["pending", "approved", "rejected", "withdrawn", "banned", "insufficient_data"]
-BalancerStatus = Literal["not_in_balancer", "incomplete", "ready"]
+RegistrationStatus = str
+BalancerStatus = str
+StatusScope = Literal["registration", "balancer"]
+StatusKind = Literal["builtin", "custom"]
 RegistrationSource = Literal["manual", "google_sheets"]
 
 __all__ = (
@@ -43,6 +45,10 @@ __all__ = (
     "BalancerRegistrationRead",
     "BalancerRegistrationRoleInput",
     "BalancerRegistrationRoleRead",
+    "BalancerRegistrationStatusCreate",
+    "BalancerRegistrationStatusRead",
+    "BalancerRegistrationStatusUpdate",
+    "StatusMetaRead",
     "BalancerRegistrationUpdateRequest",
     "BalancerTeamRead",
     "BalancerTournamentSheetRead",
@@ -257,6 +263,50 @@ class BalancerRegistrationRoleInput(BaseModel):
     is_active: bool = True
 
 
+class StatusMetaRead(BaseModel):
+    value: str
+    scope: StatusScope
+    is_builtin: bool
+    kind: StatusKind = "custom"
+    is_override: bool = False
+    can_edit: bool = False
+    can_delete: bool = False
+    can_reset: bool = False
+    icon_slug: str | None = None
+    icon_color: str | None = None
+    name: str
+    description: str | None = None
+
+
+class BalancerRegistrationStatusRead(BaseRead):
+    workspace_id: int | None = None
+    scope: StatusScope
+    slug: str
+    kind: StatusKind = "custom"
+    is_override: bool = False
+    can_delete: bool = False
+    can_reset: bool = False
+    icon_slug: str | None = None
+    icon_color: str | None = None
+    name: str
+    description: str | None = None
+
+
+class BalancerRegistrationStatusCreate(BaseModel):
+    scope: StatusScope
+    icon_slug: str | None = None
+    icon_color: str | None = None
+    name: str
+    description: str | None = None
+
+
+class BalancerRegistrationStatusUpdate(BaseModel):
+    icon_slug: str | None = None
+    icon_color: str | None = None
+    name: str | None = None
+    description: str | None = None
+
+
 class BalancerRegistrationRead(BaseRead):
     tournament_id: int
     workspace_id: int
@@ -277,6 +327,8 @@ class BalancerRegistrationRead(BaseRead):
     is_flex: bool = False
     status: RegistrationStatus
     balancer_status: BalancerStatus = "not_in_balancer"
+    status_meta: StatusMetaRead
+    balancer_status_meta: StatusMetaRead
     exclude_from_balancer: bool = False
     exclude_reason: str | None = None
     checked_in: bool = False
@@ -313,6 +365,8 @@ class BalancerRegistrationUpdateRequest(BaseModel):
     notes: str | None = None
     admin_notes: str | None = None
     is_flex: bool | None = None
+    status: RegistrationStatus | None = None
+    balancer_status: BalancerStatus | None = None
     roles: list[BalancerRegistrationRoleInput] | None = None
 
 

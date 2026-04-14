@@ -109,6 +109,7 @@ class RegistrationRead(BaseModel):
     notes: str | None = None
     custom_fields_json: dict[str, Any] | None = None
     status: str = "pending"
+    status_meta: dict[str, Any] | None = None
     submitted_at: datetime | None = None
     reviewed_at: datetime | None = None
 
@@ -122,6 +123,7 @@ class TournamentHistoryEntry(BaseModel):
 
 class RegistrationListRead(RegistrationRead):
     balancer_status: str = "not_in_balancer"
+    balancer_status_meta: dict[str, Any] | None = None
     checked_in: bool = False
     tournament_history: list[TournamentHistoryEntry] = Field(default_factory=list)
 

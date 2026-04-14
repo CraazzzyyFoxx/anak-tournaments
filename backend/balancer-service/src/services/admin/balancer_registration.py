@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import csv
 import hashlib
-import io
+import logging
 import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
 
 import httpx
@@ -15,47 +13,41 @@ from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
+from shared.balancer_registration_statuses import get_builtin_status_values
 from shared.division_grid import DEFAULT_GRID, DivisionGrid, resolve_grid
 
 from src import models
+from src.services.admin.balancer_utils import (
+    DEFAULT_BOOLEAN_TRUE_VALUES,
+    DEFAULT_ROLE_VALUE_MAP,
+    DEFAULT_SORT_PRIORITY_SENTINEL,
+    DEFAULT_SUBROLE_VALUE_MAP,
+    DEFAULT_SYNC_INTERVAL_SECONDS,
+    GOOGLE_SHEET_FETCH_TIMEOUT,
+    MIN_SYNC_INTERVAL_SECONDS,
+    ROLE_ORDER,
+    UNKNOWN_PRIORITY_SENTINEL,
+    build_csv_export_url,
+    build_header_keys,
+    extract_battle_tags as _extract_battle_tags,
+    extract_sheet_source,
+    fetch_csv_rows,
+    normalize_battle_tag,
+    normalize_battle_tag_key,
+    normalize_header,
+    parse_boolean_value,
+    parse_datetime,
+    parse_integer,
+    row_to_json,
+    unique_strings,
+)
+
+logger = logging.getLogger(__name__)
+
+VALID_REGISTRATION_STATUSES = get_builtin_status_values("registration")
+VALID_BALANCER_STATUSES = get_builtin_status_values("balancer")
 
 BATTLE_TAG_RE = re.compile(r"[\w][\w ]{0,30}#[0-9]{3,}", re.UNICODE)
-ROLE_ORDER = ("tank", "dps", "support")
-
-DEFAULT_ROLE_VALUE_MAP: dict[str, str | None] = {
-    "support": "support",
-    "Ð¿Ð¾Ð´Ð´ÐµÑ€Ð¶ÐºÐ°": "support",
-    "Ñ‚Ð°Ð½Ðº": "tank",
-    "tank": "tank",
-    "dps": "dps",
-    "damage": "dps",
-    "Ð´Ð´": "dps",
-}
-
-DEFAULT_SUBROLE_VALUE_MAP = {
-    "hitscan": "hitscan",
-    "Ñ…Ð¸Ñ‚ÑÐºÐ°Ð½": "hitscan",
-    "projectile": "projectile",
-    "Ð¿Ñ€Ð¾Ð´Ð¶ÐµÐºÑ‚Ð°Ð¹Ð»": "projectile",
-    "main_heal": "main_heal",
-    "main heal": "main_heal",
-    "Ð¼ÐµÐ¹Ð½ Ñ…Ð¸Ð»": "main_heal",
-    "light_heal": "light_heal",
-    "light heal": "light_heal",
-    "Ð»Ð°Ð¹Ñ‚ Ñ…Ð¸Ð»": "light_heal",
-}
-
-DEFAULT_BOOLEAN_TRUE_VALUES = {
-    "1",
-    "true",
-    "yes",
-    "y",
-    "Ð´Ð°",
-    "Ð°Ð³Ð°",
-    "Ð±ÑƒÐ´Ñƒ",
-    "ÐºÐ¾Ð½ÐµÑ‡Ð½Ð¾",
-}
-
 DEFAULT_MAPPING_TARGETS = (
     "source_record_key",
     "display_name",
@@ -87,75 +79,6 @@ DEFAULT_MAPPING_TARGETS = (
 )
 
 
-def normalize_battle_tag(value: str | None) -> str | None:
-    if not value:
-        return None
-    text = value.strip()
-    if not text:
-        return None
-    return re.sub(r"\s*#\s*", "#", text)
-
-
-def normalize_battle_tag_key(value: str | None) -> str | None:
-    normalized = normalize_battle_tag(value)
-    if not normalized:
-        return None
-    return normalized.replace(" ", "").strip().lower()
-
-
-def normalize_header(value: str | None) -> str:
-    return re.sub(r"\s+", " ", (value or "").strip()).lower()
-
-
-def unique_strings(values: list[str]) -> list[str]:
-    result: list[str] = []
-    seen: set[str] = set()
-    for value in values:
-        if not value or value in seen:
-            continue
-        seen.add(value)
-        result.append(value)
-    return result
-
-
-def build_header_keys(headers: list[str]) -> list[str]:
-    seen: dict[str, int] = {}
-    keys: list[str] = []
-    for index, header in enumerate(headers):
-        key_base = header.strip() or f"column_{index}"
-        occurrence = seen.get(key_base, 0)
-        seen[key_base] = occurrence + 1
-        keys.append(key_base if occurrence == 0 else f"{key_base}__{occurrence}")
-    return keys
-
-
-def row_to_json(headers: list[str], row: list[str]) -> dict[str, str]:
-    keys = build_header_keys(headers)
-    return {
-        key: row[index].strip() if index < len(row) else ""
-        for index, key in enumerate(keys)
-    }
-
-
-def extract_sheet_source(source_url: str) -> tuple[str, str | None]:
-    match = re.search(r"/spreadsheets/d/([^/]+)", source_url)
-    if not match:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Google Sheets URL")
-
-    sheet_id = match.group(1)
-    parsed = urlparse(source_url)
-    query = parse_qs(parsed.query)
-    gid = query.get("gid", [None])[0]
-    if gid is None and parsed.fragment.startswith("gid="):
-        gid = parsed.fragment.split("=", 1)[1]
-    return sheet_id, gid
-
-
-def build_csv_export_url(sheet_id: str, gid: str | None) -> str:
-    url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
-    return f"{url}&gid={gid}" if gid else url
-
-
 async def fetch_google_sheet_rows(
     source_url: str,
     *,
@@ -164,51 +87,10 @@ async def fetch_google_sheet_rows(
 ) -> list[list[str]]:
     actual_sheet_id, actual_gid = (sheet_id, gid) if sheet_id else extract_sheet_source(source_url)
     url = build_csv_export_url(actual_sheet_id, actual_gid)
-    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+    async with httpx.AsyncClient(timeout=GOOGLE_SHEET_FETCH_TIMEOUT, follow_redirects=True) as client:
         response = await client.get(url)
         response.raise_for_status()
-    text = response.text.lstrip("\ufeff")
-    rows = list(csv.reader(io.StringIO(text)))
-    if not rows:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Google Sheet is empty")
-    return rows
-
-
-def parse_datetime(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    text = value.strip()
-    if not text:
-        return None
-    formats = (
-        "%m/%d/%Y %H:%M:%S",
-        "%d.%m.%Y %H:%M:%S",
-        "%Y-%m-%d %H:%M:%S",
-        "%Y-%m-%dT%H:%M:%S",
-        "%Y-%m-%dT%H:%M:%S.%f",
-    )
-    for fmt in formats:
-        try:
-            return datetime.strptime(text, fmt).replace(tzinfo=UTC)
-        except ValueError:
-            continue
-    try:
-        parsed = datetime.fromisoformat(text)
-    except ValueError:
-        return None
-    return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
-
-
-def parse_integer(value: str | None) -> int | None:
-    if value is None:
-        return None
-    digits = re.sub(r"[^\d-]", "", value.strip())
-    if not digits:
-        return None
-    try:
-        return int(digits)
-    except ValueError:
-        return None
+    return fetch_csv_rows(response.text)
 
 
 def parse_boolean(value: str | None, value_mapping: dict[str, Any]) -> bool:
@@ -221,15 +103,11 @@ def parse_boolean(value: str | None, value_mapping: dict[str, Any]) -> bool:
     }
     if normalized in custom_booleans:
         return custom_booleans[normalized]
-    return normalized in DEFAULT_BOOLEAN_TRUE_VALUES or normalized.startswith("Ð´Ð°")
+    return parse_boolean_value(value)
 
 
 def extract_battle_tags(value: str | None) -> list[str]:
-    if not value:
-        return []
-    return unique_strings(
-        [normalize_battle_tag(match) for match in BATTLE_TAG_RE.findall(value) if normalize_battle_tag(match)]
-    )
+    return _extract_battle_tags(value, BATTLE_TAG_RE)
 
 
 def map_role_token(value: str | None, value_mapping: dict[str, Any]) -> str | None:
@@ -538,7 +416,7 @@ def serialize_registration_for_export(registration: models.BalancerRegistration,
         return {
             "isActive": bool(role and role.is_active and role.rank_value is not None),
             "rank": int(role.rank_value) if role and role.rank_value is not None else 0,
-            "priority": 0 if is_full_flex else int(role.priority) if role else 99,
+            "priority": 0 if is_full_flex else int(role.priority) if role else UNKNOWN_PRIORITY_SENTINEL,
             "subtype": role.subrole if role else None,
         }
 
@@ -760,7 +638,7 @@ def replace_registration_roles(registration: models.BalancerRegistration, roles:
     next_roles: list[models.BalancerRegistrationRole] = []
     seen_roles: set[str] = set()
 
-    for index, role in enumerate(sorted(roles, key=lambda item: item.get("priority", 999))):
+    for index, role in enumerate(sorted(roles, key=lambda item: item.get("priority", DEFAULT_SORT_PRIORITY_SENTINEL))):
         role_code = role.get("role")
         if role_code not in {"tank", "dps", "support"} or role_code in seen_roles:
             continue
@@ -781,12 +659,56 @@ def replace_registration_roles(registration: models.BalancerRegistration, roles:
     registration.roles[:] = next_roles
 
 
+def _active_roles(registration: models.BalancerRegistration | Any) -> list[Any]:
+    return [r for r in getattr(registration, "roles", []) if getattr(r, "is_active", False)]
+
+
 def registration_has_active_roles(registration: models.BalancerRegistration | Any) -> bool:
-    return any(bool(getattr(role, "is_active", False)) for role in getattr(registration, "roles", []))
+    return len(_active_roles(registration)) > 0
+
+
+def active_roles_all_ranked(registration: models.BalancerRegistration | Any) -> bool:
+    roles = _active_roles(registration)
+    return len(roles) > 0 and all(getattr(r, "rank_value", None) is not None for r in roles)
 
 
 def included_balancer_status(registration: models.BalancerRegistration | Any) -> str:
-    return "ready" if registration_has_active_roles(registration) else "incomplete"
+    return "ready" if active_roles_all_ranked(registration) else "incomplete"
+
+
+def sync_included_balancer_status(registration: models.BalancerRegistration | Any) -> None:
+    current_balancer_status = getattr(registration, "balancer_status", None)
+    if (
+        getattr(registration, "status", None) == "approved"
+        and current_balancer_status in VALID_BALANCER_STATUSES
+        and current_balancer_status != "not_in_balancer"
+    ):
+        registration.balancer_status = included_balancer_status(registration)
+
+
+async def validate_registration_status_value(
+    session: AsyncSession,
+    *,
+    workspace_id: int,
+    scope: str,
+    value: str,
+) -> None:
+    builtin_values = VALID_REGISTRATION_STATUSES if scope == "registration" else VALID_BALANCER_STATUSES
+    if value in builtin_values:
+        return
+
+    result = await session.execute(
+        sa.select(models.BalancerRegistrationStatus.id).where(
+            models.BalancerRegistrationStatus.workspace_id == workspace_id,
+            models.BalancerRegistrationStatus.scope == scope,
+            models.BalancerRegistrationStatus.slug == value,
+        )
+    )
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid {scope} status: {value}",
+        )
 
 
 async def create_manual_registration(
@@ -846,6 +768,8 @@ async def update_registration_profile(
     notes: str | None,
     admin_notes: str | None,
     is_flex: bool | None,
+    status_value: str | None,
+    balancer_status_value: str | None,
     roles: list[dict[str, Any]] | None,
 ) -> models.BalancerRegistration:
     registration = await get_registration_by_id(session, registration_id)
@@ -871,8 +795,30 @@ async def update_registration_profile(
         registration.stream_pov = stream_pov
     if notes is not None:
         registration.notes = notes
+    if status_value is not None:
+        await validate_registration_status_value(
+            session,
+            workspace_id=registration.workspace_id,
+            scope="registration",
+            value=status_value,
+        )
+        registration.status = status_value
+    if balancer_status_value is not None:
+        await validate_registration_status_value(
+            session,
+            workspace_id=registration.workspace_id,
+            scope="balancer",
+            value=balancer_status_value,
+        )
+        registration.balancer_status = balancer_status_value
+        if balancer_status_value == "not_in_balancer":
+            registration.exclude_from_balancer = True
+        elif balancer_status_value in VALID_BALANCER_STATUSES:
+            registration.exclude_from_balancer = False
 
     override_changed = False
+    if status_value is not None or balancer_status_value is not None:
+        override_changed = True
     if admin_notes is not None:
         registration.admin_notes = admin_notes
         override_changed = True
@@ -882,6 +828,7 @@ async def update_registration_profile(
     if roles is not None:
         replace_registration_roles(registration, roles)
         registration.is_flex = registration.is_flex_computed
+        sync_included_balancer_status(registration)
         override_changed = True
     if override_changed:
         registration.balancer_profile_overridden_at = datetime.now(UTC)
@@ -1003,10 +950,6 @@ async def soft_delete_registration(
     await session.commit()
     return registration
 
-
-VALID_BALANCER_STATUSES = {"not_in_balancer", "incomplete", "ready"}
-
-
 async def set_balancer_status(
     session: AsyncSession,
     registration_id: int,
@@ -1024,10 +967,10 @@ async def set_balancer_status(
             status_code=status.HTTP_409_CONFLICT,
             detail="Registration must be approved before adding to balancer",
         )
-    if balancer_status == "ready" and not registration_has_active_roles(registration):
+    if balancer_status == "ready" and not active_roles_all_ranked(registration):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Registration must have at least one active role before it can be ready",
+            detail="Registration must have at least one active role with rank before it can be ready",
         )
     registration.balancer_status = balancer_status
     # Keep exclude_from_balancer in sync during transition period
@@ -1112,6 +1055,7 @@ def apply_sheet_fields_to_registration(
         registration.admin_notes = parsed_fields.get("admin_notes")
         replace_registration_roles(registration, build_registration_role_payloads(parsed_fields))
         registration.is_flex = registration.is_flex_computed
+        sync_included_balancer_status(registration)
 
 
 async def sync_google_sheet_feed(
@@ -1273,7 +1217,7 @@ async def sync_due_google_sheet_feeds(
     now = datetime.now(UTC)
     results: list[dict[str, Any]] = []
     for feed in feeds:
-        interval = timedelta(seconds=max(int(feed.auto_sync_interval_seconds or 300), 30))
+        interval = timedelta(seconds=max(int(feed.auto_sync_interval_seconds or DEFAULT_SYNC_INTERVAL_SECONDS), MIN_SYNC_INTERVAL_SECONDS))
         if feed.last_synced_at is not None and feed.last_synced_at > now - interval:
             continue
         async with session_factory() as session:
@@ -1290,6 +1234,7 @@ async def sync_due_google_sheet_feeds(
                     }
                 )
             except Exception as exc:  # noqa: BLE001
+                logger.exception("Failed to sync feed for tournament %s", feed.tournament_id)
                 results.append(
                     {
                         "tournament_id": feed.tournament_id,

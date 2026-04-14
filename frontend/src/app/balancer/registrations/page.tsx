@@ -61,6 +61,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useColumnVisibility } from "@/hooks/useColumnVisibility";
 import { useToast } from "@/hooks/use-toast";
+import { mergeStatusOptions } from "@/lib/balancer-statuses";
 import balancerAdminService from "@/services/balancer-admin.service";
 import type {
   AdminGoogleSheetFeed,
@@ -71,6 +72,7 @@ import type {
 } from "@/types/balancer-admin.types";
 import type { RegistrationForm } from "@/types/registration.types";
 import { cn } from "@/lib/utils";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 
 type RegistrationStatusFilter = "all" | "pending" | "approved" | "rejected" | "withdrawn" | "banned" | "insufficient_data";
 type InclusionFilter = "all" | "included" | "excluded";
@@ -283,6 +285,8 @@ type ManualDraft = {
   admin_notes: string;
   is_flex: boolean;
   stream_pov: boolean;
+  status: string;
+  balancer_status: string;
   roles: Record<BalancerRoleCode, RoleDraft>;
 };
 
@@ -315,6 +319,8 @@ function createEmptyManualDraft(): ManualDraft {
     admin_notes: "",
     is_flex: false,
     stream_pov: false,
+    status: "approved",
+    balancer_status: "not_in_balancer",
     roles: {
       tank: createRoleDraft("tank"),
       dps: createRoleDraft("dps"),
@@ -334,6 +340,8 @@ function buildManualDraftFromRegistration(registration: AdminRegistration): Manu
   draft.admin_notes = registration.admin_notes ?? "";
   draft.is_flex = registration.is_flex;
   draft.stream_pov = registration.stream_pov;
+  draft.status = registration.status;
+  draft.balancer_status = registration.balancer_status;
 
   for (const role of registration.roles) {
     draft.roles[role.role] = {
@@ -441,6 +449,8 @@ function RegistrationProfileForm({
   draft,
   setDraft,
   step,
+  registrationStatusOptions,
+  balancerStatusOptions,
   onStepChange,
   onCancel,
   onSubmit,
@@ -451,6 +461,8 @@ function RegistrationProfileForm({
   draft: ManualDraft;
   setDraft: Dispatch<SetStateAction<ManualDraft>>;
   step: number;
+  registrationStatusOptions: { system: Array<{ value: string; name: string }>; custom: Array<{ value: string; name: string }> };
+  balancerStatusOptions: { system: Array<{ value: string; name: string }>; custom: Array<{ value: string; name: string }> };
   onStepChange: (step: number) => void;
   onCancel: () => void;
   onSubmit: () => void;
@@ -521,24 +533,30 @@ function RegistrationProfileForm({
   };
 
   const setAdditionalRolesList = (roles: AdditionalRole[]) => {
-    setDraft((current) => ({
-      ...current,
-      roles: Object.fromEntries(
-        ROLE_OPTIONS.map((role) => {
-          const entry = roles.find((candidate) => candidate.code === role);
-          const isPrimary = !current.is_flex && primaryRoleCode === role;
-          return [
-            role,
-            {
-              ...current.roles[role],
-              enabled: isPrimary || Boolean(entry),
-              is_primary: isPrimary,
-              subrole: entry?.subrole ?? (isPrimary ? current.roles[role].subrole : ""),
-            },
-          ];
-        }),
-      ) as ManualDraft["roles"],
-    }));
+    setDraft((current) => {
+      const currentPrimaryRoleCode = current.is_flex
+        ? ""
+        : (ROLE_OPTIONS.find((candidateRole) => current.roles[candidateRole].enabled && current.roles[candidateRole].is_primary) ?? "");
+
+      return {
+        ...current,
+        roles: Object.fromEntries(
+          ROLE_OPTIONS.map((role) => {
+            const entry = roles.find((candidate) => candidate.code === role);
+            const isPrimary = currentPrimaryRoleCode === role;
+            return [
+              role,
+              {
+                ...current.roles[role],
+                enabled: isPrimary || Boolean(entry),
+                is_primary: isPrimary,
+                subrole: entry?.subrole ?? (isPrimary ? current.roles[role].subrole : ""),
+              },
+            ];
+          }),
+        ) as ManualDraft["roles"],
+      };
+    });
   };
 
   return (
@@ -681,6 +699,56 @@ function RegistrationProfileForm({
                 placeholder="Internal notes for admins only"
               />
             </div>
+            <div className="space-y-2">
+              <FieldLabel label="Registration Status" icon={<BadgeInfo className="size-3.5" />} />
+              <Select
+                value={draft.status}
+                onValueChange={(value) => setDraft((current) => ({ ...current, status: value }))}
+              >
+                <SelectTrigger className={ADMIN_INPUT_CLASS}>
+                  <SelectValue placeholder="Select registration status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {registrationStatusOptions.system.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.name} · System
+                    </SelectItem>
+                  ))}
+                  {registrationStatusOptions.custom.length > 0 ? (
+                    registrationStatusOptions.custom.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.name} · Custom
+                      </SelectItem>
+                    ))
+                  ) : null}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <FieldLabel label="Balancer Status" icon={<BadgeInfo className="size-3.5" />} />
+              <Select
+                value={draft.balancer_status}
+                onValueChange={(value) => setDraft((current) => ({ ...current, balancer_status: value }))}
+              >
+                <SelectTrigger className={ADMIN_INPUT_CLASS}>
+                  <SelectValue placeholder="Select balancer status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {balancerStatusOptions.system.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.name} · System
+                    </SelectItem>
+                  ))}
+                  {balancerStatusOptions.custom.length > 0 ? (
+                    balancerStatusOptions.custom.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.name} · Custom
+                      </SelectItem>
+                    ))
+                  ) : null}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/20 px-4 py-3">
@@ -743,6 +811,7 @@ export default function BalancerRegistrationsPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const searchParams = useSearchParams();
+  const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<RegistrationStatusFilter>(
@@ -780,6 +849,20 @@ export default function BalancerRegistrationsPage() {
     queryFn: () => balancerAdminService.getTournamentSheet(tournamentId as number),
     enabled: tournamentId !== null,
   });
+
+  const customStatusesQuery = useQuery({
+    queryKey: ["balancer-admin", "status-catalog", workspaceId],
+    queryFn: () => balancerAdminService.listStatusCatalog(workspaceId as number),
+    enabled: workspaceId !== null,
+  });
+  const registrationStatusOptions = useMemo(
+    () => mergeStatusOptions("registration", customStatusesQuery.data),
+    [customStatusesQuery.data],
+  );
+  const balancerStatusOptions = useMemo(
+    () => mergeStatusOptions("balancer", customStatusesQuery.data),
+    [customStatusesQuery.data],
+  );
 
   const invalidateRegistrations = async () => {
     await queryClient.invalidateQueries({ queryKey: ["balancer-admin", "registrations", tournamentId] });
@@ -826,6 +909,8 @@ export default function BalancerRegistrationsPage() {
         admin_notes: editingDraft.admin_notes || null,
         is_flex: editingDraft.is_flex,
         stream_pov: editingDraft.stream_pov,
+        status: editingDraft.status,
+        balancer_status: editingDraft.balancer_status,
         roles: buildRolePayload(editingDraft.roles, editingDraft.is_flex),
       });
     },
@@ -1320,6 +1405,8 @@ export default function BalancerRegistrationsPage() {
               draft={manualDraft}
               setDraft={setManualDraft}
               step={createStep}
+              registrationStatusOptions={registrationStatusOptions}
+              balancerStatusOptions={balancerStatusOptions}
               onStepChange={setCreateStep}
               onCancel={() => {
                 setCreateOpen(false);
@@ -1357,6 +1444,8 @@ export default function BalancerRegistrationsPage() {
               draft={editingDraft}
               setDraft={setEditingDraft}
               step={editStep}
+              registrationStatusOptions={registrationStatusOptions}
+              balancerStatusOptions={balancerStatusOptions}
               onStepChange={setEditStep}
               onCancel={() => {
                 setEditStep(0);

@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 from src.core.config import config
 from src.core.job_store import close_job_store
+from src.routes.admin import admin_router
 from src.views import router, task_router
 
 from shared.clients import AuthClient
@@ -111,6 +112,7 @@ instrument_fastapi(app)
 
 app.include_router(router)
 app.include_router(task_router)
+app.include_router(admin_router)
 
 
 @app.get("/health/live")

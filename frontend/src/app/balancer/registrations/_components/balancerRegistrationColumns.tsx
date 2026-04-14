@@ -2,17 +2,13 @@
 
 import type { ReactNode } from "react";
 import {
-  AlertTriangle,
   CheckCircle2,
   Circle,
-  Clock,
-  MinusCircle,
-  ShieldBan,
-  Undo2,
   XCircle,
 } from "lucide-react";
 
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import StatusMetaBadge from "@/components/status/StatusMetaBadge";
 import { cn } from "@/lib/utils";
 import type {
   AdminRegistration,
@@ -223,108 +219,12 @@ function TextBlockCell({ value }: { value: string | null | undefined }) {
   );
 }
 
-function StatusBadge({ status }: { status: AdminRegistration["status"] }) {
-  const config: Record<
-    AdminRegistration["status"],
-    { label: string; fullLabel: string; icon: typeof Clock; className: string }
-  > = {
-    pending: {
-      label: "Review",
-      fullLabel: "In Review",
-      icon: Clock,
-      className: "border-amber-500/20 bg-amber-500/10 text-amber-400",
-    },
-    approved: {
-      label: "Approved",
-      fullLabel: "Approved",
-      icon: CheckCircle2,
-      className: "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
-    },
-    rejected: {
-      label: "Rejected",
-      fullLabel: "Rejected",
-      icon: XCircle,
-      className: "border-red-500/20 bg-red-500/10 text-red-400",
-    },
-    withdrawn: {
-      label: "Withdrawn",
-      fullLabel: "Withdrawn",
-      icon: Undo2,
-      className: "border-white/10 bg-white/5 text-white/40",
-    },
-    banned: {
-      label: "Banned",
-      fullLabel: "Banned",
-      icon: ShieldBan,
-      className: "border-red-500/20 bg-red-500/10 text-red-400",
-    },
-    insufficient_data: {
-      label: "Missing",
-      fullLabel: "Incomplete",
-      icon: AlertTriangle,
-      className: "border-orange-500/20 bg-orange-500/10 text-orange-400",
-    },
-  };
-
-  const entry = config[status];
-  const Icon = entry.icon;
-
-  return (
-    <span
-      title={entry.fullLabel}
-      aria-label={entry.fullLabel}
-      className={cn(
-        "inline-flex items-center gap-1 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[11px] font-medium",
-        entry.className,
-      )}
-    >
-      <Icon className="size-3" />
-      {entry.label}
-    </span>
-  );
+function StatusBadge({ registration }: { registration: AdminRegistration }) {
+  return <StatusMetaBadge meta={registration.status_meta} fallbackValue={registration.status} />;
 }
 
-function BalancerBadge({ status }: { status: AdminRegistration["balancer_status"] }) {
-  const config: Record<
-    AdminRegistration["balancer_status"],
-    { label: string; fullLabel: string; icon: typeof MinusCircle; className: string }
-  > = {
-    not_in_balancer: {
-      label: "Out",
-      fullLabel: "Not Added",
-      icon: MinusCircle,
-      className: "border-white/10 bg-white/5 text-white/40",
-    },
-    incomplete: {
-      label: "Fix",
-      fullLabel: "Incomplete",
-      icon: AlertTriangle,
-      className: "border-orange-500/20 bg-orange-500/10 text-orange-400",
-    },
-    ready: {
-      label: "Ready",
-      fullLabel: "Ready",
-      icon: CheckCircle2,
-      className: "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
-    },
-  };
-
-  const entry = config[status];
-  const Icon = entry.icon;
-
-  return (
-    <span
-      title={entry.fullLabel}
-      aria-label={entry.fullLabel}
-      className={cn(
-        "inline-flex items-center gap-1 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[11px] font-medium",
-        entry.className,
-      )}
-    >
-      <Icon className="size-3" />
-      {entry.label}
-    </span>
-  );
+function BalancerBadge({ registration }: { registration: AdminRegistration }) {
+  return <StatusMetaBadge meta={registration.balancer_status_meta} fallbackValue={registration.balancer_status} />;
 }
 
 function CheckInBadge({ checkedIn }: { checkedIn: boolean }) {
@@ -455,7 +355,7 @@ export function buildBalancerRegistrationColumns(): BalancerRegistrationColumnDe
       defaultVisible: true,
       responsive: "always",
       align: "center",
-      render: (registration) => <StatusBadge status={registration.status} />,
+      render: (registration) => <StatusBadge registration={registration} />,
       searchValue: (registration) => registration.status,
     },
     {
@@ -465,7 +365,7 @@ export function buildBalancerRegistrationColumns(): BalancerRegistrationColumnDe
       defaultVisible: true,
       responsive: "always",
       align: "center",
-      render: (registration) => <BalancerBadge status={registration.balancer_status} />,
+      render: (registration) => <BalancerBadge registration={registration} />,
       searchValue: (registration) => registration.balancer_status,
     },
     {

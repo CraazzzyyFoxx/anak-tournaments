@@ -25,6 +25,7 @@ __all__ = (
     "BalancerRegistrationGoogleSheetBinding",
     "BalancerRegistrationGoogleSheetFeed",
     "BalancerRegistrationRole",
+    "BalancerRegistrationStatus",
     "BalancerTeam",
     "BalancerTeamSlot",
     "BalancerTournamentSheet",
@@ -280,6 +281,40 @@ class BalancerRegistrationForm(db.TimeStampIntegerMixin):
     )
 
     tournament: Mapped["Tournament"] = relationship()
+    workspace: Mapped["Workspace"] = relationship()
+
+
+class BalancerRegistrationStatus(db.TimeStampIntegerMixin):
+    __tablename__ = "registration_status"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id",
+            "scope",
+            "slug",
+            "kind",
+            name="uq_balancer_registration_status_workspace_scope_slug",
+        ),
+        Index(
+            "ix_balancer_registration_status_workspace_scope",
+            "workspace_id",
+            "scope",
+        ),
+        {"schema": "balancer"},
+    )
+
+    workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("workspace.id", ondelete="CASCADE"),
+        index=True,
+        nullable=True,
+    )
+    scope: Mapped[str] = mapped_column(String(32), nullable=False)
+    slug: Mapped[str] = mapped_column(String(32), nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False, default="custom", server_default="custom")
+    icon_slug: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    icon_color: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text(), nullable=True)
+
     workspace: Mapped["Workspace"] = relationship()
 
 

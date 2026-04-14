@@ -465,7 +465,7 @@ export function buildParticipantColumns(
     defaultVisible: true,
     responsive: "always",
     align: "center",
-    render: (reg) => <StatusBadge status={reg.status} />,
+    render: (reg) => <StatusBadge status={reg.status} meta={reg.status_meta} />,
   });
 
   // Meta: balancer status
@@ -476,7 +476,7 @@ export function buildParticipantColumns(
     defaultVisible: true,
     responsive: "md",
     align: "center",
-    render: (reg) => <BalancerStatusBadge status={reg.balancer_status} />,
+    render: (reg) => <BalancerStatusBadge status={reg.balancer_status} meta={reg.balancer_status_meta} />,
   });
 
   // Meta: check-in status

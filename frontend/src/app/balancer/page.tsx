@@ -32,11 +32,13 @@ import {
 import { BalanceEditor } from "@/components/balancer/BalanceEditor";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { mergeStatusOptions } from "@/lib/balancer-statuses";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import balancerAdminService from "@/services/balancer-admin.service";
 import balancerService from "@/services/balancer.service";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { BalancerRoleCode } from "@/types/balancer-admin.types";
 
 type WorkflowStepProps = {
@@ -114,6 +116,7 @@ function WorkflowStep({ step, label, status, detail, isLast, action }: WorkflowS
 export default function BalancerMainPage() {
   const tournamentId = useBalancerTournamentId();
   const divisionGrid = useDivisionGrid();
+  const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const sidebarRef = useRef<BalancingPoolSidebarHandle>(null);
@@ -154,6 +157,11 @@ export default function BalancerMainPage() {
     queryFn: () => balancerAdminService.getBalance(tournamentId as number),
     enabled: tournamentId !== null,
     refetchOnWindowFocus: false,
+  });
+  const customStatusesQuery = useQuery({
+    queryKey: ["balancer-admin", "status-catalog", workspaceId],
+    queryFn: () => balancerAdminService.listStatusCatalog(workspaceId as number),
+    enabled: workspaceId !== null,
   });
 
   // ── Reset on tournament change ────────────────────────────────────────
@@ -265,6 +273,14 @@ export default function BalancerMainPage() {
     [activeVariantId, variants],
   );
   const quickEditPlayer = players.find((p) => p.id === editingPlayerId) ?? null;
+  const quickEditRegistration = editingPlayerId !== null ? registrationsById.get(editingPlayerId) ?? null : null;
+  const playerStatusOptions = useMemo(
+    () => ({
+      registration: mergeStatusOptions("registration", customStatusesQuery.data),
+      balancer: mergeStatusOptions("balancer", customStatusesQuery.data),
+    }),
+    [customStatusesQuery.data],
+  );
 
   const presetOptions = Object.keys(balancerConfigQuery.data?.presets ?? { DEFAULT: {} });
 
@@ -372,6 +388,8 @@ export default function BalancerMainPage() {
       {quickEditPlayer ? (
         <PlayerEditModal
           player={quickEditPlayer}
+          registration={quickEditRegistration}
+          statusOptions={playerStatusOptions}
           open={editingPlayerId !== null}
           onOpenChange={(open) => {
             if (!open) {
