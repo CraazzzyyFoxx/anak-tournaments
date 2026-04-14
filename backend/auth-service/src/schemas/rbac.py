@@ -9,6 +9,7 @@ __all__ = (
     "AuthUserLinkedPlayerRead",
     "AuthUserListRead",
     "AuthUserDetailRead",
+    "AdminSessionRead",
     "AuthUserPlayerLinkAssign",
     "PermissionBase",
     "PermissionCreate",
@@ -121,6 +122,22 @@ class AuthUserDetailRead(AuthUserListRead):
     """Schema for auth-user detail view with effective permissions."""
 
     effective_permissions: list[str] = Field(default_factory=list)
+
+
+class AdminSessionRead(BaseModel):
+    """Schema for superuser session inventory across all auth users."""
+
+    session_id: str
+    user_id: int
+    email: str | None = None
+    username: str | None = None
+    status: str
+    login_at: datetime
+    last_seen_at: datetime
+    expires_at: datetime
+    revoked_at: datetime | None = None
+    user_agent: str | None = None
+    ip_address: str | None = None
 
 
 class AuthUserPlayerLinkAssign(BaseModel):

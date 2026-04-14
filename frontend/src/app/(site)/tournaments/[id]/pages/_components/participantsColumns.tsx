@@ -363,7 +363,7 @@ export function buildParticipantColumns(
     id: "_index",
     label: "#",
     category: "meta",
-    defaultVisible: true,
+    defaultVisible: false,
     responsive: "always",
     render: (_reg, index) => (
       <span className="text-white/30 tabular-nums">{index + 1}</span>

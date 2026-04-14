@@ -5,6 +5,7 @@ from .auth import (
     AuthUserWorkspace,
     PasswordSetRequest,
     RefreshTokenRequest,
+    SessionRead,
     ServiceToken,
     ServiceTokenPayload,
     ServiceTokenRequest,
@@ -28,6 +29,7 @@ from .oauth import (
     PlayerLinkResponse,
 )
 from .rbac import (
+    AdminSessionRead,
     AuthUserDetailRead,
     AuthUserLinkedPlayerRead,
     AuthUserListRead,
@@ -49,6 +51,7 @@ __all__ = [
     "UserLogin",
     "Token",
     "TokenPayload",
+    "SessionRead",
     "RefreshTokenRequest",
     "PasswordSetRequest",
     "ServiceTokenRequest",
@@ -68,6 +71,7 @@ __all__ = [
     "PlayerLinkRequest",
     "PlayerLinkResponse",
     "LinkedPlayer",
+    "AdminSessionRead",
     "AuthUserListRead",
     "AuthUserDetailRead",
     "AuthUserLinkedPlayerRead",

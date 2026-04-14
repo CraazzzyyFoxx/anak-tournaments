@@ -8,6 +8,7 @@ __all__ = (
     "UserLogin",
     "Token",
     "TokenPayload",
+    "SessionRead",
     "RefreshTokenRequest",
     "PasswordSetRequest",
     "ServiceTokenRequest",
@@ -69,6 +70,20 @@ class Token(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
+
+
+class SessionRead(BaseModel):
+    """Logical auth session visible to the current user."""
+
+    session_id: str
+    is_current: bool = False
+    status: str
+    login_at: datetime
+    last_seen_at: datetime
+    expires_at: datetime
+    revoked_at: datetime | None = None
+    user_agent: str | None = None
+    ip_address: str | None = None
 
 
 class WorkspaceMembership(BaseModel):

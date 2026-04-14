@@ -204,6 +204,13 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         permissions: accessUsersPermissions,
       },
       {
+        title: "Sessions",
+        href: "/admin/access/sessions",
+        icon: Shield,
+        description: "Inspect logical auth sessions across all users.",
+        superuserOnly: true,
+      },
+      {
         title: "Workspaces",
         href: "/admin/workspaces",
         icon: Building2,
@@ -237,6 +244,7 @@ export const adminRoutePermissions: Array<{
   { prefix: "/admin/access/users", permissions: accessUsersPermissions },
   { prefix: "/admin/access/roles", permissions: accessRolesPermissions, workspaceAdminVisible: true },
   { prefix: "/admin/access/oauth", permissions: accessUsersPermissions },
+  { prefix: "/admin/access/sessions", permissions: [], superuserOnly: true },
   { prefix: "/admin/access/permissions", permissions: accessPermissionsPermissions },
   { prefix: "/admin/access", permissions: accessAdminPermissions },
   { prefix: "/admin/workspaces/members", permissions: [], workspaceAdminVisible: true },

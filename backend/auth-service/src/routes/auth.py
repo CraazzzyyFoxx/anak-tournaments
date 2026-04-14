@@ -3,6 +3,7 @@ Authentication routes
 """
 
 from typing import Annotated
+from uuid import UUID
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
@@ -16,6 +17,7 @@ from src import models, schemas
 from src.core import db
 from src.services import auth_service
 from src.services.oauth_service import OAuthService
+from src.services.session_service import SessionService
 from src.services.session_cache import get_rbac, set_rbac
 
 
@@ -67,17 +69,27 @@ async def login(
         logger.bind(user_id=str(user.id)).warning("Login attempt for inactive user")
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User account is inactive")
 
+    session_id, session_started_at = auth_service.AuthService.create_session_metadata()
+
     access_token = auth_service.AuthService.create_access_token(
         data={
             "sub": str(user.id),
             "email": user.email,
             "username": user.username,
             "is_superuser": user.is_superuser,
+            "sid": str(session_id),
         }
     )
 
     refresh_token = auth_service.AuthService.create_refresh_token()
-    await auth_service.AuthService.create_refresh_token_db(session, user.id, refresh_token, request)
+    await auth_service.AuthService.create_refresh_token_db(
+        session,
+        user.id,
+        refresh_token,
+        request,
+        session_id=session_id,
+        session_started_at=session_started_at,
+    )
 
     logger.bind(user_id=str(user.id)).success("User logged in successfully")
     return schemas.Token(access_token=access_token, refresh_token=refresh_token)
@@ -92,9 +104,17 @@ async def refresh_token(
     """Refresh access token using refresh token"""
     logger.info("Token refresh attempt")
 
-    user = await auth_service.AuthService.get_user_by_refresh_token(session, token_data.refresh_token)
-    if not user:
+    refresh_token_record = await auth_service.AuthService.get_active_refresh_token_record(
+        session, token_data.refresh_token
+    )
+    if not refresh_token_record:
+        await auth_service.AuthService.get_user_by_refresh_token(session, token_data.refresh_token)
         logger.warning("Invalid or expired refresh token")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired refresh token")
+
+    user = await auth_service.AuthService.get_user_with_rbac(session, refresh_token_record.user_id)
+    if not user:
+        logger.warning("Refresh token user no longer exists")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired refresh token")
 
     if not user.is_active:
@@ -117,6 +137,7 @@ async def refresh_token(
             "email": user.email,
             "username": user.username,
             "is_superuser": user.is_superuser,
+            "sid": str(refresh_token_record.session_id),
         }
     )
 
@@ -126,6 +147,8 @@ async def refresh_token(
         user.id,
         new_refresh_token,
         request,
+        session_id=refresh_token_record.session_id,
+        session_started_at=refresh_token_record.session_started_at,
         commit=False,
     )
     await session.commit()
@@ -153,7 +176,10 @@ async def logout(
             detail="Refresh token does not belong to the current user",
         )
 
-    await auth_service.AuthService.revoke_refresh_token(session, token_data.refresh_token)
+    if refresh_token is not None and refresh_token.session_id is not None:
+        await auth_service.AuthService.revoke_session_tokens(session, current_user.id, refresh_token.session_id)
+    else:
+        await auth_service.AuthService.revoke_refresh_token(session, token_data.refresh_token)
     logger.bind(user_id=str(current_user.id)).success("User logged out")
 
 
@@ -167,6 +193,48 @@ async def logout_all(
 
     count = await auth_service.AuthService.revoke_all_user_tokens(session, current_user.id)
     logger.bind(user_id=str(current_user.id), count=count).success("Revoked all tokens")
+
+
+@router.get("/sessions", response_model=list[schemas.SessionRead])
+async def list_current_user_sessions(
+    session: Annotated[AsyncSession, Depends(db.get_async_session)],
+    current_user: Annotated[models.AuthUser, Depends(auth_service.get_current_active_user)],
+):
+    """List logical sessions for the current user."""
+    current_session_id = getattr(current_user, "_current_session_id", None)
+    summaries = await SessionService.list_user_sessions(
+        session,
+        current_user.id,
+        current_session_id=current_session_id,
+    )
+    return [schemas.SessionRead.model_validate(summary) for summary in summaries]
+
+
+@router.delete("/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def revoke_current_user_session(
+    session_id: UUID,
+    session: Annotated[AsyncSession, Depends(db.get_async_session)],
+    current_user: Annotated[models.AuthUser, Depends(auth_service.get_current_active_user)],
+):
+    """Revoke another logical session owned by the current user."""
+    current_session_id = getattr(current_user, "_current_session_id", None)
+    if current_session_id == str(session_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current session cannot be revoked from the sessions list",
+        )
+
+    summary = await SessionService.get_user_session(
+        session,
+        current_user.id,
+        session_id,
+        current_session_id=current_session_id,
+    )
+    if summary is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    await auth_service.AuthService.revoke_session_tokens(session, current_user.id, session_id)
+    logger.bind(user_id=str(current_user.id), session_id=str(session_id)).success("User session revoked")
 
 
 @router.get("/me", response_model=schemas.AuthUser)

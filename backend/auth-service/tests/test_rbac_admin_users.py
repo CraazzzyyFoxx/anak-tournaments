@@ -254,6 +254,46 @@ def test_get_auth_user_route_raises_not_found(monkeypatch: pytest.MonkeyPatch) -
     assert exc_info.value.detail == "User not found"
 
 
+def test_list_auth_sessions_route_returns_superuser_inventory(monkeypatch: pytest.MonkeyPatch) -> None:
+    now = datetime.now(UTC)
+
+    async def fake_list_all_sessions(session, *, user_id=None, search=None, status=None):
+        assert user_id == 12
+        assert search == "ada"
+        assert status == "active"
+        return [
+            {
+                "session_id": "session-1",
+                "user_id": 12,
+                "email": "ada@example.com",
+                "username": "ada",
+                "status": "active",
+                "login_at": now,
+                "last_seen_at": now,
+                "expires_at": now,
+                "revoked_at": None,
+                "user_agent": "Chrome",
+                "ip_address": "10.0.0.1",
+            }
+        ]
+
+    monkeypatch.setattr("src.routes.rbac.SessionService.list_all_sessions", fake_list_all_sessions)
+
+    response = asyncio.run(
+        rbac_routes.list_auth_sessions(
+            session=object(),
+            current_user=SimpleNamespace(is_superuser=True),
+            user_id=12,
+            search="ada",
+            status="active",
+        )
+    )
+
+    assert len(response) == 1
+    assert response[0].session_id == "session-1"
+    assert response[0].email == "ada@example.com"
+
+
 def test_assign_linked_player_to_auth_user_route_calls_admin_link_service(monkeypatch: pytest.MonkeyPatch) -> None:
     user = _user(9, "grace@example.com", roles=[])
 

@@ -3,6 +3,7 @@ import hmac
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
+from uuid import UUID, uuid4
 
 import bcrypt
 from fastapi import Depends, HTTPException, status
@@ -32,6 +33,36 @@ security = HTTPBearer()
 
 class AuthService:
     """Service for handling authentication operations"""
+
+    @staticmethod
+    def get_request_client_metadata(request: Request | None) -> tuple[str | None, str | None]:
+        """Extract original client metadata, preferring proxy-forwarded headers."""
+        if request is None:
+            return None, None
+
+        headers = request.headers
+
+        user_agent = headers.get("x-original-user-agent") or headers.get("user-agent")
+
+        forwarded_for = headers.get("x-forwarded-for") or headers.get("x-vercel-forwarded-for")
+        ip_address = None
+        if forwarded_for:
+            for candidate in forwarded_for.split(","):
+                candidate = candidate.strip()
+                if candidate and candidate.lower() != "unknown":
+                    ip_address = candidate
+                    break
+
+        if ip_address is None:
+            ip_address = (
+                headers.get("x-real-ip")
+                or headers.get("cf-connecting-ip")
+                or headers.get("true-client-ip")
+                or headers.get("x-client-ip")
+                or (request.client.host if request.client else None)
+            )
+
+        return user_agent, ip_address
 
     @staticmethod
     def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -186,6 +217,12 @@ class AuthService:
     def create_refresh_token() -> str:
         """Create a random refresh token"""
         return secrets.token_urlsafe(32)
+
+    @staticmethod
+    def create_session_metadata() -> tuple[UUID, datetime]:
+        """Create a logical-session identifier reused across refresh rotation."""
+        started_at = datetime.now(UTC)
+        return uuid4(), started_at
 
     @staticmethod
     def hash_refresh_token(token: str) -> str:
@@ -345,18 +382,28 @@ class AuthService:
         user_id: int,
         token: str,
         request: Request | None = None,
+        session_id: UUID | None = None,
+        session_started_at: datetime | None = None,
         commit: bool = True,
     ) -> models.RefreshToken:
         """Store refresh token in database"""
         expires_at = datetime.now(UTC) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
         token_hash = AuthService.hash_refresh_token(token)
+        if session_id is None or session_started_at is None:
+            generated_session_id, generated_started_at = AuthService.create_session_metadata()
+            session_id = session_id or generated_session_id
+            session_started_at = session_started_at or generated_started_at
+
+        user_agent, ip_address = AuthService.get_request_client_metadata(request)
 
         refresh_token = models.RefreshToken(
             token=token_hash,
             user_id=user_id,
+            session_id=session_id,
+            session_started_at=session_started_at,
             expires_at=expires_at,
-            user_agent=request.headers.get("user-agent") if request else None,
-            ip_address=request.client.host if request and request.client else None,
+            user_agent=user_agent,
+            ip_address=ip_address,
         )
         session.add(refresh_token)
         if commit:
@@ -371,17 +418,22 @@ class AuthService:
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def get_user_by_refresh_token(session: AsyncSession, token: str) -> models.AuthUser | None:
-        """Get user by refresh token"""
+    async def get_active_refresh_token_record(session: AsyncSession, token: str) -> models.RefreshToken | None:
+        """Get a non-revoked, non-expired refresh-token record by raw token value."""
         token_hash = AuthService.hash_refresh_token(token)
-
         result = await session.execute(
             select(models.RefreshToken)
             .where(models.RefreshToken.token == token_hash)
             .where(models.RefreshToken.is_revoked.is_(False))
             .where(models.RefreshToken.expires_at > datetime.now(UTC))
         )
-        refresh_token = result.scalar_one_or_none()
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def get_user_by_refresh_token(session: AsyncSession, token: str) -> models.AuthUser | None:
+        """Get user by refresh token"""
+        token_hash = AuthService.hash_refresh_token(token)
+        refresh_token = await AuthService.get_active_refresh_token_record(session, token)
 
         if refresh_token:
             result = await session.execute(
@@ -396,12 +448,18 @@ class AuthService:
             logger.bind(user_id=str(reused_token.user_id)).error(
                 "Refresh token reuse detected; revoking only the matching browser session"
             )
-            if reused_token.user_agent or reused_token.ip_address:
+            reused_session_id = getattr(reused_token, "session_id", None)
+            reused_user_agent = getattr(reused_token, "user_agent", None)
+            reused_ip_address = getattr(reused_token, "ip_address", None)
+
+            if reused_session_id is not None:
+                await AuthService.revoke_session_tokens(session, reused_token.user_id, reused_session_id)
+            elif reused_user_agent or reused_ip_address:
                 await AuthService.revoke_user_session_tokens(
                     session,
                     reused_token.user_id,
-                    reused_token.user_agent,
-                    reused_token.ip_address,
+                    reused_user_agent,
+                    reused_ip_address,
                 )
             else:
                 await AuthService.revoke_all_user_tokens(session, reused_token.user_id)
@@ -422,10 +480,43 @@ class AuthService:
         if not refresh_token:
             return False
 
+        if refresh_token.is_revoked:
+            return True
+
         refresh_token.is_revoked = True
+        refresh_token.revoked_at = datetime.now(UTC)
         if commit:
             await session.commit()
         return True
+
+    @staticmethod
+    async def revoke_session_tokens(
+        session: AsyncSession,
+        user_id: int,
+        session_id: UUID,
+        commit: bool = True,
+    ) -> int:
+        """Revoke active tokens for a logical session family."""
+        result = await session.execute(
+            select(models.RefreshToken)
+            .where(models.RefreshToken.user_id == user_id)
+            .where(models.RefreshToken.session_id == session_id)
+            .where(models.RefreshToken.is_revoked.is_(False))
+        )
+        tokens = result.scalars().all()
+
+        now = datetime.now(UTC)
+        count = 0
+        for token in tokens:
+            if token.session_id != session_id:
+                continue
+            token.is_revoked = True
+            token.revoked_at = now
+            count += 1
+
+        if commit:
+            await session.commit()
+        return count
 
     @staticmethod
     async def revoke_user_session_tokens(
@@ -460,6 +551,7 @@ class AuthService:
             if not same_browser and not same_network:
                 continue
             token.is_revoked = True
+            token.revoked_at = datetime.now(UTC)
             count += 1
 
         if commit:
@@ -481,8 +573,10 @@ class AuthService:
         tokens = result.scalars().all()
 
         count = 0
+        now = datetime.now(UTC)
         for token in tokens:
             token.is_revoked = True
+            token.revoked_at = now
             count += 1
 
         if commit:
@@ -505,6 +599,7 @@ async def get_current_user(
         payload = AuthService.decode_token(token.credentials)
         user_id_str = payload.get("sub")
         token_type = payload.get("type")
+        session_id = payload.get("sid")
 
         if not user_id_str or token_type != "access":
             raise credentials_exception
@@ -518,6 +613,9 @@ async def get_current_user(
 
     if user is None:
         raise credentials_exception
+
+    if isinstance(session_id, str) and session_id:
+        object.__setattr__(user, "_current_session_id", session_id)
 
     return user
 

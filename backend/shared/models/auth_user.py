@@ -1,6 +1,8 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
-from sqlalchemy import Boolean, ForeignKey, String, Text
+from uuid import UUID
+
+from sqlalchemy import Boolean, ForeignKey, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db
@@ -170,8 +172,11 @@ class RefreshToken(db.TimeStampIntegerMixin):
 
     token: Mapped[str] = mapped_column(Text(), unique=True, index=True, nullable=False)
     user_id: Mapped[int] = mapped_column(ForeignKey("auth.user.id", ondelete="CASCADE"), nullable=False)
+    session_id: Mapped[UUID] = mapped_column(Uuid(), index=True, nullable=False)
+    session_started_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), nullable=False)
     is_revoked: Mapped[bool] = mapped_column(Boolean(), default=False, nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True), nullable=True)
 
     # User agent and IP for security
     user_agent: Mapped[str | None] = mapped_column(String(500), nullable=True)

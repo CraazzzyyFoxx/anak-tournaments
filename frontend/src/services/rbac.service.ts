@@ -1,5 +1,6 @@
 import { apiFetch } from "@/lib/api-fetch";
 import type {
+  AdminAuthSession,
   AssignLinkedPlayerPayload,
   AssignRolePayload,
   AuthAdminUser,
@@ -136,5 +137,15 @@ export const rbacService = {
     return rbacFetch<void>(`/rbac/oauth-connections/${connectionId}`, {
       method: "DELETE",
     });
+  },
+
+  listSessions(params?: { user_id?: number; search?: string; status?: "active" | "revoked" | "expired" }) {
+    const searchParams = new URLSearchParams();
+    if (params?.user_id !== undefined) searchParams.set("user_id", String(params.user_id));
+    if (params?.search) searchParams.set("search", params.search);
+    if (params?.status) searchParams.set("status", params.status);
+
+    const suffix = searchParams.toString() ? `?${searchParams.toString()}` : "";
+    return rbacFetch<AdminAuthSession[]>(`/rbac/sessions${suffix}`);
   },
 };

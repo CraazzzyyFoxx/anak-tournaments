@@ -4,6 +4,20 @@ export interface TokenPair {
   token_type?: "bearer" | string;
 }
 
+export type AccountSessionStatus = "active" | "revoked" | "expired";
+
+export interface AccountSession {
+  session_id: string;
+  is_current: boolean;
+  status: AccountSessionStatus;
+  login_at: string;
+  last_seen_at: string;
+  expires_at: string;
+  revoked_at?: string | null;
+  user_agent?: string | null;
+  ip_address?: string | null;
+}
+
 export interface AuthUser {
   id: number;
   email: string;

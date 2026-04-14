@@ -7,6 +7,8 @@ type OAuthUrlResponse = {
   state: string;
 };
 
+type ForwardedAuthHeaders = Record<string, string>;
+
 export const authService = {
   async getOAuthUrl(provider: OAuthProviderName): Promise<OAuthUrlResponse> {
     const res = await apiFetch("auth", `/oauth/${provider}/url`, { throwOnError: false });
@@ -20,19 +22,32 @@ export const authService = {
     return res.json();
   },
 
-  async exchangeOAuthCode(provider: OAuthProviderName, code: string, state: string): Promise<TokenPair> {
+  async exchangeOAuthCode(
+    provider: OAuthProviderName,
+    code: string,
+    state: string,
+    headers?: ForwardedAuthHeaders,
+  ): Promise<TokenPair> {
     const res = await apiFetch("auth", `/oauth/${provider}/callback`, {
       query: { code, state },
+      headers,
       throwOnError: false
     });
     if (!res.ok) throw new Error(`Failed to complete ${provider} OAuth`);
     return res.json();
   },
 
-  async linkOAuth(provider: OAuthProviderName, code: string, state: string, accessToken: string): Promise<void> {
+  async linkOAuth(
+    provider: OAuthProviderName,
+    code: string,
+    state: string,
+    accessToken: string,
+    headers?: ForwardedAuthHeaders,
+  ): Promise<void> {
     const res = await apiFetch("auth", `/oauth/${provider}/link`, {
       method: "POST",
       token: accessToken,
+      headers,
       body: { code, state },
       throwOnError: false
     });
@@ -50,9 +65,10 @@ export const authService = {
     return res.json();
   },
 
-  async refresh(refreshToken: string): Promise<TokenPair> {
+  async refresh(refreshToken: string, headers?: ForwardedAuthHeaders): Promise<TokenPair> {
     const res = await apiFetch("auth", "/refresh", {
       method: "POST",
+      headers,
       body: { refresh_token: refreshToken },
       throwOnError: false
     });
@@ -68,15 +84,16 @@ export const authService = {
     return res.json();
   },
 
-  async logout(accessToken?: string, refreshToken?: string): Promise<void> {
+  async logout(accessToken?: string, refreshToken?: string, headers?: ForwardedAuthHeaders): Promise<void> {
     const res = accessToken
       ? await apiFetch("auth", "/logout", {
           method: "POST",
           token: accessToken,
+          headers,
           body: refreshToken ? { refresh_token: refreshToken } : undefined,
           throwOnError: false
         })
-      : await apiFetch("auth", "/logout", { method: "POST", throwOnError: false });
+      : await apiFetch("auth", "/logout", { method: "POST", headers, throwOnError: false });
 
     // /logout returns 204
     if (!res.ok && res.status !== 204) {

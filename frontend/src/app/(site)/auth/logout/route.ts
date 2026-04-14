@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { getForwardedClientHeaders } from "@/lib/forward-client-headers";
 import { authService } from "@/services/auth.service";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
@@ -15,7 +16,7 @@ export async function GET(request: Request) {
   // Best-effort server-side logout (revoke refresh token)
   try {
     if (accessToken && refreshToken) {
-      await authService.logout(accessToken, refreshToken);
+      await authService.logout(accessToken, refreshToken, getForwardedClientHeaders(request));
     }
   } catch {
     // ignore

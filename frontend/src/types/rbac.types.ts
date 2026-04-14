@@ -83,3 +83,19 @@ export interface OAuthConnectionAdmin {
   auth_user_username?: string | null;
   token_expires_at?: string | null;
 }
+
+export type AdminSessionStatus = "active" | "revoked" | "expired";
+
+export interface AdminAuthSession {
+  session_id: string;
+  user_id: number;
+  email?: string | null;
+  username?: string | null;
+  status: AdminSessionStatus;
+  login_at: string;
+  last_seen_at: string;
+  expires_at: string;
+  revoked_at?: string | null;
+  user_agent?: string | null;
+  ip_address?: string | null;
+}

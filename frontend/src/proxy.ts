@@ -27,6 +27,31 @@ function shouldRefresh(accessToken: string, skewMs = 60_000): boolean {
   return expMs <= Date.now() + skewMs;
 }
 
+function getForwardedClientHeaders(request: NextRequest): Record<string, string> {
+  const headers: Record<string, string> = {};
+  const userAgent = request.headers.get("user-agent");
+  const forwardedFor =
+    request.headers.get("x-forwarded-for") || request.headers.get("x-vercel-forwarded-for");
+  const realIp =
+    request.headers.get("x-real-ip") ||
+    request.headers.get("cf-connecting-ip") ||
+    request.headers.get("true-client-ip") ||
+    request.headers.get("x-client-ip");
+
+  if (userAgent) {
+    headers["user-agent"] = userAgent;
+    headers["x-original-user-agent"] = userAgent;
+  }
+  if (forwardedFor) {
+    headers["x-forwarded-for"] = forwardedFor;
+  }
+  if (realIp) {
+    headers["x-real-ip"] = realIp;
+  }
+
+  return headers;
+}
+
 export async function proxy(request: NextRequest) {
   const accessToken = request.cookies.get("aqt_access_token")?.value;
   const refreshToken = request.cookies.get("aqt_refresh_token")?.value;
@@ -39,7 +64,10 @@ export async function proxy(request: NextRequest) {
     try {
       const res = await fetch(`${AUTH_SERVICE_URL}/refresh`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getForwardedClientHeaders(request),
+        },
         body: JSON.stringify({ refresh_token: refreshToken })
       });
 

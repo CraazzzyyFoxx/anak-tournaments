@@ -15,12 +15,19 @@ const accessNavItems = [
   { href: "/admin/access/roles", label: "Roles", permissions: accessRolesPermissions },
   { href: "/admin/access/permissions", label: "Permissions", permissions: accessPermissionsPermissions },
   { href: "/admin/access/oauth", label: "OAuth Connections", permissions: accessUsersPermissions },
+  { href: "/admin/access/sessions", label: "Sessions", permissions: [], superuserOnly: true },
 ];
 
 export default function AccessAdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { isSuperuser, hasAnyPermission } = usePermissions();
-  const visibleNavItems = accessNavItems.filter((item) => isSuperuser || hasAnyPermission(item.permissions));
+  const visibleNavItems = accessNavItems.filter((item) => {
+    if (item.superuserOnly) {
+      return isSuperuser;
+    }
+
+    return isSuperuser || hasAnyPermission(item.permissions);
+  });
 
   if (visibleNavItems.length === 0) {
     return null;

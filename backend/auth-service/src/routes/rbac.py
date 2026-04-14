@@ -2,7 +2,7 @@
 RBAC (Role-Based Access Control) routes
 """
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from loguru import logger
@@ -17,6 +17,7 @@ from src import models, schemas
 from src.core import db
 from src.services import auth_service
 from src.services.player_link_service import PlayerLinkService
+from src.services.session_service import SessionService
 from src.services.session_cache import invalidate_rbac
 
 router = APIRouter(prefix="/rbac", tags=["RBAC"])
@@ -591,6 +592,24 @@ async def list_oauth_connections(
         )
         for conn in connections
     ]
+
+
+@router.get("/sessions", response_model=list[schemas.AdminSessionRead])
+async def list_auth_sessions(
+    session: Annotated[AsyncSession, Depends(db.get_async_session)],
+    current_user: Annotated[models.AuthUser, Depends(auth_service.get_current_superuser)],
+    user_id: int | None = None,
+    search: str | None = None,
+    status: Literal["active", "revoked", "expired"] | None = None,
+):
+    """List logical auth sessions across all users (superuser only)."""
+    summaries = await SessionService.list_all_sessions(
+        session,
+        user_id=user_id,
+        search=search,
+        status=status,
+    )
+    return [schemas.AdminSessionRead.model_validate(summary) for summary in summaries]
 
 
 @router.delete("/oauth-connections/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)

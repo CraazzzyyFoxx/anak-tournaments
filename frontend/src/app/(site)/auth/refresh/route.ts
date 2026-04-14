@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { getForwardedClientHeaders } from "@/lib/forward-client-headers";
 import { authService } from "@/services/auth.service";
 
-export async function POST() {
+export async function POST(request: Request) {
   const cookieStore = await cookies();
   const refreshToken = cookieStore.get("aqt_refresh_token")?.value;
 
@@ -14,7 +15,7 @@ export async function POST() {
   }
 
   try {
-    const tokens = await authService.refresh(refreshToken);
+    const tokens = await authService.refresh(refreshToken, getForwardedClientHeaders(request));
 
     const response = NextResponse.json(tokens, { status: 200 });
 
