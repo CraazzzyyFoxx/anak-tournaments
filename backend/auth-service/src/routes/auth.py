@@ -18,7 +18,7 @@ from src.core import db
 from src.services import auth_service
 from src.services.oauth_service import OAuthService
 from src.services.session_service import SessionService
-from src.services.session_cache import get_rbac, set_rbac
+from src.services.session_cache import get_rbac, get_refresh_idem, set_rbac, set_refresh_idem
 
 
 def get_s3(request: Request) -> S3Client:
@@ -104,6 +104,13 @@ async def refresh_token(
     """Refresh access token using refresh token"""
     logger.info("Token refresh attempt")
 
+    # Fast-path: concurrent request already rotated this token — return cached pair.
+    old_token_hash = auth_service.AuthService.hash_refresh_token(token_data.refresh_token)
+    cached_pair = await get_refresh_idem(old_token_hash)
+    if cached_pair is not None:
+        logger.info("Returning cached token pair for concurrent refresh request")
+        return schemas.Token(**cached_pair)
+
     refresh_token_record = await auth_service.AuthService.get_active_refresh_token_record(
         session, token_data.refresh_token
     )
@@ -152,6 +159,10 @@ async def refresh_token(
         commit=False,
     )
     await session.commit()
+
+    # Cache the new pair so concurrent requests with the same old token get the
+    # same result instead of triggering false reuse-attack detection.
+    await set_refresh_idem(old_token_hash, access_token, new_refresh_token)
 
     logger.bind(user_id=str(user.id)).success("Token refreshed")
     return schemas.Token(access_token=access_token, refresh_token=new_refresh_token)
