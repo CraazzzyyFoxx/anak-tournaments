@@ -64,6 +64,5 @@ export function getStatusIcon(iconSlug: string | null | undefined): LucideIcon {
     return BadgeHelp;
   }
   const candidate = (LucideIcons as Record<string, unknown>)[iconSlug];
-  return typeof candidate === "function" ? (candidate as LucideIcon) : BadgeHelp;
+  return candidate ? (candidate as LucideIcon) : BadgeHelp;
 }
-
