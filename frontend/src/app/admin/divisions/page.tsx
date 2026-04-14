@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
+import { DivisionGridMappingEditor } from "./MappingEditor";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, CopyPlus, Plus, Save, Star, Trash2, Upload } from "lucide-react";
 import Image from "next/image";
@@ -619,6 +620,8 @@ export default function DivisionsAdminPage() {
           </CardContent>
         </Card>
       )}
+
+      {versions.length >= 2 && <DivisionGridMappingEditor versions={versions} canEdit={canEdit} />}
     </div>
   );
 }

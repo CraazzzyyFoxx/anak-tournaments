@@ -42,6 +42,15 @@ export interface DivisionGridMappingRule {
   is_primary: boolean;
 }
 
+export interface DivisionGridMapping {
+  id: number;
+  source_version_id: number;
+  target_version_id: number;
+  name: string;
+  is_complete: boolean;
+  rules: DivisionGridMappingRule[];
+}
+
 export interface Workspace {
   id: number;
   slug: string;
