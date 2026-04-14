@@ -1,6 +1,7 @@
 from .achievement import *
 from .base import *
 from .challonge import *
+from .division_grid import *
 from .encounter import *
 from .gamemode import *
 from .hero import *

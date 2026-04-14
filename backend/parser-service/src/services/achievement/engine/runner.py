@@ -3,21 +3,26 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import sqlalchemy as sa
 from loguru import logger
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from shared.division_grid import resolve_grid
+from shared.core import errors
 from shared.models.achievement import (
     AchievementRule,
     EvaluationRun,
     EvaluationRunStatus,
     EvaluationRunTrigger,
 )
+from shared.services.division_grid_normalization import (
+    DivisionGridNormalizationError,
+    DivisionGridNormalizer,
+    build_division_grid_normalizer,
+)
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models
+from src.core.workspace import get_division_grid
 
 from .context import EvalContext
 from .differ import EvaluationSlice, diff_and_apply
@@ -51,7 +56,7 @@ async def run_evaluation(
         trigger=trigger,
         tournament_id=tournament_id,
         status=EvaluationRunStatus.running,
-        started_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
     )
     session.add(run)
     await session.flush()
@@ -70,6 +75,7 @@ async def run_evaluation(
 
         total_created = 0
         total_removed = 0
+        normalizer: DivisionGridNormalizer | None = None
 
         for rule in rules:
             if not rule.enabled or not rule.condition_tree:
@@ -97,11 +103,30 @@ async def run_evaluation(
                 total_removed += len(diff.to_delete)
                 continue
 
+            rule_needs_normalized_divisions = tournament is None and _rule_requires_normalized_divisions(rule.condition_tree)
+            if rule_needs_normalized_divisions and normalizer is None:
+                try:
+                    normalizer = await build_division_grid_normalizer(
+                        session,
+                        workspace_id,
+                    )
+                except DivisionGridNormalizationError as exc:
+                    raise errors.ApiHTTPException(
+                        status_code=409,
+                        detail=[
+                            errors.ApiExc(
+                                code="division_grid_mapping_required",
+                                msg=str(exc),
+                            )
+                        ],
+                    ) from exc
+
             grid = await _resolve_grid(session, workspace_id, tournament)
             context = EvalContext(
                 workspace_id=workspace_id,
                 tournament=tournament,
                 grid=grid,
+                normalizer=normalizer if rule_needs_normalized_divisions else None,
             )
 
             logger.info(f"Evaluating rule '{rule.slug}' (id={rule.id})")
@@ -129,14 +154,14 @@ async def run_evaluation(
         run.results_created = total_created
         run.results_removed = total_removed
         run.status = EvaluationRunStatus.done
-        run.finished_at = datetime.now(timezone.utc)
+        run.finished_at = datetime.now(UTC)
 
         await session.commit()
 
     except Exception as exc:
         run.status = EvaluationRunStatus.failed
         run.error_message = str(exc)[:1000]
-        run.finished_at = datetime.now(timezone.utc)
+        run.finished_at = datetime.now(UTC)
         await session.commit()
         logger.exception(f"Evaluation run {run_id} failed")
         raise
@@ -180,7 +205,31 @@ async def _resolve_grid(
     workspace_id: int,
     tournament: models.Tournament | None,
 ) -> object | None:
-    workspace = await session.get(models.Workspace, workspace_id)
-    workspace_grid = workspace.division_grid_json if workspace else None
-    tournament_grid = tournament.division_grid_json if tournament else None
-    return resolve_grid(workspace_grid, tournament_grid)
+    return await get_division_grid(
+        session,
+        workspace_id,
+        tournament_id=tournament.id if tournament is not None else None,
+    )
+
+
+def _rule_requires_normalized_divisions(condition: dict) -> bool:
+    if "AND" in condition:
+        return any(_rule_requires_normalized_divisions(child) for child in condition["AND"])
+    if "OR" in condition:
+        return any(_rule_requires_normalized_divisions(child) for child in condition["OR"])
+    if "NOT" in condition:
+        return _rule_requires_normalized_divisions(condition["NOT"])
+
+    condition_type = condition.get("type")
+    params = condition.get("params", {})
+    if condition_type in {"div_level", "div_change"}:
+        return True
+    if condition_type == "stable_streak" and "division" in params.get("fields", []):
+        return True
+    if condition_type == "team_players_match":
+        return _rule_requires_normalized_divisions(params.get("condition", {}))
+    if condition_type == "captain_property":
+        return _rule_requires_normalized_divisions(params.get("condition", {}))
+    if condition_type == "player_div":
+        return True
+    return False

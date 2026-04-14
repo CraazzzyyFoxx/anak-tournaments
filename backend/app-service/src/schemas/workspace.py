@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 
 from src.schemas.base import BaseRead
-from src.schemas.division_grid import DivisionGridRead
+from src.schemas.division_grid import DivisionGridVersionRead
 
 __all__ = (
     "WorkspaceRead",
@@ -19,9 +19,8 @@ class WorkspaceRead(BaseRead):
     description: str | None
     icon_url: str | None
     is_active: bool
-    division_grid: DivisionGridRead | None = Field(
-        default=None, validation_alias="division_grid_json"
-    )
+    default_division_grid_version_id: int | None
+    default_division_grid_version: DivisionGridVersionRead | None = None
 
 
 class WorkspaceCreate(BaseModel):
@@ -29,7 +28,7 @@ class WorkspaceCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     description: str | None = None
     icon_url: str | None = None
-    division_grid_json: DivisionGridRead | None = None
+    default_division_grid_version_id: int | None = None
 
 
 class WorkspaceUpdate(BaseModel):
@@ -37,7 +36,7 @@ class WorkspaceUpdate(BaseModel):
     description: str | None = None
     icon_url: str | None = None
     is_active: bool | None = None
-    division_grid_json: DivisionGridRead | None = None
+    default_division_grid_version_id: int | None = None
 
 
 class WorkspaceMemberRead(BaseRead):

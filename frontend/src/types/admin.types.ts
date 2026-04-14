@@ -25,6 +25,7 @@ export interface TournamentCreateInput {
   win_points?: number;
   draw_points?: number;
   loss_points?: number;
+  division_grid_version_id?: number | null;
 }
 
 export interface TournamentUpdateInput {
@@ -43,6 +44,7 @@ export interface TournamentUpdateInput {
   win_points?: number;
   draw_points?: number;
   loss_points?: number;
+  division_grid_version_id?: number | null;
 }
 
 export interface TournamentStatusTransitionInput {

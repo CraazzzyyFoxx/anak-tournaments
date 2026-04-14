@@ -79,6 +79,7 @@ import balancerAdminService from "@/services/balancer-admin.service";
 import encounterService from "@/services/encounter.service";
 import teamService from "@/services/team.service";
 import tournamentService from "@/services/tournament.service";
+import workspaceService from "@/services/workspace.service";
 import type {
   DiscordChannelInput,
   DiscordChannelRead,
@@ -97,6 +98,7 @@ import type {
   Tournament,
   TournamentStatus
 } from "@/types/tournament.types";
+import type { DivisionGridVersion } from "@/types/workspace.types";
 import { TournamentStatusControl } from "./components/TournamentStatusControl";
 import { StageManager } from "./components/StageManager";
 import { ChallongeSyncPanel } from "./components/ChallongeSyncPanel";
@@ -144,6 +146,7 @@ type TournamentFormState = {
   registration_closes_at: string;
   check_in_opens_at: string;
   check_in_closes_at: string;
+  division_grid_version_id: number | null;
 };
 
 type TeamFormState = {
@@ -195,7 +198,8 @@ function getTournamentForm(tournament: Tournament): TournamentFormState {
     registration_opens_at: toDateTimeInput(tournament.registration_opens_at),
     registration_closes_at: toDateTimeInput(tournament.registration_closes_at),
     check_in_opens_at: toDateTimeInput(tournament.check_in_opens_at),
-    check_in_closes_at: toDateTimeInput(tournament.check_in_closes_at)
+    check_in_closes_at: toDateTimeInput(tournament.check_in_closes_at),
+    division_grid_version_id: tournament.division_grid_version_id ?? null,
   };
 }
 
@@ -315,6 +319,16 @@ export default function AdminTournamentWorkspacePage() {
     enabled: Number.isFinite(tournamentId) && tournamentId > 0
   });
 
+  const divisionGridsQuery = useQuery({
+    queryKey: ["admin", "tournament", tournamentId, "division-grids"],
+    queryFn: async () => {
+      const workspaceId = tournamentQuery.data?.workspace_id;
+      if (!workspaceId) return [];
+      return workspaceService.getDivisionGrids(workspaceId);
+    },
+    enabled: Boolean(tournamentQuery.data?.workspace_id)
+  });
+
   const standingsQuery = useQuery({
     queryKey: ["admin", "tournament", tournamentId, "standings"],
     queryFn: () => tournamentService.getStandings(tournamentId),
@@ -376,6 +390,10 @@ export default function AdminTournamentWorkspacePage() {
   const tournament = tournamentQuery.data;
   const stages = tournament?.stages ?? [];
   const teams = teamsQuery.data?.results ?? [];
+  const divisionGridVersions: DivisionGridVersion[] = (divisionGridsQuery.data ?? [])
+    .flatMap((grid) => grid.versions)
+    .slice()
+    .sort((left, right) => right.version - left.version);
   const standings = standingsQuery.data ?? [];
   const encounters = encountersQuery.data?.results ?? [];
   const defaultStage = stages[0] ?? null;
@@ -454,7 +472,8 @@ export default function AdminTournamentWorkspacePage() {
     registration_opens_at: "",
     registration_closes_at: "",
     check_in_opens_at: "",
-    check_in_closes_at: ""
+    check_in_closes_at: "",
+    division_grid_version_id: null,
   });
 
   const [teamDialogOpen, setTeamDialogOpen] = useState(false);
@@ -818,7 +837,8 @@ export default function AdminTournamentWorkspacePage() {
       registration_opens_at: tournamentFormData.registration_opens_at || null,
       registration_closes_at: tournamentFormData.registration_closes_at || null,
       check_in_opens_at: tournamentFormData.check_in_opens_at || null,
-      check_in_closes_at: tournamentFormData.check_in_closes_at || null
+      check_in_closes_at: tournamentFormData.check_in_closes_at || null,
+      division_grid_version_id: tournamentFormData.division_grid_version_id
     };
 
     updateTournamentMutation.mutate(payload);
@@ -2461,6 +2481,35 @@ export default function AdminTournamentWorkspacePage() {
               }
             />
           </Field>
+
+          <div>
+            <Label htmlFor="workspace-division-grid-version">Division Grid Version</Label>
+            <Select
+              value={tournamentFormData.division_grid_version_id?.toString() ?? "none"}
+              onValueChange={(value) =>
+                setTournamentFormData((current) => ({
+                  ...current,
+                  division_grid_version_id: value === "none" ? null : Number(value)
+                }))
+              }
+            >
+              <SelectTrigger id="workspace-division-grid-version">
+                <SelectValue
+                  placeholder={
+                    divisionGridsQuery.isLoading ? "Loading division grids..." : "Select version"
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Workspace default</SelectItem>
+                {divisionGridVersions.map((version) => (
+                  <SelectItem key={version.id} value={version.id.toString()}>
+                    {version.label} (v{version.version}, {version.status})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
           <div className="border-t border-border/40 pt-4 mt-4">
             <p className="text-sm font-medium mb-3">Scoring Points</p>

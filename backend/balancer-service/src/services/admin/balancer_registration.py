@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
 from shared.balancer_registration_statuses import get_builtin_status_values
-from shared.division_grid import DEFAULT_GRID, DivisionGrid, resolve_grid
+from shared.division_grid import DEFAULT_GRID, DivisionGrid, load_runtime_grid
 
 from src import models
 from src.services.admin.balancer_utils import (
@@ -285,24 +285,41 @@ def parse_target_value(*, parser: str, values: list[str], value_mapping: dict[st
     return values[0] if values else None
 
 
-def get_tournament_grid_from_rows(tournament_row: models.Tournament | None, workspace_row: models.Workspace | None) -> DivisionGrid:
-    return resolve_grid(
-        workspace_row.division_grid_json if workspace_row else None,
-        tournament_row.division_grid_json if tournament_row else None,
-    )
+def get_tournament_grid_from_rows(
+    tournament_row: models.Tournament | None,
+    workspace_row: models.Workspace | None,
+    fallback_version: models.DivisionGridVersion | None = None,
+) -> DivisionGrid:
+    if tournament_row and tournament_row.division_grid_version is not None:
+        return load_runtime_grid(tournament_row.division_grid_version)
+    if workspace_row and workspace_row.default_division_grid_version is not None:
+        return load_runtime_grid(workspace_row.default_division_grid_version)
+    return load_runtime_grid(fallback_version)
 
 
 async def get_tournament_grid(session: AsyncSession, tournament_id: int) -> DivisionGrid:
+    fallback_version = await session.scalar(
+        sa.select(models.DivisionGridVersion)
+        .join(models.DivisionGrid, models.DivisionGrid.id == models.DivisionGridVersion.grid_id)
+        .options(selectinload(models.DivisionGridVersion.tiers))
+        .where(models.DivisionGrid.workspace_id.is_(None))
+        .order_by(models.DivisionGridVersion.id.asc())
+        .limit(1)
+    )
     result = await session.execute(
         sa.select(models.Tournament, models.Workspace)
         .join(models.Workspace, models.Workspace.id == models.Tournament.workspace_id)
+        .options(
+            selectinload(models.Tournament.division_grid_version).selectinload(models.DivisionGridVersion.tiers),
+            selectinload(models.Workspace.default_division_grid_version).selectinload(models.DivisionGridVersion.tiers),
+        )
         .where(models.Tournament.id == tournament_id)
     )
     row = result.first()
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
     tournament_row, workspace_row = row
-    return get_tournament_grid_from_rows(tournament_row, workspace_row)
+    return get_tournament_grid_from_rows(tournament_row, workspace_row, fallback_version)
 
 
 def parse_sheet_row(

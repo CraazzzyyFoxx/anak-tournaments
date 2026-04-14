@@ -2,13 +2,13 @@ import typing
 from dataclasses import dataclass
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from src.core import enums, pagination
-from src.schemas.stage import StageRead
 from src.schemas import UserRead
 from src.schemas.base import BaseRead
-from src.schemas.division_grid import DivisionGridRead
+from src.schemas.division_grid import DivisionGridVersionRead
+from src.schemas.stage import StageRead
 
 __all__ = (
     "TournamentRead",
@@ -53,9 +53,8 @@ class TournamentRead(BaseRead):
     stages: list[StageRead] = []
     participants_count: int | None
     registrations_count: int | None = None
-    division_grid: DivisionGridRead | None = Field(
-        default=None, validation_alias="division_grid_json"
-    )
+    division_grid_version_id: int | None
+    division_grid_version: DivisionGridVersionRead | None = None
 
 
 class OwalStandingDay(BaseModel):

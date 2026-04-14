@@ -3,11 +3,8 @@ from shared.clients.s3 import S3Client
 from shared.clients.s3.upload import upload_avatar
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.division_grid import DEFAULT_GRID
-
 from src import models, schemas
 from src.core import auth, db
-from src.core.workspace import get_division_grid
 from src.services.workspace import service as workspace_service
 
 
@@ -124,19 +121,6 @@ async def delete_workspace_icon(
     )
     await session.commit()
     return schemas.WorkspaceRead.model_validate(workspace, from_attributes=True)
-
-
-@router.get(
-    "/{workspace_id}/division-grid",
-    response_model=schemas.DivisionGridRead,
-)
-async def get_workspace_division_grid(
-    workspace_id: int,
-    tournament_id: int | None = None,
-    session: AsyncSession = Depends(db.get_async_session),
-):
-    grid = await get_division_grid(session, workspace_id, tournament_id)
-    return schemas.DivisionGridRead.model_validate(grid.to_json())
 
 
 # ─── Workspace Members ──────────────────────────────────────────────────────

@@ -1,9 +1,12 @@
-from typing import Any
+from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON, Boolean, ForeignKey, String, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db
+
+if TYPE_CHECKING:
+    from shared.models.division_grid import DivisionGridVersion
 
 __all__ = (
     "Workspace",
@@ -19,10 +22,18 @@ class Workspace(db.TimeStampIntegerMixin):
     description: Mapped[str | None] = mapped_column(String(), nullable=True)
     icon_url: Mapped[str | None] = mapped_column(String(), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean(), server_default="true")
-    division_grid_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    default_division_grid_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("division_grid_version.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     members: Mapped[list["WorkspaceMember"]] = relationship(
         back_populates="workspace", passive_deletes=True
+    )
+    default_division_grid_version: Mapped["DivisionGridVersion | None"] = relationship(
+        foreign_keys=[default_division_grid_version_id],
+        lazy="selectin",
     )
 
 

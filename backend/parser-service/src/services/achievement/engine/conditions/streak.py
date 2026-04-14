@@ -141,7 +141,7 @@ async def execute_stable_streak(
     fields = params["fields"]
     min_streak = params["min_streak"]
 
-    if not context.grid:
+    if context.grid is None and context.normalizer is None:
         return set()
 
     # Build player data with tournament ordering (exclude leagues)
@@ -150,6 +150,7 @@ async def execute_stable_streak(
             models.Player.user_id,
             models.Player.tournament_id,
             models.Tournament.number.label("t_num"),
+            models.Tournament.division_grid_version_id,
             models.Player.role,
             models.Player.rank,
         )
@@ -170,8 +171,8 @@ async def execute_stable_streak(
     from collections import defaultdict
 
     user_rows: dict[int, list] = defaultdict(list)
-    for user_id, tournament_id, t_num, role, rank in rows:
-        division = context.grid.resolve_division(rank)
+    for user_id, _tournament_id, t_num, source_version_id, role, rank in rows:
+        division = context.resolve_division(rank, source_version_id=source_version_id)
         div_num = division.number if division else None
         user_rows[user_id].append({
             "t_num": t_num,

@@ -2,28 +2,43 @@ import typing
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import selectinload
 
 from src import models
 
 
 async def get_by_id(session: AsyncSession, workspace_id: int) -> models.Workspace | None:
     result = await session.execute(
-        sa.select(models.Workspace).where(models.Workspace.id == workspace_id)
+        sa.select(models.Workspace)
+        .options(
+            selectinload(models.Workspace.default_division_grid_version)
+            .selectinload(models.DivisionGridVersion.tiers)
+        )
+        .where(models.Workspace.id == workspace_id)
     )
     return result.scalars().first()
 
 
 async def get_by_slug(session: AsyncSession, slug: str) -> models.Workspace | None:
     result = await session.execute(
-        sa.select(models.Workspace).where(models.Workspace.slug == slug)
+        sa.select(models.Workspace)
+        .options(
+            selectinload(models.Workspace.default_division_grid_version)
+            .selectinload(models.DivisionGridVersion.tiers)
+        )
+        .where(models.Workspace.slug == slug)
     )
     return result.scalars().first()
 
 
 async def get_all(session: AsyncSession) -> typing.Sequence[models.Workspace]:
     result = await session.execute(
-        sa.select(models.Workspace).order_by(models.Workspace.id)
+        sa.select(models.Workspace)
+        .options(
+            selectinload(models.Workspace.default_division_grid_version)
+            .selectinload(models.DivisionGridVersion.tiers)
+        )
+        .order_by(models.Workspace.id)
     )
     return result.scalars().all()
 

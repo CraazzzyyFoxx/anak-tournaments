@@ -7,7 +7,6 @@ from .user import *
 from .hero import *
 from .gamemode import *
 from .map import *
-from .achievement import *
 
 __all__ = (
     # Tournament schemas
@@ -43,12 +42,4 @@ __all__ = (
     # Map schemas
     "MapCreate",
     "MapUpdate",
-    # Achievement schemas
-    "AchievementAdminRead",
-    "AchievementAdminCreate",
-    "AchievementAdminUpdate",
-    "AchievementListQueryParams",
-    "AchievementListParams",
-    "AchievementRegistryEntry",
-    "AchievementRegistryResponse",
 )

@@ -1,14 +1,14 @@
 import typing
 from datetime import datetime
-from typing import Any
 
-from sqlalchemy import JSON, Boolean, Enum, Float, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Enum, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db, enums
 from shared.models.workspace import Workspace
 
 if typing.TYPE_CHECKING:
+    from shared.models.division_grid import DivisionGridVersion
     from shared.models.stage import Stage
     from shared.models.standings import Standing
 
@@ -79,9 +79,17 @@ class Tournament(db.TimeStampIntegerMixin):
     loss_points: Mapped[float] = mapped_column(
         Float(), default=0.0, server_default="0.0", nullable=False
     )
-    division_grid_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    division_grid_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("division_grid_version.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     workspace: Mapped[Workspace] = relationship()
+    division_grid_version: Mapped["DivisionGridVersion | None"] = relationship(
+        foreign_keys=[division_grid_version_id],
+        lazy="selectin",
+    )
     groups: Mapped[list["TournamentGroup"]] = relationship(uselist=True, passive_deletes=True)
     stages: Mapped[list["Stage"]] = relationship(uselist=True, passive_deletes=True)
     standings: Mapped[list["Standing"]] = relationship(uselist=True)

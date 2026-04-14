@@ -1,22 +1,28 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import sqlalchemy as sa
+
+if TYPE_CHECKING:
+    from shared.models.division_grid import DivisionGridVersion
 
 
 @dataclass(frozen=True)
 class DivisionTier:
+    id: int | None
+    slug: str | None
     number: int
     name: str
     rank_min: int
     rank_max: int | None
-    icon_path: str
+    icon_url: str
 
 
 @dataclass(frozen=True)
 class DivisionGrid:
+    version_id: int | None
     tiers: tuple[DivisionTier, ...]
 
     def resolve_division(self, rank: int) -> DivisionTier:
@@ -48,38 +54,38 @@ class DivisionGrid:
         return min(t.number for t in self.tiers)
 
     @staticmethod
-    def from_json(raw: dict[str, Any] | None) -> DivisionGrid:
-        if raw is None:
-            return DEFAULT_GRID
-
-        tiers_data = raw.get("tiers")
-        if not tiers_data:
+    def from_version(version: DivisionGridVersion | None) -> DivisionGrid:
+        if version is None or not version.tiers:
             return DEFAULT_GRID
 
         tiers = []
-        for t in tiers_data:
+        for t in version.tiers:
             tiers.append(
                 DivisionTier(
-                    number=int(t["number"]),
-                    name=str(t["name"]),
-                    rank_min=int(t["rank_min"]),
-                    rank_max=int(t["rank_max"]) if t.get("rank_max") is not None else None,
-                    icon_path=str(t["icon_path"]),
+                    id=t.id,
+                    slug=t.slug,
+                    number=int(t.number),
+                    name=str(t.name),
+                    rank_min=int(t.rank_min),
+                    rank_max=int(t.rank_max) if t.rank_max is not None else None,
+                    icon_url=str(t.icon_url),
                 )
             )
 
         tiers.sort(key=lambda tier: tier.rank_min, reverse=True)
-        return DivisionGrid(tiers=tuple(tiers))
+        return DivisionGrid(version_id=version.id, tiers=tuple(tiers))
 
     def to_json(self) -> dict[str, Any]:
         return {
             "tiers": [
                 {
+                    "id": t.id,
+                    "slug": t.slug,
                     "number": t.number,
                     "name": t.name,
                     "rank_min": t.rank_min,
                     "rank_max": t.rank_max,
-                    "icon_path": t.icon_path,
+                    "icon_url": t.icon_url,
                 }
                 for t in self.tiers
             ]
@@ -98,30 +104,27 @@ def _build_default_grid() -> DivisionGrid:
 
         tiers.append(
             DivisionTier(
+                id=None,
+                slug=f"division-{div_num}",
                 number=div_num,
                 name=f"Division {div_num}",
                 rank_min=rank_min,
                 rank_max=rank_max,
-                icon_path=f"/divisions/{div_num}.png",
+                icon_url=f"https://minio.craazzzyyfoxx.me/aqt/assets/divisions/default-{div_num}.png",
             )
         )
 
     tiers.sort(key=lambda t: t.rank_min, reverse=True)
-    return DivisionGrid(tiers=tuple(tiers))
+    return DivisionGrid(version_id=None, tiers=tuple(tiers))
 
 
 DEFAULT_GRID: DivisionGrid = _build_default_grid()
 
 
-def resolve_grid(
-    workspace_grid_json: dict[str, Any] | None,
-    tournament_grid_json: dict[str, Any] | None = None,
+def load_runtime_grid(
+    version: DivisionGridVersion | None,
 ) -> DivisionGrid:
-    if tournament_grid_json is not None:
-        return DivisionGrid.from_json(tournament_grid_json)
-    if workspace_grid_json is not None:
-        return DivisionGrid.from_json(workspace_grid_json)
-    return DEFAULT_GRID
+    return DivisionGrid.from_version(version)
 
 
 def division_case_expr(

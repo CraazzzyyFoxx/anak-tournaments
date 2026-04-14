@@ -4,12 +4,8 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, status
-from loguru import logger
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from shared.models.achievement import (
     AchievementEvaluationResult,
-    AchievementGrain,
     AchievementOverride,
     AchievementOverrideAction,
     AchievementRule,
@@ -17,6 +13,8 @@ from shared.models.achievement import (
     EvaluationRunTrigger,
 )
 from shared.services.achievement_effective import build_effective_achievement_rows_subquery
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from src import models
 from src.core import auth, db
 from src.schemas.admin.achievement_rule import (
@@ -38,8 +36,8 @@ from src.services.achievement.engine.seeder import hard_reset_workspace, seed_wo
 from src.services.achievement.engine.validation import (
     LEAF_GRAINS,
     infer_grain,
-    validate_rule_definition,
     validate_condition_tree,
+    validate_rule_definition,
 )
 
 router = APIRouter(
@@ -56,7 +54,6 @@ async def get_condition_types(
     _user: models.AuthUser = Depends(auth.require_permission("achievement", "read")),
 ):
     """List all available leaf condition types with param schemas."""
-    from src.services.achievement.engine.validation import LEAF_GRAINS
 
     type_info = []
     for name, grain in sorted(LEAF_GRAINS.items()):
@@ -98,7 +95,7 @@ async def seed_default_rules(
     session: AsyncSession = Depends(db.get_async_session),
     _user: models.AuthUser = Depends(auth.require_permission("achievement", "write")),
 ):
-    """Seed workspace with default 73 achievement rules."""
+    """Seed the default achievement catalog for a workspace."""
     seeded, removed = await seed_workspace(session, workspace_id)
     await session.commit()
     return {"seeded": seeded, "removed": removed}
@@ -471,7 +468,7 @@ async def test_rule(
     _user: models.AuthUser = Depends(auth.require_permission("achievement", "write")),
 ):
     """Dry-run: evaluate a rule without writing results."""
-    from shared.division_grid import resolve_grid
+    from src.core.workspace import get_division_grid
     from src.services.achievement.engine.context import EvalContext
     from src.services.achievement.engine.evaluator import evaluate
 
@@ -483,11 +480,7 @@ async def test_rule(
     if tournament_id:
         tournament = await session.get(models.Tournament, tournament_id)
 
-    workspace = await session.get(models.Workspace, workspace_id)
-    grid = resolve_grid(
-        workspace.division_grid_json if workspace else None,
-        tournament.division_grid_json if tournament else None,
-    )
+    grid = await get_division_grid(session, workspace_id, tournament_id=tournament_id)
 
     context = EvalContext(workspace_id=workspace_id, tournament=tournament, grid=grid)
     results = await evaluate(session, rule.condition_tree, context)

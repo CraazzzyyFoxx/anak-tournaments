@@ -5,12 +5,12 @@ from __future__ import annotations
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException
 from shared.balancer_registration_statuses import build_unknown_status_meta, get_status_metas_map
-from shared.division_grid import resolve_grid
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models
 from src.core import auth, db
+from src.core.workspace import get_division_grid
 from src.schemas.registration import (
     RegistrationCreate,
     RegistrationFormRead,
@@ -334,9 +334,6 @@ async def _build_tournament_history(
     if not player_ids:
         return {}
 
-    workspace = await session.get(models.Workspace, workspace_id)
-    workspace_grid_json = workspace.division_grid_json if workspace else None
-
     # --- Step 2: query tournament.player for participation history ---
     result = await session.execute(
         sa.select(models.Player)
@@ -351,7 +348,6 @@ async def _build_tournament_history(
         )
         .add_columns(
             models.Tournament.name.label("tournament_name"),
-            models.Tournament.division_grid_json.label("tournament_grid_json"),
         )
     )
 
@@ -360,12 +356,10 @@ async def _build_tournament_history(
     for row in result:
         player: models.Player = row[0]
         tournament_name: str = row[1]
-        tournament_grid_json: dict | None = row[2]
-
         role_str = player.role.value if player.role else None
         division = None
         if player.rank is not None:
-            grid = resolve_grid(workspace_grid_json, tournament_grid_json)
+            grid = await get_division_grid(session, workspace_id, tournament_id=player.tournament_id)
             division = grid.resolve_division_number(player.rank)
 
         entry = TournamentHistoryEntry(

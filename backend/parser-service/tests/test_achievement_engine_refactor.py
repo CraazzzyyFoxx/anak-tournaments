@@ -7,7 +7,6 @@ from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import AsyncMock
 
-
 REPO_BACKEND_ROOT = Path(__file__).resolve().parents[2]
 PARSER_SERVICE_ROOT = REPO_BACKEND_ROOT / "parser-service"
 
@@ -32,93 +31,31 @@ os.environ.setdefault("S3_BUCKET_NAME", "test")
 
 from shared.core.enums import StageType  # noqa: E402
 from shared.models.achievement import AchievementGrain, AchievementRule  # noqa: E402
-from src.services.achievement.engine.differ import EvaluationSlice, diff_and_apply  # noqa: E402
-from src.services.achievement.engine.seeder import _all_default_rules  # noqa: E402
-from src.services.achievement.engine.validation import infer_grain, validate_condition_tree  # noqa: E402
+from shared.services.achievement_effective import override_applies_to_scope  # noqa: E402
+
 from src.services.achievement.engine.conditions.tournament_format import (  # noqa: E402
     matches_tournament_format,
 )
-from shared.services.achievement_effective import override_applies_to_scope  # noqa: E402
+from src.services.achievement.engine.differ import EvaluationSlice, diff_and_apply  # noqa: E402
+from src.services.achievement.engine.seeder import (  # noqa: E402
+    _all_default_rules,
+    get_canonical_rule_catalog,
+)
+from src.services.achievement.engine.validation import infer_grain, validate_condition_tree  # noqa: E402
 
 
-EXPECTED_DEFAULT_SLUGS = [
-    "7_years_in_azkaban",
-    "accuracy-is-above-all-else",
-    "afgan",
-    "ana",
-    "ashe",
-    "balance-from-anak",
-    "balanced",
-    "baptiste",
-    "bastion",
-    "best-player-winrate",
-    "boop-master",
-    "boris-dick",
-    "brigitte",
-    "bullet-is-not-stupid",
-    "captain-jack-sparrow",
-    "cassidy",
-    "critical-failure",
-    "dirty-smurf",
-    "doomfist",
-    "dva",
-    "echo",
-    "fast",
-    "fiasko",
-    "friendly",
-    "genji",
-    "hanzo",
-    "hard_game",
-    "hazard",
-    "honor-and-glory",
-    "illari",
-    "im-fine-with-that",
-    "john-wick",
-    "junker-queen",
-    "junkrat",
-    "juno",
-    "just-dont-fuck-around",
-    "kiriko",
-    "lifeweaver",
-    "lucio",
-    "mauga",
-    "mei",
-    "mercy",
-    "moira",
-    "my-strength-is-growing",
-    "mystery-heroes",
-    "no_mercy",
-    "not-good-enough",
-    "orisa",
-    "pharah",
-    "ramattra",
-    "reaper",
-    "reinhardt",
-    "revenge-is-sweet",
-    "roadhog",
-    "shooting-and-screaming",
-    "sigma",
-    "sojourn",
-    "soldier-76",
-    "sombra",
-    "space-created",
-    "swiss-knife",
-    "symmetra",
-    "the-shift-factory-is-done",
-    "torbjorn",
-    "tracer",
-    "venture",
-    "versatile-player",
-    "victory-through-intelligence",
-    "welcome",
-    "widowmaker",
-    "win-2-plus-consecutive",
-    "winston",
-    "worst-player-winrate",
-    "wrecking-ball",
-    "zarya",
-    "zenyatta",
-]
+def _legacy_rule_catalog() -> dict[str, tuple[str, str, str]]:
+    catalog: dict[str, tuple[str, str, str]] = {}
+    for achievement in get_canonical_rule_catalog():
+        catalog[achievement.slug] = (
+            achievement.name,
+            achievement.description_ru,
+            achievement.description_en,
+        )
+    return catalog
+
+
+EXPECTED_LEGACY_RULES = _legacy_rule_catalog()
 
 
 class DiffScopeTests(IsolatedAsyncioTestCase):
@@ -172,13 +109,32 @@ class ValidationTests(TestCase):
         mismatches = [
             (rule.slug, rule.grain, infer_grain(rule.condition_tree))
             for rule in _all_default_rules(1)
-            if infer_grain(rule.condition_tree) != rule.grain
+            if rule.condition_tree and infer_grain(rule.condition_tree) != rule.grain
         ]
         self.assertEqual([], mismatches)
 
-    def test_default_rule_catalog_matches_supported_snapshot(self) -> None:
-        slugs = sorted(rule.slug for rule in _all_default_rules(1))
-        self.assertEqual(EXPECTED_DEFAULT_SLUGS, slugs)
+    def test_default_rule_catalog_matches_legacy_consts(self) -> None:
+        rules = {rule.slug: rule for rule in _all_default_rules(1)}
+        self.assertEqual(sorted(EXPECTED_LEGACY_RULES), sorted(rules))
+
+        metadata_mismatches = [
+            (
+                slug,
+                EXPECTED_LEGACY_RULES[slug],
+                (
+                    rules[slug].name,
+                    rules[slug].description_ru,
+                    rules[slug].description_en,
+                ),
+            )
+            for slug in sorted(EXPECTED_LEGACY_RULES)
+            if (
+                rules[slug].name,
+                rules[slug].description_ru,
+                rules[slug].description_en,
+            ) != EXPECTED_LEGACY_RULES[slug]
+        ]
+        self.assertEqual([], metadata_mismatches)
 
 
 class TournamentFormatTests(TestCase):

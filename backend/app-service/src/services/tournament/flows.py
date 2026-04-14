@@ -41,6 +41,11 @@ async def to_pydantic(
         participants_count = await team_service.get_player_count_by_tournament(session, tournament.id)
     if "registrations_count" in entities:
         registrations_count = await registration_service.get_registration_count_by_tournament(session, tournament.id)
+    division_grid_version = (
+        schemas.DivisionGridVersionRead.model_validate(tournament.division_grid_version, from_attributes=True)
+        if tournament.division_grid_version is not None
+        else None
+    )
     return schemas.TournamentRead(
         id=tournament.id,
         workspace_id=tournament.workspace_id,
@@ -61,6 +66,8 @@ async def to_pydantic(
         win_points=tournament.win_points,
         draw_points=tournament.draw_points,
         loss_points=tournament.loss_points,
+        division_grid_version_id=tournament.division_grid_version_id,
+        division_grid_version=division_grid_version,
         stages=stages,
         participants_count=participants_count,
         registrations_count=registrations_count,

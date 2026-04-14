@@ -27,7 +27,7 @@ async def execute_div_level(
     op = params["op"]
     value = params["value"]
 
-    if not context.grid:
+    if context.grid is None and context.normalizer is None:
         return set()
 
     op_fn = OPERATORS[op]
@@ -37,6 +37,7 @@ async def execute_div_level(
             models.Player.user_id,
             models.Player.tournament_id,
             models.Player.rank,
+            models.Tournament.division_grid_version_id,
         )
         .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
         .where(
@@ -50,8 +51,8 @@ async def execute_div_level(
 
     result = await session.execute(query)
     results: ResultSet = set()
-    for user_id, tournament_id, rank in result:
-        division = context.grid.resolve_division(rank)
+    for user_id, tournament_id, rank, source_version_id in result:
+        division = context.resolve_division(rank, source_version_id=source_version_id)
         if division and op_fn(division.number, value):
             results.add((user_id, tournament_id))
     return results
@@ -67,7 +68,7 @@ async def execute_div_change(
     direction = params["direction"]  # "up" or "down"
     min_shift = params["min_shift"]
 
-    if not context.grid:
+    if context.grid is None and context.normalizer is None:
         return set()
 
     # Use window function LAG to compare adjacent tournament divisions
@@ -77,10 +78,15 @@ async def execute_div_change(
             models.Player.tournament_id,
             models.Player.rank,
             models.Player.role,
+            models.Tournament.division_grid_version_id.label("source_version_id"),
             sa.func.lag(models.Player.rank).over(
                 partition_by=[models.Player.user_id, models.Player.role],
                 order_by=models.Tournament.number,
             ).label("prev_rank"),
+            sa.func.lag(models.Tournament.division_grid_version_id).over(
+                partition_by=[models.Player.user_id, models.Player.role],
+                order_by=models.Tournament.number,
+            ).label("prev_source_version_id"),
         )
         .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
         .where(
@@ -93,7 +99,9 @@ async def execute_div_change(
         player_with_lag.c.user_id,
         player_with_lag.c.tournament_id,
         player_with_lag.c.rank,
+        player_with_lag.c.source_version_id,
         player_with_lag.c.prev_rank,
+        player_with_lag.c.prev_source_version_id,
     ).where(player_with_lag.c.prev_rank.isnot(None))
 
     if context.tournament:
@@ -101,9 +109,9 @@ async def execute_div_change(
 
     result = await session.execute(query)
     results: ResultSet = set()
-    for user_id, tournament_id, rank, prev_rank in result:
-        current_div = context.grid.resolve_division(rank)
-        prev_div = context.grid.resolve_division(prev_rank)
+    for user_id, tournament_id, rank, source_version_id, prev_rank, prev_source_version_id in result:
+        current_div = context.resolve_division(rank, source_version_id=source_version_id)
+        prev_div = context.resolve_division(prev_rank, source_version_id=prev_source_version_id)
         if not current_div or not prev_div:
             continue
 

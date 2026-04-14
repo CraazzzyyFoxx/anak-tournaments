@@ -2,6 +2,7 @@ from datetime import datetime
 
 from src.core import enums
 from src.schemas.base import BaseRead
+from src.schemas.division_grid import DivisionGridVersionRead
 from src.schemas.stage import StageRead
 
 __all__ = ("TournamentRead", "TournamentGroupRead")
@@ -36,3 +37,5 @@ class TournamentRead(BaseRead):
     loss_points: float = 0.0
 
     stages: list[StageRead] = []
+    division_grid_version_id: int | None
+    division_grid_version: DivisionGridVersionRead | None = None

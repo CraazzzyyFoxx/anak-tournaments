@@ -3,12 +3,12 @@
 from urllib.parse import urlparse
 
 from fastapi import HTTPException, status
+from shared.core import tournament_state
+from shared.core.enums import TournamentStatus
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from shared.core import tournament_state
-from shared.core.enums import TournamentStatus
 from src import models
 from src.schemas.admin import tournament as admin_schemas
 from src.services.challonge import service as challonge_service
@@ -69,6 +69,18 @@ async def create_tournament(session: AsyncSession, data: admin_schemas.Tournamen
                 detail="Tournament with this number already exists in this workspace",
             )
 
+    if data.division_grid_version_id is not None:
+        version_workspace = await session.scalar(
+            select(models.DivisionGrid.workspace_id)
+            .join(models.DivisionGridVersion, models.DivisionGridVersion.grid_id == models.DivisionGrid.id)
+            .where(models.DivisionGridVersion.id == data.division_grid_version_id)
+        )
+        if version_workspace not in {None, data.workspace_id}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Division grid version does not belong to this workspace",
+            )
+
     tournament = models.Tournament(**data.model_dump())
 
     session.add(tournament)
@@ -107,6 +119,18 @@ async def update_tournament(
         else:
             tournament.challonge_slug = None
             tournament.challonge_id = None
+
+    if "division_grid_version_id" in update_data and update_data["division_grid_version_id"] is not None:
+        version_workspace = await session.scalar(
+            select(models.DivisionGrid.workspace_id)
+            .join(models.DivisionGridVersion, models.DivisionGridVersion.grid_id == models.DivisionGrid.id)
+            .where(models.DivisionGridVersion.id == update_data["division_grid_version_id"])
+        )
+        if version_workspace not in {None, tournament.workspace_id}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Division grid version does not belong to this workspace",
+            )
 
     for field, value in update_data.items():
         setattr(tournament, field, value)

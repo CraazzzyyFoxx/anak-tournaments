@@ -39,6 +39,12 @@ async def to_pydantic(
         win_points=tournament.win_points,
         draw_points=tournament.draw_points,
         loss_points=tournament.loss_points,
+        division_grid_version_id=tournament.division_grid_version_id,
+        division_grid_version=(
+            schemas.DivisionGridVersionRead.model_validate(tournament.division_grid_version, from_attributes=True)
+            if tournament.division_grid_version is not None
+            else None
+        ),
         stages=stages,
     )
 

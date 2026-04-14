@@ -8,7 +8,7 @@ const DEFAULT_TIERS: DivisionTier[] = Array.from({ length: 20 }, (_, i) => {
     name: `Division ${num}`,
     rank_min: num === 1 ? 2000 : i * 100,
     rank_max: num === 1 ? null : i * 100 + 99,
-    icon_path: `/divisions/${num}.png`,
+    icon_url: `https://minio.craazzzyyfoxx.me/aqt/assets/divisions/default-${num}.png`,
   };
 });
 
@@ -20,5 +20,7 @@ export function useCurrentWorkspaceId(): number | null {
 
 export function useDivisionGrid(): DivisionGrid {
   const workspace = useWorkspaceStore((s) => s.getCurrentWorkspace());
-  return workspace?.division_grid ?? DEFAULT_DIVISION_GRID;
+  return workspace?.default_division_grid_version
+    ? { tiers: workspace.default_division_grid_version.tiers }
+    : DEFAULT_DIVISION_GRID;
 }

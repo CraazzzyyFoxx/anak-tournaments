@@ -15,7 +15,9 @@ const DivisionBadges = ({ user }: { user: UserOverviewRow }) => {
     <div className="flex flex-wrap justify-center gap-2">
       {user.roles.map((role) => {
         const tier = grid.tiers.find((t) => t.number === role.division);
-        const iconPath = tier?.icon_path ?? `/divisions/${role.division}.png`;
+        const iconPath =
+          tier?.icon_url ??
+          `https://minio.craazzzyyfoxx.me/aqt/assets/divisions/default-${role.division}.png`;
         const tierName = tier?.name ?? `Division ${role.division}`;
         return (
           <div key={`${user.id}-${role.role}-${role.division}`} className="relative h-10 w-10" title={`${role.role} • ${tierName}`}>

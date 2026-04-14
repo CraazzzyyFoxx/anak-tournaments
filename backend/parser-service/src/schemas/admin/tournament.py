@@ -28,6 +28,7 @@ class TournamentCreate(BaseModel):
     win_points: float = 1.0
     draw_points: float = 0.5
     loss_points: float = 0.0
+    division_grid_version_id: int | None = None
 
 
 class TournamentUpdate(BaseModel):
@@ -48,6 +49,7 @@ class TournamentUpdate(BaseModel):
     win_points: float | None = None
     draw_points: float | None = None
     loss_points: float | None = None
+    division_grid_version_id: int | None = None
 
 
 class TournamentStatusTransition(BaseModel):

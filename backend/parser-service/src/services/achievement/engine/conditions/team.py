@@ -8,14 +8,13 @@ from __future__ import annotations
 from typing import Any
 
 import sqlalchemy as sa
+from shared.core.enums import HeroClass
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.core.enums import HeroClass
 from src import models
 
 from ..context import EvalContext
 from . import ResultSet, register
-
 
 # ---- Sub-condition helpers (evaluate against a single player row) ----
 
@@ -66,17 +65,22 @@ def _needs_grid_check(condition: dict[str, Any]) -> bool:
 
 
 def _player_matches_div_condition(
+    context: EvalContext,
     rank: int,
+    source_version_id: int | None,
     condition: dict[str, Any],
-    grid,
 ) -> bool:
     """Check if a player's rank satisfies the player_div sub-condition."""
     from .stat_threshold import OPERATORS
 
     if "AND" in condition:
-        return all(_player_matches_div_condition(rank, c, grid) for c in condition["AND"])
+        return all(
+            _player_matches_div_condition(context, rank, source_version_id, c) for c in condition["AND"]
+        )
     if "OR" in condition:
-        return any(_player_matches_div_condition(rank, c, grid) for c in condition["OR"])
+        return any(
+            _player_matches_div_condition(context, rank, source_version_id, c) for c in condition["OR"]
+        )
 
     if condition.get("type") != "player_div":
         return True  # non-div conditions already filtered in SQL
@@ -84,21 +88,21 @@ def _player_matches_div_condition(
     params = condition.get("params", {})
     if rank is None:
         return False
-    div = grid.resolve_division(rank)
+    div = context.resolve_division(rank, source_version_id=source_version_id)
     if not div:
         return False
     return OPERATORS[params["op"]](div.number, params["value"])
 
 
 def _player_matches_condition(
+    context: EvalContext,
     player: Any,
     condition: dict[str, Any],
-    grid,
 ) -> bool:
     if "AND" in condition:
-        return all(_player_matches_condition(player, child, grid) for child in condition["AND"])
+        return all(_player_matches_condition(context, player, child) for child in condition["AND"])
     if "OR" in condition:
-        return any(_player_matches_condition(player, child, grid) for child in condition["OR"])
+        return any(_player_matches_condition(context, player, child) for child in condition["OR"])
 
     ctype = condition.get("type")
     params = condition.get("params", {})
@@ -113,7 +117,12 @@ def _player_matches_condition(
             return bool(player.secondary)
         return False
     if ctype == "player_div":
-        return _player_matches_div_condition(player.rank, condition, grid)
+        return _player_matches_div_condition(
+            context,
+            player.rank,
+            getattr(player, "division_grid_version_id", None),
+            condition,
+        )
     if ctype == "is_newcomer":
         return bool(player.is_newcomer)
     return True
@@ -215,7 +224,7 @@ async def execute_team_players_match(
         .where(models.Player.is_substitution.is_(False))
     )
 
-    if not (needs_grid and context.grid):
+    if not (needs_grid and (context.grid is not None or context.normalizer is not None)):
         result = await session.execute(players_query)
         return {(row[0], row[1]) for row in result}
 
@@ -229,6 +238,7 @@ async def execute_team_players_match(
             models.Player.secondary,
             models.Player.is_newcomer,
             models.Player.rank,
+            models.Tournament.division_grid_version_id,
         )
         .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
         .where(
@@ -249,7 +259,7 @@ async def execute_team_players_match(
     for team_key, team_players in grouped_players.items():
         matching_count = sum(
             1 for player in team_players
-            if _player_matches_condition(player, sub_condition, context.grid)
+            if _player_matches_condition(context, player, sub_condition)
         )
         total_count = len(team_players)
         if mode == "all" and matching_count == total_count:
@@ -292,6 +302,7 @@ async def execute_captain_property(
             models.Player.secondary,
             models.Player.is_newcomer,
             models.Player.rank,
+            models.Tournament.division_grid_version_id,
         )
         .join(models.Team, models.Team.id == models.Player.team_id)
         .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
@@ -306,11 +317,11 @@ async def execute_captain_property(
     if context.tournament:
         captain_query = captain_query.where(models.Player.tournament_id == context.tournament.id)
 
-    if needs_grid and context.grid:
+    if needs_grid and (context.grid is not None or context.normalizer is not None):
         qualifying_captains: list[tuple[int, int, int]] = []
         captain_result = await session.execute(captain_query)
         for row in captain_result:
-            if _player_matches_condition(row, sub_condition, context.grid):
+            if _player_matches_condition(context, row, sub_condition):
                 qualifying_captains.append((row.captain_user_id, row.team_id, row.tournament_id))
         if not qualifying_captains:
             return set()

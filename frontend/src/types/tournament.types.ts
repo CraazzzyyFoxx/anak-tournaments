@@ -1,7 +1,7 @@
 import { User } from "@/types/user.types";
 import { Team } from "@/types/team.types";
 import { Encounter } from "@/types/encounter.types";
-import { DivisionGrid } from "@/types/workspace.types";
+import { DivisionGridVersion } from "@/types/workspace.types";
 
 // ─── Enums ──────────────────────────────────────────────────────────────────
 
@@ -117,7 +117,8 @@ export interface Tournament {
   groups?: TournamentGroup[];
   participants_count: number | null;
   registrations_count: number | null;
-  division_grid: DivisionGrid | null;
+  division_grid_version_id: number | null;
+  division_grid_version: DivisionGridVersion | null;
 }
 
 // ─── Map Pool ───────────────────────────────────────────────────────────────
