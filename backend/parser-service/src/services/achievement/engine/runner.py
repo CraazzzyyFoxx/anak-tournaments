@@ -159,9 +159,11 @@ async def run_evaluation(
         await session.commit()
 
     except Exception as exc:
+        await session.rollback()
         run.status = EvaluationRunStatus.failed
         run.error_message = str(exc)[:1000]
         run.finished_at = datetime.now(UTC)
+        session.add(run)
         await session.commit()
         logger.exception(f"Evaluation run {run_id} failed")
         raise
