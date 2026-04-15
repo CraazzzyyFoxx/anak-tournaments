@@ -7,6 +7,7 @@ import {
   BalancerConfigResponse
 } from "@/types/balancer.types";
 import { apiFetch } from "@/lib/api-fetch";
+import { getTokenFromCookies } from "@/lib/auth-tokens";
 
 const BALANCER_STREAM_PREFIX = (
   process.env.NEXT_PUBLIC_BALANCER_API_URL || "http://localhost/api/balancer"
@@ -54,7 +55,7 @@ export default class balancerService {
     return response.json();
   }
 
-  static streamBalanceJob(
+  static async streamBalanceJob(
     jobId: string,
     handlers: {
       onEvent: (event: BalanceJobEvent) => void;
@@ -62,7 +63,14 @@ export default class balancerService {
       onOpen?: () => void;
     }
   ): () => void {
-    const source = new EventSource(`${BALANCER_STREAM_PREFIX}/jobs/${jobId}/stream`, {
+    const token = await getTokenFromCookies("aqt_access_token");
+    const url = new URL(`${BALANCER_STREAM_PREFIX}/jobs/${jobId}/stream`, window.location.origin);
+
+    if (token) {
+      url.searchParams.set("token", token);
+    }
+
+    const source = new EventSource(url.toString(), {
       withCredentials: true
     });
     let isClosed = false;

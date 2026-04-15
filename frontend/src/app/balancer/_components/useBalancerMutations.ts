@@ -250,7 +250,7 @@ export function useBalancerMutations({
     },
     onSuccess: ({ job, skipped }) => {
       dispatchJob({ type: "update", status: job.status, message: "Balance job created", progress: 0 });
-      balancerService.streamBalanceJob(job.job_id, {
+      void balancerService.streamBalanceJob(job.job_id, {
         onEvent: async (event) => {
           dispatchJob({
             type: "update",

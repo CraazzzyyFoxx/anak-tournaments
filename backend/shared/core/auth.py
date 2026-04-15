@@ -40,6 +40,9 @@ def _extract_token(
     """Extract JWT from Authorization header or cookie."""
     if token is not None:
         return token.credentials
+    query_token = request.query_params.get("token")
+    if query_token:
+        return query_token.removeprefix("Bearer ").strip() or None
     cookie_value = request.cookies.get(cookie_alias)
     if not cookie_value:
         return None
