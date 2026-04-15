@@ -62,7 +62,7 @@ export default class balancerService {
       onError?: (message: string) => void;
       onOpen?: () => void;
     }
-  ): () => void {
+  ): Promise<() => void> {
     const token = await getTokenFromCookies("aqt_access_token");
     const url = new URL(`${BALANCER_STREAM_PREFIX}/jobs/${jobId}/stream`, window.location.origin);
 
