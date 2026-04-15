@@ -1,4 +1,4 @@
-import type { BalancerRoleCode, BalancerPlayerRecord, InternalBalancePayload } from "@/types/balancer-admin.types";
+import type { AdminRegistration, BalancerRoleCode, BalancerPlayerRecord, InternalBalancePayload } from "@/types/balancer-admin.types";
 import type { BalanceVariant, PlayerValidationIssue } from "./workspace-helpers";
 import { getActiveRoleEntries } from "./workspace-helpers";
 
@@ -9,8 +9,57 @@ export type PlayerValidationState = {
   issues: PlayerValidationIssue[];
 };
 
+export type PoolLane = "excluded" | "needs_fix" | "ready";
+export type PoolDropPatch = { is_in_pool: boolean };
 export type PoolView = "all" | "needs_fix" | "ready" | "excluded";
-export type PoolSortValue = "added_desc" | "name_asc" | "division_asc" | "division_desc";
+export type PoolSortValue = "added_desc" | "added_asc" | "name_asc" | "division_asc" | "division_desc";
+
+export const POOL_LANES: PoolLane[] = ["excluded", "needs_fix", "ready"];
+
+export const POOL_LANE_LABELS: Record<PoolLane, string> = {
+  excluded: "Excluded",
+  needs_fix: "Need Fix",
+  ready: "Ready",
+};
+
+export function derivePoolLane(state: PlayerValidationState): PoolLane {
+  if (!state.player.is_in_pool) {
+    return "excluded";
+  }
+
+  return state.issues.length > 0 ? "needs_fix" : "ready";
+}
+
+export function getPoolDropPatch(targetLane: PoolLane): PoolDropPatch {
+  return { is_in_pool: targetLane !== "excluded" };
+}
+
+export function getRegistrationBattleTags(
+  registration: Pick<AdminRegistration, "battle_tag" | "smurf_tags_json"> | null | undefined,
+  fallbackBattleTag: string,
+): string[] {
+  const seen = new Set<string>();
+  const tags = [registration?.battle_tag ?? fallbackBattleTag, ...(registration?.smurf_tags_json ?? [])]
+    .map((tag) => tag?.trim())
+    .filter((tag): tag is string => Boolean(tag));
+
+  return tags.filter((tag) => {
+    const normalizedTag = tag.toLowerCase();
+    if (seen.has(normalizedTag)) {
+      return false;
+    }
+    seen.add(normalizedTag);
+    return true;
+  });
+}
+
+export function formatBattleTagsForClipboard(battleTags: string[]): string {
+  return battleTags.join("\n");
+}
+
+export function formatSmurfCount(count: number): string {
+  return `${count} smurf${count === 1 ? "" : "s"}`;
+}
 
 export const PRESET_LABELS: Record<string, string> = {
   DEFAULT: "Standard",
@@ -98,6 +147,9 @@ export function sortPlayerStates(
     }
     if (sortValue === "division_desc") {
       return getPrimaryDivision(right.player) - getPrimaryDivision(left.player);
+    }
+    if (sortValue === "added_asc") {
+      return left.player.id - right.player.id;
     }
     return right.player.id - left.player.id;
   });

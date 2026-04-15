@@ -17,6 +17,7 @@ import balancerAdminService from "@/services/balancer-admin.service";
 import balancerService from "@/services/balancer.service";
 import type {
   BalancerApplication,
+  AdminRegistrationUpdateInput,
   BalancerPlayerRecord,
   BalancerPlayerUpdateInput,
   BalancerRoleCode,
@@ -86,24 +87,41 @@ export function useBalancerMutations({
     },
   });
 
+  const invalidateRegistrations = () =>
+    queryClient.invalidateQueries({ queryKey: ["balancer-admin", "registrations", tournamentId] });
+
   const updatePlayerMutation = useMutation({
     mutationFn: async ({ playerId, payload }: { playerId: number; payload: BalancerPlayerUpdateInput }) => {
-      const sortedEntries = [...(payload.role_entries_json ?? [])].sort((left, right) => left.priority - right.priority);
-      const roles = sortedEntries.map((entry, index) => ({
-        role: entry.role,
-        subrole: entry.subtype,
-        priority: entry.priority,
-        is_primary: payload.is_flex ? true : index === 0,
-        rank_value: entry.rank_value,
-        is_active: entry.is_active,
-      }));
-      await balancerAdminService.updateRegistration(playerId, {
-        roles,
-        is_flex: payload.is_flex,
-        admin_notes: payload.admin_notes,
-        status: payload.registration_status ?? undefined,
-        balancer_status: payload.registration_balancer_status ?? undefined,
-      });
+      const registrationPatch: AdminRegistrationUpdateInput = {};
+
+      if (payload.role_entries_json !== undefined) {
+        const sortedEntries = [...(payload.role_entries_json ?? [])].sort((left, right) => left.priority - right.priority);
+        registrationPatch.roles = sortedEntries.map((entry, index) => ({
+          role: entry.role,
+          subrole: entry.subtype,
+          priority: entry.priority,
+          is_primary: payload.is_flex ? true : index === 0,
+          rank_value: entry.rank_value,
+          is_active: entry.is_active,
+        }));
+      }
+
+      if (payload.is_flex !== undefined) {
+        registrationPatch.is_flex = payload.is_flex;
+      }
+      if (payload.admin_notes !== undefined) {
+        registrationPatch.admin_notes = payload.admin_notes;
+      }
+      if (payload.registration_status != null) {
+        registrationPatch.status = payload.registration_status;
+      }
+      if (payload.registration_balancer_status != null) {
+        registrationPatch.balancer_status = payload.registration_balancer_status;
+      }
+
+      if (Object.keys(registrationPatch).length > 0) {
+        await balancerAdminService.updateRegistration(playerId, registrationPatch);
+      }
       if (payload.is_in_pool === undefined) {
         return null;
       }
@@ -114,7 +132,7 @@ export function useBalancerMutations({
     },
     onSuccess: async () => {
       setEditingPlayerId(null);
-      await queryClient.invalidateQueries({ queryKey: ["balancer-admin", "registrations", tournamentId] });
+      await invalidateRegistrations();
       toast({ title: "Registration updated" });
     },
     onError: (error: Error) => {
@@ -129,7 +147,7 @@ export function useBalancerMutations({
         exclude_reason: "manual_exclusion",
       }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["balancer-admin", "registrations", tournamentId] });
+      await invalidateRegistrations();
       setEditingPlayerId(null);
       toast({ title: "Registration excluded from balancer" });
     },
@@ -146,11 +164,73 @@ export function useBalancerMutations({
       }),
     onSuccess: async (registration) => {
       setSelectedPlayerId(registration.id);
-      await queryClient.invalidateQueries({ queryKey: ["balancer-admin", "registrations", tournamentId] });
+      await invalidateRegistrations();
       toast({ title: "Registration added back to pool" });
     },
     onError: (error: Error) => {
       toast({ title: "Failed to include registration", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const setPlayerPoolMembershipMutation = useMutation({
+    mutationFn: ({ playerId, isInPool }: { playerId: number; isInPool: boolean }) =>
+      balancerAdminService.setRegistrationExclusion(playerId, {
+        exclude_from_balancer: !isInPool,
+        exclude_reason: isInPool ? null : "manual_exclusion",
+      }),
+    onSuccess: async (_, variables) => {
+      await invalidateRegistrations();
+      toast({ title: variables.isInPool ? "Registration included in balancer" : "Registration excluded from balancer" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to update pool membership", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const setBalancerStatusMutation = useMutation({
+    mutationFn: ({ playerId, balancerStatus }: { playerId: number; balancerStatus: string }) =>
+      balancerAdminService.setBalancerStatus(playerId, balancerStatus),
+    onSuccess: async () => {
+      await invalidateRegistrations();
+      toast({ title: "Balancer status updated" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to update balancer status", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const bulkPoolMembershipMutation = useMutation({
+    mutationFn: async ({ playerIds, isInPool }: { playerIds: number[]; isInPool: boolean }) => {
+      await Promise.all(
+        playerIds.map((playerId) =>
+          balancerAdminService.setRegistrationExclusion(playerId, {
+            exclude_from_balancer: !isInPool,
+            exclude_reason: isInPool ? null : "manual_exclusion",
+          }),
+        ),
+      );
+      return { updated: playerIds.length, isInPool };
+    },
+    onSuccess: async (result) => {
+      await invalidateRegistrations();
+      toast({ title: `${result.updated} registration${result.updated !== 1 ? "s" : ""} ${result.isInPool ? "included" : "excluded"}` });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Bulk pool update failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const bulkBalancerStatusMutation = useMutation({
+    mutationFn: async ({ playerIds, balancerStatus }: { playerIds: number[]; balancerStatus: string }) => {
+      await Promise.all(playerIds.map((playerId) => balancerAdminService.setBalancerStatus(playerId, balancerStatus)));
+      return { updated: playerIds.length };
+    },
+    onSuccess: async (result) => {
+      await invalidateRegistrations();
+      toast({ title: `${result.updated} balancer status${result.updated !== 1 ? "es" : ""} updated` });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Bulk status update failed", description: error.message, variant: "destructive" });
     },
   });
 
@@ -269,6 +349,10 @@ export function useBalancerMutations({
     updatePlayerMutation,
     removePlayerMutation,
     includePlayerMutation,
+    setPlayerPoolMembershipMutation,
+    setBalancerStatusMutation,
+    bulkPoolMembershipMutation,
+    bulkBalancerStatusMutation,
     runBalanceMutation,
     saveBalanceMutation,
     exportBalanceMutation,

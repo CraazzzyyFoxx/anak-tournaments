@@ -7,6 +7,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from src.schemas.division_grid import DivisionGridVersionRead
+
 # ---------------------------------------------------------------------------
 # Registration form (config)
 # ---------------------------------------------------------------------------
@@ -119,6 +121,7 @@ class TournamentHistoryEntry(BaseModel):
     tournament_name: str
     role: str | None = None
     division: int | None = None
+    division_grid_version: DivisionGridVersionRead | None = None
 
 
 class RegistrationListRead(RegistrationRead):

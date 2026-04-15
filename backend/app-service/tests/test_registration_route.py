@@ -21,10 +21,81 @@ os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
 os.environ.setdefault("S3_BUCKET_NAME", "test")
 
 registration_route = importlib.import_module("src.routes.registration")
+division_grid_schemas = importlib.import_module("src.schemas.division_grid")
 registration_schemas = importlib.import_module("src.schemas.registration")
 
 
 class RegistrationRouteTests(IsolatedAsyncioTestCase):
+    async def test_tournament_history_returns_source_tournament_grid(self) -> None:
+        source_grid = division_grid_schemas.DivisionGridVersionRead(
+            id=77,
+            grid_id=12,
+            version=1,
+            label="Source tournament grid",
+            status="published",
+            created_from_version_id=None,
+            published_at=None,
+            tiers=[
+                division_grid_schemas.DivisionGridTierRead(
+                    id=701,
+                    version_id=77,
+                    slug="source-high",
+                    number=1,
+                    name="Source High",
+                    sort_order=1,
+                    rank_min=200,
+                    rank_max=None,
+                    icon_url="/source-high.png",
+                ),
+                division_grid_schemas.DivisionGridTierRead(
+                    id=702,
+                    version_id=77,
+                    slug="source-low",
+                    number=9,
+                    name="Source Low",
+                    sort_order=2,
+                    rank_min=0,
+                    rank_max=199,
+                    icon_url="/source-low.png",
+                ),
+            ],
+        )
+        session = SimpleNamespace(
+            execute=AsyncMock(
+                return_value=[
+                    (
+                        SimpleNamespace(
+                            tournament_id=42,
+                            user_id=10,
+                            role=SimpleNamespace(value="tank"),
+                            rank=150,
+                        ),
+                        "Source Cup",
+                    )
+                ]
+            )
+        )
+        registration = SimpleNamespace(id=5, user_id=10, auth_user_id=None)
+
+        with (
+            patch.object(
+                registration_route,
+                "get_division_grid_version",
+                AsyncMock(return_value=source_grid),
+            ),
+        ):
+            history_map = await registration_route._build_tournament_history(
+                session,
+                [registration],
+                current_tournament_id=99,
+                workspace_id=3,
+            )
+
+        entry = history_map[registration.id][0]
+        self.assertEqual(9, entry.division)
+        self.assertEqual(77, entry.division_grid_version.id)
+        self.assertEqual("/source-low.png", entry.division_grid_version.tiers[1].icon_url)
+
     async def test_register_rejects_new_submission_for_withdrawn_registration(self) -> None:
         session = SimpleNamespace()
         user = SimpleNamespace(id=42)

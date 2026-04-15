@@ -1,3 +1,5 @@
+import type { DivisionGridVersion } from "@/types/workspace.types";
+
 export interface CustomFieldDefinition {
   key: string;
   label: string;
@@ -55,6 +57,7 @@ export interface TournamentHistoryEntry {
   tournament_name: string;
   role: string | null;
   division: number | null;
+  division_grid_version?: DivisionGridVersion | null;
 }
 
 export interface Registration {

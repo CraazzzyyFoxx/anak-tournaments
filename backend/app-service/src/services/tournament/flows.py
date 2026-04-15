@@ -5,6 +5,7 @@ from itertools import groupby
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.division_grid import DivisionGrid
+from shared.services.division_grid_normalization import DivisionGridNormalizationError, DivisionGridNormalizer
 
 from src import models, schemas
 from src.core import enums, errors, pagination
@@ -227,38 +228,62 @@ async def get_history_tournaments(
 
 
 async def get_avg_divisions_tournaments(
-    session: AsyncSession, workspace_id: int | None = None, *, grid: DivisionGrid,
+    session: AsyncSession,
+    workspace_id: int | None = None,
+    *,
+    normalizer: DivisionGridNormalizer | None = None,
+    fallback_grid: DivisionGrid,
 ) -> list[schemas.DivisionStatistics]:
     """
-    Retrieves average division statistics for tournaments.
+    Retrieves average division statistics for tournaments, normalizing each
+    tournament's player ranks through the tournament's own division_grid_version
+    before averaging.
 
-    Args:
-        session: An SQLAlchemy `AsyncSession` for database interaction.
-
-    Returns:
-        A list of `DivisionStatistics` schemas.
+    When a normalizer is provided, divisions are converted to the target grid so
+    values are comparable across tournaments that used different grid versions.
+    Falls back to fallback_grid for tournaments that have no grid version set.
     """
-    cache: dict[int, dict[enums.HeroClass, float]] = {}
+    raw_rank_cache: dict[int, dict[enums.HeroClass, list[float]]] = {}
+    tournament_numbers: dict[int, int] = {}
+
+    rows = await service.get_avg_div_tournaments(session, workspace_id=workspace_id)
+    for tournament, role, rank in rows:
+        if tournament.id not in raw_rank_cache:
+            raw_rank_cache[tournament.id] = {}
+            tournament_numbers[tournament.id] = tournament.number
+
+        source_version_id: int | None = tournament.division_grid_version_id
+
+        if normalizer is not None and source_version_id is not None:
+            try:
+                div_number = normalizer.normalize_division_number(source_version_id, rank)
+            except DivisionGridNormalizationError:
+                # Mapping incomplete — use tournament's own grid without normalizing
+                source_grid = normalizer.source_grids_by_version_id.get(source_version_id, fallback_grid)
+                div_number = source_grid.resolve_division_number(rank)
+        elif normalizer is not None:
+            # Tournament has no grid; use the normalizer's target grid
+            div_number = normalizer.target_grid.resolve_division_number(rank)
+        else:
+            # No normalizer — use fallback (workspace/global default) grid
+            div_number = fallback_grid.resolve_division_number(rank)
+
+        raw_rank_cache[tournament.id].setdefault(role, []).append(float(div_number))
+
+    def avg_or_none(values: list[float] | None) -> float | None:
+        if not values:
+            return None
+        return round(sum(values) / len(values), 2)
+
     output: list[schemas.DivisionStatistics] = []
-    tournaments: dict[int, int] = {}
-    stats = await service.get_avg_div_tournaments(session, workspace_id=workspace_id, grid=grid)
-    for tournament, role, value in stats:
-        if tournament.id not in cache:
-            cache[tournament.id] = {}
-            tournaments[tournament.id] = tournament.number
-        cache[tournament.id][role] = value
-
-    def round_or_none(value: float | None) -> float | None:
-        return round(value, 2) if value is not None else None
-
-    for tournament_id, roles in cache.items():
+    for tournament_id, roles in raw_rank_cache.items():
         output.append(
             schemas.DivisionStatistics(
                 id=tournament_id,
-                number=tournaments[tournament_id],
-                tank_avg_div=round_or_none(roles.get(enums.HeroClass.tank)),
-                damage_avg_div=round_or_none(roles.get(enums.HeroClass.damage)),
-                support_avg_div=round_or_none(roles.get(enums.HeroClass.support)),
+                number=tournament_numbers[tournament_id],
+                tank_avg_div=avg_or_none(roles.get(enums.HeroClass.tank)),
+                damage_avg_div=avg_or_none(roles.get(enums.HeroClass.damage)),
+                support_avg_div=avg_or_none(roles.get(enums.HeroClass.support)),
             )
         )
 

@@ -23,6 +23,7 @@ const MAX_RESULTS_PER_GROUP = 6;
 
 const SORT_OPTIONS = [
   { value: "added_desc", label: "Newest in pool" },
+  { value: "added_asc", label: "Oldest in pool" },
   { value: "name_asc", label: "Name A-Z" },
   { value: "division_asc", label: "Highest division first" },
   { value: "division_desc", label: "Lowest division first" },

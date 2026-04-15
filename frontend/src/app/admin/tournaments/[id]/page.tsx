@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CircleAlert,
   ArrowLeft,
+  BarChart3,
   CalendarDays,
   CheckCircle,
   CheckCircle2,
@@ -295,6 +296,7 @@ export default function AdminTournamentWorkspacePage() {
 
   const canUpdateTournament = hasPermission("tournament.update");
   const canDeleteTournament = hasPermission("tournament.delete");
+  const canReadAnalytics = hasPermission("analytics.read");
   const canCreateTeam = hasPermission("team.create");
   const canUpdateTeam = hasPermission("team.update");
   const canDeleteTeam = hasPermission("team.delete");
@@ -1040,6 +1042,14 @@ export default function AdminTournamentWorkspacePage() {
                   Back to Tournaments
                 </Link>
               </Button>
+              {canReadAnalytics ? (
+                <Button asChild variant="outline">
+                  <Link href={`/tournaments/analytics?tournamentId=${tournament.id}`}>
+                    <BarChart3 className="mr-2 h-4 w-4" />
+                    Open Analytics
+                  </Link>
+                </Button>
+              ) : null}
               {canUpdateTournament ? (
                 <Button variant="outline" onClick={openTournamentDialog}>
                   <Pencil className="mr-2 h-4 w-4" />

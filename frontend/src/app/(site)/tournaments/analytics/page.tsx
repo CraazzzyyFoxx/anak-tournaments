@@ -2,7 +2,8 @@
 
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Loader2, RefreshCcw, RotateCcw } from "lucide-react";
 import { Team } from "@/types/team.types";
 import {
   Select,
@@ -24,10 +25,19 @@ import {
   TableRow
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import RanksPage from "@/app/(site)/tournaments/analytics/components/RanksPage";
+import {
+  canShowAnalyticsAdminToolbar,
+  getAnalyticsRefreshKeys,
+  getPreferredAnalyticsAlgorithmId,
+  sortAnalyticsAlgorithms
+} from "@/app/(site)/tournaments/analytics/analytics.helpers";
+import { usePermissions } from "@/hooks/usePermissions";
+import { useToast } from "@/hooks/use-toast";
 import tournamentService from "@/services/tournament.service";
 import analyticsService from "@/services/analytics.service";
 
@@ -35,9 +45,18 @@ const AnalyticsPage = () => {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
+  const { hasPermission } = usePermissions();
+  const { toast } = useToast();
 
-  const [previousElement, setPreviousElement] = useState<HTMLElement | null>(null);
-  const [selectedTeam, setSelectedTeam] = useState<string>("");
+  const previousElementRef = React.useRef<HTMLElement | null>(null);
+  const [selectedTeamState, setSelectedTeamState] = useState<{
+    tournamentId: number | null;
+    name: string;
+  }>({
+    tournamentId: null,
+    name: ""
+  });
 
   const parseId = useCallback((value: string | null) => {
     if (!value) return null;
@@ -78,7 +97,14 @@ const AnalyticsPage = () => {
     queryKey: ["analytics", "algorithms"],
     queryFn: () => analyticsService.getAlgorithms()
   });
+  const availableAlgorithms = useMemo(
+    () => sortAnalyticsAlgorithms(algorithmData?.results ?? []),
+    [algorithmData?.results]
+  );
   const canQueryAnalytics = tournamentId != null && algorithmId != null;
+  const canRecalculateAnalytics = canShowAnalyticsAdminToolbar(
+    hasPermission("analytics.update")
+  );
 
   const {
     data: analytics,
@@ -91,6 +117,43 @@ const AnalyticsPage = () => {
     enabled: canQueryAnalytics
   });
 
+  const recalculateMutation = useMutation({
+    mutationFn: async (selectedAlgorithmIds?: number[]) => {
+      if (tournamentId == null) {
+        throw new Error("Select a tournament before recalculating analytics.");
+      }
+
+      return analyticsService.recalculateAnalytics(tournamentId, selectedAlgorithmIds);
+    },
+    onSuccess: async (result, selectedAlgorithmIds) => {
+      if (tournamentId == null) {
+        return;
+      }
+
+      await Promise.all(
+        getAnalyticsRefreshKeys(tournamentId, algorithmId).map((queryKey) =>
+          queryClient.invalidateQueries({ queryKey })
+        )
+      );
+
+      toast({
+        title: selectedAlgorithmIds?.length
+          ? "Selected analytics recalculated"
+          : "All analytics recalculated",
+        description: result.algorithms.length
+          ? result.algorithms.join(", ")
+          : "Requested algorithms were dispatched."
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  });
+
   const activeTournament = useMemo(() => {
     if (!tournamentId) return null;
     return tournamentsData?.results?.find((t) => t.id === tournamentId) || null;
@@ -98,8 +161,8 @@ const AnalyticsPage = () => {
 
   const activeAlgorithm = useMemo(() => {
     if (!algorithmId) return null;
-    return algorithmData?.results?.find((a) => a.id === algorithmId) || null;
-  }, [algorithmId, algorithmData?.results]);
+    return availableAlgorithms.find((a) => a.id === algorithmId) || null;
+  }, [algorithmId, availableAlgorithms]);
 
   useEffect(() => {
     const nextParams = new URLSearchParams(searchParams);
@@ -116,8 +179,9 @@ const AnalyticsPage = () => {
       changed = true;
     }
 
-    if (algorithmId == null && isSuccessAlgorithm && algorithmData?.results?.[0]?.id) {
-      nextParams.set("algorithm", String(algorithmData.results[0].id));
+    const preferredAlgorithmId = getPreferredAnalyticsAlgorithmId(availableAlgorithms);
+    if (algorithmId == null && isSuccessAlgorithm && preferredAlgorithmId != null) {
+      nextParams.set("algorithm", String(preferredAlgorithmId));
       changed = true;
     }
 
@@ -131,18 +195,10 @@ const AnalyticsPage = () => {
     isSuccessTournaments,
     tournamentsData?.results,
     isSuccessAlgorithm,
-    algorithmData?.results,
+    availableAlgorithms,
     tournamentId,
     algorithmId
   ]);
-
-  useEffect(() => {
-    setSelectedTeam("");
-    setPreviousElement((el) => {
-      el?.classList.remove("ring-2", "ring-ring", "ring-offset-2", "ring-offset-background");
-      return null;
-    });
-  }, [tournamentId]);
 
   const navToTab = useCallback(
     (tab: string) => {
@@ -154,6 +210,18 @@ const AnalyticsPage = () => {
   );
 
   const pushTournamentId = (newTournamentId: string) => {
+    previousElementRef.current?.classList.remove(
+      "ring-2",
+      "ring-ring",
+      "ring-offset-2",
+      "ring-offset-background"
+    );
+    previousElementRef.current = null;
+    setSelectedTeamState({
+      tournamentId: null,
+      name: ""
+    });
+
     const newSearchParams = new URLSearchParams(searchParams || undefined);
     newSearchParams.set("tournamentId", String(newTournamentId));
     router.push(`${pathname}?${newSearchParams.toString()}`);
@@ -166,16 +234,19 @@ const AnalyticsPage = () => {
   };
 
   const scrollToTeam = (team: Team) => {
-    setSelectedTeam(team.name);
+    setSelectedTeamState({
+      tournamentId,
+      name: team.name
+    });
     setTimeout(() => {
       const element = document.getElementById(team.id.toString());
-      previousElement?.classList.remove(
+      previousElementRef.current?.classList.remove(
         "ring-2",
         "ring-ring",
         "ring-offset-2",
         "ring-offset-background"
       );
-      setPreviousElement(element);
+      previousElementRef.current = element;
       if (element) {
         const offset = 124;
         const bodyRect = document.body.getBoundingClientRect().top;
@@ -195,6 +266,9 @@ const AnalyticsPage = () => {
   const isFiltersReady = !loadingTournaments && !loadingAlgorithms;
   const isAnalyticsReady = canQueryAnalytics && !!analytics;
   const isEmptyTeams = isAnalyticsReady && (analytics?.teams?.length || 0) === 0;
+  const isRecalculatePending = recalculateMutation.isPending;
+  const selectedTeam =
+    selectedTeamState.tournamentId === tournamentId ? selectedTeamState.name : "";
 
   return (
     <Tabs value={activeTab} onValueChange={navToTab} className="liquid-glass">
@@ -294,7 +368,7 @@ const AnalyticsPage = () => {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectGroup>
-                        {algorithmData?.results.map((item) => (
+                        {availableAlgorithms.map((item) => (
                           <SelectItem key={item.id} value={item.id.toString()}>
                             {item.name}
                           </SelectItem>
@@ -317,9 +391,50 @@ const AnalyticsPage = () => {
                           variant="glass"
                         />
                       )}
-                    </div>
-                  ) : null}
+                  </div>
+                ) : null}
               </div>
+
+              {canRecalculateAnalytics ? (
+                <div className="flex flex-col gap-2 rounded-lg border border-dashed border-border/70 bg-muted/20 px-3 py-3 md:flex-row md:items-center md:justify-between">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    {isRecalculatePending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCcw className="h-4 w-4" />
+                    )}
+                    <span>Admin actions</span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => recalculateMutation.mutate([algorithmId!])}
+                      disabled={!canQueryAnalytics || isRecalculatePending}
+                    >
+                      {isRecalculatePending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RotateCcw className="h-4 w-4" />
+                      )}
+                      Recalculate selected
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => recalculateMutation.mutate(undefined)}
+                      disabled={tournamentId == null || isRecalculatePending}
+                    >
+                      {isRecalculatePending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCcw className="h-4 w-4" />
+                      )}
+                      Recalculate all
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </CardContent>
         </Card>

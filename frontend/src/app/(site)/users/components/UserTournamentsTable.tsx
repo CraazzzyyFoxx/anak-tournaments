@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useEffect, useMemo } from "react";
-import Image from "next/image";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import DivisionIcon from "@/components/DivisionIcon";
 import { UserTournament } from "@/types/user.types";
 import { Accordion, AccordionContent, AccordionItem } from "@/components/ui/accordion";
 import TournamentsIcon from "@/components/icons/TournamentsIcon";
@@ -101,9 +101,9 @@ export const UserTournamentHeader = ({ tournament }: { tournament: UserTournamen
               <div className="mt-0.5">
                 <PlayerRoleIcon role={tournament.role} />
               </div>
-              <Image
-                src={`/divisions/${tournament.division}.png`}
-                alt="Division"
+              <DivisionIcon
+                division={tournament.division}
+                tournamentGrid={tournament.division_grid_version}
                 width={32}
                 height={32}
               />
@@ -145,7 +145,7 @@ export const UserTournamentContent = ({ tournament }: { tournament: UserTourname
       </Card>
       <Card className="md:col-span-5 xs:col-span-7">
         <CardContent className="p-0">
-          <TournamentTeamTable players={tournament.players} />
+          <TournamentTeamTable players={tournament.players} tournamentGrid={tournament.division_grid_version} />
         </CardContent>
       </Card>
       <Card className="col-span-7">

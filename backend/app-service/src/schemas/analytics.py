@@ -22,6 +22,11 @@ class PlayerAnalytics(PlayerRead):
     move_1: float | None
     move_2: float | None
     shift: float | None
+    confidence: float
+    effective_evidence: float
+    sample_tournaments: int
+    sample_matches: int
+    log_coverage: float
 
 
 class TeamAnalytics(TeamRead):

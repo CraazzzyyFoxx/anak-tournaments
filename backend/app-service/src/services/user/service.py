@@ -904,17 +904,22 @@ async def get_overview_users(
 async def get_overview_role_divisions(
     session: AsyncSession,
     user_ids: list[int],
-    grid: DivisionGrid,
-) -> dict[int, list[tuple[enums.HeroClass, int]]]:
+) -> dict[int, list[tuple[enums.HeroClass, int, int | None]]]:
+    """Return (role, rank, division_grid_version_id) for each user's most recent entry per role.
+
+    Division computation is intentionally deferred to the caller so that each
+    player's rank can be normalised through the tournament's own grid version
+    rather than a single global grid.
+    """
     if not user_ids:
         return {}
 
-    div_expr = division_case_expr(models.Player.rank, grid)
     latest_roles_subquery = (
         sa.select(
             models.Player.user_id.label("user_id"),
             models.Player.role.label("role"),
-            div_expr.label("division"),
+            models.Player.rank.label("rank"),
+            models.Player.tournament_id.label("tournament_id"),
             sa.func.row_number()
             .over(
                 partition_by=[models.Player.user_id, models.Player.role],
@@ -930,19 +935,24 @@ async def get_overview_role_divisions(
         .subquery()
     )
 
-    query = sa.select(
-        latest_roles_subquery.c.user_id,
-        latest_roles_subquery.c.role,
-        latest_roles_subquery.c.division,
-    ).where(latest_roles_subquery.c.row_num == 1)
+    query = (
+        sa.select(
+            latest_roles_subquery.c.user_id,
+            latest_roles_subquery.c.role,
+            latest_roles_subquery.c.rank,
+            models.Tournament.division_grid_version_id,
+        )
+        .join(models.Tournament, models.Tournament.id == latest_roles_subquery.c.tournament_id)
+        .where(latest_roles_subquery.c.row_num == 1)
+    )
 
     result = await session.execute(query)
 
-    payload: dict[int, list[tuple[enums.HeroClass, int]]] = defaultdict(list)
-    for user_id, role, division in result.all():
+    payload: dict[int, list[tuple[enums.HeroClass, int, int | None]]] = defaultdict(list)
+    for user_id, role, rank, version_id in result.all():
         if role is None:
             continue
-        payload[user_id].append((role, division))
+        payload[user_id].append((role, rank, version_id))
 
     role_order = {
         enums.HeroClass.tank: 0,
@@ -1937,6 +1947,7 @@ async def get_tournaments_with_stats(
         .options(
             selectinload(models.Team.players).selectinload(models.Player.user),
             selectinload(models.Team.tournament).selectinload(models.Tournament.standings),
+            selectinload(models.Team.tournament).selectinload(models.Tournament.division_grid_version),
             selectinload(models.Team.standings).selectinload(models.Standing.group),
         )
         .join(models.Team, models.Team.id == models.Player.team_id)

@@ -5,6 +5,7 @@ from statistics import mean
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.division_grid import DivisionGrid, division_case_expr
+from shared.services.division_grid_normalization import DivisionGridNormalizationError, DivisionGridNormalizer
 
 from src import models, schemas
 from src.core import enums, errors, pagination
@@ -251,12 +252,37 @@ async def get_all(
     )
 
 
+def _resolve_division(
+    rank: int,
+    version_id: int | None,
+    normalizer: DivisionGridNormalizer | None,
+    fallback_grid: DivisionGrid,
+) -> int:
+    """Resolve a player rank to a normalised division number.
+
+    Priority:
+    1. Normaliser with the tournament's own grid version (cross-grid normalisation).
+    2. Normaliser's target grid when the tournament has no version set.
+    3. Fallback grid when no normaliser is available.
+    """
+    if normalizer is not None and version_id is not None:
+        try:
+            return normalizer.normalize_division_number(version_id, rank)
+        except DivisionGridNormalizationError:
+            source_grid = normalizer.source_grids_by_version_id.get(version_id, fallback_grid)
+            return source_grid.resolve_division_number(rank)
+    if normalizer is not None:
+        return normalizer.target_grid.resolve_division_number(rank)
+    return fallback_grid.resolve_division_number(rank)
+
+
 async def get_overview(
     session: AsyncSession,
     params: schemas.UserOverviewParams,
     workspace_id: int | None = None,
     *,
     grid: DivisionGrid,
+    normalizer: DivisionGridNormalizer | None = None,
 ) -> pagination.Paginated[schemas.UserOverviewRow]:
     if params.div_min is not None and params.div_max is not None and params.div_min > params.div_max:
         raise errors.ApiHTTPException(
@@ -279,7 +305,7 @@ async def get_overview(
         )
 
     user_ids = [user.id for user in users]
-    roles_map = await service.get_overview_role_divisions(session, user_ids, grid)
+    raw_roles_map = await service.get_overview_role_divisions(session, user_ids)
     tournaments_count_map = await service.get_overview_tournaments_count(session, user_ids, workspace_id=workspace_id)
     achievements_count_map = await service.get_overview_achievements_count(session, user_ids)
     averages_map = await service.get_overview_averages(session, user_ids)
@@ -289,8 +315,11 @@ async def get_overview(
     rows: list[schemas.UserOverviewRow] = []
     for user in users:
         roles = [
-            schemas.UserOverviewRoleDivision(role=role, division=division)
-            for role, division in roles_map.get(user.id, [])
+            schemas.UserOverviewRoleDivision(
+                role=role,
+                division=_resolve_division(rank, version_id, normalizer, grid),
+            )
+            for role, rank, version_id in raw_roles_map.get(user.id, [])
         ]
 
         top_heroes: list[schemas.UserOverviewHero] = []
@@ -828,16 +857,25 @@ async def get_tournaments(
         draw: int = 0
         placement: int | None = team.standings[0].overall_position if team.standings else None
 
+        # Use tournament-specific grid if available, otherwise fall back to workspace grid
+        tournament_grid = DivisionGrid.from_version(team.tournament.division_grid_version) if team.tournament.division_grid_version is not None else grid
+
         for player in team.players:
             if player.user_id == user.id:
                 user_role = player.role
-                user_division = grid.resolve_division_number(player.rank)
+                user_division = tournament_grid.resolve_division_number(player.rank)
                 break
 
         for standing in team.standings:
             won += standing.win
             lost += standing.lose
             draw += standing.draw
+
+        division_grid_version = (
+            schemas.DivisionGridVersionRead.model_validate(team.tournament.division_grid_version, from_attributes=True)
+            if team.tournament.division_grid_version is not None
+            else None
+        )
 
         tournament = schemas.UserTournament(
             id=team.tournament.id,
@@ -846,13 +884,14 @@ async def get_tournaments(
             is_league=team.tournament.is_league,
             team_id=team.id,
             team=team.name,
-            players=[await team_flows.to_pydantic_player(session, player, [], grid=grid) for player in team.players],
+            players=[await team_flows.to_pydantic_player(session, player, [], grid=tournament_grid) for player in team.players],
             closeness=round(avg_closeness, 2) if avg_closeness else 0,
             maps_won=wins,
             maps_lost=losses,
             placement=placement,
             role=user_role,
             division=user_division,
+            division_grid_version=division_grid_version,
             count_teams=placements[team.tournament_id],
             won=won,
             lost=lost,

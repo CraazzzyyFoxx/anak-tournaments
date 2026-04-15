@@ -10,6 +10,11 @@ export interface PlayerAnalytics extends Player {
   move_2: number;
   points: number;
   shift: number;
+  confidence: number;
+  effective_evidence: number;
+  sample_tournaments: number;
+  sample_matches: number;
+  log_coverage: number;
 }
 
 export interface TeamAnalytics extends Team {
@@ -22,4 +27,9 @@ export interface TeamAnalytics extends Team {
 export interface TournamentAnalytics {
   teams: TeamAnalytics[];
   teams_wins: Record<number, number>;
+}
+
+export interface AnalyticsRecalculateResponse {
+  message: string;
+  algorithms: string[];
 }

@@ -16,15 +16,17 @@ import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { PerformanceBadge } from "@/components/PerformanceBagde";
 import { ScrollBar, ScrollArea } from "@/components/ui/scroll-area";
 import DivisionIcon from "@/components/DivisionIcon";
+import type { DivisionGridVersion } from "@/types/workspace.types";
 
 interface MatchTeamTableProps {
   team: TeamWithStats;
   isHome: boolean;
   maxHeroes: number;
   matchRound: number;
+  tournamentGrid?: DivisionGridVersion | null;
 }
 
-const MatchTeamTable = ({ team, isHome, maxHeroes, matchRound }: MatchTeamTableProps) => {
+const MatchTeamTable = ({ team, isHome, maxHeroes, matchRound, tournamentGrid }: MatchTeamTableProps) => {
   // @ts-ignore
   const sortedPlayers: PlayerWithStats[] = sortTeamPlayers(team.players);
   const backgroundColor = isHome ? "[#104e48]" : "[#4c2332]";
@@ -84,7 +86,7 @@ const MatchTeamTable = ({ team, isHome, maxHeroes, matchRound }: MatchTeamTableP
               </TableCell>
               <TableCell>
                 <div className="flex justify-center">
-                  <DivisionIcon division={player.division} width={32} height={32} />
+                  <DivisionIcon division={player.division} width={32} height={32} tournamentGrid={tournamentGrid} />
                 </div>
               </TableCell>
               <TableCell>

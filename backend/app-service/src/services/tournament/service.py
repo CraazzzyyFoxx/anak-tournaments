@@ -4,7 +4,6 @@ from collections import defaultdict
 from itertools import combinations
 
 import sqlalchemy as sa
-from shared.division_grid import DivisionGrid, division_case_expr
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
@@ -206,29 +205,27 @@ async def get_history_tournaments(
 
 
 async def get_avg_div_tournaments(
-    session: AsyncSession, workspace_id: int | None = None, *, grid: DivisionGrid,
-) -> typing.Sequence[tuple[models.Tournament, enums.HeroClass, float]]:
+    session: AsyncSession, workspace_id: int | None = None,
+) -> typing.Sequence[tuple[models.Tournament, enums.HeroClass, int]]:
     """
-    Retrieves average division statistics for tournaments by role.
+    Retrieves raw player rank data for computing per-tournament division averages.
 
-    Args:
-        session: An SQLAlchemy `AsyncSession` for database interaction.
-        grid: The division grid used to compute divisions from rank.
+    Returns (tournament, role, rank) rows. Division computation and normalization
+    to the target grid is done in the flow layer using DivisionGridNormalizer so
+    that each tournament's own division_grid_version is respected.
 
     Returns:
         A sequence of tuples containing:
-        1. A `Tournament` model instance.
+        1. A `Tournament` model instance (with division_grid_version_id available).
         2. The role (e.g., tank, damage, support).
-        3. The average division for the role in the tournament.
+        3. The player's raw rank.
     """
-    div_expr = division_case_expr(models.Player.rank, grid)
     query = (
-        sa.select(models.Tournament, models.Player.role, sa.func.avg(div_expr))
+        sa.select(models.Tournament, models.Player.role, models.Player.rank)
         .where(
             models.Player.tournament_id == models.Tournament.id,
             models.Tournament.number.isnot(None),
         )
-        .group_by(models.Tournament.id, models.Player.role)
         .order_by(models.Tournament.number)
     )
     if workspace_id is not None:

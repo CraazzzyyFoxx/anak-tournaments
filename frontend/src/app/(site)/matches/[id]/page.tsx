@@ -57,6 +57,8 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
     maxHeroes[roundI] = Math.max(maxHeroesHome[roundI], maxHeroesAway[roundI]);
   }
 
+  const tournamentGrid = match.encounter?.tournament?.division_grid_version ?? null;
+
   let tournament_name = `${match?.encounter?.tournament.number}`;
   if (match?.encounter?.tournament.is_league) {
     tournament_name = match?.encounter?.tournament.name;
@@ -77,12 +79,14 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
           isHome={true}
           matchRound={parseInt(key)}
           maxHeroes={maxHeroes[parseInt(key)]}
+          tournamentGrid={tournamentGrid}
         />
         <MatchTeamTable
           team={match.away_team}
           isHome={false}
           matchRound={parseInt(key)}
           maxHeroes={maxHeroes[parseInt(key)]}
+          tournamentGrid={tournamentGrid}
         />
       </TabsContent>
     );

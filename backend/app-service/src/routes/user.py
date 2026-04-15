@@ -8,6 +8,11 @@ from starlette.requests import Request
 
 from src import schemas
 from src.core import config, db, enums, pagination
+from shared.services.division_grid_normalization import (
+    DivisionGridNormalizationError,
+    build_division_grid_normalizer,
+)
+
 from src.core.workspace import WorkspaceQuery, get_division_grid
 from src.services.encounter import flows as encounter_flows
 from src.services.map import flows as map_flows
@@ -57,7 +62,19 @@ async def get_overview(
     session: AsyncSession = Depends(db.get_async_session),
 ):
     grid = await get_division_grid(session, workspace_id)
-    return await user_flows.get_overview(session, schemas.UserOverviewParams.from_query_params(params), workspace_id=workspace_id, grid=grid)
+    normalizer = None
+    if workspace_id is not None:
+        try:
+            normalizer = await build_division_grid_normalizer(session, workspace_id, require_complete=False)
+        except DivisionGridNormalizationError:
+            pass  # Fall back to global grid for all players
+    return await user_flows.get_overview(
+        session,
+        schemas.UserOverviewParams.from_query_params(params),
+        workspace_id=workspace_id,
+        grid=grid,
+        normalizer=normalizer,
+    )
 
 
 @router.get(

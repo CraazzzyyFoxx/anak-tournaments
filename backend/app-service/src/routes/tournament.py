@@ -10,6 +10,11 @@ from starlette.requests import Request
 
 from src import models, schemas
 from src.core import config, db, enums, pagination
+from shared.services.division_grid_normalization import (
+    DivisionGridNormalizationError,
+    build_division_grid_normalizer,
+)
+
 from src.core.workspace import WorkspaceQuery, get_division_grid
 from src.services.standings import flows as standings_flows
 from src.services.tournament import flows as tournament_flows
@@ -150,8 +155,19 @@ async def get_avg_div(
     workspace_id: WorkspaceQuery = None,
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    grid = await get_division_grid(session, workspace_id)
-    return await tournament_flows.get_avg_divisions_tournaments(session, workspace_id=workspace_id, grid=grid)
+    fallback_grid = await get_division_grid(session, workspace_id)
+    normalizer = None
+    if workspace_id is not None:
+        try:
+            normalizer = await build_division_grid_normalizer(session, workspace_id, require_complete=False)
+        except DivisionGridNormalizationError:
+            pass  # Fall back to global grid for all tournaments
+    return await tournament_flows.get_avg_divisions_tournaments(
+        session,
+        workspace_id=workspace_id,
+        normalizer=normalizer,
+        fallback_grid=fallback_grid,
+    )
 
 
 @router.get(

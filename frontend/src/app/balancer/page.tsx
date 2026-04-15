@@ -7,7 +7,7 @@ import { AlertTriangle, CheckCircle2, Shuffle, Users } from "lucide-react";
 
 import { BalanceActionsBar } from "@/app/balancer/_components/BalanceActionsBar";
 import { BalancingPoolSidebar, type BalancingPoolSidebarHandle } from "@/app/balancer/_components/BalancingPoolSidebar";
-import { PlayerEditModal } from "@/app/balancer/_components/PlayerEditModal";
+import { PlayerEditModal } from "@/app/balancer/_components/PlayerEditSheet";
 import { PresetRunPanel } from "@/app/balancer/_components/PresetRunPanel";
 import { TeamDistributionPanel } from "@/app/balancer/_components/TeamDistributionPanel";
 import { VariantSelector } from "@/app/balancer/_components/VariantSelector";
@@ -166,6 +166,7 @@ export default function BalancerMainPage() {
 
   // ── Reset on tournament change ────────────────────────────────────────
 
+  /* eslint-disable react-hooks/set-state-in-effect -- Existing workspace reset effects intentionally synchronize local editor state with tournament/query changes. */
   useEffect(() => {
     setVariants([]);
     setActiveVariantId(null);
@@ -200,6 +201,7 @@ export default function BalancerMainPage() {
     const expandedByDefault = new Set(teamIds.slice(0, 4));
     setCollapsedTeamIds(teamIds.filter((id) => !expandedByDefault.has(id)));
   }, [activeVariantId]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // ── Derived data ─────────────────────────────────────────────────────
 
@@ -290,7 +292,10 @@ export default function BalancerMainPage() {
     addPlayerMutation,
     updatePlayerMutation,
     removePlayerMutation,
-    includePlayerMutation,
+    setPlayerPoolMembershipMutation,
+    setBalancerStatusMutation,
+    bulkPoolMembershipMutation,
+    bulkBalancerStatusMutation,
     runBalanceMutation,
     saveBalanceMutation,
     exportBalanceMutation,
@@ -337,6 +342,36 @@ export default function BalancerMainPage() {
     setSelectedPlayerId(playerId);
     setEditingPlayerId(playerId);
   }, []);
+
+  const handleSetPoolMembership = useCallback(
+    (playerId: number, isInPool: boolean) =>
+      setPlayerPoolMembershipMutation.mutateAsync({ playerId, isInPool }),
+    [setPlayerPoolMembershipMutation],
+  );
+
+  const handleSetBalancerStatus = useCallback(
+    (playerId: number, balancerStatus: string) =>
+      setBalancerStatusMutation.mutateAsync({ playerId, balancerStatus }),
+    [setBalancerStatusMutation],
+  );
+
+  const handleBulkPoolMembership = useCallback(
+    (playerIds: number[], isInPool: boolean) =>
+      bulkPoolMembershipMutation.mutateAsync({ playerIds, isInPool }),
+    [bulkPoolMembershipMutation],
+  );
+
+  const handleBulkBalancerStatus = useCallback(
+    (playerIds: number[], balancerStatus: string) =>
+      bulkBalancerStatusMutation.mutateAsync({ playerIds, balancerStatus }),
+    [bulkBalancerStatusMutation],
+  );
+
+  const quickPoolActionsPending =
+    setPlayerPoolMembershipMutation.isPending ||
+    setBalancerStatusMutation.isPending ||
+    bulkPoolMembershipMutation.isPending ||
+    bulkBalancerStatusMutation.isPending;
 
 
   // ── Handlers ──────────────────────────────────────────────────────────
@@ -405,7 +440,7 @@ export default function BalancerMainPage() {
       ) : null}
 
       <div className="flex min-h-0 w-full flex-1 flex-col gap-3 pb-4">
-        <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[380px_minmax(0,1fr)]">
+        <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[460px_minmax(0,1fr)]">
           {/* Left sidebar — key resets internal state on tournament switch */}
           <BalancingPoolSidebar
             ref={sidebarRef}
@@ -413,10 +448,17 @@ export default function BalancerMainPage() {
             allPlayerValidationStates={allPlayerValidationStates}
             applications={applications}
             addableApplications={addableApplications}
+            registrationsById={registrationsById}
+            balancerStatusOptions={playerStatusOptions.balancer}
             selectedPlayerId={selectedPlayerId}
             onSelectPlayer={handleOpenPlayerEditor}
             onAddFromApplication={(application) => addPlayerMutation.mutate(application)}
+            onSetPoolMembership={handleSetPoolMembership}
+            onSetBalancerStatus={handleSetBalancerStatus}
+            onBulkPoolMembership={handleBulkPoolMembership}
+            onBulkBalancerStatus={handleBulkBalancerStatus}
             isAddingPlayer={addPlayerMutation.isPending}
+            actionsDisabled={quickPoolActionsPending}
             missingRankCount={missingRankPlayerStates.length}
           />
 

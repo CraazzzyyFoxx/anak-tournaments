@@ -1,15 +1,25 @@
 "use client";
 
 import { forwardRef, useImperativeHandle, useMemo, useState } from "react";
-import { AlertTriangle, Plus } from "lucide-react";
+import { AlertTriangle, Check, Columns3, Plus, PlusCircle, ShieldX, Tag, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { BalancerApplication } from "@/types/balancer-admin.types";
+import type { AdminRegistration, BalancerApplication, StatusMeta } from "@/types/balancer-admin.types";
 import type { PlayerValidationState, PoolView, PoolSortValue } from "./balancer-page-helpers";
 import { PANEL_CLASS, sortPlayerStates } from "./balancer-page-helpers";
 import { buildPlayerSearchIndex } from "./workspace-helpers";
 import { PoolSearchCombobox } from "./PoolSearchCombobox";
 import { PoolPlayerCompactList } from "./PoolPlayerCompactList";
+import { PoolTriageBoard } from "./PoolTriageBoard";
 
 export type BalancingPoolSidebarHandle = {
   focusNeedsFixView: () => void;
@@ -17,17 +27,74 @@ export type BalancingPoolSidebarHandle = {
 };
 
 type PoolFilterOption = { value: PoolView; label: string; count: number };
+type StatusOptionGroups = { system: StatusMeta[]; custom: StatusMeta[] };
 
 type BalancingPoolSidebarProps = {
   allPlayerValidationStates: PlayerValidationState[];
   applications: BalancerApplication[];
   addableApplications: BalancerApplication[];
+  registrationsById?: Map<number, AdminRegistration>;
+  balancerStatusOptions?: StatusOptionGroups;
   selectedPlayerId: number | null;
   onSelectPlayer: (playerId: number | null) => void;
   onAddFromApplication: (application: BalancerApplication) => void;
+  onSetPoolMembership?: (playerId: number, isInPool: boolean) => unknown;
+  onSetBalancerStatus?: (playerId: number, balancerStatus: string) => unknown;
+  onBulkPoolMembership?: (playerIds: number[], isInPool: boolean) => unknown;
+  onBulkBalancerStatus?: (playerIds: number[], balancerStatus: string) => unknown;
   isAddingPlayer: boolean;
+  actionsDisabled?: boolean;
   missingRankCount?: number;
 };
+
+function flattenStatusOptions(statusOptions?: StatusOptionGroups): StatusMeta[] {
+  return statusOptions ? [...statusOptions.system, ...statusOptions.custom] : [];
+}
+
+function BulkStatusMenu({
+  statusOptions,
+  disabled,
+  onChange,
+}: {
+  statusOptions?: StatusOptionGroups;
+  disabled?: boolean;
+  onChange: (status: string) => void;
+}) {
+  if (!statusOptions) {
+    return null;
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={disabled}
+          className="h-7 rounded-lg border-white/10 bg-black/15 px-2 text-[11px] text-white/70 hover:bg-white/5 hover:text-white"
+        >
+          <Tag className="mr-1 h-3 w-3" />
+          Status
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-52">
+        <DropdownMenuLabel>Set balancer status</DropdownMenuLabel>
+        {statusOptions.system.map((option) => (
+          <DropdownMenuItem key={option.value} onClick={() => onChange(option.value)}>
+            {option.name}
+          </DropdownMenuItem>
+        ))}
+        {statusOptions.custom.length > 0 ? <DropdownMenuSeparator /> : null}
+        {statusOptions.custom.map((option) => (
+          <DropdownMenuItem key={option.value} onClick={() => onChange(option.value)}>
+            {option.name}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, BalancingPoolSidebarProps>(
   function BalancingPoolSidebar(
@@ -35,19 +102,28 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
       allPlayerValidationStates,
       applications,
       addableApplications,
+      registrationsById,
+      balancerStatusOptions,
       selectedPlayerId,
       onSelectPlayer,
       onAddFromApplication,
+      onSetPoolMembership,
+      onSetBalancerStatus,
+      onBulkPoolMembership,
+      onBulkBalancerStatus,
       isAddingPlayer,
+      actionsDisabled = false,
       missingRankCount = 0,
     },
     ref,
   ) {
     const [poolView, setPoolView] = useState<PoolView>("all");
-    const [poolSort, setPoolSort] = useState<PoolSortValue>("added_desc");
+    const [poolSort, setPoolSort] = useState<PoolSortValue>("added_asc");
     const [sidebarSearchQuery, setSidebarSearchQuery] = useState("");
     const [sidebarSearchMode, setSidebarSearchMode] = useState<"default" | "applications">("default");
     const [showSidebarFilters, setShowSidebarFilters] = useState(false);
+    const [isTriageBoardOpen, setIsTriageBoardOpen] = useState(false);
+    const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
 
     useImperativeHandle(ref, () => ({
       focusNeedsFixView: () => {
@@ -128,6 +204,61 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
       return { title: "No players in the pool", description: "Use the search above to include approved registrations in the Balancing Pool." };
     }, [normalizedSearchQuery, poolView]);
 
+    const validPlayerIds = useMemo(
+      () => new Set(allPlayerValidationStates.map((state) => state.player.id)),
+      [allPlayerValidationStates],
+    );
+    const effectiveSelectedIds = useMemo(
+      () => new Set([...selectedIds].filter((id) => validPlayerIds.has(id))),
+      [selectedIds, validPlayerIds],
+    );
+    const selectedPlayerIds = useMemo(() => Array.from(effectiveSelectedIds), [effectiveSelectedIds]);
+    const selectedCount = effectiveSelectedIds.size;
+    const hasStatusActions = flattenStatusOptions(balancerStatusOptions).length > 0;
+    const quickActionsDisabled = actionsDisabled || isAddingPlayer;
+
+    const toggleSelectedPlayer = (playerId: number) => {
+      setSelectedIds((current) => {
+        const next = new Set(current);
+        if (next.has(playerId)) {
+          next.delete(playerId);
+        } else {
+          next.add(playerId);
+        }
+        return next;
+      });
+    };
+
+    const selectVisiblePlayers = () => {
+      setSelectedIds((current) => {
+        const next = new Set(current);
+        filteredPoolPlayerStates.forEach(({ player }) => next.add(player.id));
+        return next;
+      });
+    };
+
+    const clearSelection = () => setSelectedIds(new Set());
+
+    const runBulkPoolMembership = async (isInPool: boolean) => {
+      if (!onBulkPoolMembership || selectedPlayerIds.length === 0) return;
+      try {
+        await onBulkPoolMembership(selectedPlayerIds, isInPool);
+        clearSelection();
+      } catch {
+        // Mutation callbacks own the user-facing error toast.
+      }
+    };
+
+    const runBulkBalancerStatus = async (balancerStatus: string) => {
+      if (!onBulkBalancerStatus || selectedPlayerIds.length === 0) return;
+      try {
+        await onBulkBalancerStatus(selectedPlayerIds, balancerStatus);
+        clearSelection();
+      } catch {
+        // Mutation callbacks own the user-facing error toast.
+      }
+    };
+
     return (
       <div className={cn(PANEL_CLASS, "flex min-h-0 flex-col p-4")}>
         <div className="space-y-2.5">
@@ -206,9 +337,22 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
                 Add{addableApplications.length > 0 ? ` (${addableApplications.length})` : ""}
               </button>
             </div>
-            <span className="text-[10px] text-white/30">
-              {addableApplications.length} available
-            </span>
+            <div className="flex items-center gap-1.5">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={allPlayerValidationStates.length === 0}
+                className="h-7 rounded-lg border border-white/8 bg-black/15 px-2 text-[11px] text-white/55 hover:bg-white/5 hover:text-white"
+                onClick={() => setIsTriageBoardOpen(true)}
+              >
+                <Columns3 className="mr-1 h-3 w-3" />
+                Board
+              </Button>
+              <span className="text-[10px] text-white/30">
+                {addableApplications.length} available
+              </span>
+            </div>
           </div>
 
           {/* Filter pills + count */}
@@ -239,6 +383,70 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
               {filteredPoolPlayerStates.length} / {sidebarPlayerCount}
             </span>
           </div>
+
+          {sidebarSearchMode === "default" ? (
+            <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-white/8 bg-black/15 p-1.5">
+              {selectedCount > 0 ? (
+                <>
+                  <div className="flex items-center gap-1.5 px-1.5 text-[11px] font-medium text-white/75">
+                    <Check className="h-3.5 w-3.5 text-cyan-200" />
+                    {selectedCount} selected
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={quickActionsDisabled || !onBulkPoolMembership}
+                    className="h-7 rounded-lg border-white/10 bg-black/15 px-2 text-[11px] text-white/70 hover:bg-white/5 hover:text-white"
+                    onClick={() => runBulkPoolMembership(true)}
+                  >
+                    <PlusCircle className="mr-1 h-3 w-3" />
+                    Include
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={quickActionsDisabled || !onBulkPoolMembership}
+                    className="h-7 rounded-lg border-white/10 bg-black/15 px-2 text-[11px] text-white/70 hover:bg-white/5 hover:text-white"
+                    onClick={() => runBulkPoolMembership(false)}
+                  >
+                    <ShieldX className="mr-1 h-3 w-3" />
+                    Exclude
+                  </Button>
+                  <BulkStatusMenu
+                    statusOptions={balancerStatusOptions}
+                    disabled={quickActionsDisabled || !onBulkBalancerStatus || !hasStatusActions}
+                    onChange={runBulkBalancerStatus}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="ml-auto h-7 w-7 rounded-lg border border-white/8 bg-black/15 text-white/45 hover:bg-white/5 hover:text-white"
+                    onClick={clearSelection}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    <span className="sr-only">Clear selection</span>
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <span className="px-1.5 text-[11px] text-white/35">Select players for bulk actions</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={filteredPoolPlayerStates.length === 0}
+                    className="ml-auto h-7 rounded-lg border border-white/8 bg-black/15 px-2 text-[11px] text-white/45 hover:bg-white/5 hover:text-white"
+                    onClick={selectVisiblePlayers}
+                  >
+                    Select visible
+                  </Button>
+                </>
+              )}
+            </div>
+          ) : null}
         </div>
 
         <div className="mt-2.5 min-h-0 flex-1">
@@ -270,19 +478,45 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
           ) : (
             <PoolPlayerCompactList
               playerStates={filteredPoolPlayerStates}
+              registrationsById={registrationsById}
+              statusOptions={balancerStatusOptions}
               selectedPlayerId={selectedPlayerId}
+              selectedBulkIds={effectiveSelectedIds}
+              onToggleBulkSelection={toggleSelectedPlayer}
               onSelectPlayer={(playerId) => {
                 onSelectPlayer(playerId);
                 if (playerId !== null) {
                   setSidebarSearchMode("default");
                 }
               }}
+              onSetPoolMembership={onSetPoolMembership}
+              onSetBalancerStatus={onSetBalancerStatus}
+              actionsDisabled={quickActionsDisabled}
               maxHeightClassName="h-full"
               emptyTitle={filteredPoolEmptyState.title}
               emptyDescription={filteredPoolEmptyState.description}
             />
           )}
         </div>
+
+        <PoolTriageBoard
+          open={isTriageBoardOpen}
+          onOpenChange={setIsTriageBoardOpen}
+          playerStates={allPlayerValidationStates}
+          registrationsById={registrationsById}
+          statusOptions={balancerStatusOptions}
+          selectedPlayerId={selectedPlayerId}
+          onSelectPlayer={(playerId) => {
+            onSelectPlayer(playerId);
+            if (playerId !== null) {
+              setSidebarSearchMode("default");
+              setIsTriageBoardOpen(false);
+            }
+          }}
+          onSetPoolMembership={onSetPoolMembership}
+          onSetBalancerStatus={onSetBalancerStatus}
+          actionsDisabled={quickActionsDisabled}
+        />
       </div>
     );
   },

@@ -32,6 +32,8 @@ const EncounterMatch = async ({ match }: { match: Match }) => {
     maxHeroes[roundI] = Math.max(maxHeroesHome[roundI], maxHeroesAway[roundI]);
   }
 
+  const tournamentGrid = data.encounter?.tournament?.division_grid_version ?? null;
+
   const tabsTriggers: ReactNode[] = [];
   const tabsContent: ReactNode[] = [];
   Object.keys(data.home_team.players[0].stats).forEach((key) => {
@@ -45,12 +47,14 @@ const EncounterMatch = async ({ match }: { match: Match }) => {
           isHome={true}
           matchRound={parseInt(key)}
           maxHeroes={maxHeroes[parseInt(key)]}
+          tournamentGrid={tournamentGrid}
         />
         <MatchTeamTable
           team={data.away_team}
           isHome={false}
           matchRound={parseInt(key)}
           maxHeroes={maxHeroes[parseInt(key)]}
+          tournamentGrid={tournamentGrid}
         />
       </TabsContent>
     );

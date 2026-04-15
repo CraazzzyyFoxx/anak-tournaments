@@ -16,12 +16,19 @@ import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import PlayerDivisionIcon from "@/components/PlayerDivisionIcon";
 import { cn } from "@/lib/utils";
+import type { DivisionGridVersion } from "@/types/workspace.types";
 
 export const TournamentTeamCardSkeleton = () => {
   return <Skeleton className="h-[380px] w-full rounded-xl" />;
 };
 
-export const TournamentTeamTable = ({ players }: { players: Player[] }) => {
+export const TournamentTeamTable = ({
+  players,
+  tournamentGrid,
+}: {
+  players: Player[];
+  tournamentGrid?: DivisionGridVersion | null;
+}) => {
   const sortedPlayers = sortTeamPlayers(players);
 
   return (
@@ -50,7 +57,7 @@ export const TournamentTeamTable = ({ players }: { players: Player[] }) => {
                 <PlayerName player={player} includeSpecialization={true} />
               </TableCell>
               <TableCell className="py-2">
-                <PlayerDivisionIcon division={player.division} />
+                <PlayerDivisionIcon division={player.division} width={32} height={32} tournamentGrid={tournamentGrid} />
               </TableCell>
               <TableCell className="py-2">
                 <div className="flex justify-center">
@@ -142,7 +149,7 @@ export const TournamentTeamCard = ({ team }: { team: Team }) => {
       <div className="border-t border-white/[0.06]" />
 
       {/* Table */}
-      <TournamentTeamTable players={team.players} />
+      <TournamentTeamTable players={team.players} tournamentGrid={team.tournament?.division_grid_version} />
     </div>
   );
 };

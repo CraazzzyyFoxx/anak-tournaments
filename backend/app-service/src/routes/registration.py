@@ -5,12 +5,14 @@ from __future__ import annotations
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException
 from shared.balancer_registration_statuses import build_unknown_status_meta, get_status_metas_map
+from shared.division_grid import DivisionGrid, load_runtime_grid
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models
 from src.core import auth, db
-from src.core.workspace import get_division_grid
+from src.core.workspace import get_division_grid_version
+from src.schemas.division_grid import DivisionGridVersionRead
 from src.schemas.registration import (
     RegistrationCreate,
     RegistrationFormRead,
@@ -352,14 +354,28 @@ async def _build_tournament_history(
     )
 
     history_map: dict[int, list[TournamentHistoryEntry]] = {}
+    grid_cache: dict[int, tuple[DivisionGrid, DivisionGridVersionRead | None]] = {}
 
     for row in result:
         player: models.Player = row[0]
         tournament_name: str = row[1]
         role_str = player.role.value if player.role else None
         division = None
+        division_grid_version = None
         if player.rank is not None:
-            grid = await get_division_grid(session, workspace_id, tournament_id=player.tournament_id)
+            if player.tournament_id not in grid_cache:
+                version = await get_division_grid_version(
+                    session,
+                    workspace_id,
+                    tournament_id=player.tournament_id,
+                )
+                grid_cache[player.tournament_id] = (
+                    load_runtime_grid(version),
+                    DivisionGridVersionRead.model_validate(version, from_attributes=True)
+                    if version is not None
+                    else None,
+                )
+            grid, division_grid_version = grid_cache[player.tournament_id]
             division = grid.resolve_division_number(player.rank)
 
         entry = TournamentHistoryEntry(
@@ -367,6 +383,7 @@ async def _build_tournament_history(
             tournament_name=tournament_name,
             role=role_str,
             division=division,
+            division_grid_version=division_grid_version,
         )
         for reg_id in player_to_reg_ids.get(player.user_id, []):
             history_map.setdefault(reg_id, []).append(entry)

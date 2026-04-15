@@ -67,7 +67,7 @@ async def get_analytics(
 )
 async def change_shift(
     data: schemas.PlayerShiftUpdate,
-    current_user: models.AuthUser = Depends(auth.require_any_role("admin", "tournament_organizer", "moderator")),
+    current_user: models.AuthUser = Depends(auth.require_permission("analytics", "update")),
     session: AsyncSession = Depends(db.get_async_session),
 ):
     return await analytics_flows.change_shift(session, data.player_id, data.shift)

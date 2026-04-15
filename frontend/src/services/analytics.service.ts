@@ -1,9 +1,14 @@
 import { PaginatedResponse } from "@/types/pagination.types";
 import { apiFetch } from "@/lib/api-fetch";
-import { AlgorithmAnalytics, PlayerAnalytics, TournamentAnalytics } from "@/types/analytics.types";
+import {
+  AlgorithmAnalytics,
+  AnalyticsRecalculateResponse,
+  PlayerAnalytics,
+  TournamentAnalytics
+} from "@/types/analytics.types";
 
 export default class analyticsService {
-  static async getAnalytics(id: number, algorithm: string): Promise<TournamentAnalytics> {
+  static async getAnalytics(id: number, algorithm: number): Promise<TournamentAnalytics> {
     return apiFetch("app",`analytics`, {
       query: {
         tournament_id: id,
@@ -32,6 +37,19 @@ export default class analyticsService {
         per_page: -1,
         sort: "id",
         order: "desc"
+      }
+    }).then((response) => response.json());
+  }
+
+  static async recalculateAnalytics(
+    tournamentId: number,
+    algorithmIds?: number[]
+  ): Promise<AnalyticsRecalculateResponse> {
+    return apiFetch("parser", "analytics/recalculate", {
+      method: "POST",
+      body: {
+        tournament_id: tournamentId,
+        ...(algorithmIds?.length ? { algorithm_ids: algorithmIds } : {})
       }
     }).then((response) => response.json());
   }

@@ -1,5 +1,11 @@
 import React, { useMemo } from "react";
 import { PlayerAnalytics, TeamAnalytics } from "@/types/analytics.types";
+import {
+  formatAnalyticsNumber,
+  formatConfidencePercent,
+  getConfidenceBadgeClass,
+  getConfidenceBreakdownLines
+} from "@/app/(site)/tournaments/analytics/analytics.helpers";
 import { sortTeamPlayers } from "@/utils/player";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
@@ -15,6 +21,7 @@ import { ArrowDown, ArrowUp } from "lucide-react";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import PlayerName from "@/components/PlayerName";
 import Image from "next/image";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { TypographyH4 } from "@/components/ui/typography";
 import { TournamentTeamCardSkeleton } from "@/components/TournamentTeamCard";
@@ -28,6 +35,12 @@ import {
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger
+} from "@/components/ui/tooltip";
 
 import { useQueryClient } from "@tanstack/react-query";
 import analyticsService from "@/services/analytics.service";
@@ -42,7 +55,7 @@ const ChangeDivisionModal = ({
   open: boolean;
   setOpen: (open: boolean) => void;
 }) => {
-  const [division, setDivision] = React.useState(player.shift);
+  const [division, setDivision] = React.useState(player.shift ?? 0);
   const queryClient = useQueryClient();
 
   const onSubmit = async (e: React.FormEvent) => {
@@ -59,7 +72,7 @@ const ChangeDivisionModal = ({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Edit profile</DialogTitle>
+          <DialogTitle>Edit shift</DialogTitle>
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="grid grid-cols-4 items-center gap-4">
@@ -86,10 +99,11 @@ const ChangeDivisionModal = ({
 
 const TournamentPlayerRow = ({ player }: { player: PlayerAnalytics }) => {
   const [open, setOpen] = React.useState(false);
-  const { hasAnyRole } = usePermissions();
-  const canEdit = hasAnyRole(["admin", "tournament_organizer", "moderator"]);
+  const { hasPermission } = usePermissions();
+  const canEdit = hasPermission("analytics.update");
 
   const pointsCellBase = "text-center tabular-nums";
+  const confidenceLines = getConfidenceBreakdownLines(player);
 
   const isNewPlayer = !!player.is_newcomer;
   const isNewToRole = !isNewPlayer && !!player.is_newcomer_role;
@@ -128,8 +142,8 @@ const TournamentPlayerRow = ({ player }: { player: PlayerAnalytics }) => {
             <Image src={`/divisions/${player.division}.png`} alt="Division" width={30} height={30} />
           </div>
         </TableCell>
-        <TableCell className="text-center">{player.move_2}</TableCell>
-        <TableCell className="text-center">{player.move_1}</TableCell>
+        <TableCell className="text-center">{formatAnalyticsNumber(player.move_2)}</TableCell>
+        <TableCell className="text-center">{formatAnalyticsNumber(player.move_1)}</TableCell>
         <TableCell className={pointsCellBase}>
           {isExtremePoints ? (
             <span
@@ -148,17 +162,41 @@ const TournamentPlayerRow = ({ player }: { player: PlayerAnalytics }) => {
               ) : (
                 <ArrowDown className="h-3.5 w-3.5 text-emerald-300/80" aria-hidden="true" />
               )}
-              <span>{isHighPoints ? `+${player.points}` : player.points}</span>
+              <span>
+                {isHighPoints
+                  ? `+${formatAnalyticsNumber(player.points)}`
+                  : formatAnalyticsNumber(player.points)}
+              </span>
             </span>
           ) : (
-            player.points
+            formatAnalyticsNumber(player.points)
           )}
+        </TableCell>
+        <TableCell className={pointsCellBase}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge
+                variant="outline"
+                className={cn(
+                  "justify-center rounded-md px-2 py-0.5 font-semibold",
+                  getConfidenceBadgeClass(player.confidence)
+                )}
+              >
+                {formatConfidencePercent(player.confidence)}
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-56 space-y-1 text-left">
+              {confidenceLines.map((line) => (
+                <p key={line}>{line}</p>
+              ))}
+            </TooltipContent>
+          </Tooltip>
         </TableCell>
         <TableCell
           onDoubleClick={canEdit ? () => setOpen(true) : undefined}
           className={cn("text-center", canEdit && "cursor-pointer")}
         >
-          {player.shift}
+          {formatAnalyticsNumber(player.shift)}
         </TableCell>
       </TableRow>
       {canEdit && <ChangeDivisionModal player={player} open={open} setOpen={setOpen} />}
@@ -172,27 +210,30 @@ export const TournamentTeamTable = ({ players }: { players: PlayerAnalytics[] })
     return sortTeamPlayers(players);
   }, [players]);
   return (
-    <ScrollArea>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Role</TableHead>
-            <TableHead>Battle tag</TableHead>
-            <TableHead className="text-center">Div</TableHead>
-            <TableHead className="text-center">Move 2</TableHead>
-            <TableHead className="text-center">Move 1</TableHead>
-            <TableHead className="text-center">Shift</TableHead>
-            <TableHead className="text-center">Anak</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {sortedPlayers.map((player) => (
-            <TournamentPlayerRow key={player.id} player={player} />
-          ))}
-        </TableBody>
-      </Table>
-      <ScrollBar orientation="horizontal" />
-    </ScrollArea>
+    <TooltipProvider delayDuration={150}>
+      <ScrollArea>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Role</TableHead>
+              <TableHead>Battle tag</TableHead>
+              <TableHead className="text-center">Div</TableHead>
+              <TableHead className="text-center">Move 2</TableHead>
+              <TableHead className="text-center">Move 1</TableHead>
+              <TableHead className="text-center">Points</TableHead>
+              <TableHead className="text-center">Confidence</TableHead>
+              <TableHead className="text-center">Manual</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {sortedPlayers.map((player) => (
+              <TournamentPlayerRow key={player.id} player={player} />
+            ))}
+          </TableBody>
+        </Table>
+        <ScrollBar orientation="horizontal" />
+      </ScrollArea>
+    </TooltipProvider>
   );
 };
 

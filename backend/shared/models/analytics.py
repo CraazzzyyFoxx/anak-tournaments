@@ -62,6 +62,13 @@ class AnalyticsShift(db.TimeStampIntegerMixin):
         ForeignKey(Player.id, ondelete="CASCADE"), index=True
     )
     shift: Mapped[float] = mapped_column()
+    confidence: Mapped[float] = mapped_column(Float(), nullable=False, server_default="0", default=0.0)
+    effective_evidence: Mapped[float] = mapped_column(
+        Float(), nullable=False, server_default="0", default=0.0
+    )
+    sample_tournaments: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="0", default=0)
+    sample_matches: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="0", default=0)
+    log_coverage: Mapped[float] = mapped_column(Float(), nullable=False, server_default="0", default=0.0)
 
     tournament: Mapped[Tournament] = relationship()
     player: Mapped[Player] = relationship()

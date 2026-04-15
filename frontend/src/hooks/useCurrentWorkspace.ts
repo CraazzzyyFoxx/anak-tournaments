@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 
 import { useWorkspaceStore } from "@/stores/workspace.store";
-import { DivisionGrid, DivisionTier } from "@/types/workspace.types";
+import { DivisionGrid, DivisionGridVersion, DivisionTier } from "@/types/workspace.types";
 
 const DEFAULT_TIERS: DivisionTier[] = Array.from({ length: 20 }, (_, i) => {
   const num = 20 - i;
@@ -24,4 +24,8 @@ export function useDivisionGrid(): DivisionGrid {
   const workspace = useWorkspaceStore((s) => s.getCurrentWorkspace());
   const tiers = workspace?.default_division_grid_version?.tiers;
   return useMemo(() => (tiers ? { tiers } : DEFAULT_DIVISION_GRID), [tiers]);
+}
+
+export function useDivisionGridVersion(): DivisionGridVersion | null {
+  return useWorkspaceStore((s) => s.getCurrentWorkspace()?.default_division_grid_version ?? null);
 }

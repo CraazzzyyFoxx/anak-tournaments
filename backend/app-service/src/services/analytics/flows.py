@@ -127,6 +127,11 @@ async def get_analytics(
                         move_2=analytics.shift_two,
                         points=shift.shift,
                         shift=analytics.shift,
+                        confidence=shift.confidence,
+                        effective_evidence=shift.effective_evidence,
+                        sample_tournaments=shift.sample_tournaments,
+                        sample_matches=shift.sample_matches,
+                        log_coverage=shift.log_coverage,
                     )
                     for player, analytics, shift in players
                 ],
@@ -151,6 +156,11 @@ async def change_shift(
         move_2=analytics.shift_two,
         points=calculated_shift.shift,
         shift=analytics.shift,
+        confidence=calculated_shift.confidence,
+        effective_evidence=calculated_shift.effective_evidence,
+        sample_tournaments=calculated_shift.sample_tournaments,
+        sample_matches=calculated_shift.sample_matches,
+        log_coverage=calculated_shift.log_coverage,
     )
 
 

@@ -1,10 +1,34 @@
 import {
+  derivePoolLane,
+  formatBattleTagsForClipboard,
+  formatSmurfCount,
+  getRegistrationBattleTags,
+  getPoolDropPatch,
+  type PlayerValidationState,
+  type PoolLane,
+} from "@/app/balancer/_components/balancer-page-helpers";
+import {
   createSyntheticApplicationFromRegistration,
   createSyntheticPlayerFromRegistration,
   getPlayerValidationIssues,
   isRegistrationIncludedInBalancer,
 } from "@/app/balancer/_components/workspace-helpers";
-import type { AdminRegistration, BalancerApplication, BalancerPlayerRecord } from "@/types/balancer-admin.types";
+import type { AdminRegistration, BalancerApplication, BalancerPlayerRecord, StatusMeta, StatusScope } from "@/types/balancer-admin.types";
+
+type TestFunction = () => void | Promise<void>;
+type Expectation<T> = {
+  toBe: (expected: T) => void;
+  toEqual: (expected: unknown) => void;
+  toBeNull: () => void;
+  toBeUndefined: () => void;
+};
+
+declare const describe: (name: string, fn: TestFunction) => void;
+declare const it: {
+  (name: string, fn: TestFunction): void;
+  each<TArgs extends readonly unknown[]>(cases: readonly TArgs[]): (name: string, fn: (...args: TArgs) => void | Promise<void>) => void;
+};
+declare const expect: <T>(actual: T) => Expectation<T>;
 
 function createPlayer(overrides: Partial<BalancerPlayerRecord>): BalancerPlayerRecord {
   return {
@@ -45,7 +69,24 @@ function createApplication(overrides: Partial<BalancerApplication>): BalancerApp
   };
 }
 
-function createRegistration(overrides: Partial<AdminRegistration>): AdminRegistration {
+function createStatusMeta(value: string, scope: StatusScope, name: string): StatusMeta {
+  return {
+    value,
+    scope,
+    is_builtin: true,
+    kind: "builtin",
+    is_override: false,
+    can_edit: false,
+    can_delete: false,
+    can_reset: false,
+    icon_slug: null,
+    icon_color: null,
+    name,
+    description: null,
+  };
+}
+
+function createRegistration(overrides: Partial<AdminRegistration> = {}): AdminRegistration {
   return {
     id: 10,
     tournament_id: 60,
@@ -84,7 +125,9 @@ function createRegistration(overrides: Partial<AdminRegistration>): AdminRegistr
     custom_fields_json: null,
     is_flex: false,
     status: "approved",
+    status_meta: createStatusMeta("approved", "registration", "Approved"),
     balancer_status: "ready",
+    balancer_status_meta: createStatusMeta("ready", "balancer", "Ready"),
     exclude_from_balancer: false,
     exclude_reason: null,
     checked_in: false,
@@ -184,6 +227,89 @@ describe("getPlayerValidationIssues", () => {
     const issues = getPlayerValidationIssues(player, application);
 
     expect(issues.find((issue) => issue.code === "application_role_mismatch")).toBeUndefined();
+  });
+});
+
+describe("pool lane helpers", () => {
+  function createState(playerOverrides: Partial<BalancerPlayerRecord>, issues: PlayerValidationState["issues"] = []): PlayerValidationState {
+    return {
+      player: createPlayer(playerOverrides),
+      issues,
+    };
+  }
+
+  it.each([
+    ["excluded", createState({ is_in_pool: false })],
+    ["needs_fix", createState({ is_in_pool: true }, [{ code: "missing_ranked_role", message: "No ranked roles configured" }])],
+    ["ready", createState({ is_in_pool: true })],
+  ] satisfies Array<[PoolLane, PlayerValidationState]>)("derives %s from pool membership and validation issues", (expectedLane, state) => {
+    expect(derivePoolLane(state)).toBe(expectedLane);
+  });
+
+  it.each([
+    ["excluded", false],
+    ["needs_fix", true],
+    ["ready", true],
+  ] satisfies Array<[PoolLane, boolean]>)("maps a drop into %s to the correct pool membership patch", (targetLane, expectedInPool) => {
+    expect(getPoolDropPatch(targetLane)).toEqual({ is_in_pool: expectedInPool });
+  });
+
+  it("auto-classifies an included roleless player back into Need Fix", () => {
+    const patch = getPoolDropPatch("ready");
+    const player = createPlayer({ is_in_pool: patch.is_in_pool });
+
+    expect(derivePoolLane({ player, issues: getPlayerValidationIssues(player, null) })).toBe("needs_fix");
+  });
+
+  it("auto-classifies an included valid player into Ready", () => {
+    const patch = getPoolDropPatch("needs_fix");
+    const player = createPlayer({
+      is_in_pool: patch.is_in_pool,
+      role_entries_json: [
+        {
+          role: "support",
+          subtype: null,
+          priority: 1,
+          division_number: 12,
+          rank_value: 900,
+          is_active: true,
+        },
+      ],
+    });
+
+    expect(derivePoolLane({ player, issues: getPlayerValidationIssues(player, null) })).toBe("ready");
+  });
+});
+
+describe("battle tag clipboard helpers", () => {
+  it("returns the primary BattleTag followed by unique non-empty smurf tags", () => {
+    const registration = createRegistration({
+      battle_tag: "Main#1111",
+      smurf_tags_json: ["Alt#2222", " ", "Main#1111", "alt#2222", "Pocket#3333"],
+    });
+
+    expect(getRegistrationBattleTags(registration, "Fallback#0000")).toEqual([
+      "Main#1111",
+      "Alt#2222",
+      "Pocket#3333",
+    ]);
+  });
+
+  it("falls back to the player BattleTag and formats tags for clipboard", () => {
+    const registration = createRegistration({
+      battle_tag: null,
+      smurf_tags_json: ["Practice#4444"],
+    });
+
+    const battleTags = getRegistrationBattleTags(registration, "Player#1234");
+
+    expect(battleTags).toEqual(["Player#1234", "Practice#4444"]);
+    expect(formatBattleTagsForClipboard(battleTags)).toBe("Player#1234\nPractice#4444");
+  });
+
+  it("formats smurf count labels for collapsed UI", () => {
+    expect(formatSmurfCount(1)).toBe("1 smurf");
+    expect(formatSmurfCount(3)).toBe("3 smurfs");
   });
 });
 

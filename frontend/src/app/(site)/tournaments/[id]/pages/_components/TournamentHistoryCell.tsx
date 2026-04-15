@@ -52,34 +52,45 @@ export default function TournamentHistoryCell({
           className="max-w-xs border border-white/[0.08] bg-[#111113] px-3 py-2 text-white shadow-xl shadow-black/40"
         >
           <ul className="space-y-1 text-xs">
-            {history.slice(0, 10).map((h) => (
-              <li key={h.tournament_id} className="space-y-1">
-                <div className="text-white/80">{h.tournament_name}</div>
-                {(h.role || h.division != null) ? (
-                  <div className="flex items-center gap-2 text-white/45">
-                    {h.role ? (
-                      <span
-                        className="inline-flex items-center"
-                        title={ROLE_LABELS[h.role] ?? h.role}
-                      >
-                        <PlayerRoleIcon
-                          role={ROLE_TO_ICON[h.role] ?? h.role}
-                          size={16}
-                        />
-                      </span>
-                    ) : null}
-                    {h.division != null ? (
-                      <span
-                        className="inline-flex items-center"
-                        title={`Division ${h.division}`}
-                      >
-                        <PlayerDivisionIcon division={h.division} width={20} height={20} />
-                      </span>
-                    ) : null}
-                  </div>
-                ) : null}
-              </li>
-            ))}
+            {history.slice(0, 10).map((h) => {
+              const divisionTier = h.division_grid_version?.tiers.find(
+                (tier) => tier.number === h.division,
+              );
+
+              return (
+                <li key={h.tournament_id} className="space-y-1">
+                  <div className="text-white/80">{h.tournament_name}</div>
+                  {(h.role || h.division != null) ? (
+                    <div className="flex items-center gap-2 text-white/45">
+                      {h.role ? (
+                        <span
+                          className="inline-flex items-center"
+                          title={ROLE_LABELS[h.role] ?? h.role}
+                        >
+                          <PlayerRoleIcon
+                            role={ROLE_TO_ICON[h.role] ?? h.role}
+                            size={16}
+                          />
+                        </span>
+                      ) : null}
+                      {h.division != null ? (
+                        <span
+                          className="inline-flex items-center"
+                          title={divisionTier?.name ?? `Division ${h.division}`}
+                        >
+                          <PlayerDivisionIcon
+                            division={h.division}
+                            width={20}
+                            height={20}
+                            tournamentGrid={h.division_grid_version}
+                          />
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </li>
+              );
+            })}
             {history.length > 10 && (
               <li className="text-white/30">+{history.length - 10} more</li>
             )}

@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 from src import schemas
 from src.core import enums, pagination
+from src.schemas.division_grid import DivisionGridVersionRead
 
 __all__ = (
     "UserProfile",
@@ -85,6 +86,7 @@ class UserTournament(BaseModel):
     maps_lost: int
     role: enums.HeroClass
     division: int
+    division_grid_version: DivisionGridVersionRead | None = None
     encounters: list[EncounterReadWithUserStats]
 
 

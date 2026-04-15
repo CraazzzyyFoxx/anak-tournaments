@@ -5,6 +5,7 @@ import { MapRead } from "@/types/map.types";
 import { LogStatsName } from "@/types/stats.types";
 import { UserTournamentStat } from "@/types/statistics.types";
 import { Tournament } from "@/types/tournament.types";
+import { DivisionGridVersion } from "@/types/workspace.types";
 
 export interface UserDiscord {
   id: number;
@@ -91,6 +92,7 @@ export interface UserTournament {
   maps_won: number;
   maps_lost: number;
   division: number;
+  division_grid_version: DivisionGridVersion | null;
   role: string;
 
   encounters: EncounterWithUserStats[];
