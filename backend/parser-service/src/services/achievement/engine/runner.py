@@ -121,31 +121,32 @@ async def run_evaluation(
                         ],
                     ) from exc
 
-            grid = await _resolve_grid(session, workspace_id, tournament)
-            context = EvalContext(
-                workspace_id=workspace_id,
-                tournament=tournament,
-                grid=grid,
-                normalizer=normalizer if rule_needs_normalized_divisions else None,
-            )
-
-            logger.info(f"Evaluating rule '{rule.slug}' (id={rule.id})")
-
             try:
-                results = await evaluate(session, rule.condition_tree, context)
-                diff = await diff_and_apply(
-                    session,
-                    rule,
-                    results,
-                    run_id,
-                    evaluation_slice=evaluation_slice if has_slice else None,
-                )
-                total_created += len(diff.to_insert)
-                total_removed += len(diff.to_delete)
+                async with session.begin_nested():
+                    grid = await _resolve_grid(session, workspace_id, tournament)
+                    context = EvalContext(
+                        workspace_id=workspace_id,
+                        tournament=tournament,
+                        grid=grid,
+                        normalizer=normalizer if rule_needs_normalized_divisions else None,
+                    )
 
-                logger.info(
-                    f"Rule '{rule.slug}': +{len(diff.to_insert)} -{len(diff.to_delete)}"
-                )
+                    logger.info(f"Evaluating rule '{rule.slug}' (id={rule.id})")
+
+                    results = await evaluate(session, rule.condition_tree, context)
+                    diff = await diff_and_apply(
+                        session,
+                        rule,
+                        results,
+                        run_id,
+                        evaluation_slice=evaluation_slice if has_slice else None,
+                    )
+                    total_created += len(diff.to_insert)
+                    total_removed += len(diff.to_delete)
+
+                    logger.info(
+                        f"Rule '{rule.slug}': +{len(diff.to_insert)} -{len(diff.to_delete)}"
+                    )
             except Exception:
                 logger.exception(f"Failed to evaluate rule '{rule.slug}'")
                 continue
