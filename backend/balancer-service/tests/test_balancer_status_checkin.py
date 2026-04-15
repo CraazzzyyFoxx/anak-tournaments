@@ -151,7 +151,7 @@ class SetBalancerStatusTests(IsolatedAsyncioTestCase):
             result = await svc.set_balancer_status(session, 1, balancer_status="shortcast")
 
         self.assertEqual(result.balancer_status, "shortcast")
-        self.assertFalse(result.exclude_from_balancer)
+        self.assertTrue(result.exclude_from_balancer)
         session.commit.assert_awaited_once()
 
     async def test_set_balancer_status_incomplete(self) -> None:
@@ -280,7 +280,7 @@ class UpdateRegistrationProfileBalancerStatusTests(IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(result.balancer_status, "shortcast")
-        self.assertFalse(result.exclude_from_balancer)
+        self.assertTrue(result.exclude_from_balancer)
 
 
 # ---------------------------------------------------------------------------

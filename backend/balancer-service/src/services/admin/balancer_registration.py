@@ -830,8 +830,6 @@ async def update_registration_profile(
         registration.balancer_status = balancer_status_value
         if balancer_status_value == "not_in_balancer":
             registration.exclude_from_balancer = True
-        else:
-            registration.exclude_from_balancer = False
 
     override_changed = False
     if status_value is not None or balancer_status_value is not None:
@@ -991,9 +989,8 @@ async def set_balancer_status(
             detail="Registration must have at least one active role with rank before it can be ready",
         )
     registration.balancer_status = balancer_status
-    # Keep exclude_from_balancer in sync during transition period
-    registration.exclude_from_balancer = balancer_status == "not_in_balancer"
-    registration.exclude_reason = None
+    if balancer_status == "not_in_balancer":
+        registration.exclude_from_balancer = True
     await session.commit()
     return await get_registration_by_id(session, registration.id)
 
