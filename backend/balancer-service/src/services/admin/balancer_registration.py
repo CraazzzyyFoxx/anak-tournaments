@@ -12,10 +12,6 @@ import sqlalchemy as sa
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
-
-from shared.balancer_registration_statuses import get_builtin_status_values
-from shared.division_grid import DEFAULT_GRID, DivisionGrid, load_runtime_grid
-
 from src import models
 from src.services.admin.balancer_utils import (
     DEFAULT_BOOLEAN_TRUE_VALUES,
@@ -29,7 +25,6 @@ from src.services.admin.balancer_utils import (
     UNKNOWN_PRIORITY_SENTINEL,
     build_csv_export_url,
     build_header_keys,
-    extract_battle_tags as _extract_battle_tags,
     extract_sheet_source,
     fetch_csv_rows,
     normalize_battle_tag,
@@ -41,6 +36,12 @@ from src.services.admin.balancer_utils import (
     row_to_json,
     unique_strings,
 )
+from src.services.admin.balancer_utils import (
+    extract_battle_tags as _extract_battle_tags,
+)
+
+from shared.balancer_registration_statuses import get_builtin_status_values
+from shared.division_grid import DivisionGrid, load_runtime_grid
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +157,7 @@ def parse_role_token_list(values: list[str], value_mapping: dict[str, Any]) -> l
 
 def build_default_value_mapping() -> dict[str, Any]:
     return {
-        "booleans": {value: True for value in sorted(DEFAULT_BOOLEAN_TRUE_VALUES)},
+        "booleans": dict.fromkeys(sorted(DEFAULT_BOOLEAN_TRUE_VALUES), True),
         "roles": DEFAULT_ROLE_VALUE_MAP,
         "subroles": DEFAULT_SUBROLE_VALUE_MAP,
     }
@@ -589,6 +590,7 @@ async def list_registrations(
         .options(
             selectinload(models.BalancerRegistration.roles),
             selectinload(models.BalancerRegistration.reviewer),
+            selectinload(models.BalancerRegistration.checked_in_by_user),
             selectinload(models.BalancerRegistration.google_sheet_binding).selectinload(
                 models.BalancerRegistrationGoogleSheetBinding.feed
             ),

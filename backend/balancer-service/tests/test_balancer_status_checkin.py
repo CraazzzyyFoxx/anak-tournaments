@@ -32,10 +32,8 @@ os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
 os.environ.setdefault("S3_BUCKET_NAME", "test")
 
 from fastapi import HTTPException  # noqa: E402
-
-from src.services.admin import balancer_registration as svc  # noqa: E402
 from src import models  # noqa: E402
-
+from src.services.admin import balancer_registration as svc  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -175,6 +173,24 @@ class SetBalancerStatusTests(IsolatedAsyncioTestCase):
                 await svc.set_balancer_status(session, 1, balancer_status="ready")
 
         self.assertEqual(ctx.exception.status_code, 409)
+
+
+class ListRegistrationsTests(IsolatedAsyncioTestCase):
+    async def test_list_registrations_preloads_checked_in_by_user_for_serialization(self) -> None:
+        session = AsyncMock()
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = []
+        session.execute.return_value = result
+
+        await svc.list_registrations(session, tournament_id=64)
+
+        query = session.execute.await_args.args[0]
+        option_paths = {str(option.path) for option in query._with_options}
+
+        self.assertIn(
+            "ORM Path[Mapper[BalancerRegistration(registration)] -> BalancerRegistration.checked_in_by_user -> Mapper[AuthUser(user)]]",
+            option_paths,
+        )
 
 
 class UpdateRegistrationProfileBalancerStatusTests(IsolatedAsyncioTestCase):
