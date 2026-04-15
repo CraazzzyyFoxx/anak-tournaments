@@ -30,9 +30,11 @@ os.environ.setdefault("S3_ACCESS_KEY", "test")
 os.environ.setdefault("S3_SECRET_KEY", "test")
 os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
 os.environ.setdefault("S3_BUCKET_NAME", "test")
+os.environ["DEBUG"] = "false"
 
 from fastapi import HTTPException  # noqa: E402
 from src import models  # noqa: E402
+from src.routes.admin import registration as registration_route  # noqa: E402
 from src.services.admin import balancer_registration as svc  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -364,6 +366,28 @@ class ComputedIsFlexTests(IsolatedAsyncioTestCase):
         reg.roles = []
 
         self.assertFalse(reg.is_flex_computed)
+
+    def test_serializer_skips_unloaded_auth_user_relationships(self) -> None:
+        reg = models.BalancerRegistration(
+            id=1,
+            tournament_id=64,
+            workspace_id=1,
+            auth_user_id=7,
+            reviewed_by=7,
+            checked_in_by=7,
+            status="approved",
+            balancer_status="not_in_balancer",
+            stream_pov=False,
+            exclude_from_balancer=False,
+            checked_in=True,
+        )
+        reg.roles = []
+
+        payload = registration_route._serialize_registration(reg)
+
+        self.assertIsNone(payload.reviewed_by_username)
+        self.assertIsNone(payload.checked_in_by_username)
+        self.assertEqual(payload.roles, [])
 
 
 # ---------------------------------------------------------------------------

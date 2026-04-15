@@ -7,13 +7,7 @@ from typing import Any
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from shared.balancer_registration_statuses import (
-    StatusMeta,
-    build_unknown_status_meta,
-    get_status_metas_map,
-)
-
+from sqlalchemy.orm.attributes import NO_VALUE
 from src import models
 from src.core import auth, db
 from src.schemas.admin import balancer as admin_schemas
@@ -22,6 +16,12 @@ from src.schemas.admin.registration_form import (
     RegistrationFormUpsert,
 )
 from src.services.admin import balancer_registration as registration_service
+
+from shared.balancer_registration_statuses import (
+    StatusMeta,
+    build_unknown_status_meta,
+    get_status_metas_map,
+)
 
 router = APIRouter(
     prefix="/balancer",
@@ -43,13 +43,23 @@ def _serialize_registration_role(
     )
 
 
+def _loaded_relationship_or_none(instance: object, attribute: str) -> Any | None:
+    loaded_value = sa.inspect(instance).attrs[attribute].loaded_value
+    if loaded_value is NO_VALUE:
+        return None
+    return loaded_value
+
+
 def _serialize_registration(
     registration: models.BalancerRegistration,
     *,
     status_meta_map: dict[str, dict[str, StatusMeta]] | None = None,
 ) -> admin_schemas.BalancerRegistrationRead:
-    binding = registration.google_sheet_binding
-    sorted_roles = sorted(registration.roles, key=lambda item: (item.priority, item.role))
+    binding = _loaded_relationship_or_none(registration, "google_sheet_binding")
+    roles = _loaded_relationship_or_none(registration, "roles") or []
+    reviewer = _loaded_relationship_or_none(registration, "reviewer")
+    checked_in_by_user = _loaded_relationship_or_none(registration, "checked_in_by_user")
+    sorted_roles = sorted(roles, key=lambda item: (item.priority, item.role))
     resolved_status_meta = (
         status_meta_map["registration"].get(registration.status)
         if status_meta_map is not None
@@ -78,7 +88,7 @@ def _serialize_registration(
         notes=registration.notes,
         admin_notes=registration.admin_notes,
         custom_fields_json=registration.custom_fields_json,
-        is_flex=registration.is_flex_computed,
+        is_flex=bool(sorted_roles) and all(role.is_primary for role in sorted_roles),
         status=registration.status,
         balancer_status=registration.balancer_status,
         status_meta=admin_schemas.StatusMetaRead(**resolved_status_meta),
@@ -88,14 +98,14 @@ def _serialize_registration(
         checked_in=registration.checked_in,
         checked_in_at=registration.checked_in_at,
         checked_in_by_username=(
-            registration.checked_in_by_user.username
-            if registration.checked_in_by_user
+            checked_in_by_user.username
+            if checked_in_by_user is not None
             else None
         ),
         deleted_at=registration.deleted_at,
         submitted_at=registration.submitted_at,
         reviewed_at=registration.reviewed_at,
-        reviewed_by_username=registration.reviewer.username if registration.reviewer else None,
+        reviewed_by_username=reviewer.username if reviewer is not None else None,
         balancer_profile_overridden_at=registration.balancer_profile_overridden_at,
         roles=[_serialize_registration_role(role) for role in sorted_roles],
     )
