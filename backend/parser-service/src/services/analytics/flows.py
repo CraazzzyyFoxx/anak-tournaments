@@ -7,7 +7,7 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from openskill.models import PlackettLuce, PlackettLuceRating
 
-from shared.division_grid import DEFAULT_GRID
+from shared.division_grid import DEFAULT_GRID, DivisionGrid
 
 from src import models
 from src.schemas.analytics import AnalyticsMatch
@@ -23,17 +23,22 @@ mu = 1100
 
 async def get_data_frame(session: AsyncSession) -> pd.DataFrame:
     data = await service.get_analytics(session)
-    df = pd.DataFrame(
-        [
+    tournament_version_ids = await service.get_tournament_version_ids(session)
+
+    rows = []
+    for row in data:
+        tid = row[2]
+        rows.append(
             {
-                "tournament_id": row[2],
+                "tournament_id": tid,
+                "version_id": tournament_version_ids.get(tid),
                 "team_id": row[0],
                 "player_name": row[1].name,
                 "player_id": row[1].id,
                 "user_id": row[1].user_id,
                 "id_role": f"{row[1].user_id}-{row[1].role}",
                 "cost": row[1].rank,
-                "div": DEFAULT_GRID.resolve_division_number(row[1].rank),
+                "div": None,
                 "wins": row[3],
                 "losses": row[4],
                 "previous_cost": row[5],
@@ -42,10 +47,48 @@ async def get_data_frame(session: AsyncSession) -> pd.DataFrame:
                 "pre-previous_div": row[8],
                 "shift": 0,
             }
-            for row in data
-        ]
-    )
+        )
 
+    df = pd.DataFrame(rows)
+
+    all_version_ids = {int(v) for v in df["version_id"].dropna().unique()}
+    grids = await service.get_grid_versions(session, all_version_ids)
+
+    def grid_for(version_id) -> DivisionGrid:
+        if version_id is None or pd.isna(version_id):
+            return DEFAULT_GRID
+        return grids.get(int(version_id), DEFAULT_GRID)
+
+    df["div"] = df.apply(lambda r: grid_for(r["version_id"]).resolve_division_number(r["cost"]), axis=1)
+
+    df = df.sort_values(["id_role", "tournament_id"]).reset_index(drop=True)
+    df["prev_version_id"] = df.groupby("id_role")["version_id"].shift(1)
+
+    cross = df[["prev_version_id", "version_id"]].dropna().drop_duplicates()
+    cross = cross[cross["prev_version_id"] != cross["version_id"]]
+    pairs = [(int(r["prev_version_id"]), int(r["version_id"])) for _, r in cross.iterrows()]
+    tier_mappings = await service.get_primary_division_mappings(session, pairs)
+
+    def resolve_previous_div(row) -> int | None:
+        prev_cost = row["previous_cost"]
+        if prev_cost is None or pd.isna(prev_cost):
+            return row["previous_div"]
+        prev_vid = row["prev_version_id"]
+        curr_vid = row["version_id"]
+        raw = grid_for(prev_vid).resolve_division_number(int(prev_cost))
+        if (
+            prev_vid is not None
+            and not pd.isna(prev_vid)
+            and curr_vid is not None
+            and not pd.isna(curr_vid)
+            and int(prev_vid) != int(curr_vid)
+        ):
+            mapping = tier_mappings.get((int(prev_vid), int(curr_vid)))
+            if mapping:
+                return mapping.get(raw, raw)
+        return raw
+
+    df["previous_div"] = df.apply(resolve_previous_div, axis=1)
     df["is_changed"] = df["previous_div"] != df["div"]
     return df
 

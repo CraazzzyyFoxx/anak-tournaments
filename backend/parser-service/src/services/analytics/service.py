@@ -3,7 +3,8 @@ import typing
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.division_grid import DEFAULT_GRID, division_case_expr
+from shared.division_grid import DEFAULT_GRID, DivisionGrid, division_case_expr, load_runtime_grid
+from shared.models.division_grid import DivisionGridMapping, DivisionGridMappingRule, DivisionGridVersion
 
 from src import models
 
@@ -125,6 +126,76 @@ async def get_algorithm(session: AsyncSession, name: str) -> models.AnalyticsAlg
     query = sa.select(models.AnalyticsAlgorithm).where(models.AnalyticsAlgorithm.name == name)
     result = await session.execute(query)
     return result.scalar_one()  # type: ignore
+
+
+async def get_tournament_version_ids(
+    session: AsyncSession,
+) -> dict[int, int | None]:
+    """Maps tournament_id -> division_grid_version_id for all analytics-relevant tournaments."""
+    result = await session.execute(
+        sa.select(models.Tournament.id, models.Tournament.division_grid_version_id)
+        .where(models.Tournament.id >= 1, models.Tournament.is_league.is_(False))
+    )
+    return {row[0]: row[1] for row in result.all()}
+
+
+async def get_grid_versions(
+    session: AsyncSession,
+    version_ids: set[int],
+) -> dict[int, DivisionGrid]:
+    """Loads DivisionGrid runtime objects keyed by version_id."""
+    if not version_ids:
+        return {}
+    result = await session.execute(
+        sa.select(DivisionGridVersion)
+        .options(sa.orm.selectinload(DivisionGridVersion.tiers))
+        .where(DivisionGridVersion.id.in_(version_ids))
+    )
+    return {v.id: load_runtime_grid(v) for v in result.scalars().unique().all()}
+
+
+async def get_primary_division_mappings(
+    session: AsyncSession,
+    pairs: list[tuple[int, int]],
+) -> dict[tuple[int, int], dict[int, int]]:
+    """
+    For each (source_version_id, target_version_id) pair, returns
+    {source_tier_number -> target_tier_number} using the primary mapping rule.
+    Pairs with no mapping in the DB are silently omitted.
+    """
+    if not pairs:
+        return {}
+
+    source_ids = [p[0] for p in pairs]
+    target_ids = [p[1] for p in pairs]
+
+    mappings_result = await session.execute(
+        sa.select(DivisionGridMapping)
+        .options(
+            sa.orm.selectinload(DivisionGridMapping.rules).selectinload(DivisionGridMappingRule.source_tier),
+            sa.orm.selectinload(DivisionGridMapping.rules).selectinload(DivisionGridMappingRule.target_tier),
+        )
+        .where(
+            DivisionGridMapping.source_version_id.in_(source_ids),
+            DivisionGridMapping.target_version_id.in_(target_ids),
+        )
+    )
+
+    pairs_set = set(pairs)
+    out: dict[tuple[int, int], dict[int, int]] = {}
+    for mapping in mappings_result.scalars().unique().all():
+        key = (mapping.source_version_id, mapping.target_version_id)
+        if key not in pairs_set:
+            continue
+        tier_map: dict[int, int] = {}
+        for rule in mapping.rules:
+            source_num = rule.source_tier.number
+            target_num = rule.target_tier.number
+            # prefer primary rule; fall back to first seen for single-target rules
+            if rule.is_primary or source_num not in tier_map:
+                tier_map[source_num] = target_num
+        out[key] = tier_map
+    return out
 
 
 async def get_players_by_tournament_id(
