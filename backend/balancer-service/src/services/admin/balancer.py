@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 import re
 from datetime import UTC, datetime
@@ -9,12 +8,12 @@ from uuid import uuid4
 
 import httpx
 import sqlalchemy as sa
+import src.services.team as team_flows
+import src.services.user as user_flows
+import src.services.user as user_service
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-
-from shared.division_grid import DEFAULT_GRID, DivisionGrid
-
 from src import models
 from src.schemas.admin import balancer as admin_schemas
 from src.schemas.team import InternalBalancerTeamsPayload
@@ -29,7 +28,6 @@ from src.services.admin.balancer_utils import (
     VALID_ROLE_SUBTYPES,
     VALID_ROLES,
     build_csv_export_url,
-    extract_battle_tags as _extract_battle_tags,
     extract_sheet_source,
     fetch_csv_rows,
     normalize_battle_tag,
@@ -40,9 +38,11 @@ from src.services.admin.balancer_utils import (
     row_to_json,
     unique_strings,
 )
-import src.services.team as team_flows
-import src.services.user as user_flows
-import src.services.user as user_service
+from src.services.admin.balancer_utils import (
+    extract_battle_tags as _extract_battle_tags,
+)
+
+from shared.division_grid import DEFAULT_GRID, DivisionGrid
 
 logger = logging.getLogger(__name__)
 
@@ -631,7 +631,7 @@ def serialize_player_for_export(player: models.BalancerPlayer, export_uuid: str)
         for e in sorted(player.role_entries, key=lambda e: e.priority)
     ]
     if player.is_flex:
-        export_priorities = {role: 0 for role in EXPORT_ROLE_ORDER}
+        export_priorities = dict.fromkeys(EXPORT_ROLE_ORDER, 0)
     else:
         ordered_active_roles = [entry["role"] for entry in role_entries if entry.get("is_active", True)]
         ordered_roles = ordered_active_roles + [role for role in EXPORT_ROLE_ORDER if role not in ordered_active_roles]
@@ -942,7 +942,11 @@ async def list_applications(
     query = (
         sa.select(models.BalancerApplication)
         .where(models.BalancerApplication.tournament_id == tournament_id)
-        .options(selectinload(models.BalancerApplication.player))
+        .options(
+            selectinload(models.BalancerApplication.player).selectinload(
+                models.BalancerPlayer.role_entries
+            )
+        )
         .order_by(models.BalancerApplication.battle_tag_normalized.asc())
     )
     if not include_inactive:
@@ -980,7 +984,11 @@ async def create_players_from_applications(
             models.BalancerApplication.tournament_id == tournament_id,
             models.BalancerApplication.id.in_(data.application_ids),
         )
-        .options(selectinload(models.BalancerApplication.player))
+        .options(
+            selectinload(models.BalancerApplication.player).selectinload(
+                models.BalancerPlayer.role_entries
+            )
+        )
     )
     applications = list(result.scalars().all())
     if not applications:
@@ -1017,6 +1025,7 @@ async def create_players_from_applications(
         sa.select(models.BalancerPlayer)
         .where(models.BalancerPlayer.tournament_id == tournament_id)
         .where(models.BalancerPlayer.application_id.in_(data.application_ids))
+        .options(selectinload(models.BalancerPlayer.role_entries))
         .order_by(models.BalancerPlayer.battle_tag_normalized.asc())
     )
     return list(result.scalars().all())
@@ -1041,7 +1050,11 @@ async def list_players(
 
 
 async def get_player(session: AsyncSession, player_id: int) -> models.BalancerPlayer:
-    result = await session.execute(sa.select(models.BalancerPlayer).where(models.BalancerPlayer.id == player_id))
+    result = await session.execute(
+        sa.select(models.BalancerPlayer)
+        .where(models.BalancerPlayer.id == player_id)
+        .options(selectinload(models.BalancerPlayer.role_entries))
+    )
     player = result.scalar_one_or_none()
     if player is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Balancer player not found")
