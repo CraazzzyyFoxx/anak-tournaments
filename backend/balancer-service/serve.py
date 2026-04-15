@@ -76,27 +76,45 @@ async def process_balancer_job(body: dict[str, Any], msg=None) -> None:
         logger=logger,
     ) as observation:
         try:
+            logger.info("Balancer worker: validating job payload envelope")
             event = BalancerJobEvent.model_validate(body)
+            logger.info(f"Balancer worker: envelope validated for job_id={event.job_id}")
         except ValidationError as exc:
             observation.set_status("invalid")
             logger.error(f"Invalid balancer job payload: {exc}")
             return
 
+        logger.info(f"Balancer worker: acquiring job store for job_id={event.job_id}")
         job_store = get_job_store()
+        logger.info(f"Balancer worker: job store ready for job_id={event.job_id}")
 
+        logger.info(f"Balancer worker: loading job payload for job_id={event.job_id}")
         payload = await job_store.get_job_payload(event.job_id)
+        logger.info(
+            "Balancer worker: job payload lookup finished for job_id={} payload_found={}",
+            event.job_id,
+            payload is not None,
+        )
         if payload is None:
             observation.set_status("missing_payload")
             logger.error(f"Job payload missing for job_id={event.job_id}")
             return
 
+        logger.info(f"Balancer worker: loading job meta for job_id={event.job_id}")
         current_meta = await job_store.get_job_meta(event.job_id)
+        logger.info(
+            "Balancer worker: job meta lookup finished for job_id={} status={}",
+            event.job_id,
+            current_meta.get("status") if current_meta else None,
+        )
         if current_meta and current_meta.get("status") in {"succeeded", "failed"}:
             observation.set_status("already_completed")
             logger.info(f"Skipping already completed balancer job {event.job_id}")
             return
 
+        logger.info(f"Balancer worker: marking job running for job_id={event.job_id}")
         await job_store.mark_running(event.job_id)
+        logger.info(f"Balancer worker: job marked running for job_id={event.job_id}")
 
         event_queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
         loop = asyncio.get_running_loop()
