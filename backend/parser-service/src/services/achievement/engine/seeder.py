@@ -70,16 +70,6 @@ def _build_canonical_rule_catalog() -> list[CanonicalRuleMeta]:
 _CANONICAL_RULES = _build_canonical_rule_catalog()
 _CANONICAL_RULES_BY_SLUG = {rule.slug: rule for rule in _CANONICAL_RULES}
 
-# Old engine slugs that should transparently migrate to canonical legacy slugs.
-_LEGACY_SLUG_ALIASES = {
-    "afgan": "reverse-sweep-champion",
-    "boop-master": "boop_master",
-    "boris-dick": "boris_dick",
-    "john-wick": "john_wick",
-    "just-dont-fuck-around": "just_dont_fuck_around",
-    "shooting-and-screaming": "shooting_and_screaming",
-}
-
 _PLACEHOLDER_DEFAULTS_BY_CATEGORY = {
     AchievementCategory.overall: (AchievementScope.glob, AchievementGrain.user),
     AchievementCategory.hero: (AchievementScope.tournament, AchievementGrain.user_tournament),
@@ -676,18 +666,6 @@ def get_canonical_rule_catalog() -> list[CanonicalRuleMeta]:
     return list(_CANONICAL_RULES)
 
 
-def _normalize_legacy_rule_slugs(existing_by_slug: dict[str, AchievementRule]) -> int:
-    renamed = 0
-    for legacy_slug, canonical_slug in _LEGACY_SLUG_ALIASES.items():
-        if canonical_slug in existing_by_slug or legacy_slug not in existing_by_slug:
-            continue
-        rule = existing_by_slug.pop(legacy_slug)
-        rule.slug = canonical_slug
-        existing_by_slug[canonical_slug] = rule
-        renamed += 1
-    return renamed
-
-
 async def seed_workspace(
     session: AsyncSession,
     workspace_id: int,
@@ -719,8 +697,6 @@ async def seed_workspace(
         ).scalars()
     )
     existing_by_slug = {rule.slug: rule for rule in existing_rules}
-
-    renamed = _normalize_legacy_rule_slugs(existing_by_slug)
 
     if replace_catalog:
         for existing in existing_rules:
@@ -756,11 +732,10 @@ async def seed_workspace(
 
     await session.flush()
     logger.info(
-        "Seeded workspace {} with {} achievement rules (upsert), removed {}, renamed {} legacy slugs",
+        "Seeded workspace {} with {} achievement rules (upsert), removed {}",
         workspace_id,
         count,
-        removed,
-        renamed,
+        removed
     )
     return count, removed
 

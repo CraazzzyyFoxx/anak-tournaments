@@ -230,7 +230,7 @@ CANONICAL_ACHIEVEMENT_CATALOG: tuple[dict[str, str], ...] = (
  'description_ru': 'За всю историю логов сыграть минимум на 20 разных героях.',
  'description_en': 'Play at least 20 different heroes in the history of logs.'},
     {'category': 'hero',
- 'slug': 'freya',
+ 'slug': 'freja',
  'name': 'Bounty Hunter',
  'description_ru': 'Иметь лучшее K/D на Фрейе за турнир',
  'description_en': 'Have the best K/D as Freja during the tournament'},
