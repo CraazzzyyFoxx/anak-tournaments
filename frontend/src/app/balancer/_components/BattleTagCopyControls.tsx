@@ -82,7 +82,7 @@ export function SmurfTagStrip({ smurfTags, className, compact = false }: SmurfTa
   }
 
   return (
-    <div className={cn("flex min-w-0 flex-wrap items-center gap-1", className)} onDoubleClick={(event) => event.stopPropagation()}>
+    <div className={cn("flex shrink-0 items-center gap-1", className)} onDoubleClick={(event) => event.stopPropagation()}>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button

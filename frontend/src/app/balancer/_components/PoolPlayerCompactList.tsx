@@ -4,7 +4,6 @@ import { Check, Circle, Pencil, PlusCircle, ShieldX } from "lucide-react";
 
 import PlayerDivisionIcon from "@/components/PlayerDivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -302,24 +301,24 @@ export function PoolPlayerCompactList({
                         <RoleIconStrip roleCodes={rankedRoleCodes} />
                         <span className="truncate text-[13px] font-medium text-white/88">{name}</span>
                         {suffix ? <span className="shrink-0 text-[12px] text-white/28">{suffix}</span> : null}
-                        {player.is_flex ? (
-                          <Badge className="h-5 shrink-0 rounded-full border-violet-300/20 bg-violet-500/12 px-1.5 text-[9px] uppercase tracking-[0.14em] text-violet-200 hover:bg-violet-500/12">
-                            Flex
-                          </Badge>
-                        ) : null}
                       </div>
                     </div>
-                    {isReady || issues.length > 0 || smurfTags.length > 0 ? (
-                      <div className="mt-1 flex flex-wrap items-center gap-1">
+                    {player.is_flex || isReady || issues.length > 0 || smurfTags.length > 0 ? (
+                      <div className="mt-1 flex min-w-0 items-center gap-1 overflow-x-auto whitespace-nowrap pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                        {player.is_flex ? (
+                          <span className="shrink-0 rounded-full border border-violet-300/20 bg-violet-500/12 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-200">
+                            Flex
+                          </span>
+                        ) : null}
                         {isReady ? (
-                          <span className="rounded-full border border-emerald-300/20 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-200">
+                          <span className="shrink-0 rounded-full border border-emerald-300/20 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-200">
                             Ready
                           </span>
                         ) : null}
                         {issues.map((issue) => (
                           <span
                             key={`${player.id}-${issue.code}`}
-                            className="rounded-full border border-amber-300/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-100/80"
+                            className="shrink-0 rounded-full border border-amber-300/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-100/80"
                             title={issue.message}
                           >
                             {getIssueChipLabel(issue)}
