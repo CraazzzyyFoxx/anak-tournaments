@@ -589,7 +589,9 @@ async def list_registrations(
         .where(models.BalancerRegistration.tournament_id == tournament_id)
         .options(
             selectinload(models.BalancerRegistration.roles),
+            selectinload(models.BalancerRegistration.auth_user),
             selectinload(models.BalancerRegistration.reviewer),
+            selectinload(models.BalancerRegistration.deleted_by_user),
             selectinload(models.BalancerRegistration.checked_in_by_user),
             selectinload(models.BalancerRegistration.google_sheet_binding).selectinload(
                 models.BalancerRegistrationGoogleSheetBinding.feed

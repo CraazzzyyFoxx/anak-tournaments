@@ -176,7 +176,7 @@ class SetBalancerStatusTests(IsolatedAsyncioTestCase):
 
 
 class ListRegistrationsTests(IsolatedAsyncioTestCase):
-    async def test_list_registrations_preloads_checked_in_by_user_for_serialization(self) -> None:
+    async def test_list_registrations_preloads_auth_user_relationships_for_serialization(self) -> None:
         session = AsyncMock()
         result = MagicMock()
         result.scalars.return_value.all.return_value = []
@@ -187,10 +187,13 @@ class ListRegistrationsTests(IsolatedAsyncioTestCase):
         query = session.execute.await_args.args[0]
         option_paths = {str(option.path) for option in query._with_options}
 
-        self.assertIn(
+        for expected_path in (
+            "ORM Path[Mapper[BalancerRegistration(registration)] -> BalancerRegistration.auth_user -> Mapper[AuthUser(user)]]",
+            "ORM Path[Mapper[BalancerRegistration(registration)] -> BalancerRegistration.reviewer -> Mapper[AuthUser(user)]]",
+            "ORM Path[Mapper[BalancerRegistration(registration)] -> BalancerRegistration.deleted_by_user -> Mapper[AuthUser(user)]]",
             "ORM Path[Mapper[BalancerRegistration(registration)] -> BalancerRegistration.checked_in_by_user -> Mapper[AuthUser(user)]]",
-            option_paths,
-        )
+        ):
+            self.assertIn(expected_path, option_paths)
 
 
 class UpdateRegistrationProfileBalancerStatusTests(IsolatedAsyncioTestCase):
