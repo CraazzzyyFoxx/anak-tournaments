@@ -830,7 +830,7 @@ async def update_registration_profile(
         registration.balancer_status = balancer_status_value
         if balancer_status_value == "not_in_balancer":
             registration.exclude_from_balancer = True
-        elif balancer_status_value in VALID_BALANCER_STATUSES:
+        else:
             registration.exclude_from_balancer = False
 
     override_changed = False
@@ -973,12 +973,13 @@ async def set_balancer_status(
     *,
     balancer_status: str,
 ) -> models.BalancerRegistration:
-    if balancer_status not in VALID_BALANCER_STATUSES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid balancer_status: {balancer_status}",
-        )
     registration = await get_registration_by_id(session, registration_id)
+    await validate_registration_status_value(
+        session,
+        workspace_id=registration.workspace_id,
+        scope="balancer",
+        value=balancer_status,
+    )
     if balancer_status != "not_in_balancer" and registration.status != "approved":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -1031,9 +1032,12 @@ async def bulk_add_to_balancer(
     balancer_status: str = "ready",
 ) -> tuple[int, int]:
     if balancer_status not in VALID_BALANCER_STATUSES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid balancer_status: {balancer_status}",
+        tournament = await ensure_tournament_exists(session, tournament_id)
+        await validate_registration_status_value(
+            session,
+            workspace_id=tournament.workspace_id,
+            scope="balancer",
+            value=balancer_status,
         )
     result = await session.execute(
         sa.select(models.BalancerRegistration).where(

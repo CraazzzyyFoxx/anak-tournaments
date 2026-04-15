@@ -64,6 +64,7 @@ def _make_registration(
         exclude_from_balancer=exclude_from_balancer,
         exclude_reason=None,
         roles=roles or [],
+        is_flex_computed=False,
         reviewer=None,
         checked_in_by_user=None,
         google_sheet_binding=None,
@@ -122,12 +123,36 @@ class SetBalancerStatusTests(IsolatedAsyncioTestCase):
         self.assertTrue(result.exclude_from_balancer)
 
     async def test_set_balancer_status_rejects_invalid_status(self) -> None:
+        reg = _make_registration(status="approved")
         session = AsyncMock()
+        result_mock = MagicMock()
+        result_mock.scalar_one_or_none.return_value = None
+        session.execute.return_value = result_mock
 
-        with self.assertRaises(HTTPException) as ctx:
-            await svc.set_balancer_status(session, 1, balancer_status="invalid")
+        with patch.object(svc, "get_registration_by_id", AsyncMock(return_value=reg)):
+            with self.assertRaises(HTTPException) as ctx:
+                await svc.set_balancer_status(session, 1, balancer_status="invalid")
 
         self.assertEqual(ctx.exception.status_code, 400)
+
+    async def test_set_balancer_status_allows_workspace_custom_status(self) -> None:
+        reg = _make_registration(
+            status="approved",
+            balancer_status="not_in_balancer",
+            exclude_from_balancer=True,
+        )
+        session = AsyncMock()
+        result_mock = MagicMock()
+        result_mock.scalar_one_or_none.return_value = 123
+        session.execute.return_value = result_mock
+        session.commit = AsyncMock()
+
+        with patch.object(svc, "get_registration_by_id", AsyncMock(return_value=reg)):
+            result = await svc.set_balancer_status(session, 1, balancer_status="shortcast")
+
+        self.assertEqual(result.balancer_status, "shortcast")
+        self.assertFalse(result.exclude_from_balancer)
+        session.commit.assert_awaited_once()
 
     async def test_set_balancer_status_incomplete(self) -> None:
         reg = _make_registration(status="approved")
@@ -182,6 +207,8 @@ class UpdateRegistrationProfileBalancerStatusTests(IsolatedAsyncioTestCase):
                 notes=None,
                 admin_notes=None,
                 is_flex=None,
+                status_value=None,
+                balancer_status_value=None,
                 roles=updated_roles,
             )
 
@@ -216,10 +243,44 @@ class UpdateRegistrationProfileBalancerStatusTests(IsolatedAsyncioTestCase):
                 notes=None,
                 admin_notes=None,
                 is_flex=None,
+                status_value=None,
+                balancer_status_value=None,
                 roles=updated_roles,
             )
 
         self.assertEqual(result.balancer_status, "ready")
+
+    async def test_profile_update_custom_balancer_status_includes_registration(self) -> None:
+        reg = _make_registration(
+            status="approved",
+            balancer_status="not_in_balancer",
+            exclude_from_balancer=True,
+        )
+        session = _mock_session_with_registration(reg)
+
+        with (
+            patch.object(svc, "get_registration_by_id", AsyncMock(return_value=reg)),
+            patch.object(svc, "validate_registration_status_value", AsyncMock()),
+        ):
+            result = await svc.update_registration_profile(
+                session,
+                1,
+                display_name=None,
+                battle_tag=None,
+                smurf_tags_json=None,
+                discord_nick=None,
+                twitch_nick=None,
+                stream_pov=None,
+                notes=None,
+                admin_notes=None,
+                is_flex=None,
+                status_value=None,
+                balancer_status_value="shortcast",
+                roles=None,
+            )
+
+        self.assertEqual(result.balancer_status, "shortcast")
+        self.assertFalse(result.exclude_from_balancer)
 
 
 # ---------------------------------------------------------------------------
@@ -355,6 +416,31 @@ class BulkAddToBalancerTests(IsolatedAsyncioTestCase):
         self.assertEqual(reg.balancer_status, "incomplete")
         self.assertFalse(reg.exclude_from_balancer)
 
+    async def test_bulk_add_to_balancer_allows_workspace_custom_status(self) -> None:
+        reg = _make_registration(
+            status="approved",
+            balancer_status="not_in_balancer",
+            exclude_from_balancer=True,
+            roles=[SimpleNamespace(role="tank", is_primary=True, is_active=True, rank_value=2500)],
+        )
+
+        session = AsyncMock()
+        result_mock = MagicMock()
+        result_mock.scalars.return_value.all.return_value = [reg]
+        session.execute.return_value = result_mock
+        session.commit = AsyncMock()
+
+        with (
+            patch.object(svc, "ensure_tournament_exists", AsyncMock(return_value=SimpleNamespace(workspace_id=1))),
+            patch.object(svc, "validate_registration_status_value", AsyncMock()),
+        ):
+            updated, skipped = await svc.bulk_add_to_balancer(session, 10, [1], balancer_status="shortcast")
+
+        self.assertEqual(updated, 1)
+        self.assertEqual(skipped, 0)
+        self.assertEqual(reg.balancer_status, "shortcast")
+        self.assertFalse(reg.exclude_from_balancer)
+
 
 class RegistrationExclusionTests(IsolatedAsyncioTestCase):
     async def test_excluding_registration_forces_not_in_balancer(self) -> None:
@@ -378,7 +464,12 @@ class RegistrationExclusionTests(IsolatedAsyncioTestCase):
         self.assertEqual(result.balancer_status, "not_in_balancer")
 
     async def test_reincluding_roleless_registration_marks_it_incomplete(self) -> None:
-        reg = _make_registration(status="approved", balancer_status="not_in_balancer", exclude_from_balancer=True, roles=[])
+        reg = _make_registration(
+            status="approved",
+            balancer_status="not_in_balancer",
+            exclude_from_balancer=True,
+            roles=[],
+        )
         session = _mock_session_with_registration(reg)
 
         with patch.object(svc, "get_registration_by_id", AsyncMock(return_value=reg)):
