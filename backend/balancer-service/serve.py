@@ -1,9 +1,11 @@
 import asyncio
+import json
 from typing import Any
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from faststream import FastStream
 from faststream.rabbit import RabbitBroker
+from faststream.rabbit.annotations import RabbitMessage
 from pydantic import ValidationError
 from src.core.config import config
 from src.core import db
@@ -33,6 +35,20 @@ logger = setup_logging(
 broker = RabbitBroker(config.rabbitmq_url, logger=logger)
 app = FastStream(broker)
 scheduler = AsyncIOScheduler()
+
+
+def _decode_balancer_message(message: Any) -> Any:
+    print("Balancer worker: custom decoder invoked", flush=True)
+    body = getattr(message, "body", None)
+    print(f"Balancer worker: custom decoder body_type={type(body).__name__}", flush=True)
+
+    if isinstance(body, bytes):
+        return json.loads(body.decode("utf-8"))
+
+    if isinstance(body, bytearray):
+        return json.loads(bytes(body).decode("utf-8"))
+
+    return body
 
 
 async def sync_registration_google_sheet_feeds() -> None:
@@ -67,8 +83,8 @@ async def stop_scheduler() -> None:
     scheduler.shutdown(wait=False)
 
 
-@broker.subscriber(BALANCER_JOBS_QUEUE)
-async def process_balancer_job(data: dict, msg=None) -> None:
+@broker.subscriber(BALANCER_JOBS_QUEUE, decoder=_decode_balancer_message)
+async def process_balancer_job(data: dict, msg: RabbitMessage) -> None:
     print("Balancer worker: entered process_balancer_job handler", flush=True)
     logger.info("Balancer worker: entered process_balancer_job handler")
     try:
