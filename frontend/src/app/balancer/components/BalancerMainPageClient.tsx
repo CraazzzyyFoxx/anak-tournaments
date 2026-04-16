@@ -411,7 +411,7 @@ export function BalancerMainPageClient() {
               jobProgress={jobState.progress}
             />
 
-            {hasActiveVariant ? (
+            {activeVariant ? (
               <TeamDistributionPanel
                 variant={activeVariant}
                 variantSelector={variantSelector}
