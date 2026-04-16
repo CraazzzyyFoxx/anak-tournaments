@@ -69,127 +69,122 @@ async def stop_scheduler() -> None:
 
 @broker.subscriber(BALANCER_JOBS_QUEUE)
 async def process_balancer_job(body: dict[str, Any], msg=None) -> None:
-    async with observe_message_processing(
-        queue=BALANCER_JOBS_QUEUE,
-        handler="process_balancer_job",
-        message=msg,
-        logger=logger,
-    ) as observation:
-        try:
-            logger.info("Balancer worker: validating job payload envelope")
-            event = BalancerJobEvent.model_validate(body)
-            logger.info(f"Balancer worker: envelope validated for job_id={event.job_id}")
-        except ValidationError as exc:
-            observation.set_status("invalid")
-            logger.error(f"Invalid balancer job payload: {exc}")
-            return
+    logger.info("Balancer worker: entered process_balancer_job handler")
+    try:
+        logger.info("Balancer worker: validating job payload envelope")
+        event = BalancerJobEvent.model_validate(body)
+        logger.info(f"Balancer worker: envelope validated for job_id={event.job_id}")
+    except ValidationError as exc:
+        # observation.set_status("invalid")
+        logger.error(f"Invalid balancer job payload: {exc}")
+        return
 
-        logger.info(f"Balancer worker: acquiring job store for job_id={event.job_id}")
-        job_store = get_job_store()
-        logger.info(f"Balancer worker: job store ready for job_id={event.job_id}")
+    logger.info(f"Balancer worker: acquiring job store for job_id={event.job_id}")
+    job_store = get_job_store()
+    logger.info(f"Balancer worker: job store ready for job_id={event.job_id}")
 
-        logger.info(f"Balancer worker: loading job payload for job_id={event.job_id}")
-        payload = await job_store.get_job_payload(event.job_id)
-        logger.info(
-            "Balancer worker: job payload lookup finished for job_id={} payload_found={}",
-            event.job_id,
-            payload is not None,
-        )
-        if payload is None:
-            observation.set_status("missing_payload")
-            logger.error(f"Job payload missing for job_id={event.job_id}")
-            return
+    logger.info(f"Balancer worker: loading job payload for job_id={event.job_id}")
+    payload = await job_store.get_job_payload(event.job_id)
+    logger.info(
+        "Balancer worker: job payload lookup finished for job_id={} payload_found={}",
+        event.job_id,
+        payload is not None,
+    )
+    if payload is None:
+        # observation.set_status("missing_payload")
+        logger.error(f"Job payload missing for job_id={event.job_id}")
+        return
 
-        logger.info(f"Balancer worker: loading job meta for job_id={event.job_id}")
-        current_meta = await job_store.get_job_meta(event.job_id)
-        logger.info(
-            "Balancer worker: job meta lookup finished for job_id={} status={}",
-            event.job_id,
-            current_meta.get("status") if current_meta else None,
-        )
-        if current_meta and current_meta.get("status") in {"succeeded", "failed"}:
-            observation.set_status("already_completed")
-            logger.info(f"Skipping already completed balancer job {event.job_id}")
-            return
+    logger.info(f"Balancer worker: loading job meta for job_id={event.job_id}")
+    current_meta = await job_store.get_job_meta(event.job_id)
+    logger.info(
+        "Balancer worker: job meta lookup finished for job_id={} status={}",
+        event.job_id,
+        current_meta.get("status") if current_meta else None,
+    )
+    if current_meta and current_meta.get("status") in {"succeeded", "failed"}:
+        # observation.set_status("already_completed")
+        logger.info(f"Skipping already completed balancer job {event.job_id}")
+        return
 
-        logger.info(f"Balancer worker: marking job running for job_id={event.job_id}")
-        await job_store.mark_running(event.job_id)
-        logger.info(f"Balancer worker: job marked running for job_id={event.job_id}")
+    logger.info(f"Balancer worker: marking job running for job_id={event.job_id}")
+    await job_store.mark_running(event.job_id)
+    logger.info(f"Balancer worker: job marked running for job_id={event.job_id}")
 
-        event_queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
-        loop = asyncio.get_running_loop()
+    event_queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
+    loop = asyncio.get_running_loop()
 
-        def progress_callback(progress_payload: dict[str, Any]) -> None:
-            loop.call_soon_threadsafe(event_queue.put_nowait, progress_payload)
+    def progress_callback(progress_payload: dict[str, Any]) -> None:
+        loop.call_soon_threadsafe(event_queue.put_nowait, progress_payload)
 
-        async def consume_progress_events() -> None:
-            while True:
-                update = await event_queue.get()
-                if update is None:
-                    break
+    async def consume_progress_events() -> None:
+        while True:
+            update = await event_queue.get()
+            if update is None:
+                break
 
-                stage = str(update.get("stage", "running"))
-                status_value = str(update.get("status", "running"))
-                if status_value == "queued":
-                    status: JobStatus = "queued"
-                elif status_value == "succeeded":
-                    status = "succeeded"
-                elif status_value == "failed":
-                    status = "failed"
-                else:
-                    status = "running"
-                message = str(update.get("message", ""))
-                level = str(update.get("level", "info"))
-                progress = update.get("progress")
-
-                await job_store.append_event(
-                    event.job_id,
-                    status=status,
-                    stage=stage,
-                    message=message,
-                    level=level,
-                    progress=progress,
-                    update_meta=True,
-                )
-
-        consume_task = asyncio.create_task(consume_progress_events())
-
-        try:
-            input_data = payload.get("data")
-            config_overrides = payload.get("config") or {}
-
-            if not isinstance(input_data, dict):
-                raise ValueError("Job payload does not contain valid player data")
-
-            algorithm = config_overrides.get("ALGORITHM", "genetic") if config_overrides else "genetic"
-
-            if algorithm == "cpsat":
-                max_solutions = config_overrides.get("MAX_CPSAT_SOLUTIONS", 3) if config_overrides else 3
-                await job_store.append_event(
-                    event.job_id,
-                    status="running",
-                    stage="solving",
-                    message="Running CP-SAT solver…",
-                    level="info",
-                    progress=None,
-                    update_meta=True,
-                )
-                variants = await asyncio.to_thread(run_cpsat, input_data, max_solutions)
-                result = {"variants": variants}
+            stage = str(update.get("stage", "running"))
+            status_value = str(update.get("status", "running"))
+            if status_value == "queued":
+                status: JobStatus = "queued"
+            elif status_value == "succeeded":
+                status = "succeeded"
+            elif status_value == "failed":
+                status = "failed"
             else:
-                result_single = await asyncio.to_thread(balance_teams, input_data, config_overrides, progress_callback)
-                result = {"variants": [result_single]}
+                status = "running"
+            message = str(update.get("message", ""))
+            level = str(update.get("level", "info"))
+            progress = update.get("progress")
 
-            await event_queue.put(None)
-            await consume_task
+            await job_store.append_event(
+                event.job_id,
+                status=status,
+                stage=stage,
+                message=message,
+                level=level,
+                progress=progress,
+                update_meta=True,
+            )
 
-            await job_store.mark_succeeded(event.job_id, result)
-            logger.success(f"Balancer job completed: {event.job_id}")
-        except Exception as exc:  # pragma: no cover - defensive worker guard
-            logger.exception(f"Balancer job failed ({event.job_id}): {exc}")
+    consume_task = asyncio.create_task(consume_progress_events())
 
-            await event_queue.put(None)
-            await consume_task
+    try:
+        input_data = payload.get("data")
+        config_overrides = payload.get("config") or {}
 
-            await job_store.mark_failed(event.job_id, f"Balancer job failed: {exc}")
-            raise
+        if not isinstance(input_data, dict):
+            raise ValueError("Job payload does not contain valid player data")
+
+        algorithm = config_overrides.get("ALGORITHM", "genetic") if config_overrides else "genetic"
+
+        if algorithm == "cpsat":
+            max_solutions = config_overrides.get("MAX_CPSAT_SOLUTIONS", 3) if config_overrides else 3
+            await job_store.append_event(
+                event.job_id,
+                status="running",
+                stage="solving",
+                message="Running CP-SAT solver…",
+                level="info",
+                progress=None,
+                update_meta=True,
+            )
+            variants = await asyncio.to_thread(run_cpsat, input_data, max_solutions)
+            result = {"variants": variants}
+        else:
+            result_single = await asyncio.to_thread(balance_teams, input_data, config_overrides, progress_callback)
+            result = {"variants": [result_single]}
+
+        await event_queue.put(None)
+        await consume_task
+
+        await job_store.mark_succeeded(event.job_id, result)
+        logger.success(f"Balancer job completed: {event.job_id}")
+    except Exception as exc:  # pragma: no cover - defensive worker guard
+        logger.exception(f"Balancer job failed ({event.job_id}): {exc}")
+
+        await event_queue.put(None)
+        await consume_task
+
+        await job_store.mark_failed(event.job_id, f"Balancer job failed: {exc}")
+        raise
