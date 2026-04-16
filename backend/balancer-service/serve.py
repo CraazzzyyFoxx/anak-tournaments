@@ -18,7 +18,6 @@ from src.services.admin import balancer_registration as registration_balancer_se
 
 from shared.messaging.config import BALANCER_JOBS_QUEUE
 from shared.observability import (
-    observe_message_processing,
     setup_logging,
     setup_tracing,
     start_worker_metrics_server,
@@ -38,9 +37,7 @@ scheduler = AsyncIOScheduler()
 
 
 def _decode_balancer_message(message: Any) -> Any:
-    print("Balancer worker: custom decoder invoked", flush=True)
     body = getattr(message, "body", None)
-    print(f"Balancer worker: custom decoder body_type={type(body).__name__}", flush=True)
 
     if isinstance(body, bytes):
         return json.loads(body.decode("utf-8"))
@@ -85,7 +82,6 @@ async def stop_scheduler() -> None:
 
 @broker.subscriber(BALANCER_JOBS_QUEUE, decoder=_decode_balancer_message)
 async def process_balancer_job(data: dict, msg: RabbitMessage) -> None:
-    print("Balancer worker: entered process_balancer_job handler", flush=True)
     logger.info("Balancer worker: entered process_balancer_job handler")
     try:
         logger.info("Balancer worker: validating job payload envelope")
