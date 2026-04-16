@@ -4,7 +4,7 @@ import { startTransition, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Plus, Save, Trash2 } from "lucide-react";
 
-import { useBalancerTournamentId } from "@/app/balancer/_components/useBalancerTournamentId";
+import { useBalancerTournamentId } from "@/app/balancer/components/useBalancerTournamentId";
 import { cn } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";

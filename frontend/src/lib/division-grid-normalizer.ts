@@ -60,7 +60,7 @@ export class DivisionGridNormalizer {
   private constructor(
     targetVersion: DivisionGridVersion,
     sourceVersionsById: Map<number, DivisionGridVersion>,
-    primaryTargetNumberBySourceTierId: Map<number, number>,
+    primaryTargetNumberBySourceTierId: Map<number, number>
   ) {
     this.targetVersion = targetVersion;
     this.sourceVersionsById = sourceVersionsById;
@@ -81,7 +81,7 @@ export class DivisionGridNormalizer {
       const tier = resolveTier(this.targetVersion, rank);
       if (!tier) {
         throw new DivisionGridNormalizationError(
-          `Cannot resolve rank ${rank} in target version ${this.targetVersion.id}`,
+          `Cannot resolve rank ${rank} in target version ${this.targetVersion.id}`
         );
       }
       return tier.number;
@@ -90,14 +90,14 @@ export class DivisionGridNormalizer {
     const sourceVersion = this.sourceVersionsById.get(sourceVersionId);
     if (!sourceVersion) {
       throw new DivisionGridNormalizationError(
-        `Source version ${sourceVersionId} was not loaded into the normalizer`,
+        `Source version ${sourceVersionId} was not loaded into the normalizer`
       );
     }
 
     const sourceTier = resolveTier(sourceVersion, rank);
     if (!sourceTier || sourceTier.id == null) {
       throw new DivisionGridNormalizationError(
-        `Cannot resolve rank ${rank} in source version ${sourceVersionId}`,
+        `Cannot resolve rank ${rank} in source version ${sourceVersionId}`
       );
     }
 
@@ -105,7 +105,7 @@ export class DivisionGridNormalizer {
     if (targetNumber == null) {
       throw new DivisionGridNormalizationError(
         `No primary mapping found for source tier id=${sourceTier.id} ` +
-          `(version ${sourceVersionId} → ${this.targetVersion.id})`,
+          `(version ${sourceVersionId} → ${this.targetVersion.id})`
       );
     }
 
@@ -121,8 +121,7 @@ export class DivisionGridNormalizer {
     try {
       return this.normalize(sourceVersionId, rank);
     } catch {
-      const fallback =
-        this.sourceVersionsById.get(sourceVersionId) ?? this.targetVersion;
+      const fallback = this.sourceVersionsById.get(sourceVersionId) ?? this.targetVersion;
       return resolveTier(fallback, rank)?.number ?? this.targetVersion.tiers[0]?.number ?? 1;
     }
   }
@@ -140,7 +139,7 @@ export class DivisionGridNormalizer {
    */
   static async build(
     targetVersion: DivisionGridVersion,
-    sourceVersions: DivisionGridVersion[],
+    sourceVersions: DivisionGridVersion[]
   ): Promise<DivisionGridNormalizer> {
     const sourceVersionsById = new Map<number, DivisionGridVersion>();
     for (const v of sourceVersions) {
@@ -153,22 +152,20 @@ export class DivisionGridNormalizer {
     const targetTierNumberById = new Map<number, number>(
       targetVersion.tiers
         .filter((t): t is DivisionTier & { id: number } => t.id != null)
-        .map((t) => [t.id, t.number]),
+        .map((t) => [t.id, t.number])
     );
 
     const primaryTargetNumberBySourceTierId = new Map<number, number>();
 
     // Fetch mappings in parallel for all foreign (non-target) source versions.
-    const foreignIds = [...sourceVersionsById.keys()].filter(
-      (id) => id !== targetVersion.id,
-    );
+    const foreignIds = [...sourceVersionsById.keys()].filter((id) => id !== targetVersion.id);
 
     await Promise.all(
       foreignIds.map(async (sourceVersionId) => {
         try {
           const mapping = await workspaceService.getDivisionGridMapping(
             sourceVersionId,
-            targetVersion.id,
+            targetVersion.id
           );
 
           // Group rules by source tier so we can detect single-rule entries.
@@ -183,7 +180,8 @@ export class DivisionGridNormalizer {
             if (primaryTargetNumberBySourceTierId.has(sourceTierId)) continue;
 
             // Prefer the explicitly-flagged primary rule.
-            const primaryRule = rules.find((r) => r.is_primary) ?? (rules.length === 1 ? rules[0] : null);
+            const primaryRule =
+              rules.find((r) => r.is_primary) ?? (rules.length === 1 ? rules[0] : null);
             if (!primaryRule) continue;
 
             const targetNumber = targetTierNumberById.get(primaryRule.target_tier_id);
@@ -195,13 +193,13 @@ export class DivisionGridNormalizer {
           // Mapping not found or fetch failed — safeNormalize() will fall back
           // to raw resolution inside the source grid for this version.
         }
-      }),
+      })
     );
 
     return new DivisionGridNormalizer(
       targetVersion,
       sourceVersionsById,
-      primaryTargetNumberBySourceTierId,
+      primaryTargetNumberBySourceTierId
     );
   }
 }

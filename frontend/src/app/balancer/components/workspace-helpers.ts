@@ -5,7 +5,7 @@ import {
   BalancerPlayerRoleEntry,
   BalancerRoleCode,
   InternalBalancePayload,
-  SavedBalance,
+  SavedBalance
 } from "@/types/balancer-admin.types";
 import { BalanceResponse } from "@/types/balancer.types";
 import { UserRoleType } from "@/types/user.types";
@@ -60,7 +60,7 @@ export type PlayerRankHistoryPreview = {
 export const ROLE_LABELS: Record<BalancerRoleCode, string> = {
   tank: "Tank",
   dps: "Damage",
-  support: "Support",
+  support: "Support"
 };
 
 export function sortRoleEntries(entries: BalancerPlayerRoleEntry[]): BalancerPlayerRoleEntry[] {
@@ -71,12 +71,16 @@ export function isRoleEntryActive(entry: BalancerPlayerRoleEntry): boolean {
   return entry.is_active;
 }
 
-export function getActiveRoleEntries(entries: BalancerPlayerRoleEntry[]): BalancerPlayerRoleEntry[] {
+export function getActiveRoleEntries(
+  entries: BalancerPlayerRoleEntry[]
+): BalancerPlayerRoleEntry[] {
   return sortRoleEntries(entries).filter((entry) => isRoleEntryActive(entry));
 }
 
 export function playerHasRankedRole(player: BalancerPlayerRecord): boolean {
-  return player.role_entries_json.some((entry) => isRoleEntryActive(entry) && entry.rank_value !== null);
+  return player.role_entries_json.some(
+    (entry) => isRoleEntryActive(entry) && entry.rank_value !== null
+  );
 }
 
 function normalizeApplicationRole(role: string | null | undefined): BalancerRoleCode | null {
@@ -127,10 +131,14 @@ function formatRoleCodes(roleCodes: Iterable<BalancerRoleCode>): string {
 }
 
 function getPlayerRoleCodes(player: BalancerPlayerRecord): BalancerRoleCode[] {
-  return uniqueRoleCodesInOrder(getActiveRoleEntries(player.role_entries_json).map((entry) => entry.role));
+  return uniqueRoleCodesInOrder(
+    getActiveRoleEntries(player.role_entries_json).map((entry) => entry.role)
+  );
 }
 
-function getApplicationRoleCodes(application: BalancerApplication | null | undefined): BalancerRoleCode[] {
+function getApplicationRoleCodes(
+  application: BalancerApplication | null | undefined
+): BalancerRoleCode[] {
   if (!application) {
     return [];
   }
@@ -138,20 +146,24 @@ function getApplicationRoleCodes(application: BalancerApplication | null | undef
   return uniqueRoleCodesInOrder(
     [application.primary_role, ...application.additional_roles_json]
       .map((role) => normalizeApplicationRole(role))
-      .filter((role): role is BalancerRoleCode => role !== null),
+      .filter((role): role is BalancerRoleCode => role !== null)
   );
 }
 
 export function buildPlayerSearchIndex(
   player: BalancerPlayerRecord,
-  application: BalancerApplication | null | undefined,
+  application: BalancerApplication | null | undefined
 ): string {
   const roleEntries = sortRoleEntries(player.role_entries_json);
   const activeRoleEntries = roleEntries.filter((entry) => isRoleEntryActive(entry));
   const playerRoleLabels = activeRoleEntries.map((entry) => ROLE_LABELS[entry.role]);
   const playerRoleCodes = activeRoleEntries.map((entry) => entry.role);
-  const divisions = activeRoleEntries.map((entry) => entry.division_number).filter((division): division is number => division !== null);
-  const applicationRoleLabels = getApplicationRoleCodes(application).map((roleCode) => ROLE_LABELS[roleCode]);
+  const divisions = activeRoleEntries
+    .map((entry) => entry.division_number)
+    .filter((division): division is number => division !== null);
+  const applicationRoleLabels = getApplicationRoleCodes(application).map(
+    (roleCode) => ROLE_LABELS[roleCode]
+  );
 
   return [
     player.battle_tag,
@@ -161,7 +173,7 @@ export function buildPlayerSearchIndex(
     playerRoleCodes.join(" "),
     divisions.join(" "),
     application?.battle_tag ?? "",
-    applicationRoleLabels.join(" "),
+    applicationRoleLabels.join(" ")
   ]
     .join(" ")
     .trim()
@@ -169,21 +181,26 @@ export function buildPlayerSearchIndex(
 }
 
 export function buildApplicationSearchIndex(application: BalancerApplication): string {
-  const applicationRoleLabels = getApplicationRoleCodes(application).map((roleCode) => ROLE_LABELS[roleCode]);
+  const applicationRoleLabels = getApplicationRoleCodes(application).map(
+    (roleCode) => ROLE_LABELS[roleCode]
+  );
 
   return [
     application.battle_tag,
     application.battle_tag_normalized,
     application.discord_nick ?? "",
     application.twitch_nick ?? "",
-    applicationRoleLabels.join(" "),
+    applicationRoleLabels.join(" ")
   ]
     .join(" ")
     .trim()
     .toLowerCase();
 }
 
-function isFlexApplication(application: BalancerApplication | null | undefined, applicationRoleCodes: BalancerRoleCode[]): boolean {
+function isFlexApplication(
+  application: BalancerApplication | null | undefined,
+  applicationRoleCodes: BalancerRoleCode[]
+): boolean {
   return application?.primary_role == null && applicationRoleCodes.length > 0;
 }
 
@@ -191,7 +208,7 @@ function roleSequencesMatch(
   application: BalancerApplication | null | undefined,
   isFlexPlayer: boolean,
   left: BalancerRoleCode[],
-  right: BalancerRoleCode[],
+  right: BalancerRoleCode[]
 ): boolean {
   if (left.length === 0) {
     return false;
@@ -215,14 +232,14 @@ function roleSequencesMatch(
 
 export function getPlayerValidationIssues(
   player: BalancerPlayerRecord,
-  application: BalancerApplication | null | undefined,
+  application: BalancerApplication | null | undefined
 ): PlayerValidationIssue[] {
   const issues: PlayerValidationIssue[] = [];
 
   if (!playerHasRankedRole(player)) {
     issues.push({
       code: "missing_ranked_role",
-      message: "No ranked roles configured",
+      message: "No ranked roles configured"
     });
   }
 
@@ -235,7 +252,7 @@ export function getPlayerValidationIssues(
         code: "application_role_mismatch",
         message: `Application: ${formatRoleCodes(applicationRoleCodes)}; balancer: ${formatRoleCodes(playerRoleCodes)}`,
         applicationRoleCodes,
-        playerRoleCodes,
+        playerRoleCodes
       });
     }
   }
@@ -252,9 +269,9 @@ export function normalizeInternalPayload(payload: InternalBalancePayload): Inter
       roster: {
         Tank: team.roster.Tank ?? [],
         Damage: team.roster.Damage ?? [],
-        Support: team.roster.Support ?? [],
-      },
-    })),
+        Support: team.roster.Support ?? []
+      }
+    }))
   };
 }
 
@@ -263,11 +280,13 @@ export function buildVariantFromSavedBalance(balance: SavedBalance): BalanceVari
     id: `saved-${balance.id}`,
     label: `Saved balance #${balance.id}`,
     payload: normalizeInternalPayload(balance.result_json),
-    source: "saved",
+    source: "saved"
   };
 }
 
-export function convertBalanceResponseToInternalPayload(response: BalanceResponse): InternalBalancePayload {
+export function convertBalanceResponseToInternalPayload(
+  response: BalanceResponse
+): InternalBalancePayload {
   return normalizeInternalPayload({
     teams: response.teams.map((team) => ({
       id: team.id,
@@ -279,11 +298,11 @@ export function convertBalanceResponseToInternalPayload(response: BalanceRespons
       roster: {
         Tank: team.roster.Tank ?? [],
         Damage: team.roster.Damage ?? [],
-        Support: team.roster.Support ?? [],
-      },
+        Support: team.roster.Support ?? []
+      }
     })),
     statistics: response.statistics,
-    benchedPlayers: response.benchedPlayers ?? [],
+    benchedPlayers: response.benchedPlayers ?? []
   });
 }
 
@@ -301,29 +320,29 @@ export function buildBalancerInput(players: BalancerPlayerRecord[]): Record<stri
         isActive: Boolean(roleEntry?.is_active && roleEntry?.rank_value),
         rank: roleEntry?.rank_value ?? 0,
         priority: roleEntry?.priority ?? 99,
-        subtype: roleEntry?.subtype ?? null,
+        subtype: roleEntry?.subtype ?? null
       };
     };
 
     accumulator[String(player.id)] = {
       identity: {
         name: player.battle_tag,
-        isFullFlex: player.is_flex,
+        isFullFlex: player.is_flex
       },
       stats: {
         classes: {
           tank: toClassConfig("tank"),
           dps: toClassConfig("dps"),
-          support: toClassConfig("support"),
-        },
-      },
+          support: toClassConfig("support")
+        }
+      }
     };
     return accumulator;
   }, {});
 
   return {
     format: "xv-1",
-    players: payload,
+    players: payload
   };
 }
 
@@ -350,7 +369,7 @@ export function isRegistrationAvailableForBalancer(registration: AdminRegistrati
 
 export function createSyntheticPlayerFromRegistration(
   registration: AdminRegistration,
-  grid: DivisionGrid = DEFAULT_DIVISION_GRID,
+  grid: DivisionGrid = DEFAULT_DIVISION_GRID
 ): BalancerPlayerRecord {
   const battleTag = getRegistrationDisplayName(registration);
   const isFlex = isRegistrationFlex(registration);
@@ -367,21 +386,23 @@ export function createSyntheticPlayerFromRegistration(
       priority: role.priority,
       division_number: resolveDivisionFromRankHelper(role.rank_value, grid),
       rank_value: role.rank_value,
-      is_active: role.is_active,
+      is_active: role.is_active
     })),
     is_flex: isFlex,
     is_in_pool: isRegistrationIncludedInBalancer(registration),
-    admin_notes: registration.admin_notes,
+    admin_notes: registration.admin_notes
   };
 }
 
 export function createSyntheticApplicationFromRegistration(
   registration: AdminRegistration,
-  player: BalancerPlayerRecord | null = null,
+  player: BalancerPlayerRecord | null = null
 ): BalancerApplication {
   const sortedRoles = [...registration.roles].sort((left, right) => left.priority - right.priority);
   const isFlex = isRegistrationFlex(registration);
-  const primaryRole = isFlex ? null : (sortedRoles.find((role) => role.is_primary)?.role ?? sortedRoles[0]?.role ?? null);
+  const primaryRole = isFlex
+    ? null
+    : (sortedRoles.find((role) => role.is_primary)?.role ?? sortedRoles[0]?.role ?? null);
   const additionalRoles = isFlex
     ? sortedRoles.map((role) => role.role)
     : sortedRoles.filter((role) => role.role !== primaryRole).map((role) => role.role);
@@ -404,7 +425,7 @@ export function createSyntheticApplicationFromRegistration(
     submitted_at: registration.submitted_at,
     synced_at: registration.submitted_at ?? registration.reviewed_at ?? new Date(0).toISOString(),
     is_active: isRegistrationAvailableForBalancer(registration),
-    player,
+    player
   };
 }
 
@@ -431,7 +452,7 @@ export function downloadPayload(payload: InternalBalancePayload, tournamentId: n
  */
 export function resolveDivisionFromRankHelper(
   rankValue: number | null,
-  grid: DivisionGrid = DEFAULT_DIVISION_GRID,
+  grid: DivisionGrid = DEFAULT_DIVISION_GRID
 ): number | null {
   if (rankValue == null) return null;
   for (const tier of grid.tiers) {
@@ -450,7 +471,7 @@ export function resolveDivisionFromRankHelper(
  */
 export function buildRoleEntriesFromRankHistory(
   history: Partial<Record<BalancerRoleCode, number>>,
-  grid: DivisionGrid = DEFAULT_DIVISION_GRID,
+  grid: DivisionGrid = DEFAULT_DIVISION_GRID
 ): BalancerPlayerRoleEntry[] {
   const entries: BalancerPlayerRoleEntry[] = [];
   let priority = 1;
@@ -463,7 +484,7 @@ export function buildRoleEntriesFromRankHistory(
       priority: priority++,
       rank_value: rankValue,
       division_number: resolveDivisionFromRankHelper(rankValue, grid),
-      is_active: true,
+      is_active: true
     });
   }
   return entries;
@@ -472,7 +493,7 @@ export function buildRoleEntriesFromRankHistory(
 const USER_ROLE_TO_BALANCER: Record<UserRoleType, BalancerRoleCode> = {
   Tank: "tank",
   Damage: "dps",
-  Support: "support",
+  Support: "support"
 };
 
 /**
@@ -485,7 +506,7 @@ const USER_ROLE_TO_BALANCER: Record<UserRoleType, BalancerRoleCode> = {
 export async function fetchPlayerRankHistoryPreview(
   battleTag: string,
   targetGridVersion: DivisionGridVersion | null = null,
-  grid: DivisionGrid = DEFAULT_DIVISION_GRID,
+  grid: DivisionGrid = DEFAULT_DIVISION_GRID
 ): Promise<PlayerRankHistoryPreview | null> {
   try {
     const lookupName = battleTag.replace("#", "-");
@@ -509,10 +530,9 @@ export async function fetchPlayerRankHistoryPreview(
     // Build normalizer when we have a target version to normalize towards.
     let normalizer: DivisionGridNormalizer | null = null;
     if (targetGridVersion) {
-      normalizer = await DivisionGridNormalizer.build(
-        targetGridVersion,
-        [...sourceVersionsById.values()],
-      );
+      normalizer = await DivisionGridNormalizer.build(targetGridVersion, [
+        ...sourceVersionsById.values()
+      ]);
     }
 
     const latestPerRole = new Map<BalancerRoleCode, PlayerRankHistoryPreviewEntry>();
@@ -525,15 +545,13 @@ export async function fetchPlayerRankHistoryPreview(
       if (latestPerRole.has(roleCode)) continue;
 
       // Find this user's own Player record in the roster
-      const playerRecord = tournament.players.find(
-        (p) => p.user_id === user.id,
-      );
+      const playerRecord = tournament.players.find((p) => p.user_id === user.id);
       const rankValue = playerRecord?.rank ?? null;
       if (rankValue !== null && rankValue > 0) {
         // Raw division in the source tournament's own grid.
         const originalDivisionNumber = resolveDivisionFromRankHelper(
           rankValue,
-          tournament.division_grid_version ?? grid,
+          tournament.division_grid_version ?? grid
         );
 
         // Normalised division in the target (workspace-default) grid.
@@ -554,7 +572,7 @@ export async function fetchPlayerRankHistoryPreview(
           tournament_name: tournament.name,
           tournament_number: tournament.number,
           source_role: roleName,
-          tournament_grid_version: tournament.division_grid_version ?? null,
+          tournament_grid_version: tournament.division_grid_version ?? null
         });
       }
     }
@@ -563,18 +581,19 @@ export async function fetchPlayerRankHistoryPreview(
       return null;
     }
 
-    const entries = ROLE_ORDER
-      .map((role) => latestPerRole.get(role))
-      .filter((entry): entry is PlayerRankHistoryPreviewEntry => entry !== undefined);
+    const entries = ROLE_ORDER.map((role) => latestPerRole.get(role)).filter(
+      (entry): entry is PlayerRankHistoryPreviewEntry => entry !== undefined
+    );
 
-    const average_rank_value = entries.length > 0
-      ? Math.round(entries.reduce((sum, entry) => sum + entry.rank_value, 0) / entries.length)
-      : null;
+    const average_rank_value =
+      entries.length > 0
+        ? Math.round(entries.reduce((sum, entry) => sum + entry.rank_value, 0) / entries.length)
+        : null;
 
     return {
       user_id: user.id,
       entries,
-      average_rank_value,
+      average_rank_value
     };
   } catch {
     return null;
@@ -582,7 +601,7 @@ export async function fetchPlayerRankHistoryPreview(
 }
 
 export async function fetchPlayerRankHistory(
-  battleTag: string,
+  battleTag: string
 ): Promise<Partial<Record<BalancerRoleCode, number>> | null> {
   const preview = await fetchPlayerRankHistoryPreview(battleTag);
   if (!preview) {
@@ -590,6 +609,6 @@ export async function fetchPlayerRankHistory(
   }
 
   return Object.fromEntries(
-    preview.entries.map((entry) => [entry.role, entry.rank_value]),
+    preview.entries.map((entry) => [entry.role, entry.rank_value])
   ) as Partial<Record<BalancerRoleCode, number>>;
 }

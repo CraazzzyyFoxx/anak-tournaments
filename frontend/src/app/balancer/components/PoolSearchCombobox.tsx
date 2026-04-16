@@ -17,7 +17,7 @@ import {
   buildPlayerSearchIndex,
   isRoleEntryActive,
   type PlayerValidationIssue,
-} from "@/app/balancer/_components/workspace-helpers";
+} from "@/app/balancer/components/workspace-helpers";
 
 const MAX_RESULTS_PER_GROUP = 6;
 

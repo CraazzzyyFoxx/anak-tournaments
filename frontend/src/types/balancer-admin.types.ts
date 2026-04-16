@@ -76,6 +76,7 @@ export interface InternalBalancePlayer {
   rating: number;
   discomfort?: number;
   isCaptain?: boolean;
+  isFlex?: boolean;
   preferences: string[];
   allRatings?: Record<string, number>;
 }

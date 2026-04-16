@@ -132,7 +132,7 @@ export default function TournamentSectionNav({
   const buildHref = (tab: typeof baseItems[number]["tab"]) => {
     const base =
       tab === "teams"
-        ? `/tournaments/${tournamentId}`
+        ? `/tournaments/${tournamentId}/teams`
         : `/tournaments/${tournamentId}/${tab}`;
 
     if (tab === "matches" && activeTab === "matches") {

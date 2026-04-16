@@ -1,9 +1,5 @@
-import React, { Suspense } from "react";
 import { redirect } from "next/navigation";
 
-import TournamentTeamsPage, {
-  TournamentTeamsPageSkeleton
-} from "@/app/(site)/tournaments/[id]/pages/TournamentTeamsPage";
 import type { TournamentStatus } from "@/types/tournament.types";
 
 import { getTournament, getTournamentStages } from "./_data";
@@ -50,6 +46,7 @@ export default async function TournamentIndexPage({
 }: TournamentIndexPageProps) {
   const resolvedParams = await params;
   const resolvedSearchParams = await searchParams;
+  const teamsPath = `/tournaments/${resolvedParams.id}/teams`;
 
   const tournamentId = Number(resolvedParams.id);
   const tab = resolvedSearchParams.tab;
@@ -69,7 +66,7 @@ export default async function TournamentIndexPage({
   }
 
   if (tab === "teams") {
-    redirect(`/tournaments/${resolvedParams.id}`);
+    redirect(teamsPath);
   }
 
   const tournament = await getTournament(tournamentId);
@@ -84,9 +81,5 @@ export default async function TournamentIndexPage({
     redirect(defaultPath);
   }
 
-  return (
-    <Suspense fallback={<TournamentTeamsPageSkeleton />}>
-      <TournamentTeamsPage tournament={tournament} />
-    </Suspense>
-  );
+  redirect(teamsPath);
 }

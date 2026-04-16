@@ -4,7 +4,7 @@ import type { CSSProperties, ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { BalancerShell } from "@/app/balancer/_components/BalancerShell";
+import { BalancerShell } from "@/app/balancer/components/BalancerShell";
 import { BalancerSidebar } from "@/components/balancer/BalancerSidebar";
 import { balancerEntryRoles } from "@/components/balancer/balancer-navigation";
 import {

@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Globe, Loader2, RefreshCcw, Search, UploadCloud } from "lucide-react";
 
-import { useBalancerTournamentId } from "@/app/balancer/_components/useBalancerTournamentId";
+import { useBalancerTournamentId } from "@/app/balancer/components/useBalancerTournamentId";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

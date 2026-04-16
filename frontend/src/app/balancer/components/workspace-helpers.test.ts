@@ -6,13 +6,13 @@ import {
   getPoolDropPatch,
   type PlayerValidationState,
   type PoolLane,
-} from "@/app/balancer/_components/balancer-page-helpers";
+} from "@/app/balancer/components/balancer-page-helpers";
 import {
   createSyntheticApplicationFromRegistration,
   createSyntheticPlayerFromRegistration,
   getPlayerValidationIssues,
   isRegistrationIncludedInBalancer,
-} from "@/app/balancer/_components/workspace-helpers";
+} from "@/app/balancer/components/workspace-helpers";
 import type { AdminRegistration, BalancerApplication, BalancerPlayerRecord, StatusMeta, StatusScope } from "@/types/balancer-admin.types";
 
 type TestFunction = () => void | Promise<void>;

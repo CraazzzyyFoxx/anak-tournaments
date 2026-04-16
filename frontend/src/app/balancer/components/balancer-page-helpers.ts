@@ -1,4 +1,10 @@
-import type { AdminRegistration, BalancerRoleCode, BalancerPlayerRecord, InternalBalancePayload } from "@/types/balancer-admin.types";
+import type {
+  AdminRegistration,
+  BalancerRoleCode,
+  BalancerPlayerRecord,
+  BalancerRosterKey,
+  InternalBalancePayload,
+} from "@/types/balancer-admin.types";
 import type { BalanceVariant, PlayerValidationIssue } from "./workspace-helpers";
 import { getActiveRoleEntries } from "./workspace-helpers";
 
@@ -99,6 +105,8 @@ export const TEAM_BADGE_ACCENTS = [
   "border-indigo-400/20 bg-indigo-500/10 text-indigo-200",
 ];
 
+export const BALANCE_ROSTER_KEYS: BalancerRosterKey[] = ["Tank", "Damage", "Support"];
+
 export const PANEL_CLASS =
   "rounded-[28px] border border-white/8 bg-[#11101f] shadow-[0_18px_60px_rgba(0,0,0,0.24)]";
 
@@ -158,31 +166,44 @@ export function sortPlayerStates(
 export function calculateTeamAverageFromPayload(
   team: InternalBalancePayload["teams"][number],
 ): number {
-  const players = [...team.roster.Tank, ...team.roster.Damage, ...team.roster.Support];
-  if (players.length === 0) return 0;
-  return Math.round(players.reduce((sum, player) => sum + player.rating, 0) / players.length);
+  return Math.round(calculateTeamAverageValueFromPayload(team));
+}
+
+export function calculateTeamAverageValueFromPayload(
+  team: InternalBalancePayload["teams"][number],
+): number {
+  const totalPlayers = countTeamPlayers(team);
+  if (totalPlayers === 0) return 0;
+  return calculateTeamTotalFromPayload(team) / totalPlayers;
+}
+
+export function calculateTeamTotalFromPayload(
+  team: InternalBalancePayload["teams"][number],
+): number {
+  return BALANCE_ROSTER_KEYS.reduce(
+    (sum, roleKey) =>
+      sum + team.roster[roleKey].reduce((roleSum, player) => roleSum + player.rating, 0),
+    0,
+  );
 }
 
 export function countTeamPlayers(team: InternalBalancePayload["teams"][number]): number {
-  return team.roster.Tank.length + team.roster.Damage.length + team.roster.Support.length;
+  return BALANCE_ROSTER_KEYS.reduce((sum, roleKey) => sum + team.roster[roleKey].length, 0);
 }
 
-export function findPlayerAssignment(
-  payload: InternalBalancePayload | null,
-  selectedPlayerId: number | null,
-): {
-  teamId: number;
-  teamName: string;
-  roleKey: "Tank" | "Damage" | "Support";
-  teamIndex: number;
-} | null {
-  if (!payload || selectedPlayerId == null) return null;
-  for (const [teamIndex, team] of payload.teams.entries()) {
-    for (const roleKey of Object.keys(team.roster) as Array<"Tank" | "Damage" | "Support">) {
-      if (team.roster[roleKey].some((player) => Number(player.uuid) === selectedPlayerId)) {
-        return { teamId: team.id, teamName: team.name, roleKey, teamIndex };
-      }
-    }
-  }
-  return null;
+export function calculateOffRoleCountFromPayload(
+  team: InternalBalancePayload["teams"][number],
+): number {
+  return BALANCE_ROSTER_KEYS.reduce(
+    (sum, roleKey) =>
+      sum +
+      team.roster[roleKey].filter((player) => {
+        if (player.isFlex) {
+          return false;
+        }
+        const preferredRole = player.preferences[0];
+        return Boolean(preferredRole) && preferredRole !== roleKey;
+      }).length,
+    0,
+  );
 }

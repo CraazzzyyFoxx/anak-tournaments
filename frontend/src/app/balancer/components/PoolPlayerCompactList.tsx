@@ -33,7 +33,7 @@ import {
   ROLE_LABELS,
   isRoleEntryActive,
   type PlayerValidationIssue,
-} from "@/app/balancer/_components/workspace-helpers";
+} from "@/app/balancer/components/workspace-helpers";
 
 type StatusOptionGroups = {
   system: StatusMeta[];

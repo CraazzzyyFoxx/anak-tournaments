@@ -72,6 +72,7 @@ class PlayerData(BaseModel):
     isCaptain: bool
     preferences: list[str]
     allRatings: dict[str, int]
+    isFlex: bool = False
 
 
 class TeamData(BaseModel):

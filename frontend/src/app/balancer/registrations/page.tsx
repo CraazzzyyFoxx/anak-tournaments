@@ -35,7 +35,7 @@ import PublicRoleStep from "@/app/(site)/tournaments/[id]/_components/registrati
 import SmurfTagsInput from "@/app/(site)/tournaments/[id]/_components/registration/SmurfTagsInput";
 import StepIndicator from "@/app/(site)/tournaments/[id]/_components/registration/StepIndicator";
 import type { AdditionalRole } from "@/app/(site)/tournaments/[id]/_components/registration/types";
-import { useBalancerTournamentId } from "@/app/balancer/_components/useBalancerTournamentId";
+import { useBalancerTournamentId } from "@/app/balancer/components/useBalancerTournamentId";
 import BalancerRegistrationsColumnPicker from "@/app/balancer/registrations/_components/BalancerRegistrationsColumnPicker";
 import RegistrationRowActions from "@/app/balancer/registrations/_components/RegistrationRowActions";
 import {

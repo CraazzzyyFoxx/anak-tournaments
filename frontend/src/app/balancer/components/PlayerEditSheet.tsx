@@ -73,7 +73,7 @@ import {
   resolveDivisionFromRankHelper,
   type PlayerRankHistoryPreview,
   type PlayerRankHistoryPreviewEntry
-} from "@/app/balancer/_components/workspace-helpers";
+} from "@/app/balancer/components/workspace-helpers";
 import { getRegistrationBattleTags } from "./balancer-page-helpers";
 import { BattleTagCopyButton, SmurfTagStrip } from "./BattleTagCopyControls";
 
@@ -180,7 +180,7 @@ function applyHistoryToSelectedRoles(
 function applyHistoryPreviewToRoleEntries(
   entries: BalancerPlayerRoleEntry[],
   preview: PlayerRankHistoryPreview | null,
-  resolveRankFromDivision: (divisionNumber: number | null) => number | null,
+  resolveRankFromDivision: (divisionNumber: number | null) => number | null
 ): BalancerPlayerRoleEntry[] {
   if (!preview || preview.entries.length === 0) {
     return entries;
@@ -190,7 +190,8 @@ function applyHistoryPreviewToRoleEntries(
   for (const historyEntry of preview.entries) {
     // Use the normalised division to derive a rank_value in the target grid,
     // so that the form's rank/division fields stay consistent.
-    const normalizedRank = resolveRankFromDivision(historyEntry.division_number) ?? historyEntry.rank_value;
+    const normalizedRank =
+      resolveRankFromDivision(historyEntry.division_number) ?? historyEntry.rank_value;
     const existingEntry = byRole.get(historyEntry.role);
     if (existingEntry) {
       byRole.set(historyEntry.role, {
@@ -570,10 +571,18 @@ type HistoryPreviewCardProps = {
   entry: PlayerRankHistoryPreviewEntry;
   currentEntry: BalancerPlayerRoleEntry | undefined;
   getDivisionName: (divisionNumber: number | null) => string | null;
-  getOriginalDivisionName: (divisionNumber: number | null, entry: PlayerRankHistoryPreviewEntry) => string | null;
+  getOriginalDivisionName: (
+    divisionNumber: number | null,
+    entry: PlayerRankHistoryPreviewEntry
+  ) => string | null;
 };
 
-function HistoryPreviewCard({ entry, currentEntry, getDivisionName, getOriginalDivisionName }: HistoryPreviewCardProps) {
+function HistoryPreviewCard({
+  entry,
+  currentEntry,
+  getDivisionName,
+  getOriginalDivisionName
+}: HistoryPreviewCardProps) {
   const accent = ROLE_ACCENTS[entry.role];
   // Normalised name (target/workspace grid)
   const divisionName =
@@ -585,8 +594,7 @@ function HistoryPreviewCard({ entry, currentEntry, getDivisionName, getOriginalD
     (entry.original_division_number != null ? `Division ${entry.original_division_number}` : null);
   // Show the arrow only when the two differ (cross-version normalisation changed the number)
   const showNormalisedArrow =
-    entry.original_division_number !== entry.division_number &&
-    entry.division_number != null;
+    entry.original_division_number !== entry.division_number && entry.division_number != null;
   const changeText = buildHistoryChangeText(currentEntry, entry);
 
   return (
@@ -628,11 +636,7 @@ function HistoryPreviewCard({ entry, currentEntry, getDivisionName, getOriginalD
               <span className="text-[11px] text-white/40">→</span>
               <div className="flex items-center gap-1.5 rounded-full border border-white/20 bg-white/5 px-2 py-1 text-white/90">
                 {entry.division_number != null ? (
-                  <PlayerDivisionIcon
-                    division={entry.division_number}
-                    width={16}
-                    height={16}
-                  />
+                  <PlayerDivisionIcon division={entry.division_number} width={16} height={16} />
                 ) : null}
                 <span className="text-[11px] font-medium">{divisionName}</span>
               </div>
@@ -707,9 +711,7 @@ export function PlayerEditModal({
       : (divisionNameByNumber.get(divisionNumber) ?? `Division ${divisionNumber}`);
 
   // Normalised division name: always look up in the workspace (target) grid.
-  const getHistoryDivisionName = (
-    divisionNumber: number | null,
-  ) => {
+  const getHistoryDivisionName = (divisionNumber: number | null) => {
     if (divisionNumber == null) return null;
     return divisionNameByNumber.get(divisionNumber) ?? `Division ${divisionNumber}`;
   };
@@ -774,7 +776,11 @@ export function PlayerEditModal({
     setHistoryLoadError(null);
 
     try {
-      const preview = await fetchPlayerRankHistoryPreview(player.battle_tag, divisionGridVersion, divisionGrid);
+      const preview = await fetchPlayerRankHistoryPreview(
+        player.battle_tag,
+        divisionGridVersion,
+        divisionGrid
+      );
       setHistoryPreview(preview);
     } catch (error) {
       setHistoryPreview(null);

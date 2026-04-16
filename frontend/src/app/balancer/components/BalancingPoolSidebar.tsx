@@ -1,7 +1,19 @@
 "use client";
 
 import { forwardRef, useImperativeHandle, useMemo, useState } from "react";
-import { AlertTriangle, Check, Columns3, Plus, PlusCircle, ShieldX, Tag, X } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  ChevronLeft,
+  Columns3,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plus,
+  PlusCircle,
+  ShieldX,
+  Tag,
+  X,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,6 +42,8 @@ type PoolFilterOption = { value: PoolView; label: string; count: number };
 type StatusOptionGroups = { system: StatusMeta[]; custom: StatusMeta[] };
 
 type BalancingPoolSidebarProps = {
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
   allPlayerValidationStates: PlayerValidationState[];
   applications: BalancerApplication[];
   addableApplications: BalancerApplication[];
@@ -99,6 +113,8 @@ function BulkStatusMenu({
 export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, BalancingPoolSidebarProps>(
   function BalancingPoolSidebar(
     {
+      collapsed = false,
+      onToggleCollapsed,
       allPlayerValidationStates,
       applications,
       addableApplications,
@@ -259,8 +275,69 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
       }
     };
 
+    if (collapsed) {
+      return (
+        <div
+          className={cn(
+            PANEL_CLASS,
+            "flex min-h-0 flex-col items-center gap-3 p-2",
+          )}
+        >
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9 rounded-xl border border-white/8 bg-black/15 text-white/60 hover:bg-white/5 hover:text-white"
+            onClick={onToggleCollapsed}
+          >
+            <PanelLeftOpen className="h-4 w-4" />
+            <span className="sr-only">Expand Balancing Pool sidebar</span>
+          </Button>
+          <div className="flex flex-1 flex-col items-center gap-2 pt-1">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/8 bg-black/15 text-white/70">
+              <Columns3 className="h-4 w-4" />
+            </div>
+            <div className="text-center text-[10px] uppercase tracking-[0.16em] text-white/30 [writing-mode:vertical-rl]">
+              Pool
+            </div>
+          </div>
+          <div className="flex flex-col items-center gap-1.5">
+            <div className="rounded-lg border border-white/8 bg-black/15 px-2 py-1 text-[10px] text-white/55">
+              {poolPlayers.length}
+            </div>
+            {invalidPlayers.length > 0 ? (
+              <div className="rounded-lg border border-amber-400/20 bg-amber-500/8 px-2 py-1 text-[10px] text-amber-100/80">
+                {invalidPlayers.length}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className={cn(PANEL_CLASS, "flex min-h-0 flex-col p-4")}>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.16em] text-white/28">
+              Balancing Pool
+            </div>
+            <div className="mt-1 text-sm text-white/72">
+              {poolPlayers.length} players
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 rounded-lg border border-white/8 bg-black/15 px-2 text-[11px] text-white/60 hover:bg-white/5 hover:text-white"
+            onClick={onToggleCollapsed}
+          >
+            <PanelLeftClose className="mr-1 h-3.5 w-3.5" />
+            Collapse
+            <ChevronLeft className="ml-1 h-3.5 w-3.5" />
+          </Button>
+        </div>
         <div className="space-y-2.5">
           {/* Missing rank alert */}
           {missingRankCount > 0 ? (
