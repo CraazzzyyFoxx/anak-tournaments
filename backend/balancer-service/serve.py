@@ -68,11 +68,12 @@ async def stop_scheduler() -> None:
 
 
 @broker.subscriber(BALANCER_JOBS_QUEUE)
-async def process_balancer_job(body: dict[str, Any], msg=None) -> None:
+async def process_balancer_job(data: dict, msg=None) -> None:
+    print("Balancer worker: entered process_balancer_job handler", flush=True)
     logger.info("Balancer worker: entered process_balancer_job handler")
     try:
         logger.info("Balancer worker: validating job payload envelope")
-        event = BalancerJobEvent.model_validate(body)
+        event = BalancerJobEvent.model_validate(data)
         logger.info(f"Balancer worker: envelope validated for job_id={event.job_id}")
     except ValidationError as exc:
         # observation.set_status("invalid")
