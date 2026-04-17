@@ -39,12 +39,6 @@ import {
   SheetHeader,
   SheetTitle
 } from "@/components/ui/sheet";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -61,6 +55,7 @@ import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { useDivisionGrid, useDivisionGridVersion } from "@/hooks/useCurrentWorkspace";
 import {
   getDivisionLabel,
+  resolveExactRankFromDivision as resolveExactRankFromDivisionInGrid,
   resolveDivisionFromRank as resolveDivisionFromRankInGrid,
   resolveRankFromDivision as resolveRankFromDivisionInGrid,
   sortTiersAscending,
@@ -269,6 +264,13 @@ function resolveRankFromDivisionHelper(
   return resolveRankFromDivisionInGrid(grid, divisionNumber);
 }
 
+function resolveExactRankFromDivisionHelper(
+  divisionNumber: number | null,
+  grid: DivisionGrid
+): number | null {
+  return resolveExactRankFromDivisionInGrid(grid, divisionNumber);
+}
+
 function getDivisionSliderIndex(
   rankValue: number | null,
   divisionTiers: DivisionGrid["tiers"],
@@ -318,7 +320,7 @@ type SortableRoleEntryProps = {
   entry: BalancerPlayerRoleEntry;
   index: number;
   resolveDivision: (rankValue: number | null) => number | null;
-  resolveRankFromDivision: (divisionNumber: number | null) => number | null;
+  resolveExactRankFromDivision: (divisionNumber: number | null) => number | null;
   getDivisionName: (divisionNumber: number | null) => string | null;
   divisionTiers: DivisionGrid["tiers"];
   sliderBounds: { min: number; max: number };
@@ -331,7 +333,7 @@ function SortableRoleEntry({
   entry,
   index,
   resolveDivision,
-  resolveRankFromDivision,
+  resolveExactRankFromDivision,
   getDivisionName,
   divisionTiers,
   sliderBounds,
@@ -514,7 +516,7 @@ function SortableRoleEntry({
               onChange={(event) => {
                 const nextIndex = Number(event.target.value);
                 const nextDivision = divisionTiers[nextIndex]?.number ?? null;
-                const rankValue = resolveRankFromDivision(nextDivision);
+                const rankValue = resolveExactRankFromDivision(nextDivision);
                 onUpdate(index, {
                   ...entry,
                   rank_value: rankValue,
@@ -697,6 +699,8 @@ export function PlayerEditModal({
     resolveDivisionFromRankInGrid(divisionGrid, rankValue);
   const resolveRankFromDivision = (divisionNumber: number | null) =>
     resolveRankFromDivisionHelper(divisionNumber, divisionGrid);
+  const resolveExactRankFromDivision = (divisionNumber: number | null) =>
+    resolveExactRankFromDivisionHelper(divisionNumber, divisionGrid);
   const getDivisionName = (divisionNumber: number | null) =>
     getDivisionLabel(divisionGrid, divisionNumber);
 
@@ -1044,7 +1048,7 @@ export function PlayerEditModal({
                       entry={entry}
                       index={index}
                       resolveDivision={resolveDivision}
-                      resolveRankFromDivision={resolveRankFromDivision}
+                      resolveExactRankFromDivision={resolveExactRankFromDivision}
                       getDivisionName={getDivisionName}
                       divisionTiers={divisionTiers}
                       sliderBounds={sliderBounds}

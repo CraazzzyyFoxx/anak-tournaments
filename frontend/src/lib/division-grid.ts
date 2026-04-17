@@ -94,6 +94,13 @@ export function resolveRankFromDivision(
   return Math.floor((tier.rank_min + tier.rank_max) / 2);
 }
 
+export function resolveExactRankFromDivision(
+  grid: DivisionGridLike,
+  division: number | null | undefined,
+): number | null {
+  return getTierByDivision(grid, division)?.rank_min ?? null;
+}
+
 export function getDivisionOptions(grid: DivisionGridLike): number[] {
   return [...grid.tiers].sort((left, right) => left.number - right.number).map((tier) => tier.number);
 }
