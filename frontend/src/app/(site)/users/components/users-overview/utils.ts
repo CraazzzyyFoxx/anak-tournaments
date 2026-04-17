@@ -6,6 +6,8 @@ import {
   getDivisionOptions,
 } from "@/lib/division-grid";
 
+export { getDivisionOptions };
+
 export const ROLE_OPTIONS: Array<{ value: "all" | UserRoleType; label: string }> = [
   { value: "all", label: "All roles" },
   { value: "Tank", label: "Tank" },

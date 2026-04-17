@@ -12,7 +12,7 @@ import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import {
   TournamentFormFields,
-  type TournamentFormFieldsValue,
+  type TournamentFormFieldsValue
 } from "@/components/admin/tournaments/TournamentFormFields";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -28,24 +28,64 @@ import { paginateResults, sortArray } from "@/lib/paginate-results";
 import { formatTournamentStages } from "@/lib/tournament-stages";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
-const emptyTournamentForm: Omit<TournamentCreateInput, "workspace_id"> &
-  TournamentFormFieldsValue = {
+type TournamentFormData = TournamentFormFieldsValue & {
+  name: string;
+  description: string;
+  is_league: boolean;
+  number: number | null;
+  start_date: string;
+  end_date: string;
+};
+
+const emptyTournamentForm: TournamentFormData = {
   name: "",
   description: "",
   is_league: false,
   number: null,
   start_date: "",
-  end_date: "",
+  end_date: ""
 };
 
-function getTournamentEditForm(tournament: Tournament): TournamentUpdateInput {
+function getTournamentEditForm(tournament: Tournament): TournamentFormData {
   return {
+    number: tournament.number ?? null,
     name: tournament.name,
     description: tournament.description || "",
     challonge_slug: tournament.challonge_slug || "",
+    is_league: tournament.is_league,
     is_finished: tournament.is_finished,
     start_date: new Date(tournament.start_date).toISOString().split("T")[0],
-    end_date: new Date(tournament.end_date).toISOString().split("T")[0],
+    end_date: new Date(tournament.end_date).toISOString().split("T")[0]
+  };
+}
+
+function getCreatePayload(
+  formData: TournamentFormData,
+  workspaceId: number
+): TournamentCreateInput {
+  return {
+    workspace_id: workspaceId,
+    name: formData.name,
+    description: formData.description,
+    is_league: formData.is_league,
+    start_date: formData.start_date,
+    end_date: formData.end_date,
+    ...(formData.number === null ? {} : { number: formData.number })
+  };
+}
+
+function getUpdatePayload(formData: TournamentFormData): TournamentUpdateInput {
+  return {
+    number: formData.number,
+    name: formData.name,
+    description: formData.description,
+    challonge_slug: formData.challonge_slug
+      ? normalizeChallongeSlug(formData.challonge_slug)
+      : null,
+    is_league: formData.is_league,
+    is_finished: formData.is_finished,
+    start_date: formData.start_date,
+    end_date: formData.end_date
   };
 }
 
@@ -66,8 +106,8 @@ export default function TournamentsPage() {
   const [createMode, setCreateMode] = useState<"manual" | "challonge">("manual");
 
   // Form state
-  const [formData, setFormData] = useState<TournamentCreateInput | TournamentUpdateInput>({
-    ...emptyTournamentForm,
+  const [formData, setFormData] = useState<TournamentFormData>({
+    ...emptyTournamentForm
   });
   const [challongeSlug, setChallongeSlug] = useState("");
 
@@ -160,36 +200,27 @@ export default function TournamentsPage() {
   const handleSubmitCreate = (e: React.FormEvent) => {
     e.preventDefault();
     if (createMode === "challonge") {
-      const fd = formData as TournamentCreateInput;
-      if (!fd.number || !challongeSlug.trim() || !fd.start_date || !fd.end_date) return;
+      if (!formData.number || !challongeSlug.trim() || !formData.start_date || !formData.end_date)
+        return;
       createWithGroupsMutation.mutate({
-        number: fd.number,
+        number: formData.number,
         challonge_slug: normalizeChallongeSlug(challongeSlug),
-        is_league: fd.is_league,
-        start_date: fd.start_date,
-        end_date: fd.end_date,
+        is_league: formData.is_league,
+        start_date: formData.start_date,
+        end_date: formData.end_date
       });
     } else {
       if (!currentWorkspaceId) return;
-      createMutation.mutate({
-        ...formData,
-        workspace_id: currentWorkspaceId,
-      } as TournamentCreateInput);
+      createMutation.mutate(getCreatePayload(formData, currentWorkspaceId));
     }
   };
 
   const handleSubmitUpdate = (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedTournament) {
-      const payload = formData as TournamentUpdateInput;
       updateMutation.mutate({
         id: selectedTournament.id,
-        data: {
-          ...payload,
-          challonge_slug: payload.challonge_slug
-            ? normalizeChallongeSlug(payload.challonge_slug)
-            : null,
-        }
+        data: getUpdatePayload(formData)
       });
     }
   };
@@ -200,13 +231,19 @@ export default function TournamentsPage() {
     }
   };
 
-  const editFormInitial = selectedTournament ? getTournamentEditForm(selectedTournament) : emptyTournamentForm;
-  const isCreateDirty = createDialogOpen && (hasUnsavedChanges(formData, emptyTournamentForm) || challongeSlug !== "");
+  const editFormInitial = selectedTournament
+    ? getTournamentEditForm(selectedTournament)
+    : emptyTournamentForm;
+  const isCreateDirty =
+    createDialogOpen && (hasUnsavedChanges(formData, emptyTournamentForm) || challongeSlug !== "");
   const isEditDirty = editDialogOpen && hasUnsavedChanges(formData, editFormInitial);
 
-  const activeCreateMutation = createMode === "challonge" ? createWithGroupsMutation : createMutation;
+  const activeCreateMutation =
+    createMode === "challonge" ? createWithGroupsMutation : createMutation;
   const isCreateSubmitting = activeCreateMutation.isPending;
-  const createErrorMessage = activeCreateMutation.isError ? activeCreateMutation.error.message : undefined;
+  const createErrorMessage = activeCreateMutation.isError
+    ? activeCreateMutation.error.message
+    : undefined;
 
   const columns: ColumnDef<Tournament>[] = [
     {
@@ -279,7 +316,12 @@ export default function TournamentsPage() {
         canUpdate || canDelete ? (
           <div className="flex items-center gap-2">
             {canUpdate ? (
-              <Button aria-label={`Edit ${row.original.name}`} variant="ghost" size="icon" onClick={() => handleEdit(row.original)}>
+              <Button
+                aria-label={`Edit ${row.original.name}`}
+                variant="ghost"
+                size="icon"
+                onClick={() => handleEdit(row.original)}
+              >
                 <Pencil className="h-4 w-4" />
               </Button>
             ) : null}
@@ -315,7 +357,14 @@ export default function TournamentsPage() {
       />
 
       <AdminDataTable
-        queryKey={(page, search, pageSize, sortField, sortDir) => ["tournaments", page, search, pageSize, sortField, sortDir]}
+        queryKey={(page, search, pageSize, sortField, sortDir) => [
+          "tournaments",
+          page,
+          search,
+          pageSize,
+          sortField,
+          sortDir
+        ]}
         queryFn={(page, search, pageSize, sortField, sortDir) =>
           tournamentService.getAll(null).then((data) => {
             const filtered = search
@@ -351,15 +400,19 @@ export default function TournamentsPage() {
           }}
         >
           <TabsList className="w-full">
-            <TabsTrigger value="manual" className="flex-1">Manual</TabsTrigger>
-            <TabsTrigger value="challonge" className="flex-1">From Challonge</TabsTrigger>
+            <TabsTrigger value="manual" className="flex-1">
+              Manual
+            </TabsTrigger>
+            <TabsTrigger value="challonge" className="flex-1">
+              From Challonge
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="manual">
             <TournamentFormFields
               idPrefix="create-manual"
               mode="manual-create"
-              value={formData as TournamentCreateInput & TournamentFormFieldsValue}
+              value={formData}
               onChange={(next) => setFormData(next)}
             />
           </TabsContent>
@@ -368,7 +421,7 @@ export default function TournamentsPage() {
             <TournamentFormFields
               idPrefix="create-challonge"
               mode="challonge-create"
-              value={formData as TournamentCreateInput & TournamentFormFieldsValue}
+              value={formData}
               onChange={(next) => setFormData(next)}
               challongeSlugValue={challongeSlug}
               onChallongeSlugValueChange={setChallongeSlug}
@@ -392,7 +445,7 @@ export default function TournamentsPage() {
         <TournamentFormFields
           idPrefix="edit"
           mode="edit"
-          value={formData as TournamentUpdateInput & TournamentFormFieldsValue}
+          value={formData}
           onChange={(next) => setFormData(next)}
         />
       </EntityFormDialog>
