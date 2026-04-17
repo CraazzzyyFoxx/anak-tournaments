@@ -2,13 +2,21 @@ import typing
 from datetime import UTC, datetime
 from statistics import mean
 
+from shared.division_grid import DivisionGrid, load_runtime_grid
+from shared.services.division_grid_access import build_workspace_division_grid_normalizer
+from shared.services.division_grid_normalization import (
+    DivisionGridNormalizationError,
+    DivisionGridNormalizer,
+)
+from shared.services.division_grid_resolution import (
+    resolve_tournament_division,
+    resolve_workspace_division,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from shared.division_grid import DivisionGrid, division_case_expr
-from shared.services.division_grid_normalization import DivisionGridNormalizationError, DivisionGridNormalizer
 
 from src import models, schemas
 from src.core import enums, errors, pagination
+from src.core.workspace import get_division_grid_version
 from src.services.encounter import flows as encounter_flows
 from src.services.encounter import service as encounter_service
 from src.services.hero import flows as hero_flows
@@ -252,30 +260,6 @@ async def get_all(
     )
 
 
-def _resolve_division(
-    rank: int,
-    version_id: int | None,
-    normalizer: DivisionGridNormalizer | None,
-    fallback_grid: DivisionGrid,
-) -> int:
-    """Resolve a player rank to a normalised division number.
-
-    Priority:
-    1. Normaliser with the tournament's own grid version (cross-grid normalisation).
-    2. Normaliser's target grid when the tournament has no version set.
-    3. Fallback grid when no normaliser is available.
-    """
-    if normalizer is not None and version_id is not None:
-        try:
-            return normalizer.normalize_division_number(version_id, rank)
-        except DivisionGridNormalizationError:
-            source_grid = normalizer.source_grids_by_version_id.get(version_id, fallback_grid)
-            return source_grid.resolve_division_number(rank)
-    if normalizer is not None:
-        return normalizer.target_grid.resolve_division_number(rank)
-    return fallback_grid.resolve_division_number(rank)
-
-
 async def get_overview(
     session: AsyncSession,
     params: schemas.UserOverviewParams,
@@ -317,7 +301,12 @@ async def get_overview(
         roles = [
             schemas.UserOverviewRoleDivision(
                 role=role,
-                division=_resolve_division(rank, version_id, normalizer, grid),
+                division=resolve_workspace_division(
+                    rank,
+                    source_version_id=version_id,
+                    fallback_grid=grid,
+                    normalizer=normalizer,
+                ),
             )
             for role, rank, version_id in raw_roles_map.get(user.id, [])
         ]
@@ -703,7 +692,13 @@ async def get_read(session: AsyncSession, user_id: int, entities: list[str]) -> 
 
 
 async def get_roles(
-    session: AsyncSession, user_id: int, workspace_id: int | None = None, *, grid: DivisionGrid
+    session: AsyncSession,
+    user_id: int,
+    workspace_id: int | None = None,
+    *,
+    grid: DivisionGrid,
+    normalizer: DivisionGridNormalizer | None = None,
+    division_grid_version: schemas.DivisionGridVersionRead | None = None,
 ) -> list[schemas.UserRole]:
     """
     Retrieves the roles and statistics for a user across tournaments.
@@ -718,20 +713,34 @@ async def get_roles(
         A list of `UserRole` schemas representing the user's roles and statistics.
     """
     roles = await service.get_roles(session, user_id, workspace_id=workspace_id, grid=grid)
-    return [
-        schemas.UserRole(
-            role=role,
-            tournaments=len({division["tournament"] for division in division}),
-            maps_won=maps_won,
-            maps=maps_won + maps_lost,
-            division=sorted(division, key=lambda x: x["tournament"], reverse=True)[0]["division"],
+    payload: list[schemas.UserRole] = []
+    for role, maps_won, maps_lost, division in roles:
+        latest_role = max(division, key=lambda item: item["tournament"])
+        payload.append(
+            schemas.UserRole(
+                role=role,
+                tournaments=len({item["tournament"] for item in division}),
+                maps_won=maps_won,
+                maps=maps_won + maps_lost,
+                division=resolve_workspace_division(
+                    latest_role["rank"],
+                    source_version_id=latest_role["division_grid_version_id"],
+                    fallback_grid=grid,
+                    normalizer=normalizer,
+                ),
+                division_grid_version=division_grid_version,
+            )
         )
-        for role, maps_won, maps_lost, division in roles
-    ]
+    return payload
 
 
 async def get_profile(
-    session: AsyncSession, id: int, workspace_id: int | None = None, *, grid: DivisionGrid
+    session: AsyncSession,
+    id: int,
+    workspace_id: int | None = None,
+    *,
+    grid: DivisionGrid,
+    normalizer: DivisionGridNormalizer | None = None,
 ) -> schemas.UserProfile:
     """
     Retrieves a user's profile, including statistics, roles, and tournament history.
@@ -748,7 +757,31 @@ async def get_profile(
     matches_won, matches_lose, avg_closeness = 0, 0, 0
     if matches:
         matches_won, matches_lose, avg_closeness = matches
-    roles = await get_roles(session, user.id, workspace_id=workspace_id, grid=grid)
+    if workspace_id is not None and normalizer is None:
+        try:
+            normalizer = await build_workspace_division_grid_normalizer(
+                session,
+                workspace_id,
+                require_complete=False,
+            )
+        except DivisionGridNormalizationError:
+            normalizer = None
+
+    current_grid_version_model = await get_division_grid_version(session, workspace_id)
+    current_grid_version = (
+        schemas.DivisionGridVersionRead.model_validate(current_grid_version_model, from_attributes=True)
+        if current_grid_version_model is not None
+        else None
+    )
+
+    roles = await get_roles(
+        session,
+        user.id,
+        workspace_id=workspace_id,
+        grid=grid,
+        normalizer=normalizer,
+        division_grid_version=current_grid_version,
+    )
     hero_statistics = await hero_flows.get_playtime(
         session,
         schemas.HeroPlaytimePaginationParams(user_id=user.id, sort="playtime", order="desc"),
@@ -858,12 +891,20 @@ async def get_tournaments(
         placement: int | None = team.standings[0].overall_position if team.standings else None
 
         # Use tournament-specific grid if available, otherwise fall back to workspace grid
-        tournament_grid = DivisionGrid.from_version(team.tournament.division_grid_version) if team.tournament.division_grid_version is not None else grid
+        tournament_grid = (
+            load_runtime_grid(team.tournament.division_grid_version)
+            if team.tournament.division_grid_version is not None
+            else grid
+        )
 
         for player in team.players:
             if player.user_id == user.id:
                 user_role = player.role
-                user_division = tournament_grid.resolve_division_number(player.rank)
+                user_division = resolve_tournament_division(
+                    player.rank,
+                    tournament_grid=tournament_grid,
+                    fallback_grid=grid,
+                )
                 break
 
         for standing in team.standings:
@@ -958,7 +999,10 @@ async def get_tournament_with_stats(
         id=team.tournament.id,
         number=team.tournament.number,
         name=team.tournament.name,
-        division=grid.resolve_division_number(player.rank),
+        division=resolve_tournament_division(
+            player.rank,
+            tournament_grid=grid,
+        ),
         closeness=round(statistics[2], 2) if statistics[2] else 0,
         role=player.role,
         maps=statistics[0] + statistics[1] if statistics[0] else 0,

@@ -10,45 +10,30 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import {
+  TournamentFormFields,
+  type TournamentFormFieldsValue,
+} from "@/components/admin/tournaments/TournamentFormFields";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import tournamentService from "@/services/tournament.service";
 import adminService from "@/services/admin.service";
 import { Tournament } from "@/types/tournament.types";
 import { TournamentCreateInput, TournamentUpdateInput } from "@/types/admin.types";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Textarea } from "@/components/ui/textarea";
-import { DateRangePicker } from "@/components/ui/date-range-picker";
-import { Field, FieldLabel } from "@/components/ui/field";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePermissions } from "@/hooks/usePermissions";
+import { normalizeChallongeSlug } from "@/lib/challonge";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import { paginateResults, sortArray } from "@/lib/paginate-results";
+import { formatTournamentStages } from "@/lib/tournament-stages";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
-function normalizeChallongeSlug(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) return "";
-
-  try {
-    const url = new URL(trimmed.startsWith("http") ? trimmed : `https://${trimmed}`);
-    if (url.hostname.includes("challonge.com")) {
-      const segments = url.pathname.split("/").filter(Boolean);
-      return segments.at(-1) ?? trimmed;
-    }
-  } catch {
-    // fall back to raw slug handling
-  }
-
-  return trimmed.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean).at(-1) ?? trimmed;
-}
-
-const emptyTournamentForm: Omit<TournamentCreateInput, "workspace_id"> = {
+const emptyTournamentForm: Omit<TournamentCreateInput, "workspace_id"> &
+  TournamentFormFieldsValue = {
   name: "",
   description: "",
   is_league: false,
+  number: null,
   start_date: "",
   end_date: "",
 };
@@ -112,7 +97,7 @@ export default function TournamentsPage() {
       queryClient.invalidateQueries({ queryKey: ["tournaments"] });
       setCreateDialogOpen(false);
       resetForm();
-      toast({ title: "Tournament created with groups from Challonge" });
+      toast({ title: "Tournament created with stages from Challonge" });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -265,6 +250,30 @@ export default function TournamentsPage() {
       cell: ({ row }) => new Date(row.getValue("end_date")).toLocaleDateString()
     },
     {
+      accessorKey: "stages",
+      header: "Stages",
+      enableSorting: false,
+      cell: ({ row }) => {
+        const stages = row.original.stages ?? [];
+        if (stages.length === 0) {
+          return <span className="text-muted-foreground">No stages</span>;
+        }
+
+        const stagesLabel = formatTournamentStages(stages);
+
+        return (
+          <div className="max-w-80">
+            <div className="font-medium">
+              {stages.length} {stages.length === 1 ? "stage" : "stages"}
+            </div>
+            <div className="truncate text-xs text-muted-foreground" title={stagesLabel}>
+              {stagesLabel}
+            </div>
+          </div>
+        );
+      }
+    },
+    {
       id: "actions",
       cell: ({ row }) =>
         canUpdate || canDelete ? (
@@ -294,7 +303,7 @@ export default function TournamentsPage() {
     <div className="flex flex-col gap-6">
       <AdminPageHeader
         title="Tournaments"
-        description="Manage tournaments and their groups"
+        description="Manage tournaments and their stages"
         actions={
           canCreate ? (
             <Button onClick={handleCreate}>
@@ -347,121 +356,23 @@ export default function TournamentsPage() {
           </TabsList>
 
           <TabsContent value="manual">
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="name">Name *</Label>
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  required
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="number">Number</Label>
-                <Input
-                  id="number"
-                  type="number"
-                  value={(formData as TournamentCreateInput).number || ""}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      number: e.target.value ? parseInt(e.target.value) : undefined
-                    })
-                  }
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="description">Description</Label>
-                <Textarea
-                  id="description"
-                  value={formData.description ?? ""}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                />
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="is_league"
-                  checked={(formData as TournamentCreateInput).is_league}
-                  onCheckedChange={(checked) =>
-                    setFormData({ ...formData, is_league: checked as boolean })
-                  }
-                />
-                <Label htmlFor="is_league" className="cursor-pointer">
-                  Is League
-                </Label>
-              </div>
-
-              <Field>
-                <FieldLabel htmlFor="date_range">Date Range *</FieldLabel>
-                <DateRangePicker
-                  id="date_range"
-                  startDate={formData.start_date}
-                  endDate={formData.end_date}
-                  onChange={(start, end) => setFormData({ ...formData, start_date: start, end_date: end })}
-                />
-              </Field>
-            </div>
+            <TournamentFormFields
+              idPrefix="create-manual"
+              mode="manual-create"
+              value={formData as TournamentCreateInput & TournamentFormFieldsValue}
+              onChange={(next) => setFormData(next)}
+            />
           </TabsContent>
 
           <TabsContent value="challonge">
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="challonge_slug">Challonge URL or Slug *</Label>
-                <Input
-                  id="challonge_slug"
-                  placeholder="e.g. my-tournament or https://challonge.com/my-tournament"
-                  value={challongeSlug}
-                  onChange={(e) => setChallongeSlug(e.target.value)}
-                  required
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  The Challonge bracket must have group stages enabled (two-stage). All groups will be created automatically.
-                </p>
-              </div>
-
-              <div>
-                <Label htmlFor="challonge_number">Number *</Label>
-                <Input
-                  id="challonge_number"
-                  type="number"
-                  value={(formData as TournamentCreateInput).number || ""}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      number: e.target.value ? parseInt(e.target.value) : undefined
-                    })
-                  }
-                  required
-                />
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="challonge_is_league"
-                  checked={(formData as TournamentCreateInput).is_league}
-                  onCheckedChange={(checked) =>
-                    setFormData({ ...formData, is_league: checked as boolean })
-                  }
-                />
-                <Label htmlFor="challonge_is_league" className="cursor-pointer">
-                  Is League
-                </Label>
-              </div>
-
-              <Field>
-                <FieldLabel htmlFor="challonge_date_range">Date Range *</FieldLabel>
-                <DateRangePicker
-                  id="challonge_date_range"
-                  startDate={formData.start_date}
-                  endDate={formData.end_date}
-                  onChange={(start, end) => setFormData({ ...formData, start_date: start, end_date: end })}
-                />
-              </Field>
-            </div>
+            <TournamentFormFields
+              idPrefix="create-challonge"
+              mode="challonge-create"
+              value={formData as TournamentCreateInput & TournamentFormFieldsValue}
+              onChange={(next) => setFormData(next)}
+              challongeSlugValue={challongeSlug}
+              onChallongeSlugValueChange={setChallongeSlug}
+            />
           </TabsContent>
         </Tabs>
       </EntityFormDialog>
@@ -478,60 +389,12 @@ export default function TournamentsPage() {
         errorMessage={updateMutation.isError ? updateMutation.error.message : undefined}
         isDirty={isEditDirty}
       >
-        <div className="space-y-4">
-          <div>
-            <Label htmlFor="edit-name">Name</Label>
-            <Input
-              id="edit-name"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            />
-          </div>
-
-          <div>
-            <Label htmlFor="edit-description">Description</Label>
-            <Textarea
-              id="edit-description"
-              value={formData.description ?? ""}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-            />
-          </div>
-
-          <div>
-            <Label htmlFor="edit-challonge-slug">Challonge URL or Slug</Label>
-            <Input
-              id="edit-challonge-slug"
-              placeholder="e.g. my-tournament or https://challonge.com/my-tournament"
-              value={(formData as TournamentUpdateInput).challonge_slug ?? ""}
-              onChange={(e) =>
-                setFormData({ ...formData, challonge_slug: e.target.value })
-              }
-            />
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="is_finished"
-              checked={(formData as TournamentUpdateInput).is_finished}
-              onCheckedChange={(checked) =>
-                setFormData({ ...formData, is_finished: checked as boolean })
-              }
-            />
-            <Label htmlFor="is_finished" className="cursor-pointer">
-              Is Finished
-            </Label>
-          </div>
-
-          <Field>
-            <FieldLabel htmlFor="edit-date_range">Date Range</FieldLabel>
-            <DateRangePicker
-              id="edit-date_range"
-              startDate={formData.start_date}
-              endDate={formData.end_date}
-              onChange={(start, end) => setFormData({ ...formData, start_date: start, end_date: end })}
-            />
-          </Field>
-        </div>
+        <TournamentFormFields
+          idPrefix="edit"
+          mode="edit"
+          value={formData as TournamentUpdateInput & TournamentFormFieldsValue}
+          onChange={(next) => setFormData(next)}
+        />
       </EntityFormDialog>
 
       {/* Delete Dialog */}
@@ -543,7 +406,7 @@ export default function TournamentsPage() {
           title="Delete Tournament"
           description={`Are you sure you want to delete "${selectedTournament?.name}"? This action cannot be undone.`}
           cascadeInfo={[
-            "All tournament groups",
+            "All tournament stages",
             "All teams in this tournament",
             "All players in these teams",
             "All encounters in this tournament",

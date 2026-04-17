@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
+from cashews import cache
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -19,8 +20,8 @@ from shared.observability import (
     check_redis,
     instrument_fastapi,
     make_health_response,
-    setup_sentry,
     setup_logging,
+    setup_sentry,
     setup_tracing,
 )
 from shared.schemas import HealthCheckResponse
@@ -109,6 +110,8 @@ app.add_middleware(CorrelationIdMiddleware)
 # Instrument FastAPI after custom middleware registration so request logs are emitted
 # while the server span is still active.
 instrument_fastapi(app)
+
+cache.setup(f"{config.redis_url}/4", prefix="backend:")
 
 app.include_router(router)
 app.include_router(task_router)

@@ -8,6 +8,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { getDivisionLabel } from "@/lib/division-grid";
 import type { TournamentHistoryEntry } from "@/types/registration.types";
 
 const ROLE_LABELS: Record<string, string> = {
@@ -53,10 +54,6 @@ export default function TournamentHistoryCell({
         >
           <ul className="space-y-1 text-xs">
             {history.slice(0, 10).map((h) => {
-              const divisionTier = h.division_grid_version?.tiers.find(
-                (tier) => tier.number === h.division,
-              );
-
               return (
                 <li key={h.tournament_id} className="space-y-1">
                   <div className="text-white/80">{h.tournament_name}</div>
@@ -76,7 +73,12 @@ export default function TournamentHistoryCell({
                       {h.division != null ? (
                         <span
                           className="inline-flex items-center"
-                          title={divisionTier?.name ?? `Division ${h.division}`}
+                          title={
+                            getDivisionLabel(
+                              h.division_grid_version ?? { tiers: [] },
+                              h.division,
+                            ) ?? `Division ${h.division}`
+                          }
                         >
                           <PlayerDivisionIcon
                             division={h.division}

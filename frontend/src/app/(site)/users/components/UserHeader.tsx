@@ -48,10 +48,10 @@ const UserHeader = ({ profile, user }: UserHeaderProps) => {
 
   const battle_tags: string[] = user.battle_tag.map((battleTag) => battleTag.battle_tag);
 
-  const primaryRoleDivisionRaw = profile.roles.length
+  const primaryRole = profile.roles.length
     ? profile.roles.reduce((best, current) => (current.tournaments > best.tournaments ? current : best))
-        .division
-    : 1;
+    : null;
+  const primaryRoleDivisionRaw = primaryRole?.division ?? 1;
   const primaryRoleDivision = Math.min(20, Math.max(1, primaryRoleDivisionRaw));
   const avatarSrc = getPlayerImage(profile, user);
 
@@ -59,7 +59,11 @@ const UserHeader = ({ profile, user }: UserHeaderProps) => {
 
   return (
     <section className="liquid-glass-panel relative overflow-hidden rounded-2xl border p-4 md:p-6">
-      <UserHeaderAura avatarSrc={avatarSrc} division={primaryRoleDivision} />
+      <UserHeaderAura
+        avatarSrc={avatarSrc}
+        division={primaryRoleDivision}
+        divisionGridVersion={primaryRole?.division_grid_version ?? null}
+      />
       <div className="pointer-events-none absolute inset-0">
         <div
           className="absolute -top-24 -left-24 h-72 w-72 rounded-full blur-3xl"

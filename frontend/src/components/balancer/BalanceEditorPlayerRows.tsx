@@ -12,8 +12,8 @@ import {
   TableCell,
   TableRow,
 } from "@/components/ui/table";
+import { resolveDivisionFromRank } from "@/lib/division-grid";
 import { cn } from "@/lib/utils";
-import { resolveDivisionFromRankHelper } from "@/app/balancer/components/workspace-helpers";
 import type { DivisionGrid } from "@/types/workspace.types";
 import type {
   BalancerRosterKey,
@@ -104,7 +104,7 @@ function BalanceEditorPlayerTableRow({
   onSelectPlayer,
 }: BalanceEditorPlayerTableRowProps) {
   const playerId = parseInternalBalancePlayerId(player);
-  const division = resolveDivisionFromRankHelper(player.rating, divisionGrid);
+  const division = resolveDivisionFromRank(divisionGrid, player.rating);
   const isSelected = playerId !== null && selectedPlayerId === playerId;
   const preferredRoles = player.preferences.slice(0, 3);
   const assignedOffRole =

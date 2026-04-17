@@ -56,6 +56,7 @@ class LogProcessingRecord(db.TimeStampIntegerMixin):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
     # Relations
     tournament: Mapped["Tournament"] = relationship(lazy="selectin")

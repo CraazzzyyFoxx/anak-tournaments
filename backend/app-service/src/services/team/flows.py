@@ -1,6 +1,6 @@
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from shared.division_grid import DivisionGrid
+from shared.services.division_grid_resolution import resolve_tournament_division
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models, schemas
 from src.core import errors, pagination, utils
@@ -112,7 +112,10 @@ async def to_pydantic_player(
 
     return schemas.PlayerRead(
         **player.to_dict(),
-        division=grid.resolve_division_number(player.rank),
+        division=resolve_tournament_division(
+            player.rank,
+            tournament_grid=grid,
+        ),
         user=user,
         tournament=tournament,
         team=team,

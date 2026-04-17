@@ -4,6 +4,7 @@ from collections import defaultdict
 
 import sqlalchemy as sa
 from fastapi import HTTPException
+from shared.services import division_grid_cache
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -136,7 +137,9 @@ async def create_version(
         )
 
     await session.flush()
-    return await get_version(session, version.id)
+    created = await get_version(session, version.id)
+    await division_grid_cache.invalidate_grid_version(created.id)
+    return created
 
 
 async def get_version(session: AsyncSession, version_id: int) -> models.DivisionGridVersion:
@@ -178,6 +181,7 @@ async def delete_version(session: AsyncSession, version_id: int) -> None:
             detail=f"Cannot delete version: used by {tournament_uses} tournament(s)",
         )
 
+    await division_grid_cache.invalidate_grid_version(version_id)
     await session.delete(version)
     await session.flush()
 
@@ -187,6 +191,7 @@ async def publish_version(session: AsyncSession, version_id: int) -> models.Divi
     version.status = "published"
     version.published_at = sa.func.now()
     await session.flush()
+    await division_grid_cache.invalidate_grid_version(version_id)
     return await get_version(session, version_id)
 
 
@@ -319,4 +324,5 @@ async def upsert_mapping(
     refreshed = await get_mapping(session, source_version_id, target_version_id)
     if refreshed is None:
         raise HTTPException(status_code=500, detail="Failed to persist division grid mapping")
+    await division_grid_cache.invalidate_mapping(source_version_id, target_version_id)
     return refreshed

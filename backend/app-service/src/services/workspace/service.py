@@ -1,6 +1,7 @@
 import typing
 
 import sqlalchemy as sa
+from shared.services import division_grid_cache
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -68,9 +69,15 @@ async def create(session: AsyncSession, **kwargs) -> models.Workspace:
 async def update(
     session: AsyncSession, workspace: models.Workspace, data: dict
 ) -> models.Workspace:
+    should_invalidate_grid = (
+        "default_division_grid_version_id" in data
+        and data["default_division_grid_version_id"] != workspace.default_division_grid_version_id
+    )
     for field, value in data.items():
         setattr(workspace, field, value)
     await session.flush()
+    if should_invalidate_grid:
+        await division_grid_cache.invalidate_workspace(workspace.id)
     return workspace
 
 

@@ -1,8 +1,8 @@
 import sqlalchemy as sa
 from loguru import logger
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from shared.division_grid import DEFAULT_GRID
+from shared.services.division_grid_resolution import resolve_tournament_division
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models, schemas
 from src.core import enums, errors, utils
@@ -91,7 +91,10 @@ async def to_pydantic_player(
 
     division = getattr(player, "division", None)
     if division is None:
-        division = DEFAULT_GRID.resolve_division_number(player.rank)
+        division = resolve_tournament_division(
+            player.rank,
+            fallback_grid=DEFAULT_GRID,
+        )
 
     return schemas.PlayerRead(
         **player.to_dict(),

@@ -31,6 +31,9 @@ COPY discord-service/pyproject.toml /app/discord-service/pyproject.toml
 COPY twitch-service/pyproject.toml /app/twitch-service/pyproject.toml
 COPY balancer-service/pyproject.toml /app/balancer-service/pyproject.toml
 
+# `shared` is a workspace member; its source is required to build its wheel during `uv sync`.
+COPY ./shared /app/shared
+
 ARG APP_PATH
 
 # Install dependencies for the target service only
@@ -39,9 +42,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project --no-dev --package ${APP_PATH}-service
 
 ENV PYTHONPATH=/app/${APP_PATH}-service:/app
-
-# Copy shared dependencies first (for model sharing across services)
-COPY ./shared /app/shared
 
 # Copy scripts and configuration
 COPY ./scripts /app/scripts

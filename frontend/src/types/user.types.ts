@@ -48,6 +48,7 @@ export interface UserRole {
   maps_won: number;
   maps: number;
   division: number;
+  division_grid_version: DivisionGridVersion | null;
 }
 
 export interface UserTournamentWithStats {

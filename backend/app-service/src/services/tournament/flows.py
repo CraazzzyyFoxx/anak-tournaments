@@ -2,10 +2,10 @@ import statistics
 import typing
 from itertools import groupby
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from shared.division_grid import DivisionGrid
 from shared.services.division_grid_normalization import DivisionGridNormalizationError, DivisionGridNormalizer
+from shared.services.division_grid_resolution import resolve_tournament_division
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models, schemas
 from src.core import enums, errors, pagination
@@ -310,7 +310,7 @@ async def get_tournaments_overall(session: AsyncSession, workspace_id: int | Non
 
 
 async def get_owal_standings(
-    session: AsyncSession, season: typing.Optional[str] = None, workspace_id: int | None = None,
+    session: AsyncSession, season: str | None = None, workspace_id: int | None = None,
     *, grid: DivisionGrid,
 ) -> schemas.OwalStandings:
     """
@@ -358,7 +358,10 @@ async def get_owal_standings_by_season(
         cache[user.id][player.role][tournament.id] = schemas.OwalStandingDay(
             team=team.name,
             role=player.role,
-            division=grid.resolve_division_number(player.rank),
+            division=resolve_tournament_division(
+                player.rank,
+                tournament_grid=grid,
+            ),
             points=standing.win + standing.draw * 0.5 + standing.buchholz * 0.01,
             wins=standing.win,
             draws=standing.draw,

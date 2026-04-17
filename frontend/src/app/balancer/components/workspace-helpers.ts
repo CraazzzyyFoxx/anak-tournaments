@@ -10,7 +10,7 @@ import {
 import { BalanceResponse } from "@/types/balancer.types";
 import { UserRoleType } from "@/types/user.types";
 import type { DivisionGrid, DivisionGridVersion } from "@/types/workspace.types";
-import { DEFAULT_DIVISION_GRID } from "@/hooks/useCurrentWorkspace";
+import { DEFAULT_DIVISION_GRID, resolveDivisionFromRank } from "@/lib/division-grid";
 import userService from "@/services/user.service";
 import { DivisionGridNormalizer } from "@/lib/division-grid-normalizer";
 
@@ -454,15 +454,7 @@ export function resolveDivisionFromRankHelper(
   rankValue: number | null,
   grid: DivisionGrid = DEFAULT_DIVISION_GRID
 ): number | null {
-  if (rankValue == null) return null;
-  for (const tier of grid.tiers) {
-    if (tier.rank_max === null) {
-      if (rankValue >= tier.rank_min) return tier.number;
-    } else if (rankValue >= tier.rank_min && rankValue <= tier.rank_max) {
-      return tier.number;
-    }
-  }
-  return grid.tiers.length > 0 ? grid.tiers[grid.tiers.length - 1].number : null;
+  return resolveDivisionFromRank(grid, rankValue);
 }
 
 /**

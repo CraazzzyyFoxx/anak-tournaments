@@ -5,6 +5,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useDebounce } from "use-debounce";
 
+import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
+import { clampDivisionToGrid } from "@/lib/division-grid";
 import userService from "@/services/user.service";
 import { UserRoleType } from "@/types/user.types";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,7 +14,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import UsersOverviewFilters from "./components/users-overview/UsersOverviewFilters";
 import UsersOverviewTable from "./components/users-overview/UsersOverviewTable";
 import {
-  clampDivision,
   parseOptionalInt,
   parseOrderValue,
   parsePositiveInt,
@@ -23,6 +24,7 @@ const UsersPageContent = () => {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const divisionGrid = useDivisionGrid();
 
   const page = parsePositiveInt(searchParams.get("page"), 1);
   const perPage = parsePositiveInt(searchParams.get("per_page"), 20);
@@ -30,8 +32,8 @@ const UsersPageContent = () => {
   const sort = parseSortValue(searchParams.get("sort"));
   const order = parseOrderValue(searchParams.get("order"));
   const role = (searchParams.get("role") as UserRoleType | null) ?? undefined;
-  const divMin = clampDivision(parseOptionalInt(searchParams.get("div_min")));
-  const divMax = clampDivision(parseOptionalInt(searchParams.get("div_max")));
+  const divMin = clampDivisionToGrid(divisionGrid, parseOptionalInt(searchParams.get("div_min")));
+  const divMax = clampDivisionToGrid(divisionGrid, parseOptionalInt(searchParams.get("div_max")));
 
   const [searchInput, setSearchInput] = useState(query);
   const [divMinInput, setDivMinInput] = useState(divMin ? String(divMin) : "");
@@ -122,18 +124,28 @@ const UsersPageContent = () => {
     (value: string) => {
       const next = value === "all" ? "" : value;
       setDivMinInput(next);
-      updateParams({ div_min: value === "all" ? undefined : clampDivision(parseOptionalInt(value)) });
+      updateParams({
+        div_min:
+          value === "all"
+            ? undefined
+            : clampDivisionToGrid(divisionGrid, parseOptionalInt(value))
+      });
     },
-    [updateParams]
+    [divisionGrid, updateParams]
   );
 
   const handleDivMaxChange = useCallback(
     (value: string) => {
       const next = value === "all" ? "" : value;
       setDivMaxInput(next);
-      updateParams({ div_max: value === "all" ? undefined : clampDivision(parseOptionalInt(value)) });
+      updateParams({
+        div_max:
+          value === "all"
+            ? undefined
+            : clampDivisionToGrid(divisionGrid, parseOptionalInt(value))
+      });
     },
-    [updateParams]
+    [divisionGrid, updateParams]
   );
 
   const handleResetFilters = useCallback(() => {

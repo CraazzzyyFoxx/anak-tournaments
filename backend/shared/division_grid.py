@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING, Any
 
 import sqlalchemy as sa
 
+from shared.domain import division_rank
+
 if TYPE_CHECKING:
     from shared.models.division_grid import DivisionGridVersion
 
@@ -26,24 +28,13 @@ class DivisionGrid:
     tiers: tuple[DivisionTier, ...]
 
     def resolve_division(self, rank: int) -> DivisionTier:
-        for tier in self.tiers:
-            if tier.rank_max is None:
-                if rank >= tier.rank_min:
-                    return tier
-            elif tier.rank_min <= rank <= tier.rank_max:
-                return tier
-        return self.tiers[-1]
+        return division_rank.resolve_tier_for_rank(self, rank)  # type: ignore[return-value]
 
     def resolve_division_number(self, rank: int) -> int:
-        return self.resolve_division(rank).number
+        return division_rank.resolve_division_for_rank(self, rank)
 
     def resolve_rank_from_division(self, division_number: int) -> int | None:
-        for tier in self.tiers:
-            if tier.number == division_number:
-                if tier.rank_max is None:
-                    return tier.rank_min
-                return (tier.rank_min + tier.rank_max) // 2
-        return None
+        return division_rank.resolve_rank_for_division(self, division_number)
 
     @property
     def max_division(self) -> int:

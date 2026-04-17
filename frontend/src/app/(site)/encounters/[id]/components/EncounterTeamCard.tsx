@@ -15,8 +15,17 @@ import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import PlayerName from "@/components/PlayerName";
 import DivisionIcon from "@/components/DivisionIcon";
 import { sortTeamPlayers } from "@/utils/player";
+import type { DivisionGridVersion } from "@/types/workspace.types";
 
-const EncounterTeamCard = ({ team, isHome }: { team: Team; isHome: boolean }) => {
+const EncounterTeamCard = ({
+  team,
+  isHome,
+  tournamentGrid,
+}: {
+  team: Team;
+  isHome: boolean;
+  tournamentGrid?: DivisionGridVersion | null;
+}) => {
   const titleColor = isHome ? "text-[#16e5b4]" : "text-[#ff4655]";
   const sortedPlayers = sortTeamPlayers(team.players);
   const backgroundColor = isHome
@@ -65,7 +74,12 @@ const EncounterTeamCard = ({ team, isHome }: { team: Team; isHome: boolean }) =>
                   </TableCell>
                   <TableCell>
                     <div className="flex justify-center">
-                      <DivisionIcon division={player.division} width={32} height={32} />
+                      <DivisionIcon
+                        division={player.division}
+                        width={32}
+                        height={32}
+                        tournamentGrid={tournamentGrid}
+                      />
                     </div>
                   </TableCell>
                   <TableCell>

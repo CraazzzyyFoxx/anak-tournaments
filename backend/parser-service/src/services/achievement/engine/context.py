@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from shared.division_grid import DivisionGrid, DivisionTier
 from shared.services.division_grid_normalization import DivisionGridNormalizer
+from shared.services.division_grid_resolution import resolve_tournament_tier, resolve_workspace_tier
 
 from src import models
 
@@ -26,16 +27,25 @@ class EvalContext:
         if rank is None:
             return None
 
-        if self.normalizer is not None:
-            resolved_source_version_id = source_version_id
-            if resolved_source_version_id is None and self.tournament is not None:
-                resolved_source_version_id = self.tournament.division_grid_version_id
-            if resolved_source_version_id is not None:
-                return self.normalizer.normalize_division(resolved_source_version_id, rank)
-
         if self.grid is None:
             return None
-        return self.grid.resolve_division(rank)
+
+        resolved_source_version_id = source_version_id
+        if resolved_source_version_id is None and self.tournament is not None:
+            resolved_source_version_id = self.tournament.division_grid_version_id
+
+        if self.normalizer is not None:
+            return resolve_workspace_tier(
+                rank,
+                source_version_id=resolved_source_version_id,
+                fallback_grid=self.grid,
+                normalizer=self.normalizer,
+            )
+
+        return resolve_tournament_tier(
+            rank,
+            tournament_grid=self.grid,
+        )
 
     def resolve_division_number(
         self,

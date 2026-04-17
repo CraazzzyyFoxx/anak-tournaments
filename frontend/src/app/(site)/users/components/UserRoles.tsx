@@ -53,7 +53,7 @@ export const UserRole = async ({ role }: UserRoleProps) => {
   const winrate = role.maps_won / role.maps;
   return (
     <div className="flex flex-row gap-3 items-center rounded-lg p-2 transition-colors hover:bg-muted/30">
-      <DivisionIcon division={role.division} width={40} height={40} />
+      <DivisionIcon division={role.division} tournamentGrid={role.division_grid_version} width={40} height={40} />
       <div className="flex flex-col">
         <small className="text-sm text-muted-foreground font-semibold tabular-nums">
           {role.role} ({role.tournaments})

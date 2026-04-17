@@ -3,12 +3,11 @@ from collections import defaultdict
 
 import sqlalchemy as sa
 from cashews import cache
+from shared.division_grid import DivisionGrid, division_case_expr
+from shared.services.achievement_effective import build_effective_achievement_rows_subquery
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload
 from sqlalchemy.orm.strategy_options import _AbstractLoad
-
-from shared.division_grid import DivisionGrid, division_case_expr
-from shared.services.achievement_effective import build_effective_achievement_rows_subquery
 
 from src import models
 from src.core import enums, pagination, utils
@@ -1117,9 +1116,7 @@ async def get_overview_averages(
     placement_stage_result = await session.execute(placement_stage_query)
     closeness_result = await session.execute(closeness_query)
 
-    payload: dict[int, tuple[float | None, float | None, float | None, float | None]] = {
-        user_id: (None, None, None, None) for user_id in user_ids
-    }
+    payload: dict[int, tuple[float | None, float | None, float | None, float | None]] = dict.fromkeys(user_ids, (None, None, None, None))
 
     for user_id, avg_placement in placement_result.all():
         _, _, _, current_closeness = payload.get(user_id, (None, None, None, None))
@@ -1856,12 +1853,15 @@ async def get_roles(
                 sa.func.jsonb_build_object(
                     "tournament",
                     models.Team.tournament_id,
-                    "division",
-                    division_case_expr(models.Player.rank, grid),
+                    "rank",
+                    models.Player.rank,
+                    "division_grid_version_id",
+                    models.Tournament.division_grid_version_id,
                 )
             ),
         )
         .join(models.Team, models.Team.id == models.Player.team_id)
+        .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
         .join(
             models.Encounter,
             sa.or_(
@@ -1878,11 +1878,7 @@ async def get_roles(
         .group_by(models.Player.role)
     )
     if workspace_id is not None:
-        query = (
-            query
-            .join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
-            .where(models.Tournament.workspace_id == workspace_id)
-        )
+        query = query.where(models.Tournament.workspace_id == workspace_id)
     result = await session.execute(query)
     return result.all()  # type: ignore
 

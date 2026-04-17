@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 from fastapi import HTTPException, status
 from shared.core import tournament_state
 from shared.core.enums import TournamentStatus
+from shared.services import division_grid_cache
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -85,6 +86,8 @@ async def create_tournament(session: AsyncSession, data: admin_schemas.Tournamen
 
     session.add(tournament)
     await session.commit()
+    await division_grid_cache.invalidate_tournament(tournament.id)
+    await division_grid_cache.invalidate_workspace(tournament.workspace_id)
     return await get_tournament(session, tournament.id)
 
 
@@ -109,6 +112,9 @@ async def update_tournament(
 
     # Update fields
     update_data = data.model_dump(exclude_unset=True)
+    should_invalidate_grid = "division_grid_version_id" in update_data and (
+        update_data["division_grid_version_id"] != tournament.division_grid_version_id
+    )
     if "challonge_slug" in update_data:
         raw_slug = update_data.pop("challonge_slug")
         if raw_slug:
@@ -136,6 +142,9 @@ async def update_tournament(
         setattr(tournament, field, value)
 
     await session.commit()
+    if should_invalidate_grid:
+        await division_grid_cache.invalidate_tournament(tournament_id)
+        await division_grid_cache.invalidate_workspace(tournament.workspace_id)
     return await get_tournament(session, tournament_id)
 
 
@@ -147,9 +156,12 @@ async def delete_tournament(session: AsyncSession, tournament_id: int) -> None:
     if not tournament:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
+    workspace_id = tournament.workspace_id
     await session.execute(delete(models.Standing).where(models.Standing.tournament_id == tournament_id))
     await session.delete(tournament)
     await session.commit()
+    await division_grid_cache.invalidate_tournament(tournament_id)
+    await division_grid_cache.invalidate_workspace(workspace_id)
 
 
 async def toggle_finished(session: AsyncSession, tournament_id: int) -> models.Tournament:

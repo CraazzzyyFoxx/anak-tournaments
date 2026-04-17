@@ -52,6 +52,7 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
     name = encounter.tournament.name;
   }
   const stageLabel = encounter.stage_item?.name ?? encounter.stage?.name ?? "Unassigned";
+  const tournamentGrid = encounter.tournament.division_grid_version ?? null;
 
   return (
     <div className="flex flex-col gap-8">
@@ -81,7 +82,11 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
         </CardContent>
       </Card>
       <div className="py-8 grid xs:grid-cols-1 xl:grid-cols-3 gap-8">
-        <EncounterTeamCard team={encounter.home_team} isHome={true} />
+        <EncounterTeamCard
+          team={encounter.home_team}
+          isHome={true}
+          tournamentGrid={tournamentGrid}
+        />
         <Card>
           <CardHeader>
             <div className="flex gap-4">
@@ -112,7 +117,11 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
             ))}
           </CardContent>
         </Card>
-        <EncounterTeamCard team={encounter.away_team} isHome={false} />
+        <EncounterTeamCard
+          team={encounter.away_team}
+          isHome={false}
+          tournamentGrid={tournamentGrid}
+        />
       </div>
       <MapVeto encounterId={encounter.id} />
     </div>

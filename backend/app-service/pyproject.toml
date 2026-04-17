@@ -35,6 +35,7 @@ dependencies = [
     "prometheus-fastapi-instrumentator>=7.0",
     "uvicorn>=0.34.0",
     "uvloop; platform_system == 'Linux'",
+    "shared",
 ]
 
 

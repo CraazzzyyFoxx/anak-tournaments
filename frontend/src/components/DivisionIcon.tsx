@@ -4,6 +4,7 @@ import React from "react";
 import Image from "next/image";
 
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
+import { getDivisionIconSrc, getDivisionLabel } from "@/lib/division-grid";
 import type { DivisionGridVersion } from "@/types/workspace.types";
 
 export interface DivisionIconProps {
@@ -22,18 +23,11 @@ const DivisionIcon = ({
   className
 }: DivisionIconProps) => {
   const workspaceGrid = useDivisionGrid();
+  const preferredGrid = tournamentGrid ?? workspaceGrid;
+  const src = getDivisionIconSrc(preferredGrid, division);
+  const name = getDivisionLabel(preferredGrid, division);
 
-  // Tournament grid takes priority over workspace grid
-  const tier =
-    (tournamentGrid?.tiers ?? []).find((t) => t.number === division) ??
-    workspaceGrid.tiers.find((t) => t.number === division);
-
-  const src =
-    tier?.icon_url ??
-    `https://minio.craazzzyyfoxx.me/aqt/assets/divisions/default-${division}.png`;
-  const name = tier?.name ?? `Division ${division}`;
-
-  return <Image src={src} alt={name} width={width} height={height} className={className} />;
+  return <Image src={src ?? ""} alt={name ?? `Division ${division}`} width={width} height={height} className={className} />;
 };
 
 export default DivisionIcon;

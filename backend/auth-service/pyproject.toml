@@ -42,6 +42,7 @@ dependencies = [
     "tenacity>=9.0.0",
     "uvicorn>=0.34.0",
     "uvloop; platform_system == 'Linux'",
+    "shared",
 ]
 
 

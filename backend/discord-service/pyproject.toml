@@ -40,6 +40,7 @@ dependencies = [
     "opentelemetry-exporter-otlp>=1.27.0",
     "uvicorn>=0.34.0",
     "uvloop; platform_system == 'Linux'",
+    "shared",
 ]
 
 

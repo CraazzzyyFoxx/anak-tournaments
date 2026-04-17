@@ -3,6 +3,7 @@ import Image from "next/image";
 
 import { UserOverviewRow } from "@/types/user.types";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
+import { getDivisionLabel } from "@/lib/division-grid";
 import DivisionIcon from "@/components/DivisionIcon";
 
 const DivisionBadges = ({ user }: { user: UserOverviewRow }) => {
@@ -15,8 +16,7 @@ const DivisionBadges = ({ user }: { user: UserOverviewRow }) => {
   return (
     <div className="flex flex-wrap justify-center gap-2">
       {user.roles.map((role) => {
-        const tierName =
-          grid.tiers.find((t) => t.number === role.division)?.name ?? `Division ${role.division}`;
+        const tierName = getDivisionLabel(grid, role.division) ?? `Division ${role.division}`;
         return (
           <div
             key={`${user.id}-${role.role}-${role.division}`}

@@ -3,16 +3,13 @@ import typing
 from cashews import cache
 from cashews.contrib.fastapi import cache_control_ttl
 from fastapi import APIRouter, Depends, Query
+from shared.services.division_grid_access import build_workspace_division_grid_normalizer
+from shared.services.division_grid_normalization import DivisionGridNormalizationError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 
 from src import schemas
 from src.core import config, db, enums, pagination
-from shared.services.division_grid_normalization import (
-    DivisionGridNormalizationError,
-    build_division_grid_normalizer,
-)
-
 from src.core.workspace import WorkspaceQuery, get_division_grid
 from src.services.encounter import flows as encounter_flows
 from src.services.map import flows as map_flows
@@ -65,7 +62,11 @@ async def get_overview(
     normalizer = None
     if workspace_id is not None:
         try:
-            normalizer = await build_division_grid_normalizer(session, workspace_id, require_complete=False)
+            normalizer = await build_workspace_division_grid_normalizer(
+                session,
+                workspace_id,
+                require_complete=False,
+            )
         except DivisionGridNormalizationError:
             pass  # Fall back to global grid for all players
     return await user_flows.get_overview(

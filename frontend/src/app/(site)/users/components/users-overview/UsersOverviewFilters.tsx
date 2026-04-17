@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { UserRoleType } from "@/types/user.types";
 
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
+import { getDivisionIconSrc } from "@/lib/division-grid";
 import { getDivisionOptions, ROLE_OPTIONS, SORT_OPTIONS, UsersOverviewOrderValue, UsersOverviewSortValue } from "./utils";
 
 type UsersOverviewFiltersProps = {
@@ -45,8 +46,7 @@ const UsersOverviewFilters = ({
   const divisionOptions = getDivisionOptions(grid);
 
   const resolveIconUrl = (divisionNumber: number) => {
-    const tier = grid.tiers.find((t) => t.number === divisionNumber);
-    return tier?.icon_url ?? `https://minio.craazzzyyfoxx.me/aqt/assets/divisions/default-${divisionNumber}.png`;
+    return getDivisionIconSrc(grid, divisionNumber) ?? "";
   };
 
   return (

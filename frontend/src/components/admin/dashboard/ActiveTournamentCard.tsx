@@ -6,6 +6,7 @@ import { ArrowRight, Calendar, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { formatTournamentStages } from "@/lib/tournament-stages";
 import { cn } from "@/lib/utils";
 import { SurfaceCard } from "./SurfaceCard";
 import type { Tournament } from "@/types/tournament.types";
@@ -85,14 +86,23 @@ export function ActiveTournamentCard({
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Calendar className="size-3.5" />
               <span>{formatDate(tournament.start_date)} — {formatDate(tournament.end_date)}</span>
-              {(tournament.groups?.length ?? 0) > 0 && (
-                <span className="ml-2">{tournament.groups!.length} group{tournament.groups!.length === 1 ? "" : "s"}</span>
+              {(tournament.stages?.length ?? 0) > 0 && (
+                <span className="ml-2">{tournament.stages.length} stage{tournament.stages.length === 1 ? "" : "s"}</span>
               )}
             </div>
 
+            {tournament.stages?.length > 0 && (
+              <div
+                className="truncate text-xs text-muted-foreground"
+                title={formatTournamentStages(tournament.stages)}
+              >
+                {formatTournamentStages(tournament.stages)}
+              </div>
+            )}
+
             {/* Mini stat cells */}
             <div className={cn("grid gap-3", canReadMatches ? "grid-cols-3" : "grid-cols-1")}>
-              <MiniStatCell value={tournament.groups?.length ?? 0} label="Groups" />
+              <MiniStatCell value={tournament.stages?.length ?? 0} label="Stages" />
               {canReadMatches && (
                 <>
                   <MiniStatCell value={encounterCount} label="Encounters" />

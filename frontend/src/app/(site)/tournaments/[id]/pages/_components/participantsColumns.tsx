@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { ExternalLink } from "lucide-react";
+import { CheckCircle2, ExternalLink, XCircle } from "lucide-react";
 
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import {
@@ -327,8 +327,22 @@ const BUILT_IN_FIELD_DEFS: Record<string, BuiltInFieldDef> = {
     label: "Stream POV",
     defaultVisible: false,
     responsive: "lg",
+    align: "center",
     render: (reg) => (
-      <span className="text-white/60">{reg.stream_pov ? "Yes" : "No"}</span>
+       <span
+      title={reg.stream_pov ? "Yes" : "No"}
+      aria-label={reg.stream_pov ? "Yes" : "No"}
+      className={cn(
+        "inline-flex size-5 items-center justify-center",
+        reg.stream_pov ? "text-emerald-400" : "text-red-400",
+      )}
+    >
+      {reg.stream_pov ? (
+        <CheckCircle2 className="size-4" />
+      ) : (
+        <XCircle className="size-4" />
+      )}
+    </span>
     ),
   },
   notes: {

@@ -5,9 +5,9 @@ import pandas as pd
 import sqlalchemy as sa
 from loguru import logger
 from openskill.models import PlackettLuce, PlackettLuceRating
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from shared.division_grid import DEFAULT_GRID, DivisionGrid
+from shared.services.division_grid_resolution import resolve_tournament_division
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models
 from src.schemas.analytics import AnalyticsMatch
@@ -39,7 +39,10 @@ def division_delta_points(
 
 
 def rating_to_division(grid: DivisionGrid, rating_mu: float) -> int:
-    return grid.resolve_division_number(int(round(rating_mu)))
+    return resolve_tournament_division(
+        int(round(rating_mu)),
+        tournament_grid=grid,
+    )
 
 
 async def get_data_frame(session: AsyncSession) -> pd.DataFrame:
@@ -102,7 +105,13 @@ async def get_data_frame(session: AsyncSession) -> pd.DataFrame:
             return DEFAULT_GRID
         return grids.get(int(version_id), DEFAULT_GRID)
 
-    df["div"] = df.apply(lambda r: grid_for(r["version_id"]).resolve_division_number(r["cost"]), axis=1)
+    df["div"] = df.apply(
+        lambda r: resolve_tournament_division(
+            int(r["cost"]),
+            tournament_grid=grid_for(r["version_id"]),
+        ),
+        axis=1,
+    )
     df = df.sort_values(["id_role", "tournament_id"]).reset_index(drop=True)
     df["prev_version_id"] = df.groupby("id_role")["version_id"].shift(1)
 
@@ -117,7 +126,10 @@ async def get_data_frame(session: AsyncSession) -> pd.DataFrame:
             return row["previous_div"]
         prev_vid = row["prev_version_id"]
         curr_vid = row["version_id"]
-        raw = grid_for(prev_vid).resolve_division_number(int(prev_cost))
+        raw = resolve_tournament_division(
+            int(prev_cost),
+            tournament_grid=grid_for(prev_vid),
+        )
         if (
             prev_vid is not None
             and not pd.isna(prev_vid)
@@ -151,7 +163,7 @@ async def get_data_frame(session: AsyncSession) -> pd.DataFrame:
         axis=1,
     )
 
-    for (_, role), group in df.groupby(["tournament_id", "role"], dropna=False):
+    for (_, _role), group in df.groupby(["tournament_id", "role"], dropna=False):
         valid = group["performance_points"].dropna()
         if valid.empty:
             continue
@@ -160,7 +172,9 @@ async def get_data_frame(session: AsyncSession) -> pd.DataFrame:
         if std <= 1e-9:
             continue
         df.loc[group.index, "log_residual"] = group["performance_points"].apply(
-            lambda value: 0.0 if pd.isna(value) else float(np.clip((value - mean) / std, -1.0, 1.0))
+            lambda value, mean=mean, std=std: (
+                0.0 if pd.isna(value) else float(np.clip((value - mean) / std, -1.0, 1.0))
+            )
         )
 
     return df

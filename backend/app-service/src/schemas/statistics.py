@@ -50,7 +50,7 @@ class DashboardActiveTournamentStats(BaseModel):
 class DashboardIssues(BaseModel):
     encounters_missing_logs: int
     teams_without_players: int
-    tournaments_without_groups: int
+    tournaments_without_stages: int
     users_without_identities: int
 
 

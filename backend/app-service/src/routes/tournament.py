@@ -1,20 +1,16 @@
-import typing
 
 import sqlalchemy as sa
 from cashews import cache
 from cashews.contrib.fastapi import cache_control_ttl
 from fastapi import APIRouter, Depends, Query
+from shared.services.division_grid_access import build_workspace_division_grid_normalizer
+from shared.services.division_grid_normalization import DivisionGridNormalizationError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from starlette.requests import Request
 
 from src import models, schemas
 from src.core import config, db, enums, pagination
-from shared.services.division_grid_normalization import (
-    DivisionGridNormalizationError,
-    build_division_grid_normalizer,
-)
-
 from src.core.workspace import WorkspaceQuery, get_division_grid
 from src.services.standings import flows as standings_flows
 from src.services.tournament import flows as tournament_flows
@@ -52,7 +48,7 @@ async def lookup_tournaments(
     response_model=schemas.TournamentRead,
     description="Retrieve details of a specific tournament by its ID. "
     "Supports fetching additional related entities. "
-    "Available entities: **groups**."
+    "Available entities: **stages**."
     f"**Cache TTL: {config.settings.tournaments_cache_ttl / 60} minutes.**",
     summary="Get tournament by ID",
 )
@@ -110,7 +106,7 @@ async def get_standings(
 @router.get(
     path="",
     response_model=pagination.Paginated[schemas.TournamentRead],
-    description="Retrieve a paginated list of tournaments. Supports search and filtering. Available entities: **groups**.",
+    description="Retrieve a paginated list of tournaments. Supports search and filtering. Available entities: **stages**.",
     summary="Get all tournaments",
 )
 async def get_all_tournaments(
@@ -159,7 +155,11 @@ async def get_avg_div(
     normalizer = None
     if workspace_id is not None:
         try:
-            normalizer = await build_division_grid_normalizer(session, workspace_id, require_complete=False)
+            normalizer = await build_workspace_division_grid_normalizer(
+                session,
+                workspace_id,
+                require_complete=False,
+            )
         except DivisionGridNormalizationError:
             pass  # Fall back to global grid for all tournaments
     return await tournament_flows.get_avg_divisions_tournaments(
@@ -209,7 +209,7 @@ async def get_owal_seasons(
 @router.get(
     path="/league/results",
     response_model=schemas.OwalStandings,
-    description=f"Retrieve OWAL tournament standings.",
+    description="Retrieve OWAL tournament standings.",
     summary="Get OWAL standings",
 )
 @cache(
@@ -218,7 +218,7 @@ async def get_owal_seasons(
 )
 async def get_owal_standings(
     request: Request,
-    season: typing.Optional[str] = Query(default=None),
+    season: str | None = Query(default=None),
     workspace_id: WorkspaceQuery = None,
     session: AsyncSession = Depends(db.get_async_session),
 ):
@@ -233,7 +233,7 @@ async def get_owal_standings(
 @router.get(
     path="/league/stacks",
     response_model=list[schemas.LeaguePlayerStack],
-    description=f"Retrieve OWAL tournament player stacks.",
+    description="Retrieve OWAL tournament player stacks.",
     summary="Get OWAL player stacks",
 )
 @cache(
@@ -242,7 +242,7 @@ async def get_owal_standings(
 )
 async def get_owal_player_stacks(
     request: Request,
-    season: typing.Optional[str] = Query(default=None),
+    season: str | None = Query(default=None),
     workspace_id: WorkspaceQuery = None,
     session: AsyncSession = Depends(db.get_async_session),
 ):

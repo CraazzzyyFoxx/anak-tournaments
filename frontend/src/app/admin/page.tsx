@@ -31,7 +31,7 @@ interface DashboardActiveTournamentStats {
 interface DashboardIssues {
   encounters_missing_logs: number;
   teams_without_players: number;
-  tournaments_without_groups: number;
+  tournaments_without_stages: number;
   users_without_identities: number;
 }
 
@@ -122,8 +122,8 @@ export default function AdminDashboard() {
       canReadTeams && (issues?.teams_without_players ?? 0) > 0
         ? { label: "Teams without rosters", count: issues!.teams_without_players, href: "/admin/teams", tone: "warning" as const }
         : null,
-      canReadTournaments && (issues?.tournaments_without_groups ?? 0) > 0
-        ? { label: "Tournaments missing groups", count: issues!.tournaments_without_groups, href: "/admin/tournaments", tone: "warning" as const }
+      canReadTournaments && (issues?.tournaments_without_stages ?? 0) > 0
+        ? { label: "Tournaments missing stages", count: issues!.tournaments_without_stages, href: "/admin/tournaments", tone: "warning" as const }
         : null,
       canReadUsers && (issues?.users_without_identities ?? 0) > 0
         ? { label: "Unlinked player identities", count: issues!.users_without_identities, href: "/admin/users", tone: "info" as const }

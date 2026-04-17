@@ -14,15 +14,17 @@ from shared.models.achievement import (
     EvaluationRunStatus,
     EvaluationRunTrigger,
 )
+from shared.services.division_grid_access import (
+    build_workspace_division_grid_normalizer,
+    get_effective_division_grid,
+)
 from shared.services.division_grid_normalization import (
     DivisionGridNormalizationError,
     DivisionGridNormalizer,
-    build_division_grid_normalizer,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models
-from src.core.workspace import get_division_grid
 
 from .context import EvalContext
 from .differ import EvaluationSlice, diff_and_apply
@@ -106,7 +108,7 @@ async def run_evaluation(
             rule_needs_normalized_divisions = tournament is None and _rule_requires_normalized_divisions(rule.condition_tree)
             if rule_needs_normalized_divisions and normalizer is None:
                 try:
-                    normalizer = await build_division_grid_normalizer(
+                    normalizer = await build_workspace_division_grid_normalizer(
                         session,
                         workspace_id,
                     )
@@ -208,7 +210,7 @@ async def _resolve_grid(
     workspace_id: int,
     tournament: models.Tournament | None,
 ) -> object | None:
-    return await get_division_grid(
+    return await get_effective_division_grid(
         session,
         workspace_id,
         tournament_id=tournament.id if tournament is not None else None,

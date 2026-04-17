@@ -84,13 +84,13 @@ async def get_issues(
         .where(models.Team.id.not_in(teams_with_players), *ws_filters)
     )
 
-    # Tournaments that have zero groups
-    tournaments_with_groups = (
-        sa.select(models.TournamentGroup.tournament_id)
-        .group_by(models.TournamentGroup.tournament_id)
+    # Tournaments that have zero stages
+    tournaments_with_stages = (
+        sa.select(models.Stage.tournament_id)
+        .group_by(models.Stage.tournament_id)
     )
-    tournaments_without_groups_q = sa.select(sa.func.count(models.Tournament.id)).where(
-        models.Tournament.id.not_in(tournaments_with_groups), *ws_filters
+    tournaments_without_stages_q = sa.select(sa.func.count(models.Tournament.id)).where(
+        models.Tournament.id.not_in(tournaments_with_stages), *ws_filters
     )
 
     # Users that have no discord, battle_tag, or twitch identities
@@ -106,7 +106,7 @@ async def get_issues(
         sa.select(
             encounters_missing_logs.scalar_subquery(),
             teams_without_players_q.scalar_subquery(),
-            tournaments_without_groups_q.scalar_subquery(),
+            tournaments_without_stages_q.scalar_subquery(),
             users_without_identities_q.scalar_subquery(),
         )
     )
@@ -114,7 +114,7 @@ async def get_issues(
     return {
         "encounters_missing_logs": row[0] or 0,
         "teams_without_players": row[1] or 0,
-        "tournaments_without_groups": row[2] or 0,
+        "tournaments_without_stages": row[2] or 0,
         "users_without_identities": row[3] or 0,
     }
 

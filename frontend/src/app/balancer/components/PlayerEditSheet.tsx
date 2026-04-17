@@ -59,6 +59,12 @@ import { Textarea } from "@/components/ui/textarea";
 import PlayerDivisionIcon from "@/components/PlayerDivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { useDivisionGrid, useDivisionGridVersion } from "@/hooks/useCurrentWorkspace";
+import {
+  getDivisionLabel,
+  resolveDivisionFromRank as resolveDivisionFromRankInGrid,
+  resolveRankFromDivision as resolveRankFromDivisionInGrid,
+  sortTiersAscending,
+} from "@/lib/division-grid";
 import { cn } from "@/lib/utils";
 import type { DivisionGrid } from "@/types/workspace.types";
 import {
@@ -70,7 +76,6 @@ import {
 } from "@/types/balancer-admin.types";
 import {
   fetchPlayerRankHistoryPreview,
-  resolveDivisionFromRankHelper,
   type PlayerRankHistoryPreview,
   type PlayerRankHistoryPreviewEntry
 } from "@/app/balancer/components/workspace-helpers";
@@ -254,23 +259,14 @@ function getDivisionGridBounds(grid: DivisionGrid): { min: number; max: number }
 }
 
 function getSliderDivisionTiers(grid: DivisionGrid) {
-  return [...grid.tiers].sort((left, right) => left.rank_min - right.rank_min);
+  return sortTiersAscending(grid);
 }
 
 function resolveRankFromDivisionHelper(
   divisionNumber: number | null,
   grid: DivisionGrid
 ): number | null {
-  if (divisionNumber == null) {
-    return null;
-  }
-
-  const tier = grid.tiers.find((candidate) => candidate.number === divisionNumber);
-  if (!tier) {
-    return null;
-  }
-
-  return tier.rank_min;
+  return resolveRankFromDivisionInGrid(grid, divisionNumber);
 }
 
 function getDivisionSliderIndex(
@@ -697,23 +693,16 @@ export function PlayerEditModal({
 }: PlayerEditModalProps) {
   const divisionGrid = useDivisionGrid();
   const divisionGridVersion = useDivisionGridVersion();
-  const divisionNameByNumber = useMemo(
-    () => new Map(divisionGrid.tiers.map((tier) => [tier.number, tier.name])),
-    [divisionGrid]
-  );
   const resolveDivision = (rankValue: number | null) =>
-    resolveDivisionFromRankHelper(rankValue, divisionGrid);
+    resolveDivisionFromRankInGrid(divisionGrid, rankValue);
   const resolveRankFromDivision = (divisionNumber: number | null) =>
     resolveRankFromDivisionHelper(divisionNumber, divisionGrid);
   const getDivisionName = (divisionNumber: number | null) =>
-    divisionNumber == null
-      ? null
-      : (divisionNameByNumber.get(divisionNumber) ?? `Division ${divisionNumber}`);
+    getDivisionLabel(divisionGrid, divisionNumber);
 
   // Normalised division name: always look up in the workspace (target) grid.
   const getHistoryDivisionName = (divisionNumber: number | null) => {
-    if (divisionNumber == null) return null;
-    return divisionNameByNumber.get(divisionNumber) ?? `Division ${divisionNumber}`;
+    return getDivisionLabel(divisionGrid, divisionNumber);
   };
 
   // Original division name: look up in the source tournament's own grid first,
@@ -724,12 +713,10 @@ export function PlayerEditModal({
   ) => {
     if (divisionNumber == null) return null;
     if (entry.tournament_grid_version) {
-      const tierName = entry.tournament_grid_version.tiers.find(
-        (t) => t.number === divisionNumber
-      )?.name;
+      const tierName = getDivisionLabel(entry.tournament_grid_version, divisionNumber);
       if (tierName) return tierName;
     }
-    return divisionNameByNumber.get(divisionNumber) ?? `Division ${divisionNumber}`;
+    return getDivisionLabel(divisionGrid, divisionNumber);
   };
   const sliderBounds = useMemo(() => getDivisionGridBounds(divisionGrid), [divisionGrid]);
   const divisionTiers = useMemo(() => getSliderDivisionTiers(divisionGrid), [divisionGrid]);

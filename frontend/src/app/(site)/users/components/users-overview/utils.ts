@@ -1,5 +1,10 @@
 import { LogStatsName } from "@/types/stats.types";
 import { UserRoleType } from "@/types/user.types";
+import {
+  clampDivisionToGrid,
+  getDefaultDivisionGrid,
+  getDivisionOptions,
+} from "@/lib/division-grid";
 
 export const ROLE_OPTIONS: Array<{ value: "all" | UserRoleType; label: string }> = [
   { value: "all", label: "All roles" },
@@ -7,14 +12,6 @@ export const ROLE_OPTIONS: Array<{ value: "all" | UserRoleType; label: string }>
   { value: "Damage", label: "Damage" },
   { value: "Support", label: "Support" }
 ];
-
-import { DivisionGrid } from "@/types/workspace.types";
-
-export const DIVISION_OPTIONS = Array.from({ length: 20 }, (_, index) => index + 1);
-
-export function getDivisionOptions(grid: DivisionGrid): number[] {
-  return [...grid.tiers].sort((a, b) => a.number - b.number).map((t) => t.number);
-}
 
 export const SORT_OPTIONS = [
   { value: "name", label: "Name" },
@@ -48,10 +45,7 @@ export const parseOptionalInt = (value: string | null): number | undefined => {
 };
 
 export const clampDivision = (value: number | undefined): number | undefined => {
-  if (value === undefined) return undefined;
-  if (value < 1) return 1;
-  if (value > 20) return 20;
-  return value;
+  return clampDivisionToGrid(getDefaultDivisionGrid(), value);
 };
 
 export const parseSortValue = (value: string | null): UsersOverviewSortValue => {

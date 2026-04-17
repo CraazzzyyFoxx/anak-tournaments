@@ -1,5 +1,6 @@
 """Service helpers for creating and updating LogProcessingRecord entries."""
 
+import hashlib
 from datetime import datetime, timezone
 
 from loguru import logger
@@ -7,6 +8,34 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models.log_processing import LogProcessingRecord, LogProcessingSource, LogProcessingStatus
+
+
+def compute_content_hash(raw_bytes: bytes) -> str:
+    """Return hex SHA-256 of the raw log file bytes."""
+    return hashlib.sha256(raw_bytes).hexdigest()
+
+
+async def is_already_processed(
+    session: AsyncSession,
+    tournament_id: int,
+    filename: str,
+    content_hash: str,
+) -> bool:
+    """Return True when a *done* record with the same content hash already exists.
+
+    This lets us skip reprocessing an unchanged log file that was re-uploaded.
+    """
+    result = await session.execute(
+        select(LogProcessingRecord)
+        .where(
+            LogProcessingRecord.tournament_id == tournament_id,
+            LogProcessingRecord.filename == filename,
+            LogProcessingRecord.status == LogProcessingStatus.done,
+            LogProcessingRecord.content_hash == content_hash,
+        )
+        .limit(1)
+    )
+    return result.scalar_one_or_none() is not None
 
 
 async def _notify_result(session: AsyncSession, record: LogProcessingRecord, status: str) -> None:
@@ -62,7 +91,12 @@ async def upsert_log_record(
     return record
 
 
-async def set_processing(session: AsyncSession, tournament_id: int, filename: str) -> LogProcessingRecord | None:
+async def set_processing(
+    session: AsyncSession,
+    tournament_id: int,
+    filename: str,
+    content_hash: str | None = None,
+) -> LogProcessingRecord | None:
     """Mark the most recent pending record as 'processing'."""
     result = await session.execute(
         select(LogProcessingRecord)
@@ -83,6 +117,7 @@ async def set_processing(session: AsyncSession, tournament_id: int, filename: st
             source=LogProcessingSource.manual,
             status=LogProcessingStatus.processing,
             started_at=datetime.now(timezone.utc),
+            content_hash=content_hash,
         )
         session.add(record)
     else:
@@ -90,6 +125,8 @@ async def set_processing(session: AsyncSession, tournament_id: int, filename: st
         record.started_at = datetime.now(timezone.utc)
         record.error_message = None
         record.finished_at = None
+        if content_hash is not None:
+            record.content_hash = content_hash
 
     try:
         await session.commit()

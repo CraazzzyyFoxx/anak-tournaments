@@ -9,6 +9,7 @@ members = [
     "balancer-service",
     "discord-service",
     "parser-service",
+    "shared",
     "twitch-service",
 ]
 
@@ -247,6 +248,7 @@ dependencies = [
     { name = "regex" },
     { name = "sentry-sdk" },
     { name = "setuptools" },
+    { name = "shared" },
     { name = "sqlalchemy" },
     { name = "sqlalchemy-utils" },
     { name = "tenacity" },
@@ -281,6 +283,7 @@ requires-dist = [
     { name = "regex", specifier = ">=2024.11.6" },
     { name = "sentry-sdk", specifier = ">=2.20.0" },
     { name = "setuptools", specifier = ">=75.8.0" },
+    { name = "shared", editable = "shared" },
     { name = "sqlalchemy", specifier = ">=2.0.37" },
     { name = "sqlalchemy-utils", specifier = ">=0.41.2" },
     { name = "tenacity", specifier = ">=9.0.0" },
@@ -442,6 +445,7 @@ dependencies = [
     { name = "regex" },
     { name = "sentry-sdk" },
     { name = "setuptools" },
+    { name = "shared" },
     { name = "socksio" },
     { name = "sqlalchemy" },
     { name = "sqlalchemy-utils" },
@@ -483,6 +487,7 @@ requires-dist = [
     { name = "regex", specifier = ">=2024.11.6" },
     { name = "sentry-sdk", specifier = ">=2.20.0" },
     { name = "setuptools", specifier = ">=75.8.0" },
+    { name = "shared", editable = "shared" },
     { name = "socksio", specifier = ">=1.0.0" },
     { name = "sqlalchemy", specifier = ">=2.0.37" },
     { name = "sqlalchemy-utils", specifier = ">=0.41.2" },
@@ -529,6 +534,7 @@ dependencies = [
     { name = "regex" },
     { name = "sentry-sdk" },
     { name = "setuptools" },
+    { name = "shared" },
     { name = "sqlalchemy" },
     { name = "sqlalchemy-utils" },
     { name = "tenacity" },
@@ -571,6 +577,7 @@ requires-dist = [
     { name = "regex", specifier = ">=2024.11.6" },
     { name = "sentry-sdk", specifier = ">=2.20.0" },
     { name = "setuptools", specifier = ">=75.8.0" },
+    { name = "shared", editable = "shared" },
     { name = "sqlalchemy", specifier = ">=2.0.37" },
     { name = "sqlalchemy-utils", specifier = ">=0.41.2" },
     { name = "tenacity", specifier = ">=9.0.0" },
@@ -865,6 +872,7 @@ dependencies = [
     { name = "regex" },
     { name = "sentry-sdk" },
     { name = "setuptools" },
+    { name = "shared" },
     { name = "socksio" },
     { name = "sqlalchemy" },
     { name = "sqlalchemy-utils" },
@@ -904,6 +912,7 @@ requires-dist = [
     { name = "regex", specifier = ">=2024.11.6" },
     { name = "sentry-sdk", specifier = ">=2.20.0" },
     { name = "setuptools", specifier = ">=75.8.0" },
+    { name = "shared", editable = "shared" },
     { name = "socksio", specifier = ">=1.0.0" },
     { name = "sqlalchemy", specifier = ">=2.0.37" },
     { name = "sqlalchemy-utils", specifier = ">=0.41.2" },
@@ -2113,6 +2122,7 @@ dependencies = [
     { name = "regex" },
     { name = "sentry-sdk" },
     { name = "setuptools" },
+    { name = "shared" },
     { name = "socksio" },
     { name = "sqlalchemy" },
     { name = "sqlalchemy-utils" },
@@ -2156,6 +2166,7 @@ requires-dist = [
     { name = "regex", specifier = ">=2024.11.6" },
     { name = "sentry-sdk", specifier = ">=2.20.0" },
     { name = "setuptools", specifier = ">=75.8.0" },
+    { name = "shared", editable = "shared" },
     { name = "socksio", specifier = ">=1.0.0" },
     { name = "sqlalchemy", specifier = ">=2.0.37" },
     { name = "sqlalchemy-utils", specifier = ">=0.41.2" },
@@ -2819,6 +2830,47 @@ wheels = [
 ]
 
 [[package]]
+name = "shared"
+version = "0.1.0"
+source = { editable = "shared" }
+dependencies = [
+    { name = "asyncpg" },
+    { name = "cashews" },
+    { name = "faststream", extra = ["rabbit"] },
+    { name = "httpx" },
+    { name = "loguru" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-sdk" },
+    { name = "orjson" },
+    { name = "psycopg", extra = ["binary"] },
+    { name = "pydantic", extra = ["email"] },
+    { name = "pydantic-settings" },
+    { name = "redis" },
+    { name = "sqlalchemy" },
+    { name = "sqlalchemy-utils" },
+    { name = "tenacity" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "asyncpg", specifier = ">=0.30.0" },
+    { name = "cashews", specifier = ">=7.4.0" },
+    { name = "faststream", extras = ["rabbit"], specifier = ">=0.6.4" },
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "loguru", specifier = ">=0.7.3" },
+    { name = "opentelemetry-api", specifier = ">=1.27.0" },
+    { name = "opentelemetry-sdk", specifier = ">=1.27.0" },
+    { name = "orjson", specifier = ">=3.10.14" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.2.3" },
+    { name = "pydantic", extras = ["email"], specifier = ">=2.10.5" },
+    { name = "pydantic-settings", specifier = ">=2.7.1" },
+    { name = "redis", specifier = ">=5.2.1" },
+    { name = "sqlalchemy", specifier = ">=2.0.37" },
+    { name = "sqlalchemy-utils", specifier = ">=0.41.2" },
+    { name = "tenacity", specifier = ">=9.0.0" },
+]
+
+[[package]]
 name = "shellingham"
 version = "1.5.4"
 source = { registry = "https://pypi.org/simple" }
@@ -2936,6 +2988,7 @@ dependencies = [
     { name = "regex" },
     { name = "sentry-sdk" },
     { name = "setuptools" },
+    { name = "shared" },
     { name = "sqlalchemy" },
     { name = "sqlalchemy-utils" },
     { name = "uvicorn" },
@@ -2968,6 +3021,7 @@ requires-dist = [
     { name = "regex", specifier = ">=2024.11.6" },
     { name = "sentry-sdk", specifier = ">=2.20.0" },
     { name = "setuptools", specifier = ">=75.8.0" },
+    { name = "shared", editable = "shared" },
     { name = "sqlalchemy", specifier = ">=2.0.37" },
     { name = "sqlalchemy-utils", specifier = ">=0.41.2" },
     { name = "uvicorn", specifier = ">=0.34.0" },

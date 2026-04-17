@@ -57,6 +57,7 @@ class UserRole(BaseModel):
     maps_won: int
     maps: int
     division: int
+    division_grid_version: DivisionGridVersionRead | None = None
 
 
 class MatchReadWithUserStats(schemas.MatchRead):

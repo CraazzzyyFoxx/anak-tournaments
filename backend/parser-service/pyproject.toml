@@ -44,6 +44,7 @@ dependencies = [
     "uvloop; platform_system == 'Linux'",
     "ortools>=9.15.6755",
     "apscheduler>=3.10.4",
+    "shared",
 ]
 
 

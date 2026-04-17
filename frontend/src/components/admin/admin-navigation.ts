@@ -84,7 +84,7 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         title: "Tournaments",
         href: "/admin/tournaments",
         icon: Trophy,
-        description: "Manage tournament lifecycle, groups, and schedules.",
+        description: "Manage tournament lifecycle, stages, and schedules.",
         permissions: ["tournament.read"],
       },
       {

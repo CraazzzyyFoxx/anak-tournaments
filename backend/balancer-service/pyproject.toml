@@ -43,4 +43,5 @@ dependencies = [
      "uvicorn>=0.34.0",
      "uvloop; platform_system == 'Linux'",
      "ortools>=9.15.6755",
+     "shared",
 ]

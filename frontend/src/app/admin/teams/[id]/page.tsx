@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { ArrowLeft, ArrowLeftRight, Shield, Sparkles, Star, StarHalf, Trophy, UserCircle2, Users } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 
+import { AdminDetailTableShell, getAdminDetailTableStyles } from "@/components/admin/AdminDetailTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { Badge } from "@/components/ui/badge";
@@ -30,16 +31,10 @@ type AdminTeamDetail = Team & {
   players: (Player & { user?: User | null })[];
 };
 
-const adminDetailTableShell = "overflow-hidden rounded-xl border border-border/60 bg-background/40";
-const adminDetailTableHeaderRow = "border-border/60 hover:bg-transparent";
-const adminDetailTableHead =
-  "h-11 bg-muted/15 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/90 first:pl-4 last:pr-4";
-const adminDetailTableRow = "border-border/50 transition-colors duration-200 hover:bg-muted/20";
-const adminDetailTableCell = "py-3.5 first:pl-4 last:pr-4";
-
 export default function AdminTeamWorkspacePage() {
   const params = useParams<{ id: string }>();
   const teamId = Number(params.id);
+  const tableStyles = getAdminDetailTableStyles("comfortable");
 
   const teamQuery = useQuery({
     queryKey: ["admin", "team", teamId],
@@ -146,34 +141,34 @@ export default function AdminTeamWorkspacePage() {
             <CardDescription>Current players assigned to this team.</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className={adminDetailTableShell}>
+            <AdminDetailTableShell variant="comfortable">
               <Table>
                 <TableHeader>
-                  <TableRow className={adminDetailTableHeaderRow}>
-                    <TableHead className={adminDetailTableHead}>Player</TableHead>
-                    <TableHead className={adminDetailTableHead}>Role</TableHead>
-                    <TableHead className={adminDetailTableHead}>Rank</TableHead>
-                    <TableHead className={adminDetailTableHead}>Flags</TableHead>
+                  <TableRow className={tableStyles.headerRow}>
+                    <TableHead className={tableStyles.head}>Player</TableHead>
+                    <TableHead className={tableStyles.head}>Role</TableHead>
+                    <TableHead className={tableStyles.head}>Rank</TableHead>
+                    <TableHead className={tableStyles.head}>Flags</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {team.players?.map((player) => (
-                    <TableRow key={player.id} className={adminDetailTableRow}>
-                      <TableCell className={adminDetailTableCell}>
+                    <TableRow key={player.id} className={tableStyles.row}>
+                      <TableCell className={tableStyles.cell}>
                         <div className="font-medium">{player.name}</div>
                         <div className="text-xs text-muted-foreground">
                           {player.user?.name ? `Linked user: ${player.user.name}` : `User ID: ${player.user_id}`}
                         </div>
                       </TableCell>
-                      <TableCell className={adminDetailTableCell}>
+                      <TableCell className={tableStyles.cell}>
                         <Badge variant="outline" className="capitalize">
                           {player.role}
                         </Badge>
                       </TableCell>
-                      <TableCell className={adminDetailTableCell}>
+                      <TableCell className={tableStyles.cell}>
                         {player.rank} / {player.division}
                       </TableCell>
-                      <TableCell className={adminDetailTableCell}>
+                      <TableCell className={tableStyles.cell}>
                         <div className="flex flex-wrap gap-2">
                           {player.primary ? <StatusIcon icon={Star} label="Primary" variant="success" /> : null}
                           {player.secondary ? <StatusIcon icon={StarHalf} label="Secondary" variant="muted" /> : null}
@@ -185,7 +180,7 @@ export default function AdminTeamWorkspacePage() {
                   ))}
                 </TableBody>
               </Table>
-            </div>
+            </AdminDetailTableShell>
           </CardContent>
         </Card>
 

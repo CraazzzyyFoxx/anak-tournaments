@@ -6,13 +6,9 @@ import { ArrowRight, Layers3, Lock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatTournamentStages } from "@/lib/tournament-stages";
 import { SurfaceCard } from "./SurfaceCard";
 import type { Tournament } from "@/types/tournament.types";
-
-function formatDate(value?: Date | string | null) {
-  if (!value) return "-";
-  return new Date(value).toLocaleDateString();
-}
 
 interface RecentTournamentsProps {
   canRead: boolean;
@@ -48,13 +44,19 @@ export function RecentTournaments({ canRead, tournaments }: RecentTournamentsPro
                   href={`/admin/tournaments/${t.id}`}
                   className="flex items-center justify-between gap-3 px-3 py-2.5 bg-background/40 transition-colors hover:bg-accent/30"
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className="truncate text-sm font-medium text-foreground">{t.name}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium text-foreground">{t.name}</div>
+                    <div
+                      className="mt-0.5 truncate text-xs text-muted-foreground"
+                      title={formatTournamentStages(t.stages ?? []) || "No stages"}
+                    >
+                      {formatTournamentStages(t.stages ?? []) || "No stages"}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="flex items-center gap-1 text-xs text-muted-foreground">
                       <Layers3 className="size-3" />
-                      {t.groups?.length ?? 0}
+                      {t.stages?.length ?? 0}
                     </span>
                     <Badge variant={t.is_finished ? "outline" : "default"} className="text-xs">
                       {t.is_finished ? "Finished" : "Active"}

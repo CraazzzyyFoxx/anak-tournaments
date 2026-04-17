@@ -11,6 +11,7 @@
  */
 
 import type { DivisionGridVersion, DivisionTier } from "@/types/workspace.types";
+import { getTierForRank } from "@/lib/division-grid";
 import workspaceService from "@/services/workspace.service";
 
 // ---------------------------------------------------------------------------
@@ -22,15 +23,7 @@ import workspaceService from "@/services/workspace.service";
  * Mirrors backend DivisionGrid.resolve_division().
  */
 function resolveTier(version: DivisionGridVersion, rank: number): DivisionTier | null {
-  for (const tier of version.tiers) {
-    if (tier.rank_max === null) {
-      if (rank >= tier.rank_min) return tier;
-    } else if (rank >= tier.rank_min && rank <= tier.rank_max) {
-      return tier;
-    }
-  }
-  // Fallback to last tier (lowest rank)
-  return version.tiers.length > 0 ? version.tiers[version.tiers.length - 1] : null;
+  return getTierForRank(version, rank);
 }
 
 // ---------------------------------------------------------------------------

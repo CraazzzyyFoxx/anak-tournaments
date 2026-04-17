@@ -326,7 +326,7 @@ export default function TournamentParticipantsPage({
                   <th
                     key={col.id}
                     className={cn(
-                      "px-3 py-2.5 text-xs font-medium uppercase tracking-wider text-white/40",
+                      "px-2 py-2 text-xs font-medium uppercase tracking-wider text-white/40",
                       RESPONSIVE_CLASS[col.responsive ?? "always"],
                       ALIGN_CLASS[col.align ?? "left"],
                       col.widthClass,
@@ -347,7 +347,7 @@ export default function TournamentParticipantsPage({
                     <td
                       key={col.id}
                       className={cn(
-                        "px-3 py-2.5",
+                        "px-2 py-2",
                         RESPONSIVE_CLASS[col.responsive ?? "always"],
                         ALIGN_CLASS[col.align ?? "left"],
                         col.widthClass,
