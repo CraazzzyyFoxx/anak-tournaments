@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlalchemy as sa
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from shared.balancer_registration_statuses import build_unknown_status_meta, get_status_metas_map
 from shared.division_grid import DivisionGrid, load_runtime_grid
 from sqlalchemy.exc import IntegrityError
@@ -248,6 +248,7 @@ async def withdraw_my_registration(
 
 @router.get("/list", response_model=list[RegistrationListRead])
 async def list_registrations(
+    response: Response,
     workspace_id: int,
     tournament_id: int,
     session: AsyncSession = Depends(db.get_async_session),
@@ -265,6 +266,7 @@ async def list_registrations(
         .options(selectinload(models.BalancerRegistration.roles))
         .order_by(models.BalancerRegistration.submitted_at.asc())
     )
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     registrations = result.scalars().all()
     status_meta_map = await get_status_metas_map(session, workspace_id=workspace_id)
 
