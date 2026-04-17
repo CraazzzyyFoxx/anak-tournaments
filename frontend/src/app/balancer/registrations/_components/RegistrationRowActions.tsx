@@ -9,7 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuTrigger,
+  DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import type { AdminRegistration } from "@/types/balancer-admin.types";
 
@@ -29,35 +29,75 @@ function PrimaryAction({
   registration,
   onApprove,
   onToggleBalancer,
-  onRestore,
+  onRestore
 }: Pick<
   RegistrationRowActionsProps,
   "registration" | "onApprove" | "onToggleBalancer" | "onRestore"
 >) {
-  if (registration.status === "pending") {
+  const { status, status_meta } = registration;
+
+  if (status === "pending") {
     return (
-      <Button size="sm" variant="outline" className="h-8 px-2.5 text-xs" onClick={() => onApprove(registration.id)}>
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-8 px-2.5 text-xs"
+        onClick={() => onApprove(registration.id)}
+      >
         <Check className="mr-1.5 h-3.5 w-3.5" />
         Approve
       </Button>
     );
   }
 
-  if (registration.status === "approved") {
+  if (status === "approved") {
     const inBalancer = registration.balancer_status === "ready";
     return (
-      <Button size="sm" variant="outline" className="h-8 px-2.5 text-xs" onClick={() => onToggleBalancer(registration)}>
-        {inBalancer ? <ShieldX className="mr-1.5 h-3.5 w-3.5" /> : <Check className="mr-1.5 h-3.5 w-3.5" />}
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-8 px-2.5 text-xs"
+        onClick={() => onToggleBalancer(registration)}
+      >
+        {inBalancer ? (
+          <ShieldX className="mr-1.5 h-3.5 w-3.5" />
+        ) : (
+          <Check className="mr-1.5 h-3.5 w-3.5" />
+        )}
         {inBalancer ? "Remove" : "Add"}
       </Button>
     );
   }
 
-  if (registration.status === "withdrawn") {
+  if (status === "withdrawn") {
     return (
-      <Button size="sm" variant="outline" className="h-8 px-2.5 text-xs" onClick={() => onRestore(registration.id)}>
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-8 px-2.5 text-xs"
+        onClick={() => onRestore(registration.id)}
+      >
         <Undo2 className="mr-1.5 h-3.5 w-3.5" />
         Restore
+      </Button>
+    );
+  }
+
+  if (status_meta.kind === "custom") {
+    const inBalancer = registration.balancer_status === "ready";
+    return (
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-8 px-2.5 text-xs"
+        onClick={() => onToggleBalancer(registration)}
+      >
+        {inBalancer ? (
+          <ShieldX className="mr-1.5 h-3.5 w-3.5" />
+        ) : (
+          <Check className="mr-1.5 h-3.5 w-3.5" />
+        )}
+        {inBalancer ? "Remove" : "Add"}
       </Button>
     );
   }
@@ -74,7 +114,7 @@ export default function RegistrationRowActions({
   onToggleCheckIn,
   onWithdraw,
   onRestore,
-  onDelete,
+  onDelete
 }: RegistrationRowActionsProps) {
   const inBalancer = registration.balancer_status === "ready";
 
@@ -89,7 +129,11 @@ export default function RegistrationRowActions({
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg border border-white/10 text-white/55 hover:bg-white/5 hover:text-white">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 rounded-lg border border-white/10 text-white/55 hover:bg-white/5 hover:text-white"
+          >
             <MoreHorizontal className="h-4 w-4" />
             <span className="sr-only">Registration actions</span>
           </Button>
@@ -116,7 +160,7 @@ export default function RegistrationRowActions({
             </>
           ) : null}
 
-          {registration.status === "approved" ? (
+          {registration.status === "approved" || registration.status_meta.kind === "custom" ? (
             <>
               <DropdownMenuItem onClick={() => onToggleBalancer(registration)}>
                 {inBalancer ? <ShieldX className="h-4 w-4" /> : <Check className="h-4 w-4" />}
