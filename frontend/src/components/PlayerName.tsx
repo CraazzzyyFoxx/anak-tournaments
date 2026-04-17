@@ -16,6 +16,8 @@ const PlayerName = ({
 }) => {
   const name = player.name.split("#")[0];
   const tag = player.name.split("#")[1];
+  const hasPlayerRoleInfo = "role" in player;
+  const playerRoleInfo = hasPlayerRoleInfo ? (player as Player) : null;
 
   return (
     <div className="flex flex-col">
@@ -30,9 +32,8 @@ const PlayerName = ({
         )}
       </div>
       <div>
-        {includeSpecialization && (
-          // @ts-ignore
-          <p className="text-xs text-muted-foreground">{getPlayerType(player)}</p>
+        {includeSpecialization && playerRoleInfo && (
+          <p className="text-xs text-muted-foreground">{getPlayerType(playerRoleInfo)}</p>
         )}
       </div>
     </div>

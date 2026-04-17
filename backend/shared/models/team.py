@@ -1,6 +1,17 @@
 import typing
 
-from sqlalchemy import Boolean, Enum, Float, ForeignKey, Index, Integer, String, text
+from sqlalchemy import (
+    Boolean,
+    Enum,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db, enums
@@ -10,7 +21,7 @@ from shared.models.user import User
 if typing.TYPE_CHECKING:
     from shared.models.standings import Standing
 
-__all__ = ("Team", "ChallongeTeam", "Player")
+__all__ = ("Team", "ChallongeTeam", "Player", "PlayerSubRole")
 
 
 class Team(db.TimeStampIntegerMixin):
@@ -48,12 +59,12 @@ class Player(db.TimeStampIntegerMixin):
             "tournament_id",
             postgresql_where=text("is_substitution = false"),
         ),
+        Index("ix_player_tournament_role_sub_role", "tournament_id", "role", "sub_role"),
         {"schema": "tournament"},
     )
 
     name: Mapped[str] = mapped_column(String())
-    primary: Mapped[bool] = mapped_column(Boolean())
-    secondary: Mapped[bool] = mapped_column(Boolean())
+    sub_role: Mapped[str | None] = mapped_column(String(128), nullable=True)
     rank: Mapped[int] = mapped_column(Integer())
     role: Mapped[enums.HeroClass | None] = mapped_column(
         Enum(enums.HeroClass), nullable=True
@@ -76,6 +87,38 @@ class Player(db.TimeStampIntegerMixin):
 
     def __repr__(self):
         return f"<Player name={self.name} role={self.role}>"
+
+
+class PlayerSubRole(db.TimeStampIntegerMixin):
+    __tablename__ = "player_sub_role"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id",
+            "role",
+            "slug",
+            name="uq_player_sub_role_workspace_role_slug",
+        ),
+        Index(
+            "ix_player_sub_role_workspace_role_active",
+            "workspace_id",
+            "role",
+            "is_active",
+        ),
+        Index("ix_player_sub_role_workspace_id", "workspace_id"),
+        {"schema": "tournament"},
+    )
+
+    workspace_id: Mapped[int] = mapped_column(
+        ForeignKey("workspace.id", ondelete="CASCADE")
+    )
+    role: Mapped[str] = mapped_column(String(64))
+    slug: Mapped[str] = mapped_column(String(128))
+    label: Mapped[str] = mapped_column(String(128))
+    description: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer(), server_default="0", default=0)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean(), server_default="true", default=True
+    )
 
 
 class ChallongeTeam(db.TimeStampIntegerMixin):

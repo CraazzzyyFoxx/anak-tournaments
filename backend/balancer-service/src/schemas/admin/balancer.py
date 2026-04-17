@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from src.schemas.base import BaseRead
 
 BalancerRole = Literal["tank", "dps", "support"]
-BalancerRoleSubtype = Literal["hitscan", "projectile", "main_heal", "light_heal"]
+BalancerRoleSubtype = str
 DuplicateResolution = Literal["replace", "skip"]
 DuplicateStrategy = Literal["manual", "replace_all", "skip_all"]
 RegistrationStatus = str

@@ -1,21 +1,38 @@
 import { Player } from "@/types/team.types";
 import { User, UserProfile } from "@/types/user.types";
 
-export const getPlayerType = (player: Player) => {
-  let type = "ㅤ";
-  if (player.role == "Damage" && player.primary) {
-    type = "Hitscan";
+type PlayerRoleInfo = Pick<Player, "role"> & {
+  sub_role?: string | null;
+};
+
+const SUB_ROLE_LABELS: Record<string, string> = {
+  hitscan: "Hitscan",
+  projectile: "Projectile",
+  main_heal: "Main Heal",
+  light_heal: "Light Heal"
+};
+
+export const formatSubRoleLabel = (subRole: string | null | undefined) => {
+  if (!subRole) {
+    return null;
   }
-  if (player.role == "Damage" && player.secondary) {
-    type = "Projectile";
+
+  return (
+    SUB_ROLE_LABELS[subRole] ??
+    subRole
+      .split(/[_-]+/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ")
+  );
+};
+
+export const getPlayerType = (player: PlayerRoleInfo) => {
+  const subRoleLabel = formatSubRoleLabel(player.sub_role);
+  if (subRoleLabel) {
+    return subRoleLabel;
   }
-  if (player.role == "Support" && player.primary) {
-    type = "Main Heal";
-  }
-  if (player.role == "Support" && player.secondary) {
-    type = "Light Heal";
-  }
-  return type;
+  return "ㅤ";
 };
 
 export const sortTeamPlayers = (players: Player[]) => {
@@ -33,10 +50,11 @@ export const sortTeamPlayers = (players: Player[]) => {
   const roots: Player[] = [];
 
   for (const player of players) {
-    if (player.is_substitution && playerById.has(player.relative_player)) {
-      const list = children.get(player.relative_player) ?? [];
+    const relatedPlayerId = player.related_player_id ?? player.relative_player ?? null;
+    if (player.is_substitution && relatedPlayerId !== null && playerById.has(relatedPlayerId)) {
+      const list = children.get(relatedPlayerId) ?? [];
       list.push(player);
-      children.set(player.relative_player, list);
+      children.set(relatedPlayerId, list);
     } else {
       roots.push(player);
     }

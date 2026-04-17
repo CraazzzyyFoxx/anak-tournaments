@@ -26,8 +26,7 @@ __all__ = (
 class BalancerTeamMember(BaseModel):
     uuid: UUID4
     name: str
-    primary: bool
-    secondary: bool
+    sub_role: str | None = None
     role: typing.Literal["tank", "dps", "support"]
     rank: int
 
@@ -42,8 +41,7 @@ class BalancerTeam(BaseModel):
 
 class PlayerRead(BaseRead):
     name: str
-    primary: bool
-    secondary: bool
+    sub_role: str | None
     rank: int
     division: int
     role: str | None

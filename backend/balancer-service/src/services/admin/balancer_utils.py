@@ -37,11 +37,12 @@ DEFAULT_SYNC_INTERVAL_SECONDS = 300
 """Default interval (seconds) between automatic Google Sheet feed syncs."""
 
 VALID_ROLES = {"tank", "dps", "support"}
-VALID_ROLE_SUBTYPES: dict[str, set[str]] = {
+LEGACY_ROLE_SUBTYPES: dict[str, set[str]] = {
     "tank": set(),
     "dps": {"hitscan", "projectile"},
     "support": {"main_heal", "light_heal"},
 }
+VALID_ROLE_SUBTYPES = LEGACY_ROLE_SUBTYPES
 
 ROLE_ORDER = ("tank", "dps", "support")
 

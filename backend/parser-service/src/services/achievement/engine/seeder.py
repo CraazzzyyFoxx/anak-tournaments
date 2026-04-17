@@ -467,7 +467,7 @@ def _team_rules(workspace_id: int) -> list[AchievementRule]:
                     "condition": {
                         "AND": [
                             {"type": "player_role", "params": {"role": "Damage"}},
-                            {"type": "player_flag", "params": {"flag": "primary"}},
+                            {"type": "player_sub_role", "params": {"sub_role": "hitscan"}},
                         ]
                     },
                 },
@@ -488,7 +488,7 @@ def _team_rules(workspace_id: int) -> list[AchievementRule]:
                     "condition": {
                         "AND": [
                             {"type": "player_role", "params": {"role": "Damage"}},
-                            {"type": "player_flag", "params": {"flag": "secondary"}},
+                            {"type": "player_sub_role", "params": {"sub_role": "projectile"}},
                         ]
                     },
                 },
@@ -509,7 +509,7 @@ def _team_rules(workspace_id: int) -> list[AchievementRule]:
                     "condition": {
                         "AND": [
                             {"type": "player_role", "params": {"role": "Support"}},
-                            {"type": "player_flag", "params": {"flag": "primary"}},
+                            {"type": "player_sub_role", "params": {"sub_role": "main_heal"}},
                         ]
                     },
                 },
@@ -530,7 +530,7 @@ def _team_rules(workspace_id: int) -> list[AchievementRule]:
                     "condition": {
                         "AND": [
                             {"type": "player_role", "params": {"role": "Support"}},
-                            {"type": "player_flag", "params": {"flag": "secondary"}},
+                            {"type": "player_sub_role", "params": {"sub_role": "light_heal"}},
                         ]
                     },
                 },

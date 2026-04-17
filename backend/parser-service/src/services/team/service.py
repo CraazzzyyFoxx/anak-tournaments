@@ -1,6 +1,7 @@
 import typing
 
 import sqlalchemy as sa
+from shared.domain.player_sub_roles import normalize_sub_role
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.strategy_options import _AbstractLoad
@@ -240,8 +241,7 @@ async def create_player(
     session: AsyncSession,
     *,
     name: str,
-    primary: bool,
-    secondary: bool,
+    sub_role: str | None = None,
     rank: int,
     role: enums.HeroClass,
     user: models.User,
@@ -254,8 +254,7 @@ async def create_player(
 ) -> models.Player:
     player = models.Player(
         name=name,
-        primary=primary,
-        secondary=secondary,
+        sub_role=normalize_sub_role(sub_role),
         rank=rank,
         role=role,
         user_id=user.id,
@@ -276,8 +275,7 @@ def create_player_sync(
     session: Session,
     *,
     name: str,
-    primary: bool,
-    secondary: bool,
+    sub_role: str | None = None,
     rank: int,
     role: enums.HeroClass,
     user: models.User,
@@ -290,8 +288,7 @@ def create_player_sync(
 ) -> models.Player:
     player = models.Player(
         name=name,
-        primary=primary,
-        secondary=secondary,
+        sub_role=normalize_sub_role(sub_role),
         rank=rank,
         role=role,
         user_id=user.id,

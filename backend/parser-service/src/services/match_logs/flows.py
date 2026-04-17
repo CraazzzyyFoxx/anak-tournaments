@@ -824,8 +824,7 @@ class MatchLogProcessor:
         new_player = await team_service.create_player(
             session,
             name=sub_user.name,
-            primary=player_data_source.primary if player_data_source else False,
-            secondary=player_data_source.secondary if player_data_source else False,
+            sub_role=player_data_source.sub_role if player_data_source else None,
             rank=player_data_source.rank if player_data_source else player_to_be_replaced.rank,
             role=player_to_be_replaced.role,
             user=sub_user,

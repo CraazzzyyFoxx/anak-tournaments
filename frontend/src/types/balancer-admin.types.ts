@@ -1,6 +1,6 @@
 export type BalancerRoleCode = "tank" | "dps" | "support";
 export type BalancerRosterKey = "Tank" | "Damage" | "Support";
-export type BalancerRoleSubtype = "hitscan" | "projectile" | "main_heal" | "light_heal";
+export type BalancerRoleSubtype = string;
 export type DuplicateResolution = "replace" | "skip";
 export type DuplicateStrategy = "manual" | "replace_all" | "skip_all";
 
@@ -78,6 +78,7 @@ export interface InternalBalancePlayer {
   isCaptain?: boolean;
   isFlex?: boolean;
   preferences: string[];
+  subRole?: BalancerRoleSubtype | null;
   allRatings?: Record<string, number>;
 }
 

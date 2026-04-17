@@ -39,8 +39,7 @@ class PlayerCreate(BaseModel):
     role: str | None = None
     rank: int = 0
     div: int = 0
-    primary: bool = False
-    secondary: bool = False
+    sub_role: str | None = None
     is_newcomer: bool = False
     is_newcomer_role: bool = False
     is_substitution: bool = False
@@ -54,8 +53,7 @@ class PlayerUpdate(BaseModel):
     role: str | None = None
     rank: int | None = None
     div: int | None = None
-    primary: bool | None = None
-    secondary: bool | None = None
+    sub_role: str | None = None
     is_newcomer: bool | None = None
     is_newcomer_role: bool | None = None
     is_substitution: bool | None = None

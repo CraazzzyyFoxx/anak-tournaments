@@ -10,6 +10,8 @@ import logging
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from shared.domain.player_sub_roles import normalize_sub_role
 from src import models
 from src.core.enums import HeroClass
 from src.schemas.team import BalancerTeam
@@ -109,8 +111,7 @@ async def bulk_create_from_balancer(
 
             player = models.Player(
                 name=member.name,
-                primary=member.primary,
-                secondary=member.secondary,
+                sub_role=normalize_sub_role(member.sub_role),
                 rank=member.rank,
                 role=role,
                 user_id=user.id,

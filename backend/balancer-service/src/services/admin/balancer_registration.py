@@ -10,6 +10,7 @@ from uuid import uuid4
 import httpx
 import sqlalchemy as sa
 from fastapi import HTTPException, status
+from shared.domain.player_sub_roles import normalize_sub_role
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 from src import models
@@ -141,7 +142,7 @@ def map_subrole_token(value: str | None, value_mapping: dict[str, Any]) -> str |
     }
     mapped = custom_map.get(normalized)
     if mapped:
-        return mapped
+        return normalize_sub_role(mapped)
     return DEFAULT_SUBROLE_VALUE_MAP.get(normalized)
 
 
@@ -670,7 +671,7 @@ def replace_registration_roles(registration: models.BalancerRegistration, roles:
             registration_role = models.BalancerRegistrationRole(role=role_code)
 
         registration_role.role = role_code
-        registration_role.subrole = role.get("subrole")
+        registration_role.subrole = normalize_sub_role(role.get("subrole"))
         registration_role.is_primary = bool(role.get("is_primary", index == 0))
         registration_role.priority = index
         registration_role.rank_value = role.get("rank_value")

@@ -56,6 +56,10 @@ const CONDITION_TYPES = [
   { value: "hero_stat", label: "Hero Stat" },
   { value: "team_players_match", label: "Team Players Match" },
   { value: "captain_property", label: "Captain Property" },
+  { value: "player_role", label: "Player Role" },
+  { value: "player_sub_role", label: "Player Sub-role" },
+  { value: "player_div", label: "Player Division" },
+  { value: "player_flag", label: "Player Flag (Legacy)" },
   { value: "encounter_score", label: "Encounter Score" },
   { value: "encounter_revenge", label: "Encounter Revenge" },
   { value: "bracket_path", label: "Bracket Path" },
@@ -332,6 +336,10 @@ function formatParamsSummary(type: string, params: Record<string, unknown>): str
     parts.push(`newcomer count ${params.op} ${params.value}`);
   }
   if (params.field && type === "distinct_count") parts.push(`${params.field} ${params.op} ${params.value}`);
+  if (type === "player_role") parts.push(`role: ${params.role ?? ""}`);
+  if (type === "player_sub_role") parts.push(`sub-role: ${params.sub_role ?? ""}`);
+  if (type === "player_flag") parts.push(`flag: ${params.flag ?? ""}`);
+  if (type === "player_div") parts.push(`div ${params.op ?? "=="} ${params.value ?? ""}`);
   if (params.fields && type === "stable_streak") {
     const fields = params.fields as string[];
     parts.push(`[${fields.join(", ")}] streak >= ${params.min_streak ?? 2}`);
@@ -415,6 +423,42 @@ function LeafNode({ data, id }: NodeProps) {
               <Input className="h-7 text-xs" type="number" value={(params.value as number) ?? 0} onChange={(e) => setParam("value", Number(e.target.value))} />
             </div>
           </>
+        )}
+        {d.conditionType === "player_role" && (
+          <Select value={(params.role as string) ?? "Damage"} onValueChange={(v) => setParam("role", v)}>
+            <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Tank">Tank</SelectItem>
+              <SelectItem value="Damage">Damage</SelectItem>
+              <SelectItem value="Support">Support</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
+        {d.conditionType === "player_sub_role" && (
+          <Input
+            className="h-7 text-xs"
+            value={(params.sub_role as string) ?? ""}
+            placeholder="e.g. hitscan"
+            onChange={(e) => setParam("sub_role", e.target.value)}
+          />
+        )}
+        {d.conditionType === "player_flag" && (
+          <Select value={(params.flag as string) ?? "primary"} onValueChange={(v) => setParam("flag", v)}>
+            <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="primary">Primary</SelectItem>
+              <SelectItem value="secondary">Secondary</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
+        {d.conditionType === "player_div" && (
+          <div className="flex gap-1">
+            <Select value={(params.op as string) ?? "=="} onValueChange={(v) => setParam("op", v)}>
+              <SelectTrigger className="h-7 text-xs w-16"><SelectValue /></SelectTrigger>
+              <SelectContent>{OPERATORS.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+            </Select>
+            <Input className="h-7 text-xs" type="number" value={(params.value as number) ?? 1} onChange={(e) => setParam("value", Number(e.target.value))} />
+          </div>
         )}
         {/* ── op + value conditions ── */}
         {(d.conditionType === "standing_position" || d.conditionType === "tournament_count" || d.conditionType === "div_level") && (

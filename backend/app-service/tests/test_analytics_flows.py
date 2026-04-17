@@ -62,8 +62,7 @@ class AnalyticsFlowsTests(IsolatedAsyncioTestCase):
         player_payload = {
             "id": 42,
             "name": "Player",
-            "primary": True,
-            "secondary": False,
+            "sub_role": "hitscan",
             "rank": 2200,
             "division": 6,
             "role": "Damage",

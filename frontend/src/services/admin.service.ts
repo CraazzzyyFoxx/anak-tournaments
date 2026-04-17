@@ -58,6 +58,9 @@ import {
   LogProcessingRecord,
   QueueDepth,
   SeedResultRead,
+  PlayerSubRole,
+  PlayerSubRoleCreateInput,
+  PlayerSubRoleUpdateInput,
 } from "@/types/admin.types";
 
 class AdminService {
@@ -91,11 +94,13 @@ class AdminService {
   }
 
   async createTournamentWithGroups(params: {
+    workspace_id: number;
     number: number;
     challonge_slug: string;
     is_league: boolean;
     start_date: string;
     end_date: string;
+    division_grid_version_id?: number | null;
   }): Promise<Tournament> {
     const response = await apiFetch("parser", "tournament/create/with_groups", {
       method: "POST",
@@ -198,6 +203,39 @@ class AdminService {
 
   async deletePlayer(id: number): Promise<void> {
     await apiFetch("parser",`admin/players/${id}`, {
+      method: "DELETE"
+    });
+  }
+
+  async getPlayerSubRoles(params: {
+    workspace_id: number;
+    role?: string;
+    include_inactive?: boolean;
+  }): Promise<PlayerSubRole[]> {
+    const response = await apiFetch("parser", "admin/player-sub-roles", {
+      query: params
+    });
+    return response.json();
+  }
+
+  async createPlayerSubRole(data: PlayerSubRoleCreateInput): Promise<PlayerSubRole> {
+    const response = await apiFetch("parser", "admin/player-sub-roles", {
+      method: "POST",
+      body: data
+    });
+    return response.json();
+  }
+
+  async updatePlayerSubRole(id: number, data: PlayerSubRoleUpdateInput): Promise<PlayerSubRole> {
+    const response = await apiFetch("parser", `admin/player-sub-roles/${id}`, {
+      method: "PATCH",
+      body: data
+    });
+    return response.json();
+  }
+
+  async deletePlayerSubRole(id: number): Promise<void> {
+    await apiFetch("parser", `admin/player-sub-roles/${id}`, {
       method: "DELETE"
     });
   }

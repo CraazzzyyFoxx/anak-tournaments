@@ -34,3 +34,4 @@ package-dir = {"shared" = "."}
 
 [tool.setuptools.package-data]
 shared = ["**/*.py"]
+

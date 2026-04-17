@@ -209,8 +209,7 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
                     return_value=user_flows.schemas.PlayerRead.model_construct(
                         id=91,
                         name="Player Example",
-                        primary=False,
-                        secondary=False,
+                        sub_role=None,
                         rank=1500,
                         division=9,
                         role=enums.HeroClass.damage.value,

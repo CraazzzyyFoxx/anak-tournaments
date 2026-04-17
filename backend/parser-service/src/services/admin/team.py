@@ -1,12 +1,31 @@
 """Admin service layer for team and player CRUD operations"""
 
 from fastapi import HTTPException, status
+from shared.domain.player_sub_roles import normalize_sub_role
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src import models
 from src.schemas.admin import team as admin_schemas
+
+
+def _prepare_player_create_data(data: admin_schemas.PlayerCreate) -> dict:
+    player_data = data.model_dump()
+    player_data.pop("div", None)
+    player_data["sub_role"] = normalize_sub_role(player_data.get("sub_role"))
+    return player_data
+
+
+def _prepare_player_update_data(
+    player: models.Player,
+    data: admin_schemas.PlayerUpdate,
+) -> dict:
+    update_data = data.model_dump(exclude_unset=True)
+    update_data.pop("div", None)
+    if "sub_role" in update_data:
+        update_data["sub_role"] = normalize_sub_role(update_data["sub_role"])
+    return update_data
 
 # ─── Team CRUD ───────────────────────────────────────────────────────────────
 
@@ -133,7 +152,7 @@ async def add_player_to_team(session: AsyncSession, team_id: int, data: admin_sc
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     # Override team_id from URL parameter
-    player_data = data.model_dump()
+    player_data = _prepare_player_create_data(data)
     player_data["team_id"] = team_id
 
     # Create player
@@ -178,7 +197,7 @@ async def create_player(session: AsyncSession, data: admin_schemas.PlayerCreate)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
 
     # Create player
-    player = models.Player(**data.model_dump())
+    player = models.Player(**_prepare_player_create_data(data))
 
     session.add(player)
     await session.commit()
@@ -198,7 +217,7 @@ async def update_player(session: AsyncSession, player_id: int, data: admin_schem
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Player not found")
 
     # Update fields
-    update_data = data.model_dump(exclude_unset=True)
+    update_data = _prepare_player_update_data(player, data)
     for field, value in update_data.items():
         setattr(player, field, value)
 

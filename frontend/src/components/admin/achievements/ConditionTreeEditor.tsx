@@ -33,6 +33,10 @@ const CONDITION_TYPES = [
   { value: "hero_kd_best", label: "Hero K/D Best", grain: "tournament", params: ["hero_slug", "min_time", "min_matches"] },
   { value: "team_players_match", label: "Team Players Match", grain: "tournament", params: ["mode", "condition"] },
   { value: "captain_property", label: "Captain Property", grain: "tournament", params: ["condition"] },
+  { value: "player_role", label: "Player Role", grain: "subcondition", params: ["role"] },
+  { value: "player_sub_role", label: "Player Sub-role", grain: "subcondition", params: ["sub_role"] },
+  { value: "player_div", label: "Player Division", grain: "subcondition", params: ["op", "value"] },
+  { value: "player_flag", label: "Player Flag (Legacy)", grain: "subcondition", params: ["flag"] },
   { value: "encounter_score", label: "Encounter Score", grain: "tournament", params: ["round_type", "scores"] },
   { value: "encounter_revenge", label: "Encounter Revenge", grain: "tournament", params: [] },
   { value: "global_stat_sum", label: "Global Stat Sum", grain: "global", params: ["stat", "op", "value"] },
@@ -409,6 +413,66 @@ function LeafConditionEditor({ node, onChange, onRemove, depth }: LeafEditorProp
                       type="number"
                       value={(params.min_matches as number) ?? 3}
                       onChange={(e) => setParam("min_matches", Number(e.target.value))}
+                    />
+                  </div>
+                </>
+              )}
+
+              {condType === "player_role" && (
+                <div className="space-y-1">
+                  <Label className="text-xs">Role</Label>
+                  <Select value={(params.role as string) ?? "Damage"} onValueChange={(v) => setParam("role", v)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Tank">Tank</SelectItem>
+                      <SelectItem value="Damage">Damage</SelectItem>
+                      <SelectItem value="Support">Support</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {condType === "player_sub_role" && (
+                <div className="space-y-1">
+                  <Label className="text-xs">Sub-role</Label>
+                  <Input
+                    value={(params.sub_role as string) ?? ""}
+                    onChange={(e) => setParam("sub_role", e.target.value)}
+                    placeholder="e.g. hitscan"
+                  />
+                </div>
+              )}
+
+              {condType === "player_flag" && (
+                <div className="space-y-1">
+                  <Label className="text-xs">Flag</Label>
+                  <Select value={(params.flag as string) ?? "primary"} onValueChange={(v) => setParam("flag", v)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="primary">Primary</SelectItem>
+                      <SelectItem value="secondary">Secondary</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {condType === "player_div" && (
+                <>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Operator</Label>
+                    <Select value={(params.op as string) ?? "=="} onValueChange={(v) => setParam("op", v)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {OPERATORS.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Value</Label>
+                    <Input
+                      type="number"
+                      value={(params.value as number) ?? 1}
+                      onChange={(e) => setParam("value", Number(e.target.value))}
                     />
                   </div>
                 </>

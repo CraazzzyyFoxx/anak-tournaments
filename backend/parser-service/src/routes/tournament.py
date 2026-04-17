@@ -1,10 +1,9 @@
-from datetime import datetime, date
+from datetime import date
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from src import schemas
-from src.core import db, enums, auth
-
+from src import models, schemas
+from src.core import auth, db, enums
 from src.services.tournament import flows as tournament_flows
 
 router = APIRouter(
@@ -32,14 +31,29 @@ async def create(
 
 @router.post(path="/create/with_groups", response_model=schemas.TournamentRead)
 async def create_with_groups(
+    workspace_id: int,
     number: int,
     challonge_slug: str,
     is_league: bool,
     start_date: date,
     end_date: date,
+    division_grid_version_id: int | None = None,
     session=Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_permission("tournament", "create")),
 ):
+    if not user.is_workspace_member(workspace_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not a member of this workspace",
+        )
     tournament = await tournament_flows.create_with_groups(
-        session, number, is_league, start_date, end_date, challonge_slug
+        session,
+        workspace_id,
+        number,
+        is_league,
+        start_date,
+        end_date,
+        challonge_slug,
+        division_grid_version_id=division_grid_version_id,
     )
     return await tournament_flows.to_pydantic(session, tournament, [])

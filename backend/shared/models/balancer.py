@@ -195,7 +195,7 @@ class BalancerPlayerRoleEntry(db.TimeStampIntegerMixin):
         ForeignKey("balancer.player.id", ondelete="CASCADE"), index=True
     )
     role: Mapped[str] = mapped_column(String(16), nullable=False)
-    subtype: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    subtype: Mapped[str | None] = mapped_column(String(128), nullable=True)
     priority: Mapped[int] = mapped_column(Integer(), nullable=False)
     rank_value: Mapped[int | None] = mapped_column(Integer(), nullable=True)
     division_number: Mapped[int | None] = mapped_column(Integer(), nullable=True)
@@ -440,7 +440,7 @@ class BalancerRegistrationRole(db.TimeStampIntegerMixin):
         ForeignKey("balancer.registration.id", ondelete="CASCADE"), index=True
     )
     role: Mapped[str] = mapped_column(String(16), nullable=False)
-    subrole: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    subrole: Mapped[str | None] = mapped_column(String(128), nullable=True)
     is_primary: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
     priority: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="0", default=0)
     rank_value: Mapped[int | None] = mapped_column(Integer(), nullable=True)

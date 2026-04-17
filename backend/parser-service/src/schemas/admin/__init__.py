@@ -7,6 +7,7 @@ from .user import *
 from .hero import *
 from .gamemode import *
 from .map import *
+from .player_sub_role import *
 
 __all__ = (
     # Tournament schemas
@@ -18,6 +19,9 @@ __all__ = (
     # Player schemas
     "PlayerCreate",
     "PlayerUpdate",
+    "PlayerSubRoleCreate",
+    "PlayerSubRoleRead",
+    "PlayerSubRoleUpdate",
     # Encounter schemas
     "EncounterCreate",
     "EncounterUpdate",

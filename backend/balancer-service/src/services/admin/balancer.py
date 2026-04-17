@@ -12,6 +12,7 @@ import src.services.team as team_flows
 import src.services.user as user_flows
 import src.services.user as user_service
 from fastapi import HTTPException, status
+from shared.domain.player_sub_roles import normalize_sub_role
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from src import models
@@ -25,7 +26,6 @@ from src.services.admin.balancer_utils import (
     DEFAULT_SORT_PRIORITY_SENTINEL,
     GOOGLE_SHEET_FETCH_TIMEOUT,
     UNKNOWN_PRIORITY_SENTINEL,
-    VALID_ROLE_SUBTYPES,
     VALID_ROLES,
     build_csv_export_url,
     extract_sheet_source,
@@ -289,9 +289,7 @@ def normalize_role_entries(
             is_active_raw = entry.get("isActive")
         is_active = bool(True if is_active_raw is None else is_active_raw)
 
-        subtype = entry.get("subtype")
-        if subtype not in VALID_ROLE_SUBTYPES.get(role, set()):
-            subtype = None
+        subtype = normalize_sub_role(entry.get("subtype"))
 
         division_number = entry.get("division_number")
         rank_value = entry.get("rank_value")
@@ -620,17 +618,22 @@ async def resolve_import_context(
 
 
 def serialize_player_for_export(player: models.BalancerPlayer, export_uuid: str) -> dict[str, Any]:
-    role_entries = [
-        {
-            "role": e.role,
-            "subtype": e.subtype,
-            "priority": e.priority,
-            "rank_value": e.rank_value,
-            "division_number": e.division_number,
-            "is_active": e.is_active,
-        }
-        for e in sorted(player.role_entries, key=lambda e: e.priority)
-    ]
+    loaded_role_entries = getattr(player, "role_entries", None)
+    if loaded_role_entries is not None:
+        role_entries = [
+            {
+                "role": e.role,
+                "subtype": e.subtype,
+                "priority": e.priority,
+                "rank_value": e.rank_value,
+                "division_number": e.division_number,
+                "is_active": e.is_active,
+            }
+            for e in sorted(loaded_role_entries, key=lambda e: e.priority)
+        ]
+    else:
+        role_entries = normalize_role_entries(getattr(player, "role_entries_json", []))
+
     if player.is_flex:
         export_priorities = dict.fromkeys(EXPORT_ROLE_ORDER, 0)
     else:

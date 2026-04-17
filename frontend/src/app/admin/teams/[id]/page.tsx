@@ -24,6 +24,7 @@ import adminService from "@/services/admin.service";
 import type { Team, Player } from "@/types/team.types";
 import type { Tournament } from "@/types/tournament.types";
 import type { User } from "@/types/user.types";
+import { formatSubRoleLabel } from "@/utils/player";
 
 type AdminTeamDetail = Team & {
   captain?: User | null;
@@ -147,6 +148,7 @@ export default function AdminTeamWorkspacePage() {
                   <TableRow className={tableStyles.headerRow}>
                     <TableHead className={tableStyles.head}>Player</TableHead>
                     <TableHead className={tableStyles.head}>Role</TableHead>
+                    <TableHead className={tableStyles.head}>Sub-role</TableHead>
                     <TableHead className={tableStyles.head}>Rank</TableHead>
                     <TableHead className={tableStyles.head}>Flags</TableHead>
                   </TableRow>
@@ -166,12 +168,13 @@ export default function AdminTeamWorkspacePage() {
                         </Badge>
                       </TableCell>
                       <TableCell className={tableStyles.cell}>
+                        {formatSubRoleLabel(player.sub_role) ?? "-"}
+                      </TableCell>
+                      <TableCell className={tableStyles.cell}>
                         {player.rank} / {player.division}
                       </TableCell>
                       <TableCell className={tableStyles.cell}>
                         <div className="flex flex-wrap gap-2">
-                          {player.primary ? <StatusIcon icon={Star} label="Primary" variant="success" /> : null}
-                          {player.secondary ? <StatusIcon icon={StarHalf} label="Secondary" variant="muted" /> : null}
                           {player.is_newcomer ? <StatusIcon icon={Sparkles} label="Newcomer" variant="warning" /> : null}
                           {player.is_substitution ? <StatusIcon icon={ArrowLeftRight} label="Substitute" variant="info" /> : null}
                         </div>

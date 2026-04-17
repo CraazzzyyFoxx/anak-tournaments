@@ -1,5 +1,5 @@
 import typing
-from datetime import datetime, date
+from datetime import date, datetime
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -95,6 +95,7 @@ async def get_by_name(session: AsyncSession, name: str, entities: list[str]) -> 
 async def create(
     session: AsyncSession,
     *,
+    workspace_id: int,
     number: int,
     is_league: bool,
     name: str,
@@ -103,8 +104,10 @@ async def create(
     challonge_slug: str | None = None,
     start_date: datetime | date | None = None,
     end_date: datetime | date | None = None,
+    division_grid_version_id: int | None = None,
 ) -> models.Tournament:
     tournament = models.Tournament(
+        workspace_id=workspace_id,
         number=number,
         is_league=is_league,
         name=name,
@@ -112,7 +115,8 @@ async def create(
         challonge_id=challonge_id,
         challonge_slug=challonge_slug,
         start_date=start_date,
-        end_date=end_date
+        end_date=end_date,
+        division_grid_version_id=division_grid_version_id,
     )
     session.add(tournament)
     await session.commit()

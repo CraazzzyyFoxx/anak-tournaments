@@ -66,7 +66,8 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
   const showInlineChallonge = mode === "edit" || mode === "workspace-edit";
   const showSeparateChallonge = mode === "challonge-create";
   const showFinished = mode === "edit" || mode === "workspace-edit";
-  const showDivisionGrid = mode === "workspace-edit";
+  const showDivisionGrid =
+    mode === "workspace-edit" || mode === "manual-create" || mode === "challonge-create";
   const showScoring = mode === "workspace-edit";
   const showPeriods = mode === "workspace-edit";
 

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
-import { ArrowLeftRight, Plus, Pencil, Sparkles, Star, StarHalf, Trash2 } from "lucide-react";
+import { ArrowLeftRight, Plus, Pencil, Sparkles, Trash2 } from "lucide-react";
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { StatusIcon } from "@/components/admin/StatusIcon";
@@ -18,7 +18,8 @@ import teamService from "@/services/team.service";
 import tournamentService from "@/services/tournament.service";
 import adminService from "@/services/admin.service";
 import { Player, Team } from "@/types/team.types";
-import { PlayerCreateInput, PlayerUpdateInput } from "@/types/admin.types";
+import { PlayerCreateInput, PlayerSubRole, PlayerUpdateInput } from "@/types/admin.types";
+import { formatSubRoleLabel } from "@/utils/player";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -40,10 +41,9 @@ interface PlayerFormData {
   team_id: number;
   tournament_id: number;
   role: string;
+  sub_role: string;
   rank: number;
   division: number;
-  is_primary: boolean;
-  is_secondary: boolean;
   is_newcomer: boolean;
   is_newcomer_role: boolean;
   is_substitution: boolean;
@@ -73,6 +73,22 @@ function normalizePlayerRole(role: string | null | undefined): PlayerRoleOption 
   return "Damage";
 }
 
+function normalizeSubRoleCatalogRole(role: string | null | undefined) {
+  const normalized = normalizePlayerRole(role);
+  if (normalized === "Damage") {
+    return "damage";
+  }
+  if (normalized === "Support") {
+    return "support";
+  }
+  return "tank";
+}
+
+function filterSubRoleOptions(subRoles: PlayerSubRole[] | undefined, role: string) {
+  const catalogRole = normalizeSubRoleCatalogRole(role);
+  return (subRoles ?? []).filter((subRole) => subRole.role === catalogRole);
+}
+
 function RoleOptionContent({ role }: { role: PlayerRoleOption }) {
   return (
     <div className="flex items-center gap-2">
@@ -88,10 +104,9 @@ const defaultFormData: PlayerFormData = {
   team_id: 0,
   tournament_id: 0,
   role: "Damage",
+  sub_role: "",
   rank: 0,
   division: 0,
-  is_primary: false,
-  is_secondary: false,
   is_newcomer: false,
   is_newcomer_role: false,
   is_substitution: false,
@@ -106,10 +121,9 @@ function getEditPlayerForm(player: Player): PlayerFormData {
     ...defaultFormData,
     name: player.name,
     role: normalizePlayerRole(player.role),
+    sub_role: player.sub_role ?? "",
     rank: player.rank,
     division: player.division,
-    is_primary: player.primary,
-    is_secondary: player.secondary,
     is_newcomer: player.is_newcomer,
     is_newcomer_role: player.is_newcomer_role,
     is_substitution: player.is_substitution,
@@ -134,11 +148,10 @@ function buildPlayerCreateInput(formData: PlayerFormData): PlayerCreateInput {
     role: normalizePlayerRole(formData.role),
     rank: formData.rank,
     div: formData.division,
-    primary: formData.is_primary,
-    secondary: formData.is_secondary,
     is_newcomer: formData.is_newcomer,
     is_newcomer_role: formData.is_newcomer_role,
     is_substitution: formData.is_substitution,
+    ...(formData.sub_role ? { sub_role: formData.sub_role } : {}),
   };
 }
 
@@ -148,11 +161,10 @@ function buildPlayerUpdateInput(formData: PlayerFormData): PlayerUpdateInput {
     role: normalizePlayerRole(formData.role),
     rank: formData.rank,
     div: formData.division,
-    primary: formData.is_primary,
-    secondary: formData.is_secondary,
     is_newcomer: formData.is_newcomer,
     is_newcomer_role: formData.is_newcomer_role,
     is_substitution: formData.is_substitution,
+    ...(formData.sub_role ? { sub_role: formData.sub_role } : {}),
   };
 }
 
@@ -180,6 +192,14 @@ export default function PlayersPage() {
   const { data: teamsData } = useQuery({
     queryKey: ["teams", selectedTournamentId],
     queryFn: () => teamService.getAll(selectedTournamentId),
+  });
+
+  const selectedTournament = tournamentsData?.results.find((tournament) => tournament.id === selectedTournamentId);
+  const selectedWorkspaceId = selectedTournament?.workspace_id;
+  const { data: playerSubRoles } = useQuery({
+    queryKey: ["player-sub-roles", selectedWorkspaceId],
+    queryFn: () => adminService.getPlayerSubRoles({ workspace_id: selectedWorkspaceId! }),
+    enabled: Boolean(selectedWorkspaceId),
   });
 
   // Form state
@@ -295,6 +315,9 @@ export default function PlayersPage() {
   const isCreateDirty = createDialogOpen && hasUnsavedChanges(formData, createFormInitial);
   const isEditDirty = editDialogOpen && hasUnsavedChanges(formData, editFormInitial);
 
+  const subRoleOptions = filterSubRoleOptions(playerSubRoles, formData.role);
+  const hasCurrentSubRoleOption = subRoleOptions.some((subRole) => subRole.slug === formData.sub_role);
+
   const columns: ColumnDef<PlayerRow>[] = [
     {
       accessorKey: "name",
@@ -314,6 +337,11 @@ export default function PlayersPage() {
       accessorKey: "rank",
       header: "Rank",
       cell: ({ row }) => <div>{row.getValue("rank")}</div>
+    },
+    {
+      accessorKey: "sub_role",
+      header: "Sub-role",
+      cell: ({ row }) => <div>{formatSubRoleLabel(row.getValue<string | null>("sub_role")) ?? "-"}</div>
     },
     {
       accessorKey: "division",
@@ -336,8 +364,6 @@ export default function PlayersPage() {
         <div className="flex gap-1">
           {row.original.is_newcomer && <StatusIcon icon={Sparkles} label="Newcomer" variant="warning" />}
           {row.original.is_substitution && <StatusIcon icon={ArrowLeftRight} label="Substitute" variant="info" />}
-          {row.original.primary && <StatusIcon icon={Star} label="Primary" variant="success" />}
-          {row.original.secondary && <StatusIcon icon={StarHalf} label="Secondary" variant="muted" />}
         </div>
       )
     },
@@ -487,7 +513,9 @@ export default function PlayersPage() {
             <Label htmlFor="role">Role</Label>
             <Select
               value={normalizePlayerRole(formData.role)}
-              onValueChange={(value) => setFormData({ ...formData, role: value })}
+              onValueChange={(value) =>
+                setFormData({ ...formData, role: value, sub_role: "" })
+              }
             >
               <SelectTrigger>
                 <RoleOptionContent role={normalizePlayerRole(formData.role)} />
@@ -498,6 +526,35 @@ export default function PlayersPage() {
                     <RoleOptionContent role={role} />
                   </SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="sub_role">Sub-role</Label>
+            <Select
+              value={formData.sub_role || "none"}
+              onValueChange={(value) => {
+                const subRole = value === "none" ? "" : value;
+                setFormData({
+                  ...formData,
+                  sub_role: subRole,
+                });
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select sub-role" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No sub-role</SelectItem>
+                {subRoleOptions.map((subRole) => (
+                  <SelectItem key={subRole.id} value={subRole.slug}>
+                    {subRole.label}
+                  </SelectItem>
+                ))}
+                {formData.sub_role && !hasCurrentSubRoleOption ? (
+                  <SelectItem value={formData.sub_role}>{formatSubRoleLabel(formData.sub_role)}</SelectItem>
+                ) : null}
               </SelectContent>
             </Select>
           </div>
@@ -525,32 +582,6 @@ export default function PlayersPage() {
           </div>
 
           <div className="space-y-2">
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="is_primary"
-                checked={formData.is_primary}
-                onCheckedChange={(checked) =>
-                  setFormData({ ...formData, is_primary: checked as boolean })
-                }
-              />
-              <Label htmlFor="is_primary" className="cursor-pointer">
-                Primary Role
-              </Label>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="is_secondary"
-                checked={formData.is_secondary}
-                onCheckedChange={(checked) =>
-                  setFormData({ ...formData, is_secondary: checked as boolean })
-                }
-              />
-              <Label htmlFor="is_secondary" className="cursor-pointer">
-                Secondary Role
-              </Label>
-            </div>
-
             <div className="flex items-center space-x-2">
               <Checkbox
                 id="is_newcomer"
@@ -606,7 +637,9 @@ export default function PlayersPage() {
             <Label htmlFor="edit-role">Role</Label>
             <Select
               value={normalizePlayerRole(formData.role)}
-              onValueChange={(value) => setFormData({ ...formData, role: value })}
+              onValueChange={(value) =>
+                setFormData({ ...formData, role: value, sub_role: "" })
+              }
             >
               <SelectTrigger>
                 <RoleOptionContent role={normalizePlayerRole(formData.role)} />
@@ -617,6 +650,35 @@ export default function PlayersPage() {
                     <RoleOptionContent role={role} />
                   </SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="edit-sub_role">Sub-role</Label>
+            <Select
+              value={formData.sub_role || "none"}
+              onValueChange={(value) => {
+                const subRole = value === "none" ? "" : value;
+                setFormData({
+                  ...formData,
+                  sub_role: subRole,
+                });
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select sub-role" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No sub-role</SelectItem>
+                {subRoleOptions.map((subRole) => (
+                  <SelectItem key={subRole.id} value={subRole.slug}>
+                    {subRole.label}
+                  </SelectItem>
+                ))}
+                {formData.sub_role && !hasCurrentSubRoleOption ? (
+                  <SelectItem value={formData.sub_role}>{formatSubRoleLabel(formData.sub_role)}</SelectItem>
+                ) : null}
               </SelectContent>
             </Select>
           </div>
@@ -644,32 +706,6 @@ export default function PlayersPage() {
           </div>
 
           <div className="space-y-2">
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="edit-is_primary"
-                checked={formData.is_primary}
-                onCheckedChange={(checked) =>
-                  setFormData({ ...formData, is_primary: checked as boolean })
-                }
-              />
-              <Label htmlFor="edit-is_primary" className="cursor-pointer">
-                Primary Role
-              </Label>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="edit-is_secondary"
-                checked={formData.is_secondary}
-                onCheckedChange={(checked) =>
-                  setFormData({ ...formData, is_secondary: checked as boolean })
-                }
-              />
-              <Label htmlFor="edit-is_secondary" className="cursor-pointer">
-                Secondary Role
-              </Label>
-            </div>
-
             <div className="flex items-center space-x-2">
               <Checkbox
                 id="edit-is_newcomer"

@@ -127,8 +127,7 @@ export interface PlayerCreateInput {
   role: string;
   rank?: number;
   div?: number;
-  primary?: boolean;
-  secondary?: boolean;
+  sub_role?: string | null;
   is_newcomer?: boolean;
   is_newcomer_role?: boolean;
   is_substitution?: boolean;
@@ -139,11 +138,40 @@ export interface PlayerUpdateInput {
   role?: string;
   rank?: number;
   div?: number;
-  primary?: boolean;
-  secondary?: boolean;
+  sub_role?: string | null;
   is_newcomer?: boolean;
   is_newcomer_role?: boolean;
   is_substitution?: boolean;
+}
+
+export interface PlayerSubRole {
+  id: number;
+  workspace_id: number;
+  role: string;
+  slug: string;
+  label: string;
+  description: string | null;
+  sort_order: number;
+  is_active: boolean;
+}
+
+export interface PlayerSubRoleCreateInput {
+  workspace_id: number;
+  role: string;
+  label: string;
+  slug?: string | null;
+  description?: string | null;
+  sort_order?: number;
+  is_active?: boolean;
+}
+
+export interface PlayerSubRoleUpdateInput {
+  role?: string;
+  label?: string;
+  slug?: string | null;
+  description?: string | null;
+  sort_order?: number;
+  is_active?: boolean;
 }
 
 // ─── Encounter ───────────────────────────────────────────────────────────────

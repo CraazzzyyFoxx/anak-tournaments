@@ -17,8 +17,7 @@ __all__ = (
 class BalancerTeamMember(BaseModel):
     uuid: str | UUID4
     name: str
-    primary: bool
-    secondary: bool
+    sub_role: str | None = None
     role: typing.Literal["tank", "dps", "support"] | None
     rank: int
 
@@ -42,6 +41,7 @@ class InternalBalancerPlayer(BaseModel):
     discomfort: int | None = 0
     is_captain: bool = Field(default=False, alias="isCaptain")
     preferences: list[str] = []
+    sub_role: str | None = Field(default=None, alias="subRole")
     all_ratings: dict[str, typing.Any] | None = Field(default=None, alias="allRatings")
 
 
@@ -78,22 +78,11 @@ class InternalBalancerTeam(BaseModel):
             for player in players:
                 total_sr += player.rating
 
-                primary = False
-                secondary = False
-                if player.preferences:
-                    normalized_prefs = [p.strip().lower() for p in player.preferences]
-                    current = roster_role.strip().lower()
-                    if normalized_prefs[0] == current:
-                        primary = True
-                    elif current in normalized_prefs:
-                        secondary = True
-
                 members.append(
                     BalancerTeamMember(
                         uuid=player.uuid,
                         name=player.name,
-                        primary=primary,
-                        secondary=secondary,
+                        sub_role=player.sub_role,
                         role=mapped_role,
                         rank=player.rating,
                     )

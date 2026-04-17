@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
 import { Plus, Pencil, Trash2, CheckCircle, XCircle, Crown, Trophy } from "lucide-react";
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
@@ -18,8 +18,10 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import tournamentService from "@/services/tournament.service";
 import adminService from "@/services/admin.service";
+import workspaceService from "@/services/workspace.service";
 import { Tournament } from "@/types/tournament.types";
 import { TournamentCreateInput, TournamentUpdateInput } from "@/types/admin.types";
+import type { DivisionGridVersion } from "@/types/workspace.types";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePermissions } from "@/hooks/usePermissions";
 import { normalizeChallongeSlug } from "@/lib/challonge";
@@ -42,6 +44,7 @@ const emptyTournamentForm: TournamentFormData = {
   description: "",
   is_league: false,
   number: null,
+  division_grid_version_id: null,
   start_date: "",
   end_date: ""
 };
@@ -54,6 +57,7 @@ function getTournamentEditForm(tournament: Tournament): TournamentFormData {
     challonge_slug: tournament.challonge_slug || "",
     is_league: tournament.is_league,
     is_finished: tournament.is_finished,
+    division_grid_version_id: tournament.division_grid_version_id ?? null,
     start_date: new Date(tournament.start_date).toISOString().split("T")[0],
     end_date: new Date(tournament.end_date).toISOString().split("T")[0]
   };
@@ -70,6 +74,7 @@ function getCreatePayload(
     is_league: formData.is_league,
     start_date: formData.start_date,
     end_date: formData.end_date,
+    division_grid_version_id: formData.division_grid_version_id,
     ...(formData.number === null ? {} : { number: formData.number })
   };
 }
@@ -99,6 +104,20 @@ export default function TournamentsPage() {
   const canUpdate = hasPermission("tournament.update");
   const canDelete = hasPermission("tournament.delete");
 
+  const divisionGridsQuery = useQuery({
+    queryKey: ["admin", "tournaments", "create", "division-grids", currentWorkspaceId],
+    queryFn: async () => {
+      if (!currentWorkspaceId) return [];
+      return workspaceService.getDivisionGrids(currentWorkspaceId);
+    },
+    enabled: Boolean(currentWorkspaceId)
+  });
+
+  const divisionGridVersions: DivisionGridVersion[] = (divisionGridsQuery.data ?? [])
+    .flatMap((grid) => grid.versions)
+    .slice()
+    .sort((left, right) => right.version - left.version);
+
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -127,11 +146,13 @@ export default function TournamentsPage() {
 
   const createWithGroupsMutation = useMutation({
     mutationFn: (params: {
+      workspace_id: number;
       number: number;
       challonge_slug: string;
       is_league: boolean;
       start_date: string;
       end_date: string;
+      division_grid_version_id?: number | null;
     }) => adminService.createTournamentWithGroups(params),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tournaments"] });
@@ -202,12 +223,15 @@ export default function TournamentsPage() {
     if (createMode === "challonge") {
       if (!formData.number || !challongeSlug.trim() || !formData.start_date || !formData.end_date)
         return;
+      if (!currentWorkspaceId) return;
       createWithGroupsMutation.mutate({
+        workspace_id: currentWorkspaceId,
         number: formData.number,
         challonge_slug: normalizeChallongeSlug(challongeSlug),
         is_league: formData.is_league,
         start_date: formData.start_date,
-        end_date: formData.end_date
+        end_date: formData.end_date,
+        division_grid_version_id: formData.division_grid_version_id
       });
     } else {
       if (!currentWorkspaceId) return;
@@ -414,6 +438,8 @@ export default function TournamentsPage() {
               mode="manual-create"
               value={formData}
               onChange={(next) => setFormData(next)}
+              divisionGridVersions={divisionGridVersions}
+              divisionGridLoading={divisionGridsQuery.isLoading}
             />
           </TabsContent>
 
@@ -425,6 +451,8 @@ export default function TournamentsPage() {
               onChange={(next) => setFormData(next)}
               challongeSlugValue={challongeSlug}
               onChallongeSlugValueChange={setChallongeSlug}
+              divisionGridVersions={divisionGridVersions}
+              divisionGridLoading={divisionGridsQuery.isLoading}
             />
           </TabsContent>
         </Tabs>
