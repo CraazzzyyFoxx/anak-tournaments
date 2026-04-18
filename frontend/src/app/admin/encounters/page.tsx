@@ -11,6 +11,7 @@ import {
   CheckCircle,
   Clock,
   AlertCircle,
+  Star,
   FileCheck2,
   FileX2
 } from "lucide-react";
@@ -59,6 +60,15 @@ function formatEncounterStatus(status?: string | null) {
   return normalizedStatus.charAt(0) + normalizedStatus.slice(1).toLowerCase();
 }
 
+function closenessFloatToStars(closeness: number | null | undefined): number {
+  if (closeness == null || closeness <= 0) return 0;
+  return Math.max(1, Math.min(5, Math.round(closeness * 5)));
+}
+
+function starsToCloseness(stars: number): number | null {
+  return stars > 0 ? stars / 5 : null;
+}
+
 const emptyEncounterForm: EncounterCreateInput = {
   name: "",
   tournament_id: 0,
@@ -93,7 +103,8 @@ function getEditEncounterForm(encounter: Encounter): EncounterUpdateInput {
     home_score: encounter.score.home,
     away_score: encounter.score.away,
     status: normalizeEncounterStatus(encounter.status),
-    round: encounter.round
+    round: encounter.round,
+    closeness: encounter.closeness
   };
 }
 
@@ -245,6 +256,7 @@ export default function EncountersPage() {
     : createFormInitial;
   const isCreateDirty = createDialogOpen && hasUnsavedChanges(formData, createFormInitial);
   const isEditDirty = editDialogOpen && hasUnsavedChanges(formData, editFormInitial);
+  const editClosenessStars = closenessFloatToStars((formData as EncounterUpdateInput).closeness);
   const selectedFormStage = stagesData.find((stage) => stage.id === formData.stage_id) ?? null;
   const selectedFormStageItem =
     selectedFormStage?.items.find((item) => item.id === formData.stage_item_id) ?? null;
@@ -751,6 +763,37 @@ export default function EncountersPage() {
                 <SelectItem value="COMPLETED">Completed</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          <div>
+            <Label>Match Closeness</Label>
+            <div className="mt-2 flex items-center gap-1">
+              {[1, 2, 3, 4, 5].map((stars) => (
+                <button
+                  key={stars}
+                  type="button"
+                  className="p-1"
+                  aria-label={`${stars} stars`}
+                  onClick={() =>
+                    setFormData({
+                      ...formData,
+                      closeness: starsToCloseness(stars === editClosenessStars ? 0 : stars)
+                    })
+                  }
+                >
+                  <Star
+                    className={`h-6 w-6 ${
+                      stars <= editClosenessStars
+                        ? "fill-yellow-400 text-yellow-400"
+                        : "text-muted-foreground"
+                    }`}
+                  />
+                </button>
+              ))}
+              <span className="ml-2 text-sm text-muted-foreground">
+                {editClosenessStars > 0 ? `${editClosenessStars}/5` : "Not set"}
+              </span>
+            </div>
           </div>
         </div>
       </EntityFormDialog>
