@@ -3,8 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from cashews import cache
-from faststream.rabbit.annotations import RabbitMessage
-from faststream.rabbit.fastapi import RabbitRouter
+from faststream.rabbit.fastapi import RabbitMessage, RabbitRouter
 from loguru import logger
 from shared.messaging.config import TOURNAMENT_RECALC_EXCHANGE, TOURNAMENT_RECALCULATED_QUEUE
 from shared.observability import observe_message_processing
