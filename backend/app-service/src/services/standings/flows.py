@@ -1,6 +1,6 @@
 import typing
 
-from shared.services.tournament_utils import sort_bracket_matches
+from shared.services.tournament_utils import is_completed_encounter, sort_bracket_matches
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models, schemas
@@ -65,6 +65,7 @@ async def to_pydantic(
                 standing.stage_item_id is None
                 or encounter.stage_item_id == standing.stage_item_id
             )
+            and is_completed_encounter(encounter)
         ]
 
     source_rule_profile = None
