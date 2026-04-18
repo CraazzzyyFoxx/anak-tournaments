@@ -6,6 +6,7 @@ from shared.messaging.config import (
     ACHIEVEMENT_EVALUATE_QUEUE,
     PROCESS_MATCH_LOG_QUEUE,
     PROCESS_TOURNAMENT_LOGS_QUEUE,
+    SWISS_NEXT_ROUND_QUEUE,
     TOURNAMENT_RECALC_EXCHANGE,
     TOURNAMENT_RECALC_QUEUE,
 )
@@ -25,6 +26,7 @@ from shared.schemas.events import (
 from src.core import config, db
 from src.services.achievement.engine.consumer import handle_achievement_evaluate
 from src.services.match_logs import flows as logs_flows
+from src.services.admin.swiss_rounds import process_swiss_next_round_event
 from src.services.s3 import service as s3_service
 from src.services.standings import recalculation as standings_recalculation
 from src.services.tournament import flows as tournaments_flows
@@ -155,3 +157,14 @@ async def process_tournament_recalculation(data: dict, msg=None) -> None:
         logger=logger,
     ):
         await standings_recalculation.process_tournament_recalculation_event(data, broker=broker)
+
+
+@broker.subscriber(SWISS_NEXT_ROUND_QUEUE)
+async def process_swiss_next_round(data: dict, msg=None) -> None:
+    async with observe_message_processing(
+        queue=SWISS_NEXT_ROUND_QUEUE,
+        handler="process_swiss_next_round",
+        message=msg,
+        logger=logger,
+    ):
+        await process_swiss_next_round_event(data)
