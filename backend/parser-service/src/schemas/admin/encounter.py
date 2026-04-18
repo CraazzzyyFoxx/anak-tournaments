@@ -4,6 +4,7 @@ __all__ = (
     "EncounterCreate",
     "EncounterUpdate",
     "BulkEncounterUpdate",
+    "MatchUpdate",
 )
 
 
@@ -36,6 +37,20 @@ class EncounterUpdate(BaseModel):
     away_score: int | None = None
     status: str | None = None
     round: int | None = None
+    closeness: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
+class MatchUpdate(BaseModel):
+    """Partial update for a single match (map) within an encounter."""
+
+    home_team_id: int | None = None
+    away_team_id: int | None = None
+    home_score: int | None = None
+    away_score: int | None = None
+    map_id: int | None = None
+    code: str | None = None
+    time: float | None = None
+    log_name: str | None = None
 
 
 class BulkEncounterUpdate(BaseModel):

@@ -19,6 +19,7 @@ RegistrationSource = Literal["manual", "google_sheets"]
 
 __all__ = (
     "ApplicationUserExportResponse",
+    "RegistrationUserExportResponse",
     "BalanceExportResponse",
     "BalanceRead",
     "BalanceSaveRequest",
@@ -444,6 +445,12 @@ class BalanceExportResponse(BaseModel):
 
 
 class ApplicationUserExportResponse(BaseModel):
+    processed: int
+    skipped: int
+    total: int
+
+
+class RegistrationUserExportResponse(BaseModel):
     processed: int
     skipped: int
     total: int

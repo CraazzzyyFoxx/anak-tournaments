@@ -26,6 +26,7 @@ class Match(db.TimeStampIntegerMixin):
     away_score: Mapped[int] = mapped_column(Integer())
     time: Mapped[float] = mapped_column(Float())
     log_name: Mapped[str] = mapped_column()
+    code: Mapped[str | None] = mapped_column(nullable=True)
 
     encounter_id: Mapped[int] = mapped_column(
         ForeignKey(Encounter.id, ondelete="CASCADE"), index=True

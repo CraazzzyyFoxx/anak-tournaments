@@ -71,6 +71,28 @@ class BalancerJobEvent(BaseEvent):
     job_id: str = Field(..., description="Balancer job identifier")
 
 
+class TournamentRecalcEvent(BaseEvent):
+    """Event for scheduling standings recalculation for one tournament.
+
+    Published by: parser-service API
+    Consumed by: parser-service worker
+    """
+
+    event_type: str = Field(default="tournament_recalc", frozen=True)
+    tournament_id: int = Field(..., description="Tournament ID to recalculate")
+
+
+class TournamentRecalculatedEvent(BaseEvent):
+    """Event emitted after standings recalculation finishes.
+
+    Published by: parser-service worker
+    Consumed by: app-service API for cache invalidation and WebSocket fan-out
+    """
+
+    event_type: str = Field(default="tournament_recalculated", frozen=True)
+    tournament_id: int = Field(..., description="Tournament ID that was recalculated")
+
+
 class AchievementEvaluateEvent(BaseEvent):
     """Event for triggering achievement evaluation after parsing.
 

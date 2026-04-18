@@ -82,6 +82,9 @@ class ConfigOverrides(BaseModel):
     MAX_NSGA_SOLUTIONS: int | None = Field(
         None, ge=1, le=200, description="Maximum number of NSGA-II Pareto solutions to return"
     )
+    WEIGHT_TEAM_VARIANCE: float | None = Field(None, ge=0.0, description="Weight of team variance in balance objective.")
+    TEAM_SPREAD_BLEND: float | None = Field(None, ge=0.0, description="Blend coefficient for per-team player spread variance in the folded balance objective.")
+    SUBROLE_BLEND: float | None = Field(None, ge=0.0, description="Blend coefficient for subrole penalty in the folded balance objective.")
 
     # Workspace & division (new)
     workspace_id: int | None = Field(None, description="Workspace context for division grid resolution")

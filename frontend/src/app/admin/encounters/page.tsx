@@ -574,7 +574,6 @@ export default function EncountersPage() {
               value={(formData as EncounterCreateInput).round}
               onChange={(e) => setFormData({ ...formData, round: parseInt(e.target.value) })}
               required
-              min="1"
             />
           </div>
 
@@ -711,7 +710,6 @@ export default function EncountersPage() {
               type="number"
               value={(formData as EncounterUpdateInput).round}
               onChange={(e) => setFormData({ ...formData, round: parseInt(e.target.value) })}
-              min="1"
             />
           </div>
 

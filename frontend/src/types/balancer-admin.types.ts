@@ -218,6 +218,12 @@ export interface ApplicationUserExportResponse {
   total: number;
 }
 
+export interface RegistrationUserExportResponse {
+  processed: number;
+  skipped: number;
+  total: number;
+}
+
 export interface BalancerPlayerUpdateInput {
   role_entries_json?: BalancerPlayerRoleEntry[] | null;
   is_in_pool?: boolean | null;

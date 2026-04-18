@@ -19,12 +19,13 @@ from shared.observability import (
     CorrelationIdMiddleware,
     TimeMiddleware,
     check_postgres,
+    check_rabbitmq,
     check_redis,
     instrument_fastapi,
     instrument_sqlalchemy,
     make_health_response,
-    setup_sentry,
     setup_logging,
+    setup_sentry,
     setup_tracing,
 )
 from shared.schemas import HealthCheckResponse
@@ -32,6 +33,7 @@ from starlette.requests import Request
 
 from src.core import config, db
 from src.routes import router
+from src.services.tournament.recalculation_events import task_router as tournament_recalculation_task_router
 
 # Setup structured logging (replaces old logging setup)
 logger = setup_logging(
@@ -114,6 +116,7 @@ app.state.s3 = s3_client
 Instrumentator().instrument(app).expose(app)
 
 app.include_router(router)
+app.include_router(tournament_recalculation_task_router)
 app.add_middleware(CacheDeleteMiddleware)
 app.add_middleware(CacheEtagMiddleware)
 app.add_middleware(CacheRequestControlMiddleware)
@@ -161,6 +164,9 @@ async def health_check() -> HealthCheckResponse:
 
     # Check Redis
     deps.append(await check_redis(str(config.settings.redis_url)))
+
+    # Check RabbitMQ
+    deps.append(await check_rabbitmq(config.settings.rabbitmq_url))
 
     return make_health_response(
         service="app-service",

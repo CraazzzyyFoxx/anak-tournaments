@@ -1,6 +1,13 @@
 "use client";
 
-import { type Dispatch, type ReactNode, type SetStateAction, useMemo, useState } from "react";
+import {
+  Fragment,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+  useMemo,
+  useState
+} from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -24,6 +31,7 @@ import {
   ShieldX,
   Trash2,
   Undo2,
+  Upload,
   UserPlus,
   UserRound,
   X,
@@ -42,6 +50,11 @@ import {
   type BalancerRegistrationColumnDefinition,
   buildBalancerRegistrationColumns
 } from "@/app/balancer/registrations/_components/balancerRegistrationColumns";
+import {
+  type RegistrationGroupingMode,
+  groupRegistrations,
+  normalizeRegistrationGroupingMode
+} from "@/app/balancer/registrations/_components/registrationGrouping";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -893,6 +906,9 @@ export default function BalancerRegistrationsPage() {
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>(
     (searchParams.get("source") as SourceFilter | null) ?? "all"
   );
+  const [groupBy, setGroupBy] = useState<RegistrationGroupingMode>(
+    normalizeRegistrationGroupingMode(searchParams.get("group"))
+  );
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [createOpen, setCreateOpen] = useState(false);
   const [createStep, setCreateStep] = useState(0);
@@ -1145,6 +1161,23 @@ export default function BalancerRegistrationsPage() {
     }
   });
 
+  const exportToUsersMutation = useMutation({
+    mutationFn: () => balancerAdminService.exportRegistrationsToUsers(tournamentId as number),
+    onSuccess: (result) => {
+      toast({
+        title: "Export complete",
+        description: `${result.processed} processed, ${result.skipped} skipped (${result.total} total)`
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Export to analytics failed",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  });
+
   const registrations = registrationsQuery.data ?? [];
   const filteredRegistrations = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -1161,6 +1194,10 @@ export default function BalancerRegistrationsPage() {
       })
     );
   }, [allColumns, registrations, searchQuery]);
+  const groupedRegistrations = useMemo(
+    () => groupRegistrations(filteredRegistrations, groupBy),
+    [filteredRegistrations, groupBy]
+  );
 
   const selectableIds = useMemo(
     () =>
@@ -1208,6 +1245,18 @@ export default function BalancerRegistrationsPage() {
               </CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                onClick={() => exportToUsersMutation.mutate()}
+                disabled={exportToUsersMutation.isPending}
+              >
+                {exportToUsersMutation.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Upload className="mr-2 h-4 w-4" />
+                )}
+                Export to analytics
+              </Button>
               <Button
                 variant="outline"
                 onClick={() => {
@@ -1310,6 +1359,20 @@ export default function BalancerRegistrationsPage() {
                 <SelectItem value="google_sheets">Google Sheets</SelectItem>
               </SelectContent>
             </Select>
+            <Select
+              value={groupBy}
+              onValueChange={(value) => setGroupBy(value as RegistrationGroupingMode)}
+            >
+              <SelectTrigger className="w-[190px]">
+                <SelectValue placeholder="Group by" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No grouping</SelectItem>
+                <SelectItem value="check_in">Group by check-in</SelectItem>
+                <SelectItem value="balancer_status">Group by balancer</SelectItem>
+                <SelectItem value="admission">Group by admission</SelectItem>
+              </SelectContent>
+            </Select>
             <BalancerRegistrationsColumnPicker
               columns={allColumns}
               visibility={visibility}
@@ -1371,226 +1434,250 @@ export default function BalancerRegistrationsPage() {
                     </td>
                   </tr>
                 ) : (
-                  filteredRegistrations.map((registration, index) => {
-                    const selectable = registration.status === "pending";
-                    const statusConfig =
-                      STATUS_CONFIG[registration.status] ?? STATUS_CONFIG.pending;
-                    const StatusIcon = statusConfig.icon;
-                    const inBalancer = registration.balancer_status === "ready";
-                    return (
-                      <tr
-                        key={registration.id}
-                        className="border-b border-white/4 transition-colors hover:bg-white/[0.02]"
-                      >
-                        <td className="px-3 py-2.5 align-top">
-                          {selectable ? (
-                            <Checkbox
-                              checked={selectedIds.has(registration.id)}
-                              onCheckedChange={(checked) =>
-                                setSelectedIds((current) => {
-                                  const next = new Set(current);
-                                  if (checked) {
-                                    next.add(registration.id);
-                                  } else {
-                                    next.delete(registration.id);
-                                  }
-                                  return next;
-                                })
-                              }
-                              aria-label={`Select registration ${registration.id}`}
-                            />
-                          ) : null}
-                        </td>
-                        {visibleColumns.map((column) => (
+                  groupedRegistrations.map((group) => (
+                    <Fragment key={group.key}>
+                      {groupBy !== "none" ? (
+                        <tr className="border-b border-white/[0.07] bg-white/[0.035]">
                           <td
-                            key={column.id}
-                            className={cn(
-                              "px-3 py-2.5 align-top",
-                              RESPONSIVE_CLASS[column.responsive ?? "always"],
-                              ALIGN_CLASS[column.align ?? "left"],
-                              column.widthClass
-                            )}
+                            colSpan={visibleColumns.length + 2}
+                            className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-white/55"
                           >
-                            {column.render(registration, index)}
+                            <span className="text-white/80">{group.label}</span>
+                            <span className="ml-2 text-white/35">
+                              {group.registrations.length}{" "}
+                              {group.registrations.length === 1 ? "registration" : "registrations"}
+                            </span>
                           </td>
-                        ))}
-                        <td className="px-3 py-2.5 align-top">
-                          <RegistrationRowActions
-                            registration={registration}
-                            onEdit={(selectedRegistration) => {
-                              setEditStep(0);
-                              setEditingRegistration(selectedRegistration);
-                              setEditingDraft(
-                                buildManualDraftFromRegistration(selectedRegistration)
-                              );
-                            }}
-                            onApprove={(registrationId) => approveMutation.mutate(registrationId)}
-                            onReject={(registrationId) => rejectMutation.mutate(registrationId)}
-                            onToggleBalancer={(selectedRegistration) =>
-                              balancerStatusMutation.mutate({
-                                registrationId: selectedRegistration.id,
-                                balancerStatus:
-                                  selectedRegistration.balancer_status === "ready"
-                                    ? "not_in_balancer"
-                                    : "ready"
-                              })
-                            }
-                            onToggleCheckIn={(selectedRegistration) =>
-                              checkInMutation.mutate({
-                                registrationId: selectedRegistration.id,
-                                checkedIn: !selectedRegistration.checked_in
-                              })
-                            }
-                            onWithdraw={(registrationId) => withdrawMutation.mutate(registrationId)}
-                            onRestore={(registrationId) => restoreMutation.mutate(registrationId)}
-                            onDelete={(registrationId) => deleteMutation.mutate(registrationId)}
-                          />
-                        </td>
-                        {false && (
-                          <>
-                            <TableCell>
-                              <div className="space-y-1">
-                                <div className="font-medium">
-                                  {registration.battle_tag ??
-                                    registration.display_name ??
-                                    `Registration #${registration.id}`}
-                                </div>
-                                <div className="text-xs text-muted-foreground">
-                                  {[registration.discord_nick, registration.twitch_nick]
-                                    .filter(Boolean)
-                                    .join(" · ") ||
-                                    registration.source_record_key ||
-                                    "-"}
-                                </div>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <SourceBadge source={registration.source} />
-                            </TableCell>
-                            <TableCell>
-                              <RolesCell roles={registration.roles} />
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className={statusConfig.className}>
-                                <StatusIcon className="mr-1 h-3.5 w-3.5" />
-                                {statusConfig.label}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <BalancerBadge registration={registration} />
-                            </TableCell>
-                            <TableCell>
-                              <CheckInBadge registration={registration} />
-                            </TableCell>
-                            <TableCell className="text-sm text-muted-foreground">
-                              {formatSubmittedAt(registration.submitted_at)}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex flex-wrap gap-2">
-                                {registration.status === "pending" ? (
-                                  <>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => approveMutation.mutate(registration.id)}
-                                    >
-                                      <Check className="mr-1.5 h-3.5 w-3.5" />
-                                      Approve
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => rejectMutation.mutate(registration.id)}
-                                    >
-                                      <X className="mr-1.5 h-3.5 w-3.5" />
-                                      Reject
-                                    </Button>
-                                  </>
-                                ) : null}
-                                {registration.status !== "withdrawn" ? (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => {
-                                      setEditStep(0);
-                                      setEditingRegistration(registration);
-                                      setEditingDraft(
-                                        buildManualDraftFromRegistration(registration)
-                                      );
-                                    }}
-                                  >
-                                    <Pencil className="mr-1.5 h-3.5 w-3.5" />
-                                    Edit
-                                  </Button>
-                                ) : null}
-                                {registration.status === "approved" ? (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() =>
-                                      balancerStatusMutation.mutate({
-                                        registrationId: registration.id,
-                                        balancerStatus: inBalancer ? "not_in_balancer" : "ready"
-                                      })
-                                    }
-                                  >
-                                    {inBalancer ? (
-                                      <ShieldX className="mr-1.5 h-3.5 w-3.5" />
-                                    ) : (
-                                      <Check className="mr-1.5 h-3.5 w-3.5" />
-                                    )}
-                                    {inBalancer ? "Remove from Balancer" : "Add to Balancer"}
-                                  </Button>
-                                ) : null}
-                                {registration.status === "approved" ? (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() =>
-                                      checkInMutation.mutate({
-                                        registrationId: registration.id,
-                                        checkedIn: !registration.checked_in
-                                      })
-                                    }
-                                  >
-                                    <Check className="mr-1.5 h-3.5 w-3.5" />
-                                    {registration.checked_in ? "Uncheck-in" : "Check-in"}
-                                  </Button>
-                                ) : null}
-                                {registration.status === "withdrawn" ? (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => restoreMutation.mutate(registration.id)}
-                                  >
-                                    <Undo2 className="mr-1.5 h-3.5 w-3.5" />
-                                    Restore
-                                  </Button>
-                                ) : (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => withdrawMutation.mutate(registration.id)}
-                                  >
-                                    <Undo2 className="mr-1.5 h-3.5 w-3.5" />
-                                    Withdraw
-                                  </Button>
+                        </tr>
+                      ) : null}
+                      {group.registrations.map((registration, index) => {
+                        const selectable = registration.status === "pending";
+                        const statusConfig =
+                          STATUS_CONFIG[registration.status] ?? STATUS_CONFIG.pending;
+                        const StatusIcon = statusConfig.icon;
+                        const inBalancer = registration.balancer_status === "ready";
+                        return (
+                          <tr
+                            key={registration.id}
+                            className="border-b border-white/4 transition-colors hover:bg-white/[0.02]"
+                          >
+                            <td className="px-3 py-2.5 align-top">
+                              {selectable ? (
+                                <Checkbox
+                                  checked={selectedIds.has(registration.id)}
+                                  onCheckedChange={(checked) =>
+                                    setSelectedIds((current) => {
+                                      const next = new Set(current);
+                                      if (checked) {
+                                        next.add(registration.id);
+                                      } else {
+                                        next.delete(registration.id);
+                                      }
+                                      return next;
+                                    })
+                                  }
+                                  aria-label={`Select registration ${registration.id}`}
+                                />
+                              ) : null}
+                            </td>
+                            {visibleColumns.map((column) => (
+                              <td
+                                key={column.id}
+                                className={cn(
+                                  "px-3 py-2.5 align-top",
+                                  RESPONSIVE_CLASS[column.responsive ?? "always"],
+                                  ALIGN_CLASS[column.align ?? "left"],
+                                  column.widthClass
                                 )}
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => deleteMutation.mutate(registration.id)}
-                                >
-                                  <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-                                  Delete
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </>
-                        )}
-                      </tr>
-                    );
-                  })
+                              >
+                                {column.render(registration, index)}
+                              </td>
+                            ))}
+                            <td className="px-3 py-2.5 align-top">
+                              <RegistrationRowActions
+                                registration={registration}
+                                onEdit={(selectedRegistration) => {
+                                  setEditStep(0);
+                                  setEditingRegistration(selectedRegistration);
+                                  setEditingDraft(
+                                    buildManualDraftFromRegistration(selectedRegistration)
+                                  );
+                                }}
+                                onApprove={(registrationId) =>
+                                  approveMutation.mutate(registrationId)
+                                }
+                                onReject={(registrationId) => rejectMutation.mutate(registrationId)}
+                                onToggleBalancer={(selectedRegistration) =>
+                                  balancerStatusMutation.mutate({
+                                    registrationId: selectedRegistration.id,
+                                    balancerStatus:
+                                      selectedRegistration.balancer_status === "ready"
+                                        ? "not_in_balancer"
+                                        : "ready"
+                                  })
+                                }
+                                onToggleCheckIn={(selectedRegistration) =>
+                                  checkInMutation.mutate({
+                                    registrationId: selectedRegistration.id,
+                                    checkedIn: !selectedRegistration.checked_in
+                                  })
+                                }
+                                onWithdraw={(registrationId) =>
+                                  withdrawMutation.mutate(registrationId)
+                                }
+                                onRestore={(registrationId) =>
+                                  restoreMutation.mutate(registrationId)
+                                }
+                                onDelete={(registrationId) => deleteMutation.mutate(registrationId)}
+                              />
+                            </td>
+                            {false && (
+                              <>
+                                <TableCell>
+                                  <div className="space-y-1">
+                                    <div className="font-medium">
+                                      {registration.battle_tag ??
+                                        registration.display_name ??
+                                        `Registration #${registration.id}`}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">
+                                      {[registration.discord_nick, registration.twitch_nick]
+                                        .filter(Boolean)
+                                        .join(" · ") ||
+                                        registration.source_record_key ||
+                                        "-"}
+                                    </div>
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <SourceBadge source={registration.source} />
+                                </TableCell>
+                                <TableCell>
+                                  <RolesCell roles={registration.roles} />
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant="outline" className={statusConfig.className}>
+                                    <StatusIcon className="mr-1 h-3.5 w-3.5" />
+                                    {statusConfig.label}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>
+                                  <BalancerBadge registration={registration} />
+                                </TableCell>
+                                <TableCell>
+                                  <CheckInBadge registration={registration} />
+                                </TableCell>
+                                <TableCell className="text-sm text-muted-foreground">
+                                  {formatSubmittedAt(registration.submitted_at)}
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex flex-wrap gap-2">
+                                    {registration.status === "pending" ? (
+                                      <>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => approveMutation.mutate(registration.id)}
+                                        >
+                                          <Check className="mr-1.5 h-3.5 w-3.5" />
+                                          Approve
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => rejectMutation.mutate(registration.id)}
+                                        >
+                                          <X className="mr-1.5 h-3.5 w-3.5" />
+                                          Reject
+                                        </Button>
+                                      </>
+                                    ) : null}
+                                    {registration.status !== "withdrawn" ? (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => {
+                                          setEditStep(0);
+                                          setEditingRegistration(registration);
+                                          setEditingDraft(
+                                            buildManualDraftFromRegistration(registration)
+                                          );
+                                        }}
+                                      >
+                                        <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                                        Edit
+                                      </Button>
+                                    ) : null}
+                                    {registration.status === "approved" ? (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() =>
+                                          balancerStatusMutation.mutate({
+                                            registrationId: registration.id,
+                                            balancerStatus: inBalancer ? "not_in_balancer" : "ready"
+                                          })
+                                        }
+                                      >
+                                        {inBalancer ? (
+                                          <ShieldX className="mr-1.5 h-3.5 w-3.5" />
+                                        ) : (
+                                          <Check className="mr-1.5 h-3.5 w-3.5" />
+                                        )}
+                                        {inBalancer ? "Remove from Balancer" : "Add to Balancer"}
+                                      </Button>
+                                    ) : null}
+                                    {registration.status === "approved" ? (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() =>
+                                          checkInMutation.mutate({
+                                            registrationId: registration.id,
+                                            checkedIn: !registration.checked_in
+                                          })
+                                        }
+                                      >
+                                        <Check className="mr-1.5 h-3.5 w-3.5" />
+                                        {registration.checked_in ? "Uncheck-in" : "Check-in"}
+                                      </Button>
+                                    ) : null}
+                                    {registration.status === "withdrawn" ? (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => restoreMutation.mutate(registration.id)}
+                                      >
+                                        <Undo2 className="mr-1.5 h-3.5 w-3.5" />
+                                        Restore
+                                      </Button>
+                                    ) : (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => withdrawMutation.mutate(registration.id)}
+                                      >
+                                        <Undo2 className="mr-1.5 h-3.5 w-3.5" />
+                                        Withdraw
+                                      </Button>
+                                    )}
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => deleteMutation.mutate(registration.id)}
+                                    >
+                                      <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                                      Delete
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </Fragment>
+                  ))
                 )}
               </tbody>
             </table>

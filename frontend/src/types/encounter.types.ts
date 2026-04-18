@@ -58,6 +58,7 @@ export interface Match {
   encounter_id: number;
   map_id: number;
   log_name: string;
+  code: string | null;
 
   map: MapRead | null;
   home_team: Team | null;

@@ -6,6 +6,8 @@ from shared.messaging.config import (
     ACHIEVEMENT_EVALUATE_QUEUE,
     PROCESS_MATCH_LOG_QUEUE,
     PROCESS_TOURNAMENT_LOGS_QUEUE,
+    TOURNAMENT_RECALC_EXCHANGE,
+    TOURNAMENT_RECALC_QUEUE,
 )
 from shared.observability import (
     observe_message_processing,
@@ -24,6 +26,7 @@ from src.core import config, db
 from src.services.achievement.engine.consumer import handle_achievement_evaluate
 from src.services.match_logs import flows as logs_flows
 from src.services.s3 import service as s3_service
+from src.services.standings import recalculation as standings_recalculation
 from src.services.tournament import flows as tournaments_flows
 from src.worker.tasks import encounter as encounter_tasks
 from src.worker.tasks import standings as standings_tasks
@@ -141,3 +144,14 @@ async def process_achievement_evaluate(data: dict, msg=None) -> None:
         logger=logger,
     ):
         await handle_achievement_evaluate(data)
+
+
+@broker.subscriber(TOURNAMENT_RECALC_QUEUE, exchange=TOURNAMENT_RECALC_EXCHANGE)
+async def process_tournament_recalculation(data: dict, msg=None) -> None:
+    async with observe_message_processing(
+        queue=TOURNAMENT_RECALC_QUEUE,
+        handler="process_tournament_recalculation",
+        message=msg,
+        logger=logger,
+    ):
+        await standings_recalculation.process_tournament_recalculation_event(data, broker=broker)

@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 from src import models
 from src.core import enums
 from src.schemas.admin import encounter as admin_schemas
-from src.services.standings import service as standings_service
+from src.services.standings import recalculation as standings_recalculation
 
 
 async def _resolve_stage_refs(
@@ -159,7 +159,7 @@ async def create_encounter(session: AsyncSession, data: admin_schemas.EncounterC
     session.add(encounter)
     await session.commit()
     await session.refresh(encounter)
-    await standings_service.recalculate_for_tournament(session, data.tournament_id)
+    await standings_recalculation.enqueue_tournament_recalculation(data.tournament_id)
     await session.refresh(encounter)
 
     return encounter
@@ -232,10 +232,68 @@ async def update_encounter(
 
     await session.commit()
     await session.refresh(encounter)
-    await standings_service.recalculate_for_tournament(session, tournament_id)
+    await standings_recalculation.enqueue_tournament_recalculation(tournament_id)
     await session.refresh(encounter)
 
     return encounter
+
+
+async def update_match(
+    session: AsyncSession,
+    match_id: int,
+    data: admin_schemas.MatchUpdate,
+) -> models.Match:
+    """Update a single Match (map) belonging to an encounter."""
+    result = await session.execute(
+        select(models.Match)
+        .where(models.Match.id == match_id)
+        .options(selectinload(models.Match.encounter))
+    )
+    match = result.scalar_one_or_none()
+    if not match:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Match not found"
+        )
+
+    update_data = data.model_dump(exclude_unset=True)
+
+    if "home_team_id" in update_data:
+        result = await session.execute(
+            select(models.Team).where(models.Team.id == update_data["home_team_id"])
+        )
+        if result.scalar_one_or_none() is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Home team not found"
+            )
+    if "away_team_id" in update_data:
+        result = await session.execute(
+            select(models.Team).where(models.Team.id == update_data["away_team_id"])
+        )
+        if result.scalar_one_or_none() is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Away team not found"
+            )
+    if "map_id" in update_data and update_data["map_id"] is not None:
+        result = await session.execute(
+            select(models.Map).where(models.Map.id == update_data["map_id"])
+        )
+        if result.scalar_one_or_none() is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Map not found"
+            )
+
+    for field, value in update_data.items():
+        setattr(match, field, value)
+
+    tournament_id = match.encounter.tournament_id if match.encounter else None
+
+    await session.commit()
+    await session.refresh(match)
+    if tournament_id is not None:
+        await standings_recalculation.enqueue_tournament_recalculation(tournament_id)
+        await session.refresh(match)
+
+    return match
 
 
 async def delete_encounter(session: AsyncSession, encounter_id: int) -> None:
@@ -249,7 +307,7 @@ async def delete_encounter(session: AsyncSession, encounter_id: int) -> None:
     tournament_id = encounter.tournament_id
     await session.delete(encounter)
     await session.commit()
-    await standings_service.recalculate_for_tournament(session, tournament_id)
+    await standings_recalculation.enqueue_tournament_recalculation(tournament_id)
 
 
 async def bulk_update_encounters(
@@ -325,9 +383,9 @@ async def bulk_update_encounters(
 
     await session.commit()
 
-    # One recalc per tournament — not N recalcs per N encounters.
+    # One queued recalc per tournament - not N recalcs per N encounters.
     for tournament_id in affected_tournaments:
-        await standings_service.recalculate_for_tournament(session, tournament_id)
+        await standings_recalculation.enqueue_tournament_recalculation(tournament_id)
 
     logger.info(
         "Bulk-updated %d encounters across %d tournaments (%d newly completed)",

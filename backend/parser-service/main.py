@@ -28,6 +28,8 @@ from starlette.requests import Request
 
 from src import routes
 from src.core import config, db
+from src.services.standings.recalculation import close_redis as close_recalculation_redis
+from src.services.standings.recalculation import task_router as recalculation_task_router
 
 # Setup structured logging
 logger = setup_logging(
@@ -85,6 +87,7 @@ async def lifespan(_: FastAPI):
     yield
     await s3_client.close()
     await auth_client.close()
+    await close_recalculation_redis()
 
 
 async def not_found(request: Request, _: Exception):
@@ -131,6 +134,7 @@ instrument_fastapi(app)
 cache.setup(f"{config.settings.redis_url}/4", prefix="backend:")
 
 app.include_router(routes.router)
+app.include_router(recalculation_task_router)
 
 
 @app.get("/health/live")

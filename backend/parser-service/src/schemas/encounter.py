@@ -20,6 +20,9 @@ class EncounterRead(BaseRead):
     status: str
     closeness: float | None
     has_logs: bool
+    result_status: str = "none"
+    submitted_by_id: int | None = None
+    confirmed_by_id: int | None = None
 
     stage: StageRead | None
     stage_item: StageItemRead | None
@@ -38,6 +41,7 @@ class MatchRead(BaseRead):
 
     encounter_id: int
     map_id: int
+    code: str | None = None
 
     home_team: TeamRead | None
     away_team: TeamRead | None

@@ -13,17 +13,16 @@ from src.services.challonge import sync as challonge_sync
 from src.services.standings import service as standings_service
 
 
-async def resolve_captain_side(
+async def _resolve_captain_identity(
     session: AsyncSession,
     auth_user: models.AuthUser,
     encounter: models.Encounter,
-) -> str:
+) -> tuple[str, int]:
     """Determine if the auth user is captain of home or away team.
 
-    Returns 'home' or 'away'.
+    Returns side and linked players.user id.
     Raises 403 if user is not a captain of either team.
     """
-    # Get player IDs linked to this auth user
     result = await session.execute(
         select(models.AuthUserPlayer)
         .where(models.AuthUserPlayer.auth_user_id == auth_user.id)
@@ -38,14 +37,25 @@ async def resolve_captain_side(
         )
 
     if encounter.home_team and encounter.home_team.captain_id in player_ids:
-        return "home"
+        return "home", encounter.home_team.captain_id
     if encounter.away_team and encounter.away_team.captain_id in player_ids:
-        return "away"
+        return "away", encounter.away_team.captain_id
 
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
         detail="You are not a captain of either team in this encounter",
     )
+
+
+async def resolve_captain_side(
+    session: AsyncSession,
+    auth_user: models.AuthUser,
+    encounter: models.Encounter,
+) -> str:
+    side, _captain_player_id = await _resolve_captain_identity(
+        session, auth_user, encounter
+    )
+    return side
 
 
 async def _load_encounter(
@@ -57,6 +67,7 @@ async def _load_encounter(
         .options(
             selectinload(models.Encounter.home_team),
             selectinload(models.Encounter.away_team),
+            selectinload(models.Encounter.stage),
         )
     )
     encounter = result.scalar_one_or_none()
@@ -87,12 +98,14 @@ async def submit_result(
             detail=f"Cannot submit: result status is '{encounter.result_status}'",
         )
 
-    await resolve_captain_side(session, auth_user, encounter)
+    _side, captain_player_id = await _resolve_captain_identity(
+        session, auth_user, encounter
+    )
 
     encounter.home_score = home_score
     encounter.away_score = away_score
     encounter.result_status = EncounterResultStatus.PENDING_CONFIRMATION
-    encounter.submitted_by_id = auth_user.id
+    encounter.submitted_by_id = captain_player_id
     encounter.submitted_at = datetime.now(UTC)
     encounter.confirmed_by_id = None
     encounter.confirmed_at = None
@@ -118,17 +131,19 @@ async def confirm_result(
             detail="No pending result to confirm",
         )
 
-    await resolve_captain_side(session, auth_user, encounter)
+    _side, captain_player_id = await _resolve_captain_identity(
+        session, auth_user, encounter
+    )
 
     # Must be the OTHER captain (not the one who submitted)
-    if encounter.submitted_by_id == auth_user.id:
+    if encounter.submitted_by_id == captain_player_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot confirm your own submission — the other captain must confirm",
+            detail="Cannot confirm your own submission - the other captain must confirm",
         )
 
     encounter.result_status = EncounterResultStatus.CONFIRMED
-    encounter.confirmed_by_id = auth_user.id
+    encounter.confirmed_by_id = captain_player_id
     encounter.confirmed_at = datetime.now(UTC)
     encounter.status = EncounterStatus.COMPLETED
 
@@ -139,6 +154,60 @@ async def confirm_result(
     if encounter.challonge_id:
         await challonge_sync.auto_push_on_confirm(session, encounter.id)
 
+    await standings_service.recalculate_for_tournament(session, tournament_id)
+    await session.refresh(encounter)
+    return encounter
+
+
+async def submit_match_report(
+    session: AsyncSession,
+    auth_user: models.AuthUser,
+    encounter_id: int,
+    home_score: int,
+    away_score: int,
+    closeness_stars: int,
+) -> models.Encounter:
+    """Captain submits the encounter-level result.
+
+    Match rows are created by log ingestion only, so manual reports update the
+    Encounter record and do not touch ``matches.match`` or map-veto state.
+    - closeness_stars in 1..5 is stored as encounter.closeness = stars / 5.
+    - Sets result_status = PENDING_CONFIRMATION so the other captain confirms.
+    """
+    if not 1 <= closeness_stars <= 5:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="closeness must be between 1 and 5",
+        )
+    encounter = await _load_encounter(session, encounter_id)
+
+    if encounter.result_status not in (
+        EncounterResultStatus.NONE,
+        EncounterResultStatus.DISPUTED,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Cannot submit: result status is '{encounter.result_status}'"
+            ),
+        )
+
+    _side, captain_player_id = await _resolve_captain_identity(
+        session, auth_user, encounter
+    )
+
+    now = datetime.now(UTC)
+    encounter.home_score = home_score
+    encounter.away_score = away_score
+    encounter.closeness = closeness_stars / 5.0
+    encounter.result_status = EncounterResultStatus.PENDING_CONFIRMATION
+    encounter.submitted_by_id = captain_player_id
+    encounter.submitted_at = now
+    encounter.confirmed_by_id = None
+    encounter.confirmed_at = None
+
+    tournament_id = encounter.tournament_id
+    await session.commit()
     await standings_service.recalculate_for_tournament(session, tournament_id)
     await session.refresh(encounter)
     return encounter

@@ -14,11 +14,15 @@ from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, Mock, patch
 
+from pydantic import ValidationError
+
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "parser-service"))
 
+os.environ["DEBUG"] = "true"
 os.environ.setdefault("PROJECT_URL", "http://localhost")
+os.environ.setdefault("RABBITMQ_URL", "amqp://guest:guest@localhost:5672")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("POSTGRES_USER", "postgres")
 os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
@@ -67,13 +71,13 @@ class BulkUpdateTests(IsolatedAsyncioTestCase):
         encounters = [_mk_encounter(enc_id=i, tournament_id=42) for i in range(1, 21)]
         session = _mk_session(encounters)
 
-        recalc_mock = AsyncMock()
+        enqueue_mock = AsyncMock(return_value=True)
         advance_mock = AsyncMock()
 
         with patch.object(
-            encounter_service.standings_service,
-            "recalculate_for_tournament",
-            recalc_mock,
+            encounter_service.standings_recalculation,
+            "enqueue_tournament_recalculation",
+            enqueue_mock,
         ), patch(
             "shared.services.bracket.advancement.advance_winner",
             advance_mock,
@@ -93,8 +97,8 @@ class BulkUpdateTests(IsolatedAsyncioTestCase):
         # advance_winner called per newly-completed encounter (20 times)
         self.assertEqual(20, advance_mock.await_count)
 
-        # CRITICAL: recalc called exactly once for tournament 42
-        recalc_mock.assert_awaited_once_with(session, 42)
+        # CRITICAL: queued exactly once for tournament 42
+        enqueue_mock.assert_awaited_once_with(42)
 
         self.assertEqual(20, result["updated"])
         self.assertEqual(20, result["newly_completed"])
@@ -108,15 +112,15 @@ class BulkUpdateTests(IsolatedAsyncioTestCase):
         ]
         session = _mk_session(encounters)
 
-        recalc_calls: list[int] = []
+        enqueue_calls: list[int] = []
 
-        async def capture_recalc(_session, tid):
-            recalc_calls.append(tid)
+        async def capture_enqueue(tid):
+            enqueue_calls.append(tid)
 
         with patch.object(
-            encounter_service.standings_service,
-            "recalculate_for_tournament",
-            side_effect=capture_recalc,
+            encounter_service.standings_recalculation,
+            "enqueue_tournament_recalculation",
+            side_effect=capture_enqueue,
         ), patch(
             "shared.services.bracket.advancement.advance_winner",
             AsyncMock(),
@@ -130,7 +134,7 @@ class BulkUpdateTests(IsolatedAsyncioTestCase):
             )
 
         # Two unique tournaments → two recalcs, not three
-        self.assertEqual(sorted(recalc_calls), [100, 200])
+        self.assertEqual(sorted(enqueue_calls), [100, 200])
 
     async def test_reset_scores(self) -> None:
         encounters = [_mk_encounter(enc_id=1, tournament_id=42, initial_status="completed")]
@@ -139,8 +143,8 @@ class BulkUpdateTests(IsolatedAsyncioTestCase):
         session = _mk_session(encounters)
 
         with patch.object(
-            encounter_service.standings_service,
-            "recalculate_for_tournament",
+            encounter_service.standings_recalculation,
+            "enqueue_tournament_recalculation",
             AsyncMock(),
         ), patch(
             "shared.services.bracket.advancement.advance_winner",
@@ -168,8 +172,8 @@ class BulkUpdateTests(IsolatedAsyncioTestCase):
         advance_mock = AsyncMock()
 
         with patch.object(
-            encounter_service.standings_service,
-            "recalculate_for_tournament",
+            encounter_service.standings_recalculation,
+            "enqueue_tournament_recalculation",
             AsyncMock(),
         ), patch(
             "shared.services.bracket.advancement.advance_winner",
@@ -227,7 +231,7 @@ class BulkUpdateTests(IsolatedAsyncioTestCase):
 
     async def test_enforces_max_500_ids(self) -> None:
         # pydantic catches this at schema construction
-        with self.assertRaises(Exception):
+        with self.assertRaises(ValidationError):
             admin_schemas.BulkEncounterUpdate(
                 encounter_ids=list(range(1, 502)),
                 status="completed",

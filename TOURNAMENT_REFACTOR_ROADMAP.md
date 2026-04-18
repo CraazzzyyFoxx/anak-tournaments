@@ -71,13 +71,13 @@
 Сейчас пересчёт всё ещё идёт inline в HTTP-handler. Для больших турниров это десятки секунд.
 
 Checklist:
-- [ ] Создать exchange `tournament.recalc` в RabbitMQ topology (по аналогии с `mix_balance_service.balance`).
-- [ ] Parser-service или новый worker-service: consumer на routing key `tournament.recalc.<tournament_id>`.
-- [ ] `admin/encounter.py::{create,update,delete}_encounter` вместо `await standings_service.recalculate_for_tournament(...)` публикуют сообщение через FastStream producer.
-- [ ] Debouncing: если для того же `tournament_id` есть pending message — dedupe (используем `x-deduplication-header` или Redis-set «pending tournaments»).
-- [ ] В app-service при получении WebSocket-сообщения от consumer инвалидировать `cashews` кэш + пушить `tournament:recalculated` событие на фронт.
-- [ ] Frontend: подписаться на WS и инвалидировать `queryKey: ["standings", tournamentId]`.
-- [ ] Тесты: `test_recalculation_debounce.py`, `test_recalculation_idempotency.py`.
+- [x] Создать exchange `tournament.recalc` в RabbitMQ topology (по аналогии с `mix_balance_service.balance`).
+- [x] Parser-service или новый worker-service: consumer на routing key `tournament.recalc.<tournament_id>`.
+- [x] `admin/encounter.py::{create,update,delete}_encounter` вместо `await standings_service.recalculate_for_tournament(...)` публикуют сообщение через FastStream producer.
+- [x] Debouncing: если для того же `tournament_id` есть pending message — dedupe (используем `x-deduplication-header` или Redis-set «pending tournaments»).
+- [x] В app-service при получении WebSocket-сообщения от consumer инвалидировать `cashews` кэш + пушить `tournament:recalculated` событие на фронт.
+- [x] Frontend: подписаться на WS и инвалидировать `queryKey: ["standings", tournamentId]`.
+- [x] Тесты: `test_recalculation_debounce.py`, `test_recalculation_idempotency.py`.
 
 ### Phase C — остатки
 - [x] ~~**DE Grand Final Reset** lazy~~ — сделано в `advance_winner::_maybe_create_grand_final_reset` (если LB-champion выиграл GF → создаём reset-match).

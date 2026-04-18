@@ -63,7 +63,7 @@ class TeamRead(BaseRead):
     avg_sr: float
     total_sr: int
     tournament_id: int
-    captain_id: int
+    captain_id: int | None
     tournament: TournamentRead | None
     players: list[PlayerRead]
     captain: UserRead | None

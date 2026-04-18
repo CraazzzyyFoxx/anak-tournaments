@@ -96,7 +96,7 @@ async def bulk_create_from_balancer(
                 continue
 
             existing_globally_result = await session.execute(
-                sa.select(models.Player).where(models.Player.user_id == user.id)
+                sa.select(models.Player).where(models.Player.user_id == user.id).limit(1)
             )
             is_newcomer = existing_globally_result.scalar_one_or_none() is None
 
@@ -105,7 +105,7 @@ async def bulk_create_from_balancer(
                 sa.select(models.Player).where(
                     models.Player.user_id == user.id,
                     models.Player.role == role,
-                )
+                ).limit(1)
             )
             is_newcomer_role = existing_role_result.scalar_one_or_none() is None
 

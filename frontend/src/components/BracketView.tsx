@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { Pencil, FileEdit } from "lucide-react";
 
 import type { Encounter } from "@/types/encounter.types";
 import type { StageType } from "@/types/tournament.types";
@@ -8,6 +9,10 @@ import type { StageType } from "@/types/tournament.types";
 interface BracketViewProps {
   encounters: Encounter[];
   type: StageType;
+  onEdit?: (encounter: Encounter) => void;
+  onReport?: (encounter: Encounter) => void;
+  canEdit?: (encounter: Encounter) => boolean;
+  canReport?: (encounter: Encounter) => boolean;
 }
 
 interface MatchNodeData {
@@ -24,6 +29,7 @@ interface LayoutNode {
   x: number;
   y: number;
   data: MatchNodeData;
+  encounter: Encounter;
 }
 
 interface LayoutEdge {
@@ -162,6 +168,7 @@ function createNode(match: Encounter, x: number, y: number): LayoutNode {
       winner: getWinner(match),
       isCompleted: COMPLETED_STATUSES.has(match.status),
     },
+    encounter: match,
   };
 }
 
@@ -356,7 +363,39 @@ function MatchCard({ data }: { data: MatchNodeData }) {
   );
 }
 
-export function BracketView({ encounters, type }: BracketViewProps) {
+function resultStatusBadge(encounter: Encounter) {
+  const status = encounter.result_status;
+  if (!status || status === "none") return null;
+  if (status === "confirmed") return null;
+  const label =
+    status === "pending_confirmation"
+      ? "Ожидает"
+      : status === "disputed"
+        ? "Спор"
+        : status;
+  const color =
+    status === "pending_confirmation"
+      ? "bg-amber-500/80"
+      : status === "disputed"
+        ? "bg-red-500/80"
+        : "bg-white/40";
+  return (
+    <span
+      className={`absolute left-1 top-1 rounded px-1 text-[9px] font-semibold uppercase text-white ${color}`}
+    >
+      {label}
+    </span>
+  );
+}
+
+export function BracketView({
+  encounters,
+  type,
+  onEdit,
+  onReport,
+  canEdit,
+  canReport,
+}: BracketViewProps) {
   const layout = useMemo(() => buildLayout(encounters, type), [encounters, type]);
 
   if (layout.nodes.length === 0) {
@@ -420,15 +459,50 @@ export function BracketView({ encounters, type }: BracketViewProps) {
             </div>
           ))}
 
-          {layout.nodes.map((node) => (
-            <div
-              key={node.id}
-              className="absolute"
-              style={{ left: node.x, top: node.y, width: CARD_WIDTH, height: CARD_HEIGHT }}
-            >
-              <MatchCard data={node.data} />
-            </div>
-          ))}
+          {layout.nodes.map((node) => {
+            const editable = onEdit && (canEdit?.(node.encounter) ?? true);
+            const reportable = onReport && (canReport?.(node.encounter) ?? false);
+            return (
+              <div
+                key={node.id}
+                className="absolute group"
+                style={{ left: node.x, top: node.y, width: CARD_WIDTH, height: CARD_HEIGHT }}
+              >
+                <MatchCard data={node.data} />
+                {resultStatusBadge(node.encounter)}
+                {(editable || reportable) && (
+                  <div className="absolute right-1 top-1 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                    {editable && (
+                      <button
+                        type="button"
+                        className="rounded bg-black/70 p-1 text-white hover:bg-black"
+                        aria-label="Редактировать матч"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEdit?.(node.encounter);
+                        }}
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </button>
+                    )}
+                    {reportable && (
+                      <button
+                        type="button"
+                        className="rounded bg-emerald-700/90 p-1 text-white hover:bg-emerald-600"
+                        aria-label="Репорт матча"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onReport?.(node.encounter);
+                        }}
+                      >
+                        <FileEdit className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

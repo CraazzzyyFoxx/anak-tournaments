@@ -18,6 +18,8 @@ from shared.core import enums
 from shared.division_grid import DivisionGrid, load_runtime_grid
 from shared.domain.player_sub_roles import normalize_sub_role
 from src import models
+import src.services.user as user_flows
+from src.schemas.user import UserCSV
 from src.services.admin.balancer_utils import (
     DEFAULT_BOOLEAN_TRUE_VALUES,
     DEFAULT_ROLE_VALUE_MAP,
@@ -1333,3 +1335,37 @@ async def export_active_registrations(
         export_uuid = str(uuid4())
         payload_players[export_uuid] = serialize_registration_for_export(registration, export_uuid)
     return {"format": "xv-1", "players": payload_players}
+
+
+async def export_registrations_to_users(
+    session: AsyncSession,
+    tournament_id: int,
+) -> dict[str, int]:
+    registrations = await list_registrations(
+        session, tournament_id, include_deleted=False, status_filter="approved"
+    )
+
+    processed = 0
+    skipped = 0
+    for registration in registrations:
+        battle_tag = registration.battle_tag
+        if not battle_tag:
+            skipped += 1
+            continue
+        smurfs = [tag for tag in (registration.smurf_tags_json or []) if BATTLE_TAG_RE.match(tag)]
+        try:
+            payload = UserCSV(
+                battle_tag=battle_tag,
+                discord=registration.discord_nick,
+                twitch=registration.twitch_nick,
+                smurfs=smurfs,
+            )
+        except Exception:
+            logger.exception("Failed to build user payload for registration %s", battle_tag)
+            skipped += 1
+            continue
+
+        await user_flows.create(session, payload)
+        processed += 1
+
+    return {"processed": processed, "skipped": skipped, "total": len(registrations)}

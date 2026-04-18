@@ -201,6 +201,18 @@ export interface EncounterUpdateInput {
   status?: string;
   round?: number;
   name?: string;
+  closeness?: number | null;
+}
+
+export interface MatchUpdateInput {
+  home_team_id?: number;
+  away_team_id?: number;
+  home_score?: number;
+  away_score?: number;
+  map_id?: number;
+  code?: string | null;
+  time?: number;
+  log_name?: string;
 }
 
 // ─── Standing ────────────────────────────────────────────────────────────────

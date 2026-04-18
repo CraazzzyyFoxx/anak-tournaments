@@ -366,6 +366,7 @@ services:
           memory: 128M
 
   mixtura-balancer:
+    image: dmelackov/mixtura-tournament-balancer:latest
     build:
       context: ./backend/mixtura-balancer-tournament
       dockerfile: Dockerfile

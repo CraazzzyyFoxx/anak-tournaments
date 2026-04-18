@@ -1,7 +1,7 @@
 """Public routes for captain result submission and map veto."""
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models
@@ -31,6 +31,12 @@ class DisputeRequest(BaseModel):
 class VetoAction(BaseModel):
     map_id: int
     action: str  # "ban" or "pick"
+
+
+class CaptainMatchReport(BaseModel):
+    home_score: int = Field(ge=0)
+    away_score: int = Field(ge=0)
+    closeness: int = Field(ge=1, le=5)
 
 
 async def _resolve_websocket_viewer(
@@ -89,6 +95,31 @@ async def submit_result(
         "result_status": encounter.result_status,
         "home_score": encounter.home_score,
         "away_score": encounter.away_score,
+    }
+
+
+@router.post("/{encounter_id}/submit-match-report")
+async def submit_match_report(
+    encounter_id: int,
+    data: CaptainMatchReport,
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.get_current_user),
+):
+    """Captain submits the encounter result without creating per-map rows."""
+    encounter = await captain_service.submit_match_report(
+        session,
+        user,
+        encounter_id,
+        home_score=data.home_score,
+        away_score=data.away_score,
+        closeness_stars=data.closeness,
+    )
+    return {
+        "id": encounter.id,
+        "result_status": encounter.result_status,
+        "home_score": encounter.home_score,
+        "away_score": encounter.away_score,
+        "closeness": encounter.closeness,
     }
 
 
@@ -225,7 +256,7 @@ async def map_pool_socket(
                     await map_veto_service.perform_veto_action(
                         session,
                         encounter_id,
-                        getattr(websocket.state, "map_veto_viewer_side"),
+                        websocket.state.map_veto_viewer_side,
                         action.map_id,
                         action.action,
                     )

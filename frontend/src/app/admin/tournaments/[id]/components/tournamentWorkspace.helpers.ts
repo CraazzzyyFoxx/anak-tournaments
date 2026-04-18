@@ -1,7 +1,7 @@
 import { Layers3, Trophy, type LucideIcon } from "lucide-react";
 import type { Encounter } from "@/types/encounter.types";
 import type { Team } from "@/types/team.types";
-import type { Standings, Tournament } from "@/types/tournament.types";
+import type { Stage, Standings, Tournament } from "@/types/tournament.types";
 
 export type TournamentFormState = {
   number: number | null;
@@ -57,6 +57,13 @@ export type StandingSortState = {
 } | null;
 
 export type StandingGroupOption = {
+  id: string;
+  name: string;
+  stageOrder: number;
+  itemOrder: number;
+};
+
+export type EncounterGroupOption = {
   id: string;
   name: string;
   stageOrder: number;
@@ -170,6 +177,66 @@ export function getStandingForm(standing: Standings): StandingFormState {
 
 export function getEncounterStageLabel(encounter: Encounter) {
   return encounter.stage_item?.name ?? encounter.stage?.name ?? "-";
+}
+
+export function getEncounterScopeKey(encounter: Encounter): string {
+  if (encounter.stage_item_id != null) return `stage-item-${encounter.stage_item_id}`;
+  if (encounter.stage_id != null) return `stage-${encounter.stage_id}`;
+  return "unassigned";
+}
+
+export function getEncounterScopeLabel(encounter: Encounter): string {
+  return encounter.stage_item?.name ?? encounter.stage?.name ?? "Unassigned";
+}
+
+export function getEncounterGroups(encounters: Encounter[]): EncounterGroupOption[] {
+  return Array.from(
+    new Map(
+      encounters.map((encounter) => [
+        getEncounterScopeKey(encounter),
+        {
+          id: getEncounterScopeKey(encounter),
+          name: getEncounterScopeLabel(encounter),
+          stageOrder: encounter.stage?.order ?? Number.MAX_SAFE_INTEGER,
+          itemOrder: encounter.stage_item?.order ?? Number.MAX_SAFE_INTEGER,
+        },
+      ])
+    ).values()
+  ).sort(
+    (left, right) =>
+      left.stageOrder - right.stageOrder ||
+      left.itemOrder - right.itemOrder ||
+      left.name.localeCompare(right.name)
+  );
+}
+
+export function getStageScopeGroups(stages: Stage[]): EncounterGroupOption[] {
+  return stages
+    .flatMap((stage) => {
+      if (stage.items.length === 0) {
+        return [
+          {
+            id: `stage-${stage.id}`,
+            name: stage.name,
+            stageOrder: stage.order,
+            itemOrder: Number.MAX_SAFE_INTEGER,
+          },
+        ];
+      }
+
+      return stage.items.map((item) => ({
+        id: `stage-item-${item.id}`,
+        name: item.name,
+        stageOrder: stage.order,
+        itemOrder: item.order,
+      }));
+    })
+    .sort(
+      (left, right) =>
+        left.stageOrder - right.stageOrder ||
+        left.itemOrder - right.itemOrder ||
+        left.name.localeCompare(right.name)
+    );
 }
 
 export function getStandingScopeKey(standing: Standings): string {

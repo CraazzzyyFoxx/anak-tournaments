@@ -93,6 +93,48 @@ BALANCER_JOBS_DLQ = RabbitQueue(
 )
 
 # ============================================================================
+# Tournament Recalculation Events
+# ============================================================================
+
+TOURNAMENT_RECALC_EXCHANGE = RabbitExchange(
+    "tournament.recalc",
+    type=ExchangeType.TOPIC,
+    durable=True,
+)
+
+TOURNAMENT_RECALC_QUEUE = RabbitQueue(
+    "tournament_recalc",
+    durable=True,
+    routing_key="tournament.recalc.*",
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "tournament_recalc.dlq",
+        "x-message-ttl": 900000,  # 15 minutes
+    },
+)
+
+TOURNAMENT_RECALC_DLQ = RabbitQueue(
+    "tournament_recalc.dlq",
+    durable=True,
+)
+
+TOURNAMENT_RECALCULATED_QUEUE = RabbitQueue(
+    "tournament_recalculated",
+    durable=True,
+    routing_key="tournament.recalculated.*",
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "tournament_recalculated.dlq",
+        "x-message-ttl": 300000,  # 5 minutes
+    },
+)
+
+TOURNAMENT_RECALCULATED_DLQ = RabbitQueue(
+    "tournament_recalculated.dlq",
+    durable=True,
+)
+
+# ============================================================================
 # Achievement Evaluate Queue
 # ============================================================================
 

@@ -7,6 +7,12 @@ import type {
   VetoActionInput,
 } from "@/types/admin.types";
 
+export interface CaptainMatchReportInput {
+  home_score: number;
+  away_score: number;
+  closeness: number; // 1..5 stars
+}
+
 class CaptainService {
   async buildMapVetoWebSocketUrl(encounterId: number): Promise<string> {
     const parserBase = process.env.NEXT_PUBLIC_PARSER_API_URL;
@@ -52,6 +58,24 @@ class CaptainService {
       method: "POST",
       body: data,
     });
+    return response.json();
+  }
+
+  async submitMatchReport(
+    encounterId: number,
+    data: CaptainMatchReportInput
+  ): Promise<{
+    id: number;
+    result_status: string;
+    home_score: number;
+    away_score: number;
+    closeness: number | null;
+  }> {
+    const response = await apiFetch(
+      "parser",
+      `encounters/${encounterId}/submit-match-report`,
+      { method: "POST", body: data }
+    );
     return response.json();
   }
 

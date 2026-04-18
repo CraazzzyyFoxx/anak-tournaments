@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDown,
@@ -59,7 +60,9 @@ import {
   TOURNAMENT_DETAIL_PREVIEW_LIMIT,
   getEmptyEncounterForm,
   getEncounterForm,
+  getEncounterScopeKey,
   getEncounterStageLabel,
+  getStageScopeGroups,
   getStandingForm,
   getStandingGroups,
   getStandingScopeKey,
@@ -71,6 +74,9 @@ import {
   type StandingSortState,
 } from "./tournamentWorkspace.helpers";
 import { invalidateTournamentWorkspace } from "./tournamentWorkspace.queryKeys";
+
+const ENCOUNTERS_SCOPE_QUERY_PARAM = "encountersScope";
+const STANDINGS_SCOPE_QUERY_PARAM = "standingsScope";
 
 interface TournamentMatchesTabProps {
   tournamentId: number;
@@ -97,6 +103,15 @@ function SortIcon({ state, active }: { state: StandingSortState; active: boolean
   );
 }
 
+function setScopeParam(params: URLSearchParams, key: string, value: string) {
+  if (value === "all") {
+    params.delete(key);
+    return;
+  }
+
+  params.set(key, value);
+}
+
 export function TournamentMatchesTab({
   tournamentId,
   teams,
@@ -112,6 +127,9 @@ export function TournamentMatchesTab({
   canDeleteStanding,
   canRecalculateStandings,
 }: TournamentMatchesTabProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const tableStyles = getAdminDetailTableStyles("compact");
@@ -119,9 +137,6 @@ export function TournamentMatchesTab({
   const defaultStage = stages[0] ?? null;
   const defaultStageId = defaultStage?.id ?? null;
   const defaultStageItemId = defaultStage?.items[0]?.id ?? null;
-  const completedEncounterCount = encounters.filter(
-    (encounter) => encounter.status?.toUpperCase() === "COMPLETED"
-  ).length;
   const canCreateEncounterNow = canCreateEncounter && teams.length >= 2 && stages.length > 0;
   const canManageStandingsNow = canRecalculateStandings && encounters.length > 0;
 
@@ -143,9 +158,25 @@ export function TournamentMatchesTab({
     lose: 0,
   });
   const [standingPendingDelete, setStandingPendingDelete] = useState<Standings | null>(null);
-  const [standingsGroupFilter, setStandingsGroupFilter] = useState<string>("all");
   const [standingsExpanded, setStandingsExpanded] = useState(false);
   const [standingsSort, setStandingsSort] = useState<StandingSortState>(null);
+
+  const replaceSearchParams = useCallback(
+    (params: URLSearchParams) => {
+      const query = params.toString();
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    },
+    [pathname, router]
+  );
+
+  const updateScopeFilter = useCallback(
+    (key: string, value: string) => {
+      const params = new URLSearchParams(searchParams.toString());
+      setScopeParam(params, key, value);
+      replaceSearchParams(params);
+    },
+    [replaceSearchParams, searchParams]
+  );
 
   const resetEncounterDialog = () => {
     setEncounterDialogOpen(false);
@@ -375,7 +406,28 @@ export function TournamentMatchesTab({
     selectedEncounterStageItem
   );
 
-  const standingGroups = getStandingGroups(standings);
+  const encounterGroups = useMemo(() => getStageScopeGroups(stages), [stages]);
+  const standingGroups = useMemo(() => getStandingGroups(standings), [standings]);
+  const rawEncounterScopeFilter = searchParams.get(ENCOUNTERS_SCOPE_QUERY_PARAM) ?? "all";
+  const rawStandingsScopeFilter = searchParams.get(STANDINGS_SCOPE_QUERY_PARAM) ?? "all";
+  const encounterScopeFilter =
+    rawEncounterScopeFilter === "all" ||
+    encounterGroups.some((group) => group.id === rawEncounterScopeFilter)
+      ? rawEncounterScopeFilter
+      : "all";
+  const standingsGroupFilter =
+    rawStandingsScopeFilter === "all" ||
+    standingGroups.some((group) => group.id === rawStandingsScopeFilter)
+      ? rawStandingsScopeFilter
+      : "all";
+  const filteredEncounters =
+    encounterScopeFilter === "all"
+      ? encounters
+      : encounters.filter((encounter) => getEncounterScopeKey(encounter) === encounterScopeFilter);
+  const visibleEncounters = filteredEncounters.slice(0, TOURNAMENT_DETAIL_PREVIEW_LIMIT);
+  const completedFilteredEncounterCount = filteredEncounters.filter(
+    (encounter) => encounter.status?.toUpperCase() === "COMPLETED"
+  ).length;
   const filteredStandings =
     standingsGroupFilter === "all"
       ? standings
@@ -385,6 +437,27 @@ export function TournamentMatchesTab({
     ? sortedStandings
     : sortedStandings.slice(0, TOURNAMENT_DETAIL_PREVIEW_LIMIT);
   const hasMoreStandings = sortedStandings.length > TOURNAMENT_DETAIL_PREVIEW_LIMIT;
+
+  useEffect(() => {
+    if (
+      rawEncounterScopeFilter === encounterScopeFilter &&
+      rawStandingsScopeFilter === standingsGroupFilter
+    ) {
+      return;
+    }
+
+    const params = new URLSearchParams(searchParams.toString());
+    setScopeParam(params, ENCOUNTERS_SCOPE_QUERY_PARAM, encounterScopeFilter);
+    setScopeParam(params, STANDINGS_SCOPE_QUERY_PARAM, standingsGroupFilter);
+    replaceSearchParams(params);
+  }, [
+    encounterScopeFilter,
+    rawEncounterScopeFilter,
+    rawStandingsScopeFilter,
+    replaceSearchParams,
+    searchParams,
+    standingsGroupFilter,
+  ]);
 
   const toggleStandingSort = (key: StandingSortKey) => {
     setStandingsSort((current) => {
@@ -407,9 +480,9 @@ export function TournamentMatchesTab({
             <div className="flex min-w-0 items-center gap-3">
               <CardTitle className="text-sm font-semibold">Encounters</CardTitle>
               <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground/50">
-                <span>{encounters.length} encounters</span>
+                <span>{filteredEncounters.length} encounters</span>
                 <span>·</span>
-                <span>{completedEncounterCount} completed</span>
+                <span>{completedFilteredEncounterCount} completed</span>
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -431,7 +504,33 @@ export function TournamentMatchesTab({
               ) : null}
             </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
+            {encounterGroups.length > 1 ? (
+              <div className="flex items-center gap-2">
+                <Label htmlFor="encounters-scope-filter" className="text-xs text-muted-foreground">
+                  Scope
+                </Label>
+                <Select
+                  value={encounterScopeFilter}
+                  onValueChange={(value) =>
+                    updateScopeFilter(ENCOUNTERS_SCOPE_QUERY_PARAM, value)
+                  }
+                >
+                  <SelectTrigger id="encounters-scope-filter" className="h-8 w-[220px]">
+                    <SelectValue placeholder="All stages" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All stages</SelectItem>
+                    {encounterGroups.map((group) => (
+                      <SelectItem key={group.id} value={group.id}>
+                        {group.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+
             <AdminDetailTableShell variant="compact">
               <Table>
                 <TableHeader>
@@ -446,8 +545,8 @@ export function TournamentMatchesTab({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {encounters.length ? (
-                    encounters.slice(0, TOURNAMENT_DETAIL_PREVIEW_LIMIT).map((encounter) => (
+                  {visibleEncounters.length ? (
+                    visibleEncounters.map((encounter) => (
                       <TableRow key={encounter.id} className={tableStyles.row}>
                         <TableCell className={tableStyles.cell}>
                           <div className="space-y-1">
@@ -563,13 +662,13 @@ export function TournamentMatchesTab({
                 </TableBody>
               </Table>
             </AdminDetailTableShell>
-            {encounters.length > TOURNAMENT_DETAIL_PREVIEW_LIMIT ? (
+            {filteredEncounters.length > TOURNAMENT_DETAIL_PREVIEW_LIMIT ? (
               <div className="border-t border-border/30 px-3 py-2">
                 <Link
                   href={`/admin/encounters?tournament=${tournamentId}`}
                   className="text-[12px] text-muted-foreground/60 transition-colors hover:text-foreground"
                 >
-                  Show all {encounters.length} encounters →
+                  Show all {filteredEncounters.length} encounters →
                 </Link>
               </div>
             ) : null}
@@ -628,7 +727,12 @@ export function TournamentMatchesTab({
                 <Label htmlFor="standings-scope-filter" className="text-xs text-muted-foreground">
                   Scope
                 </Label>
-                <Select value={standingsGroupFilter} onValueChange={setStandingsGroupFilter}>
+                <Select
+                  value={standingsGroupFilter}
+                  onValueChange={(value) =>
+                    updateScopeFilter(STANDINGS_SCOPE_QUERY_PARAM, value)
+                  }
+                >
                   <SelectTrigger id="standings-scope-filter" className="h-8 w-[220px]">
                     <SelectValue placeholder="All stages" />
                   </SelectTrigger>
@@ -891,7 +995,6 @@ export function TournamentMatchesTab({
             <Input
               id="workspace-encounter-round"
               type="number"
-              min="1"
               value={encounterFormData.round}
               onChange={(event) =>
                 setEncounterFormData((current) => ({

@@ -10,6 +10,7 @@ class Settings(BaseServiceSettings):
     api_v1_str: str = "/api/v1"
 
     redis_url: RedisDsn
+    rabbitmq_url: str = "amqp://guest:guest@rabbitmq:5672"
 
     # Cache TTLs
     users_cache_ttl: int = 60

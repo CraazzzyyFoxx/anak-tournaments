@@ -1,16 +1,21 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 
 import { BracketView } from "@/components/BracketView";
 import StandingsTable from "@/components/StandingsTable";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { EncounterEditDialog } from "@/components/tournaments/EncounterEditDialog";
+import { MatchReportDialog } from "@/components/tournaments/MatchReportDialog";
+import { useAuthProfile } from "@/hooks/useAuthProfile";
 import encounterService from "@/services/encounter.service";
 import tournamentService from "@/services/tournament.service";
 import type { Encounter } from "@/types/encounter.types";
 import type { Standings, Tournament, Stage, StageItem } from "@/types/tournament.types";
+
+const ADMIN_ROLES = new Set(["admin", "superadmin", "tournament_admin"]);
 
 interface TournamentBracketPageProps {
   tournament: Tournament;
@@ -22,11 +27,19 @@ function GroupStagePanel({
   stageItem,
   encounters,
   standings,
+  onEdit,
+  onReport,
+  canEdit,
+  canReport,
 }: {
   stage: Stage;
   stageItem?: StageItem;
   encounters: Encounter[];
   standings: Standings[];
+  onEdit?: (encounter: Encounter) => void;
+  onReport?: (encounter: Encounter) => void;
+  canEdit?: (encounter: Encounter) => boolean;
+  canReport?: (encounter: Encounter) => boolean;
 }) {
   const hasStandings = standings.length > 0;
   const title = stageItem?.name ?? stage.name;
@@ -74,7 +87,14 @@ function GroupStagePanel({
       )}
 
       <TabsContent value="matches" className="mt-0 p-4">
-        <BracketView encounters={encounters} type={stage.stage_type} />
+        <BracketView
+          encounters={encounters}
+          type={stage.stage_type}
+          onEdit={onEdit}
+          onReport={onReport}
+          canEdit={canEdit}
+          canReport={canReport}
+        />
       </TabsContent>
     </Tabs>
   );
@@ -94,6 +114,25 @@ export default function TournamentBracketPage({
   const searchParams = useSearchParams();
   const selectedStageParam = searchParams.get("stage");
   const viewParam = searchParams.get("view");
+
+  const { status: authStatus, user: authUser } = useAuthProfile();
+  const isAuthenticated = authStatus === "authenticated";
+  const isAdmin =
+    isAuthenticated &&
+    (authUser?.isSuperuser ||
+      (authUser?.roles ?? []).some((r) => ADMIN_ROLES.has(r)));
+
+  const [editEncounter, setEditEncounter] = useState<Encounter | null>(null);
+  const [reportEncounter, setReportEncounter] = useState<Encounter | null>(null);
+
+  const canEdit = isAdmin ? () => true : undefined;
+  const canReport = isAuthenticated && !isAdmin
+    ? (enc: Encounter) => enc.result_status !== "confirmed"
+    : undefined;
+  const handleEdit = isAdmin ? (enc: Encounter) => setEditEncounter(enc) : undefined;
+  const handleReport = isAuthenticated && !isAdmin
+    ? (enc: Encounter) => setReportEncounter(enc)
+    : undefined;
 
   const groupStages = stages.filter(
     (stage) =>
@@ -228,6 +267,10 @@ export default function TournamentBracketPage({
                   stageItem={panel.stageItem}
                   encounters={panel.encounters}
                   standings={panel.standings}
+                  onEdit={handleEdit}
+                  onReport={handleReport}
+                  canEdit={canEdit}
+                  canReport={canReport}
                 />
               ))
             : activeStages.map((stage) => {
@@ -286,7 +329,14 @@ export default function TournamentBracketPage({
                 )}
 
                 <TabsContent value="bracket" className="mt-0 p-4">
-                  <BracketView encounters={encounters} type={stage.stage_type} />
+                  <BracketView
+                    encounters={encounters}
+                    type={stage.stage_type}
+                    onEdit={handleEdit}
+                    onReport={handleReport}
+                    canEdit={canEdit}
+                    canReport={canReport}
+                  />
                 </TabsContent>
               </Tabs>
             );
@@ -298,6 +348,26 @@ export default function TournamentBracketPage({
             ? "No stages configured for this tournament"
             : "No bracket matches found for the selected stage"}
         </div>
+      )}
+
+      {editEncounter && (
+        <EncounterEditDialog
+          open={!!editEncounter}
+          onOpenChange={(open) => {
+            if (!open) setEditEncounter(null);
+          }}
+          encounter={editEncounter}
+        />
+      )}
+
+      {reportEncounter && (
+        <MatchReportDialog
+          open={!!reportEncounter}
+          onOpenChange={(open) => {
+            if (!open) setReportEncounter(null);
+          }}
+          encounter={reportEncounter}
+        />
       )}
     </div>
   );

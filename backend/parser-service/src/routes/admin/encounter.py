@@ -72,6 +72,32 @@ async def bulk_update_encounters(
     return await admin_service.bulk_update_encounters(session, data)
 
 
+# ── Admin per-match (map) edits ──────────────────────────────────────────
+
+
+@router.patch("/matches/{match_id}")
+async def update_match(
+    match_id: int,
+    data: admin_schemas.MatchUpdate,
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_permission("match", "update")),
+):
+    """Update a single match (map) within an encounter."""
+    match = await admin_service.update_match(session, match_id, data)
+    return {
+        "id": match.id,
+        "encounter_id": match.encounter_id,
+        "home_team_id": match.home_team_id,
+        "away_team_id": match.away_team_id,
+        "home_score": match.home_score,
+        "away_score": match.away_score,
+        "map_id": match.map_id,
+        "code": match.code,
+        "time": match.time,
+        "log_name": match.log_name,
+    }
+
+
 # ── Admin map pool management ────────────────────────────────────────────
 
 

@@ -416,6 +416,19 @@ async def bulk_add_to_balancer(
 # ---------------------------------------------------------------------------
 
 
+@router.post(
+    "/tournaments/{tournament_id}/registrations/export-users",
+    response_model=admin_schemas.RegistrationUserExportResponse,
+)
+async def export_registrations_to_users(
+    tournament_id: int,
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("team", "import")),
+):
+    result = await registration_service.export_registrations_to_users(session, tournament_id)
+    return admin_schemas.RegistrationUserExportResponse(**result)
+
+
 @router.patch("/registrations/{registration_id}/check-in", response_model=admin_schemas.BalancerRegistrationRead)
 async def toggle_check_in(
     registration_id: int,

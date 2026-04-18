@@ -81,6 +81,9 @@ class AlgorithmConfig(BaseSettings):
     # NSGA-II (mixtura-balancer) settings
     MAX_NSGA_SOLUTIONS: int = Field(default=10, ge=1, le=50)
     MIXTURA_QUEUE: str = Field(default="mix_balance_service.balance")
+    WEIGHT_TEAM_VARIANCE: float = Field(default=1.0, ge=0.0, description="Weight of team variance in balance objective.")
+    TEAM_SPREAD_BLEND: float = Field(default=0.1, ge=0.0, description="Blend coefficient for per-team player spread variance in the folded balance objective.")
+    SUBROLE_BLEND: float = Field(default=0.1, ge=0.0, description="Blend coefficient for subrole penalty in the folded balance objective.")
 
 
 class Settings(BaseServiceSettings):

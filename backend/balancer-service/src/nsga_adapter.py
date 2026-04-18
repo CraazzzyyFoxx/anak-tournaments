@@ -145,12 +145,18 @@ def to_mixtura_request(
     max_solutions: int = config_overrides.get("MAX_NSGA_SOLUTIONS", 10)
     role_spread_weight: float = config_overrides.get("ROLE_SPREAD_WEIGHT", 0.0)
     intra_team_std_weight: float = config_overrides.get("INTRA_TEAM_STD_WEIGHT", 0.0)
+    weight_team_variance: float = config_overrides.get("WEIGHT_TEAM_VARIANCE", 1.0)
+    team_spread_blend: float = config_overrides.get("TEAM_SPREAD_BLEND", 0.1)
+    subrole_blend: float = config_overrides.get("SUBROLE_BLEND", 0.1)
 
     math_settings: dict[str, Any] = {
         "population_size": population_size,
         "generations": generations,
         "num_pareto_solutions": max_solutions,
+        "weight_team_variance": weight_team_variance,
         "role_imbalance_blend": role_spread_weight,
+        "team_spread_blend": team_spread_blend,
+        "subrole_blend": subrole_blend,
         "intra_team_std_blend": intra_team_std_weight,
     }
     

@@ -23,6 +23,7 @@ import {
   PlayerUpdateInput,
   EncounterCreateInput,
   EncounterUpdateInput,
+  MatchUpdateInput,
   StandingUpdateInput,
   UserCreateInput,
   UserUpdateInput,
@@ -262,6 +263,25 @@ class AdminService {
     await apiFetch("parser",`admin/encounters/${id}`, {
       method: "DELETE"
     });
+  }
+
+  async updateMatch(matchId: number, data: MatchUpdateInput): Promise<{
+    id: number;
+    encounter_id: number;
+    home_team_id: number;
+    away_team_id: number;
+    home_score: number;
+    away_score: number;
+    map_id: number;
+    code: string | null;
+    time: number;
+    log_name: string;
+  }> {
+    const response = await apiFetch("parser", `admin/encounters/matches/${matchId}`, {
+      method: "PATCH",
+      body: data,
+    });
+    return response.json();
   }
 
   async syncEncountersFromChallonge(tournamentId: number): Promise<BulkOperationResult> {
