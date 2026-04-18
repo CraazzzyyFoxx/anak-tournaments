@@ -265,7 +265,7 @@ def _match_rules(workspace_id: int) -> list[AchievementRule]:
             grain=AchievementGrain.user_match,
             condition_tree={
                 "type": "stat_threshold",
-                "params": {"stat": "CriticalHitKills", "op": ">=", "value": 10},
+                "params": {"stat": "ScopedCriticalHitKills", "op": ">=", "value": 10},
             },
             depends_on=["matches.match", "matches.statistics"],
         ),
