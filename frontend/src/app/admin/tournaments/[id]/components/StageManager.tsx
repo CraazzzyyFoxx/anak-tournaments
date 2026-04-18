@@ -110,6 +110,8 @@ export function StageManager({ tournamentId }: StageManagerProps) {
   const [stageItemDrafts, setStageItemDrafts] = useState<Record<number, StageItemDraft>>({});
   const [teamDrafts, setTeamDrafts] = useState<Record<number, string>>({});
   const [editingItemTypeId, setEditingItemTypeId] = useState<number | null>(null);
+  const [editingInputId, setEditingInputId] = useState<number | null>(null);
+  const [editingInputTeamDraft, setEditingInputTeamDraft] = useState<string>("");
 
   const { data: stages = [], isLoading } = useQuery({
     queryKey: ["admin", "stages", tournamentId],
@@ -242,6 +244,16 @@ export function StageManager({ tournamentId }: StageManagerProps) {
       adminService.updateStageItem(stageItemId, { type }),
     onSuccess: (_item, variables) => {
       setEditingItemTypeId(null);
+      invalidateStageData();
+    }
+  });
+
+  const updateInputMutation = useMutation({
+    mutationFn: ({ inputId, teamId }: { inputId: number; teamId: number }) =>
+      adminService.updateStageItemInput(inputId, { team_id: teamId, input_type: "final" }),
+    onSuccess: () => {
+      setEditingInputId(null);
+      setEditingInputTeamDraft("");
       invalidateStageData();
     }
   });
@@ -771,24 +783,109 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                 } else {
                                   label = "Empty slot";
                                 }
+                                const isEditingThisInput = editingInputId === input.id;
+                                const canSwapAssignedTeams = input.team_id != null;
                                 return (
                                   <div
                                     key={input.id}
-                                    className="flex items-center justify-between gap-2 rounded-md border border-border/50 bg-background/50 px-2.5 py-1.5 text-xs"
+                                    className="flex items-center gap-2 rounded-md border border-border/50 bg-background/50 px-2.5 py-1.5 text-xs"
                                   >
-                                    <span className="min-w-0 truncate">
+                                    <span className="min-w-0 flex-1 truncate">
                                       #{input.slot} {label}
                                     </span>
-                                    <Badge
-                                      variant="outline"
-                                      className={`shrink-0 text-[10px] ${
-                                        input.input_type === "tentative"
-                                          ? "border-amber-700/50 text-amber-300"
-                                          : ""
-                                      }`}
-                                    >
-                                      {input.input_type}
-                                    </Badge>
+                                    {isEditingThisInput ? (
+                                      <>
+                                        <Select
+                                          value={editingInputTeamDraft}
+                                          onValueChange={setEditingInputTeamDraft}
+                                        >
+                                          <SelectTrigger className="h-6 w-36 text-[11px]">
+                                            <SelectValue placeholder="Pick team" />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            {teams.map((team) => (
+                                              <SelectItem
+                                                key={team.id}
+                                                value={team.id.toString()}
+                                                disabled={
+                                                  assignedTeamIds.has(team.id) &&
+                                                  team.id !== input.team_id &&
+                                                  !canSwapAssignedTeams
+                                                }
+                                                className="text-[11px]"
+                                              >
+                                                {team.name}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                        <Button
+                                          size="icon"
+                                          variant="ghost"
+                                          className="size-6 shrink-0"
+                                          disabled={
+                                            !editingInputTeamDraft ||
+                                            (updateInputMutation.isPending &&
+                                              updateInputMutation.variables?.inputId === input.id)
+                                          }
+                                          onClick={() =>
+                                            updateInputMutation.mutate({
+                                              inputId: input.id,
+                                              teamId: Number(editingInputTeamDraft)
+                                            })
+                                          }
+                                        >
+                                          {updateInputMutation.isPending &&
+                                          updateInputMutation.variables?.inputId === input.id ? (
+                                            <Loader2 className="size-3 animate-spin" />
+                                          ) : (
+                                            <CheckCircle2 className="size-3" />
+                                          )}
+                                        </Button>
+                                        <Button
+                                          size="icon"
+                                          variant="ghost"
+                                          className="size-6 shrink-0"
+                                          onClick={() => {
+                                            setEditingInputId(null);
+                                            setEditingInputTeamDraft("");
+                                          }}
+                                        >
+                                          ×
+                                        </Button>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Badge
+                                          variant="outline"
+                                          className={`shrink-0 text-[10px] ${
+                                            input.input_type === "tentative"
+                                              ? "border-amber-700/50 text-amber-300"
+                                              : ""
+                                          }`}
+                                        >
+                                          {input.input_type}
+                                        </Badge>
+                                        {input.input_type !== "empty" && (
+                                          <button
+                                            className="shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground"
+                                            title={
+                                              input.input_type === "tentative"
+                                                ? "Override team"
+                                                : "Change team"
+                                            }
+                                            onClick={() => {
+                                              setEditingInputId(input.id);
+                                              setEditingInputTeamDraft(
+                                                input.team_id?.toString() ?? ""
+                                              );
+                                            }}
+                                          >
+                                            <Pencil className="size-2.5" />
+                                          </button>
+                                        )}
+                                      </>
+                                    )}
                                   </div>
                                 );
                               })}

@@ -2,15 +2,15 @@
 
 from fastapi import HTTPException, status
 from loguru import logger
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
-
 from shared.core import enums
 from shared.services.bracket.advancement import persist_advancement_edges
 from shared.services.bracket.engine import generate_bracket
 from shared.services.bracket.swiss import SwissStanding
 from shared.services.bracket.types import BracketSkeleton
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
 from src import models
 from src.schemas.admin import stage as admin_schemas
 from src.services.standings import service as standings_service
@@ -249,6 +249,118 @@ async def create_stage_item_input(
     session.add(inp)
     await session.commit()
     await session.refresh(inp)
+    await standings_service.recalculate_for_tournament(session, tournament_id)
+    await session.refresh(inp)
+    return inp
+
+
+async def update_stage_item_input(
+    session: AsyncSession,
+    input_id: int,
+    data: admin_schemas.StageItemInputUpdate,
+) -> models.StageItemInput:
+    result = await session.execute(
+        select(models.StageItemInput)
+        .where(models.StageItemInput.id == input_id)
+        .options(
+            selectinload(models.StageItemInput.stage_item).selectinload(
+                models.StageItem.stage
+            )
+        )
+    )
+    inp = result.scalar_one_or_none()
+    if not inp:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Stage item input not found"
+        )
+
+    tournament_id = inp.stage_item.stage.tournament_id
+    stage_id = inp.stage_item.stage_id
+    update_data = data.model_dump(exclude_unset=True)
+    if not update_data:
+        return inp
+
+    next_input_type = update_data.get("input_type", inp.input_type)
+    next_team_id = update_data.get("team_id", inp.team_id)
+    next_source_stage_item_id = update_data.get(
+        "source_stage_item_id", inp.source_stage_item_id
+    )
+    next_source_position = update_data.get("source_position", inp.source_position)
+
+    if "team_id" in update_data and next_team_id is not None:
+        team_result = await session.execute(
+            select(models.Team).where(models.Team.id == next_team_id)
+        )
+        team = team_result.scalar_one_or_none()
+        if team is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Team not found",
+            )
+        if team.tournament_id != tournament_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Team does not belong to this tournament",
+            )
+
+        existing_result = await session.execute(
+            select(models.StageItemInput)
+            .join(models.StageItem, models.StageItemInput.stage_item_id == models.StageItem.id)
+            .where(
+                models.StageItem.stage_id == stage_id,
+                models.StageItemInput.id != input_id,
+                models.StageItemInput.team_id == next_team_id,
+            )
+        )
+        existing_input = existing_result.scalar_one_or_none()
+        if existing_input is not None:
+            if inp.team_id is None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        "Selected team is already assigned in this stage; "
+                        "replace a populated slot to swap teams"
+                    ),
+                )
+            existing_input.team_id = inp.team_id
+
+        next_input_type = enums.StageItemInputType.FINAL
+        next_source_stage_item_id = None
+        next_source_position = None
+
+    if next_input_type == enums.StageItemInputType.FINAL:
+        if next_team_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="FINAL inputs require team_id",
+            )
+        next_source_stage_item_id = None
+        next_source_position = None
+    elif next_input_type == enums.StageItemInputType.TENTATIVE:
+        if next_source_stage_item_id is None or next_source_position is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "TENTATIVE inputs require source_stage_item_id and "
+                    "source_position"
+                ),
+            )
+        if next_team_id is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="TENTATIVE inputs must not have team_id",
+            )
+    elif next_input_type == enums.StageItemInputType.EMPTY:
+        next_team_id = None
+        next_source_stage_item_id = None
+        next_source_position = None
+
+    inp.input_type = next_input_type
+    inp.team_id = next_team_id
+    inp.source_stage_item_id = next_source_stage_item_id
+    inp.source_position = next_source_position
+
+    await session.commit()
     await standings_service.recalculate_for_tournament(session, tournament_id)
     await session.refresh(inp)
     return inp

@@ -163,6 +163,21 @@ async def create_stage_item_input(
     return schemas.StageItemInputRead.model_validate(inp, from_attributes=True)
 
 
+@router.patch(
+    "/items/inputs/{input_id}",
+    response_model=schemas.StageItemInputRead,
+)
+async def update_stage_item_input(
+    input_id: int,
+    data: admin_schemas.StageItemInputUpdate,
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_permission("tournament", "update")),
+):
+    """Update a stage item input (e.g. swap the assigned team)."""
+    inp = await stage_service.update_stage_item_input(session, input_id, data)
+    return schemas.StageItemInputRead.model_validate(inp, from_attributes=True)
+
+
 @router.post("/{stage_id}/activate", response_model=schemas.StageRead)
 async def activate_stage(
     stage_id: int,

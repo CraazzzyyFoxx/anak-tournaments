@@ -121,3 +121,98 @@ class AdminStageServiceTests(IsolatedAsyncioTestCase):
         self.assertEqual(stage.id, added_group.stage_id)
         self.assertTrue(added_group.is_groups)
         recalculate.assert_awaited_once_with(session, stage.tournament_id)
+
+    async def test_update_stage_item_input_swaps_with_existing_stage_team(self) -> None:
+        stage = SimpleNamespace(id=7, tournament_id=99)
+        stage_item = SimpleNamespace(id=10, stage=stage, stage_id=stage.id)
+        current_input = SimpleNamespace(
+            id=1,
+            stage_item=stage_item,
+            input_type=enums.StageItemInputType.FINAL,
+            team_id=11,
+            source_stage_item_id=None,
+            source_position=None,
+        )
+        other_input = SimpleNamespace(
+            id=2,
+            stage_item=stage_item,
+            input_type=enums.StageItemInputType.FINAL,
+            team_id=22,
+            source_stage_item_id=None,
+            source_position=None,
+        )
+        current_result = Mock()
+        current_result.scalar_one_or_none.return_value = current_input
+        team_result = Mock()
+        team_result.scalar_one_or_none.return_value = SimpleNamespace(
+            id=22, tournament_id=stage.tournament_id
+        )
+        existing_result = Mock()
+        existing_result.scalar_one_or_none.return_value = other_input
+        session = SimpleNamespace(
+            execute=AsyncMock(side_effect=[current_result, team_result, existing_result]),
+            commit=AsyncMock(),
+            refresh=AsyncMock(),
+        )
+        data = admin_schemas.StageItemInputUpdate(
+            input_type=enums.StageItemInputType.FINAL,
+            team_id=22,
+        )
+
+        with patch.object(
+            stage_service.standings_service,
+            "recalculate_for_tournament",
+            AsyncMock(),
+        ) as recalculate:
+            result = await stage_service.update_stage_item_input(session, current_input.id, data)
+
+        self.assertIs(result, current_input)
+        self.assertEqual(22, current_input.team_id)
+        self.assertEqual(11, other_input.team_id)
+        self.assertEqual(enums.StageItemInputType.FINAL, current_input.input_type)
+        recalculate.assert_awaited_once_with(session, stage.tournament_id)
+        session.commit.assert_awaited_once_with()
+        session.refresh.assert_awaited_once_with(current_input)
+
+    async def test_update_stage_item_input_finalizes_tentative_override(self) -> None:
+        stage = SimpleNamespace(id=7, tournament_id=99)
+        stage_item = SimpleNamespace(id=10, stage=stage, stage_id=stage.id)
+        current_input = SimpleNamespace(
+            id=1,
+            stage_item=stage_item,
+            input_type=enums.StageItemInputType.TENTATIVE,
+            team_id=None,
+            source_stage_item_id=55,
+            source_position=2,
+        )
+        current_result = Mock()
+        current_result.scalar_one_or_none.return_value = current_input
+        team_result = Mock()
+        team_result.scalar_one_or_none.return_value = SimpleNamespace(
+            id=33, tournament_id=stage.tournament_id
+        )
+        existing_result = Mock()
+        existing_result.scalar_one_or_none.return_value = None
+        session = SimpleNamespace(
+            execute=AsyncMock(side_effect=[current_result, team_result, existing_result]),
+            commit=AsyncMock(),
+            refresh=AsyncMock(),
+        )
+        data = admin_schemas.StageItemInputUpdate(
+            input_type=enums.StageItemInputType.FINAL,
+            team_id=33,
+        )
+
+        with patch.object(
+            stage_service.standings_service,
+            "recalculate_for_tournament",
+            AsyncMock(),
+        ) as recalculate:
+            result = await stage_service.update_stage_item_input(session, current_input.id, data)
+
+        self.assertIs(result, current_input)
+        self.assertEqual(enums.StageItemInputType.FINAL, current_input.input_type)
+        self.assertEqual(33, current_input.team_id)
+        self.assertIsNone(current_input.source_stage_item_id)
+        self.assertIsNone(current_input.source_position)
+        recalculate.assert_awaited_once_with(session, stage.tournament_id)

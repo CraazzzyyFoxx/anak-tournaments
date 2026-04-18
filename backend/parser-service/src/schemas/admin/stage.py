@@ -1,7 +1,6 @@
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
-
 from shared.core.enums import StageItemInputType, StageItemType, StageType
 
 __all__ = (
@@ -77,7 +76,7 @@ class StageItemInputUpdate(BaseModel):
     input_type: StageItemInputType | None = None
     team_id: int | None = None
     source_stage_item_id: int | None = None
-    source_position: int | None = None
+    source_position: int | None = Field(default=None, ge=1)
 
 
 class WireFromGroupsRequest(BaseModel):

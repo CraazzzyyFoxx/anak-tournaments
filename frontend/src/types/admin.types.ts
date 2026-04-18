@@ -86,6 +86,13 @@ export interface StageItemInputCreateInput {
   source_position?: number | null;
 }
 
+export interface StageItemInputUpdateInput {
+  input_type?: StageItemInputType;
+  team_id?: number | null;
+  source_stage_item_id?: number | null;
+  source_position?: number | null;
+}
+
 // ─── Captain Submission ─────────────────────────────────────────────────────
 
 export interface ResultSubmissionInput {

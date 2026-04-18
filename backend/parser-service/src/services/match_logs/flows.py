@@ -1,5 +1,4 @@
 import csv
-import io
 
 import pandas as pd
 import sqlalchemy as sa
@@ -37,54 +36,42 @@ class MatchLogProcessor:
             logger.warning(f"Match log {self.filename} has no valid lines.")
             return pd.DataFrame(columns=["event_type", "time", "data", "round_number"])
 
-        MAX_COLS = 20
-        raw_df = pd.read_csv(
-            io.StringIO("\n".join(valid_lines)),
-            header=None,
-            names=range(MAX_COLS),
-            dtype=str,
-            on_bad_lines="skip",
-            engine="python",
-        )
-        # col 0 = timestamp, col 1 = event_type (strip spaces), col 2 = time float, col 3+ = data
-        raw_df[1] = raw_df[1].str.strip()
-        # Drop meta rows
-        raw_df = raw_df[raw_df[1].str.lower() != "meta"].copy()
-        # Drop rows with unknown event types
-        valid_event_mask = raw_df[1].isin({e.value for e in enums.LogEventType})
-        skipped = (~valid_event_mask).sum()
-        if skipped:
-            logger.warning(f"Skipping {skipped} rows with unknown event types in {self.filename}")
-        raw_df = raw_df[valid_event_mask].copy()
+        parsed_rows: list[dict[str, object]] = []
+        for line in valid_lines:
+            for row_parts in csv.reader([line]):
+                if len(row_parts) < 3:
+                    logger.warning(f"Skipping malformed row in {self.filename}: {line}")
+                    continue
 
-        if raw_df.empty:
+                raw_event_type = row_parts[1].strip()
+                if raw_event_type.lower() == "meta":
+                    continue
+
+                try:
+                    event_type = enums.LogEventType(raw_event_type)
+                except ValueError:
+                    logger.warning(f"Skipping row with unknown event type '{raw_event_type}' in {self.filename}")
+                    continue
+
+                try:
+                    time = float(row_parts[2])
+                except ValueError:
+                    logger.warning(f"Skipping row with invalid time '{row_parts[2]}' in {self.filename}")
+                    continue
+
+                parsed_rows.append(
+                    {
+                        "event_type": event_type,
+                        "time": time,
+                        "data": row_parts[3:],
+                    }
+                )
+
+        if not parsed_rows:
             logger.warning(f"Match log {self.filename} resulted in an empty DataFrame.")
             return pd.DataFrame(columns=["event_type", "time", "data", "round_number"])
 
-        # Parse time column
-        raw_df[2] = pd.to_numeric(raw_df[2], errors="coerce")
-        nan_time = raw_df[2].isna()
-        if nan_time.any():
-            logger.warning(f"Dropping {nan_time.sum()} rows with unparseable time values in {self.filename}")
-            raw_df = raw_df[~nan_time].copy()
-
-        if raw_df.empty:
-            logger.warning(f"Match log {self.filename} resulted in an empty DataFrame after time filtering.")
-            return pd.DataFrame(columns=["event_type", "time", "data", "round_number"])
-
-        # Build data column vectorized (apply axis=1 is faster than iterrows)
-        data_cols = raw_df.iloc[:, 3:MAX_COLS]
-        df_data = data_cols.apply(
-            lambda row: [v for v in row.tolist() if pd.notna(v)],
-            axis=1,
-        )
-
-        df = pd.DataFrame({
-            "event_type": raw_df[1].map(lambda x: enums.LogEventType(x)),
-            "time": raw_df[2].astype(float),
-            "data": df_data.values,
-        })
-        return self._assign_round_numbers(df)
+        return self._assign_round_numbers(pd.DataFrame(parsed_rows))
 
     @staticmethod
     def _assign_round_numbers(df: pd.DataFrame) -> pd.DataFrame:

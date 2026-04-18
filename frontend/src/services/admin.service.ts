@@ -23,6 +23,7 @@ import {
   StageUpdateInput,
   StageItemCreateInput,
   StageItemInputCreateInput,
+  StageItemInputUpdateInput,
   ChallongeSyncLogEntry,
   TeamCreateInput,
   TeamUpdateInput,
@@ -1066,6 +1067,17 @@ class AdminService {
   ): Promise<StageItemInput> {
     const response = await apiFetch("parser", `admin/stages/items/${stageItemId}/inputs`, {
       method: "POST",
+      body: data
+    });
+    return response.json();
+  }
+
+  async updateStageItemInput(
+    inputId: number,
+    data: StageItemInputUpdateInput
+  ): Promise<StageItemInput> {
+    const response = await apiFetch("parser", `admin/stages/items/inputs/${inputId}`, {
+      method: "PATCH",
       body: data
     });
     return response.json();
