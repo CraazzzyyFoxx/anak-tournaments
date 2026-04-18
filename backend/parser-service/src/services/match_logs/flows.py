@@ -1079,6 +1079,7 @@ async def process_match_log(
         logger.info(
             f"Log {filename} (tournament {tournament_id}) already processed with hash {content_hash[:8]}…, skipping."
         )
+        await record_service.finish_duplicate_record(session, tournament_id, filename, content_hash)
         return
 
     record = await record_service.set_processing(session, tournament_id, filename, content_hash=content_hash)

@@ -1,13 +1,12 @@
 """Service helpers for creating and updating LogProcessingRecord entries."""
 
 import hashlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from loguru import logger
+from shared.models.log_processing import LogProcessingRecord, LogProcessingSource, LogProcessingStatus
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from shared.models.log_processing import LogProcessingRecord, LogProcessingSource, LogProcessingStatus
 
 
 def compute_content_hash(raw_bytes: bytes) -> str:
@@ -116,13 +115,13 @@ async def set_processing(
             filename=filename,
             source=LogProcessingSource.manual,
             status=LogProcessingStatus.processing,
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
             content_hash=content_hash,
         )
         session.add(record)
     else:
         record.status = LogProcessingStatus.processing
-        record.started_at = datetime.now(timezone.utc)
+        record.started_at = datetime.now(UTC)
         record.error_message = None
         record.finished_at = None
         if content_hash is not None:
@@ -139,10 +138,45 @@ async def set_processing(
     return record
 
 
+async def finish_duplicate_record(
+    session: AsyncSession,
+    tournament_id: int,
+    filename: str,
+    content_hash: str,
+) -> LogProcessingRecord | None:
+    """Mark the latest incomplete record as done when the uploaded content is a duplicate."""
+    result = await session.execute(
+        select(LogProcessingRecord)
+        .where(
+            LogProcessingRecord.tournament_id == tournament_id,
+            LogProcessingRecord.filename == filename,
+            LogProcessingRecord.status.in_(
+                [
+                    LogProcessingStatus.pending,
+                    LogProcessingStatus.processing,
+                    LogProcessingStatus.failed,
+                ]
+            ),
+        )
+        .order_by(LogProcessingRecord.created_at.desc())
+        .limit(1)
+    )
+    record = result.scalar_one_or_none()
+    if record is None:
+        return None
+
+    if record.started_at is None:
+        record.started_at = datetime.now(UTC)
+    record.error_message = None
+    record.content_hash = content_hash
+    await set_done(session, record)
+    return record
+
+
 async def set_done(session: AsyncSession, record: LogProcessingRecord) -> None:
     """Mark a log processing record as done."""
     record.status = LogProcessingStatus.done
-    record.finished_at = datetime.now(timezone.utc)
+    record.finished_at = datetime.now(UTC)
     try:
         await _notify_result(session, record, "done")
         await session.commit()
@@ -154,7 +188,7 @@ async def set_done(session: AsyncSession, record: LogProcessingRecord) -> None:
 async def set_failed(session: AsyncSession, record: LogProcessingRecord, error: str) -> None:
     """Mark a log processing record as failed."""
     record.status = LogProcessingStatus.failed
-    record.finished_at = datetime.now(timezone.utc)
+    record.finished_at = datetime.now(UTC)
     record.error_message = error[:2000]  # guard against huge tracebacks
     try:
         await _notify_result(session, record, "failed")
