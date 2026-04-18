@@ -4,7 +4,16 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
-import { Plus, Pencil, Trash2, CheckCircle, Clock, AlertCircle, FileCheck2, FileX2 } from "lucide-react";
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  CheckCircle,
+  Clock,
+  AlertCircle,
+  FileCheck2,
+  FileX2
+} from "lucide-react";
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { StatusIcon } from "@/components/admin/StatusIcon";
@@ -38,7 +47,9 @@ const ENCOUNTER_STATUS_OPTIONS = ["OPEN", "PENDING", "COMPLETED"] as const;
 
 function normalizeEncounterStatus(status?: string | null): string {
   const normalizedStatus = status?.toUpperCase();
-  return ENCOUNTER_STATUS_OPTIONS.includes(normalizedStatus as (typeof ENCOUNTER_STATUS_OPTIONS)[number])
+  return ENCOUNTER_STATUS_OPTIONS.includes(
+    normalizedStatus as (typeof ENCOUNTER_STATUS_OPTIONS)[number]
+  )
     ? normalizedStatus!
     : "OPEN";
 }
@@ -58,19 +69,19 @@ const emptyEncounterForm: EncounterCreateInput = {
   round: 1,
   home_score: 0,
   away_score: 0,
-  status: "OPEN",
+  status: "OPEN"
 };
 
 function getCreateEncounterForm(
   tournamentId: number | null,
   defaultStageId: number | null,
-  defaultStageItemId: number | null,
+  defaultStageItemId: number | null
 ): EncounterCreateInput {
   return {
     ...emptyEncounterForm,
     tournament_id: tournamentId || 0,
     stage_id: defaultStageId,
-    stage_item_id: defaultStageItemId,
+    stage_item_id: defaultStageItemId
   };
 }
 
@@ -82,7 +93,7 @@ function getEditEncounterForm(encounter: Encounter): EncounterUpdateInput {
     home_score: encounter.score.home,
     away_score: encounter.score.away,
     status: normalizeEncounterStatus(encounter.status),
-    round: encounter.round,
+    round: encounter.round
   };
 }
 
@@ -114,13 +125,13 @@ export default function EncountersPage() {
 
   const { data: teamsData } = useQuery({
     queryKey: ["teams", selectedTournamentId],
-    queryFn: () => teamService.getAll(selectedTournamentId),
+    queryFn: () => teamService.getAll(selectedTournamentId)
   });
 
   const { data: stagesData = [] } = useQuery({
     queryKey: ["admin", "stages", selectedTournamentId],
     queryFn: () => adminService.getStages(selectedTournamentId!),
-    enabled: selectedTournamentId != null,
+    enabled: selectedTournamentId != null
   });
 
   const defaultStage = stagesData[0] ?? null;
@@ -136,7 +147,7 @@ export default function EncountersPage() {
 
   // Form state
   const [formData, setFormData] = useState<EncounterCreateInput | EncounterUpdateInput>({
-    ...emptyEncounterForm,
+    ...emptyEncounterForm
   });
 
   // Mutations
@@ -227,9 +238,11 @@ export default function EncountersPage() {
   const createFormInitial = getCreateEncounterForm(
     selectedTournamentId,
     defaultStageId,
-    defaultStageItemId,
+    defaultStageItemId
   );
-  const editFormInitial = selectedEncounter ? getEditEncounterForm(selectedEncounter) : createFormInitial;
+  const editFormInitial = selectedEncounter
+    ? getEditEncounterForm(selectedEncounter)
+    : createFormInitial;
   const isCreateDirty = createDialogOpen && hasUnsavedChanges(formData, createFormInitial);
   const isEditDirty = editDialogOpen && hasUnsavedChanges(formData, editFormInitial);
   const selectedFormStage = stagesData.find((stage) => stage.id === formData.stage_id) ?? null;
@@ -253,6 +266,21 @@ export default function EncountersPage() {
       accessorKey: "name",
       header: "Name",
       cell: ({ row }) => <div className="font-medium">{row.getValue("name")}</div>
+    },
+    {
+      id: "teams",
+      header: "Teams",
+      enableSorting: false,
+      cell: ({ row }) => {
+        const { home_team, away_team } = row.original;
+        return (
+          <div className="flex items-center gap-1 text-sm">
+            <span className="font-medium">{home_team?.name ?? "TBD"}</span>
+            <span className="text-muted-foreground">vs</span>
+            <span className="font-medium">{away_team?.name ?? "TBD"}</span>
+          </div>
+        );
+      }
     },
     {
       accessorKey: "stage",
@@ -296,9 +324,13 @@ export default function EncountersPage() {
       cell: ({ row }) => {
         const status = normalizeEncounterStatus(row.getValue<string>("status"));
 
-        if (status === "COMPLETED") return <StatusIcon icon={CheckCircle} label="Completed" variant="success" />;
-        if (status === "PENDING") return <StatusIcon icon={Clock} label="Pending" variant="warning" />;
-        return <StatusIcon icon={AlertCircle} label={formatEncounterStatus(status)} variant="muted" />;
+        if (status === "COMPLETED")
+          return <StatusIcon icon={CheckCircle} label="Completed" variant="success" />;
+        if (status === "PENDING")
+          return <StatusIcon icon={Clock} label="Pending" variant="warning" />;
+        return (
+          <StatusIcon icon={AlertCircle} label={formatEncounterStatus(status)} variant="muted" />
+        );
       }
     },
     {
@@ -319,7 +351,12 @@ export default function EncountersPage() {
         canUpdate || canDelete ? (
           <div className="flex items-center gap-2">
             {canUpdate ? (
-              <Button aria-label={`Edit ${row.original.name}`} variant="ghost" size="icon" onClick={() => handleEdit(row.original)}>
+              <Button
+                aria-label={`Edit ${row.original.name}`}
+                variant="ghost"
+                size="icon"
+                onClick={() => handleEdit(row.original)}
+              >
                 <Pencil className="h-4 w-4" />
               </Button>
             ) : null}
@@ -346,7 +383,10 @@ export default function EncountersPage() {
         description="Manage tournament encounters and matches"
         actions={
           canCreate ? (
-            <Button onClick={handleCreate} disabled={!selectedTournamentId || stagesData.length === 0}>
+            <Button
+              onClick={handleCreate}
+              disabled={!selectedTournamentId || stagesData.length === 0}
+            >
               <Plus className="mr-2 h-4 w-4" />
               Create Encounter
             </Button>
@@ -377,9 +417,24 @@ export default function EncountersPage() {
       </div>
 
       <AdminDataTable
-        queryKey={(page, search, pageSize, sortField, sortDir) => ["encounters", selectedTournamentId, page, search, pageSize, sortField, sortDir]}
+        queryKey={(page, search, pageSize, sortField, sortDir) => [
+          "encounters",
+          selectedTournamentId,
+          page,
+          search,
+          pageSize,
+          sortField,
+          sortDir
+        ]}
         queryFn={async (page, search, pageSize, sortField, sortDir) => {
-          return encounterService.getAll(page, search, selectedTournamentId, pageSize, sortField, sortDir);
+          return encounterService.getAll(
+            page,
+            search,
+            selectedTournamentId,
+            pageSize,
+            sortField,
+            sortDir
+          );
         }}
         columns={columns}
         searchPlaceholder="Search encounters..."
@@ -420,7 +475,7 @@ export default function EncountersPage() {
                 setFormData({
                   ...formData,
                   stage_id: stage?.id ?? null,
-                  stage_item_id: stage?.items[0]?.id ?? null,
+                  stage_item_id: stage?.items[0]?.id ?? null
                 });
               }}
             >
@@ -446,12 +501,12 @@ export default function EncountersPage() {
                   const nextStageItemId = value === "none" ? null : Number(value);
                   const nextStageId =
                     nextStageItemId != null
-                      ? stageItemsById.get(nextStageItemId)?.stage_id ?? current.stage_id ?? null
-                      : current.stage_id ?? null;
+                      ? (stageItemsById.get(nextStageItemId)?.stage_id ?? current.stage_id ?? null)
+                      : (current.stage_id ?? null);
                   return {
                     ...current,
                     stage_id: nextStageId,
-                    stage_item_id: nextStageItemId,
+                    stage_item_id: nextStageItemId
                   };
                 })
               }
@@ -477,9 +532,7 @@ export default function EncountersPage() {
             <Label htmlFor="home_team_id">Home Team *</Label>
             <Select
               value={(formData as EncounterCreateInput).home_team_id?.toString()}
-              onValueChange={(value) =>
-                setFormData({ ...formData, home_team_id: parseInt(value) })
-              }
+              onValueChange={(value) => setFormData({ ...formData, home_team_id: parseInt(value) })}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select home team" />
@@ -498,9 +551,7 @@ export default function EncountersPage() {
             <Label htmlFor="away_team_id">Away Team *</Label>
             <Select
               value={(formData as EncounterCreateInput).away_team_id?.toString()}
-              onValueChange={(value) =>
-                setFormData({ ...formData, away_team_id: parseInt(value) })
-              }
+              onValueChange={(value) => setFormData({ ...formData, away_team_id: parseInt(value) })}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select away team" />
@@ -537,7 +588,7 @@ export default function EncountersPage() {
               setFormData({
                 ...formData,
                 home_score: score.homeScore,
-                away_score: score.awayScore,
+                away_score: score.awayScore
               })
             }
             onPresetSelect={(score) =>
@@ -545,7 +596,7 @@ export default function EncountersPage() {
                 ...formData,
                 home_score: score.homeScore,
                 away_score: score.awayScore,
-                status: "COMPLETED",
+                status: "COMPLETED"
               })
             }
           />
@@ -600,7 +651,7 @@ export default function EncountersPage() {
                 setFormData({
                   ...formData,
                   stage_id: stage?.id ?? null,
-                  stage_item_id: stage?.items[0]?.id ?? null,
+                  stage_item_id: stage?.items[0]?.id ?? null
                 });
               }}
             >
@@ -626,12 +677,12 @@ export default function EncountersPage() {
                   const nextStageItemId = value === "none" ? null : Number(value);
                   const nextStageId =
                     nextStageItemId != null
-                      ? stageItemsById.get(nextStageItemId)?.stage_id ?? current.stage_id ?? null
-                      : current.stage_id ?? null;
+                      ? (stageItemsById.get(nextStageItemId)?.stage_id ?? current.stage_id ?? null)
+                      : (current.stage_id ?? null);
                   return {
                     ...current,
                     stage_id: nextStageId,
-                    stage_item_id: nextStageItemId,
+                    stage_item_id: nextStageItemId
                   };
                 })
               }
@@ -674,7 +725,7 @@ export default function EncountersPage() {
               setFormData({
                 ...formData,
                 home_score: score.homeScore,
-                away_score: score.awayScore,
+                away_score: score.awayScore
               })
             }
             onPresetSelect={(score) =>
@@ -682,7 +733,7 @@ export default function EncountersPage() {
                 ...formData,
                 home_score: score.homeScore,
                 away_score: score.awayScore,
-                status: "COMPLETED",
+                status: "COMPLETED"
               })
             }
           />

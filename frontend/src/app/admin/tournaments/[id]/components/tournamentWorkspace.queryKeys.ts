@@ -7,15 +7,26 @@ export function getTournamentWorkspaceQueryKeys(tournamentId: number) {
     divisionGrids: ["admin", "tournament", tournamentId, "division-grids"] as const,
     standings: ["admin", "tournament", tournamentId, "standings"] as const,
     encounters: ["admin", "tournament", tournamentId, "encounters"] as const,
+    stages: ["admin", "stages", tournamentId] as const,
     discordChannel: ["admin", "tournament", tournamentId, "discord-channel"] as const,
     logHistory: ["admin", "tournament", tournamentId, "log-history"] as const,
+    // Public collections consumed by non-admin pages (the bracket view reads
+    // these; without invalidation the public grid goes stale after admin edits).
     tournaments: ["tournaments"] as const,
     teamsCollection: ["teams"] as const,
     encountersCollection: ["encounters"] as const,
     standingsCollection: ["standings"] as const,
+    publicStandings: ["standings", tournamentId] as const,
+    publicEncounters: ["encounters", "tournament", tournamentId] as const,
   };
 }
 
+/**
+ * Invalidate every query that depends on a tournament's stages, standings,
+ * encounters, or teams. Use after any admin mutation that can affect the
+ * bracket view — ensures the public page matches the admin workspace
+ * (Phase F consolidation of tournament workspace invalidation).
+ */
 export async function invalidateTournamentWorkspace(
   queryClient: QueryClient,
   tournamentId: number
@@ -27,9 +38,12 @@ export async function invalidateTournamentWorkspace(
     queryClient.invalidateQueries({ queryKey: keys.teams }),
     queryClient.invalidateQueries({ queryKey: keys.standings }),
     queryClient.invalidateQueries({ queryKey: keys.encounters }),
+    queryClient.invalidateQueries({ queryKey: keys.stages }),
     queryClient.invalidateQueries({ queryKey: keys.tournaments }),
     queryClient.invalidateQueries({ queryKey: keys.teamsCollection }),
     queryClient.invalidateQueries({ queryKey: keys.encountersCollection }),
     queryClient.invalidateQueries({ queryKey: keys.standingsCollection }),
+    queryClient.invalidateQueries({ queryKey: keys.publicStandings }),
+    queryClient.invalidateQueries({ queryKey: keys.publicEncounters }),
   ]);
 }

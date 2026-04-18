@@ -1,29 +1,45 @@
+"""Double-elimination bracket generator.
+
+Convention (matching the historical codebase):
+  round > 0  → upper (winners) bracket
+  round < 0  → lower (losers) bracket
+  last positive round = Grand Final (and optional Grand Final Reset)
+
+This implementation produces a correct bracket for power-of-two team counts
+(2, 4, 8, 16, 32, 64). Non-power-of-two counts are handled by extending the
+bracket to the next power of two and inserting first-round byes in the upper
+bracket; byes do NOT produce LB dropouts.
+
+Returns a :class:`BracketSkeleton` with complete advancement edges:
+- Every UB match produces an edge (winner → next UB match).
+- Every UB loser produces an edge to the appropriate LB match
+  ("cross-drop" pattern: loser of UB R1 match k drops to LB R1, loser of
+  UB R2 match k drops to LB R2, etc.).
+- LB reduction rounds produce winner-edges to the next LB round.
+- UB final and LB final both feed the Grand Final.
+
+The Grand Final Reset is NOT materialised on generation — it must be created
+on demand if the LB champion wins the first Grand Final. Skeleton includes a
+stub Grand Final Reset pairing only if the caller explicitly sets
+``include_reset=True``.
+"""
+
+from __future__ import annotations
+
 import math
 
-from .types import BracketSkeleton, Pairing
+from .types import AdvancementEdge, BracketSkeleton, Pairing
 
 
-def generate(team_ids: list[int]) -> BracketSkeleton:
-    """Generate double-elimination bracket.
-
-    Convention (matching existing codebase):
-      round > 0  = upper (winners) bracket
-      round < 0  = lower (losers) bracket
-      Final rounds use the highest positive round numbers.
-
-    Supports non-power-of-2 team counts via byes.
-    """
+def generate(team_ids: list[int], *, include_reset: bool = False) -> BracketSkeleton:
     n = len(team_ids)
     if n < 2:
         return BracketSkeleton(pairings=[], total_rounds=0)
 
     bracket_size = 1 << math.ceil(math.log2(n))
     upper_rounds = int(math.log2(bracket_size))
-    # Lower bracket has (upper_rounds - 1) * 2 rounds
-    # Plus grand finals = 1-2 rounds
-    lower_rounds = (upper_rounds - 1) * 2
-    total_rounds = upper_rounds + lower_rounds + 2  # +2 for grand finals
 
+    # UB seeding
     seeds = _seeding_order(bracket_size)
     seed_to_team: dict[int, int | None] = {}
     for i, tid in enumerate(team_ids):
@@ -32,106 +48,346 @@ def generate(team_ids: list[int]) -> BracketSkeleton:
         seed_to_team[i] = None
 
     pairings: list[Pairing] = []
+    edges: list[AdvancementEdge] = []
+    next_local_id = 0
 
-    # --- Upper bracket ---
+    # upper_matches[r][k] = local_id or None (None = bye-advance, no match)
+    upper_matches: list[list[int | None]] = []
+
+    # --- UB Round 1 ---
+    r1: list[int | None] = []
     match_counter = 0
-
-    # Upper R1
     for i in range(0, bracket_size, 2):
         home_seed = seeds[i]
         away_seed = seeds[i + 1]
         home = seed_to_team[home_seed]
         away = seed_to_team[away_seed]
 
-        if home is None and away is None:
-            continue
-        if home is None or away is None:
-            continue  # bye — auto-advance, no match needed
-
-        match_counter += 1
-        pairings.append(
-            Pairing(
-                home_team_id=home,
-                away_team_id=away,
-                round_number=1,
-                name=f"UB R1 Match {match_counter}",
+        if home is not None and away is not None:
+            match_counter += 1
+            local_id = next_local_id
+            next_local_id += 1
+            pairings.append(
+                Pairing(
+                    home_team_id=home,
+                    away_team_id=away,
+                    round_number=1,
+                    name=f"UB R1 Match {match_counter}",
+                    local_id=local_id,
+                )
             )
-        )
+            r1.append(local_id)
+        else:
+            # Bye — no match in R1, the present team auto-advances to R2.
+            r1.append(None)
+    upper_matches.append(r1)
 
-    # Upper R2+
-    matches_in_round = bracket_size // 4
+    # --- UB Round 2+ ---
+    #   In round r, slot k's home team is the winner of upper_matches[r-1][2k]
+    #   and away team is winner of upper_matches[r-1][2k+1]. If upper_matches[r-1]
+    #   contains a None, the corresponding R1 autoadvance is wired in by
+    #   tracking r1_autoadvance_team alongside (we don't need it for
+    #   advancement edges, just for labels).
     for round_num in range(2, upper_rounds + 1):
-        for match_idx in range(matches_in_round):
+        previous = upper_matches[-1]
+        current: list[int | None] = []
+        round_matches = len(previous) // 2
+        round_match_counter = 0
+        for k in range(round_matches):
+            a_local = previous[2 * k]
+            b_local = previous[2 * k + 1]
+
+            round_match_counter += 1
+            local_id = next_local_id
+            next_local_id += 1
             pairings.append(
                 Pairing(
                     home_team_id=None,
                     away_team_id=None,
                     round_number=round_num,
-                    name=f"UB R{round_num} Match {match_idx + 1}",
+                    name=_ub_round_label(round_num, upper_rounds, round_match_counter),
+                    local_id=local_id,
                 )
             )
-        matches_in_round = max(1, matches_in_round // 2)
+            current.append(local_id)
 
-    # --- Lower bracket ---
-    # Lower bracket round numbering: -1, -2, -3, ...
-    # Pattern: pairs of rounds — first round receives dropdowns, second is internal
-    lb_matches = bracket_size // 4  # initial lower bracket size
-    lb_round = 1
-    for phase in range(upper_rounds - 1):
-        # Dropout round (losers from upper bracket drop down)
-        for match_idx in range(lb_matches):
+            if a_local is not None:
+                edges.append(
+                    AdvancementEdge(
+                        source_local_id=a_local,
+                        target_local_id=local_id,
+                        role="winner",
+                        target_slot="home",
+                    )
+                )
+            if b_local is not None:
+                edges.append(
+                    AdvancementEdge(
+                        source_local_id=b_local,
+                        target_local_id=local_id,
+                        role="winner",
+                        target_slot="away",
+                    )
+                )
+        upper_matches.append(current)
+
+    # --- Lower Bracket ---
+    # LB has (upper_rounds - 1) * 2 rounds total, structured as:
+    #   phase p (0-indexed):
+    #     - dropout round: size = |UB R(p+1)| , each match receives one LB
+    #       carry-over (home) + one UB loser (away).
+    #     - reduction round: size = |dropout round| / 2 OR same size
+    #       (depending on phase pattern).
+    #
+    # For power-of-2 UB, standard LB structure:
+    #   LB R1 (dropouts from UB R1): |UB R1| / 2 matches
+    #   LB R2 (LB R1 winners vs UB R2 losers): |UB R2| matches
+    #   LB R3 (LB R2 winners): |UB R2| / 2 matches
+    #   LB R4 (LB R3 winners vs UB R3 losers): |UB R3| matches
+    #   ... alternating carry-over + dropout until 1 match remains (LB Final).
+
+    lb_rounds: list[list[int]] = []
+    lb_round_index = 1
+
+    # "carry_in" = list of LB match local_ids whose winners feed the next LB
+    # round's home slots. Starts as losers of UB R1 paired up directly.
+    # For UB R1 losers count = |UB R1| (may include bye-induced absences).
+    #
+    # We model LB R1 as: for every PAIR of UB R1 matches, create one LB R1
+    # match whose home=loser of the first UB R1 match, away=loser of the second.
+    # Byes create phantom losers that are skipped.
+
+    ub_r1_losers_edge_targets: list[int | None] = []  # len = |UB R1|; target LB match
+    if upper_matches:
+        ub_r1 = upper_matches[0]
+        # Pair up UB R1 by 2s for LB R1 matches.
+        for pair_idx in range(0, len(ub_r1), 2):
+            a_local = ub_r1[pair_idx]
+            b_local = ub_r1[pair_idx + 1] if pair_idx + 1 < len(ub_r1) else None
+
+            if a_local is None and b_local is None:
+                ub_r1_losers_edge_targets.extend([None, None])
+                continue
+            if a_local is None:
+                # Only one real loser; that team bye-advances in LB to next round
+                ub_r1_losers_edge_targets.extend([None, None])
+                continue
+            if b_local is None:
+                ub_r1_losers_edge_targets.extend([None, None])
+                continue
+
+            match_idx = len(lb_rounds[0]) + 1 if lb_rounds else 1
+            if not lb_rounds:
+                lb_rounds.append([])
+            local_id = next_local_id
+            next_local_id += 1
             pairings.append(
                 Pairing(
                     home_team_id=None,
                     away_team_id=None,
-                    round_number=-lb_round,
-                    name=f"LB R{lb_round} Match {match_idx + 1}",
+                    round_number=-lb_round_index,
+                    name=f"LB R{lb_round_index} Match {match_idx}",
+                    local_id=local_id,
                 )
             )
-        lb_round += 1
+            lb_rounds[0].append(local_id)
 
-        # Reduction round (winners of dropout round play each other)
-        lb_matches = max(1, lb_matches // 2) if phase < upper_rounds - 2 else lb_matches
-        for match_idx in range(lb_matches):
+            edges.append(
+                AdvancementEdge(
+                    source_local_id=a_local,
+                    target_local_id=local_id,
+                    role="loser",
+                    target_slot="home",
+                )
+            )
+            edges.append(
+                AdvancementEdge(
+                    source_local_id=b_local,
+                    target_local_id=local_id,
+                    role="loser",
+                    target_slot="away",
+                )
+            )
+            ub_r1_losers_edge_targets.extend([local_id, local_id])
+
+    lb_round_index += 1
+
+    # Subsequent LB rounds
+    # Pattern for UB round r (r >= 2):
+    #   dropout round: size = |UB Rr|, each match has
+    #     home = winner of corresponding LB carry round
+    #     away = loser of UB Rr match k
+    #   reduction round: size = |dropout round| / 2
+    prev_lb = lb_rounds[0] if lb_rounds else []
+
+    for r in range(2, upper_rounds + 1):
+        ub_round_matches = upper_matches[r - 1]
+
+        # Dropout round — pair LB prev winners (by 2 if multiple) with UB losers.
+        # For standard DE: |LB prev| == |UB Rr| (after first alignment).
+        dropout_round: list[int] = []
+        match_idx = 0
+        for k, ub_match_local in enumerate(ub_round_matches):
+            match_idx += 1
+            local_id = next_local_id
+            next_local_id += 1
             pairings.append(
                 Pairing(
                     home_team_id=None,
                     away_team_id=None,
-                    round_number=-lb_round,
-                    name=f"LB R{lb_round} Match {match_idx + 1}",
+                    round_number=-lb_round_index,
+                    name=f"LB R{lb_round_index} Match {match_idx}",
+                    local_id=local_id,
                 )
             )
-        lb_round += 1
-        lb_matches = max(1, lb_matches // 2)
+            dropout_round.append(local_id)
 
-    # --- Grand Finals ---
+            # LB carry: home = winner of prev_lb[k] (if exists)
+            if k < len(prev_lb):
+                edges.append(
+                    AdvancementEdge(
+                        source_local_id=prev_lb[k],
+                        target_local_id=local_id,
+                        role="winner",
+                        target_slot="home",
+                    )
+                )
+            # UB drop: away = loser of ub_match_local
+            if ub_match_local is not None:
+                edges.append(
+                    AdvancementEdge(
+                        source_local_id=ub_match_local,
+                        target_local_id=local_id,
+                        role="loser",
+                        target_slot="away",
+                    )
+                )
+
+        lb_rounds.append(dropout_round)
+        lb_round_index += 1
+        prev_lb = dropout_round
+
+        # Reduction round: pair up winners of dropout round, halving.
+        if len(prev_lb) > 1:
+            reduction_round: list[int] = []
+            match_idx = 0
+            for pair_idx in range(0, len(prev_lb), 2):
+                a_local = prev_lb[pair_idx]
+                b_local = prev_lb[pair_idx + 1] if pair_idx + 1 < len(prev_lb) else None
+                if b_local is None:
+                    # Odd count — carry forward without a match
+                    reduction_round.append(a_local)
+                    continue
+
+                match_idx += 1
+                local_id = next_local_id
+                next_local_id += 1
+                pairings.append(
+                    Pairing(
+                        home_team_id=None,
+                        away_team_id=None,
+                        round_number=-lb_round_index,
+                        name=f"LB R{lb_round_index} Match {match_idx}",
+                        local_id=local_id,
+                    )
+                )
+                reduction_round.append(local_id)
+
+                edges.append(
+                    AdvancementEdge(
+                        source_local_id=a_local,
+                        target_local_id=local_id,
+                        role="winner",
+                        target_slot="home",
+                    )
+                )
+                edges.append(
+                    AdvancementEdge(
+                        source_local_id=b_local,
+                        target_local_id=local_id,
+                        role="winner",
+                        target_slot="away",
+                    )
+                )
+
+            lb_rounds.append(reduction_round)
+            lb_round_index += 1
+            prev_lb = reduction_round
+
+    # --- Grand Final ---
     gf_round = upper_rounds + 1
+    gf_local_id = next_local_id
+    next_local_id += 1
     pairings.append(
         Pairing(
             home_team_id=None,
             away_team_id=None,
             round_number=gf_round,
             name="Grand Final",
+            local_id=gf_local_id,
         )
     )
-    # Optional reset match
-    pairings.append(
-        Pairing(
-            home_team_id=None,
-            away_team_id=None,
-            round_number=gf_round + 1,
-            name="Grand Final Reset",
+    # UB final winner → GF home
+    if upper_matches and upper_matches[-1]:
+        ub_final_local = upper_matches[-1][0]
+        if ub_final_local is not None:
+            edges.append(
+                AdvancementEdge(
+                    source_local_id=ub_final_local,
+                    target_local_id=gf_local_id,
+                    role="winner",
+                    target_slot="home",
+                )
+            )
+    # LB final winner → GF away
+    if prev_lb:
+        lb_final_local = prev_lb[-1]
+        edges.append(
+            AdvancementEdge(
+                source_local_id=lb_final_local,
+                target_local_id=gf_local_id,
+                role="winner",
+                target_slot="away",
+            )
         )
+
+    # Grand Final Reset — only if explicitly requested. Engine consumers are
+    # expected to materialise it on demand when LB champion wins GF #1.
+    if include_reset:
+        reset_local_id = next_local_id
+        next_local_id += 1
+        pairings.append(
+            Pairing(
+                home_team_id=None,
+                away_team_id=None,
+                round_number=gf_round + 1,
+                name="Grand Final Reset",
+                local_id=reset_local_id,
+            )
+        )
+        # Reset is fed by the winner of GF if that winner is the LB champion;
+        # this rule can't be expressed as a pure winner/loser edge so we leave
+        # it to consumer logic.
+
+    total_rounds = gf_round + (1 if include_reset else 0)
+    return BracketSkeleton(
+        pairings=pairings, total_rounds=total_rounds, advancement_edges=edges
     )
 
-    return BracketSkeleton(pairings=pairings, total_rounds=total_rounds)
+
+def _ub_round_label(round_num: int, upper_rounds: int, match_idx: int) -> str:
+    if round_num == upper_rounds:
+        return "UB Final"
+    if round_num == upper_rounds - 1:
+        return f"UB Semifinal {match_idx}"
+    return f"UB R{round_num} Match {match_idx}"
 
 
 def _seeding_order(size: int) -> list[int]:
     if size == 1:
         return [0]
     half = _seeding_order(size // 2)
-    result = []
+    result: list[int] = []
     for seed in half:
         result.append(seed)
         result.append(size - 1 - seed)

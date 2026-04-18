@@ -1029,6 +1029,102 @@ class AdminService {
     return response.json();
   }
 
+  async wireFromGroups(
+    stageId: number,
+    data: {
+      source_stage_id: number;
+      top: number;
+      mode?: "cross" | "snake";
+    }
+  ): Promise<Stage> {
+    const response = await apiFetch(
+      "parser",
+      `admin/stages/${stageId}/wire-from-groups`,
+      {
+        method: "POST",
+        body: data,
+      }
+    );
+    return response.json();
+  }
+
+  async activateAndGenerateStage(
+    stageId: number,
+    opts?: { force?: boolean }
+  ): Promise<{ stage: Stage; generated: number }> {
+    const qs = opts?.force ? "?force=true" : "";
+    const response = await apiFetch(
+      "parser",
+      `admin/stages/${stageId}/activate-and-generate${qs}`,
+      { method: "POST" }
+    );
+    return response.json();
+  }
+
+  async seedTeams(
+    stageId: number,
+    data: {
+      team_ids: number[];
+      mode?: "snake_sr" | "by_total_sr" | "random";
+    }
+  ): Promise<Stage> {
+    const response = await apiFetch(
+      "parser",
+      `admin/stages/${stageId}/seed-teams`,
+      {
+        method: "POST",
+        body: data,
+      }
+    );
+    return response.json();
+  }
+
+  async bulkUpdateEncounters(data: {
+    encounter_ids: number[];
+    status?: string;
+    home_score?: number;
+    away_score?: number;
+    reset_scores?: boolean;
+  }): Promise<{
+    updated: number;
+    newly_completed: number;
+    tournaments_recalculated: number[];
+  }> {
+    const response = await apiFetch("parser", "admin/encounters/bulk", {
+      method: "PATCH",
+      body: data,
+    });
+    return response.json();
+  }
+
+  async getStagesProgress(
+    tournamentId: number
+  ): Promise<
+    {
+      stage_id: number;
+      name: string;
+      stage_type: string;
+      is_active: boolean;
+      is_completed: boolean;
+      total: number;
+      completed: number;
+      items: {
+        stage_item_id: number;
+        name: string;
+        total: number;
+        completed: number;
+        is_completed: boolean;
+      }[];
+    }[]
+  > {
+    const response = await apiFetch(
+      "parser",
+      `admin/stages/tournament/${tournamentId}/progress`,
+      { method: "GET" }
+    );
+    return response.json();
+  }
+
   // ─── Admin Map Pool ─────────────────────────────────────────────────────────
 
   async assignMapPool(encounterId: number, mapIds: number[]): Promise<{ assigned: number }> {

@@ -30,6 +30,38 @@ async def get_stages(
     ]
 
 
+@router.get("/tournament/{tournament_id}/progress")
+async def get_stages_progress(
+    tournament_id: int,
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_permission("tournament", "read")),
+):
+    """Return completion progress per stage and per stage_item.
+
+    Response shape:
+    ```
+    [
+      {
+        "stage_id": 1,
+        "name": "Groups",
+        "stage_type": "round_robin",
+        "is_active": true,
+        "is_completed": false,
+        "total": 20,
+        "completed": 18,
+        "items": [
+          {"stage_item_id": 10, "name": "A", "total": 10, "completed": 10,
+           "is_completed": true},
+          {"stage_item_id": 11, "name": "B", "total": 10, "completed": 8,
+           "is_completed": false}
+        ]
+      }
+    ]
+    ```
+    """
+    return await stage_service.get_stage_progress(session, tournament_id)
+
+
 @router.get("/{stage_id}", response_model=schemas.StageRead)
 async def get_stage(
     stage_id: int,
@@ -136,3 +168,70 @@ async def generate_encounters(
     """Generate bracket encounters for a stage based on its type and assigned teams."""
     encounters = await stage_service.generate_encounters(session, stage_id)
     return {"generated": len(encounters)}
+
+
+@router.post("/{stage_id}/wire-from-groups", response_model=schemas.StageRead)
+async def wire_from_groups(
+    stage_id: int,
+    data: admin_schemas.WireFromGroupsRequest,
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_permission("tournament", "update")),
+):
+    """Auto-wire TENTATIVE inputs in a playoff stage from a preceding group
+    stage. Creates (num_groups × top) inputs with cross-group seeding so that
+    group rematches are avoided in the first playoff round.
+
+    Safe to call repeatedly: manually-assigned FINAL inputs are preserved,
+    only TENTATIVE inputs are (re-)written.
+    """
+    stage = await stage_service.wire_from_groups(
+        session,
+        target_stage_id=stage_id,
+        source_stage_id=data.source_stage_id,
+        top=data.top,
+        mode=data.mode,
+    )
+    return schemas.StageRead.model_validate(stage, from_attributes=True)
+
+
+@router.post("/{stage_id}/activate-and-generate")
+async def activate_and_generate(
+    stage_id: int,
+    force: bool = False,
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_permission("tournament", "update")),
+):
+    """One-click: resolve TENTATIVE inputs from prior-stage standings, then
+    generate the bracket. Equivalent to calling /activate then /generate.
+
+    Refuses to run if upstream stages still have pending encounters (to
+    prevent locking in playoff seeds prematurely). Pass ``force=true`` to
+    override this safety check.
+    """
+    stage, encounters = await stage_service.activate_and_generate(
+        session, stage_id, force=force,
+    )
+    return {
+        "stage": schemas.StageRead.model_validate(stage, from_attributes=True),
+        "generated": len(encounters),
+    }
+
+
+@router.post("/{stage_id}/seed-teams", response_model=schemas.StageRead)
+async def seed_teams(
+    stage_id: int,
+    data: admin_schemas.SeedTeamsRequest,
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_permission("tournament", "update")),
+):
+    """Auto-distribute teams into the stage's stage_items using snake-SR
+    (default) or another seeding mode. Replaces all existing FINAL inputs;
+    TENTATIVE/EMPTY inputs are preserved.
+    """
+    stage = await stage_service.seed_teams(
+        session,
+        stage_id=stage_id,
+        team_ids=data.team_ids,
+        mode=data.mode,
+    )
+    return schemas.StageRead.model_validate(stage, from_attributes=True)

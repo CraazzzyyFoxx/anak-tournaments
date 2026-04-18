@@ -1,3 +1,4 @@
+from shared.services.stage_refs import resolve_stage_refs_from_group
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models, schemas
@@ -30,6 +31,22 @@ async def to_pydantic(
     home_team: schemas.TeamRead | None = None
     away_team: schemas.TeamRead | None = None
     matches_read: list[schemas.MatchRead] = []
+
+    # Self-heal для legacy-encounters: если stage_id/stage_item_id NULL, но есть
+    # tournament_group_id — резолвим из TournamentGroup.stage_id. Страхует
+    # публичную сетку от ситуаций, когда backfill-миграция ещё не применена.
+    # ВАЖНО: используем локальные значения, НЕ мутируем encounter (не хочется
+    # приводить к implicit write-back в session).
+    effective_stage_id = encounter.stage_id
+    effective_stage_item_id = encounter.stage_item_id
+    if effective_stage_id is None and encounter.tournament_group_id is not None:
+        refs = await resolve_stage_refs_from_group(
+            session,
+            tournament_id=encounter.tournament_id,
+            tournament_group_id=encounter.tournament_group_id,
+        )
+        effective_stage_id = refs.stage_id
+        effective_stage_item_id = refs.stage_item_id
 
     if "stage" in entities and encounter.stage is not None:
         stage = schemas.StageRead.model_validate(encounter.stage, from_attributes=True)
@@ -69,8 +86,14 @@ async def to_pydantic(
             for match in encounter.matches
         ]
 
+    encounter_dict = encounter.to_dict()
+    # Override with resolved refs, because schema source of truth for public API
+    # is the effective (stage_id, stage_item_id) pair even if DB still has NULL.
+    encounter_dict["stage_id"] = effective_stage_id
+    encounter_dict["stage_item_id"] = effective_stage_item_id
+
     return schemas.EncounterRead(
-        **encounter.to_dict(),
+        **encounter_dict,
         score=schemas.Score(home=encounter.home_score, away=encounter.away_score),
         stage=stage,
         stage_item=stage_item,

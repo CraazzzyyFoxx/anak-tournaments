@@ -8,6 +8,7 @@ from .tournament import *
 from .stage import *
 from .team import *
 from .encounter import *
+from .encounter_link import *
 from .encounter_map import *
 from .match import *
 from .standings import *

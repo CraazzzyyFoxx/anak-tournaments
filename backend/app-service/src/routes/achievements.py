@@ -1,10 +1,7 @@
 import typing
 
-from cashews import cache
-from cashews.contrib.fastapi import cache_control_ttl
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from starlette.requests import Request
 
 from src import schemas
 from src.core import config, db, enums, errors, pagination
@@ -77,12 +74,7 @@ async def get_users_achievement(
     f"Cache TTL: {config.settings.achievements_cache_ttl / 60} minutes.",
     summary="Get user achievements",
 )
-@cache(
-    ttl=cache_control_ttl(default=config.settings.achievements_cache_ttl),
-    key="fastapi:{request.url.path}/{request.query_params}",
-)
 async def get_user_achievements(
-    request: Request,
     user_id: int,
     entities: list[str] = Query([]),
     tournament_id: int | None = Query(None),

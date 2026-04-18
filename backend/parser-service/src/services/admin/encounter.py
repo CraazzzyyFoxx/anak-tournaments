@@ -1,6 +1,8 @@
 """Admin service layer for encounter CRUD operations"""
 
 from fastapi import HTTPException, status
+from loguru import logger
+from shared.services.bracket.advancement import advance_winner
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -213,7 +215,7 @@ async def update_encounter(
     # Handle status conversion
     if "status" in update_data:
         try:
-            update_data["status"] = enums.EncounterStatus(update_data["status"])
+            update_data["status"] = enums.EncounterStatus(update_data["status"].lower())
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -223,6 +225,10 @@ async def update_encounter(
     tournament_id = encounter.tournament_id
     for field, value in update_data.items():
         setattr(encounter, field, value)
+
+    # Propagate result to linked encounters (advancement graph) BEFORE commit so
+    # both the source and target updates land in a single transaction.
+    await advance_winner(session, encounter)
 
     await session.commit()
     await session.refresh(encounter)
@@ -244,3 +250,93 @@ async def delete_encounter(session: AsyncSession, encounter_id: int) -> None:
     await session.delete(encounter)
     await session.commit()
     await standings_service.recalculate_for_tournament(session, tournament_id)
+
+
+async def bulk_update_encounters(
+    session: AsyncSession,
+    data: admin_schemas.BulkEncounterUpdate,
+) -> dict[str, int | list[int]]:
+    """Apply the same update to many encounters in one transaction.
+
+    Standings are recalculated ONCE per affected tournament, not per
+    encounter — the critical optimisation for 40+ team tournaments where
+    admins frequently mark 20-50 matches at a time.
+
+    Also triggers ``advance_winner`` for each encounter that transitioned
+    into COMPLETED so bracket progression stays consistent.
+    """
+    if not data.encounter_ids:
+        return {"updated": 0, "tournaments_recalculated": []}
+
+    # Parse requested status once (fail fast if invalid).
+    new_status: enums.EncounterStatus | None = None
+    if data.status is not None:
+        try:
+            new_status = enums.EncounterStatus(data.status)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Invalid status {data.status!r}. Must be one of: "
+                    f"{', '.join(s.value for s in enums.EncounterStatus)}"
+                ),
+            ) from exc
+
+    result = await session.execute(
+        select(models.Encounter).where(models.Encounter.id.in_(data.encounter_ids))
+    )
+    encounters = list(result.scalars().all())
+    if not encounters:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No encounters found with the provided ids",
+        )
+
+    newly_completed: list[models.Encounter] = []
+    affected_tournaments: set[int] = set()
+
+    for encounter in encounters:
+        affected_tournaments.add(encounter.tournament_id)
+
+        was_completed = encounter.status == enums.EncounterStatus.COMPLETED
+
+        if new_status is not None:
+            encounter.status = new_status
+
+        if data.reset_scores:
+            encounter.home_score = 0
+            encounter.away_score = 0
+        else:
+            if data.home_score is not None:
+                encounter.home_score = data.home_score
+            if data.away_score is not None:
+                encounter.away_score = data.away_score
+
+        now_completed = encounter.status == enums.EncounterStatus.COMPLETED
+        if now_completed and not was_completed:
+            newly_completed.append(encounter)
+
+    # Propagate advancement for encounters that just transitioned into COMPLETED.
+    # Import here to avoid a circular import at module load.
+    from shared.services.bracket.advancement import advance_winner
+
+    for encounter in newly_completed:
+        await advance_winner(session, encounter)
+
+    await session.commit()
+
+    # One recalc per tournament — not N recalcs per N encounters.
+    for tournament_id in affected_tournaments:
+        await standings_service.recalculate_for_tournament(session, tournament_id)
+
+    logger.info(
+        "Bulk-updated %d encounters across %d tournaments (%d newly completed)",
+        len(encounters),
+        len(affected_tournaments),
+        len(newly_completed),
+    )
+    return {
+        "updated": len(encounters),
+        "newly_completed": len(newly_completed),
+        "tournaments_recalculated": sorted(affected_tournaments),
+    }

@@ -1,11 +1,8 @@
 import typing
 
 import sqlalchemy as sa
-from cashews import cache
-from cashews.contrib.fastapi import cache_control_ttl
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from starlette.requests import Request
 
 from src import models, schemas
 from src.core import config, db, enums, pagination
@@ -20,12 +17,7 @@ router = APIRouter(prefix="/gamemodes", tags=[enums.RouteTag.GAMEMODE])
     description="Lightweight endpoint returning only id and name for dropdowns/selectors.",
     summary="Lookup gamemodes",
 )
-@cache(
-    ttl=cache_control_ttl(default=config.settings.gamemodes_cache_ttl),
-    key="fastapi:{request.url.path}/{request.query_params}",
-)
 async def lookup_gamemodes(
-    request: Request,
     session: AsyncSession = Depends(db.get_async_session),
 ) -> list[schemas.LookupItem]:
     query = sa.select(models.Gamemode.id, models.Gamemode.name).order_by(models.Gamemode.name)

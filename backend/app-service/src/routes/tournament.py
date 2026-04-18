@@ -1,7 +1,5 @@
 
 import sqlalchemy as sa
-from cashews import cache
-from cashews.contrib.fastapi import cache_control_ttl
 from fastapi import APIRouter, Depends, Query
 from shared.services.division_grid_access import build_workspace_division_grid_normalizer
 from shared.services.division_grid_normalization import DivisionGridNormalizationError
@@ -24,12 +22,7 @@ router = APIRouter(prefix="/tournaments", tags=[enums.RouteTag.TOURNAMENT])
     description="Lightweight endpoint returning only id and name for dropdowns/selectors.",
     summary="Lookup tournaments",
 )
-@cache(
-    ttl=cache_control_ttl(default=config.settings.tournaments_cache_ttl),
-    key="fastapi:{request.url.path}/{request.query_params}",
-)
 async def lookup_tournaments(
-    request: Request,
     workspace_id: WorkspaceQuery = None,
     is_league: bool | None = None,
     session: AsyncSession = Depends(db.get_async_session),
@@ -124,12 +117,7 @@ async def get_all_tournaments(
     description=f"Retrieve historical statistics for tournaments. \n **Cache TTL: {config.settings.tournaments_cache_ttl / 60} minutes.**",
     summary="Get tournament statistics (players, closeness, team price) history",
 )
-@cache(
-    ttl=cache_control_ttl(default=config.settings.tournaments_cache_ttl),
-    key="fastapi:{request.url.path}/{request.query_params}",
-)
 async def get_statistics(
-    request: Request,
     workspace_id: WorkspaceQuery = None,
     session: AsyncSession = Depends(db.get_async_session),
 ):
@@ -142,12 +130,7 @@ async def get_statistics(
     description=f"Retrieve division-based statistics for tournaments. **Cache TTL: {config.settings.tournaments_cache_ttl / 60} minutes.**",
     summary="Get division statistics",
 )
-@cache(
-    ttl=cache_control_ttl(default=config.settings.tournaments_cache_ttl),
-    key="fastapi:{request.url.path}/{request.query_params}",
-)
 async def get_avg_div(
-    request: Request,
     workspace_id: WorkspaceQuery = None,
     session: AsyncSession = Depends(db.get_async_session),
 ):
@@ -176,12 +159,7 @@ async def get_avg_div(
     description=f"Retrieve overall tournament statistics. Cache TTL: {config.settings.tournaments_cache_ttl / 60} minutes.",
     summary="Get overall tournament statistics",
 )
-@cache(
-    ttl=cache_control_ttl(default=config.settings.tournaments_cache_ttl),
-    key="fastapi:{request.url.path}/{request.query_params}",
-)
 async def get_most_players(
-    request: Request,
     workspace_id: WorkspaceQuery = None,
     session: AsyncSession = Depends(db.get_async_session),
 ):
@@ -194,12 +172,7 @@ async def get_most_players(
     description=f"Retrieve available OWAL seasons. Cache TTL: {config.settings.tournaments_cache_ttl / 60} minutes.",
     summary="Get OWAL seasons",
 )
-@cache(
-    ttl=cache_control_ttl(default=config.settings.tournaments_cache_ttl),
-    key="fastapi:{request.url.path}/{request.query_params}",
-)
 async def get_owal_seasons(
-    request: Request,
     workspace_id: WorkspaceQuery = None,
     session: AsyncSession = Depends(db.get_async_session),
 ):
@@ -212,12 +185,7 @@ async def get_owal_seasons(
     description="Retrieve OWAL tournament standings.",
     summary="Get OWAL standings",
 )
-@cache(
-    ttl=cache_control_ttl(default=config.settings.tournaments_cache_ttl),
-    key="fastapi:{request.url.path}/{request.query_params}",
-)
 async def get_owal_standings(
-    request: Request,
     season: str | None = Query(default=None),
     workspace_id: WorkspaceQuery = None,
     session: AsyncSession = Depends(db.get_async_session),
@@ -236,12 +204,7 @@ async def get_owal_standings(
     description="Retrieve OWAL tournament player stacks.",
     summary="Get OWAL player stacks",
 )
-@cache(
-    ttl=cache_control_ttl(default=config.settings.tournaments_cache_ttl),
-    key="fastapi:{request.url.path}/{request.query_params}",
-)
 async def get_owal_player_stacks(
-    request: Request,
     season: str | None = Query(default=None),
     workspace_id: WorkspaceQuery = None,
     session: AsyncSession = Depends(db.get_async_session),

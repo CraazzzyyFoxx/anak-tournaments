@@ -58,6 +58,20 @@ async def delete_encounter(
     await admin_service.delete_encounter(session, encounter_id)
 
 
+@router.patch("/bulk")
+async def bulk_update_encounters(
+    data: admin_schemas.BulkEncounterUpdate,
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_permission("match", "update")),
+):
+    """Bulk-update encounters — mass-set status, scores, or reset.
+
+    Critical for 40+ team tournaments: one transaction, one standings
+    recalc per affected tournament (instead of N separate recalcs).
+    """
+    return await admin_service.bulk_update_encounters(session, data)
+
+
 # ── Admin map pool management ────────────────────────────────────────────
 
 

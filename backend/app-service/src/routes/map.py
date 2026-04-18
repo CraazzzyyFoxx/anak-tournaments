@@ -1,8 +1,6 @@
 import typing
 
 import sqlalchemy as sa
-from cashews import cache
-from cashews.contrib.fastapi import cache_control_ttl
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
@@ -21,12 +19,7 @@ router = APIRouter(prefix="/maps", tags=[enums.RouteTag.MAP])
     description="Lightweight endpoint returning only id and name for dropdowns/selectors.",
     summary="Lookup maps",
 )
-@cache(
-    ttl=cache_control_ttl(default=config.settings.maps_cache_ttl),
-    key="fastapi:{request.url.path}/{request.query_params}",
-)
 async def lookup_maps(
-    request: Request,
     session: AsyncSession = Depends(db.get_async_session),
 ) -> list[schemas.LookupItem]:
     query = sa.select(models.Map.id, models.Map.name).order_by(models.Map.name)

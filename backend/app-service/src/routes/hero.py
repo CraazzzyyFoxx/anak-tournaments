@@ -1,8 +1,6 @@
 import typing
 
 import sqlalchemy as sa
-from cashews import cache
-from cashews.contrib.fastapi import cache_control_ttl
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
@@ -21,12 +19,7 @@ router = APIRouter(prefix="/heroes", tags=[enums.RouteTag.HERO])
     description="Lightweight endpoint returning only id and name for dropdowns/selectors.",
     summary="Lookup heroes",
 )
-@cache(
-    ttl=cache_control_ttl(default=config.settings.heroes_cache_ttl),
-    key="fastapi:{request.url.path}/{request.query_params}",
-)
 async def lookup_heroes(
-    request: Request,
     session: AsyncSession = Depends(db.get_async_session),
 ) -> list[schemas.LookupItem]:
     query = sa.select(models.Hero.id, models.Hero.name).order_by(models.Hero.name)
@@ -71,12 +64,7 @@ async def get_all_heroes(
     description=f"Retrieve playtime statistics for heroes associated with a specific user. Supports pagination and sorting. **Cache TTL:** {config.settings.heroes_cache_ttl} minutes.",
     summary="Get hero playtime statistics",
 )
-@cache(
-    ttl=cache_control_ttl(default=config.settings.encounters_cache_ttl),
-    key="fastapi:{request.url.path}/{request.query_params}",
-)
 async def get_statistics(
-    request: Request,
     params: schemas.HeroPlaytimeQueryPaginationParams = Depends(),
     workspace_id: WorkspaceQuery = None,
     session: AsyncSession = Depends(db.get_async_session),
@@ -92,12 +80,7 @@ async def get_statistics(
     description=f"Retrieve leaderboard of players ranked by their performance on a specific hero. Optionally filter by tournament. **Cache TTL:** {config.settings.heroes_cache_ttl} minutes.",
     summary="Get hero performance leaderboard",
 )
-@cache(
-    ttl=cache_control_ttl(default=config.settings.heroes_cache_ttl),
-    key="fastapi:{request.url.path}/{request.query_params}",
-)
 async def get_hero_leaderboard(
-    request: Request,
     hero_id: int,
     params: schemas.HeroLeaderboardQueryParams = Depends(),
     workspace_id: WorkspaceQuery = None,

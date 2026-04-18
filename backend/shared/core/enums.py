@@ -167,6 +167,18 @@ class EncounterStatus(StrEnum):
     OPEN = "open"
 
 
+class EncounterLinkRole(StrEnum):
+    """Role of the source encounter relative to the target encounter."""
+    WINNER = "winner"
+    LOSER = "loser"
+
+
+class EncounterLinkSlot(StrEnum):
+    """Which slot in the target encounter this link fills."""
+    HOME = "home"
+    AWAY = "away"
+
+
 class MatchEvent(StrEnum):
     OffensiveAssist = "offensive_assist"
     DefensiveAssist = "defensive_assist"

@@ -1,5 +1,6 @@
 import typing
 
+from shared.services.tournament_utils import sort_bracket_matches
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models, schemas
@@ -14,16 +15,8 @@ from . import service
 def sort_matches(
     matches: typing.Sequence[schemas.EncounterRead],
 ) -> list[schemas.EncounterRead]:
-    if not matches:
-        return []
-
-    max_abs_round = max(abs(match.round) for match in matches)
-
-    def sort_key(match):
-        final_flag = 1 if abs(match.round) == max_abs_round else 0
-        return final_flag, abs(match.round), 0 if match.round > 0 else 1
-
-    return sorted(matches, key=sort_key)
+    """Phase E: delegate to shared utility (removes drift from parser-service)."""
+    return sort_bracket_matches(matches)
 
 
 async def to_pydantic(

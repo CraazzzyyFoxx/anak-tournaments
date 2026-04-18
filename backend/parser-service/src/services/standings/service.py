@@ -7,6 +7,10 @@ import sqlalchemy as sa
 from loguru import logger
 from shared.core import enums
 from shared.core.enums import StageType
+from shared.services.tournament_utils import (
+    completed_encounters as _shared_completed_encounters,
+)
+from shared.services.tournament_utils import sort_bracket_matches
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.strategy_options import _AbstractLoad
@@ -99,12 +103,22 @@ async def get_by_tournament(
     return standings
 
 
-async def delete_by_tournament(session: AsyncSession, tournament_id: int) -> None:
+async def delete_by_tournament(
+    session: AsyncSession, tournament_id: int, *, commit: bool = True
+) -> None:
+    """Delete all Standing rows for a tournament.
+
+    When called as part of :func:`recalculate_for_tournament` we pass
+    ``commit=False`` so that the DELETE and the subsequent INSERT land in the
+    same transaction — avoiding the brief window where the table is empty
+    (Phase D: transactional recalculation).
+    """
     query = sa.delete(models.Standing).where(
         sa.and_(models.Standing.tournament_id == tournament_id)
     )
     await session.execute(query)
-    await session.commit()
+    if commit:
+        await session.commit()
     logger.info(f"Deleted standings for tournament {tournament_id}")
 
 
@@ -129,9 +143,15 @@ async def recalculate_for_tournament(
     session: AsyncSession,
     tournament_id: int,
 ) -> typing.Sequence[models.Standing]:
-    await delete_by_tournament(session, tournament_id)
+    """Delete + rebuild standings for a tournament atomically.
+
+    Everything happens in a single transaction: readers never observe an
+    empty standings table mid-recalculation.
+    """
+    await delete_by_tournament(session, tournament_id, commit=False)
     tournament = await get_tournament_for_standings(session, tournament_id)
     if tournament is None:
+        await session.commit()
         return []
     return await calculate_for_tournament(session, tournament)
 
@@ -139,18 +159,8 @@ async def recalculate_for_tournament(
 def _completed_encounters(
     encounters: typing.Sequence[models.Encounter],
 ) -> list[models.Encounter]:
-    return [
-        encounter
-        for encounter in encounters
-        if encounter.home_team_id is not None
-        and encounter.away_team_id is not None
-        and (
-            encounter.status == enums.EncounterStatus.COMPLETED
-            or encounter.result_status == enums.EncounterResultStatus.CONFIRMED
-            or encounter.home_score != 0
-            or encounter.away_score != 0
-        )
-    ]
+    """Phase E: delegate to shared predicate to avoid drift between services."""
+    return _shared_completed_encounters(encounters)
 
 
 def _stage_settings(stage: models.Stage | None) -> dict:
@@ -525,7 +535,12 @@ def _resolve_compat_group_id(
     tournament: models.Tournament,
     stage: models.Stage,
     stage_item: models.StageItem | None,
-) -> int:
+) -> int | None:
+    """Resolve the legacy ``TournamentGroup`` id for a given stage/stage_item.
+
+    Returns ``None`` if no compat-group exists — this is valid now that
+    ``Standing.group_id`` is nullable (Phase A). Callers must tolerate ``None``.
+    """
     groups = list(getattr(tournament, "groups", []) or [])
     stage_candidates = [group for group in groups if group.stage_id == stage.id]
 
@@ -564,9 +579,15 @@ def _resolve_compat_group_id(
         return stage_candidates[0].id
     if fallback_candidates:
         return fallback_candidates[0].id
-    raise ValueError(
-        f"Could not resolve compatibility TournamentGroup for tournament={tournament.id} stage={stage.id}"
+
+    # Phase A: Standing.group_id is nullable, so missing compat-group is no
+    # longer a hard error — log and proceed without one.
+    logger.debug(
+        "No compat TournamentGroup for tournament=%s stage=%s; Standing.group_id will be NULL",
+        tournament.id,
+        stage.id,
     )
+    return None
 
 
 def _stage_item_team_ids(stage_item: models.StageItem | None) -> list[int]:
@@ -730,15 +751,51 @@ def calculate_overall_positions(
 def sort_matches(
     matches: typing.Sequence[models.Encounter],
 ) -> typing.Sequence[models.Encounter]:
-    if not matches:
-        return []
-    max_abs_round = max(abs(match.round) for match in matches)
+    """Phase E: delegate to shared utility."""
+    return sort_bracket_matches(matches)
 
-    def sort_key(match: models.Encounter) -> tuple[int, int, int]:
-        final_flag = 1 if abs(match.round) == max_abs_round else 0
-        return final_flag, abs(match.round), 0 if match.round > 0 else 1
 
-    return sorted(matches, key=sort_key)
+async def _update_stage_completion_flags(
+    session: AsyncSession, tournament: models.Tournament
+) -> None:
+    """After recalc, flip ``Stage.is_completed`` to match reality.
+
+    A stage is considered completed when every encounter that belongs to it
+    has ``status == COMPLETED``. Stages without any encounters are treated
+    as not-completed (nothing to finish).
+
+    This powers the admin UI's "Group A — 10/10 done" badge and the
+    activate-and-generate warning for downstream playoff stages.
+    """
+    stages = getattr(tournament, "stages", []) or []
+    if not stages:
+        return
+
+    stage_ids = [s.id for s in stages]
+    counts_result = await session.execute(
+        sa.select(
+            models.Encounter.stage_id,
+            sa.func.count(models.Encounter.id).label("total"),
+            sa.func.sum(
+                sa.case(
+                    (
+                        models.Encounter.status == enums.EncounterStatus.COMPLETED,
+                        1,
+                    ),
+                    else_=0,
+                )
+            ).label("completed"),
+        )
+        .where(models.Encounter.stage_id.in_(stage_ids))
+        .group_by(models.Encounter.stage_id)
+    )
+    by_stage = {row.stage_id: (int(row.total or 0), int(row.completed or 0)) for row in counts_result}
+
+    for stage in stages:
+        total, completed = by_stage.get(stage.id, (0, 0))
+        should_be_completed = total > 0 and completed == total
+        if stage.is_completed != should_be_completed:
+            stage.is_completed = should_be_completed
 
 
 async def calculate_for_tournament(
@@ -778,6 +835,9 @@ async def calculate_for_tournament(
 
     final_standings = calculate_overall_positions(all_standings, stages)
     session.add_all(final_standings)
+    # Phase P0.4: auto-flip Stage.is_completed to reflect encounter progress
+    # in the same transaction as the standings write.
+    await _update_stage_completion_flags(session, tournament)
     await session.commit()
     logger.info(
         f"Stage-first standings calculated and committed for tournament {tournament.id}"

@@ -1,9 +1,6 @@
 import typing
 
-from cashews import cache
-from cashews.contrib.fastapi import cache_control_ttl
 from fastapi import APIRouter, Depends, Query
-from starlette.requests import Request
 
 from src import schemas
 from src.core import config, db, enums, pagination
@@ -22,12 +19,7 @@ router = APIRouter(prefix="/teams", tags=[enums.RouteTag.TEAMS])
     f"**Cache TTL: {config.settings.teams_cache_ttl / 60} minutes.**",
     summary="Get team by ID",
 )
-@cache(
-    ttl=cache_control_ttl(default=config.settings.teams_cache_ttl),
-    key="fastapi:{request.url.path}/{request.query_params}",
-)
 async def get_one(
-    request: Request,
     id: int,
     entities: list[str] = Query([]),
     session=Depends(db.get_async_session),

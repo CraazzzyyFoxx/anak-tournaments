@@ -52,7 +52,20 @@ class AdminStageServiceTests(IsolatedAsyncioTestCase):
                 ),
             ],
         )
-        session = SimpleNamespace(add=Mock(), commit=AsyncMock())
+        created_encounters: list = []
+
+        def _fake_add(obj):
+            # Simulate autoincrement: any added Encounter gets an id so that
+            # persist_advancement_edges can build its local→id map.
+            if not hasattr(obj, "id") or obj.id is None:
+                obj.id = len(created_encounters) + 100
+            created_encounters.append(obj)
+
+        session = SimpleNamespace(
+            add=Mock(side_effect=_fake_add),
+            flush=AsyncMock(),
+            commit=AsyncMock(),
+        )
 
         with patch.object(stage_service, "get_stage", AsyncMock(return_value=stage)):
             encounters = await stage_service.generate_encounters(session, stage.id)

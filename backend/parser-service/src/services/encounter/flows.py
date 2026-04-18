@@ -1,4 +1,5 @@
 from loguru import logger
+from shared.services.stage_refs import resolve_stage_refs_from_group
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -189,6 +190,15 @@ async def _create_encounter_from_challonge(
         existed.home_score = home_score
         existed.away_score = away_score
         existed.status = enums.EncounterStatus(match.state if match.state != 'complete' else 'completed')
+        # Self-heal stage refs for legacy encounters (stage_id/stage_item_id NULL)
+        if existed.stage_id is None:
+            refs = await resolve_stage_refs_from_group(
+                session,
+                tournament_id=tournament.id,
+                tournament_group_id=group_id,
+            )
+            existed.stage_id = refs.stage_id
+            existed.stage_item_id = refs.stage_item_id
         await session.commit()
         return existed
     match_db = await service.create(

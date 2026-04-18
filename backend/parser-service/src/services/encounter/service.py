@@ -2,6 +2,10 @@ import typing
 
 import sqlalchemy as sa
 from loguru import logger
+from shared.services.stage_refs import (
+    StageRefs,
+    resolve_stage_refs_from_group,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.strategy_options import _AbstractLoad
@@ -338,7 +342,24 @@ async def create(
     status: enums.EncounterStatus,
     challonge_id: int | None = None,
     has_logs: bool = False,
+    stage_id: int | None = None,
+    stage_item_id: int | None = None,
 ) -> models.Encounter:
+    """Create a new encounter.
+
+    stage_id / stage_item_id are resolved from ``group_id`` via
+    :func:`shared.services.stage_refs.resolve_stage_refs_from_group` when not
+    supplied explicitly, so legacy flows (Challonge sync, parser) no longer
+    produce encounters with NULL stage refs.
+    """
+    refs: StageRefs = await resolve_stage_refs_from_group(
+        session,
+        tournament_id=tournament.id,
+        tournament_group_id=group_id,
+        stage_id=stage_id,
+        stage_item_id=stage_item_id,
+    )
+
     encounter = models.Encounter(
         name=name,
         home_team=home_team,
@@ -348,6 +369,8 @@ async def create(
         round=round,
         tournament_id=tournament.id,
         tournament_group_id=group_id,
+        stage_id=refs.stage_id,
+        stage_item_id=refs.stage_item_id,
         challonge_id=challonge_id,
         status=status,
         has_logs=has_logs,
@@ -380,10 +403,34 @@ async def update(
     encounter.away_score = away_score or encounter.away_score
     encounter.round = round or encounter.round
     encounter.tournament_id = tournament_id or encounter.tournament_id
-    encounter.tournament_group_id = group_id or encounter.tournament_group_id
     encounter.challonge_id = challonge_id or encounter.challonge_id
     encounter.has_logs = has_logs or encounter.has_logs
     encounter.status = status or encounter.status
+
+    if group_id is not None and group_id != encounter.tournament_group_id:
+        encounter.tournament_group_id = group_id
+        # При смене группы — пересчитать stage refs, чтобы сетка и админка
+        # не расходились.
+        refs = await resolve_stage_refs_from_group(
+            session,
+            tournament_id=encounter.tournament_id,
+            tournament_group_id=group_id,
+            stage_id=encounter.stage_id,
+            stage_item_id=encounter.stage_item_id,
+        )
+        encounter.stage_id = refs.stage_id
+        encounter.stage_item_id = refs.stage_item_id
+    elif encounter.stage_id is None and encounter.tournament_group_id is not None:
+        # Self-heal для legacy-encounters, где stage_id/stage_item_id NULL:
+        # резолвим при любом update.
+        refs = await resolve_stage_refs_from_group(
+            session,
+            tournament_id=encounter.tournament_id,
+            tournament_group_id=encounter.tournament_group_id,
+        )
+        encounter.stage_id = refs.stage_id
+        encounter.stage_item_id = refs.stage_item_id
+
     await session.commit()
     return encounter
 

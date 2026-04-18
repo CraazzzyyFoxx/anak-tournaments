@@ -1,4 +1,4 @@
-from sqlalchemy import Float, ForeignKey, Index, Integer, UniqueConstraint
+from sqlalchemy import Float, ForeignKey, Index, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db
@@ -12,16 +12,30 @@ class Standing(db.TimeStampIntegerMixin):
     __tablename__ = "standing"
 
     __table_args__ = (
-        UniqueConstraint("tournament_id", "group_id", "team_id"),
+        # Canonical identity for a standing row is (tournament, stage, stage_item, team).
+        # Unique index is created in migration phasea0001 with COALESCE on stage_item_id
+        # (SQLAlchemy does not support COALESCE inside UniqueConstraint, so we register
+        # this at migration level and keep helper indexes here).
         Index("ix_standing_tournament_position", "tournament_id", "overall_position"),
+        Index(
+            "ix_standing_stage_stage_item_team",
+            "stage_id",
+            "stage_item_id",
+            "team_id",
+        ),
         {"schema": "tournament"},
     )
 
     tournament_id: Mapped[int] = mapped_column(
         Integer, ForeignKey(Tournament.id, ondelete="CASCADE"), index=True
     )
-    group_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey(TournamentGroup.id, ondelete="CASCADE"), index=True
+    # Deprecated: legacy FK to TournamentGroup. New rows may leave it NULL.
+    # Kept for backwards compatibility until TournamentGroup is dropped.
+    group_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey(TournamentGroup.id, ondelete="CASCADE"),
+        nullable=True,
+        index=True,
     )
     team_id: Mapped[int] = mapped_column(
         Integer, ForeignKey(Team.id, ondelete="CASCADE"), index=True

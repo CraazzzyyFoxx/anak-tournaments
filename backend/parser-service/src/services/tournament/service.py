@@ -5,7 +5,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models
-from src.core import utils
+from src.core import enums, utils
 
 
 def tournament_entities(
@@ -133,6 +133,48 @@ async def create_group(
     challonge_id: int | None = None,
     challonge_slug: str | None = None,
 ) -> models.TournamentGroup:
+    """Create a legacy TournamentGroup AND its corresponding Stage/StageItem.
+
+    Ensures every new group is immediately part of the new stage model so that
+    encounters attached to this group render correctly on the public bracket
+    view (which filters by stage_id/stage_item_id).
+    """
+    # 1. Determine stage order: highest existing stage order in this tournament + 1
+    max_order_row = await session.execute(
+        sa.select(sa.func.coalesce(sa.func.max(models.Stage.order), -1)).where(
+            models.Stage.tournament_id == tournament.id
+        )
+    )
+    next_order = int(max_order_row.scalar_one()) + 1
+
+    stage_type = (
+        enums.StageType.ROUND_ROBIN if is_groups else enums.StageType.DOUBLE_ELIMINATION
+    )
+    stage_item_type = (
+        enums.StageItemType.GROUP if is_groups else enums.StageItemType.SINGLE_BRACKET
+    )
+
+    stage = models.Stage(
+        tournament_id=tournament.id,
+        name=name,
+        description=description,
+        stage_type=stage_type,
+        order=next_order,
+        challonge_id=challonge_id,
+        challonge_slug=challonge_slug,
+    )
+    session.add(stage)
+    await session.flush()
+
+    stage_item = models.StageItem(
+        stage_id=stage.id,
+        name=name,
+        type=stage_item_type,
+        order=0,
+    )
+    session.add(stage_item)
+    await session.flush()
+
     group = models.TournamentGroup(
         tournament=tournament,
         name=name,
@@ -140,6 +182,7 @@ async def create_group(
         is_groups=is_groups,
         challonge_id=challonge_id,
         challonge_slug=challonge_slug,
+        stage_id=stage.id,
     )
     session.add(group)
     await session.commit()

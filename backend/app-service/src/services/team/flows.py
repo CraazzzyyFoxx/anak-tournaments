@@ -60,7 +60,7 @@ async def to_pydantic(
             placement = team.standings[0].overall_position
     if "group" in entities:
         groups = [
-            standing.group for standing in team.standings if standing.group.is_groups
+            standing.group for standing in team.standings if standing.group is not None and standing.group.is_groups
         ]
         if groups:
             group = await tournament_flows.to_pydantic_group(session, groups[0], [])
