@@ -1,8 +1,22 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { CircleAlert, Clock, FolderInput, Loader2, RefreshCw, XCircle, CheckCircle } from "lucide-react";
-import { AdminDetailTableShell, getAdminDetailTableStyles } from "@/components/admin/AdminDetailTable";
+import {
+  CircleAlert,
+  Clock,
+  FolderInput,
+  Loader2,
+  RefreshCw,
+  XCircle,
+  CheckCircle,
+  ChevronLeft,
+  ChevronRight
+} from "lucide-react";
+import { useState } from "react";
+import {
+  AdminDetailTableShell,
+  getAdminDetailTableStyles
+} from "@/components/admin/AdminDetailTable";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,12 +27,13 @@ import {
   TableCell,
   TableHead,
   TableHeader,
-  TableRow,
+  TableRow
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import adminService from "@/services/admin.service";
-import { TOURNAMENT_DETAIL_PREVIEW_LIMIT } from "./tournamentWorkspace.helpers";
 import { getTournamentWorkspaceQueryKeys } from "./tournamentWorkspace.queryKeys";
+
+const PAGE_SIZE = 20;
 
 interface TournamentLogsTabProps {
   tournamentId: number;
@@ -29,17 +44,20 @@ export function TournamentLogsTab({ tournamentId, enabled }: TournamentLogsTabPr
   const { toast } = useToast();
   const tableStyles = getAdminDetailTableStyles("compact");
   const queryKeys = getTournamentWorkspaceQueryKeys(tournamentId);
+  const [page, setPage] = useState(0);
 
   const logHistoryQuery = useQuery({
-    queryKey: queryKeys.logHistory,
-    queryFn: () => adminService.getLogHistory(tournamentId, { limit: 50 }),
+    queryKey: [...queryKeys.logHistory, page],
+    queryFn: () =>
+      adminService.getLogHistory(tournamentId, { limit: PAGE_SIZE, offset: page * PAGE_SIZE }),
     enabled,
     refetchInterval: enabled ? 10_000 : false,
+    placeholderData: (prev) => prev
   });
 
   const retryLogMutation = useMutation({
     mutationFn: (recordId: number) => adminService.retryLogRecord(recordId),
-    onSuccess: () => logHistoryQuery.refetch(),
+    onSuccess: () => logHistoryQuery.refetch()
   });
 
   const processAllLogsMutation = useMutation({
@@ -50,7 +68,7 @@ export function TournamentLogsTab({ tournamentId, enabled }: TournamentLogsTabPr
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
-    },
+    }
   });
 
   return (
@@ -82,9 +100,7 @@ export function TournamentLogsTab({ tournamentId, enabled }: TournamentLogsTabPr
             onClick={() => logHistoryQuery.refetch()}
             disabled={logHistoryQuery.isFetching}
           >
-            <RefreshCw
-              className={`size-3.5 ${logHistoryQuery.isFetching ? "animate-spin" : ""}`}
-            />
+            <RefreshCw className={`size-3.5 ${logHistoryQuery.isFetching ? "animate-spin" : ""}`} />
           </Button>
         </div>
       </CardHeader>
@@ -113,92 +129,120 @@ export function TournamentLogsTab({ tournamentId, enabled }: TournamentLogsTabPr
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {logHistoryQuery.data.items
-                    .slice(0, TOURNAMENT_DETAIL_PREVIEW_LIMIT)
-                    .map((record) => {
-                      const duration =
-                        record.started_at && record.finished_at
-                          ? `${((new Date(record.finished_at).getTime() - new Date(record.started_at).getTime()) / 1000).toFixed(1)}s`
-                          : record.status === "processing"
-                            ? "In progress..."
-                            : "—";
+                  {logHistoryQuery.data.items.map((record) => {
+                    const duration =
+                      record.started_at && record.finished_at
+                        ? `${((new Date(record.finished_at).getTime() - new Date(record.started_at).getTime()) / 1000).toFixed(1)}s`
+                        : record.status === "processing"
+                          ? "In progress..."
+                          : "—";
 
-                      const statusInfo =
-                        record.status === "pending"
-                          ? { icon: Clock, variant: "muted" as const }
-                          : record.status === "processing"
-                            ? { icon: Loader2, variant: "info" as const }
-                            : record.status === "done"
-                              ? { icon: CheckCircle, variant: "success" as const }
-                              : record.status === "failed"
-                                ? { icon: XCircle, variant: "destructive" as const }
-                                : { icon: CircleAlert, variant: "muted" as const };
+                    const statusInfo =
+                      record.status === "pending"
+                        ? { icon: Clock, variant: "muted" as const }
+                        : record.status === "processing"
+                          ? { icon: Loader2, variant: "info" as const }
+                          : record.status === "done"
+                            ? { icon: CheckCircle, variant: "success" as const }
+                            : record.status === "failed"
+                              ? { icon: XCircle, variant: "destructive" as const }
+                              : { icon: CircleAlert, variant: "muted" as const };
 
-                      return (
-                        <TableRow key={record.id} className={tableStyles.row}>
-                          <TableCell className={tableStyles.cell}>
-                            <span className="font-mono text-xs">
-                              {record.filename.split("/").at(-1)}
-                            </span>
-                            {record.error_message ? (
-                              <p className="mt-1 line-clamp-1 text-xs text-destructive">
-                                {record.error_message}
-                              </p>
-                            ) : null}
-                          </TableCell>
-                          <TableCell className={tableStyles.cell}>
-                            <StatusIcon
-                              icon={statusInfo.icon}
-                              label={record.status}
-                              variant={statusInfo.variant}
-                            />
-                          </TableCell>
-                          <TableCell className={tableStyles.cell}>
-                            <span className="text-sm capitalize text-muted-foreground">
-                              {record.source}
-                            </span>
-                          </TableCell>
-                          <TableCell className={tableStyles.cell}>
-                            {record.uploader_name ? (
-                              <span className="text-sm">{record.uploader_name}</span>
-                            ) : (
-                              <span className="text-sm text-muted-foreground">—</span>
-                            )}
-                          </TableCell>
-                          <TableCell className={tableStyles.cell}>
-                            <span className="text-sm">
-                              {new Date(record.created_at).toLocaleString()}
-                            </span>
-                          </TableCell>
-                          <TableCell className={tableStyles.cell}>
-                            <span className="text-sm text-muted-foreground">{duration}</span>
-                          </TableCell>
-                          <TableCell className={tableStyles.cell}>
-                            {record.status === "failed" ? (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                aria-label="Retry processing"
-                                disabled={
-                                  retryLogMutation.isPending &&
-                                  retryLogMutation.variables === record.id
-                                }
-                                onClick={() => retryLogMutation.mutate(record.id)}
-                              >
-                                <RefreshCw className="h-4 w-4" />
-                              </Button>
-                            ) : null}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
+                    return (
+                      <TableRow key={record.id} className={tableStyles.row}>
+                        <TableCell className={tableStyles.cell}>
+                          <span className="font-mono text-xs">
+                            {record.filename.split("/").at(-1)}
+                          </span>
+                          {record.error_message ? (
+                            <p className="mt-1 line-clamp-1 text-xs text-destructive">
+                              {record.error_message}
+                            </p>
+                          ) : null}
+                        </TableCell>
+                        <TableCell className={tableStyles.cell}>
+                          <StatusIcon
+                            icon={statusInfo.icon}
+                            label={record.status}
+                            variant={statusInfo.variant}
+                          />
+                        </TableCell>
+                        <TableCell className={tableStyles.cell}>
+                          <span className="text-sm capitalize text-muted-foreground">
+                            {record.source}
+                          </span>
+                        </TableCell>
+                        <TableCell className={tableStyles.cell}>
+                          {record.uploader_name ? (
+                            <span className="text-sm">{record.uploader_name}</span>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className={tableStyles.cell}>
+                          <span className="text-sm">
+                            {new Date(record.created_at).toLocaleString()}
+                          </span>
+                        </TableCell>
+                        <TableCell className={tableStyles.cell}>
+                          <span className="text-sm text-muted-foreground">{duration}</span>
+                        </TableCell>
+                        <TableCell className={tableStyles.cell}>
+                          {record.status === "failed" ? (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label="Retry processing"
+                              disabled={
+                                retryLogMutation.isPending &&
+                                retryLogMutation.variables === record.id
+                              }
+                              onClick={() => retryLogMutation.mutate(record.id)}
+                            >
+                              <RefreshCw className="h-4 w-4" />
+                            </Button>
+                          ) : null}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </AdminDetailTableShell>
 
-            {logHistoryQuery.data.items.length > TOURNAMENT_DETAIL_PREVIEW_LIMIT ? (
-              <div className="border-t border-border/30 px-3 py-2 text-[12px] text-muted-foreground/60">
-                Showing {TOURNAMENT_DETAIL_PREVIEW_LIMIT} of {logHistoryQuery.data.items.length} logs
+            {logHistoryQuery.data.total > PAGE_SIZE ? (
+              <div className="flex items-center justify-between border-t border-border/30 px-3 py-2">
+                <span className="text-[12px] text-muted-foreground/60">
+                  {page * PAGE_SIZE + 1}–
+                  {Math.min((page + 1) * PAGE_SIZE, logHistoryQuery.data.total)} of{" "}
+                  {logHistoryQuery.data.total} logs
+                </span>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-6"
+                    disabled={page === 0 || logHistoryQuery.isFetching}
+                    onClick={() => setPage((p) => p - 1)}
+                  >
+                    <ChevronLeft className="size-3.5" />
+                  </Button>
+                  <span className="min-w-12 text-center text-[12px] text-muted-foreground">
+                    {page + 1} / {Math.ceil(logHistoryQuery.data.total / PAGE_SIZE)}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-6"
+                    disabled={
+                      (page + 1) * PAGE_SIZE >= logHistoryQuery.data.total ||
+                      logHistoryQuery.isFetching
+                    }
+                    onClick={() => setPage((p) => p + 1)}
+                  >
+                    <ChevronRight className="size-3.5" />
+                  </Button>
+                </div>
               </div>
             ) : null}
           </>
