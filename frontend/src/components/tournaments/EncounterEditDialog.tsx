@@ -73,6 +73,8 @@ function EncounterEditDialogBody({
 }: Omit<EncounterEditDialogProps, "open">) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const homeTeamLabel = encounter.home_team?.name?.trim() || "Home team";
+  const awayTeamLabel = encounter.away_team?.name?.trim() || "Away team";
 
   const [homeScore, setHomeScore] = useState(() => encounter.score?.home ?? 0);
   const [awayScore, setAwayScore] = useState(() => encounter.score?.away ?? 0);
@@ -150,6 +152,8 @@ function EncounterEditDialogBody({
           idPrefix={`encounter-edit-${encounter.id}`}
           homeScore={homeScore}
           awayScore={awayScore}
+          homeLabel={homeTeamLabel}
+          awayLabel={awayTeamLabel}
           onScoreChange={(score) => {
             setHomeScore(score.homeScore);
             setAwayScore(score.awayScore);
