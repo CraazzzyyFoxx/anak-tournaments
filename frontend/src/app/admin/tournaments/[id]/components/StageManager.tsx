@@ -12,7 +12,7 @@ import {
   Shuffle,
   Users,
   Wand2,
-  Zap,
+  Zap
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,10 +33,7 @@ import type { Stage, StageItem, StageItemType, StageType } from "@/types/tournam
 import type { Team } from "@/types/team.types";
 import { invalidateTournamentWorkspace } from "./tournamentWorkspace.queryKeys";
 
-const BRACKET_STAGE_TYPES: StageType[] = [
-  "single_elimination",
-  "double_elimination",
-];
+const BRACKET_STAGE_TYPES: StageType[] = ["single_elimination", "double_elimination"];
 const GROUP_STAGE_TYPES: StageType[] = ["round_robin", "swiss"];
 
 const STAGE_TYPE_LABELS: Record<StageType, string> = {
@@ -79,9 +76,7 @@ function getNextInputSlot(item: StageItem) {
 function getAssignedTeamIds(stage: Stage) {
   return new Set(
     stage.items.flatMap((item) =>
-      item.inputs
-        .map((input) => input.team_id)
-        .filter((teamId): teamId is number => teamId != null)
+      item.inputs.map((input) => input.team_id).filter((teamId): teamId is number => teamId != null)
     )
   );
 }
@@ -124,12 +119,10 @@ export function StageManager({ tournamentId }: StageManagerProps) {
   const { data: stageProgress = [] } = useQuery({
     queryKey: ["admin", "stages", tournamentId, "progress"],
     queryFn: () => adminService.getStagesProgress(tournamentId),
-    enabled: stages.length > 0,
+    enabled: stages.length > 0
   });
 
-  const progressByStageId = new Map(
-    stageProgress.map((sp) => [sp.stage_id, sp])
-  );
+  const progressByStageId = new Map(stageProgress.map((sp) => [sp.stage_id, sp]));
 
   const teams = teamsData?.results ?? [];
   const teamById = new Map(teams.map((team) => [team.id, team]));
@@ -163,8 +156,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
     }: {
       stageId: number;
       data: { stage_type?: StageType; max_rounds?: number };
-    }) =>
-      adminService.updateStage(stageId, data),
+    }) => adminService.updateStage(stageId, data),
     onSuccess: (_stage, variables) => {
       setStageTypeDrafts((current) => {
         const next = { ...current };
@@ -254,21 +246,24 @@ export function StageManager({ tournamentId }: StageManagerProps) {
       targetStageId,
       sourceStageId,
       top,
-      mode,
+      top_lb,
+      mode
     }: {
       targetStageId: number;
       sourceStageId: number;
       top: number;
+      top_lb: number;
       mode: "cross" | "snake";
     }) =>
       adminService.wireFromGroups(targetStageId, {
         source_stage_id: sourceStageId,
         top,
-        mode,
+        top_lb,
+        mode
       }),
     onSuccess: () => {
       invalidateStageData();
-    },
+    }
   });
 
   // Phase F2: one-click activate + generate. On 409 (upstream not completed)
@@ -299,14 +294,14 @@ export function StageManager({ tournamentId }: StageManagerProps) {
     },
     onSuccess: () => {
       invalidateStageData();
-    },
+    }
   });
 
   // P0.2: seed teams into group stage automatically by avg_sr snake-draft.
   const seedTeamsMutation = useMutation({
     mutationFn: ({
       stageId,
-      mode,
+      mode
     }: {
       stageId: number;
       mode: "snake_sr" | "by_total_sr" | "random";
@@ -316,12 +311,12 @@ export function StageManager({ tournamentId }: StageManagerProps) {
     },
     onSuccess: () => {
       invalidateStageData();
-    },
+    }
   });
 
   // Local UI state for the wire-from-groups form (keyed per bracket stage).
   const [wireDrafts, setWireDrafts] = useState<
-    Record<number, { sourceStageId?: number; top: number; mode: "cross" | "snake" }>
+    Record<number, { sourceStageId?: number; top: number; top_lb: number; mode: "cross" | "snake" }>
   >({});
 
   if (isLoading) {
@@ -422,17 +417,13 @@ export function StageManager({ tournamentId }: StageManagerProps) {
 
       {stages.map((stage: Stage) => {
         const stageTypeDraft = stageTypeDrafts[stage.id] ?? stage.stage_type;
-        const stageMaxRoundDraft =
-          stageMaxRoundDrafts[stage.id] ?? String(stage.max_rounds ?? 5);
+        const stageMaxRoundDraft = stageMaxRoundDrafts[stage.id] ?? String(stage.max_rounds ?? 5);
         const itemDraft = stageItemDrafts[stage.id] ?? {
           name: "",
           type: getDefaultStageItemType(stage.stage_type)
         };
         const isTypeDirty = stageTypeDraft !== stage.stage_type;
-        const maxRoundsDraftValue = normalizeMaxRounds(
-          stageMaxRoundDraft,
-          stage.max_rounds ?? 5
-        );
+        const maxRoundsDraftValue = normalizeMaxRounds(stageMaxRoundDraft, stage.max_rounds ?? 5);
         const isMaxRoundsDirty = maxRoundsDraftValue !== (stage.max_rounds ?? 5);
         const isStageDirty = isTypeDirty || isMaxRoundsDirty;
         const isUpdatingType =
@@ -499,9 +490,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                               : `${prog.total - prog.completed} encounters still pending`
                           }
                         >
-                          {fullyDone ? (
-                            <CheckCircle2 className="size-3" />
-                          ) : null}
+                          {fullyDone ? <CheckCircle2 className="size-3" /> : null}
                           {prog.completed}/{prog.total} matches
                         </span>
                       );
@@ -549,7 +538,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                         if (!confirmed) return;
                         seedTeamsMutation.mutate({
                           stageId: stage.id,
-                          mode: "snake_sr",
+                          mode: "snake_sr"
                         });
                       }}
                       title="Auto-distribute teams into groups balanced by avg_sr"
@@ -672,7 +661,8 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                   const sourceItem = stages
                                     .flatMap((s) => s.items)
                                     .find((it) => it.id === input.source_stage_item_id);
-                                  const groupName = sourceItem?.name ?? `Item ${input.source_stage_item_id}`;
+                                  const groupName =
+                                    sourceItem?.name ?? `Item ${input.source_stage_item_id}`;
                                   label = `Winner of ${groupName} #${input.source_position}`;
                                 } else {
                                   label = "Empty slot";
@@ -830,126 +820,154 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                 </div>
               </div>
 
-              {BRACKET_STAGE_TYPES.includes(stage.stage_type) ? (() => {
-                const groupStages = stages.filter((other) =>
-                  GROUP_STAGE_TYPES.includes(other.stage_type) && other.id !== stage.id
-                );
-                if (groupStages.length === 0) {
-                  return null;
-                }
-                const draft = wireDrafts[stage.id] ?? {
-                  sourceStageId: groupStages[0]?.id,
-                  top: 2,
-                  mode: "cross" as const,
-                };
-                const isWiring =
-                  wireFromGroupsMutation.isPending &&
-                  wireFromGroupsMutation.variables?.targetStageId === stage.id;
-                return (
-                  <div className="rounded-lg border border-dashed border-emerald-900/40 bg-emerald-950/10 px-3 py-2.5">
-                    <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
-                      <Link2 className="size-3.5" />
-                      <span className="font-medium text-foreground">
-                        Wire from groups
-                      </span>
-                      <span className="hidden sm:inline">
-                        Auto-populate tentative slots from a preceding group stage.
-                      </span>
-                    </div>
+              {BRACKET_STAGE_TYPES.includes(stage.stage_type)
+                ? (() => {
+                    const groupStages = stages.filter(
+                      (other) =>
+                        GROUP_STAGE_TYPES.includes(other.stage_type) && other.id !== stage.id
+                    );
+                    if (groupStages.length === 0) {
+                      return null;
+                    }
+                    const isDE = stage.stage_type === "double_elimination";
+                    const draft = wireDrafts[stage.id] ?? {
+                      sourceStageId: groupStages[0]?.id,
+                      top: 2,
+                      top_lb: 0,
+                      mode: "cross" as const
+                    };
+                    const isWiring =
+                      wireFromGroupsMutation.isPending &&
+                      wireFromGroupsMutation.variables?.targetStageId === stage.id;
+                    return (
+                      <div className="rounded-lg border border-dashed border-emerald-900/40 bg-emerald-950/10 px-3 py-2.5">
+                        <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+                          <Link2 className="size-3.5" />
+                          <span className="font-medium text-foreground">Wire from groups</span>
+                          <span className="hidden sm:inline">
+                            Auto-populate tentative slots from a preceding group stage.
+                          </span>
+                        </div>
 
-                    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_100px_120px_auto]">
-                      <Select
-                        value={draft.sourceStageId?.toString() ?? ""}
-                        onValueChange={(value) =>
-                          setWireDrafts((current) => ({
-                            ...current,
-                            [stage.id]: { ...draft, sourceStageId: Number(value) },
-                          }))
-                        }
-                      >
-                        <SelectTrigger className="h-9">
-                          <SelectValue placeholder="Source group stage" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {groupStages.map((src) => (
-                            <SelectItem key={src.id} value={src.id.toString()}>
-                              {src.name} ({STAGE_TYPE_LABELS[src.stage_type]})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        <div
+                          className={`grid gap-2 ${isDE ? "sm:grid-cols-[minmax(0,1fr)_80px_80px_120px_auto]" : "sm:grid-cols-[minmax(0,1fr)_100px_120px_auto]"}`}
+                        >
+                          <Select
+                            value={draft.sourceStageId?.toString() ?? ""}
+                            onValueChange={(value) =>
+                              setWireDrafts((current) => ({
+                                ...current,
+                                [stage.id]: { ...draft, sourceStageId: Number(value) }
+                              }))
+                            }
+                          >
+                            <SelectTrigger className="h-9">
+                              <SelectValue placeholder="Source group stage" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {groupStages.map((src) => (
+                                <SelectItem key={src.id} value={src.id.toString()}>
+                                  {src.name} ({STAGE_TYPE_LABELS[src.stage_type]})
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
 
-                      <Input
-                        type="number"
-                        min={1}
-                        max={16}
-                        className="h-9"
-                        value={draft.top}
-                        onChange={(event) =>
-                          setWireDrafts((current) => ({
-                            ...current,
-                            [stage.id]: {
-                              ...draft,
-                              top: Math.max(1, Number(event.target.value) || 1),
-                            },
-                          }))
-                        }
-                        title="How many teams advance from each group"
-                      />
+                          <Input
+                            type="number"
+                            min={1}
+                            max={16}
+                            className="h-9"
+                            value={draft.top}
+                            onChange={(event) =>
+                              setWireDrafts((current) => ({
+                                ...current,
+                                [stage.id]: {
+                                  ...draft,
+                                  top: Math.max(1, Number(event.target.value) || 1)
+                                }
+                              }))
+                            }
+                            title="Teams from each group → Upper Bracket"
+                          />
 
-                      <Select
-                        value={draft.mode}
-                        onValueChange={(value) =>
-                          setWireDrafts((current) => ({
-                            ...current,
-                            [stage.id]: {
-                              ...draft,
-                              mode: value as "cross" | "snake",
-                            },
-                          }))
-                        }
-                      >
-                        <SelectTrigger className="h-9">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="cross">Cross (avoid rematch)</SelectItem>
-                          <SelectItem value="snake">Snake (top-down)</SelectItem>
-                        </SelectContent>
-                      </Select>
+                          {isDE && (
+                            <Input
+                              type="number"
+                              min={0}
+                              max={16}
+                              className="h-9"
+                              value={draft.top_lb}
+                              onChange={(event) =>
+                                setWireDrafts((current) => ({
+                                  ...current,
+                                  [stage.id]: {
+                                    ...draft,
+                                    top_lb: Math.max(0, Number(event.target.value) || 0)
+                                  }
+                                }))
+                              }
+                              title="Teams from each group → Lower Bracket (0 = none)"
+                            />
+                          )}
 
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        disabled={isWiring || !draft.sourceStageId}
-                        onClick={() =>
-                          draft.sourceStageId &&
-                          wireFromGroupsMutation.mutate({
-                            targetStageId: stage.id,
-                            sourceStageId: draft.sourceStageId,
-                            top: draft.top,
-                            mode: draft.mode,
-                          })
-                        }
-                      >
-                        {isWiring ? (
-                          <Loader2 className="mr-2 size-4 animate-spin" />
-                        ) : (
-                          <Link2 className="mr-2 size-4" />
-                        )}
-                        {isWiring ? "Wiring..." : "Wire"}
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })() : null}
+                          <Select
+                            value={draft.mode}
+                            onValueChange={(value) =>
+                              setWireDrafts((current) => ({
+                                ...current,
+                                [stage.id]: {
+                                  ...draft,
+                                  mode: value as "cross" | "snake"
+                                }
+                              }))
+                            }
+                          >
+                            <SelectTrigger className="h-9">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="cross">Cross (avoid rematch)</SelectItem>
+                              <SelectItem value="snake">Snake (top-down)</SelectItem>
+                            </SelectContent>
+                          </Select>
+
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            disabled={isWiring || !draft.sourceStageId}
+                            onClick={() =>
+                              draft.sourceStageId &&
+                              wireFromGroupsMutation.mutate({
+                                targetStageId: stage.id,
+                                sourceStageId: draft.sourceStageId,
+                                top: draft.top,
+                                top_lb: draft.top_lb,
+                                mode: draft.mode
+                              })
+                            }
+                          >
+                            {isWiring ? (
+                              <Loader2 className="mr-2 size-4 animate-spin" />
+                            ) : (
+                              <Link2 className="mr-2 size-4" />
+                            )}
+                            {isWiring ? "Wiring..." : "Wire"}
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })()
+                : null}
 
               {isSuperuser ? (
                 <div className="rounded-lg border border-dashed border-border/70 bg-muted/10 px-3 py-2.5">
                   <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <Shield className="size-3.5" />
-                      <span className="font-medium text-foreground">Bracket generation override</span>
+                      <span className="font-medium text-foreground">
+                        Bracket generation override
+                      </span>
                       <span className="hidden sm:inline">Superuser only.</span>
                     </div>
 

@@ -76,8 +76,12 @@ class StageItemInputUpdate(BaseModel):
 class WireFromGroupsRequest(BaseModel):
     """Auto-wire TENTATIVE inputs in a playoff stage from a group stage.
 
-    ``top`` = number of teams advancing from each group (e.g. top=2 takes
-    1st and 2nd place). Total slots wired = num_groups * top.
+    ``top`` = number of teams per group going to the upper bracket (UB).
+    ``top_lb`` = number of teams per group going to the lower bracket (LB).
+    When ``top_lb=0`` (default) all teams go into the UB item only.
+
+    Total UB slots = num_groups * top; total LB slots = num_groups * top_lb.
+    LB positions start from ``top + 1`` in each group's standings.
 
     ``mode`` = seeding pattern. "cross" avoids same-group rematches in R1
     by alternating direction per column; "snake" does plain top-down.
@@ -85,6 +89,7 @@ class WireFromGroupsRequest(BaseModel):
 
     source_stage_id: int
     top: int = 2
+    top_lb: int = 0
     mode: Literal["cross", "snake"] = "cross"
 
 

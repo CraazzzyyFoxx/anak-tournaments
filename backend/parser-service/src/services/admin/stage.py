@@ -542,12 +542,72 @@ async def seed_teams(
     return await get_stage(session, stage_id)
 
 
+def _build_seeding(
+    source_items: list,
+    top: int,
+    mode: str,
+    position_offset: int = 0,
+) -> list[tuple[int, int]]:
+    """Build ordered (source_item_id, position) pairs for seeding.
+
+    ``position_offset`` shifts which positions are selected — used to pick
+    LB positions that follow UB ones (e.g. offset=2 yields positions 3, 4, ...).
+    """
+    seeding: list[tuple[int, int]] = []
+    if mode == "snake":
+        for col in range(top):
+            position = position_offset + col + 1
+            for item in source_items:
+                seeding.append((item.id, position))
+    else:  # "cross" — default
+        for col in range(top):
+            position = position_offset + col + 1
+            # Flip every odd column so group A's 1st doesn't meet A's 2nd.
+            ordered = list(source_items) if col % 2 == 0 else list(reversed(source_items))
+            for item in ordered:
+                seeding.append((item.id, position))
+    return seeding
+
+
+def _apply_seeding(
+    session,
+    seeding: list[tuple[int, int]],
+    target_item,
+) -> None:
+    """Write TENTATIVE inputs from ``seeding`` into ``target_item``.
+
+    Preserves existing FINAL inputs; overwrites existing TENTATIVE inputs.
+    """
+    existing_inputs = {inp.slot: inp for inp in target_item.inputs}
+    for idx, (source_item_id, source_position) in enumerate(seeding, start=1):
+        existing = existing_inputs.get(idx)
+        if existing is not None and existing.input_type == enums.StageItemInputType.FINAL:
+            continue
+        if existing is not None:
+            existing.input_type = enums.StageItemInputType.TENTATIVE
+            existing.source_stage_item_id = source_item_id
+            existing.source_position = source_position
+            existing.team_id = None
+        else:
+            session.add(
+                models.StageItemInput(
+                    stage_item_id=target_item.id,
+                    slot=idx,
+                    input_type=enums.StageItemInputType.TENTATIVE,
+                    source_stage_item_id=source_item_id,
+                    source_position=source_position,
+                    team_id=None,
+                )
+            )
+
+
 async def wire_from_groups(
     session: AsyncSession,
     target_stage_id: int,
     source_stage_id: int,
     top: int,
     *,
+    top_lb: int = 0,
     mode: str = "cross",
 ) -> models.Stage:
     """Wire TENTATIVE inputs in ``target_stage`` pointing to top-N of each group in
@@ -564,8 +624,12 @@ async def wire_from_groups(
       meet group A's 2nd-seed in round 1.
     - ``snake``: simple top-down (all 1st-seeds first, then all 2nd-seeds, ...).
 
+    When ``top_lb > 0`` the target stage must be DOUBLE_ELIMINATION and must
+    have a BRACKET_LOWER stage item. Teams at positions ``top+1 … top+top_lb``
+    from each group are seeded into that item.
+
     Idempotent: existing FINAL inputs are preserved; existing TENTATIVE inputs
-    with the same (slot) are overwritten.
+    with the same slot are overwritten.
     """
     target_stage = await get_stage(session, target_stage_id)
     source_stage = await get_stage(session, source_stage_id)
@@ -592,11 +656,35 @@ async def wire_from_groups(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="`top` must be positive"
         )
+    if top_lb < 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="`top_lb` must be non-negative"
+        )
     if not target_stage.items:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Target stage has no stage items; create one before wiring",
         )
+
+    lb_item = None
+    if top_lb > 0:
+        if target_stage.stage_type != enums.StageType.DOUBLE_ELIMINATION:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="`top_lb` requires a double_elimination target stage",
+            )
+        lb_item = next(
+            (i for i in target_stage.items if i.type == enums.StageItemType.BRACKET_LOWER),
+            None,
+        )
+        if lb_item is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Target stage has no BRACKET_LOWER stage item; "
+                    "create one before using top_lb"
+                ),
+            )
 
     source_items = sorted(source_stage.items, key=lambda item: (item.order, item.id))
     if not source_items:
@@ -606,60 +694,25 @@ async def wire_from_groups(
         )
 
     num_groups = len(source_items)
-    total_slots = num_groups * top
 
-    # Build (source_item, source_position) pairs in the desired seeding order.
-    seeding: list[tuple[int, int]] = []
-    if mode == "snake":
-        for position in range(1, top + 1):
-            for item in source_items:
-                seeding.append((item.id, position))
-    else:  # "cross" — default
-        for column in range(top):
-            position = column + 1
-            # Flip every odd column so group A's 1st doesn't meet A's 2nd.
-            ordered = list(source_items) if column % 2 == 0 else list(reversed(source_items))
-            for item in ordered:
-                seeding.append((item.id, position))
+    # UB: first stage_item by order.
+    ub_item = sorted(target_stage.items, key=lambda item: (item.order, item.id))[0]
+    ub_seeding = _build_seeding(source_items, top=top, mode=mode, position_offset=0)
+    _apply_seeding(session, ub_seeding, ub_item)
 
-    # Target: first stage_item by order. (If there's only one, this matches the
-    # single-bracket layout; for double-elim upper bracket, we use the UB item.)
-    target_item = sorted(target_stage.items, key=lambda item: (item.order, item.id))[0]
-
-    # Clear any previous TENTATIVE inputs we're about to replace, keep FINAL.
-    existing_inputs = {inp.slot: inp for inp in target_item.inputs}
-
-    for idx, (source_item_id, source_position) in enumerate(seeding, start=1):
-        existing = existing_inputs.get(idx)
-        if existing is not None and existing.input_type == enums.StageItemInputType.FINAL:
-            # Do not overwrite manually-assigned teams.
-            continue
-
-        if existing is not None:
-            existing.input_type = enums.StageItemInputType.TENTATIVE
-            existing.source_stage_item_id = source_item_id
-            existing.source_position = source_position
-            existing.team_id = None
-        else:
-            session.add(
-                models.StageItemInput(
-                    stage_item_id=target_item.id,
-                    slot=idx,
-                    input_type=enums.StageItemInputType.TENTATIVE,
-                    source_stage_item_id=source_item_id,
-                    source_position=source_position,
-                    team_id=None,
-                )
-            )
+    if top_lb > 0 and lb_item is not None:
+        lb_seeding = _build_seeding(source_items, top=top_lb, mode=mode, position_offset=top)
+        _apply_seeding(session, lb_seeding, lb_item)
 
     await session.commit()
 
     logger.info(
-        "Wired %d TENTATIVE inputs from stage %s (%d groups × top %d) into stage %s (%s)",
-        total_slots,
+        "Wired TENTATIVE inputs from stage %s (%d groups × top %d, top_lb %d) "
+        "into stage %s (%s)",
         source_stage.id,
         num_groups,
         top,
+        top_lb,
         target_stage.id,
         mode,
     )

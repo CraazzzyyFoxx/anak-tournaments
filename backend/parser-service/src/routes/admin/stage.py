@@ -189,6 +189,7 @@ async def wire_from_groups(
         target_stage_id=stage_id,
         source_stage_id=data.source_stage_id,
         top=data.top,
+        top_lb=data.top_lb,
         mode=data.mode,
     )
     return schemas.StageRead.model_validate(stage, from_attributes=True)
