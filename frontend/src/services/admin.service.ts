@@ -265,6 +265,13 @@ class AdminService {
     });
   }
 
+  async confirmEncounterResult(id: number): Promise<{ id: number; result_status: string; status: string }> {
+    const response = await apiFetch("parser", `admin/encounters/${id}/confirm-result`, {
+      method: "POST",
+    });
+    return response.json();
+  }
+
   async updateMatch(matchId: number, data: MatchUpdateInput): Promise<{
     id: number;
     encounter_id: number;

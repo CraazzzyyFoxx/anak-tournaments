@@ -76,6 +76,24 @@ async def _broadcast_map_pool_state(encounter_id: int) -> None:
     await map_veto_ws_manager.broadcast_state(encounter_id, state_by_socket)
 
 
+# ── Captain identity check ───────────────────────────────────────────────
+
+
+@router.get("/{encounter_id}/my-role")
+async def get_my_role(
+    encounter_id: int,
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.get_current_user),
+):
+    """Return the captain side ('home'/'away') for the current user, or null."""
+    encounter = await captain_service._load_encounter(session, encounter_id)
+    try:
+        side = await captain_service.resolve_captain_side(session, user, encounter)
+    except HTTPException:
+        side = None
+    return {"side": side}
+
+
 # ── Captain result submission ────────────────────────────────────────────
 
 

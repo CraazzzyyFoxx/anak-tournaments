@@ -9,7 +9,9 @@ import StandingsTable from "@/components/StandingsTable";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EncounterEditDialog } from "@/components/tournaments/EncounterEditDialog";
 import { MatchReportDialog } from "@/components/tournaments/MatchReportDialog";
+import { useToast } from "@/hooks/use-toast";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
+import captainService from "@/services/captain.service";
 import encounterService from "@/services/encounter.service";
 import tournamentService from "@/services/tournament.service";
 import type { Encounter } from "@/types/encounter.types";
@@ -116,6 +118,7 @@ export default function TournamentBracketPage({
   const viewParam = searchParams.get("view");
 
   const { status: authStatus, user: authUser } = useAuthProfile();
+  const { toast } = useToast();
   const isAuthenticated = authStatus === "authenticated";
   const isAdmin =
     isAuthenticated &&
@@ -131,7 +134,18 @@ export default function TournamentBracketPage({
     : undefined;
   const handleEdit = isAdmin ? (enc: Encounter) => setEditEncounter(enc) : undefined;
   const handleReport = isAuthenticated && !isAdmin
-    ? (enc: Encounter) => setReportEncounter(enc)
+    ? async (enc: Encounter) => {
+        try {
+          const { side } = await captainService.getMyRole(enc.id);
+          if (side === null) {
+            toast({ title: "Нет доступа", description: "Вы не являетесь капитаном этой команды", variant: "destructive" });
+            return;
+          }
+          setReportEncounter(enc);
+        } catch {
+          toast({ title: "Ошибка", description: "Не удалось проверить роль", variant: "destructive" });
+        }
+      }
     : undefined;
 
   const groupStages = stages.filter(

@@ -99,6 +99,13 @@ class CaptainService {
     return response.json();
   }
 
+  async getMyRole(
+    encounterId: number
+  ): Promise<{ side: "home" | "away" | null }> {
+    const response = await apiFetch("parser", `encounters/${encounterId}/my-role`);
+    return response.json();
+  }
+
   async getMapPool(encounterId: number): Promise<EncounterMapPoolEntry[]> {
     const response = await apiFetch("parser", `encounters/${encounterId}/map-pool`);
     return response.json();

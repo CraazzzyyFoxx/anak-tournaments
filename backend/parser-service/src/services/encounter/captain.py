@@ -213,6 +213,35 @@ async def submit_match_report(
     return encounter
 
 
+async def admin_confirm_result(
+    session: AsyncSession,
+    encounter_id: int,
+) -> models.Encounter:
+    """Admin force-confirms a pending result without captain check."""
+    encounter = await _load_encounter(session, encounter_id)
+
+    if encounter.result_status != EncounterResultStatus.PENDING_CONFIRMATION:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No pending result to confirm",
+        )
+
+    encounter.result_status = EncounterResultStatus.CONFIRMED
+    encounter.confirmed_by_id = None
+    encounter.confirmed_at = datetime.now(UTC)
+    encounter.status = EncounterStatus.COMPLETED
+
+    tournament_id = encounter.tournament_id
+    await session.commit()
+
+    if encounter.challonge_id:
+        await challonge_sync.auto_push_on_confirm(session, encounter.id)
+
+    await standings_service.recalculate_for_tournament(session, tournament_id)
+    await session.refresh(encounter)
+    return encounter
+
+
 async def dispute_result(
     session: AsyncSession,
     auth_user: models.AuthUser,

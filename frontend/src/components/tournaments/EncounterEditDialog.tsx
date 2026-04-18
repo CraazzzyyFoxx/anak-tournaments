@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Star } from "lucide-react";
 
 import { EncounterScoreControls } from "@/components/admin/EncounterScoreControls";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -111,10 +112,34 @@ function EncounterEditDialogBody({
     },
   });
 
+  const confirmMutation = useMutation({
+    mutationFn: () => adminService.confirmEncounterResult(encounter.id),
+    onSuccess: () => {
+      toast({ title: "Результат подтверждён" });
+      qc.invalidateQueries({ queryKey: ["tournament"] });
+      qc.invalidateQueries({ queryKey: ["encounter"] });
+      qc.invalidateQueries({ queryKey: ["bracket"] });
+      onOpenChange(false);
+    },
+    onError: (err: unknown) => {
+      const message =
+        err instanceof Error ? err.message : "Не удалось подтвердить";
+      toast({ title: "Ошибка", description: message, variant: "destructive" });
+    },
+  });
+
   return (
     <DialogContent className="max-w-lg">
       <DialogHeader>
-        <DialogTitle>Редактировать матч</DialogTitle>
+        <DialogTitle className="flex items-center gap-2">
+          Редактировать матч
+          {encounter.result_status === "pending_confirmation" && (
+            <Badge className="bg-amber-500/80 text-white">Ожидает подтверждения</Badge>
+          )}
+          {encounter.result_status === "disputed" && (
+            <Badge className="bg-red-500/80 text-white">Спор</Badge>
+          )}
+        </DialogTitle>
         <DialogDescription>
           {encounter.home_team?.name} vs {encounter.away_team?.name}
         </DialogDescription>
@@ -191,6 +216,15 @@ function EncounterEditDialogBody({
         <Button variant="outline" onClick={() => onOpenChange(false)}>
           Отмена
         </Button>
+        {encounter.result_status === "pending_confirmation" && (
+          <Button
+            variant="secondary"
+            onClick={() => confirmMutation.mutate()}
+            disabled={confirmMutation.isPending}
+          >
+            {confirmMutation.isPending ? "Подтверждение..." : "Подтвердить результат"}
+          </Button>
+        )}
         <Button
           onClick={() => saveMutation.mutate()}
           disabled={!!validationError || saveMutation.isPending}

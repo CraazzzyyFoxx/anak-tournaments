@@ -8,6 +8,7 @@ from src import models, schemas
 from src.core import auth, db
 from src.schemas.admin import encounter as admin_schemas
 from src.services.admin import encounter as admin_service
+from src.services.encounter import captain as captain_service
 from src.services.encounter import flows as encounter_flows
 from src.services.encounter import map_veto as map_veto_service
 
@@ -95,6 +96,24 @@ async def update_match(
         "code": match.code,
         "time": match.time,
         "log_name": match.log_name,
+    }
+
+
+# ── Admin result confirmation ────────────────────────────────────────────
+
+
+@router.post("/{encounter_id}/confirm-result")
+async def admin_confirm_result(
+    encounter_id: int,
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_permission("match", "update")),
+):
+    """Admin force-confirms a pending result without requiring the other captain."""
+    encounter = await captain_service.admin_confirm_result(session, encounter_id)
+    return {
+        "id": encounter.id,
+        "result_status": encounter.result_status,
+        "status": encounter.status,
     }
 
 
