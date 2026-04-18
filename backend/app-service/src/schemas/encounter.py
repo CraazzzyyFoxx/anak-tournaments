@@ -27,8 +27,8 @@ __all__ = (
 
 class EncounterRead(BaseRead):
     name: str
-    home_team_id: int
-    away_team_id: int
+    home_team_id: int | None = None
+    away_team_id: int | None = None
     score: Score
     round: int
     best_of: int = 3
@@ -50,8 +50,8 @@ class EncounterRead(BaseRead):
 
 
 class MatchRead(BaseRead):
-    home_team_id: int
-    away_team_id: int
+    home_team_id: int | None = None
+    away_team_id: int | None = None
     score: Score
     time: float
     log_name: str
