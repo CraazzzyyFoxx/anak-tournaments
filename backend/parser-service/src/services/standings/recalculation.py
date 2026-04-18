@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core import config, db
 from src.services.standings import service as standings_service
+from src.services.standings import swiss_auto_round
 
 PENDING_TTL_SECONDS = 15 * 60
 PROCESSING_TTL_SECONDS = 15 * 60
@@ -115,6 +116,13 @@ async def process_tournament_recalculation_event(
     try:
         async with session_factory() as session:
             await recalculate(session, event.tournament_id)
+
+        async with session_factory() as session:
+            await swiss_auto_round.enqueue_swiss_next_rounds(
+                session,
+                event.tournament_id,
+                broker=broker or task_router.broker,
+            )
 
         completion_event = TournamentRecalculatedEvent(tournament_id=event.tournament_id)
         await publish_message(

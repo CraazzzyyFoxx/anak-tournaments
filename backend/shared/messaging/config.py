@@ -135,6 +135,25 @@ TOURNAMENT_RECALCULATED_DLQ = RabbitQueue(
 )
 
 # ============================================================================
+# Swiss Next Round Queue
+# ============================================================================
+
+SWISS_NEXT_ROUND_QUEUE = RabbitQueue(
+    "swiss_next_round",
+    durable=True,
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "swiss_next_round.dlq",
+        "x-message-ttl": 300000,  # 5 minutes
+    },
+)
+
+SWISS_NEXT_ROUND_DLQ = RabbitQueue(
+    "swiss_next_round.dlq",
+    durable=True,
+)
+
+# ============================================================================
 # Achievement Evaluate Queue
 # ============================================================================
 

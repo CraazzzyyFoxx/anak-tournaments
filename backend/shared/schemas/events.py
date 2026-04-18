@@ -93,6 +93,19 @@ class TournamentRecalculatedEvent(BaseEvent):
     tournament_id: int = Field(..., description="Tournament ID that was recalculated")
 
 
+class SwissNextRoundEvent(BaseEvent):
+    """Event for generating the next Swiss round for one stage item.
+
+    Published by: parser-service (after all encounters in a round complete)
+    Consumed by: parser-service worker
+    """
+
+    event_type: str = Field(default="swiss_next_round", frozen=True)
+    stage_id: int = Field(..., description="Stage ID")
+    stage_item_id: int | None = Field(..., description="StageItem ID (None for ungrouped stage)")
+    tournament_id: int = Field(..., description="Tournament ID")
+
+
 class AchievementEvaluateEvent(BaseEvent):
     """Event for triggering achievement evaluation after parsing.
 

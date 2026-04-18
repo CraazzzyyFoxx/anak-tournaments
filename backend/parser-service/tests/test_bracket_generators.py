@@ -43,6 +43,16 @@ def _local_ids(skeleton) -> set[int]:
     return {p.local_id for p in skeleton.pairings}
 
 
+def _appearance_counts(skeleton) -> dict[int, int]:
+    counts: dict[int, int] = {}
+    for pairing in skeleton.pairings:
+        for team_id in (pairing.home_team_id, pairing.away_team_id):
+            if team_id is None:
+                continue
+            counts[team_id] = counts.get(team_id, 0) + 1
+    return counts
+
+
 class SingleEliminationInvariants(TestCase):
     def test_power_of_two_2_teams(self) -> None:
         s = single_elimination.generate([1, 2])
@@ -237,8 +247,38 @@ class SwissInvariants(TestCase):
         pair_set = {
             frozenset({p.home_team_id, p.away_team_id}) for p in s.pairings
         }
+        appearance_counts = _appearance_counts(s)
+        self.assertEqual({1: 1, 2: 1, 3: 1, 4: 1}, appearance_counts)
         # The "1 vs 3" rematch must be avoided
         self.assertNotIn(frozenset({1, 3}), pair_set)
+
+    def test_avoids_duplicate_team_when_canonical_pairing_is_blocked(self) -> None:
+        standings = [
+            swiss.SwissStanding(team_id=i, points=0.0) for i in range(1, 5)
+        ]
+        s = swiss.generate_round(
+            standings,
+            played_pairs={frozenset({1, 3})},
+            round_number=2,
+        )
+
+        self.assertEqual({1: 1, 2: 1, 3: 1, 4: 1}, _appearance_counts(s))
+
+    def test_finds_global_non_rematch_matching_before_allowing_rematch(self) -> None:
+        standings = [
+            swiss.SwissStanding(team_id=i, points=0.0) for i in range(1, 5)
+        ]
+        s = swiss.generate_round(
+            standings,
+            played_pairs={frozenset({2, 4})},
+            round_number=2,
+        )
+        pair_set = {
+            frozenset({p.home_team_id, p.away_team_id}) for p in s.pairings
+        }
+
+        self.assertEqual({1: 1, 2: 1, 3: 1, 4: 1}, _appearance_counts(s))
+        self.assertNotIn(frozenset({2, 4}), pair_set)
 
 
 class EngineDispatchInvariants(TestCase):
