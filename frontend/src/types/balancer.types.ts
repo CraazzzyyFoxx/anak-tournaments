@@ -60,6 +60,9 @@ export interface BalancerConfig {
   MAX_CPSAT_SOLUTIONS?: number;
   MAX_GENETIC_SOLUTIONS?: number;
   MAX_NSGA_SOLUTIONS?: number;
+  WEIGHT_TEAM_VARIANCE?: number;
+  TEAM_SPREAD_BLEND?: number;
+  SUBROLE_BLEND?: number;
 }
 
 export type BalancerConfigFieldType =

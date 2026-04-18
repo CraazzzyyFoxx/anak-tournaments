@@ -113,6 +113,7 @@ class PlayerData(BaseModel):
     preferences: list[str]
     allRatings: dict[str, int]
     isFlex: bool = False
+    subRole: str | None = None
 
 
 class TeamData(BaseModel):

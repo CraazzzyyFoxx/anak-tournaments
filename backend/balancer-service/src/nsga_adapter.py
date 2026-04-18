@@ -276,6 +276,7 @@ def from_mixtura_response(
                             "isFlex": info.get("isFlex", False),
                             "preferences": info.get("preferences", []),
                             "allRatings": info.get("ratings", {}),
+                            "subRole": info.get("subclasses", {}).get(canonical_role) or None,
                         }
                     )
                     team_total += rating

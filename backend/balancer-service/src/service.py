@@ -1996,6 +1996,7 @@ def teams_to_json(
                     "isFlex": p.is_flex,
                     "preferences": p.preferences,
                     "allRatings": p.ratings,
+                    "subRole": p.subclasses.get(role) or None,
                 }
                 for p in players
             ]
@@ -2099,6 +2100,9 @@ CONFIG_LIMITS: dict[str, dict[str, int | float]] = {
     "MAX_CPSAT_SOLUTIONS": {"min": 1, "max": 5},
     "MAX_GENETIC_SOLUTIONS": {"min": 1, "max": 50},
     "MAX_NSGA_SOLUTIONS": {"min": 1, "max": 200},
+    "WEIGHT_TEAM_VARIANCE": {"min": 0.0, "max": 10.0},
+    "TEAM_SPREAD_BLEND": {"min": 0.0, "max": 10.0},
+    "SUBROLE_BLEND": {"min": 0.0, "max": 10.0},
 }
 
 EDITABLE_CONFIG_FIELD_KEYS = {
@@ -2125,6 +2129,9 @@ EDITABLE_CONFIG_FIELD_KEYS = {
     "MAX_CPSAT_SOLUTIONS",
     "MAX_GENETIC_SOLUTIONS",
     "MAX_NSGA_SOLUTIONS",
+    "WEIGHT_TEAM_VARIANCE",
+    "TEAM_SPREAD_BLEND",
+    "SUBROLE_BLEND",
 }
 
 SYSTEM_CONFIG_FIELD_KEYS = {
@@ -2329,6 +2336,30 @@ CONFIG_FIELD_DEFINITIONS: list[dict[str, typing.Any]] = [
         "description": "Maximum number of Pareto solution variants returned by the NSGA-II solver.",
         "type": "integer",
         "group": "Solver output",
+        "applies_to": ["nsga"],
+    },
+    {
+        "key": "WEIGHT_TEAM_VARIANCE",
+        "label": "Team variance weight",
+        "description": "Weight of team rating variance in the NSGA-II balance objective. Higher values push the solver to equalize ratings across teams.",
+        "type": "float",
+        "group": "Quality weights",
+        "applies_to": ["nsga"],
+    },
+    {
+        "key": "TEAM_SPREAD_BLEND",
+        "label": "Team spread blend",
+        "description": "Blend coefficient for per-team player spread variance in the folded balance objective.",
+        "type": "float",
+        "group": "Quality weights",
+        "applies_to": ["nsga"],
+    },
+    {
+        "key": "SUBROLE_BLEND",
+        "label": "Subrole blend",
+        "description": "Blend coefficient for subrole penalty in the folded balance objective.",
+        "type": "float",
+        "group": "Quality weights",
         "applies_to": ["nsga"],
     },
 ]

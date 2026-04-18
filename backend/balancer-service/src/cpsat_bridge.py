@@ -252,6 +252,7 @@ def output_adapter(results: list, num_teams: int) -> list[dict]:
                     "isFlex": player.is_flex,
                     "preferences": [ROLE_NAME_MAP[r] for r in player.preferred_roles],
                     "allRatings": {ROLE_NAME_MAP[r]: sr for r, sr in player.role_sr.items()},
+                    "subRole": player.subclasses.get(assigned_role) or None,
                 }
 
                 if role_name not in roster:
