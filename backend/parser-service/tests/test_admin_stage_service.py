@@ -67,7 +67,14 @@ class AdminStageServiceTests(IsolatedAsyncioTestCase):
             commit=AsyncMock(),
         )
 
-        with patch.object(stage_service, "get_stage", AsyncMock(return_value=stage)):
+        with (
+            patch.object(stage_service, "get_stage", AsyncMock(return_value=stage)),
+            patch.object(
+                stage_service.standings_service,
+                "recalculate_for_tournament",
+                AsyncMock(),
+            ),
+        ):
             encounters = await stage_service.generate_encounters(session, stage.id)
 
         self.assertEqual(2, len(encounters))

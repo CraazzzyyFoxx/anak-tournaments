@@ -216,6 +216,19 @@ async def create_stage_item(
     return await get_stage_item(session, item_id)
 
 
+async def update_stage_item(
+    session: AsyncSession,
+    stage_item_id: int,
+    data: admin_schemas.StageItemUpdate,
+) -> models.StageItem:
+    item = await get_stage_item(session, stage_item_id)
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(item, field, value)
+    await session.commit()
+    return await get_stage_item(session, stage_item_id)
+
+
 async def create_stage_item_input(
     session: AsyncSession,
     stage_item_id: int,
@@ -349,12 +362,18 @@ async def _generate_stage_skeleton(
                 detail="Swiss stage reached max_rounds",
             )
 
+    de_include_reset = (
+        stage.stage_type == enums.StageType.DOUBLE_ELIMINATION
+        and (stage.settings_json or {}).get("de_grand_final_type") == "with_reset"
+    )
+
     return generate_bracket(
         stage.stage_type,
         team_ids,
         swiss_standings=swiss_standings,
         swiss_played_pairs=swiss_played_pairs,
         swiss_round_number=swiss_round,
+        de_include_reset=de_include_reset,
     )
 
 
@@ -363,13 +382,24 @@ async def _create_encounters_from_skeleton(
     stage: models.Stage,
     skeleton: BracketSkeleton,
     stage_item_id: int | None,
+    *,
+    lb_stage_item_id: int | None = None,
 ) -> list[models.Encounter]:
     """Persist bracket pairings as Encounter rows and wire up EncounterLink
     records for advancement edges.
+
+    For double-elimination stages, ``lb_stage_item_id`` routes encounters with
+    negative round numbers (lower bracket) to a separate stage item.
     """
     encounters: list[models.Encounter] = []
     local_to_encounter: dict[int, models.Encounter] = {}
     for pairing in skeleton.pairings:
+        # LB rounds use negative round numbers; route to LB item when present.
+        item_id = (
+            lb_stage_item_id
+            if lb_stage_item_id is not None and pairing.round_number < 0
+            else stage_item_id
+        )
         encounter = models.Encounter(
             name=pairing.name,
             home_team_id=pairing.home_team_id,
@@ -379,7 +409,7 @@ async def _create_encounters_from_skeleton(
             round=pairing.round_number,
             tournament_id=stage.tournament_id,
             stage_id=stage.id,
-            stage_item_id=stage_item_id,
+            stage_item_id=item_id,
             status=enums.EncounterStatus.OPEN,
         )
         session.add(encounter)
@@ -807,6 +837,7 @@ async def generate_encounters(
             )
 
         await session.commit()
+        await standings_service.recalculate_for_tournament(session, stage.tournament_id)
         return encounters
 
     team_ids: list[int] = []
@@ -819,11 +850,25 @@ async def generate_encounters(
             detail="Need at least 2 teams to generate a bracket",
         )
 
-    primary_item_id = stage.items[0].id if stage.items else None
+    sorted_items = sorted(stage.items, key=lambda it: (it.order, it.id))
+    primary_item_id = sorted_items[0].id if sorted_items else None
+
+    # For DE stages: route LB encounters (negative round numbers) to the
+    # BRACKET_LOWER stage item when one exists.
+    lb_stage_item_id: int | None = None
+    if stage.stage_type == enums.StageType.DOUBLE_ELIMINATION:
+        lb_item = next(
+            (it for it in sorted_items if it.type == enums.StageItemType.BRACKET_LOWER),
+            None,
+        )
+        if lb_item is not None:
+            lb_stage_item_id = lb_item.id
+
     skeleton = await _generate_stage_skeleton(session, stage, team_ids, primary_item_id)
     encounters = await _create_encounters_from_skeleton(
-        session, stage, skeleton, primary_item_id
+        session, stage, skeleton, primary_item_id, lb_stage_item_id=lb_stage_item_id
     )
 
     await session.commit()
+    await standings_service.recalculate_for_tournament(session, stage.tournament_id)
     return encounters

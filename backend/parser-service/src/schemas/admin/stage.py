@@ -8,6 +8,7 @@ __all__ = (
     "StageCreate",
     "StageUpdate",
     "StageItemCreate",
+    "StageItemUpdate",
     "StageItemInputCreate",
     "StageItemInputUpdate",
     "WireFromGroupsRequest",
@@ -39,6 +40,12 @@ class StageItemCreate(BaseModel):
     name: str
     type: StageItemType
     order: int = 0
+
+
+class StageItemUpdate(BaseModel):
+    name: str | None = None
+    type: StageItemType | None = None
+    order: int | None = None
 
 
 class StageItemInputCreate(BaseModel):

@@ -131,6 +131,21 @@ async def create_stage_item(
     return schemas.StageItemRead.model_validate(item, from_attributes=True)
 
 
+@router.patch(
+    "/items/{stage_item_id}",
+    response_model=schemas.StageItemRead,
+)
+async def update_stage_item(
+    stage_item_id: int,
+    data: admin_schemas.StageItemUpdate,
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_permission("tournament", "update")),
+):
+    """Update a stage item's name, type, or order."""
+    item = await stage_service.update_stage_item(session, stage_item_id, data)
+    return schemas.StageItemRead.model_validate(item, from_attributes=True)
+
+
 @router.post(
     "/items/{stage_item_id}/inputs",
     response_model=schemas.StageItemInputRead,

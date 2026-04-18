@@ -117,9 +117,9 @@ Instrumentator().instrument(app).expose(app)
 
 app.include_router(router)
 app.include_router(tournament_recalculation_task_router)
-app.add_middleware(CacheDeleteMiddleware)
-app.add_middleware(CacheEtagMiddleware)
-app.add_middleware(CacheRequestControlMiddleware)
+# app.add_middleware(CacheDeleteMiddleware)
+# app.add_middleware(CacheEtagMiddleware)
+# app.add_middleware(CacheRequestControlMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=(config.settings.cors_origins if config.settings.cors_origins else ["*"]),

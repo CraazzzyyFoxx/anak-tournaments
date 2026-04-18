@@ -1,6 +1,13 @@
 import { apiFetch } from "@/lib/api-fetch";
 import { PaginatedResponse } from "@/types/pagination.types";
-import { Tournament, Standings, Stage, StageItem, StageItemInput } from "@/types/tournament.types";
+import {
+  Tournament,
+  Standings,
+  Stage,
+  StageItem,
+  StageItemInput,
+  StageItemType
+} from "@/types/tournament.types";
 import { Team, Player } from "@/types/team.types";
 import { Encounter } from "@/types/encounter.types";
 import { User } from "@/types/user.types";
@@ -1037,6 +1044,17 @@ class AdminService {
   async createStageItem(stageId: number, data: StageItemCreateInput): Promise<StageItem> {
     const response = await apiFetch("parser", `admin/stages/${stageId}/items`, {
       method: "POST",
+      body: data
+    });
+    return response.json();
+  }
+
+  async updateStageItem(
+    stageItemId: number,
+    data: { name?: string; type?: StageItemType; order?: number }
+  ): Promise<StageItem> {
+    const response = await apiFetch("parser", `admin/stages/items/${stageItemId}`, {
+      method: "PATCH",
       body: data
     });
     return response.json();

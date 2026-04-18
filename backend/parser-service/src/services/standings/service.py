@@ -683,17 +683,53 @@ def _build_elimination_stage_standings(
     stage: models.Stage,
     encounters: typing.Sequence[models.Encounter],
 ) -> list[models.Standing]:
-    if not encounters:
+    # Collect all team ids participating in this stage from inputs.
+    seed_team_ids: list[int] = []
+    seen: set[int] = set()
+    for item in sorted(stage.items, key=lambda it: (it.order, it.id)):
+        for inp in sorted(item.inputs, key=lambda i: i.slot):
+            if inp.team_id is not None and inp.team_id not in seen:
+                seed_team_ids.append(inp.team_id)
+                seen.add(inp.team_id)
+
+    if not encounters and not seed_team_ids:
         return []
+
+    compat_group_id = _resolve_compat_group_id(tournament, stage, None)
+
+    if not encounters:
+        # No matches played yet — create placeholder standings with position 0.
+        standings: list[models.Standing] = []
+        for team_id in seed_team_ids:
+            standings.append(
+                models.Standing(
+                    tournament_id=tournament.id,
+                    group_id=compat_group_id,
+                    team_id=team_id,
+                    stage_id=stage.id,
+                    stage_item_id=None,
+                    position=0,
+                    overall_position=0,
+                    matches=0,
+                    win=0,
+                    draw=0,
+                    lose=0,
+                    points=0,
+                    buchholz=None,
+                    tb=None,
+                    stage=stage,
+                )
+            )
+        return standings
 
     stage_type = stage.stage_type or _infer_stage_type_from_encounters(encounters)
     calculator = PLAYOFF_CALCULATORS.get(
         stage_type, prepare_teams_for_playoffs_single_elimination
     )
-    compat_group_id = _resolve_compat_group_id(tournament, stage, None)
     teams = calculator(encounters)
+    teams_with_standings = {team.id for team in teams}
 
-    standings: list[models.Standing] = []
+    standings = []
     for team in teams:
         standings.append(
             models.Standing(
@@ -714,6 +750,28 @@ def _build_elimination_stage_standings(
                 stage=stage,
             )
         )
+    # Teams that have not played any completed match yet get a placeholder row.
+    for team_id in seed_team_ids:
+        if team_id not in teams_with_standings:
+            standings.append(
+                models.Standing(
+                    tournament_id=tournament.id,
+                    group_id=compat_group_id,
+                    team_id=team_id,
+                    stage_id=stage.id,
+                    stage_item_id=None,
+                    position=0,
+                    overall_position=0,
+                    matches=0,
+                    win=0,
+                    draw=0,
+                    lose=0,
+                    points=0,
+                    buchholz=None,
+                    tb=None,
+                    stage=stage,
+                )
+            )
     return standings
 
 

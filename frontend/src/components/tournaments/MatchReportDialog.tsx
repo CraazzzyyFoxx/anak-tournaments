@@ -14,7 +14,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
-  DialogTitle,
+  DialogTitle
 } from "@/components/ui/dialog";
 import captainService from "@/services/captain.service";
 import { Encounter } from "@/types/encounter.types";
@@ -30,7 +30,7 @@ const MATCH_QUALITY_OPTIONS = [
   { value: 2, label: "2/5", description: "Пойдет" },
   { value: 3, label: "3/5", description: "Можно и лучше" },
   { value: 4, label: "4/5", description: "Плотно" },
-  { value: 5, label: "5/5", description: "Я сосал меня е&%ли" },
+  { value: 5, label: "5/5", description: "Я сосал меня е&%ли" }
 ] as const;
 
 function closenessFloatToStars(closeness: number | null | undefined): number {
@@ -38,35 +38,24 @@ function closenessFloatToStars(closeness: number | null | undefined): number {
   return Math.max(1, Math.min(5, Math.round(closeness * 5)));
 }
 
-export function MatchReportDialog({
-  open,
-  onOpenChange,
-  encounter,
-}: MatchReportDialogProps) {
+export function MatchReportDialog({ open, onOpenChange, encounter }: MatchReportDialogProps) {
   const resetKey = [
     encounter.id,
     encounter.score?.home ?? 0,
     encounter.score?.away ?? 0,
-    encounter.closeness ?? "none",
+    encounter.closeness ?? "none"
   ].join(":");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {open ? (
-        <MatchReportDialogBody
-          key={resetKey}
-          encounter={encounter}
-          onOpenChange={onOpenChange}
-        />
+        <MatchReportDialogBody key={resetKey} encounter={encounter} onOpenChange={onOpenChange} />
       ) : null}
     </Dialog>
   );
 }
 
-function MatchReportDialogBody({
-  encounter,
-  onOpenChange,
-}: Omit<MatchReportDialogProps, "open">) {
+function MatchReportDialogBody({ encounter, onOpenChange }: Omit<MatchReportDialogProps, "open">) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const homeTeamLabel = encounter.home_team?.name?.trim() || "Home team";
@@ -75,7 +64,7 @@ function MatchReportDialogBody({
   const [homeScore, setHomeScore] = useState(() => encounter.score?.home ?? 0);
   const [awayScore, setAwayScore] = useState(() => encounter.score?.away ?? 0);
   const [closeness, setCloseness] = useState<number>(() =>
-    closenessFloatToStars(encounter.closeness),
+    closenessFloatToStars(encounter.closeness)
   );
 
   const refreshEncounterViews = async () => {
@@ -84,7 +73,7 @@ function MatchReportDialogBody({
       qc.invalidateQueries({ queryKey: ["standings", encounter.tournament_id] }),
       qc.invalidateQueries({ queryKey: ["tournament"] }),
       qc.invalidateQueries({ queryKey: ["encounter"] }),
-      qc.invalidateQueries({ queryKey: ["bracket"] }),
+      qc.invalidateQueries({ queryKey: ["bracket"] })
     ]);
   };
 
@@ -100,7 +89,7 @@ function MatchReportDialogBody({
       captainService.submitMatchReport(encounter.id, {
         home_score: homeScore,
         away_score: awayScore,
-        closeness,
+        closeness
       }),
     onSuccess: async () => {
       toast({ title: "Результат отправлен на подтверждение" });
@@ -108,10 +97,9 @@ function MatchReportDialogBody({
       onOpenChange(false);
     },
     onError: (err: unknown) => {
-      const message =
-        err instanceof Error ? err.message : "Не удалось отправить";
+      const message = err instanceof Error ? err.message : "Не удалось отправить";
       toast({ title: "Ошибка", description: message, variant: "destructive" });
-    },
+    }
   });
 
   return (
@@ -165,7 +153,7 @@ function MatchReportDialogBody({
                     "flex min-h-14 flex-col items-center justify-center gap-1 rounded-md border px-2 py-2 text-center transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
                     isSelected
                       ? "border-yellow-400/70 bg-yellow-500/10 text-yellow-300"
-                      : "border-border/60 bg-background/60 text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                      : "border-border/60 bg-background/60 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                   )}
                   onClick={() => setCloseness(option.value)}
                   aria-pressed={isSelected}
@@ -174,7 +162,7 @@ function MatchReportDialogBody({
                   <Star
                     className={cn(
                       "h-4 w-4",
-                      isSelected ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground",
+                      isSelected ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground"
                     )}
                   />
                   <span className="text-xs font-semibold">{option.label}</span>
@@ -189,9 +177,7 @@ function MatchReportDialogBody({
           </div>
         </div>
 
-        {validationError && (
-          <p className="text-sm text-destructive">{validationError}</p>
-        )}
+        {validationError && <p className="text-sm text-destructive">{validationError}</p>}
       </div>
 
       <DialogFooter>

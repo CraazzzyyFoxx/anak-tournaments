@@ -65,7 +65,10 @@ class Stage(db.TimeStampIntegerMixin):
 
     tournament: Mapped[Tournament] = relationship(back_populates="stages")
     items: Mapped[list["StageItem"]] = relationship(
-        uselist=True, passive_deletes=True, order_by="StageItem.order"
+        uselist=True,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="StageItem.order",
     )
 
 
@@ -83,7 +86,10 @@ class StageItem(db.TimeStampIntegerMixin):
     stage: Mapped[Stage] = relationship(back_populates="items")
     inputs: Mapped[list["StageItemInput"]] = relationship(
         foreign_keys="[StageItemInput.stage_item_id]",
-        uselist=True, passive_deletes=True, order_by="StageItemInput.slot",
+        uselist=True,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="StageItemInput.slot",
     )
 
 

@@ -13,7 +13,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
-  DialogTitle,
+  DialogTitle
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import {
@@ -21,7 +21,7 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
+  SelectValue
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import adminService from "@/services/admin.service";
@@ -41,27 +41,19 @@ function closenessFloatToStars(closeness: number | null | undefined): number {
   return Math.max(1, Math.min(5, Math.round(closeness * 5)));
 }
 
-export function EncounterEditDialog({
-  open,
-  onOpenChange,
-  encounter,
-}: EncounterEditDialogProps) {
+export function EncounterEditDialog({ open, onOpenChange, encounter }: EncounterEditDialogProps) {
   const resetKey = [
     encounter.id,
     encounter.score?.home ?? 0,
     encounter.score?.away ?? 0,
     encounter.status ?? "open",
-    encounter.closeness ?? "none",
+    encounter.closeness ?? "none"
   ].join(":");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {open ? (
-        <EncounterEditDialogBody
-          key={resetKey}
-          encounter={encounter}
-          onOpenChange={onOpenChange}
-        />
+        <EncounterEditDialogBody key={resetKey} encounter={encounter} onOpenChange={onOpenChange} />
       ) : null}
     </Dialog>
   );
@@ -69,7 +61,7 @@ export function EncounterEditDialog({
 
 function EncounterEditDialogBody({
   encounter,
-  onOpenChange,
+  onOpenChange
 }: Omit<EncounterEditDialogProps, "open">) {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -79,9 +71,7 @@ function EncounterEditDialogBody({
   const [homeScore, setHomeScore] = useState(() => encounter.score?.home ?? 0);
   const [awayScore, setAwayScore] = useState(() => encounter.score?.away ?? 0);
   const [status, setStatus] = useState<string>(() => encounter.status ?? "open");
-  const [stars, setStars] = useState<number>(() =>
-    closenessFloatToStars(encounter.closeness),
-  );
+  const [stars, setStars] = useState<number>(() => closenessFloatToStars(encounter.closeness));
 
   const refreshEncounterViews = async () => {
     await Promise.all([
@@ -89,7 +79,7 @@ function EncounterEditDialogBody({
       qc.invalidateQueries({ queryKey: ["standings", encounter.tournament_id] }),
       qc.invalidateQueries({ queryKey: ["tournament"] }),
       qc.invalidateQueries({ queryKey: ["encounter"] }),
-      qc.invalidateQueries({ queryKey: ["bracket"] }),
+      qc.invalidateQueries({ queryKey: ["bracket"] })
     ]);
   };
 
@@ -106,7 +96,7 @@ function EncounterEditDialogBody({
         home_score: homeScore,
         away_score: awayScore,
         status,
-        closeness: stars > 0 ? stars / 5 : null,
+        closeness: stars > 0 ? stars / 5 : null
       };
       await adminService.updateEncounter(encounter.id, encounterPayload);
     },
@@ -116,10 +106,9 @@ function EncounterEditDialogBody({
       onOpenChange(false);
     },
     onError: (err: unknown) => {
-      const message =
-        err instanceof Error ? err.message : "Не удалось сохранить";
+      const message = err instanceof Error ? err.message : "Не удалось сохранить";
       toast({ title: "Ошибка", description: message, variant: "destructive" });
-    },
+    }
   });
 
   const confirmMutation = useMutation({
@@ -130,10 +119,9 @@ function EncounterEditDialogBody({
       onOpenChange(false);
     },
     onError: (err: unknown) => {
-      const message =
-        err instanceof Error ? err.message : "Не удалось подтвердить";
+      const message = err instanceof Error ? err.message : "Не удалось подтвердить";
       toast({ title: "Ошибка", description: message, variant: "destructive" });
-    },
+    }
   });
 
   return (
@@ -200,9 +188,7 @@ function EncounterEditDialogBody({
               >
                 <Star
                   className={`h-6 w-6 ${
-                    n <= stars
-                      ? "fill-yellow-400 text-yellow-400"
-                      : "text-muted-foreground"
+                    n <= stars ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground"
                   }`}
                 />
               </button>
@@ -212,14 +198,11 @@ function EncounterEditDialogBody({
             </span>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            Редактируется только общий результат. Карты появятся после
-            обработки логов.
+            Редактируется только общий результат. Карты появятся после обработки логов.
           </p>
         </div>
 
-        {validationError && (
-          <p className="text-sm text-destructive">{validationError}</p>
-        )}
+        {validationError && <p className="text-sm text-destructive">{validationError}</p>}
       </div>
 
       <DialogFooter>

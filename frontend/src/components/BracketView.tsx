@@ -17,8 +17,11 @@ interface BracketViewProps {
 }
 
 interface MatchNodeData {
+  matchLabel: string;
   homeName: string;
   awayName: string;
+  homeSource: string | null;
+  awaySource: string | null;
   homeTeamId: number | null;
   awayTeamId: number | null;
   homeScore: number;
@@ -65,12 +68,13 @@ interface BracketLayout {
 const CARD_WIDTH = 198;
 const CARD_HEIGHT = 60;
 const CARD_ROW_HEIGHT = 30;
-const ROUND_GAP_X = 42;
+const ROUND_GAP_X = 48;
 const MATCH_GAP_Y = 10;
 const HEADER_HEIGHT = 24;
 const SECTION_GAP_Y = 52;
 const PADDING_X = 16;
 const PADDING_Y = 14;
+const BADGE_RIGHT = 44;
 
 const COMPLETED_STATUSES = new Set(["completed", "finished", "closed"]);
 const NAME_SEPARATORS = [" vs. ", " vs ", " VS ", " - ", " v "];
@@ -97,7 +101,7 @@ function buildRoundGroups(matches: Encounter[]) {
     .sort((left, right) => Math.abs(left[0]) - Math.abs(right[0]))
     .map(([round, roundMatches]) => ({
       round,
-      matches: sortMatches(roundMatches),
+      matches: sortMatches(roundMatches)
     }));
 }
 
@@ -113,9 +117,7 @@ function splitEncounterName(name: string | null | undefined) {
       continue;
     }
 
-    const [homeName, awayName] = value
-      .split(separator, 2)
-      .map((part) => part.trim());
+    const [homeName, awayName] = value.split(separator, 2).map((part) => part.trim());
 
     if (homeName && awayName) {
       return { homeName, awayName };
@@ -130,7 +132,7 @@ function getMatchNames(match: Encounter) {
 
   return {
     homeName: match.home_team?.name?.trim() || parsed.homeName || "TBD",
-    awayName: match.away_team?.name?.trim() || parsed.awayName || "TBD",
+    awayName: match.away_team?.name?.trim() || parsed.awayName || "TBD"
   };
 }
 
@@ -156,7 +158,101 @@ function buildPath(source: LayoutNode, target: LayoutNode) {
   return `M ${startX} ${startY} H ${middleX} V ${endY} H ${endX}`;
 }
 
-function createNode(match: Encounter, x: number, y: number): LayoutNode {
+function computeMatchNumbers(
+  upperRounds: RoundGroup[],
+  lowerRounds: RoundGroup[],
+  finalRounds: RoundGroup[]
+): Map<number, number> {
+  const numbers = new Map<number, number>();
+  let counter = 1;
+  for (const g of upperRounds) for (const m of g.matches) numbers.set(m.id, counter++);
+  for (const g of lowerRounds) for (const m of g.matches) numbers.set(m.id, counter++);
+  for (const g of finalRounds) for (const m of g.matches) numbers.set(m.id, counter++);
+  return numbers;
+}
+
+function computeSlotHints(
+  upperRounds: RoundGroup[],
+  lowerRounds: RoundGroup[],
+  finalRounds: RoundGroup[],
+  matchNumbers: Map<number, number>,
+  isDE: boolean,
+  hasBracketConnections: boolean
+): Map<number, { home: string | null; away: string | null }> {
+  const hints = new Map<number, { home: string | null; away: string | null }>();
+
+  function label(match: Encounter, prefix: "W" | "L") {
+    const n = matchNumbers.get(match.id);
+    return n != null ? `${prefix} M${n}` : null;
+  }
+
+  function trackEdges(
+    groups: RoundGroup[],
+    prefix: "W" | "L",
+    mapper: (mi: number, tc: number) => number
+  ) {
+    for (let gi = 0; gi < groups.length - 1; gi++) {
+      const current = groups[gi].matches;
+      const next = groups[gi + 1].matches;
+      const feedCount = new Map<number, number>();
+
+      for (let mi = 0; mi < current.length; mi++) {
+        const ti = mapper(mi, next.length);
+        if (ti < 0 || ti >= next.length) continue;
+
+        const target = next[ti];
+        const source = current[mi];
+        const lbl = label(source, prefix);
+        if (!lbl) continue;
+
+        const count = feedCount.get(ti) ?? 0;
+        feedCount.set(ti, count + 1);
+
+        const existing = hints.get(target.id) ?? { home: null, away: null };
+        if (count === 0) {
+          hints.set(target.id, { ...existing, home: lbl });
+        } else {
+          hints.set(target.id, { ...existing, away: lbl });
+        }
+      }
+    }
+  }
+
+  if (hasBracketConnections) {
+    trackEdges(upperRounds, "W", (mi, tc) => {
+      const ti = Math.floor(mi / 2);
+      return ti < tc ? ti : -1;
+    });
+    trackEdges(lowerRounds, "W", (mi, tc) => {
+      if (tc === 0) return -1;
+      return Math.min(mi, tc - 1);
+    });
+  }
+
+  if (isDE && finalRounds.length > 0) {
+    const gfMatch = finalRounds[0]?.matches[0];
+    if (gfMatch) {
+      const ubFinal = upperRounds[upperRounds.length - 1]?.matches[0];
+      const lbFinal = lowerRounds[lowerRounds.length - 1]?.matches[0];
+      const existing = hints.get(gfMatch.id) ?? { home: null, away: null };
+      hints.set(gfMatch.id, {
+        home: ubFinal ? (label(ubFinal, "W") ?? existing.home) : existing.home,
+        away: lbFinal ? (label(lbFinal, "W") ?? existing.away) : existing.away
+      });
+    }
+  }
+
+  return hints;
+}
+
+function createNode(
+  match: Encounter,
+  x: number,
+  y: number,
+  matchNumber: number,
+  homeSource: string | null,
+  awaySource: string | null
+): LayoutNode {
   const names = getMatchNames(match);
 
   return {
@@ -164,16 +260,19 @@ function createNode(match: Encounter, x: number, y: number): LayoutNode {
     x,
     y,
     data: {
+      matchLabel: `M${matchNumber}`,
       homeName: names.homeName,
       awayName: names.awayName,
+      homeSource: names.homeName === "TBD" ? homeSource : null,
+      awaySource: names.awayName === "TBD" ? awaySource : null,
       homeTeamId: match.home_team_id > 0 ? match.home_team_id : null,
       awayTeamId: match.away_team_id > 0 ? match.away_team_id : null,
       homeScore: match.score.home,
       awayScore: match.score.away,
       winner: getWinner(match),
-      isCompleted: COMPLETED_STATUSES.has(match.status),
+      isCompleted: COMPLETED_STATUSES.has(match.status)
     },
-    encounter: match,
+    encounter: match
   };
 }
 
@@ -204,34 +303,59 @@ function addSequentialEdges(
       edges.push({
         id: `edge-${current[matchIndex].id}-${next[targetIndex].id}`,
         path: buildPath(sourceNode, targetNode),
-        isCompleted: COMPLETED_STATUSES.has(current[matchIndex].status),
+        isCompleted: COMPLETED_STATUSES.has(current[matchIndex].status)
       });
     }
   }
 }
 
-function buildLayout(
-  encounters: Encounter[],
-  type: StageType
-): BracketLayout {
-  const hasBracketConnections =
-    type === "single_elimination" || type === "double_elimination";
-  const upperRounds = buildRoundGroups(encounters.filter((match) => match.round > 0));
-  const lowerRounds =
-    type === "double_elimination"
-      ? buildRoundGroups(encounters.filter((match) => match.round < 0))
-      : [];
+function isGrandFinalMatch(match: Encounter): boolean {
+  return match.name?.includes("Grand Final") ?? false;
+}
 
-  const maxColumns = Math.max(upperRounds.length, lowerRounds.length, 1);
-  const contentWidth =
-    maxColumns * CARD_WIDTH + Math.max(maxColumns - 1, 0) * ROUND_GAP_X;
-  const width =
-    PADDING_X * 2 +
-    contentWidth;
+function getGrandFinalLabel(round: number, groups: RoundGroup[]): string {
+  const group = groups.find((g) => g.round === round);
+  if (!group) return `Round ${round}`;
+  const firstName = group.matches[0]?.name ?? "";
+  if (firstName.includes("Grand Final Reset")) return "Grand Final Reset";
+  if (firstName.includes("Grand Final")) return "Grand Final";
+  return `Round ${round}`;
+}
+
+function buildLayout(encounters: Encounter[], type: StageType): BracketLayout {
+  const hasBracketConnections = type === "single_elimination" || type === "double_elimination";
+
+  const isDE = type === "double_elimination";
+
+  // For DE: split upper encounters into regular UB and Grand Final section.
+  const ubEncounters = isDE
+    ? encounters.filter((m) => m.round > 0 && !isGrandFinalMatch(m))
+    : encounters.filter((m) => m.round > 0);
+  const finalEncounters = isDE ? encounters.filter((m) => m.round > 0 && isGrandFinalMatch(m)) : [];
+
+  const upperRounds = buildRoundGroups(ubEncounters);
+  const finalRounds = buildRoundGroups(finalEncounters);
+  const lowerRounds = isDE ? buildRoundGroups(encounters.filter((match) => match.round < 0)) : [];
+
+  // Main bracket columns (UB and LB); finals go in extra columns at the right.
+  const mainColumns = Math.max(upperRounds.length, lowerRounds.length, 1);
+  const totalColumns = mainColumns + finalRounds.length;
+  const contentWidth = totalColumns * CARD_WIDTH + Math.max(totalColumns - 1, 0) * ROUND_GAP_X;
+  const width = PADDING_X * 2 + contentWidth + BADGE_RIGHT;
 
   const nodes: LayoutNode[] = [];
   const edges: LayoutEdge[] = [];
   const headers: LayoutHeader[] = [];
+
+  const matchNumbers = computeMatchNumbers(upperRounds, lowerRounds, finalRounds);
+  const slotHints = computeSlotHints(
+    upperRounds,
+    lowerRounds,
+    finalRounds,
+    matchNumbers,
+    isDE,
+    hasBracketConnections
+  );
 
   const upperBaseMatches =
     upperRounds[0]?.matches.length ??
@@ -248,8 +372,7 @@ function buildLayout(
   upperRounds.forEach((group, columnIndex) => {
     const x = upperStartX + columnIndex * (CARD_WIDTH + ROUND_GAP_X);
     const totalHeight =
-      group.matches.length * CARD_HEIGHT +
-      Math.max(group.matches.length - 1, 0) * MATCH_GAP_Y;
+      group.matches.length * CARD_HEIGHT + Math.max(group.matches.length - 1, 0) * MATCH_GAP_Y;
     const startY = upperTop + Math.max(0, (upperSectionHeight - totalHeight) / 2);
 
     headers.push({
@@ -257,11 +380,15 @@ function buildLayout(
       x,
       y: upperHeaderY,
       label: `Round ${group.round}`,
-      section: "upper",
+      section: "upper"
     });
 
     group.matches.forEach((match, matchIndex) => {
-      nodes.push(createNode(match, x, startY + matchIndex * upperBasePitch));
+      const hint = slotHints.get(match.id) ?? { home: null, away: null };
+      const n = matchNumbers.get(match.id) ?? 0;
+      nodes.push(
+        createNode(match, x, startY + matchIndex * upperBasePitch, n, hint.home, hint.away)
+      );
     });
   });
 
@@ -280,8 +407,7 @@ function buildLayout(
   lowerRounds.forEach((group, columnIndex) => {
     const x = lowerStartX + columnIndex * (CARD_WIDTH + ROUND_GAP_X);
     const totalHeight =
-      group.matches.length * CARD_HEIGHT +
-      Math.max(group.matches.length - 1, 0) * MATCH_GAP_Y;
+      group.matches.length * CARD_HEIGHT + Math.max(group.matches.length - 1, 0) * MATCH_GAP_Y;
     const startY = lowerTop + Math.max(0, (lowerSectionHeight - totalHeight) / 2);
 
     headers.push({
@@ -289,30 +415,120 @@ function buildLayout(
       x,
       y: lowerHeaderY,
       label: `Lower R${Math.abs(group.round)}`,
-      section: "lower",
+      section: "lower"
     });
 
     group.matches.forEach((match, matchIndex) => {
-      nodes.push(createNode(match, x, startY + matchIndex * (CARD_HEIGHT + MATCH_GAP_Y)));
+      const hint = slotHints.get(match.id) ?? { home: null, away: null };
+      const n = matchNumbers.get(match.id) ?? 0;
+      nodes.push(
+        createNode(
+          match,
+          x,
+          startY + matchIndex * (CARD_HEIGHT + MATCH_GAP_Y),
+          n,
+          hint.home,
+          hint.away
+        )
+      );
+    });
+  });
+
+  // Grand Final section: placed right of both UB and LB, vertically centered
+  // in the full bracket height.
+  const fullContentHeight = hasLowerBracket
+    ? lowerTop + lowerSectionHeight
+    : upperTop + upperSectionHeight;
+
+  finalRounds.forEach((group, finalIndex) => {
+    const columnIndex = mainColumns + finalIndex;
+    const x = PADDING_X + columnIndex * (CARD_WIDTH + ROUND_GAP_X);
+    const totalHeight =
+      group.matches.length * CARD_HEIGHT + Math.max(group.matches.length - 1, 0) * MATCH_GAP_Y;
+    const startY = Math.max(0, (fullContentHeight - totalHeight) / 2);
+
+    headers.push({
+      id: `final-header-${group.round}`,
+      x,
+      y: PADDING_Y,
+      label: getGrandFinalLabel(group.round, finalRounds),
+      section: "upper"
+    });
+
+    group.matches.forEach((match, matchIndex) => {
+      const hint = slotHints.get(match.id) ?? { home: null, away: null };
+      const n = matchNumbers.get(match.id) ?? 0;
+      nodes.push(
+        createNode(
+          match,
+          x,
+          startY + matchIndex * (CARD_HEIGHT + MATCH_GAP_Y),
+          n,
+          hint.home,
+          hint.away
+        )
+      );
     });
   });
 
   const nodesById = new Map(nodes.map((node) => [node.id, node]));
 
   if (hasBracketConnections) {
+    // UB sequential edges (excludes GF since finalRounds is separate).
     addSequentialEdges(upperRounds, nodesById, edges, (matchIndex, targetCount) => {
       const targetIndex = Math.floor(matchIndex / 2);
-
       return targetIndex < targetCount ? targetIndex : -1;
     });
 
     addSequentialEdges(lowerRounds, nodesById, edges, (matchIndex, targetCount) => {
-      if (targetCount === 0) {
-        return -1;
-      }
-
+      if (targetCount === 0) return -1;
       return Math.min(matchIndex, targetCount - 1);
     });
+  }
+
+  // For DE: draw UB Final → GF and LB Final → GF edges explicitly.
+  if (isDE && finalRounds.length > 0) {
+    const gfGroup = finalRounds[0];
+    const gfMatch = gfGroup?.matches[0];
+    const gfNode = gfMatch ? nodesById.get(`match-${gfMatch.id}`) : undefined;
+
+    if (gfNode) {
+      const ubFinalGroup = upperRounds[upperRounds.length - 1];
+      const ubFinalMatch = ubFinalGroup?.matches[0];
+      const ubFinalNode = ubFinalMatch ? nodesById.get(`match-${ubFinalMatch.id}`) : undefined;
+      if (ubFinalNode) {
+        edges.push({
+          id: `edge-ub-final-gf`,
+          path: buildPath(ubFinalNode, gfNode),
+          isCompleted: COMPLETED_STATUSES.has(ubFinalMatch!.status)
+        });
+      }
+
+      const lbFinalGroup = lowerRounds[lowerRounds.length - 1];
+      const lbFinalMatch = lbFinalGroup?.matches[0];
+      const lbFinalNode = lbFinalMatch ? nodesById.get(`match-${lbFinalMatch.id}`) : undefined;
+      if (lbFinalNode) {
+        edges.push({
+          id: `edge-lb-final-gf`,
+          path: buildPath(lbFinalNode, gfNode),
+          isCompleted: COMPLETED_STATUSES.has(lbFinalMatch!.status)
+        });
+      }
+    }
+
+    // GF → GF Reset edge (if reset match exists).
+    if (finalRounds.length > 1) {
+      const gfrGroup = finalRounds[1];
+      const gfrMatch = gfrGroup?.matches[0];
+      const gfrNode = gfrMatch ? nodesById.get(`match-${gfrMatch.id}`) : undefined;
+      if (gfNode && gfrNode) {
+        edges.push({
+          id: `edge-gf-gfr`,
+          path: buildPath(gfNode, gfrNode),
+          isCompleted: COMPLETED_STATUSES.has(gfMatch!.status)
+        });
+      }
+    }
   }
 
   const height = hasLowerBracket
@@ -324,21 +540,20 @@ function buildLayout(
     edges,
     headers,
     width,
-    height,
+    height
   };
 }
 
 function MatchCard({
   data,
   hoveredTeamId,
-  onHoveredTeamChange,
+  onHoveredTeamChange
 }: {
   data: MatchNodeData;
   hoveredTeamId: number | null;
   onHoveredTeamChange: (teamId: number | null) => void;
 }) {
-  const hasVisibleScore =
-    data.isCompleted || data.homeScore !== 0 || data.awayScore !== 0;
+  const hasVisibleScore = data.isCompleted || data.homeScore !== 0 || data.awayScore !== 0;
 
   const getRowClasses = (side: "home" | "away") => {
     if (data.winner === side) {
@@ -371,8 +586,22 @@ function MatchCard({
     }
   };
 
+  const getDisplayName = (side: "home" | "away") => {
+    const name = side === "home" ? data.homeName : data.awayName;
+    if (name === "TBD") {
+      const source = side === "home" ? data.homeSource : data.awaySource;
+      return source ?? "TBD";
+    }
+    return name;
+  };
+
+  const isTbdSlot = (side: "home" | "away") => {
+    const name = side === "home" ? data.homeName : data.awayName;
+    return name === "TBD";
+  };
+
   return (
-    <div className="overflow-hidden rounded-xl border border-white/10 bg-black/45 shadow-[0_12px_30px_rgba(0,0,0,0.28)] ring-1 ring-white/6 backdrop-blur-sm">
+    <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black/45 shadow-[0_12px_30px_rgba(0,0,0,0.28)] ring-1 ring-white/6 backdrop-blur-sm">
       <div
         className={cn(
           "flex items-center justify-between gap-2 border-b border-white/10 px-3 transition-colors",
@@ -386,7 +615,14 @@ function MatchCard({
         onPointerLeave={() => handlePointerLeave("home")}
         style={{ height: CARD_ROW_HEIGHT }}
       >
-        <span className="min-w-0 truncate text-[13px] font-medium">{data.homeName}</span>
+        <span
+          className={cn(
+            "min-w-0 truncate font-medium",
+            isTbdSlot("home") ? "text-[11px] text-white/40 italic" : "text-[13px]"
+          )}
+        >
+          {getDisplayName("home")}
+        </span>
         <span className="shrink-0 text-[13px] font-semibold tabular-nums">
           {hasVisibleScore ? data.homeScore : "-"}
         </span>
@@ -404,7 +640,14 @@ function MatchCard({
         onPointerLeave={() => handlePointerLeave("away")}
         style={{ height: CARD_ROW_HEIGHT }}
       >
-        <span className="min-w-0 truncate text-[13px] font-medium">{data.awayName}</span>
+        <span
+          className={cn(
+            "min-w-0 truncate font-medium",
+            isTbdSlot("away") ? "text-[11px] text-white/40 italic" : "text-[13px]"
+          )}
+        >
+          {getDisplayName("away")}
+        </span>
         <span className="shrink-0 text-[13px] font-semibold tabular-nums">
           {hasVisibleScore ? data.awayScore : "-"}
         </span>
@@ -418,11 +661,7 @@ function resultStatusBadge(encounter: Encounter) {
   if (!status || status === "none") return null;
   if (status === "confirmed") return null;
   const label =
-    status === "pending_confirmation"
-      ? "Ожидает"
-      : status === "disputed"
-        ? "Спор"
-        : status;
+    status === "pending_confirmation" ? "Ожидает" : status === "disputed" ? "Спор" : status;
   const color =
     status === "pending_confirmation"
       ? "bg-amber-500/80"
@@ -444,16 +683,14 @@ export function BracketView({
   onEdit,
   onReport,
   canEdit,
-  canReport,
+  canReport
 }: BracketViewProps) {
   const [hoveredTeamId, setHoveredTeamId] = useState<number | null>(null);
   const layout = useMemo(() => buildLayout(encounters, type), [encounters, type]);
 
   if (layout.nodes.length === 0) {
     return (
-      <div className="py-8 text-center text-muted-foreground">
-        No bracket matches to display
-      </div>
+      <div className="py-8 text-center text-muted-foreground">No bracket matches to display</div>
     );
   }
 
@@ -467,7 +704,7 @@ export function BracketView({
             height: layout.height,
             backgroundImage:
               "radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.08) 1px, transparent 0)",
-            backgroundSize: "20px 20px",
+            backgroundSize: "20px 20px"
           }}
         >
           <svg
@@ -481,11 +718,7 @@ export function BracketView({
               <path
                 key={edge.id}
                 d={edge.path}
-                stroke={
-                  edge.isCompleted
-                    ? "rgba(16, 185, 129, 0.55)"
-                    : "rgba(255, 255, 255, 0.18)"
-                }
+                stroke={edge.isCompleted ? "rgba(16, 185, 129, 0.55)" : "rgba(255, 255, 255, 0.18)"}
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -524,6 +757,14 @@ export function BracketView({
                   hoveredTeamId={hoveredTeamId}
                   onHoveredTeamChange={setHoveredTeamId}
                 />
+                <div
+                  className="pointer-events-none absolute top-1/2 -translate-y-1/2"
+                  style={{ left: CARD_WIDTH + 6 }}
+                >
+                  <span className="font-mono text-[13px] font-semibold text-white">
+                    {node.data.matchLabel}
+                  </span>
+                </div>
                 {resultStatusBadge(node.encounter)}
                 {(editable || reportable) && (
                   <div className="absolute right-1 top-1 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">

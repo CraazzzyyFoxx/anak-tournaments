@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Link2,
   Loader2,
+  Pencil,
   PlayCircle,
   Plus,
   Shield,
@@ -98,10 +99,17 @@ export function StageManager({ tournamentId }: StageManagerProps) {
   const [newStageName, setNewStageName] = useState("");
   const [newStageType, setNewStageType] = useState<StageType>("round_robin");
   const [newStageMaxRounds, setNewStageMaxRounds] = useState("5");
+  const [newStageDeGrandFinalType, setNewStageDeGrandFinalType] = useState<
+    "no_reset" | "with_reset"
+  >("no_reset");
   const [stageTypeDrafts, setStageTypeDrafts] = useState<Record<number, StageType>>({});
   const [stageMaxRoundDrafts, setStageMaxRoundDrafts] = useState<Record<number, string>>({});
+  const [stageDeGfTypeDrafts, setStageDeGfTypeDrafts] = useState<
+    Record<number, "no_reset" | "with_reset">
+  >({});
   const [stageItemDrafts, setStageItemDrafts] = useState<Record<number, StageItemDraft>>({});
   const [teamDrafts, setTeamDrafts] = useState<Record<number, string>>({});
+  const [editingItemTypeId, setEditingItemTypeId] = useState<number | null>(null);
 
   const { data: stages = [], isLoading } = useQuery({
     queryKey: ["admin", "stages", tournamentId],
@@ -140,12 +148,17 @@ export function StageManager({ tournamentId }: StageManagerProps) {
         name: newStageName,
         stage_type: newStageType,
         max_rounds: normalizeMaxRounds(newStageMaxRounds),
-        order: stages.length
+        order: stages.length,
+        settings_json:
+          newStageType === "double_elimination"
+            ? { de_grand_final_type: newStageDeGrandFinalType }
+            : null
       }),
     onSuccess: () => {
       invalidateStageData();
       setNewStageName("");
       setNewStageMaxRounds("5");
+      setNewStageDeGrandFinalType("no_reset");
     }
   });
 
@@ -155,7 +168,11 @@ export function StageManager({ tournamentId }: StageManagerProps) {
       data
     }: {
       stageId: number;
-      data: { stage_type?: StageType; max_rounds?: number };
+      data: {
+        stage_type?: StageType;
+        max_rounds?: number;
+        settings_json?: Record<string, unknown> | null;
+      };
     }) => adminService.updateStage(stageId, data),
     onSuccess: (_stage, variables) => {
       setStageTypeDrafts((current) => {
@@ -164,6 +181,11 @@ export function StageManager({ tournamentId }: StageManagerProps) {
         return next;
       });
       setStageMaxRoundDrafts((current) => {
+        const next = { ...current };
+        delete next[variables.stageId];
+        return next;
+      });
+      setStageDeGfTypeDrafts((current) => {
         const next = { ...current };
         delete next[variables.stageId];
         return next;
@@ -211,6 +233,15 @@ export function StageManager({ tournamentId }: StageManagerProps) {
         delete next[variables.stageId];
         return next;
       });
+      invalidateStageData();
+    }
+  });
+
+  const updateItemTypeMutation = useMutation({
+    mutationFn: ({ stageItemId, type }: { stageItemId: number; type: StageItemType }) =>
+      adminService.updateStageItem(stageItemId, { type }),
+    onSuccess: (_item, variables) => {
+      setEditingItemTypeId(null);
       invalidateStageData();
     }
   });
@@ -376,17 +407,19 @@ export function StageManager({ tournamentId }: StageManagerProps) {
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="new-stage-max-rounds">Swiss max rounds</Label>
-              <Input
-                id="new-stage-max-rounds"
-                min={1}
-                step={1}
-                type="number"
-                value={newStageMaxRounds}
-                onChange={(e) => setNewStageMaxRounds(e.target.value)}
-              />
-            </div>
+            {newStageType === "swiss" && (
+              <div className="space-y-2">
+                <Label htmlFor="new-stage-max-rounds">Swiss max rounds</Label>
+                <Input
+                  id="new-stage-max-rounds"
+                  min={1}
+                  step={1}
+                  type="number"
+                  value={newStageMaxRounds}
+                  onChange={(e) => setNewStageMaxRounds(e.target.value)}
+                />
+              </div>
+            )}
 
             <Button
               className="w-full lg:w-auto"
@@ -401,6 +434,28 @@ export function StageManager({ tournamentId }: StageManagerProps) {
               {createMutation.isPending ? "Adding..." : "Add Stage"}
             </Button>
           </div>
+
+          {newStageType === "double_elimination" && (
+            <div className="space-y-2">
+              <Label>Grand Final format</Label>
+              <Select
+                value={newStageDeGrandFinalType}
+                onValueChange={(v) => setNewStageDeGrandFinalType(v as "no_reset" | "with_reset")}
+              >
+                <SelectTrigger className="w-[260px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="no_reset">
+                    No Reset — UB winner wins after one GF win
+                  </SelectItem>
+                  <SelectItem value="with_reset">
+                    With Reset — LB champion can force a rematch
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -418,6 +473,10 @@ export function StageManager({ tournamentId }: StageManagerProps) {
       {stages.map((stage: Stage) => {
         const stageTypeDraft = stageTypeDrafts[stage.id] ?? stage.stage_type;
         const stageMaxRoundDraft = stageMaxRoundDrafts[stage.id] ?? String(stage.max_rounds ?? 5);
+        const currentDeGfType =
+          (stage.settings_json?.de_grand_final_type as "no_reset" | "with_reset" | undefined) ??
+          "no_reset";
+        const stageDeGfTypeDraft = stageDeGfTypeDrafts[stage.id] ?? currentDeGfType;
         const itemDraft = stageItemDrafts[stage.id] ?? {
           name: "",
           type: getDefaultStageItemType(stage.stage_type)
@@ -425,7 +484,9 @@ export function StageManager({ tournamentId }: StageManagerProps) {
         const isTypeDirty = stageTypeDraft !== stage.stage_type;
         const maxRoundsDraftValue = normalizeMaxRounds(stageMaxRoundDraft, stage.max_rounds ?? 5);
         const isMaxRoundsDirty = maxRoundsDraftValue !== (stage.max_rounds ?? 5);
-        const isStageDirty = isTypeDirty || isMaxRoundsDirty;
+        const isDeGfTypeDirty =
+          stageTypeDraft === "double_elimination" && stageDeGfTypeDraft !== currentDeGfType;
+        const isStageDirty = isTypeDirty || isMaxRoundsDirty || isDeGfTypeDirty;
         const isUpdatingType =
           updateStageMutation.isPending && updateStageMutation.variables?.stageId === stage.id;
         const isActivating = activateMutation.isPending && activateMutation.variables === stage.id;
@@ -467,6 +528,11 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                     {stage.stage_type === "swiss" ? (
                       <span className="rounded-full border border-border/60 bg-muted/20 px-2.5 py-1">
                         {stage.max_rounds ?? 5} max round(s)
+                      </span>
+                    ) : null}
+                    {stage.stage_type === "double_elimination" ? (
+                      <span className="rounded-full border border-border/60 bg-muted/20 px-2.5 py-1">
+                        GF: {currentDeGfType === "with_reset" ? "With Reset" : "No Reset"}
                       </span>
                     ) : null}
                     <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/20 px-2.5 py-1">
@@ -637,9 +703,47 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                               {item.inputs.length} slot(s)
                             </p>
                           </div>
-                          <Badge variant="secondary" className="shrink-0 text-[11px]">
-                            {STAGE_ITEM_TYPE_LABELS[item.type]}
-                          </Badge>
+                          {editingItemTypeId === item.id ? (
+                            <div className="flex shrink-0 items-center gap-1">
+                              <Select
+                                defaultValue={item.type}
+                                onValueChange={(value) => {
+                                  updateItemTypeMutation.mutate({
+                                    stageItemId: item.id,
+                                    type: value as StageItemType
+                                  });
+                                }}
+                              >
+                                <SelectTrigger className="h-7 w-36 text-[11px]">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {Object.entries(STAGE_ITEM_TYPE_LABELS).map(([value, label]) => (
+                                    <SelectItem key={value} value={value} className="text-[11px]">
+                                      {label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="size-6"
+                                onClick={() => setEditingItemTypeId(null)}
+                              >
+                                ×
+                              </Button>
+                            </div>
+                          ) : (
+                            <button
+                              className="flex shrink-0 items-center gap-1 rounded-md border border-transparent px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:border-border hover:text-foreground"
+                              onClick={() => setEditingItemTypeId(item.id)}
+                              title="Click to change type"
+                            >
+                              {STAGE_ITEM_TYPE_LABELS[item.type]}
+                              <Pencil className="size-2.5" />
+                            </button>
+                          )}
                         </div>
 
                         {item.inputs.length > 0 ? (
@@ -992,20 +1096,41 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                           ))}
                         </SelectContent>
                       </Select>
-                      <Input
-                        aria-label="Swiss max rounds"
-                        className="h-9 w-full sm:w-[120px]"
-                        min={1}
-                        step={1}
-                        type="number"
-                        value={stageMaxRoundDraft}
-                        onChange={(event) =>
-                          setStageMaxRoundDrafts((current) => ({
-                            ...current,
-                            [stage.id]: event.target.value
-                          }))
-                        }
-                      />
+                      {stageTypeDraft === "swiss" && (
+                        <Input
+                          aria-label="Swiss max rounds"
+                          className="h-9 w-full sm:w-[120px]"
+                          min={1}
+                          step={1}
+                          type="number"
+                          value={stageMaxRoundDraft}
+                          onChange={(event) =>
+                            setStageMaxRoundDrafts((current) => ({
+                              ...current,
+                              [stage.id]: event.target.value
+                            }))
+                          }
+                        />
+                      )}
+                      {stageTypeDraft === "double_elimination" && (
+                        <Select
+                          value={stageDeGfTypeDraft}
+                          onValueChange={(value) =>
+                            setStageDeGfTypeDrafts((current) => ({
+                              ...current,
+                              [stage.id]: value as "no_reset" | "with_reset"
+                            }))
+                          }
+                        >
+                          <SelectTrigger className="h-9 w-full sm:w-[160px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="no_reset">No Reset</SelectItem>
+                            <SelectItem value="with_reset">With Reset</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
                       <Button
                         size="sm"
                         variant="secondary"
@@ -1015,7 +1140,11 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                             stageId: stage.id,
                             data: {
                               stage_type: stageTypeDraft,
-                              max_rounds: maxRoundsDraftValue
+                              max_rounds: maxRoundsDraftValue,
+                              settings_json:
+                                stageTypeDraft === "double_elimination"
+                                  ? { de_grand_final_type: stageDeGfTypeDraft }
+                                  : undefined
                             }
                           })
                         }
