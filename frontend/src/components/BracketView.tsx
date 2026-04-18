@@ -378,8 +378,7 @@ function MatchCard({
           "flex items-center justify-between gap-2 border-b border-white/10 px-3 transition-colors",
           getRowClasses("home"),
           data.homeTeamId != null && "cursor-default",
-          isHighlighted("home") &&
-            "ring-1 ring-inset ring-sky-300/80 shadow-[inset_0_0_22px_rgba(56,189,248,0.16)]"
+          isHighlighted("home") && "bg-sky-400/18 text-white"
         )}
         data-team-id={data.homeTeamId ?? undefined}
         data-team-highlighted={isHighlighted("home") || undefined}
@@ -397,8 +396,7 @@ function MatchCard({
           "flex items-center justify-between gap-2 px-3 transition-colors",
           getRowClasses("away"),
           data.awayTeamId != null && "cursor-default",
-          isHighlighted("away") &&
-            "ring-1 ring-inset ring-sky-300/80 shadow-[inset_0_0_22px_rgba(56,189,248,0.16)]"
+          isHighlighted("away") && "bg-sky-400/18 text-white"
         )}
         data-team-id={data.awayTeamId ?? undefined}
         data-team-highlighted={isHighlighted("away") || undefined}
