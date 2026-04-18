@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Pencil, FileEdit } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import type { Encounter } from "@/types/encounter.types";
 import type { StageType } from "@/types/tournament.types";
 
@@ -18,6 +19,8 @@ interface BracketViewProps {
 interface MatchNodeData {
   homeName: string;
   awayName: string;
+  homeTeamId: number | null;
+  awayTeamId: number | null;
   homeScore: number;
   awayScore: number;
   winner: "home" | "away" | null;
@@ -163,6 +166,8 @@ function createNode(match: Encounter, x: number, y: number): LayoutNode {
     data: {
       homeName: names.homeName,
       awayName: names.awayName,
+      homeTeamId: match.home_team_id > 0 ? match.home_team_id : null,
+      awayTeamId: match.away_team_id > 0 ? match.away_team_id : null,
       homeScore: match.score.home,
       awayScore: match.score.away,
       winner: getWinner(match),
@@ -323,7 +328,15 @@ function buildLayout(
   };
 }
 
-function MatchCard({ data }: { data: MatchNodeData }) {
+function MatchCard({
+  data,
+  hoveredTeamId,
+  onHoveredTeamChange,
+}: {
+  data: MatchNodeData;
+  hoveredTeamId: number | null;
+  onHoveredTeamChange: (teamId: number | null) => void;
+}) {
   const hasVisibleScore =
     data.isCompleted || data.homeScore !== 0 || data.awayScore !== 0;
 
@@ -339,10 +352,39 @@ function MatchCard({ data }: { data: MatchNodeData }) {
     return "bg-transparent text-white/82";
   };
 
+  const getTeamId = (side: "home" | "away") =>
+    side === "home" ? data.homeTeamId : data.awayTeamId;
+
+  const isHighlighted = (side: "home" | "away") => {
+    const teamId = getTeamId(side);
+
+    return teamId != null && hoveredTeamId === teamId;
+  };
+
+  const handlePointerEnter = (side: "home" | "away") => {
+    onHoveredTeamChange(getTeamId(side));
+  };
+
+  const handlePointerLeave = (side: "home" | "away") => {
+    if (isHighlighted(side)) {
+      onHoveredTeamChange(null);
+    }
+  };
+
   return (
     <div className="overflow-hidden rounded-xl border border-white/10 bg-black/45 shadow-[0_12px_30px_rgba(0,0,0,0.28)] ring-1 ring-white/6 backdrop-blur-sm">
       <div
-        className={`flex items-center justify-between gap-2 border-b border-white/10 px-3 transition-colors ${getRowClasses("home")}`}
+        className={cn(
+          "flex items-center justify-between gap-2 border-b border-white/10 px-3 transition-colors",
+          getRowClasses("home"),
+          data.homeTeamId != null && "cursor-default",
+          isHighlighted("home") &&
+            "ring-1 ring-inset ring-sky-300/80 shadow-[inset_0_0_22px_rgba(56,189,248,0.16)]"
+        )}
+        data-team-id={data.homeTeamId ?? undefined}
+        data-team-highlighted={isHighlighted("home") || undefined}
+        onPointerEnter={() => handlePointerEnter("home")}
+        onPointerLeave={() => handlePointerLeave("home")}
         style={{ height: CARD_ROW_HEIGHT }}
       >
         <span className="min-w-0 truncate text-[13px] font-medium">{data.homeName}</span>
@@ -351,7 +393,17 @@ function MatchCard({ data }: { data: MatchNodeData }) {
         </span>
       </div>
       <div
-        className={`flex items-center justify-between gap-2 px-3 transition-colors ${getRowClasses("away")}`}
+        className={cn(
+          "flex items-center justify-between gap-2 px-3 transition-colors",
+          getRowClasses("away"),
+          data.awayTeamId != null && "cursor-default",
+          isHighlighted("away") &&
+            "ring-1 ring-inset ring-sky-300/80 shadow-[inset_0_0_22px_rgba(56,189,248,0.16)]"
+        )}
+        data-team-id={data.awayTeamId ?? undefined}
+        data-team-highlighted={isHighlighted("away") || undefined}
+        onPointerEnter={() => handlePointerEnter("away")}
+        onPointerLeave={() => handlePointerLeave("away")}
         style={{ height: CARD_ROW_HEIGHT }}
       >
         <span className="min-w-0 truncate text-[13px] font-medium">{data.awayName}</span>
@@ -396,6 +448,7 @@ export function BracketView({
   canEdit,
   canReport,
 }: BracketViewProps) {
+  const [hoveredTeamId, setHoveredTeamId] = useState<number | null>(null);
   const layout = useMemo(() => buildLayout(encounters, type), [encounters, type]);
 
   if (layout.nodes.length === 0) {
@@ -468,7 +521,11 @@ export function BracketView({
                 className="absolute group"
                 style={{ left: node.x, top: node.y, width: CARD_WIDTH, height: CARD_HEIGHT }}
               >
-                <MatchCard data={node.data} />
+                <MatchCard
+                  data={node.data}
+                  hoveredTeamId={hoveredTeamId}
+                  onHoveredTeamChange={setHoveredTeamId}
+                />
                 {resultStatusBadge(node.encounter)}
                 {(editable || reportable) && (
                   <div className="absolute right-1 top-1 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
