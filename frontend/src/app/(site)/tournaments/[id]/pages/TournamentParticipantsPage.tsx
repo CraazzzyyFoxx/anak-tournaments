@@ -180,6 +180,7 @@ export default function TournamentParticipantsPage({
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
   const [isWithdrawDialogOpen, setIsWithdrawDialogOpen] = useState(false);
+  const [isCheckInDialogOpen, setIsCheckInDialogOpen] = useState(false);
 
   const isAuthenticated = authStatus === "authenticated" && user !== null;
 
@@ -253,6 +254,7 @@ export default function TournamentParticipantsPage({
         tournament.id,
       ),
     onSuccess: async () => {
+      setIsCheckInDialogOpen(false);
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: [
@@ -309,12 +311,42 @@ export default function TournamentParticipantsPage({
         <MyRegistrationBar
           registration={myRegistration}
           canCheckIn={canCheckIn}
-          onCheckIn={() => checkInMutation.mutate()}
+          onCheckIn={() => setIsCheckInDialogOpen(true)}
           onWithdraw={() => setIsWithdrawDialogOpen(true)}
           isCheckingIn={checkInMutation.isPending}
           isWithdrawing={withdrawMutation.isPending}
         />
       )}
+
+      <AlertDialog
+        open={isCheckInDialogOpen}
+        onOpenChange={setIsCheckInDialogOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm check-in?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will mark you as checked in for the tournament. Confirm only
+              if you are ready to participate.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={checkInMutation.isPending}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                checkInMutation.mutate();
+              }}
+              disabled={checkInMutation.isPending}
+              className="border border-emerald-500/30 bg-emerald-600 text-white hover:bg-emerald-500"
+            >
+              {checkInMutation.isPending ? "Checking in..." : "Confirm check-in"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={isWithdrawDialogOpen}
