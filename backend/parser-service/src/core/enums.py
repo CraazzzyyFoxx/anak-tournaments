@@ -133,6 +133,7 @@ hero_translation = {
     "Реактивная киса": "Jetpack Cat",
     "Эмре": "Emre",
     "Реактивная Киса": "Jetpack Cat",
+    "Сьерра": "Sierra",
 }
 
 
