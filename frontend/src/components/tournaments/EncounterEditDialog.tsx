@@ -83,6 +83,16 @@ function EncounterEditDialogBody({
     closenessFloatToStars(encounter.closeness),
   );
 
+  const refreshEncounterViews = async () => {
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: ["encounters"] }),
+      qc.invalidateQueries({ queryKey: ["standings", encounter.tournament_id] }),
+      qc.invalidateQueries({ queryKey: ["tournament"] }),
+      qc.invalidateQueries({ queryKey: ["encounter"] }),
+      qc.invalidateQueries({ queryKey: ["bracket"] }),
+    ]);
+  };
+
   const validationError = useMemo(() => {
     if (homeScore < 0 || awayScore < 0) {
       return "Счет матча не может быть отрицательным";
@@ -100,11 +110,9 @@ function EncounterEditDialogBody({
       };
       await adminService.updateEncounter(encounter.id, encounterPayload);
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       toast({ title: "Матч обновлен" });
-      qc.invalidateQueries({ queryKey: ["tournament"] });
-      qc.invalidateQueries({ queryKey: ["encounter"] });
-      qc.invalidateQueries({ queryKey: ["bracket"] });
+      await refreshEncounterViews();
       onOpenChange(false);
     },
     onError: (err: unknown) => {
@@ -116,11 +124,9 @@ function EncounterEditDialogBody({
 
   const confirmMutation = useMutation({
     mutationFn: () => adminService.confirmEncounterResult(encounter.id),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast({ title: "Результат подтверждён" });
-      qc.invalidateQueries({ queryKey: ["tournament"] });
-      qc.invalidateQueries({ queryKey: ["encounter"] });
-      qc.invalidateQueries({ queryKey: ["bracket"] });
+      await refreshEncounterViews();
       onOpenChange(false);
     },
     onError: (err: unknown) => {
