@@ -431,9 +431,9 @@ class BalanceRead(BaseRead):
     result_json: dict[str, Any]
     saved_by: int | None
     saved_at: datetime
-    exported_at: datetime | None
-    export_status: str | None
-    export_error: str | None
+    exported_at: datetime | None = None
+    export_status: str | None = None
+    export_error: str | None = None
     teams: list[BalancerTeamRead] = Field(default_factory=list)
 
 
