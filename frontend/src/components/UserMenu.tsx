@@ -63,18 +63,18 @@ const UserMenu = ({ username, avatarUrl, profileHref, logoutHref = "/auth/logout
         <DropdownMenuSeparator />
         <DropdownMenuGroup className="p-1 space-y-1">
           <DropdownMenuItem 
-            onClick={() => openSettings("profile")}
-            className="cursor-pointer focus:bg-white/10 focus:text-white transition-colors rounded-md"
-          >
-            <Settings className="mr-2 h-4 w-4" />
-            <span>Account settings</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem 
             onClick={() => push(profileHref)}
             className="cursor-pointer focus:bg-white/10 focus:text-white transition-colors rounded-md"
           >
             <UserIcon className="mr-2 h-4 w-4" />
             <span>Profile</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem 
+            onClick={() => openSettings("profile")}
+            className="cursor-pointer focus:bg-white/10 focus:text-white transition-colors rounded-md"
+          >
+            <Settings className="mr-2 h-4 w-4" />
+            <span>Account settings</span>
           </DropdownMenuItem>
           <DropdownMenuItem 
             onClick={handleLogout}
