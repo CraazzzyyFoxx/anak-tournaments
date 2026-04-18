@@ -149,7 +149,7 @@ export default function TournamentBracketPage({
           {
             key: `stage-${stage.id}`,
             stage,
-            stageItem: undefined,
+            stageItem: undefined as StageItem | undefined,
             encounters: encounters.filter((encounter) => encounter.stage_id === stage.id),
             standings: allStandings.filter(
               (standing) => standing.stage_id === stage.id
