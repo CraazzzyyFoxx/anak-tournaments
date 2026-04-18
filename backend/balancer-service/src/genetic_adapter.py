@@ -166,6 +166,12 @@ class GeneticBalancer:
                 f"Need at least {players_per_team} active players, got {len(genetic_players)}"
             )
 
+        # Captain assignment must run BEFORE feasibility matching so that
+        # captains are pinned to their top-preference role and never moved.
+        use_captains = config.get("captain_mode", True)
+        if use_captains:
+            assign_captains(genetic_players, num_teams, genetic_mask)
+
         shortages = diagnose_role_shortage(genetic_players, num_teams, genetic_mask)
         if shortages:
             shortage_desc = ", ".join(
@@ -176,16 +182,13 @@ class GeneticBalancer:
                 f"{shortage_desc}."
             )
 
-        if find_feasible_role_assignment(genetic_players, num_teams, genetic_mask) is None:
+        role_assignment = find_feasible_role_assignment(genetic_players, num_teams, genetic_mask)
+        if role_assignment is None:
             raise ValueError(
-                f"Cannot form {num_teams} full teams: no consistent role "
-                f"assignment exists with the current can_play overlap."
+                f"Cannot form {num_teams} full teams: either players cannot "
+                f"cover the required role overlap, or too many captains are "
+                f"pinned to the same role (see logs for details)."
             )
-
-        # Captains
-        use_captains = config.get("captain_mode", True)
-        if use_captains:
-            assign_captains(genetic_players, num_teams)
 
         # Build AlgorithmConfig
         algo_config = AlgorithmConfig()
@@ -212,7 +215,13 @@ class GeneticBalancer:
             if key in config and config[key] is not None:
                 setattr(algo_config, attr_name, config[key])
 
-        opt = GeneticOptimizer(genetic_players, num_teams, algo_config, progress_callback=None)
+        opt = GeneticOptimizer(
+            genetic_players,
+            num_teams,
+            algo_config,
+            progress_callback=None,
+            role_assignment=role_assignment,
+        )
         result_teams = opt.run()
 
         # Determine benched players

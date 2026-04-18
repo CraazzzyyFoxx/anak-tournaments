@@ -81,7 +81,19 @@ def calculate_gap_penalty(max_team_gap: float) -> float:
 class Player:
     """Represents a tournament player with ratings and role preferences."""
 
-    __slots__ = ("uuid", "name", "ratings", "preferences", "subclasses", "discomfort_map", "is_captain", "is_flex", "_max_rating", "_mask")
+    __slots__ = (
+        "uuid",
+        "name",
+        "ratings",
+        "preferences",
+        "subclasses",
+        "discomfort_map",
+        "is_captain",
+        "is_flex",
+        "captain_role",
+        "_max_rating",
+        "_mask",
+    )
 
     def __init__(
         self,
@@ -100,6 +112,11 @@ class Player:
         self.subclasses: dict[str, str] = subclasses or {}
         self.is_captain = False
         self.is_flex = is_flex
+        # ``captain_role`` is the role the player is pinned to when flagged as
+        # captain. Non-captains leave it as ``None``. Set by ``assign_captains``
+        # and read by ``find_feasible_role_assignment`` so matching never moves
+        # a captain off their top-preference role.
+        self.captain_role: str | None = None
         self._max_rating = max(ratings.values()) if ratings else 0
         self._mask = mask
 
@@ -615,12 +632,47 @@ def load_players_from_dict(
     return players_list
 
 
-def assign_captains(players: list[Player], count: int) -> None:
+def assign_captains(players: list[Player], count: int, mask: dict[str, int] | None = None) -> None:
+    """
+    Mark the top-``count`` players (by max rating) as captains and pin their
+    role to their top playable preference.
+
+    Captains are anchor points: once pinned, their role is frozen across every
+    solution, mutation, and polish pass. ``mask`` is optional — when supplied,
+    the pinned role is required to be an active mask role; otherwise the
+    pinning falls back to any playable role from ratings.
+    """
+    active_roles = {r for r, c in (mask or {}).items() if c > 0} if mask else None
+
     for p in players:
         p.is_captain = False
+        p.captain_role = None
+
     sorted_players = sorted(players, key=lambda p: p.max_rating, reverse=True)
     for i in range(min(count, len(sorted_players))):
-        sorted_players[i].is_captain = True
+        p = sorted_players[i]
+        p.is_captain = True
+
+        pinned_role: str | None = None
+        # Prefer captain's top preference if it is both playable and part of
+        # the active mask (if provided).
+        for role in p.preferences:
+            if not p.can_play(role):
+                continue
+            if active_roles is not None and role not in active_roles:
+                continue
+            pinned_role = role
+            break
+
+        if pinned_role is None:
+            # Fallback: any playable role within the active mask.
+            for role, _rating in p.ratings.items():
+                if active_roles is not None and role not in active_roles:
+                    continue
+                pinned_role = role
+                break
+
+        p.captain_role = pinned_role
 
 
 def find_feasible_role_assignment(
@@ -632,11 +684,15 @@ def find_feasible_role_assignment(
     Find a feasible ``player_uuid -> role`` assignment respecting role capacities
     (``mask[role] * num_teams``) and each player's ``can_play`` constraint.
 
+    Captains are **pinned** to ``player.captain_role`` before matching begins
+    and are never displaced. Only non-captains participate in the augmenting
+    search, ensuring captain roles stay frozen across every generated solution.
+
     Uses the classical Hungarian-style augmenting-path algorithm (bipartite
     matching with capacities), so it succeeds whenever **any** complete
     assignment exists (Hall's theorem). Returns ``None`` when the input is
     infeasible — e.g. not enough tank-capable players for the required number
-    of tank slots.
+    of tank slots, or too many captains pinned to the same role.
 
     The ``visited`` set tracks which *roles* have been touched during a single
     augmenting DFS. This prevents a subtle bug where evicting an occupant from
@@ -664,6 +720,31 @@ def find_feasible_role_assignment(
     # the whole assignment dict every time.
     role_occupants: dict[str, set[int]] = {r: set() for r in active_mask}
 
+    # --- Stage 1: pin captains to their frozen captain_role.
+    captain_indices: set[int] = set()
+    for idx, player in enumerate(players):
+        if not player.is_captain:
+            continue
+        captain_indices.add(idx)
+        role = player.captain_role
+        if role is None or role not in active_mask or not player.can_play(role):
+            logger.error(
+                f"Captain {player.name} (uuid={player.uuid}) has no valid "
+                f"captain_role (captain_role={role!r}, can_play="
+                f"{list(player.ratings)}, active_mask={list(active_mask)})."
+            )
+            return None
+        if role_counts[role] >= capacity[role]:
+            logger.error(
+                f"Too many captains pinned to role '{role}': capacity "
+                f"{capacity[role]} already filled when placing captain "
+                f"{player.name}."
+            )
+            return None
+        assignment[idx] = role
+        role_counts[role] += 1
+        role_occupants[role].add(idx)
+
     def candidates_for(player: Player) -> list[str]:
         roles = [r for r in active_mask if player.can_play(r)]
         random.shuffle(roles)
@@ -688,11 +769,10 @@ def find_feasible_role_assignment(
                 role_occupants[role].add(player_idx)
                 return True
 
-            # Case B: role is full — try to reroute one of its occupants to a
-            # different role. Every recursive call now sees ``role`` in
-            # ``visited_roles`` so the occupant cannot be put back here,
-            # guaranteeing the net effect is a proper augmentation.
-            occupants = list(role_occupants[role])
+            # Case B: role is full — try to reroute a *non-captain* occupant.
+            # Captains are pinned and cannot be moved, which guarantees the
+            # caller's invariant that captain roles stay frozen.
+            occupants = [i for i in role_occupants[role] if i not in captain_indices]
             random.shuffle(occupants)
             for occ_idx in occupants:
                 # Tentatively evict the occupant.
@@ -715,9 +795,10 @@ def find_feasible_role_assignment(
                 role_occupants[role].add(occ_idx)
         return False
 
-    order = list(range(len(players)))
-    random.shuffle(order)
-    for idx in order:
+    # --- Stage 2: match non-captains via augmenting paths.
+    non_captain_order = [i for i in range(len(players)) if i not in captain_indices]
+    random.shuffle(non_captain_order)
+    for idx in non_captain_order:
         if not try_assign(idx, set()):
             return None
 
@@ -2429,6 +2510,21 @@ def _prepare_balance_context(
             f"Need at least {players_per_team} players, got {len(valid_players)}."
         )
 
+    # Captain assignment must happen BEFORE the feasibility matcher so that
+    # captains can be pinned to their top-preference role — otherwise the
+    # matcher would place captains on whichever role satisfied feasibility,
+    # which violates the "captains stay on their role" invariant.
+    if config.USE_CAPTAINS:
+        assign_captains(valid_players, num_teams, mask)
+        captain_count = sum(1 for p in valid_players if p.is_captain)
+        logger.info(f"Assigned {captain_count} captains")
+        emit_progress(
+            progress_callback,
+            status="running",
+            stage="forming_teams",
+            message=f"Assigned {captain_count} captains",
+        )
+
     # Hard feasibility: can we actually fill every team's every role slot?
     # Silent num_teams reduction is forbidden — callers guarantee a clean input,
     # and any mismatch must surface loudly.
@@ -2445,13 +2541,14 @@ def _prepare_balance_context(
 
     # Even if every role has enough can_play coverage, overlap between roles
     # can still break completeness (Hall-style constraint). Run the bipartite
-    # matcher once so we fail loudly instead of later silently benching people.
+    # matcher once — with captain pinning — so we fail loudly instead of later
+    # silently benching people.
     role_assignment = find_feasible_role_assignment(valid_players, num_teams, mask)
     if role_assignment is None:
         raise ValueError(
-            f"Cannot form {num_teams} full teams: players can cover each role "
-            f"individually, but no consistent full assignment exists with the "
-            f"current can_play overlap. Consider adjusting player role flags."
+            f"Cannot form {num_teams} full teams: either players cannot cover "
+            f"the required role overlap, or too many captains are pinned to "
+            f"the same role (see logs for details)."
         )
 
     logger.info(f"Forming {num_teams} teams with {len(valid_players)} players")
@@ -2461,17 +2558,6 @@ def _prepare_balance_context(
         stage="forming_teams",
         message=f"Forming {num_teams} teams",
     )
-
-    if config.USE_CAPTAINS:
-        assign_captains(valid_players, num_teams)
-        captain_count = sum(1 for p in valid_players if p.is_captain)
-        logger.info(f"Assigned {captain_count} captains")
-        emit_progress(
-            progress_callback,
-            status="running",
-            stage="forming_teams",
-            message=f"Assigned {captain_count} captains",
-        )
 
     return config, valid_players, num_teams, has_applied_overrides, role_assignment
 
