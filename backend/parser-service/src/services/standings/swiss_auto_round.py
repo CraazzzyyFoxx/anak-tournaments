@@ -6,6 +6,7 @@ Stage.is_completed flags and encounter statuses are already up-to-date.
 
 from __future__ import annotations
 
+from collections import defaultdict
 from typing import Any
 
 import sqlalchemy as sa
@@ -14,6 +15,10 @@ from shared.core import enums
 from shared.messaging.config import SWISS_NEXT_ROUND_QUEUE
 from shared.observability import publish_message
 from shared.schemas.events import SwissNextRoundEvent
+from shared.services.tournament_utils import (
+    completed_encounters_in_finished_rounds,
+    has_incomplete_playable_rounds,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -26,12 +31,7 @@ async def enqueue_swiss_next_rounds(
     *,
     broker: Any | None = None,
 ) -> list[SwissNextRoundEvent]:
-    """Detect Swiss stage items where all current-round encounters are completed
-    and queue next-round generation for each.
-
-    Safe to call multiple times — only enqueues when there is at least one
-    completed encounter and zero open/pending ones for the item.
-    """
+    """Queue Swiss next rounds only when the current playable round is closed."""
     result = await session.execute(
         sa.select(models.Stage)
         .where(
@@ -46,55 +46,38 @@ async def enqueue_swiss_next_rounds(
     if not swiss_stages:
         return []
 
-    stage_ids = [s.id for s in swiss_stages]
-
-    counts_result = await session.execute(
-        sa.select(
-            models.Encounter.stage_id,
-            models.Encounter.stage_item_id,
-            sa.func.count(models.Encounter.id).label("total"),
-            sa.func.sum(
-                sa.case(
-                    (models.Encounter.status == enums.EncounterStatus.COMPLETED, 1),
-                    else_=0,
-                )
-            ).label("completed"),
-        )
-        .where(models.Encounter.stage_id.in_(stage_ids))
-        .group_by(models.Encounter.stage_id, models.Encounter.stage_item_id)
+    stage_ids = [stage.id for stage in swiss_stages]
+    encounters_result = await session.execute(
+        sa.select(models.Encounter).where(models.Encounter.stage_id.in_(stage_ids))
     )
-
-    # Build a lookup: (stage_id, stage_item_id) → (total, completed)
-    counts: dict[tuple[int, int | None], tuple[int, int]] = {}
-    for row in counts_result:
-        counts[(row.stage_id, row.stage_item_id)] = (
-            int(row.total or 0),
-            int(row.completed or 0),
-        )
+    encounters_by_key: dict[tuple[int, int | None], list[models.Encounter]] = defaultdict(list)
+    for encounter in encounters_result.scalars().all():
+        encounters_by_key[(encounter.stage_id, encounter.stage_item_id)].append(encounter)
 
     events: list[SwissNextRoundEvent] = []
     for stage in swiss_stages:
         items = stage.items or []
         if items:
             for item in items:
-                total, completed = counts.get((stage.id, item.id), (0, 0))
-                if total > 0 and total == completed:
-                    event = SwissNextRoundEvent(
+                item_encounters = encounters_by_key.get((stage.id, item.id), [])
+                if _stage_item_ready_for_next_round(item_encounters):
+                    events.append(
+                        SwissNextRoundEvent(
+                            stage_id=stage.id,
+                            stage_item_id=item.id,
+                            tournament_id=tournament_id,
+                        )
+                    )
+        else:
+            stage_encounters = encounters_by_key.get((stage.id, None), [])
+            if _stage_item_ready_for_next_round(stage_encounters):
+                events.append(
+                    SwissNextRoundEvent(
                         stage_id=stage.id,
-                        stage_item_id=item.id,
+                        stage_item_id=None,
                         tournament_id=tournament_id,
                     )
-                    events.append(event)
-        else:
-            # Ungrouped Swiss stage (no items)
-            total, completed = counts.get((stage.id, None), (0, 0))
-            if total > 0 and total == completed:
-                event = SwissNextRoundEvent(
-                    stage_id=stage.id,
-                    stage_item_id=None,
-                    tournament_id=tournament_id,
                 )
-                events.append(event)
 
     if not events:
         return []
@@ -132,3 +115,13 @@ async def enqueue_swiss_next_rounds(
             )
 
     return events
+
+
+def _stage_item_ready_for_next_round(
+    encounters: list[models.Encounter],
+) -> bool:
+    if not encounters:
+        return False
+    if has_incomplete_playable_rounds(encounters):
+        return False
+    return bool(completed_encounters_in_finished_rounds(encounters))

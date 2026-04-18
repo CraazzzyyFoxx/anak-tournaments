@@ -19,6 +19,8 @@ __all__ = (
     "sort_bracket_matches",
     "is_completed_encounter",
     "completed_encounters",
+    "completed_encounters_in_finished_rounds",
+    "has_incomplete_playable_rounds",
 )
 
 
@@ -42,6 +44,43 @@ def completed_encounters(
 ) -> list[Encounter]:
     """Filter encounters through :func:`is_completed_encounter`."""
     return [e for e in encounters if is_completed_encounter(e)]
+
+
+def _playable_rounds(
+    encounters: Sequence[Encounter],
+) -> dict[int, list[Encounter]]:
+    rounds: dict[int, list[Encounter]] = {}
+    for encounter in encounters:
+        if encounter.home_team_id is None or encounter.away_team_id is None:
+            continue
+        rounds.setdefault(encounter.round, []).append(encounter)
+    return rounds
+
+
+def completed_encounters_in_finished_rounds(
+    encounters: Sequence[Encounter],
+) -> list[Encounter]:
+    """Return completed encounters that belong to fully closed playable rounds.
+
+    A round is considered playable only when both participants are known.
+    If at least one playable encounter in a round is still open/pending, the
+    whole round is ignored for standings/reseeding purposes.
+    """
+    completed: list[Encounter] = []
+    for round_encounters in _playable_rounds(encounters).values():
+        if all(is_completed_encounter(encounter) for encounter in round_encounters):
+            completed.extend(round_encounters)
+    return completed
+
+
+def has_incomplete_playable_rounds(
+    encounters: Sequence[Encounter],
+) -> bool:
+    """Return True when any playable round still has unfinished encounters."""
+    return any(
+        any(not is_completed_encounter(encounter) for encounter in round_encounters)
+        for round_encounters in _playable_rounds(encounters).values()
+    )
 
 
 def sort_bracket_matches(

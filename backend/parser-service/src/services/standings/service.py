@@ -9,6 +9,7 @@ from shared.core import enums
 from shared.core.enums import StageType
 from shared.services.tournament_utils import (
     completed_encounters as _shared_completed_encounters,
+    completed_encounters_in_finished_rounds as _shared_completed_encounters_in_finished_rounds,
 )
 from shared.services.tournament_utils import sort_bracket_matches
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -163,6 +164,13 @@ def _completed_encounters(
     return _shared_completed_encounters(encounters)
 
 
+def _completed_encounters_in_finished_rounds(
+    encounters: typing.Sequence[models.Encounter],
+) -> list[models.Encounter]:
+    """Ignore partially completed playable rounds for standings purposes."""
+    return _shared_completed_encounters_in_finished_rounds(encounters)
+
+
 def _stage_settings(stage: models.Stage | None) -> dict:
     raw = stage.settings_json if stage and stage.settings_json else {}
     return raw if isinstance(raw, dict) else {}
@@ -305,7 +313,7 @@ def prepare_teams_for_groups(
     tiebreak_order: list[str] | None = None,
     manual_positions: dict[int, int] | None = None,
 ) -> list[RankedStageTeam]:
-    completed_encounters = _completed_encounters(encounters)
+    completed_encounters = _completed_encounters_in_finished_rounds(encounters)
     team_cache: dict[int, RankedStageTeam] = {}
 
     for team_id in seed_team_ids or []:
@@ -355,7 +363,7 @@ def prepare_teams_for_playoffs_double_elimination(
     encounters: typing.Sequence[models.Encounter],
 ) -> list[schemas.StandingTeamDataWithRanking]:
     logger.info("Preparing teams for double elimination playoffs")
-    completed_encounters = _completed_encounters(encounters)
+    completed_encounters = _completed_encounters_in_finished_rounds(encounters)
     participants = list(
         {match.home_team_id for match in completed_encounters}
         | {match.away_team_id for match in completed_encounters}
@@ -427,7 +435,7 @@ def prepare_teams_for_playoffs_single_elimination(
     encounters: typing.Sequence[models.Encounter],
 ) -> list[schemas.StandingTeamDataWithRanking]:
     logger.info("Preparing teams for single elimination playoffs")
-    completed_encounters = _completed_encounters(encounters)
+    completed_encounters = _completed_encounters_in_finished_rounds(encounters)
     participants = list(
         {match.home_team_id for match in completed_encounters}
         | {match.away_team_id for match in completed_encounters}
