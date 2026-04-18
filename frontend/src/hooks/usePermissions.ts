@@ -1,12 +1,9 @@
 "use client";
 
+import { useWorkspaceStore } from "@/stores/workspace.store";
 import { useAuthProfileStore } from "@/stores/auth-profile.store";
 
-// ─── Typed role names ────────────────────────────────────────────────────────
-
 export type AppRole = "admin" | "tournament_organizer" | "moderator" | "user";
-
-// ─── Typed permission names ──────────────────────────────────────────────────
 
 export type AppPermission =
   | "achievement.calculate"
@@ -67,123 +64,217 @@ export type AppPermission =
   | "analytics.update"
   | "admin.*";
 
-// ─── Hook ────────────────────────────────────────────────────────────────────
+type AdminRouteAccessOptions = {
+  permissions?: AppPermission[];
+  workspaceId?: number | null;
+  globalOnly?: boolean;
+  workspaceAdminVisible?: boolean;
+  superuserOnly?: boolean;
+};
+
+export type PermissionProfile = {
+  isSuperuser: boolean;
+  roles: string[];
+  permissions: string[];
+  workspaces: Array<{
+    workspace_id: number;
+    memberRole: string;
+    permissions: string[];
+  }>;
+};
+
+export function isAdminPanelRole(role: string): boolean {
+  return role === "admin" || role === "tournament_organizer" || role === "moderator";
+}
+
+export function isWorkspaceAdminRole(role: string | undefined): boolean {
+  return role === "admin" || role === "owner";
+}
+
+export function hasWorkspacePermissionForProfile(
+  profile: PermissionProfile | undefined,
+  workspaceId: number,
+  permission: AppPermission,
+): boolean {
+  if (!profile) return false;
+  if (profile.isSuperuser || profile.roles.includes("admin") || profile.permissions.includes("admin.*")) {
+    return true;
+  }
+  if (profile.permissions.includes(permission)) {
+    return true;
+  }
+  const workspace = profile.workspaces.find((candidate) => candidate.workspace_id === workspaceId);
+  if (isWorkspaceAdminRole(workspace?.memberRole)) {
+    return true;
+  }
+  return workspace?.permissions.includes(permission) ?? false;
+}
+
+export function canAccessAnyPermissionForProfile(
+  profile: PermissionProfile | undefined,
+  permissions: AppPermission[],
+  workspaceId?: number | null,
+): boolean {
+  if (!profile) return false;
+  if (profile.isSuperuser || profile.roles.some(isAdminPanelRole) || profile.permissions.includes("admin.*")) {
+    return true;
+  }
+  if (workspaceId == null) {
+    return (
+      permissions.some((permission) => profile.permissions.includes(permission)) ||
+      profile.workspaces.some((workspace) => isWorkspaceAdminRole(workspace.memberRole)) ||
+      profile.workspaces.some((workspace) =>
+        permissions.some((permission) => workspace.permissions.includes(permission)),
+      )
+    );
+  }
+  return permissions.some((permission) =>
+    hasWorkspacePermissionForProfile(profile, workspaceId, permission),
+  );
+}
 
 export function usePermissions() {
   const user = useAuthProfileStore((s) => s.user);
   const status = useAuthProfileStore((s) => s.status);
+  const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
 
   const isLoaded = status !== "idle" && status !== "loading";
   const isAuthenticated = status === "authenticated";
+  const hasAdminPanelRole = user ? user.isSuperuser || user.roles.some(isAdminPanelRole) : false;
 
-  // Superusers, admins, and explicit "admin.*" permission holders pass every permission check.
   const hasWildcard =
     (user?.isSuperuser ?? false) ||
     (user?.roles.includes("admin") ?? false) ||
     (user?.permissions.includes("admin.*") ?? false);
 
-  // ─── Role checks ────────────────────────────────────────────────────────────
-
-  /** Returns true if the current user has the given role (or is superuser / has admin role). */
   const hasRole = (role: AppRole): boolean => {
     if (!isAuthenticated || !user) return false;
     if (user.isSuperuser || user.roles.includes("admin")) return true;
     return user.roles.includes(role);
   };
 
-  /** Returns true if the user has at least one of the given roles. */
-  const hasAnyRole = (roles: AppRole[]): boolean => roles.some((r) => hasRole(r));
+  const hasAnyRole = (roles: AppRole[]): boolean => roles.some((role) => hasRole(role));
+  const hasAllRoles = (roles: AppRole[]): boolean => roles.every((role) => hasRole(role));
 
-  /** Returns true if the user has ALL of the given roles. */
-  const hasAllRoles = (roles: AppRole[]): boolean => roles.every((r) => hasRole(r));
-
-  // ─── Permission checks ──────────────────────────────────────────────────────
-
-  /** Returns true if the user has the given permission.
-   *  Superusers and users with "admin.*" pass every check. */
   const hasPermission = (permission: AppPermission): boolean => {
     if (!isAuthenticated) return false;
     if (hasWildcard) return true;
     return user?.permissions.includes(permission) ?? false;
   };
 
-  /** Returns true if the user has at least one of the given permissions. */
   const hasAnyPermission = (permissions: AppPermission[]): boolean =>
-    permissions.some((p) => hasPermission(p));
+    permissions.some((permission) => hasPermission(permission));
 
-  /** Returns true if the user has ALL of the given permissions. */
   const hasAllPermissions = (permissions: AppPermission[]): boolean =>
-    permissions.every((p) => hasPermission(p));
+    permissions.every((permission) => hasPermission(permission));
 
-  // ─── Workspace-scoped checks ────────────────────────────────────────────────
-
-  /** Check if user has a permission within a specific workspace (global + workspace-scoped). */
   const hasWorkspacePermission = (workspaceId: number, permission: AppPermission): boolean => {
     if (!isAuthenticated || !user) return false;
+    return hasWorkspacePermissionForProfile(user, workspaceId, permission);
+  };
+
+  const hasAnyWorkspacePermission = (permissions: AppPermission[]): boolean => {
+    if (!isAuthenticated || !user) return false;
     if (hasWildcard) return true;
-    // Check global permissions
-    if (user.permissions.includes(permission)) return true;
-    // Check workspace-scoped permissions
-    const ws = user.workspaces?.find((w) => w.workspace_id === workspaceId);
-    return ws?.permissions.includes(permission) ?? false;
-  };
-
-  /** Check if user is admin or owner of a specific workspace. */
-  const isWorkspaceAdmin = (workspaceId: number): boolean => {
-    if (!isAuthenticated || !user) return false;
-    if (user.isSuperuser) return true;
-    const ws = user.workspaces?.find((w) => w.workspace_id === workspaceId);
-    return ws?.memberRole === "admin" || ws?.memberRole === "owner";
-  };
-
-  /** Check if user can manage RBAC for any workspace. */
-  const canManageAnyWorkspace = (): boolean => {
-    if (!isAuthenticated || !user) return false;
-    if (user.isSuperuser) return true;
     return (
-      user.workspaces?.some(
-        (w) => w.memberRole === "admin" || w.memberRole === "owner",
+      user.workspaces?.some((workspace) =>
+        permissions.some((permission) => workspace.permissions.includes(permission)),
       ) ?? false
     );
   };
 
-  /** Get workspaces user can admin. */
+  const isWorkspaceAdmin = (workspaceId: number): boolean => {
+    if (!isAuthenticated || !user) return false;
+    if (user.isSuperuser) return true;
+    const workspace = user.workspaces?.find((candidate) => candidate.workspace_id === workspaceId);
+    return isWorkspaceAdminRole(workspace?.memberRole);
+  };
+
+  const canManageAnyWorkspace = (): boolean => {
+    if (!isAuthenticated || !user) return false;
+    if (user.isSuperuser) return true;
+    return (
+      user.workspaces?.some((workspace) => isWorkspaceAdminRole(workspace.memberRole)) ?? false
+    );
+  };
+
   const getAdminWorkspaceIds = (): number[] => {
     if (!isAuthenticated || !user) return [];
     return (
       user.workspaces
-        ?.filter((w) => w.memberRole === "admin" || w.memberRole === "owner")
-        .map((w) => w.workspace_id) ?? []
+        ?.filter((workspace) => isWorkspaceAdminRole(workspace.memberRole))
+        .map((workspace) => workspace.workspace_id) ?? []
     );
   };
 
-  // ─── Semantic shortcuts ─────────────────────────────────────────────────────
+  const canAccessPermission = (
+    permission: AppPermission,
+    workspaceId: number | null | undefined = currentWorkspaceId,
+  ): boolean => {
+    if (workspaceId == null) {
+      return hasPermission(permission);
+    }
+    return hasWorkspacePermission(workspaceId, permission);
+  };
+
+  const canAccessAnyPermission = (
+    permissions: AppPermission[],
+    workspaceId: number | null | undefined = currentWorkspaceId,
+  ): boolean => {
+    if (!isAuthenticated || !user) return false;
+    return canAccessAnyPermissionForProfile(user, permissions, workspaceId);
+  };
+
+  const canAccessAdminRoute = ({
+    permissions = [],
+    workspaceId = currentWorkspaceId,
+    globalOnly = false,
+    workspaceAdminVisible = false,
+    superuserOnly = false,
+  }: AdminRouteAccessOptions): boolean => {
+    if (!isAuthenticated || !user) return false;
+    if (superuserOnly) return user.isSuperuser;
+
+    let hasAccess = false;
+
+    if (permissions.length > 0) {
+      hasAccess ||= globalOnly
+        ? hasAdminPanelRole || hasAnyPermission(permissions)
+        : canAccessAnyPermission(permissions, workspaceId);
+    }
+
+    if (workspaceAdminVisible) {
+      hasAccess ||= workspaceId == null ? canManageAnyWorkspace() : isWorkspaceAdmin(workspaceId);
+    }
+
+    if (permissions.length === 0 && !workspaceAdminVisible) {
+      hasAccess = hasAdminPanelRole || canManageAnyWorkspace();
+    }
+
+    return hasAccess;
+  };
 
   return {
-    // Loading state — use to avoid flickering UI before auth resolves
     isLoaded,
     isAuthenticated,
-
-    // Role checks
     hasRole,
     hasAnyRole,
     hasAllRoles,
-
-    // Permission checks
     hasPermission,
     hasAnyPermission,
     hasAllPermissions,
-
-    // Workspace-scoped checks
     hasWorkspacePermission,
+    hasAnyWorkspacePermission,
     isWorkspaceAdmin,
     canManageAnyWorkspace,
     getAdminWorkspaceIds,
-
-    // Semantic flags
+    canAccessPermission,
+    canAccessAnyPermission,
+    canAccessAdminRoute,
     isSuperuser: user?.isSuperuser ?? false,
     isAdmin: hasRole("admin"),
     isOrganizer: hasRole("tournament_organizer"),
     isModerator: hasRole("moderator"),
+    hasAdminPanelRole,
   };
 }

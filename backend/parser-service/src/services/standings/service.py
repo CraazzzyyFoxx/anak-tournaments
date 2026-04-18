@@ -5,14 +5,14 @@ from dataclasses import dataclass, field
 
 import sqlalchemy as sa
 from loguru import logger
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm.strategy_options import _AbstractLoad
-
 from shared.core import enums
 from shared.core.enums import StageType
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+from sqlalchemy.orm.strategy_options import _AbstractLoad
+
 from src import models, schemas
 from src.services.encounter import service as encounter_service
-
 
 GROUP_STAGE_TYPES = {StageType.ROUND_ROBIN, StageType.SWISS}
 ELIMINATION_STAGE_TYPES = {
@@ -106,6 +106,34 @@ async def delete_by_tournament(session: AsyncSession, tournament_id: int) -> Non
     await session.execute(query)
     await session.commit()
     logger.info(f"Deleted standings for tournament {tournament_id}")
+
+
+async def get_tournament_for_standings(
+    session: AsyncSession,
+    tournament_id: int,
+) -> models.Tournament | None:
+    result = await session.execute(
+        sa.select(models.Tournament)
+        .where(models.Tournament.id == tournament_id)
+        .options(
+            selectinload(models.Tournament.groups),
+            selectinload(models.Tournament.stages)
+            .selectinload(models.Stage.items)
+            .selectinload(models.StageItem.inputs),
+        )
+    )
+    return result.unique().scalars().first()
+
+
+async def recalculate_for_tournament(
+    session: AsyncSession,
+    tournament_id: int,
+) -> typing.Sequence[models.Standing]:
+    await delete_by_tournament(session, tournament_id)
+    tournament = await get_tournament_for_standings(session, tournament_id)
+    if tournament is None:
+        return []
+    return await calculate_for_tournament(session, tournament)
 
 
 def _completed_encounters(
@@ -260,6 +288,7 @@ def _calculate_head_to_head(
 def prepare_teams_for_groups(
     encounters: typing.Sequence[models.Encounter],
     *,
+    seed_team_ids: typing.Sequence[int] | None = None,
     win_points: float = 1.0,
     draw_points: float = 0.5,
     loss_points: float = 0.0,
@@ -268,6 +297,9 @@ def prepare_teams_for_groups(
 ) -> list[RankedStageTeam]:
     completed_encounters = _completed_encounters(encounters)
     team_cache: dict[int, RankedStageTeam] = {}
+
+    for team_id in seed_team_ids or []:
+        team_cache.setdefault(team_id, RankedStageTeam(team_id=team_id))
 
     for encounter in completed_encounters:
         for team_id in (encounter.home_team_id, encounter.away_team_id):
@@ -537,13 +569,28 @@ def _resolve_compat_group_id(
     )
 
 
+def _stage_item_team_ids(stage_item: models.StageItem | None) -> list[int]:
+    if stage_item is None:
+        return []
+
+    team_ids: list[int] = []
+    seen: set[int] = set()
+    for stage_input in sorted(stage_item.inputs, key=lambda item: item.slot):
+        if stage_input.team_id is None or stage_input.team_id in seen:
+            continue
+        team_ids.append(stage_input.team_id)
+        seen.add(stage_input.team_id)
+    return team_ids
+
+
 def _build_group_stage_standings(
     tournament: models.Tournament,
     stage: models.Stage,
     stage_item: models.StageItem | None,
     encounters: typing.Sequence[models.Encounter],
 ) -> list[models.Standing]:
-    if not encounters:
+    seed_team_ids = _stage_item_team_ids(stage_item)
+    if not encounters and not seed_team_ids:
         return []
 
     tiebreak_order = _tiebreak_order(stage)
@@ -553,6 +600,7 @@ def _build_group_stage_standings(
 
     teams = prepare_teams_for_groups(
         encounters,
+        seed_team_ids=seed_team_ids,
         win_points=win_points,
         draw_points=draw_points,
         loss_points=loss_points,
@@ -696,7 +744,7 @@ def sort_matches(
 async def calculate_for_tournament(
     session: AsyncSession, tournament: models.Tournament
 ) -> typing.Sequence[models.Standing]:
-    stages = sorted(list(getattr(tournament, "stages", []) or []), key=lambda stage: stage.order)
+    stages = sorted(getattr(tournament, "stages", []) or [], key=lambda stage: stage.order)
     all_standings: list[models.Standing] = []
 
     for stage in stages:

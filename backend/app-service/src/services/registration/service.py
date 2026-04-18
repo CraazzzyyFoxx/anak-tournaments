@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 import sqlalchemy as sa
+from fastapi import HTTPException
+from shared.core import enums
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -26,6 +28,36 @@ def _normalize_battle_tag(value: str | None) -> str | None:
     if not cleaned:
         return None
     return cleaned.lower()
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def is_check_in_window_active(
+    tournament: models.Tournament,
+    *,
+    now: datetime | None = None,
+) -> bool:
+    if tournament.status != enums.TournamentStatus.CHECK_IN:
+        return False
+
+    current_time = _as_utc(now or datetime.now(UTC))
+    opens_at = (
+        _as_utc(tournament.check_in_opens_at)
+        if tournament.check_in_opens_at is not None
+        else None
+    )
+    closes_at = (
+        _as_utc(tournament.check_in_closes_at)
+        if tournament.check_in_closes_at is not None
+        else None
+    )
+    return (opens_at is None or opens_at <= current_time) and (
+        closes_at is None or current_time <= closes_at
+    )
 
 
 async def get_registration_form(
@@ -53,6 +85,7 @@ async def get_registration(
             models.BalancerRegistration.deleted_at.is_(None),
         )
         .options(selectinload(models.BalancerRegistration.roles))
+        .options(selectinload(models.BalancerRegistration.tournament))
     )
     return result.scalar_one_or_none()
 
@@ -142,3 +175,23 @@ async def withdraw_registration(
 ) -> None:
     registration.status = "withdrawn"
     await session.commit()
+
+
+async def check_in_registration(
+    session: AsyncSession,
+    registration: models.BalancerRegistration,
+    *,
+    checked_in_by: int | None,
+) -> models.BalancerRegistration:
+    if registration.status != "approved":
+        raise HTTPException(status_code=409, detail="Registration must be approved before check-in")
+
+    if not is_check_in_window_active(registration.tournament):
+        raise HTTPException(status_code=409, detail="Check-in is not active for this tournament")
+
+    registration.checked_in = True
+    registration.checked_in_at = datetime.now(UTC)
+    registration.checked_in_by = checked_in_by
+    await session.commit()
+    await session.refresh(registration)
+    return registration

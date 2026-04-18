@@ -30,6 +30,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { usePermissions } from "@/hooks/usePermissions";
 import { useToast } from "@/hooks/use-toast";
 import { getStatusIcon, STATUS_ICON_OPTIONS } from "@/lib/status-icons";
 import { mergeStatusOptions } from "@/lib/balancer-statuses";
@@ -323,12 +324,14 @@ function StatusForm({
 
 export default function AdminBalancerPage() {
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
+  const { canAccessPermission } = usePermissions();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [createOpen, setCreateOpen] = useState(false);
   const [editingStatus, setEditingStatus] = useState<BalancerCustomStatus | null>(null);
   const [deletingStatus, setDeletingStatus] = useState<BalancerCustomStatus | null>(null);
   const [form, setForm] = useState<StatusFormState>(EMPTY_FORM);
+  const canManageStatuses = canAccessPermission("team.import", workspaceId);
 
   const statusesQuery = useQuery({
     queryKey: ["balancer-admin", "status-catalog", workspaceId],
@@ -460,7 +463,7 @@ export default function AdminBalancerPage() {
                   Built-in statuses stay system-controlled. Custom statuses add extra labels for this workspace.
                 </CardDescription>
               </div>
-              <Button size="sm" onClick={() => openCreate(scope)}>
+              <Button size="sm" onClick={() => openCreate(scope)} disabled={!canManageStatuses}>
                 <Plus className="mr-2 size-4" />
                 Add
               </Button>
@@ -504,11 +507,21 @@ export default function AdminBalancerPage() {
                           <TableCell className="text-sm text-muted-foreground">{statusRow.description ?? "-"}</TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
-                              <Button size="icon" variant="ghost" onClick={() => openEdit(statusRow)}>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => openEdit(statusRow)}
+                                disabled={!canManageStatuses}
+                              >
                                 <Pencil className="size-4" />
                               </Button>
                               {statusRow.can_reset ? (
-                                <Button size="icon" variant="ghost" onClick={() => setDeletingStatus(statusRow)}>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => setDeletingStatus(statusRow)}
+                                  disabled={!canManageStatuses}
+                                >
                                   <Trash2 className="size-4" />
                                 </Button>
                               ) : null}
@@ -565,10 +578,20 @@ export default function AdminBalancerPage() {
                           <TableCell className="text-sm text-muted-foreground">{statusRow.description ?? "-"}</TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
-                              <Button size="icon" variant="ghost" onClick={() => openEdit(statusRow)}>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => openEdit(statusRow)}
+                                disabled={!canManageStatuses}
+                              >
                                 <Pencil className="size-4" />
                               </Button>
-                              <Button size="icon" variant="ghost" onClick={() => setDeletingStatus(statusRow)}>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => setDeletingStatus(statusRow)}
+                                disabled={!canManageStatuses}
+                              >
                                 <Trash2 className="size-4" />
                               </Button>
                             </div>
@@ -606,7 +629,7 @@ export default function AdminBalancerPage() {
                   description: form.description || null,
                 })
               }
-              disabled={createMutation.isPending || !form.name.trim()}
+              disabled={createMutation.isPending || !form.name.trim() || !canManageStatuses}
             >
               Create
             </Button>
@@ -657,7 +680,12 @@ export default function AdminBalancerPage() {
                   data,
                 });
               }}
-              disabled={(updateMutation.isPending || updateBuiltinMutation.isPending) || !form.name.trim()}
+              disabled={
+                updateMutation.isPending ||
+                updateBuiltinMutation.isPending ||
+                !form.name.trim() ||
+                !canManageStatuses
+              }
             >
               Save
             </Button>
@@ -687,7 +715,7 @@ export default function AdminBalancerPage() {
                 }
                 deleteMutation.mutate(deletingStatus.id);
               }}
-              disabled={deleteMutation.isPending || resetBuiltinMutation.isPending}
+              disabled={deleteMutation.isPending || resetBuiltinMutation.isPending || !canManageStatuses}
             >
               {deletingStatus?.kind === "builtin" ? "Reset" : "Delete"}
             </Button>

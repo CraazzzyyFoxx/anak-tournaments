@@ -17,7 +17,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { usePermissions } from "@/hooks/usePermissions";
 import adminService from "@/services/admin.service";
-import type { Stage, StageType } from "@/types/tournament.types";
+import teamService from "@/services/team.service";
+import type { Stage, StageItem, StageItemType, StageType } from "@/types/tournament.types";
+import type { Team } from "@/types/team.types";
 
 const STAGE_TYPE_LABELS: Record<StageType, string> = {
   round_robin: "Round Robin",
@@ -26,19 +28,49 @@ const STAGE_TYPE_LABELS: Record<StageType, string> = {
   swiss: "Swiss"
 };
 
+const STAGE_ITEM_TYPE_LABELS: Record<StageItemType, string> = {
+  group: "Group",
+  bracket_upper: "Upper Bracket",
+  bracket_lower: "Lower Bracket",
+  single_bracket: "Single Bracket"
+};
+
 interface StageManagerProps {
   tournamentId: number;
+}
+
+interface StageItemDraft {
+  name: string;
+  type: StageItemType;
 }
 
 function getStageTeamSlots(stage: Stage) {
   return stage.items.reduce((acc, item) => acc + item.inputs.length, 0);
 }
 
-function formatStageItemType(value: string) {
-  return value
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
+function getDefaultStageItemType(stageType: StageType): StageItemType {
+  if (stageType === "single_elimination") return "single_bracket";
+  if (stageType === "double_elimination") return "bracket_upper";
+  return "group";
+}
+
+function getNextInputSlot(item: StageItem) {
+  return item.inputs.reduce((max, input) => Math.max(max, input.slot), 0) + 1;
+}
+
+function getAssignedTeamIds(stage: Stage) {
+  return new Set(
+    stage.items.flatMap((item) =>
+      item.inputs
+        .map((input) => input.team_id)
+        .filter((teamId): teamId is number => teamId != null)
+    )
+  );
+}
+
+function getTeamName(teamById: Map<number, Team>, teamId: number | null) {
+  if (teamId == null) return "Empty slot";
+  return teamById.get(teamId)?.name ?? `Team #${teamId}`;
 }
 
 export function StageManager({ tournamentId }: StageManagerProps) {
@@ -47,11 +79,33 @@ export function StageManager({ tournamentId }: StageManagerProps) {
   const [newStageName, setNewStageName] = useState("");
   const [newStageType, setNewStageType] = useState<StageType>("round_robin");
   const [stageTypeDrafts, setStageTypeDrafts] = useState<Record<number, StageType>>({});
+  const [stageItemDrafts, setStageItemDrafts] = useState<Record<number, StageItemDraft>>({});
+  const [teamDrafts, setTeamDrafts] = useState<Record<number, string>>({});
 
   const { data: stages = [], isLoading } = useQuery({
     queryKey: ["admin", "stages", tournamentId],
     queryFn: () => adminService.getStages(tournamentId)
   });
+
+  const { data: teamsData, isLoading: isTeamsLoading } = useQuery({
+    queryKey: ["admin", "tournament", "teams", tournamentId],
+    queryFn: () => teamService.getAll(tournamentId, "name", "asc")
+  });
+
+  const teams = teamsData?.results ?? [];
+  const teamById = new Map(teams.map((team) => [team.id, team]));
+
+  const invalidateStageData = () => {
+    queryClient.invalidateQueries({ queryKey: ["admin", "stages", tournamentId] });
+    queryClient.invalidateQueries({ queryKey: ["standings", tournamentId] });
+    queryClient.invalidateQueries({
+      queryKey: ["admin", "tournament", tournamentId, "standings"]
+    });
+    queryClient.invalidateQueries({
+      queryKey: ["admin", "tournament", tournamentId, "encounters"]
+    });
+    queryClient.invalidateQueries({ queryKey: ["encounters", "tournament", tournamentId] });
+  };
 
   const createMutation = useMutation({
     mutationFn: () =>
@@ -61,9 +115,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
         order: stages.length
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["admin", "stages", tournamentId]
-      });
+      invalidateStageData();
       setNewStageName("");
     }
   });
@@ -77,36 +129,75 @@ export function StageManager({ tournamentId }: StageManagerProps) {
         delete next[variables.stageId];
         return next;
       });
-      queryClient.invalidateQueries({
-        queryKey: ["admin", "stages", tournamentId]
-      });
+      invalidateStageData();
     }
   });
 
   const activateMutation = useMutation({
     mutationFn: (stageId: number) => adminService.activateStage(stageId),
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["admin", "stages", tournamentId]
-      });
+      invalidateStageData();
     }
   });
 
   const generateMutation = useMutation({
     mutationFn: (stageId: number) => adminService.generateBracket(stageId),
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["admin", "stages", tournamentId]
-      });
+      invalidateStageData();
     }
   });
 
   const deleteMutation = useMutation({
     mutationFn: (stageId: number) => adminService.deleteStage(stageId),
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["admin", "stages", tournamentId]
+      invalidateStageData();
+    }
+  });
+
+  const createItemMutation = useMutation({
+    mutationFn: ({
+      stageId,
+      name,
+      type,
+      order
+    }: {
+      stageId: number;
+      name: string;
+      type: StageItemType;
+      order: number;
+    }) => adminService.createStageItem(stageId, { name, type, order }),
+    onSuccess: (_item, variables) => {
+      setStageItemDrafts((current) => {
+        const next = { ...current };
+        delete next[variables.stageId];
+        return next;
       });
+      invalidateStageData();
+    }
+  });
+
+  const createInputMutation = useMutation({
+    mutationFn: ({
+      stageItemId,
+      slot,
+      teamId
+    }: {
+      stageItemId: number;
+      slot: number;
+      teamId: number;
+    }) =>
+      adminService.createStageItemInput(stageItemId, {
+        slot,
+        input_type: "final",
+        team_id: teamId
+      }),
+    onSuccess: (_input, variables) => {
+      setTeamDrafts((current) => {
+        const next = { ...current };
+        delete next[variables.stageItemId];
+        return next;
+      });
+      invalidateStageData();
     }
   });
 
@@ -196,13 +287,22 @@ export function StageManager({ tournamentId }: StageManagerProps) {
 
       {stages.map((stage: Stage) => {
         const stageTypeDraft = stageTypeDrafts[stage.id] ?? stage.stage_type;
+        const itemDraft = stageItemDrafts[stage.id] ?? {
+          name: "",
+          type: getDefaultStageItemType(stage.stage_type)
+        };
         const isTypeDirty = stageTypeDraft !== stage.stage_type;
         const isUpdatingType =
           updateStageMutation.isPending && updateStageMutation.variables?.stageId === stage.id;
         const isActivating = activateMutation.isPending && activateMutation.variables === stage.id;
         const isGenerating = generateMutation.isPending && generateMutation.variables === stage.id;
         const isDeleting = deleteMutation.isPending && deleteMutation.variables === stage.id;
+        const isCreatingItem =
+          createItemMutation.isPending && createItemMutation.variables?.stageId === stage.id;
         const teamSlots = getStageTeamSlots(stage);
+        const assignedTeamIds = getAssignedTeamIds(stage);
+        const nextItemName =
+          itemDraft.type === "group" ? `Group ${stage.items.length + 1}` : "Bracket";
 
         return (
           <Card key={stage.id} className="overflow-hidden">
@@ -290,19 +390,96 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                   </p>
                 </div>
                 {stage.items.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
+                  <div className="grid gap-3 xl:grid-cols-2">
                     {stage.items.map((item) => (
                       <div
                         key={item.id}
-                        className="flex min-w-[220px] items-center justify-between gap-3 rounded-md border border-border/60 bg-muted/20 px-3 py-2"
+                        className="space-y-3 rounded-md border border-border/60 bg-muted/20 px-3 py-3"
                       >
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium">{item.name}</p>
-                          <p className="text-xs text-muted-foreground">{item.inputs.length} slot(s)</p>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium">{item.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {item.inputs.length} slot(s)
+                            </p>
+                          </div>
+                          <Badge variant="secondary" className="shrink-0 text-[11px]">
+                            {STAGE_ITEM_TYPE_LABELS[item.type]}
+                          </Badge>
                         </div>
-                        <Badge variant="secondary" className="shrink-0 text-[11px]">
-                          {formatStageItemType(item.type)}
-                        </Badge>
+
+                        {item.inputs.length > 0 ? (
+                          <div className="space-y-1">
+                            {[...item.inputs]
+                              .sort((left, right) => left.slot - right.slot)
+                              .map((input) => (
+                                <div
+                                  key={input.id}
+                                  className="flex items-center justify-between gap-2 rounded-md border border-border/50 bg-background/50 px-2.5 py-1.5 text-xs"
+                                >
+                                  <span className="min-w-0 truncate">
+                                    #{input.slot} {getTeamName(teamById, input.team_id)}
+                                  </span>
+                                  <Badge variant="outline" className="shrink-0 text-[10px]">
+                                    {input.input_type}
+                                  </Badge>
+                                </div>
+                              ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">No teams assigned yet.</p>
+                        )}
+
+                        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                          <Select
+                            value={teamDrafts[item.id]}
+                            onValueChange={(value) =>
+                              setTeamDrafts((current) => ({ ...current, [item.id]: value }))
+                            }
+                            disabled={isTeamsLoading || teams.length === 0}
+                          >
+                            <SelectTrigger className="h-9">
+                              <SelectValue
+                                placeholder={isTeamsLoading ? "Loading teams..." : "Select team"}
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {teams.map((team) => (
+                                <SelectItem
+                                  key={team.id}
+                                  value={team.id.toString()}
+                                  disabled={assignedTeamIds.has(team.id)}
+                                >
+                                  {team.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={
+                              createInputMutation.isPending ||
+                              !teamDrafts[item.id] ||
+                              assignedTeamIds.has(Number(teamDrafts[item.id]))
+                            }
+                            onClick={() =>
+                              createInputMutation.mutate({
+                                stageItemId: item.id,
+                                slot: getNextInputSlot(item),
+                                teamId: Number(teamDrafts[item.id])
+                              })
+                            }
+                          >
+                            {createInputMutation.isPending &&
+                            createInputMutation.variables?.stageItemId === item.id ? (
+                              <Loader2 className="mr-2 size-4 animate-spin" />
+                            ) : (
+                              <Plus className="mr-2 size-4" />
+                            )}
+                            Add Team
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -311,6 +488,73 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                     This stage has no structure items yet.
                   </p>
                 )}
+
+                <div className="mt-3 grid gap-2 border-t border-border/60 pt-3 lg:grid-cols-[minmax(0,1fr)_200px_auto] lg:items-end">
+                  <div className="space-y-1.5">
+                    <Label htmlFor={`stage-item-name-${stage.id}`} className="text-xs">
+                      Structure item name
+                    </Label>
+                    <Input
+                      id={`stage-item-name-${stage.id}`}
+                      className="h-9"
+                      placeholder={nextItemName}
+                      value={itemDraft.name}
+                      onChange={(event) =>
+                        setStageItemDrafts((current) => ({
+                          ...current,
+                          [stage.id]: { ...itemDraft, name: event.target.value }
+                        }))
+                      }
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor={`stage-item-type-${stage.id}`} className="text-xs">
+                      Type
+                    </Label>
+                    <Select
+                      value={itemDraft.type}
+                      onValueChange={(value) =>
+                        setStageItemDrafts((current) => ({
+                          ...current,
+                          [stage.id]: { ...itemDraft, type: value as StageItemType }
+                        }))
+                      }
+                    >
+                      <SelectTrigger id={`stage-item-type-${stage.id}`} className="h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(STAGE_ITEM_TYPE_LABELS).map(([value, label]) => (
+                          <SelectItem key={value} value={value}>
+                            {label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={isCreatingItem}
+                    onClick={() =>
+                      createItemMutation.mutate({
+                        stageId: stage.id,
+                        name: itemDraft.name.trim() || nextItemName,
+                        type: itemDraft.type,
+                        order: stage.items.length
+                      })
+                    }
+                  >
+                    {isCreatingItem ? (
+                      <Loader2 className="mr-2 size-4 animate-spin" />
+                    ) : (
+                      <Plus className="mr-2 size-4" />
+                    )}
+                    {isCreatingItem ? "Adding..." : "Add Structure"}
+                  </Button>
+                </div>
               </div>
 
               {isSuperuser ? (

@@ -7,7 +7,7 @@ import {
   InternalBalancePayload,
   SavedBalance
 } from "@/types/balancer-admin.types";
-import { BalanceResponse } from "@/types/balancer.types";
+import { BalanceResponse, BalancerConfig } from "@/types/balancer.types";
 import { UserRoleType } from "@/types/user.types";
 import type { DivisionGrid, DivisionGridVersion } from "@/types/workspace.types";
 import { DEFAULT_DIVISION_GRID, resolveDivisionFromRank } from "@/lib/division-grid";
@@ -21,6 +21,7 @@ export type BalanceVariant = {
   label: string;
   payload: InternalBalancePayload;
   source: "saved" | "generated";
+  config?: BalancerConfig | null;
   /** Number of pool players excluded from this run due to validation issues */
   skippedCount?: number;
 };
@@ -280,7 +281,8 @@ export function buildVariantFromSavedBalance(balance: SavedBalance): BalanceVari
     id: `saved-${balance.id}`,
     label: `Saved balance #${balance.id}`,
     payload: normalizeInternalPayload(balance.result_json),
-    source: "saved"
+    source: "saved",
+    config: balance.config_json as BalancerConfig | null
   };
 }
 

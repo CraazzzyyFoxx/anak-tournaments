@@ -158,7 +158,7 @@ function getFormData(rule: AchievementRule): AchievementRuleUpdateInput {
 export default function AchievementsPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { hasPermission } = usePermissions();
+  const { canAccessPermission } = usePermissions();
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
 
   // CRUD state
@@ -186,9 +186,9 @@ export default function AchievementsPage() {
   const [overrideReason, setOverrideReason] = useState("");
   const [overrideTournamentId, setOverrideTournamentId] = useState<number | undefined>(undefined);
 
-  const canCreate = hasPermission("achievement.create");
-  const canUpdate = hasPermission("achievement.update");
-  const canDelete = hasPermission("achievement.delete");
+  const canCreate = canAccessPermission("achievement.create", workspaceId);
+  const canUpdate = canAccessPermission("achievement.update", workspaceId);
+  const canDelete = canAccessPermission("achievement.delete", workspaceId);
 
   const cacheKey = ["admin", "achievements", workspaceId];
 

@@ -10,6 +10,8 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import { EncounterScoreControls } from "@/components/admin/EncounterScoreControls";
+import { isGroupStageScoreContext } from "@/components/admin/encounter-score";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import encounterService from "@/services/encounter.service";
@@ -30,6 +32,7 @@ import {
 } from "@/components/ui/select";
 import { usePermissions } from "@/hooks/usePermissions";
 import { hasUnsavedChanges } from "@/lib/form-change";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 
 const ENCOUNTER_STATUS_OPTIONS = ["OPEN", "PENDING", "COMPLETED"] as const;
 
@@ -90,11 +93,12 @@ function getEncounterStageLabel(encounter: Encounter): string {
 export default function EncountersPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const { hasPermission } = usePermissions();
+  const { canAccessPermission } = usePermissions();
+  const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const queryClient = useQueryClient();
-  const canCreate = hasPermission("match.create");
-  const canUpdate = hasPermission("match.update");
-  const canDelete = hasPermission("match.delete");
+  const canCreate = canAccessPermission("match.create", workspaceId);
+  const canUpdate = canAccessPermission("match.update", workspaceId);
+  const canDelete = canAccessPermission("match.delete", workspaceId);
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -228,6 +232,10 @@ export default function EncountersPage() {
   const editFormInitial = selectedEncounter ? getEditEncounterForm(selectedEncounter) : createFormInitial;
   const isCreateDirty = createDialogOpen && hasUnsavedChanges(formData, createFormInitial);
   const isEditDirty = editDialogOpen && hasUnsavedChanges(formData, editFormInitial);
+  const selectedFormStage = stagesData.find((stage) => stage.id === formData.stage_id) ?? null;
+  const selectedFormStageItem =
+    selectedFormStage?.items.find((item) => item.id === formData.stage_item_id) ?? null;
+  const isGroupStageForm = isGroupStageScoreContext(selectedFormStage, selectedFormStageItem);
 
   const getStatusIcon = (status: string) => {
     switch (normalizeEncounterStatus(status)) {
@@ -519,33 +527,28 @@ export default function EncountersPage() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="home_score">Home Score</Label>
-              <Input
-                id="home_score"
-                type="number"
-                value={(formData as EncounterCreateInput).home_score}
-                onChange={(e) =>
-                  setFormData({ ...formData, home_score: parseInt(e.target.value) })
-                }
-                min="0"
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="away_score">Away Score</Label>
-              <Input
-                id="away_score"
-                type="number"
-                value={(formData as EncounterCreateInput).away_score}
-                onChange={(e) =>
-                  setFormData({ ...formData, away_score: parseInt(e.target.value) })
-                }
-                min="0"
-              />
-            </div>
-          </div>
+          <EncounterScoreControls
+            idPrefix="encounter-create"
+            homeScore={(formData as EncounterCreateInput).home_score ?? 0}
+            awayScore={(formData as EncounterCreateInput).away_score ?? 0}
+            presetLabel={isGroupStageForm ? "Group stage presets" : "Result presets"}
+            showGroupStageHint={isGroupStageForm}
+            onScoreChange={(score) =>
+              setFormData({
+                ...formData,
+                home_score: score.homeScore,
+                away_score: score.awayScore,
+              })
+            }
+            onPresetSelect={(score) =>
+              setFormData({
+                ...formData,
+                home_score: score.homeScore,
+                away_score: score.awayScore,
+                status: "COMPLETED",
+              })
+            }
+          />
 
           <div>
             <Label htmlFor="status">Status</Label>
@@ -661,33 +664,28 @@ export default function EncountersPage() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="edit-home_score">Home Score</Label>
-              <Input
-                id="edit-home_score"
-                type="number"
-                value={(formData as EncounterUpdateInput).home_score}
-                onChange={(e) =>
-                  setFormData({ ...formData, home_score: parseInt(e.target.value) })
-                }
-                min="0"
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="edit-away_score">Away Score</Label>
-              <Input
-                id="edit-away_score"
-                type="number"
-                value={(formData as EncounterUpdateInput).away_score}
-                onChange={(e) =>
-                  setFormData({ ...formData, away_score: parseInt(e.target.value) })
-                }
-                min="0"
-              />
-            </div>
-          </div>
+          <EncounterScoreControls
+            idPrefix="encounter-edit"
+            homeScore={(formData as EncounterUpdateInput).home_score ?? 0}
+            awayScore={(formData as EncounterUpdateInput).away_score ?? 0}
+            presetLabel={isGroupStageForm ? "Group stage presets" : "Result presets"}
+            showGroupStageHint={isGroupStageForm}
+            onScoreChange={(score) =>
+              setFormData({
+                ...formData,
+                home_score: score.homeScore,
+                away_score: score.awayScore,
+              })
+            }
+            onPresetSelect={(score) =>
+              setFormData({
+                ...formData,
+                home_score: score.homeScore,
+                away_score: score.awayScore,
+                status: "COMPLETED",
+              })
+            }
+          />
 
           <div>
             <Label htmlFor="edit-status">Status</Label>

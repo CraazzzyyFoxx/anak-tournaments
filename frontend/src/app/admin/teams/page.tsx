@@ -28,6 +28,7 @@ import {
 import { usePermissions } from "@/hooks/usePermissions";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import { paginateResults, sortArray } from "@/lib/paginate-results";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 
 interface TeamFormData {
   name: string;
@@ -63,11 +64,12 @@ function getEditTeamForm(team: Team): TeamFormData {
 export default function TeamsPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const { hasPermission } = usePermissions();
+  const { canAccessPermission } = usePermissions();
+  const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const queryClient = useQueryClient();
-  const canCreate = hasPermission("team.create");
-  const canUpdate = hasPermission("team.update");
-  const canDelete = hasPermission("team.delete");
+  const canCreate = canAccessPermission("team.create", workspaceId);
+  const canUpdate = canAccessPermission("team.update", workspaceId);
+  const canDelete = canAccessPermission("team.delete", workspaceId);
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);

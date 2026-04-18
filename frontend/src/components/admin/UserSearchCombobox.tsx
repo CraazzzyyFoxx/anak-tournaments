@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { useDebounce } from "use-debounce";
@@ -20,6 +20,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 interface UserSearchComboboxProps {
+  id?: string;
   value?: number;
   selectedName?: string;
   onSelect: (user: MinimizedUser | undefined) => void;
@@ -30,6 +31,7 @@ interface UserSearchComboboxProps {
 }
 
 export function UserSearchCombobox({
+  id,
   value,
   selectedName,
   onSelect,
@@ -42,15 +44,6 @@ export function UserSearchCombobox({
   const [searchValue, setSearchValue] = useState("");
   const [debouncedSearch] = useDebounce(searchValue, 250);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const [contentWidth, setContentWidth] = useState<number | undefined>(undefined);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    setContentWidth(triggerRef.current?.offsetWidth);
-  }, [open]);
 
   const normalizedQuery = debouncedSearch.trim();
   const shouldSearch = normalizedQuery.length >= 2;
@@ -103,6 +96,7 @@ export function UserSearchCombobox({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
+          id={id}
           ref={triggerRef}
           type="button"
           variant="outline"
@@ -117,11 +111,7 @@ export function UserSearchCombobox({
           <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent
-        align="start"
-        className="p-0"
-        style={contentWidth ? { width: `${contentWidth}px` } : undefined}
-      >
+      <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-0">
         <Command>
           <CommandInput value={searchValue} onValueChange={setSearchValue} placeholder={searchPlaceholder} />
           <CommandList>

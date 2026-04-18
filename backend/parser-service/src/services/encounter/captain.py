@@ -1,15 +1,16 @@
 """Captain match result submission: submit, confirm, dispute."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import HTTPException, status
+from shared.core.enums import EncounterResultStatus, EncounterStatus
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from shared.core.enums import EncounterResultStatus, EncounterStatus
 from src import models
 from src.services.challonge import sync as challonge_sync
+from src.services.standings import service as standings_service
 
 
 async def resolve_captain_side(
@@ -92,11 +93,13 @@ async def submit_result(
     encounter.away_score = away_score
     encounter.result_status = EncounterResultStatus.PENDING_CONFIRMATION
     encounter.submitted_by_id = auth_user.id
-    encounter.submitted_at = datetime.now(timezone.utc)
+    encounter.submitted_at = datetime.now(UTC)
     encounter.confirmed_by_id = None
     encounter.confirmed_at = None
 
+    tournament_id = encounter.tournament_id
     await session.commit()
+    await standings_service.recalculate_for_tournament(session, tournament_id)
     await session.refresh(encounter)
     return encounter
 
@@ -115,7 +118,7 @@ async def confirm_result(
             detail="No pending result to confirm",
         )
 
-    side = await resolve_captain_side(session, auth_user, encounter)
+    await resolve_captain_side(session, auth_user, encounter)
 
     # Must be the OTHER captain (not the one who submitted)
     if encounter.submitted_by_id == auth_user.id:
@@ -126,15 +129,17 @@ async def confirm_result(
 
     encounter.result_status = EncounterResultStatus.CONFIRMED
     encounter.confirmed_by_id = auth_user.id
-    encounter.confirmed_at = datetime.now(timezone.utc)
+    encounter.confirmed_at = datetime.now(UTC)
     encounter.status = EncounterStatus.COMPLETED
 
+    tournament_id = encounter.tournament_id
     await session.commit()
 
     # Auto-push to Challonge if linked
     if encounter.challonge_id:
         await challonge_sync.auto_push_on_confirm(session, encounter.id)
 
+    await standings_service.recalculate_for_tournament(session, tournament_id)
     await session.refresh(encounter)
     return encounter
 
@@ -158,6 +163,8 @@ async def dispute_result(
 
     encounter.result_status = EncounterResultStatus.DISPUTED
 
+    tournament_id = encounter.tournament_id
     await session.commit()
+    await standings_service.recalculate_for_tournament(session, tournament_id)
     await session.refresh(encounter)
     return encounter

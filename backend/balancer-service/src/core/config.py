@@ -30,6 +30,15 @@ class AlgorithmConfig(BaseSettings):
     ELITISM_RATE: float = Field(default=0.2, ge=0.0, le=1.0)
     MUTATION_RATE: float = Field(default=0.4, ge=0.0, le=1.0)
     MUTATION_STRENGTH: int = Field(default=3, ge=1, le=10)
+    STAGNATION_THRESHOLD: int = Field(
+        default=30,
+        ge=1,
+        le=500,
+        description=(
+            "Number of generations without best-cost improvement before reseeding "
+            "the bottom 70% of the population (elite preserved)."
+        ),
+    )
 
     # Cost function weights
     MMR_DIFF_WEIGHT: float = Field(default=3.0, ge=0.0)
@@ -40,6 +49,15 @@ class AlgorithmConfig(BaseSettings):
     MAX_DISCOMFORT_WEIGHT: float = Field(default=1.5, ge=0.0)
     ROLE_BALANCE_WEIGHT: float = Field(default=1.0, ge=0.0)
     ROLE_SPREAD_WEIGHT: float = Field(default=1.0, ge=0.0)
+    INTRA_TEAM_STD_WEIGHT: float = Field(default=0.0, ge=0.0)
+    SUBROLE_COLLISION_WEIGHT: float = Field(
+        default=5.0,
+        ge=0.0,
+        description=(
+            "Penalty weight per subclass-collision pair in a team "
+            "(e.g., two players with the same subclass on the same role)."
+        ),
+    )
 
     # Strategy configuration
     USE_CAPTAINS: bool = Field(default=True)
@@ -48,8 +66,21 @@ class AlgorithmConfig(BaseSettings):
     )
 
     # Algorithm selection
-    ALGORITHM: typing.Literal["genetic", "cpsat"] = Field(default="genetic")
+    ALGORITHM: typing.Literal["genetic", "genetic_moo", "cpsat", "nsga"] = Field(default="genetic")
     MAX_CPSAT_SOLUTIONS: int = Field(default=3, ge=1, le=5)
+    MAX_GENETIC_SOLUTIONS: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description=(
+            "Maximum number of Pareto solutions returned by the genetic_moo "
+            "algorithm (multi-objective legacy GA)."
+        ),
+    )
+
+    # NSGA-II (mixtura-balancer) settings
+    MAX_NSGA_SOLUTIONS: int = Field(default=10, ge=1, le=50)
+    MIXTURA_QUEUE: str = Field(default="mix_balance_service.balance")
 
 
 class Settings(BaseServiceSettings):

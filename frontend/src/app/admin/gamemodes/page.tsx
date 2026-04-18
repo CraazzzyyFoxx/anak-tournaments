@@ -25,22 +25,24 @@ import adminService from "@/services/admin.service";
 import type { Gamemode, GamemodeCreateInput, GamemodeUpdateInput } from "@/types/admin.types";
 import { usePermissions } from "@/hooks/usePermissions";
 import { hasUnsavedChanges } from "@/lib/form-change";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 
 const emptyGamemodeForm: GamemodeCreateInput = { name: "" };
 
 export default function GamemodesAdminPage() {
   const queryClient = useQueryClient();
-  const { hasPermission } = usePermissions();
+  const { canAccessPermission } = usePermissions();
+  const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingGamemode, setEditingGamemode] = useState<Gamemode | null>(null);
   const [deletingGamemode, setDeletingGamemode] = useState<Gamemode | null>(null);
   const [formData, setFormData] = useState<GamemodeCreateInput | GamemodeUpdateInput>({
     ...emptyGamemodeForm,
   });
-  const canCreate = hasPermission("gamemode.create");
-  const canUpdate = hasPermission("gamemode.update");
-  const canDelete = hasPermission("gamemode.delete");
-  const canSync = hasPermission("gamemode.sync");
+  const canCreate = canAccessPermission("gamemode.create", workspaceId);
+  const canUpdate = canAccessPermission("gamemode.update", workspaceId);
+  const canDelete = canAccessPermission("gamemode.delete", workspaceId);
+  const canSync = canAccessPermission("gamemode.sync", workspaceId);
 
   const createMutation = useMutation({
     mutationFn: (data: GamemodeCreateInput) => adminService.createGamemode(data),

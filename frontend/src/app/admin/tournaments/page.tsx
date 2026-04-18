@@ -97,12 +97,12 @@ function getUpdatePayload(formData: TournamentFormData): TournamentUpdateInput {
 export default function TournamentsPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const { hasPermission } = usePermissions();
+  const { canAccessPermission } = usePermissions();
   const queryClient = useQueryClient();
   const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
-  const canCreate = hasPermission("tournament.create");
-  const canUpdate = hasPermission("tournament.update");
-  const canDelete = hasPermission("tournament.delete");
+  const canCreate = canAccessPermission("tournament.create", currentWorkspaceId);
+  const canUpdate = canAccessPermission("tournament.update", currentWorkspaceId);
+  const canDelete = canAccessPermission("tournament.delete", currentWorkspaceId);
 
   const divisionGridsQuery = useQuery({
     queryKey: ["admin", "tournaments", "create", "division-grids", currentWorkspaceId],

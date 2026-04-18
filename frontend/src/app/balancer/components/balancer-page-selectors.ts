@@ -157,7 +157,8 @@ export function getCanRunBalance(options: {
 export function getPresetOptions(
   presets: Record<string, unknown> | null | undefined,
 ): string[] {
-  return Object.keys(presets ?? { DEFAULT: {} });
+  const options = Object.keys(presets ?? {});
+  return options.length > 0 ? options : ["DEFAULT"];
 }
 
 export function toggleCollapsedTeamId(

@@ -58,26 +58,22 @@ const TournamentLogsTab = dynamic(
   { loading: () => tabFallback }
 );
 
+function UnauthorizedTournamentWorkspaceState() {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Unauthorized</CardTitle>
+        <CardDescription>You do not have permission to access this tournament workspace.</CardDescription>
+      </CardHeader>
+    </Card>
+  );
+}
+
 export default function AdminTournamentWorkspacePage() {
   const params = useParams<{ id: string }>();
   const tournamentId = Number(params.id);
-  const { hasPermission, isSuperuser } = usePermissions();
+  const { canAccessPermission, isSuperuser } = usePermissions();
   const [activeTab, setActiveTab] = useState<TournamentWorkspaceTab>("overview");
-
-  const canUpdateTournament = hasPermission("tournament.update");
-  const canDeleteTournament = hasPermission("tournament.delete");
-  const canReadAnalytics = hasPermission("analytics.read");
-  const canCreateTeam = hasPermission("team.create");
-  const canUpdateTeam = hasPermission("team.update");
-  const canDeleteTeam = hasPermission("team.delete");
-  const canImportTeams = hasPermission("team.import");
-  const canCreateEncounter = hasPermission("match.create");
-  const canUpdateEncounter = hasPermission("match.update");
-  const canDeleteEncounter = hasPermission("match.delete");
-  const canSyncEncounters = hasPermission("match.sync");
-  const canUpdateStanding = hasPermission("standing.update");
-  const canDeleteStanding = hasPermission("standing.delete");
-  const canRecalculateStandings = hasPermission("standing.recalculate");
 
   const tournamentQuery = useQuery({
     queryKey: ["admin", "tournament", tournamentId],
@@ -120,6 +116,21 @@ export default function AdminTournamentWorkspacePage() {
   });
 
   const tournament = tournamentQuery.data;
+  const tournamentWorkspaceId = tournament?.workspace_id ?? null;
+  const canUpdateTournament = canAccessPermission("tournament.update", tournamentWorkspaceId);
+  const canDeleteTournament = canAccessPermission("tournament.delete", tournamentWorkspaceId);
+  const canReadAnalytics = canAccessPermission("analytics.read", tournamentWorkspaceId);
+  const canCreateTeam = canAccessPermission("team.create", tournamentWorkspaceId);
+  const canUpdateTeam = canAccessPermission("team.update", tournamentWorkspaceId);
+  const canDeleteTeam = canAccessPermission("team.delete", tournamentWorkspaceId);
+  const canImportTeams = canAccessPermission("team.import", tournamentWorkspaceId);
+  const canCreateEncounter = canAccessPermission("match.create", tournamentWorkspaceId);
+  const canUpdateEncounter = canAccessPermission("match.update", tournamentWorkspaceId);
+  const canDeleteEncounter = canAccessPermission("match.delete", tournamentWorkspaceId);
+  const canSyncEncounters = canAccessPermission("match.sync", tournamentWorkspaceId);
+  const canUpdateStanding = canAccessPermission("standing.update", tournamentWorkspaceId);
+  const canDeleteStanding = canAccessPermission("standing.delete", tournamentWorkspaceId);
+  const canRecalculateStandings = canAccessPermission("standing.recalculate", tournamentWorkspaceId);
   const teams = teamsQuery.data?.results ?? [];
   const stages = tournament?.stages ?? [];
   const standings = standingsQuery.data ?? [];
@@ -164,6 +175,28 @@ export default function AdminTournamentWorkspacePage() {
         </CardHeader>
       </Card>
     );
+  }
+
+  if (
+    !isSuperuser &&
+    ![
+      canUpdateTournament,
+      canDeleteTournament,
+      canReadAnalytics,
+      canCreateTeam,
+      canUpdateTeam,
+      canDeleteTeam,
+      canImportTeams,
+      canCreateEncounter,
+      canUpdateEncounter,
+      canDeleteEncounter,
+      canSyncEncounters,
+      canUpdateStanding,
+      canDeleteStanding,
+      canRecalculateStandings,
+    ].some(Boolean)
+  ) {
+    return <UnauthorizedTournamentWorkspaceState />;
   }
 
   return (

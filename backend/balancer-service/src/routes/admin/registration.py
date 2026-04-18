@@ -8,6 +8,12 @@ import sqlalchemy as sa
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import NO_VALUE
+
+from shared.balancer_registration_statuses import (
+    StatusMeta,
+    build_unknown_status_meta,
+    get_status_metas_map,
+)
 from src import models
 from src.core import auth, db
 from src.schemas.admin import balancer as admin_schemas
@@ -17,16 +23,9 @@ from src.schemas.admin.registration_form import (
 )
 from src.services.admin import balancer_registration as registration_service
 
-from shared.balancer_registration_statuses import (
-    StatusMeta,
-    build_unknown_status_meta,
-    get_status_metas_map,
-)
-
 router = APIRouter(
     prefix="/balancer",
     tags=["admin", "registration"],
-    dependencies=[Depends(auth.require_any_role("admin", "tournament_organizer"))],
 )
 
 
@@ -120,7 +119,7 @@ def _serialize_registration(
 async def get_registration_form(
     tournament_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("team", "read")),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("team", "read")),
 ):
     result = await session.execute(
         sa.select(models.BalancerRegistrationForm).where(
@@ -138,7 +137,7 @@ async def upsert_registration_form(
     tournament_id: int,
     data: RegistrationFormUpsert,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("team", "import")),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("team", "import")),
 ):
     tournament = await registration_service.ensure_tournament_exists(session, tournament_id)
 
@@ -190,7 +189,7 @@ async def list_registrations(
     source_filter: str | None = None,
     include_deleted: bool = False,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("team", "read")),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("team", "read")),
 ):
     registrations = await registration_service.list_registrations(
         session,
@@ -219,7 +218,7 @@ async def create_manual_registration(
     tournament_id: int,
     data: admin_schemas.BalancerRegistrationCreateRequest,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("team", "import")),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("team", "import")),
 ):
     tournament = await registration_service.ensure_tournament_exists(session, tournament_id)
     registration = await registration_service.create_manual_registration(
@@ -246,7 +245,7 @@ async def update_registration(
     registration_id: int,
     data: admin_schemas.BalancerRegistrationUpdateRequest,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("team", "update")),
+    user: models.AuthUser = Depends(auth.require_registration_permission("team", "update")),
 ):
     registration = await registration_service.update_registration_profile(
         session,
@@ -272,7 +271,7 @@ async def update_registration(
 async def approve_registration(
     registration_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("team", "import")),
+    user: models.AuthUser = Depends(auth.require_registration_permission("team", "import")),
 ):
     registration = await registration_service.approve_registration(
         session,
@@ -287,7 +286,7 @@ async def approve_registration(
 async def reject_registration(
     registration_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("team", "import")),
+    user: models.AuthUser = Depends(auth.require_registration_permission("team", "import")),
 ):
     registration = await registration_service.reject_registration(
         session,
@@ -303,7 +302,7 @@ async def set_registration_exclusion(
     registration_id: int,
     data: admin_schemas.BalancerRegistrationExclusionRequest,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("team", "update")),
+    user: models.AuthUser = Depends(auth.require_registration_permission("team", "update")),
 ):
     registration = await registration_service.set_registration_exclusion(
         session,
@@ -319,7 +318,7 @@ async def set_registration_exclusion(
 async def withdraw_registration(
     registration_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("team", "update")),
+    user: models.AuthUser = Depends(auth.require_registration_permission("team", "update")),
 ):
     registration = await registration_service.withdraw_registration(session, registration_id)
     status_meta_map = await get_status_metas_map(session, workspace_id=registration.workspace_id)
@@ -330,7 +329,7 @@ async def withdraw_registration(
 async def restore_registration(
     registration_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("team", "update")),
+    user: models.AuthUser = Depends(auth.require_registration_permission("team", "update")),
 ):
     registration = await registration_service.restore_registration(session, registration_id)
     status_meta_map = await get_status_metas_map(session, workspace_id=registration.workspace_id)
@@ -341,7 +340,7 @@ async def restore_registration(
 async def delete_registration(
     registration_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("team", "import")),
+    user: models.AuthUser = Depends(auth.require_registration_permission("team", "import")),
 ):
     await registration_service.soft_delete_registration(
         session,
@@ -358,7 +357,7 @@ async def bulk_approve_registrations(
     tournament_id: int,
     data: dict[str, Any],
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("team", "import")),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("team", "import")),
 ):
     registration_ids = [int(registration_id) for registration_id in data.get("registration_ids", [])]
     approved, skipped = await registration_service.bulk_approve_registrations(
@@ -380,7 +379,7 @@ async def set_balancer_status(
     registration_id: int,
     data: admin_schemas.SetBalancerStatusRequest,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("team", "update")),
+    user: models.AuthUser = Depends(auth.require_registration_permission("team", "update")),
 ):
     registration = await registration_service.set_balancer_status(
         session,
@@ -399,7 +398,7 @@ async def bulk_add_to_balancer(
     tournament_id: int,
     data: dict[str, Any],
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("team", "import")),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("team", "import")),
 ):
     registration_ids = [int(rid) for rid in data.get("registration_ids", [])]
     balancer_status = data.get("balancer_status", "ready")
@@ -422,7 +421,7 @@ async def toggle_check_in(
     registration_id: int,
     data: admin_schemas.CheckInRequest,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("team", "update")),
+    user: models.AuthUser = Depends(auth.require_registration_permission("team", "update")),
 ):
     if data.checked_in:
         registration = await registration_service.check_in_registration(

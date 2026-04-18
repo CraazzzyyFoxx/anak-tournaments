@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
@@ -33,6 +33,7 @@ os.environ.setdefault("S3_BUCKET_NAME", "test")
 os.environ["DEBUG"] = "false"
 
 from fastapi import HTTPException  # noqa: E402
+
 from src import models  # noqa: E402
 from src.routes.admin import registration as registration_route  # noqa: E402
 from src.services.admin import balancer_registration as svc  # noqa: E402
@@ -51,7 +52,9 @@ def _make_registration(
     checked_in_by: int | None = None,
     exclude_from_balancer: bool = False,
     roles: list | None = None,
+    tournament: SimpleNamespace | None = None,
 ) -> SimpleNamespace:
+    now = datetime.now(UTC)
     return SimpleNamespace(
         id=1,
         tournament_id=10,
@@ -64,6 +67,12 @@ def _make_registration(
         exclude_from_balancer=exclude_from_balancer,
         exclude_reason=None,
         roles=roles or [],
+        tournament=tournament
+        or SimpleNamespace(
+            status="check_in",
+            check_in_opens_at=now - timedelta(minutes=5),
+            check_in_closes_at=now + timedelta(minutes=5),
+        ),
         is_flex_computed=False,
         reviewer=None,
         checked_in_by_user=None,
@@ -321,6 +330,26 @@ class CheckInTests(IsolatedAsyncioTestCase):
         self.assertIsNotNone(result.checked_in_at)
         self.assertEqual(result.checked_in_by, 42)
         session.commit.assert_awaited_once()
+
+    async def test_check_in_rejects_inactive_window(self) -> None:
+        now = datetime.now(UTC)
+        reg = _make_registration(
+            checked_in=False,
+            tournament=SimpleNamespace(
+                status="check_in",
+                check_in_opens_at=now + timedelta(minutes=5),
+                check_in_closes_at=now + timedelta(minutes=10),
+            ),
+        )
+        session = _mock_session_with_registration(reg)
+
+        with patch.object(svc, "get_registration_by_id", AsyncMock(return_value=reg)):
+            with self.assertRaises(HTTPException) as exc_info:
+                await svc.check_in_registration(session, 1, checked_in_by=42)
+
+        self.assertEqual(409, exc_info.exception.status_code)
+        self.assertEqual("Check-in is not active for this tournament", exc_info.exception.detail)
+        session.commit.assert_not_awaited()
 
     async def test_uncheck_in_resets_fields(self) -> None:
         reg = _make_registration(

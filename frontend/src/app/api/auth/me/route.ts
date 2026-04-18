@@ -7,6 +7,13 @@ export type MeResponse = {
   roles: string[];
   permissions: string[];
   is_superuser: boolean;
+  workspaces: Array<{
+    workspace_id: number;
+    slug: string;
+    role: string;
+    rbac_roles: string[];
+    rbac_permissions: string[];
+  }>;
 };
 
 const AUTH_SERVICE_URL =
@@ -47,7 +54,16 @@ export async function GET() {
       avatar_url: me.avatar_url ?? null,
       roles: me.roles ?? [],
       permissions: me.permissions ?? [],
-      is_superuser: me.is_superuser ?? false
+      is_superuser: me.is_superuser ?? false,
+      workspaces: (me.workspaces ?? []).map(
+        (workspace: MeResponse["workspaces"][number]) => ({
+          workspace_id: workspace.workspace_id,
+          slug: workspace.slug,
+          role: workspace.role,
+          rbac_roles: workspace.rbac_roles ?? [],
+          rbac_permissions: workspace.rbac_permissions ?? [],
+        }),
+      ),
     };
 
     return NextResponse.json(payload, { status: 200 });

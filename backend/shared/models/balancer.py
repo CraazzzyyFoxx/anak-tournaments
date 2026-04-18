@@ -28,6 +28,7 @@ __all__ = (
     "BalancerRegistrationStatus",
     "BalancerTeam",
     "BalancerTeamSlot",
+    "BalancerTournamentConfig",
     "BalancerTournamentSheet",
 )
 
@@ -122,6 +123,23 @@ class BalancerPlayer(db.TimeStampIntegerMixin):
     application: Mapped["BalancerApplication"] = relationship(back_populates="player")
     user: Mapped["User | None"] = relationship()
     role_entries: Mapped[list["BalancerPlayerRoleEntry"]] = relationship(back_populates="player")
+
+
+class BalancerTournamentConfig(db.TimeStampIntegerMixin):
+    __tablename__ = "tournament_config"
+    __table_args__ = (
+        UniqueConstraint("tournament_id", name="uq_balancer_tournament_config_tournament"),
+        {"schema": "balancer"},
+    )
+
+    tournament_id: Mapped[int] = mapped_column(ForeignKey("tournament.tournament.id", ondelete="CASCADE"), index=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id", ondelete="CASCADE"), index=True)
+    config_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, server_default="{}", default=dict)
+    updated_by: Mapped[int | None] = mapped_column(ForeignKey("auth.user.id", ondelete="SET NULL"), nullable=True)
+
+    tournament: Mapped["Tournament"] = relationship()
+    workspace: Mapped["Workspace"] = relationship()
+    updater: Mapped["AuthUser | None"] = relationship()
 
 
 class BalancerBalance(db.TimeStampIntegerMixin):

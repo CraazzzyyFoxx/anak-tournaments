@@ -37,6 +37,7 @@ import type { Gamemode } from "@/types/gamemode.types";
 import type { PaginatedResponse } from "@/types/pagination.types";
 import { usePermissions } from "@/hooks/usePermissions";
 import { hasUnsavedChanges } from "@/lib/form-change";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 
 const emptyMapForm: MapCreateInput = {
   name: "",
@@ -77,17 +78,18 @@ function MapImagePreview({
 
 export default function MapsAdminPage() {
   const queryClient = useQueryClient();
-  const { hasPermission } = usePermissions();
+  const { canAccessPermission } = usePermissions();
+  const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingMap, setEditingMap] = useState<MapRead | null>(null);
   const [deletingMap, setDeletingMap] = useState<MapRead | null>(null);
   const [formData, setFormData] = useState<MapCreateInput | MapUpdateInput>({
     ...emptyMapForm,
   });
-  const canCreate = hasPermission("map.create");
-  const canUpdate = hasPermission("map.update");
-  const canDelete = hasPermission("map.delete");
-  const canSync = hasPermission("map.sync");
+  const canCreate = canAccessPermission("map.create", workspaceId);
+  const canUpdate = canAccessPermission("map.update", workspaceId);
+  const canDelete = canAccessPermission("map.delete", workspaceId);
+  const canSync = canAccessPermission("map.sync", workspaceId);
 
   // Fetch gamemodes for selector
   const { data: gamemodesData } = useQuery({

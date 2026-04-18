@@ -10,8 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import encounterService from "@/services/encounter.service";
 import tournamentService from "@/services/tournament.service";
 import type { Encounter } from "@/types/encounter.types";
-import type { Standings, Tournament, Stage } from "@/types/tournament.types";
-import { cn } from "@/lib/utils";
+import type { Standings, Tournament, Stage, StageItem } from "@/types/tournament.types";
 
 interface TournamentBracketPageProps {
   tournament: Tournament;
@@ -20,14 +19,20 @@ interface TournamentBracketPageProps {
 
 function GroupStagePanel({
   stage,
+  stageItem,
   encounters,
   standings,
 }: {
   stage: Stage;
+  stageItem?: StageItem;
   encounters: Encounter[];
   standings: Standings[];
 }) {
   const hasStandings = standings.length > 0;
+  const title = stageItem?.name ?? stage.name;
+  const subtitle = stageItem
+    ? `${stage.name} - ${stage.stage_type.replace(/_/g, " ")}`
+    : stage.stage_type.replace(/_/g, " ");
 
   return (
     <Tabs
@@ -36,9 +41,9 @@ function GroupStagePanel({
     >
       <div className="flex flex-col gap-3 border-b border-white/[0.06] bg-white/[0.03] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <h3 className="truncate text-lg font-semibold text-white">{stage.name}</h3>
+          <h3 className="truncate text-lg font-semibold text-white">{title}</h3>
           <p className="mt-1 text-xs uppercase tracking-[0.18em] text-white/35">
-            {stage.stage_type.replace(/_/g, " ")}
+            {subtitle}
           </p>
         </div>
 
@@ -75,6 +80,13 @@ function GroupStagePanel({
   );
 }
 
+function getGroupScopeCount(stages: Stage[]) {
+  return stages.reduce(
+    (count, stage) => count + Math.max(stage.items.length, 1),
+    0
+  );
+}
+
 export default function TournamentBracketPage({
   tournament,
   stages,
@@ -98,11 +110,22 @@ export default function TournamentBracketPage({
   const requestedStageId = selectedStageParam ? Number(selectedStageParam) : null;
   const requestedStage = stages.find((stage) => stage.id === requestedStageId);
   const primaryStage = requestedStage ?? fallbackStage;
+  const requestedGroupStage =
+    requestedStage && groupStages.some((stage) => stage.id === requestedStage.id)
+      ? requestedStage
+      : null;
   const shouldShowGroupStage =
     viewParam === "groups" ||
-    (!!requestedStage && groupStages.some((stage) => stage.id === requestedStage.id));
+    requestedGroupStage != null;
+  const activeGroupStages = shouldShowGroupStage
+    ? viewParam === "groups"
+      ? groupStages
+      : requestedGroupStage
+        ? [requestedGroupStage]
+        : []
+    : [];
   const activeStages = shouldShowGroupStage
-    ? groupStages
+    ? activeGroupStages
     : primaryStage
       ? [primaryStage]
       : [];
@@ -116,6 +139,42 @@ export default function TournamentBracketPage({
     queryKey: ["standings", tournament.id],
     queryFn: () => tournamentService.getStandings(tournament.id),
   });
+
+  const groupStagePanels = useMemo(() => {
+    const encounters = allEncounters?.results ?? [];
+
+    return activeGroupStages.flatMap((stage) => {
+      if (stage.items.length === 0) {
+        return [
+          {
+            key: `stage-${stage.id}`,
+            stage,
+            stageItem: undefined,
+            encounters: encounters.filter((encounter) => encounter.stage_id === stage.id),
+            standings: allStandings.filter(
+              (standing) => standing.stage_id === stage.id
+            ),
+          },
+        ];
+      }
+
+      return stage.items.map((stageItem) => ({
+        key: `stage-${stage.id}-item-${stageItem.id}`,
+        stage,
+        stageItem,
+        encounters: encounters.filter(
+          (encounter) =>
+            encounter.stage_id === stage.id &&
+            encounter.stage_item_id === stageItem.id
+        ),
+        standings: allStandings.filter(
+          (standing) =>
+            standing.stage_id === stage.id &&
+            standing.stage_item_id === stageItem.id
+        ),
+      }));
+    });
+  }, [activeGroupStages, allEncounters?.results, allStandings]);
 
   const encountersByStage = useMemo(() => {
     const map = new Map<number, Encounter[]>();
@@ -131,27 +190,6 @@ export default function TournamentBracketPage({
 
     return map;
   }, [activeStages, allEncounters?.results]);
-
-  const standingsByStage = useMemo(() => {
-    const map = new Map<number, Standings[]>();
-
-    for (const standing of allStandings) {
-      if (!["round_robin", "swiss"].includes(standing.stage?.stage_type ?? "")) {
-        continue;
-      }
-
-      const stageId = standing.stage_id;
-      if (!stageId) {
-        continue;
-      }
-
-      const existing = map.get(stageId) ?? [];
-      existing.push(standing);
-      map.set(stageId, existing);
-    }
-
-    return map;
-  }, [allStandings, groupStages]);
 
   const playoffStandings = useMemo(
     () =>
@@ -170,7 +208,7 @@ export default function TournamentBracketPage({
           <h2 className="text-xl font-bold">Bracket</h2>
           {shouldShowGroupStage && groupStages.length > 0 ? (
             <p className="mt-1 text-sm text-white/45">
-              Group Stage ({groupStages.length} groups)
+              Group Stage ({getGroupScopeCount(activeGroupStages)} groups)
             </p>
           ) : activeStages[0] && (
             <p className="mt-1 text-sm text-white/45">
@@ -182,21 +220,18 @@ export default function TournamentBracketPage({
 
       {activeStages.length > 0 ? (
         <div className="space-y-6">
-          {activeStages.map((stage) => {
-            const encounters = encountersByStage.get(stage.id) ?? [];
-            const standings = standingsByStage.get(stage.id) ?? [];
-
-            if (shouldShowGroupStage) {
-              return (
+          {shouldShowGroupStage
+            ? groupStagePanels.map((panel) => (
                 <GroupStagePanel
-                  key={stage.id}
-                  stage={stage}
-                  encounters={encounters}
-                  standings={standings}
+                  key={panel.key}
+                  stage={panel.stage}
+                  stageItem={panel.stageItem}
+                  encounters={panel.encounters}
+                  standings={panel.standings}
                 />
-              );
-            }
-
+              ))
+            : activeStages.map((stage) => {
+            const encounters = encountersByStage.get(stage.id) ?? [];
             if (encounters.length === 0) {
               return (
                 <div

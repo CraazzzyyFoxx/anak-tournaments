@@ -52,16 +52,16 @@ export function BalanceEditorTeamCard({
   return (
     <div className="overflow-hidden rounded-2xl border border-white/8 bg-[#101116] shadow-[0_16px_48px_rgba(0,0,0,0.24)]">
       <div className="flex items-start justify-between gap-3 border-b border-white/6 px-4 py-3">
-        <div className="min-w-0">
+        <div className="flex min-w-0 gap-2 items-center">
           <Badge
             className={cn(
               "rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]",
               teamAccent,
             )}
           >
-            Team {team.id}
+            #{team.id}
           </Badge>
-          <div className="mt-2 truncate text-sm font-semibold text-white/88" title={team.name}>
+          <div className="truncate text-sm font-semibold text-white/88" title={team.name}>
             {team.name}
           </div>
         </div>
@@ -77,13 +77,13 @@ export function BalanceEditorTeamCard({
               </span>
             </div>
             <div className="mt-1 flex flex-wrap justify-end gap-1.5">
-              <Badge
+              {/* <Badge
                 variant="outline"
                 className="border-white/10 bg-white/4 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.16em] text-white/70"
               >
                 {team.totalDiscomfort ?? 0} discomfort
-              </Badge>
-              <Badge
+              </Badge> */}
+              {/* <Badge
                 variant="outline"
                 className={cn(
                   "px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.16em]",
@@ -93,7 +93,7 @@ export function BalanceEditorTeamCard({
                 )}
               >
                 {offRoleCount > 0 ? `${offRoleCount} off-role` : "clean roles"}
-              </Badge>
+              </Badge> */}
             </div>
           </div>
           
@@ -109,7 +109,7 @@ export function BalanceEditorTeamCard({
               Player
             </TableHead>
             <TableHead className="h-8 w-18 px-2 text-center text-[10px] font-semibold uppercase tracking-[0.18em] text-white/35">
-              Div
+              Rank
             </TableHead>
             <TableHead className="h-8 w-22 px-3 text-center text-[10px] font-semibold uppercase tracking-[0.18em] text-white/35">
               Prefs

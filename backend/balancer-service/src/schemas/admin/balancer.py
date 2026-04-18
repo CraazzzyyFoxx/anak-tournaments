@@ -22,6 +22,8 @@ __all__ = (
     "BalanceExportResponse",
     "BalanceRead",
     "BalanceSaveRequest",
+    "BalancerTournamentConfigRead",
+    "BalancerTournamentConfigUpsert",
     "BalancerApplicationRead",
     "BalancerGoogleSheetFeedRead",
     "BalancerGoogleSheetFeedSyncResponse",
@@ -408,6 +410,18 @@ class BalancerTeamRead(BaseRead):
 class BalanceSaveRequest(BaseModel):
     config_json: dict[str, Any] | None = None
     result_json: dict[str, Any]
+
+
+class BalancerTournamentConfigUpsert(BaseModel):
+    config_json: dict[str, Any] | None = None
+
+
+class BalancerTournamentConfigRead(BaseRead):
+    tournament_id: int
+    workspace_id: int
+    config_json: dict[str, Any]
+    updated_by: int | None = None
+    updated_at: datetime | None = None
 
 
 class BalanceRead(BaseRead):

@@ -3,7 +3,7 @@ import type {
   BalancerRoleCode,
   BalancerPlayerRecord,
   BalancerRosterKey,
-  InternalBalancePayload,
+  InternalBalancePayload
 } from "@/types/balancer-admin.types";
 import type { BalanceVariant, PlayerValidationIssue } from "./workspace-helpers";
 import { getActiveRoleEntries } from "./workspace-helpers";
@@ -18,14 +18,19 @@ export type PlayerValidationState = {
 export type PoolLane = "excluded" | "needs_fix" | "ready";
 export type PoolDropPatch = { is_in_pool: boolean };
 export type PoolView = "all" | "needs_fix" | "ready" | "excluded";
-export type PoolSortValue = "added_desc" | "added_asc" | "name_asc" | "division_asc" | "division_desc";
+export type PoolSortValue =
+  | "added_desc"
+  | "added_asc"
+  | "name_asc"
+  | "division_asc"
+  | "division_desc";
 
 export const POOL_LANES: PoolLane[] = ["excluded", "needs_fix", "ready"];
 
 export const POOL_LANE_LABELS: Record<PoolLane, string> = {
   excluded: "Excluded",
   needs_fix: "Need Fix",
-  ready: "Ready",
+  ready: "Ready"
 };
 
 export function derivePoolLane(state: PlayerValidationState): PoolLane {
@@ -42,10 +47,13 @@ export function getPoolDropPatch(targetLane: PoolLane): PoolDropPatch {
 
 export function getRegistrationBattleTags(
   registration: Pick<AdminRegistration, "battle_tag" | "smurf_tags_json"> | null | undefined,
-  fallbackBattleTag: string,
+  fallbackBattleTag: string
 ): string[] {
   const seen = new Set<string>();
-  const tags = [registration?.battle_tag ?? fallbackBattleTag, ...(registration?.smurf_tags_json ?? [])]
+  const tags = [
+    registration?.battle_tag ?? fallbackBattleTag,
+    ...(registration?.smurf_tags_json ?? [])
+  ]
     .map((tag) => tag?.trim())
     .filter((tag): tag is string => Boolean(tag));
 
@@ -68,6 +76,7 @@ export function formatSmurfCount(count: number): string {
 }
 
 export const PRESET_LABELS: Record<string, string> = {
+  CUSTOM: "Custom",
   DEFAULT: "Standard",
   COMPETITIVE: "Competitive",
   CASUAL: "Casual",
@@ -75,21 +84,23 @@ export const PRESET_LABELS: Record<string, string> = {
   PREFERENCE_FOCUSED: "Preference Focused",
   HIGH_QUALITY: "High Quality",
   CPSAT: "CP-SAT (Exact)",
+  NSGA: "NSGA-II (Multi-Objective)",
+  GENETIC_MOO: "Genetic MOO (Legacy Pareto)"
 };
 
 export const ROLE_ACCENTS: Record<BalancerRoleCode, { text: string; card: string }> = {
   tank: {
     text: "text-sky-300",
-    card: "border-sky-300/20 bg-sky-500/10 text-sky-200",
+    card: "border-sky-300/20 bg-sky-500/10 text-sky-200"
   },
   dps: {
     text: "text-orange-300",
-    card: "border-orange-300/20 bg-orange-500/10 text-orange-200",
+    card: "border-orange-300/20 bg-orange-500/10 text-orange-200"
   },
   support: {
     text: "text-emerald-300",
-    card: "border-emerald-300/20 bg-emerald-500/10 text-emerald-200",
-  },
+    card: "border-emerald-300/20 bg-emerald-500/10 text-emerald-200"
+  }
 };
 
 export const TEAM_BADGE_ACCENTS = [
@@ -102,7 +113,7 @@ export const TEAM_BADGE_ACCENTS = [
   "border-lime-400/20 bg-lime-500/10 text-lime-200",
   "border-fuchsia-400/20 bg-fuchsia-500/10 text-fuchsia-200",
   "border-pink-400/20 bg-pink-500/10 text-pink-200",
-  "border-indigo-400/20 bg-indigo-500/10 text-indigo-200",
+  "border-indigo-400/20 bg-indigo-500/10 text-indigo-200"
 ];
 
 export const BALANCE_ROSTER_KEYS: BalancerRosterKey[] = ["Tank", "Damage", "Support"];
@@ -124,7 +135,7 @@ export function splitBattleTag(battleTag: string): { name: string; suffix: strin
   }
   return {
     name: battleTag.slice(0, hashIndex),
-    suffix: battleTag.slice(hashIndex),
+    suffix: battleTag.slice(hashIndex)
   };
 }
 
@@ -144,7 +155,7 @@ export function getPrimaryDivision(player: BalancerPlayerRecord): number {
 
 export function sortPlayerStates(
   playerStates: PlayerValidationState[],
-  sortValue: PoolSortValue,
+  sortValue: PoolSortValue
 ): PlayerValidationState[] {
   return [...playerStates].sort((left, right) => {
     if (sortValue === "name_asc") {
@@ -164,13 +175,13 @@ export function sortPlayerStates(
 }
 
 export function calculateTeamAverageFromPayload(
-  team: InternalBalancePayload["teams"][number],
+  team: InternalBalancePayload["teams"][number]
 ): number {
   return Math.round(calculateTeamAverageValueFromPayload(team));
 }
 
 export function calculateTeamAverageValueFromPayload(
-  team: InternalBalancePayload["teams"][number],
+  team: InternalBalancePayload["teams"][number]
 ): number {
   const totalPlayers = countTeamPlayers(team);
   if (totalPlayers === 0) return 0;
@@ -178,12 +189,12 @@ export function calculateTeamAverageValueFromPayload(
 }
 
 export function calculateTeamTotalFromPayload(
-  team: InternalBalancePayload["teams"][number],
+  team: InternalBalancePayload["teams"][number]
 ): number {
   return BALANCE_ROSTER_KEYS.reduce(
     (sum, roleKey) =>
       sum + team.roster[roleKey].reduce((roleSum, player) => roleSum + player.rating, 0),
-    0,
+    0
   );
 }
 
@@ -192,7 +203,7 @@ export function countTeamPlayers(team: InternalBalancePayload["teams"][number]):
 }
 
 export function calculateOffRoleCountFromPayload(
-  team: InternalBalancePayload["teams"][number],
+  team: InternalBalancePayload["teams"][number]
 ): number {
   return BALANCE_ROSTER_KEYS.reduce(
     (sum, roleKey) =>
@@ -204,6 +215,6 @@ export function calculateOffRoleCountFromPayload(
         const preferredRole = player.preferences[0];
         return Boolean(preferredRole) && preferredRole !== roleKey;
       }).length,
-    0,
+    0
   );
 }

@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 from src import models
 from src.core import enums
 from src.schemas.admin import encounter as admin_schemas
+from src.services.standings import service as standings_service
 
 
 async def _resolve_stage_refs(
@@ -156,6 +157,8 @@ async def create_encounter(session: AsyncSession, data: admin_schemas.EncounterC
     session.add(encounter)
     await session.commit()
     await session.refresh(encounter)
+    await standings_service.recalculate_for_tournament(session, data.tournament_id)
+    await session.refresh(encounter)
 
     return encounter
 
@@ -217,10 +220,13 @@ async def update_encounter(
                 detail=f"Invalid status. Must be one of: {', '.join([s.value for s in enums.EncounterStatus])}",
             )
 
+    tournament_id = encounter.tournament_id
     for field, value in update_data.items():
         setattr(encounter, field, value)
 
     await session.commit()
+    await session.refresh(encounter)
+    await standings_service.recalculate_for_tournament(session, tournament_id)
     await session.refresh(encounter)
 
     return encounter
@@ -234,5 +240,7 @@ async def delete_encounter(session: AsyncSession, encounter_id: int) -> None:
     if not encounter:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Encounter not found")
 
+    tournament_id = encounter.tournament_id
     await session.delete(encounter)
     await session.commit()
+    await standings_service.recalculate_for_tournament(session, tournament_id)

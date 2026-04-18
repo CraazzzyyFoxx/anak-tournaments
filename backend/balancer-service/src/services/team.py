@@ -73,7 +73,7 @@ async def bulk_create_from_balancer(
                 captain_id=captain.id if captain else None,
             )
             session.add(team)
-            await session.commit()
+            await session.flush()
             logger.info("Team %s created in tournament %s", name, tournament_id)
         else:
             logger.info("Team %s already exists in tournament %s, skipping", name, tournament_id)
@@ -121,5 +121,6 @@ async def bulk_create_from_balancer(
                 is_newcomer_role=is_newcomer_role,
             )
             session.add(player)
-            await session.commit()
             logger.info("Player %s added to team %s", member.name, team.name)
+
+    await session.commit()

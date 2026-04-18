@@ -164,12 +164,12 @@ export default function AchievementDetailPage() {
   const params = useParams();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { hasPermission } = usePermissions();
+  const { canAccessPermission } = usePermissions();
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const ruleId = Number(params.id);
 
-  const canUpdate = hasPermission("achievement.update");
-  const canDelete = hasPermission("achievement.delete");
+  const canUpdate = canAccessPermission("achievement.update", workspaceId);
+  const canDelete = canAccessPermission("achievement.delete", workspaceId);
 
   // --- State ---
   const [editDialogOpen, setEditDialogOpen] = useState(false);

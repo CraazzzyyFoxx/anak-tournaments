@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import os
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
@@ -21,6 +22,7 @@ os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
 os.environ.setdefault("S3_BUCKET_NAME", "test")
 
 registration_route = importlib.import_module("src.routes.registration")
+registration_service = importlib.import_module("src.services.registration.service")
 division_grid_schemas = importlib.import_module("src.schemas.division_grid")
 registration_schemas = importlib.import_module("src.schemas.registration")
 
@@ -135,3 +137,53 @@ class RegistrationRouteTests(IsolatedAsyncioTestCase):
             exc_info.exception.detail,
         )
         create_registration_mock.assert_not_awaited()
+
+    async def test_check_in_registration_rejects_inactive_window(self) -> None:
+        now = datetime.now(UTC)
+        session = SimpleNamespace(commit=AsyncMock(), refresh=AsyncMock())
+        registration = SimpleNamespace(
+            status="approved",
+            tournament=SimpleNamespace(
+                status="check_in",
+                check_in_opens_at=now + timedelta(minutes=5),
+                check_in_closes_at=now + timedelta(minutes=10),
+            ),
+        )
+
+        with self.assertRaises(HTTPException) as exc_info:
+            await registration_service.check_in_registration(
+                session,
+                registration,
+                checked_in_by=42,
+            )
+
+        self.assertEqual(409, exc_info.exception.status_code)
+        self.assertEqual("Check-in is not active for this tournament", exc_info.exception.detail)
+        session.commit.assert_not_awaited()
+
+    async def test_check_in_registration_sets_fields_when_window_active(self) -> None:
+        now = datetime.now(UTC)
+        session = SimpleNamespace(commit=AsyncMock(), refresh=AsyncMock())
+        registration = SimpleNamespace(
+            status="approved",
+            checked_in=False,
+            checked_in_at=None,
+            checked_in_by=None,
+            tournament=SimpleNamespace(
+                status="check_in",
+                check_in_opens_at=now - timedelta(minutes=5),
+                check_in_closes_at=now + timedelta(minutes=5),
+            ),
+        )
+
+        result = await registration_service.check_in_registration(
+            session,
+            registration,
+            checked_in_by=42,
+        )
+
+        self.assertTrue(result.checked_in)
+        self.assertIsNotNone(result.checked_in_at)
+        self.assertEqual(42, result.checked_in_by)
+        session.commit.assert_awaited_once()
+        session.refresh.assert_awaited_once_with(registration)

@@ -49,25 +49,32 @@ async def create_balance_snapshot(
         )
     )
 
-    # Compute aggregate metrics
-    team_avgs = [t.avg_mmr for t in payload.teams]
-    avg_sr_overall = sum(team_avgs) / len(team_avgs) if team_avgs else 0.0
-    sr_range = max(team_avgs) - min(team_avgs) if len(team_avgs) > 1 else 0.0
+    # Collect all individual player ratings for aggregate metrics
+    all_ratings: list[int] = []
+    for team in payload.teams:
+        for players in team.roster.values():
+            for player in players:
+                all_ratings.append(player.rating)
+
+    avg_sr_overall = sum(all_ratings) / len(all_ratings) if all_ratings else 0.0
+    sr_range = max(all_ratings) - min(all_ratings) if len(all_ratings) > 1 else 0.0
     sr_std_dev = (
-        math.sqrt(sum((a - avg_sr_overall) ** 2 for a in team_avgs) / len(team_avgs))
-        if team_avgs
+        math.sqrt(sum((r - avg_sr_overall) ** 2 for r in all_ratings) / len(all_ratings))
+        if all_ratings
         else 0.0
     )
 
     total_discomfort = 0
-    off_role_count = 0
     player_count = 0
+    # off_role_count will be summed from per-player was_off_role flags after the per-player loop
+    per_player_off_role: list[bool] = []
     for team in payload.teams:
         for role_name, players in team.roster.items():
             for player in players:
                 player_count += 1
                 discomfort = player.discomfort or 0
                 total_discomfort += discomfort
+                was_off_role = False
                 if player.preferences:
                     first_pref = player.preferences[0].strip().lower()
                     assigned = role_name.strip().lower()
@@ -75,8 +82,10 @@ async def create_balance_snapshot(
                         first_pref = "dps"
                     if assigned in ("damage", "dps"):
                         assigned = "dps"
-                    if first_pref != assigned:
-                        off_role_count += 1
+                    was_off_role = first_pref != assigned
+                per_player_off_role.append(was_off_role)
+
+    off_role_count = sum(1 for v in per_player_off_role if v)
 
     # Resolve variant if exists
     variant_id = None
@@ -105,11 +114,15 @@ async def create_balance_snapshot(
     session.add(snapshot)
     await session.flush()
 
-    # Build player lookup
+    # Build player lookup (with role_entries eagerly loaded)
+    from sqlalchemy.orm import selectinload
+
     bp_result = await session.execute(
-        sa.select(models.BalancerPlayer).where(
+        sa.select(models.BalancerPlayer)
+        .where(
             models.BalancerPlayer.tournament_id == balance.tournament_id,
         )
+        .options(selectinload(models.BalancerPlayer.role_entries))
     )
     bp_lookup: dict[str, models.BalancerPlayer] = {}
     for bp in bp_result.scalars().all():
@@ -134,6 +147,16 @@ async def create_balance_snapshot(
                     preferred_role = ROLE_NAME_TO_CODE.get(pref_display, pref_display.lower())
                     was_off_role = preferred_role != role_code
 
+                # Look up division_number from the role_entry matching assigned_role
+                division_number: int | None = None
+                if bp is not None:
+                    matching_entry = next(
+                        (e for e in bp.role_entries if e.role == role_code),
+                        None,
+                    )
+                    if matching_entry is not None:
+                        division_number = matching_entry.division_number
+
                 session.add(
                     models.AnalyticsBalancePlayerSnapshot(
                         balance_snapshot_id=snapshot.id,
@@ -144,7 +167,7 @@ async def create_balance_snapshot(
                         preferred_role=preferred_role,
                         assigned_rank=player.rating,
                         discomfort=player.discomfort or 0,
-                        division_number=bp.division_number if bp else None,
+                        division_number=division_number,
                         is_captain=player.is_captain,
                         was_off_role=was_off_role,
                     )

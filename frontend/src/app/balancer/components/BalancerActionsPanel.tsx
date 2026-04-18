@@ -35,7 +35,7 @@ export function BalancerActionsPanel({
   onExportBalance,
   onCopyNames,
   onImportTeams,
-  onScreenshot,
+  onScreenshot
 }: BalancerActionsPanelProps) {
   if (!activeVariant) {
     return null;
@@ -44,7 +44,17 @@ export function BalancerActionsPanel({
   return (
     <div className={cn(PANEL_CLASS)}>
       <BalanceActionsBar
-        activeVariantStats={activeVariant.payload.statistics ?? null}
+        activeVariantStats={
+          activeVariant.payload.statistics != null
+            ? {
+                ...activeVariant.payload.statistics,
+                unbalancedCount:
+                  activeVariant.payload.benchedPlayers?.length ??
+                  activeVariant.payload.statistics.unbalancedCount ??
+                  0
+              }
+            : null
+        }
         activeVariant={activeVariant}
         hasSavedBalance={hasSavedBalance}
         canRunBalance={canRunBalance}

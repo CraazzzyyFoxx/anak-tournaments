@@ -6,6 +6,7 @@ import uuid
 from typing import Any, Literal
 
 import redis.asyncio as redis
+
 from src.core.config import config
 
 JobStatus = Literal["queued", "running", "succeeded", "failed"]
@@ -53,7 +54,14 @@ class BalancerJobStore:
     async def _save_meta(self, job_id: str, meta: dict[str, Any]) -> None:
         await self._redis.set(self._meta_key(job_id), json.dumps(meta), ex=self._ttl_seconds)
 
-    async def create_job(self, input_data: dict[str, Any], config_overrides: dict[str, Any] | None) -> str:
+    async def create_job(
+        self,
+        input_data: dict[str, Any],
+        config_overrides: dict[str, Any] | None,
+        *,
+        workspace_id: int | None = None,
+        created_by: int | None = None,
+    ) -> str:
         job_id = uuid.uuid4().hex
         now = time.time()
 
@@ -66,6 +74,8 @@ class BalancerJobStore:
             "finished_at": None,
             "progress": None,
             "error": None,
+            "workspace_id": workspace_id,
+            "created_by": created_by,
         }
         payload = {
             "data": input_data,

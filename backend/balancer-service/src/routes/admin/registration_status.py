@@ -11,7 +11,6 @@ from src.services.admin import registration_status as status_service
 router = APIRouter(
     prefix="/ws/{workspace_id}/balancer-statuses",
     tags=["admin", "registration-status"],
-    dependencies=[Depends(auth.require_any_role("admin", "tournament_organizer"))],
 )
 
 
@@ -41,7 +40,7 @@ def _serialize_status(
 async def list_status_catalog(
     workspace_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("team", "read")),
+    user: models.AuthUser = Depends(auth.require_workspace_permission("team", "read")),
 ):
     statuses = await status_service.list_status_catalog(session, workspace_id)
     return [_serialize_status(status_row) for status_row in statuses]
@@ -51,7 +50,7 @@ async def list_status_catalog(
 async def list_custom_statuses(
     workspace_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("team", "read")),
+    user: models.AuthUser = Depends(auth.require_workspace_permission("team", "read")),
 ):
     statuses = await status_service.list_custom_statuses(session, workspace_id)
     return [_serialize_status(status_row) for status_row in statuses]
@@ -66,7 +65,7 @@ async def create_custom_status(
     workspace_id: int,
     data: admin_schemas.BalancerRegistrationStatusCreate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("team", "update")),
+    user: models.AuthUser = Depends(auth.require_workspace_permission("team", "update")),
 ):
     status_row = await status_service.create_custom_status(
         session,
@@ -86,7 +85,7 @@ async def update_custom_status(
     status_id: int,
     data: admin_schemas.BalancerRegistrationStatusUpdate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("team", "update")),
+    user: models.AuthUser = Depends(auth.require_workspace_permission("team", "update")),
 ):
     status_row = await status_service.update_custom_status(
         session,
@@ -105,7 +104,7 @@ async def delete_custom_status(
     workspace_id: int,
     status_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("team", "update")),
+    user: models.AuthUser = Depends(auth.require_workspace_permission("team", "update")),
 ):
     await status_service.delete_custom_status(
         session,
@@ -121,7 +120,7 @@ async def upsert_builtin_override(
     slug: str,
     data: admin_schemas.BalancerRegistrationStatusUpdate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("team", "update")),
+    user: models.AuthUser = Depends(auth.require_workspace_permission("team", "update")),
 ):
     status_row = await status_service.upsert_builtin_override(
         session,
@@ -142,7 +141,7 @@ async def reset_builtin_override(
     scope: admin_schemas.StatusScope,
     slug: str,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("team", "update")),
+    user: models.AuthUser = Depends(auth.require_workspace_permission("team", "update")),
 ):
     await status_service.reset_builtin_override(
         session,

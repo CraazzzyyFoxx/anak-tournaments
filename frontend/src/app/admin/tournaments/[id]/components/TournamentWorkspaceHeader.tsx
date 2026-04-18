@@ -35,6 +35,7 @@ import {
   getTournamentForm,
   type TournamentFormState,
 } from "./tournamentWorkspace.helpers";
+import { TournamentStatusControl } from "./TournamentStatusControl";
 import { invalidateTournamentWorkspace } from "./tournamentWorkspace.queryKeys";
 
 interface TournamentWorkspaceHeaderProps {
@@ -217,6 +218,11 @@ export function TournamentWorkspaceHeader({
         </CardHeader>
         <CardContent className="pt-0">
           <div className="border-t border-border/40 pt-3">
+            {canUpdateTournament ? (
+              <div className="mb-3">
+                <TournamentStatusControl tournament={tournament} />
+              </div>
+            ) : null}
             <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[13px] text-muted-foreground">
               <span className="flex items-center gap-1.5">
                 <ShieldAlert className="size-3.5" />

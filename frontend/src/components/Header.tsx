@@ -32,6 +32,7 @@ import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { usePermissions } from "@/hooks/usePermissions";
 import { getCurrentPathForAuthRedirect } from "@/lib/auth-redirect";
 import { useAuthModalStore } from "@/stores/auth-modal.store";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 
 const tournament_components: { title: string; href: string; description: string }[] = [
   {
@@ -98,12 +99,13 @@ const organization_components: {
   description: string;
   roles?: ("admin" | "organizer")[];
   requiresAdminAccess?: boolean;
+  requiresBalancerAccess?: boolean;
 }[] = [
   {
     title: "Balancer",
     href: "/balancer",
     description: "Tool for balancing teams by player roles and ratings",
-    roles: ["organizer"]
+    requiresBalancerAccess: true,
   },
   {
     title: "Admin",
@@ -123,12 +125,20 @@ const components: Record<string, { title: string; href: string; description: str
 const Header = () => {
   const { user } = useAuthProfile();
   const openAuthModal = useAuthModalStore((state) => state.open);
-  const { isOrganizer, isLoaded, isSuperuser, isModerator, hasAnyPermission } = usePermissions();
+  const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
+  const { isOrganizer, isLoaded, canAccessAdminRoute } = usePermissions();
   const username = user?.username;
   const avatarUrl = user?.avatarUrl;
   const profileHref = username ? `/users/${getPlayerSlug(username)}` : "/users";
-  const canAccessAdmin = isLoaded && (isSuperuser || isModerator || isOrganizer || hasAnyPermission(adminEntryPermissions));
-  const canAccessOrganization = isLoaded && (canAccessAdmin || isOrganizer);
+  const canAccessAdmin =
+    isLoaded &&
+    canAccessAdminRoute({
+      permissions: adminEntryPermissions,
+      workspaceId: currentWorkspaceId,
+      workspaceAdminVisible: true,
+    });
+  const canAccessBalancer = canAccessAdmin || isOrganizer;
+  const canAccessOrganization = isLoaded && (canAccessAdmin || canAccessBalancer);
   const handleLoginClick = () => {
     const nextPath =
       typeof window === "undefined" ? "/" : getCurrentPathForAuthRedirect(window.location);
@@ -142,10 +152,12 @@ const Header = () => {
       description: string;
       roles?: ("admin" | "organizer")[];
       requiresAdminAccess?: boolean;
+      requiresBalancerAccess?: boolean;
     }[]
   ) =>
     items.filter((item) => {
       if (item.requiresAdminAccess) return canAccessAdmin;
+      if (item.requiresBalancerAccess) return canAccessBalancer;
       if (!item.roles?.length) return true;
       if (item.roles.includes("organizer") && isOrganizer) return true;
       return false;

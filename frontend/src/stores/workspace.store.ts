@@ -1,6 +1,8 @@
 import Cookies from "js-cookie";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import type { AuthProfile } from "@/stores/auth-profile.store";
+import { useAuthProfileStore } from "@/stores/auth-profile.store";
 import { Workspace } from "@/types/workspace.types";
 import workspaceService from "@/services/workspace.service";
 
@@ -16,6 +18,37 @@ type WorkspaceState = {
   getCurrentWorkspace: () => Workspace | undefined;
 };
 
+export function filterAccessibleWorkspaces(
+  workspaces: Workspace[],
+  authStatus: string,
+  user?: AuthProfile,
+): Workspace[] {
+  if (authStatus !== "authenticated" || !user) {
+    return workspaces;
+  }
+
+  if (user.isSuperuser) {
+    return workspaces;
+  }
+
+  const allowedWorkspaceIds = new Set(user.workspaces.map((workspace) => workspace.workspace_id));
+  return workspaces.filter((workspace) => allowedWorkspaceIds.has(workspace.id));
+}
+
+export function resolveCurrentWorkspaceId(
+  workspaces: Workspace[],
+  currentWorkspaceId: number | null,
+): number | null {
+  if (workspaces.length === 0) {
+    return null;
+  }
+
+  const hasCurrentWorkspace =
+    currentWorkspaceId !== null && workspaces.some((workspace) => workspace.id === currentWorkspaceId);
+
+  return hasCurrentWorkspace ? currentWorkspaceId : workspaces[0]?.id ?? null;
+}
+
 export const useWorkspaceStore = create<WorkspaceState>()(
   persist(
     (set, get) => ({
@@ -27,13 +60,15 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         if (get().isLoading) return;
         set({ isLoading: true });
         try {
-          const workspaces = await workspaceService.getAll();
+          const allWorkspaces = await workspaceService.getAll();
+          const { status, user } = useAuthProfileStore.getState();
+          const workspaces = filterAccessibleWorkspaces(allWorkspaces, status, user);
           const current = get().currentWorkspaceId;
-          const validCurrent =
-            current && workspaces.some((w) => w.id === current);
-          const nextId = validCurrent ? current : workspaces[0]?.id ?? null;
+          const nextId = resolveCurrentWorkspaceId(workspaces, current);
           if (nextId !== null) {
             Cookies.set(WORKSPACE_COOKIE, String(nextId), { sameSite: "lax" });
+          } else {
+            Cookies.remove(WORKSPACE_COOKIE);
           }
           set({
             workspaces,

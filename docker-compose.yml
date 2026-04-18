@@ -359,11 +359,33 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.25'
-          memory: 256M
+          cpus: '2'
+          memory: 512M
         reservations:
           cpus: '0.10'
           memory: 128M
+
+  mixtura-balancer:
+    build:
+      context: ./backend/mixtura-balancer-tournament
+      dockerfile: Dockerfile
+    profiles: ["workers"]
+    env_file:
+      - ./backend/env/common.env
+      - ./backend/env/mixtura-balancer.env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - app-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
 
   discord:
     image: registry.craazzzyyfoxx.me/aqt-discord:dev

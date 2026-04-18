@@ -7,7 +7,12 @@ from fastapi.responses import StreamingResponse
 from faststream.rabbit.fastapi import RabbitRouter
 from loguru import logger
 from pydantic import ValidationError
-from src.core.auth import require_any_role
+
+from shared.messaging.config import BALANCER_JOBS_QUEUE
+from shared.observability import publish_message
+from shared.schemas.events import BalancerJobEvent
+from src import models
+from src.core.auth import get_current_active_user
 from src.core.config import config
 from src.core.job_store import get_job_store
 from src.schemas import (
@@ -19,18 +24,35 @@ from src.schemas import (
 )
 from src.service import get_balancer_config_payload
 
-from shared.messaging.config import BALANCER_JOBS_QUEUE
-from shared.observability import publish_message
-from shared.schemas.events import BalancerJobEvent
-
 router = APIRouter(
     prefix="",
     tags=["Balancer"],
-    dependencies=[Depends(require_any_role("admin", "tournament_organizer"))],
 )
 task_router = RabbitRouter(config.rabbitmq_url, logger=logger)
 
 TERMINAL_STATUSES = {"succeeded", "failed"}
+
+
+def ensure_workspace_access(
+    user: models.AuthUser,
+    workspace_id: int | None,
+    *,
+    resource: str = "team",
+    action: str = "import",
+) -> None:
+    if workspace_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="workspace_id is required",
+        )
+    if user.has_role("tournament_organizer"):
+        return
+    if user.has_workspace_permission(workspace_id, resource, action):
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=f"Permission denied for workspace {workspace_id}: {resource}.{action} required",
+    )
 
 
 def parse_config_overrides(config_raw: str | None) -> dict | None:
@@ -80,14 +102,21 @@ def build_job_urls(job_id: str) -> dict[str, str]:
     }
 
 
-async def enqueue_balancer_job(file: UploadFile | None, config_raw: str | None) -> CreateJobResponse:
+async def enqueue_balancer_job(
+    file: UploadFile | None,
+    config_raw: str | None,
+    *,
+    workspace_id: int,
+    user: models.AuthUser,
+) -> CreateJobResponse:
     logger.info("Received balancer job creation request")
+    ensure_workspace_access(user, workspace_id, action="import")
 
     player_data = await parse_player_data_from_file(file)
     config_overrides = parse_config_overrides(config_raw)
 
     job_store = get_job_store()
-    job_id = await job_store.create_job(player_data, config_overrides)
+    job_id = await job_store.create_job(player_data, config_overrides, workspace_id=workspace_id, created_by=user.id)
 
     try:
         event = BalancerJobEvent(job_id=job_id)
@@ -109,9 +138,11 @@ async def enqueue_balancer_job(file: UploadFile | None, config_raw: str | None) 
 async def create_balancer_job(
     file: UploadFile = File(..., description="File containing player data/commands"),
     config: str | None = Form(None, description="JSON object with balancing config overrides"),
+    workspace_id: int = Query(..., description="Workspace context for authorization"),
+    user: models.AuthUser = Depends(get_current_active_user),
 ) -> CreateJobResponse:
     try:
-        return await enqueue_balancer_job(file, config)
+        return await enqueue_balancer_job(file, config, workspace_id=workspace_id, user=user)
     except ValueError as exc:
         logger.warning(f"Validation error during job creation: {exc}")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -121,30 +152,40 @@ async def create_balancer_job(
 async def balance_tournament_teams(
     file: UploadFile = File(..., description="File containing player data/commands"),
     config: str | None = Form(None, description="JSON object with balancing config overrides"),
+    workspace_id: int = Query(..., description="Workspace context for authorization"),
+    user: models.AuthUser = Depends(get_current_active_user),
 ) -> CreateJobResponse:
     """Backward-compatible alias for creating a balancer async job."""
     try:
-        return await enqueue_balancer_job(file, config)
+        return await enqueue_balancer_job(file, config, workspace_id=workspace_id, user=user)
     except ValueError as exc:
         logger.warning(f"Validation error during job creation: {exc}")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.get("/jobs/{job_id}", response_model=JobStatusResponse, status_code=status.HTTP_200_OK)
-async def get_balancer_job_status(job_id: str) -> dict:
+async def get_balancer_job_status(
+    job_id: str,
+    user: models.AuthUser = Depends(get_current_active_user),
+) -> dict:
     job_store = get_job_store()
     meta = await job_store.get_job_meta(job_id)
     if meta is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Balancer job not found")
+    ensure_workspace_access(user, meta.get("workspace_id"), action="import")
     return meta
 
 
 @router.get("/jobs/{job_id}/result", response_model=BalanceJobResult, status_code=status.HTTP_200_OK)
-async def get_balancer_job_result(job_id: str) -> dict:
+async def get_balancer_job_result(
+    job_id: str,
+    user: models.AuthUser = Depends(get_current_active_user),
+) -> dict:
     job_store = get_job_store()
     meta = await job_store.get_job_meta(job_id)
     if meta is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Balancer job not found")
+    ensure_workspace_access(user, meta.get("workspace_id"), action="import")
 
     status_value = meta.get("status")
     if status_value == "failed":
@@ -170,11 +211,13 @@ async def stream_balancer_job_events(
     job_id: str,
     after_event_id: int = Query(default=0, ge=0),
     last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
+    user: models.AuthUser = Depends(get_current_active_user),
 ) -> StreamingResponse:
     job_store = get_job_store()
     meta = await job_store.get_job_meta(job_id)
     if meta is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Balancer job not found")
+    ensure_workspace_access(user, meta.get("workspace_id"), action="import")
 
     cursor = after_event_id
     if last_event_id and last_event_id.isdigit():

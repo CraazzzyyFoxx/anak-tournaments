@@ -1,12 +1,13 @@
 "use client";
 
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { FolderInput, Loader2, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { FolderInput, Loader2, Minus, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { AdminDetailTableShell, getAdminDetailTableStyles } from "@/components/admin/AdminDetailTable";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
+import { UserSearchCombobox } from "@/components/admin/UserSearchCombobox";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -25,6 +26,7 @@ import adminService from "@/services/admin.service";
 import balancerAdminService from "@/services/balancer-admin.service";
 import type { TeamCreateInput, TeamUpdateInput } from "@/types/admin.types";
 import type { Team } from "@/types/team.types";
+import type { MinimizedUser } from "@/types/user.types";
 import {
   TOURNAMENT_DETAIL_PREVIEW_LIMIT,
   getEmptyTeamForm,
@@ -42,6 +44,124 @@ interface TournamentTeamsTabProps {
   canUpdateTeam: boolean;
   canDeleteTeam: boolean;
   canImportTeams: boolean;
+}
+
+interface TeamNumberInputProps {
+  id: string;
+  value: number;
+  onChange: (value: number) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+  suffix?: string;
+}
+
+function clampTeamNumber(value: number, min?: number, max?: number) {
+  if (typeof min === "number" && value < min) {
+    return min;
+  }
+
+  if (typeof max === "number" && value > max) {
+    return max;
+  }
+
+  return value;
+}
+
+function normalizeTeamNumberDraft(value: number) {
+  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(1)));
+}
+
+function TeamNumberInput({
+  id,
+  value,
+  onChange,
+  min,
+  max,
+  step = 1,
+  suffix,
+}: TeamNumberInputProps) {
+  const [draft, setDraft] = useState(normalizeTeamNumberDraft(value));
+
+  useEffect(() => {
+    setDraft(normalizeTeamNumberDraft(value));
+  }, [value]);
+
+  const commitValue = (nextDraft: string) => {
+    const nextValue = Number.parseFloat(nextDraft);
+
+    if (Number.isNaN(nextValue)) {
+      setDraft(normalizeTeamNumberDraft(value));
+      return;
+    }
+
+    const clamped = clampTeamNumber(nextValue, min, max);
+    setDraft(normalizeTeamNumberDraft(clamped));
+    onChange(clamped);
+  };
+
+  const stepValue = (direction: -1 | 1) => {
+    const nextValue = clampTeamNumber(value + step * direction, min, max);
+    setDraft(normalizeTeamNumberDraft(nextValue));
+    onChange(nextValue);
+  };
+
+  return (
+    <div className="flex h-10 overflow-hidden rounded-md border border-input bg-background/80 shadow-sm focus-within:ring-1 focus-within:ring-ring">
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-full w-10 shrink-0 rounded-r-none border-r"
+        onClick={() => stepValue(-1)}
+        disabled={typeof min === "number" && value <= min}
+        aria-label={`Decrease ${id}`}
+      >
+        <Minus className="h-3.5 w-3.5" />
+      </Button>
+      <div className="flex min-w-0 flex-1 items-center">
+        <Input
+          id={id}
+          type="text"
+          inputMode="decimal"
+          value={draft}
+          onChange={(event) => {
+            const nextDraft = event.target.value.replace(/[^\d.-]/g, "");
+            setDraft(nextDraft);
+
+            if (nextDraft && nextDraft !== "-" && nextDraft !== "." && nextDraft !== "-.") {
+              commitValue(nextDraft);
+            }
+          }}
+          onBlur={() => commitValue(draft)}
+          className="h-full rounded-none border-0 bg-transparent text-center shadow-none focus-visible:ring-0"
+        />
+        {suffix ? (
+          <span className="shrink-0 pr-3 text-xs font-medium text-muted-foreground">{suffix}</span>
+        ) : null}
+      </div>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-full w-10 shrink-0 rounded-l-none border-l"
+        onClick={() => stepValue(1)}
+        disabled={typeof max === "number" && value >= max}
+        aria-label={`Increase ${id}`}
+      >
+        <Plus className="h-3.5 w-3.5" />
+      </Button>
+    </div>
+  );
+}
+
+function getTeamCaptainName(team: Team | null) {
+  if (!team) {
+    return undefined;
+  }
+
+  const captain = team.players.find((player) => player.user_id === team.captain_id);
+  return captain?.user?.name;
 }
 
 export function TournamentTeamsTab({
@@ -62,6 +182,7 @@ export function TournamentTeamsTab({
   const [teamDialogOpen, setTeamDialogOpen] = useState(false);
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
   const [teamFormData, setTeamFormData] = useState<TeamFormState>(getEmptyTeamForm());
+  const [selectedCaptainName, setSelectedCaptainName] = useState<string | undefined>();
   const [teamFormError, setTeamFormError] = useState<string | undefined>();
   const [teamPendingDelete, setTeamPendingDelete] = useState<Team | null>(null);
 
@@ -69,6 +190,7 @@ export function TournamentTeamsTab({
     setTeamDialogOpen(false);
     setEditingTeam(null);
     setTeamFormData(getEmptyTeamForm());
+    setSelectedCaptainName(undefined);
     setTeamFormError(undefined);
     saveTeamMutation.reset();
   };
@@ -141,6 +263,7 @@ export function TournamentTeamsTab({
     setTeamFormError(undefined);
     setEditingTeam(null);
     setTeamFormData(getEmptyTeamForm());
+    setSelectedCaptainName(undefined);
     setTeamDialogOpen(true);
   };
 
@@ -148,7 +271,13 @@ export function TournamentTeamsTab({
     setTeamFormError(undefined);
     setEditingTeam(team);
     setTeamFormData(getTeamForm(team));
+    setSelectedCaptainName(getTeamCaptainName(team));
     setTeamDialogOpen(true);
+  };
+
+  const handleCaptainSelect = (user: MinimizedUser | undefined) => {
+    setTeamFormData((current) => ({ ...current, captain_id: user?.id ?? 0 }));
+    setSelectedCaptainName(user?.name);
   };
 
   const handleTeamSubmit = (event: FormEvent) => {
@@ -352,67 +481,78 @@ export function TournamentTeamsTab({
           }
         }}
         title={editingTeam ? "Edit Team" : "Create Team"}
-        description="Manage team metadata inside this tournament workspace."
+        description="Set the team identity, captain, and rating values used by standings and balancing."
         onSubmit={handleTeamSubmit}
         isSubmitting={saveTeamMutation.isPending}
         submittingLabel={editingTeam ? "Updating team..." : "Creating team..."}
         errorMessage={teamFormError}
         isDirty={isTeamDirty}
       >
-        <div className="space-y-4">
-          <div>
+        <div className="space-y-5">
+          <div className="rounded-md border border-border/60 bg-muted/20 p-3">
+            <p className="text-sm font-medium">{editingTeam ? "Update team roster anchor" : "Create a team shell"}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Captain search accepts player names from the user catalog. Rating fields can be typed or nudged with the side controls.
+            </p>
+          </div>
+
+          <div className="space-y-2">
             <Label htmlFor="workspace-team-name">Team Name</Label>
             <Input
               id="workspace-team-name"
               value={teamFormData.name}
+              placeholder="Team name"
               onChange={(event) =>
                 setTeamFormData((current) => ({ ...current, name: event.target.value }))
               }
             />
           </div>
 
-          <div>
-            <Label htmlFor="workspace-team-captain">Captain User ID</Label>
-            <Input
+          <div className="space-y-2">
+            <Label htmlFor="workspace-team-captain">Captain</Label>
+            <UserSearchCombobox
               id="workspace-team-captain"
-              type="number"
-              value={teamFormData.captain_id || ""}
-              onChange={(event) =>
-                setTeamFormData((current) => ({
-                  ...current,
-                  captain_id: event.target.value ? Number(event.target.value) : 0,
-                }))
-              }
+              value={teamFormData.captain_id || undefined}
+              selectedName={selectedCaptainName}
+              onSelect={handleCaptainSelect}
+              placeholder="Select captain"
+              searchPlaceholder="Search captain..."
             />
+            <p className="text-xs text-muted-foreground">
+              Current value: {teamFormData.captain_id > 0 ? `User #${teamFormData.captain_id}` : "No captain selected"}
+            </p>
           </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div>
+            <div className="space-y-2">
               <Label htmlFor="workspace-team-avg-sr">Average SR</Label>
-              <Input
+              <TeamNumberInput
                 id="workspace-team-avg-sr"
-                type="number"
-                step="0.1"
                 value={teamFormData.avg_sr}
-                onChange={(event) =>
+                min={0}
+                step={50}
+                suffix="SR"
+                onChange={(value) =>
                   setTeamFormData((current) => ({
                     ...current,
-                    avg_sr: event.target.value ? Number(event.target.value) : 0,
+                    avg_sr: value,
                   }))
                 }
               />
             </div>
 
-            <div>
+            <div className="space-y-2">
               <Label htmlFor="workspace-team-total-sr">Total SR</Label>
-              <Input
+              <TeamNumberInput
                 id="workspace-team-total-sr"
-                type="number"
                 value={teamFormData.total_sr}
-                onChange={(event) =>
+                min={0}
+                step={250}
+                suffix="SR"
+                onChange={(value) =>
                   setTeamFormData((current) => ({
                     ...current,
-                    total_sr: event.target.value ? Number(event.target.value) : 0,
+                    total_sr: value,
                   }))
                 }
               />

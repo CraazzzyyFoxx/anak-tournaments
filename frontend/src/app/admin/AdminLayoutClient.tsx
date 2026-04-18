@@ -19,6 +19,7 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/s
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { usePermissions } from "@/hooks/usePermissions";
 import { SIDEBAR_COOKIE_NAMES } from "@/lib/sidebar-cookies";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 
 function LoadingState() {
   return (
@@ -101,7 +102,8 @@ type AdminLayoutClientProps = {
 
 export function AdminLayoutClient({ children, defaultSidebarOpen }: AdminLayoutClientProps) {
   const pathname = usePathname();
-  const { isLoaded, isSuperuser, isAdmin, isOrganizer, isModerator, hasAnyPermission, canManageAnyWorkspace } = usePermissions();
+  const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
+  const { isLoaded, canAccessAdminRoute } = usePermissions();
 
   useEffect(() => {
     document.body.classList.add("admin-theme");
@@ -113,18 +115,18 @@ export function AdminLayoutClient({ children, defaultSidebarOpen }: AdminLayoutC
   }
 
   const matchingRoute = getMatchingAdminRoute(pathname);
-  const hasAdminRole = isAdmin || isOrganizer || isModerator;
-
-  let hasAccess = false;
-  if (matchingRoute?.superuserOnly) {
-    hasAccess = isSuperuser;
-  } else if (matchingRoute?.workspaceAdminVisible) {
-    hasAccess = isSuperuser || canManageAnyWorkspace();
-  } else if (matchingRoute?.permissions?.length) {
-    hasAccess = hasAdminRole || hasAnyPermission(matchingRoute.permissions);
-  } else {
-    hasAccess = isSuperuser || hasAdminRole || hasAnyPermission(adminEntryPermissions);
-  }
+  const hasAccess = matchingRoute
+    ? canAccessAdminRoute({
+        permissions: matchingRoute.permissions,
+        workspaceId: matchingRoute.workspaceAdminVisible ? null : currentWorkspaceId,
+        globalOnly: matchingRoute.globalOnly,
+        workspaceAdminVisible: matchingRoute.workspaceAdminVisible,
+        superuserOnly: matchingRoute.superuserOnly,
+      })
+    : canAccessAdminRoute({
+        permissions: adminEntryPermissions,
+        workspaceId: currentWorkspaceId,
+      });
 
   if (!hasAccess) {
     return <UnauthorizedState />;

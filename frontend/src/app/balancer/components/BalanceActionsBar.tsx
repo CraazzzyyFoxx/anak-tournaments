@@ -11,7 +11,7 @@ import {
   Shuffle,
   Sparkles,
   Upload,
-  UserX,
+  UserX
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -59,7 +59,7 @@ export function BalanceActionsBar({
   onDownloadJson,
   onCopyNames,
   onImportTeams,
-  onScreenshot,
+  onScreenshot
 }: BalanceActionsBarProps) {
   const importFileRef = useRef<HTMLInputElement>(null);
 
@@ -87,7 +87,7 @@ export function BalanceActionsBar({
         {activeVariantStats?.unbalancedCount != null ? (
           <Badge className="rounded-full border-rose-400/20 bg-rose-500/10 text-rose-200 hover:bg-rose-500/10">
             <UserX className="mr-1.5 h-3.5 w-3.5" />
-            Unbalanced {activeVariantStats.unbalancedCount}
+            Benched {activeVariantStats.unbalancedCount}
           </Badge>
         ) : null}
       </div>

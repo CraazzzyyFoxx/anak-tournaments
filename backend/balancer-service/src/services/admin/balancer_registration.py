@@ -10,9 +10,13 @@ from uuid import uuid4
 import httpx
 import sqlalchemy as sa
 from fastapi import HTTPException, status
-from shared.domain.player_sub_roles import normalize_sub_role
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
+
+from shared.balancer_registration_statuses import get_builtin_status_values
+from shared.core import enums
+from shared.division_grid import DivisionGrid, load_runtime_grid
+from shared.domain.player_sub_roles import normalize_sub_role
 from src import models
 from src.services.admin.balancer_utils import (
     DEFAULT_BOOLEAN_TRUE_VALUES,
@@ -40,9 +44,6 @@ from src.services.admin.balancer_utils import (
 from src.services.admin.balancer_utils import (
     extract_battle_tags as _extract_battle_tags,
 )
-
-from shared.balancer_registration_statuses import get_builtin_status_values
-from shared.division_grid import DivisionGrid, load_runtime_grid
 
 logger = logging.getLogger(__name__)
 
@@ -236,6 +237,36 @@ def serialize_datetime(value: datetime | None) -> str | None:
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC).isoformat()
     return value.astimezone(UTC).isoformat()
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def is_check_in_window_active(
+    tournament: models.Tournament,
+    *,
+    now: datetime | None = None,
+) -> bool:
+    if tournament.status != enums.TournamentStatus.CHECK_IN:
+        return False
+
+    current_time = _as_utc(now or datetime.now(UTC))
+    opens_at = (
+        _as_utc(tournament.check_in_opens_at)
+        if tournament.check_in_opens_at is not None
+        else None
+    )
+    closes_at = (
+        _as_utc(tournament.check_in_closes_at)
+        if tournament.check_in_closes_at is not None
+        else None
+    )
+    return (opens_at is None or opens_at <= current_time) and (
+        closes_at is None or current_time <= closes_at
+    )
 
 
 def serialize_parsed_fields(parsed_fields: dict[str, Any]) -> dict[str, Any]:
@@ -625,6 +656,7 @@ async def get_registration_by_id(session: AsyncSession, registration_id: int) ->
             selectinload(models.BalancerRegistration.reviewer),
             selectinload(models.BalancerRegistration.checked_in_by_user),
             selectinload(models.BalancerRegistration.google_sheet_binding),
+            selectinload(models.BalancerRegistration.tournament),
         )
     )
     registration = result.scalar_one_or_none()
@@ -1007,6 +1039,11 @@ async def check_in_registration(
     checked_in_by: int | None,
 ) -> models.BalancerRegistration:
     registration = await get_registration_by_id(session, registration_id)
+    if not is_check_in_window_active(registration.tournament):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Check-in is not active for this tournament",
+        )
     registration.checked_in = True
     registration.checked_in_at = datetime.now(UTC)
     registration.checked_in_by = checked_in_by

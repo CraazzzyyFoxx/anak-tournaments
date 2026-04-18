@@ -139,6 +139,19 @@ export interface BalanceExportResponse {
   balance_id: number;
 }
 
+export interface BalancerTournamentConfig {
+  id: number;
+  tournament_id: number;
+  workspace_id: number;
+  config_json: Record<string, unknown>;
+  updated_by: number | null;
+  updated_at: string | null;
+}
+
+export interface BalancerTournamentConfigUpsertInput {
+  config_json?: Record<string, unknown> | null;
+}
+
 export interface TournamentSheetUpsertInput {
   source_url: string;
   title?: string | null;

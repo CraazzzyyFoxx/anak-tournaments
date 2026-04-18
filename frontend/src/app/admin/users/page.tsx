@@ -46,6 +46,7 @@ import type { User } from "@/types/user.types";
 import type { UserCreateInput, CsvUserImportParams } from "@/types/admin.types";
 import { usePermissions } from "@/hooks/usePermissions";
 import { hasUnsavedChanges } from "@/lib/form-change";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 
 
 const defaultImportParams: CsvUserImportParams = {
@@ -279,15 +280,16 @@ function CsvImportDialog({ open, onOpenChange }: CsvImportDialogProps) {
 
 export default function UsersAdminPage() {
   const queryClient = useQueryClient();
-  const { hasPermission } = usePermissions();
+  const { canAccessPermission } = usePermissions();
+  const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [profileUser, setProfileUser] = useState<User | null>(null);
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
   const [createName, setCreateName] = useState("");
-  const canCreate = hasPermission("user.create");
-  const canUpdate = hasPermission("user.update");
-  const canDelete = hasPermission("user.delete");
+  const canCreate = canAccessPermission("user.create", workspaceId);
+  const canUpdate = canAccessPermission("user.update", workspaceId);
+  const canDelete = canAccessPermission("user.delete", workspaceId);
   const canOpenProfile = canUpdate || canDelete;
   const isCreateDirty = createDialogOpen && hasUnsavedChanges({ name: createName }, { name: "" });
 

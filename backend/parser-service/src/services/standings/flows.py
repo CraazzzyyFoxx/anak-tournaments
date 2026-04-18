@@ -72,6 +72,17 @@ async def bulk_create_for_tournament(
     return [await to_pydantic(session, standing, ["team", "stage", "stage_item"]) for standing in standings]
 
 
+async def recalculate_for_tournament(
+    session: AsyncSession,
+    tournament_id: int,
+) -> list[schemas.StandingRead]:
+    standings = await service.recalculate_for_tournament(session, tournament_id)
+    return [
+        await to_pydantic(session, standing, ["team", "stage", "stage_item"])
+        for standing in standings
+    ]
+
+
 async def bulk_create(session: AsyncSession) -> None:
     for tournament in await tournament_service.get_all(session):
         await bulk_create_for_tournament(session, tournament.id)

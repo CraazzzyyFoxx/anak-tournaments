@@ -15,6 +15,8 @@ from src.service import (
     Player as GeneticPlayer,
     Team as GeneticTeam,
     assign_captains,
+    diagnose_role_shortage,
+    find_feasible_role_assignment,
 )
 
 from shared.balancer.types import BalanceOutput, PlayerAssignment, PlayerInput, RoleMask
@@ -148,10 +150,36 @@ class GeneticBalancer:
             return []
 
         players_per_team = sum(genetic_mask.values())
+        if players_per_team <= 0:
+            raise ValueError("Genetic mask defines zero players per team")
+
+        if len(genetic_players) % players_per_team != 0:
+            raise ValueError(
+                f"Player count must be divisible by team size. "
+                f"Got {len(genetic_players)} players, team size is {players_per_team}. "
+                f"Caller must provide exactly num_teams * {players_per_team} players."
+            )
+
         num_teams = len(genetic_players) // players_per_team
         if num_teams < 1:
             raise ValueError(
                 f"Need at least {players_per_team} active players, got {len(genetic_players)}"
+            )
+
+        shortages = diagnose_role_shortage(genetic_players, num_teams, genetic_mask)
+        if shortages:
+            shortage_desc = ", ".join(
+                f"'{role}' short by {missing}" for role, missing in shortages.items()
+            )
+            raise ValueError(
+                f"Cannot form {num_teams} full teams — not enough role coverage: "
+                f"{shortage_desc}."
+            )
+
+        if find_feasible_role_assignment(genetic_players, num_teams, genetic_mask) is None:
+            raise ValueError(
+                f"Cannot form {num_teams} full teams: no consistent role "
+                f"assignment exists with the current can_play overlap."
             )
 
         # Captains

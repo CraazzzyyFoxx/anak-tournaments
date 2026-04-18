@@ -38,6 +38,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePermissions } from "@/hooks/usePermissions";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import { paginateResults, sortArray } from "@/lib/paginate-results";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 
 const emptyStandingForm: StandingUpdateInput = {
   position: 0,
@@ -73,11 +74,12 @@ function getStandingScopeLabel(standing: Standings): string {
 
 export default function StandingsPage() {
   const { toast } = useToast();
-  const { hasPermission } = usePermissions();
+  const { canAccessPermission } = usePermissions();
+  const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const queryClient = useQueryClient();
-  const canUpdate = hasPermission("standing.update");
-  const canDelete = hasPermission("standing.delete");
-  const canRecalculate = hasPermission("standing.recalculate");
+  const canUpdate = canAccessPermission("standing.update", workspaceId);
+  const canDelete = canAccessPermission("standing.delete", workspaceId);
+  const canRecalculate = canAccessPermission("standing.recalculate", workspaceId);
 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);

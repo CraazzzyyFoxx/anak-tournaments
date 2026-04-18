@@ -27,6 +27,20 @@ def _prepare_player_update_data(
         update_data["sub_role"] = normalize_sub_role(update_data["sub_role"])
     return update_data
 
+
+def _prepare_team_create_data(data: admin_schemas.TeamCreate) -> dict:
+    team_data = data.model_dump()
+    if team_data["balancer_name"] is None:
+        team_data["balancer_name"] = team_data["name"]
+    return team_data
+
+
+def _prepare_team_update_data(team: models.Team, data: admin_schemas.TeamUpdate) -> dict:
+    update_data = data.model_dump(exclude_unset=True)
+    if update_data.get("balancer_name") is None and "balancer_name" in update_data:
+        update_data["balancer_name"] = update_data.get("name") or team.name
+    return update_data
+
 # ─── Team CRUD ───────────────────────────────────────────────────────────────
 
 
@@ -86,7 +100,7 @@ async def create_team(session: AsyncSession, data: admin_schemas.TeamCreate) -> 
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Captain user not found")
 
     # Create team
-    team = models.Team(**data.model_dump())
+    team = models.Team(**_prepare_team_create_data(data))
 
     session.add(team)
     await session.commit()
@@ -111,7 +125,7 @@ async def update_team(session: AsyncSession, team_id: int, data: admin_schemas.T
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Captain user not found")
 
     # Update fields
-    update_data = data.model_dump(exclude_unset=True)
+    update_data = _prepare_team_update_data(team, data)
     for field, value in update_data.items():
         setattr(team, field, value)
 

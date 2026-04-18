@@ -27,6 +27,8 @@ import {
   BalancerPlayerImportResult,
   BalancerPlayerRecord,
   BalancerPlayerRoleSyncResponse,
+  BalancerTournamentConfig,
+  BalancerTournamentConfigUpsertInput,
   BalancerPlayerUpdateInput,
   DuplicateResolution,
   DuplicateStrategy,
@@ -173,6 +175,22 @@ export default class balancerAdminService {
     const response = await apiFetch("balancer",`admin/balancer/tournaments/${tournamentId}/players/application-roles`, {
       method: "POST",
       body: {},
+    });
+    return response.json();
+  }
+
+  static async getTournamentConfig(tournamentId: number): Promise<BalancerTournamentConfig | null> {
+    const response = await apiFetch("balancer", `admin/balancer/tournaments/${tournamentId}/config`);
+    return response.json();
+  }
+
+  static async upsertTournamentConfig(
+    tournamentId: number,
+    data: BalancerTournamentConfigUpsertInput,
+  ): Promise<BalancerTournamentConfig> {
+    const response = await apiFetch("balancer", `admin/balancer/tournaments/${tournamentId}/config`, {
+      method: "PUT",
+      body: data,
     });
     return response.json();
   }

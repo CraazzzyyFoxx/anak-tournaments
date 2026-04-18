@@ -4,10 +4,11 @@ import json
 from typing import Literal
 
 import sqlalchemy as sa
-import src.services.team as team_flows
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import NO_VALUE
+
+import src.services.team as team_flows
 from src import models
 from src.core import auth, db
 from src.schemas.admin import balancer as admin_schemas
@@ -18,7 +19,6 @@ from src.services.admin import balancer_registration as registration_service
 router = APIRouter(
     prefix="/balancer",
     tags=["admin", "balancer"],
-    dependencies=[Depends(auth.require_any_role("admin", "tournament_organizer"))],
 )
 
 
@@ -132,6 +132,19 @@ def _serialize_balance(
     )
 
 
+def _serialize_tournament_config(
+    tournament_config: models.BalancerTournamentConfig,
+) -> admin_schemas.BalancerTournamentConfigRead:
+    return admin_schemas.BalancerTournamentConfigRead(
+        id=tournament_config.id,
+        tournament_id=tournament_config.tournament_id,
+        workspace_id=tournament_config.workspace_id,
+        config_json=tournament_config.config_json or {},
+        updated_by=tournament_config.updated_by,
+        updated_at=tournament_config.updated_at,
+    )
+
+
 @router.get(
     "/tournaments/{tournament_id}/sheet",
     response_model=admin_schemas.BalancerGoogleSheetFeedRead | None,
@@ -139,7 +152,7 @@ def _serialize_balance(
 async def get_tournament_sheet(
     tournament_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("team", "read")),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("team", "read")),
 ):
     feed = await registration_service.get_google_sheet_feed(session, tournament_id)
     if feed is None:
@@ -155,7 +168,7 @@ async def upsert_tournament_sheet(
     tournament_id: int,
     data: admin_schemas.BalancerGoogleSheetFeedUpsert,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("team", "import")),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("team", "import")),
 ):
     feed = await registration_service.upsert_google_sheet_feed(
         session,
@@ -177,7 +190,7 @@ async def upsert_tournament_sheet(
 async def sync_tournament_sheet(
     tournament_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("team", "import")),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("team", "import")),
 ):
     feed, created, updated, withdrawn, total = await registration_service.sync_google_sheet_feed(session, tournament_id)
     return admin_schemas.BalancerGoogleSheetFeedSyncResponse(
@@ -197,7 +210,7 @@ async def suggest_sheet_mapping(
     tournament_id: int,
     data: admin_schemas.BalancerGoogleSheetMappingSuggestRequest,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("team", "read")),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("team", "read")),
 ):
     _, headers, mapping = await registration_service.suggest_google_sheet_mapping(
         session,
@@ -218,7 +231,7 @@ async def preview_sheet_mapping(
     tournament_id: int,
     data: admin_schemas.BalancerGoogleSheetMappingPreviewRequest,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("team", "read")),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("team", "read")),
 ):
     preview = await registration_service.preview_google_sheet_mapping(
         session,
@@ -235,7 +248,7 @@ async def list_applications(
     tournament_id: int,
     include_inactive: bool = False,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("team", "read")),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("team", "read")),
 ):
     applications = await legacy_balancer_service.list_applications(
         session,
@@ -250,7 +263,7 @@ async def create_players_from_applications(
     tournament_id: int,
     data: admin_schemas.BalancerPlayerCreateRequest,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("player", "create")),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("player", "create")),
 ):
     players = await legacy_balancer_service.create_players_from_applications(session, tournament_id, data)
     return [_serialize_player(player) for player in players]
@@ -261,7 +274,7 @@ async def list_players(
     tournament_id: int,
     in_pool_only: bool = False,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("player", "read")),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("player", "read")),
 ):
     players = await legacy_balancer_service.list_players(session, tournament_id, in_pool_only=in_pool_only)
     return [_serialize_player(player) for player in players]
@@ -272,7 +285,7 @@ async def update_player(
     player_id: int,
     data: admin_schemas.BalancerPlayerUpdate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("player", "update")),
+    user: models.AuthUser = Depends(auth.require_player_permission("player", "update")),
 ):
     player = await legacy_balancer_service.update_player(session, player_id, data)
     return _serialize_player(player)
@@ -282,7 +295,7 @@ async def update_player(
 async def delete_player(
     player_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("player", "delete")),
+    user: models.AuthUser = Depends(auth.require_player_permission("player", "delete")),
 ):
     await legacy_balancer_service.delete_player(session, player_id)
 
@@ -296,7 +309,7 @@ async def preview_player_import(
     data: UploadFile = File(...),
     match_application_roles: bool = Form(default=False),
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("player", "update")),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("player", "update")),
 ):
     payload = json.loads((await data.read()).decode("utf-8"))
     return await legacy_balancer_service.preview_player_import(
@@ -318,7 +331,7 @@ async def import_players(
     match_application_roles: bool = Form(default=False),
     resolutions_json: str | None = Form(default=None),
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("player", "update")),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("player", "update")),
 ):
     payload = json.loads((await data.read()).decode("utf-8"))
     resolutions = json.loads(resolutions_json) if resolutions_json else None
@@ -336,7 +349,7 @@ async def import_players(
 async def export_players(
     tournament_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("player", "read")),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("player", "read")),
 ):
     payload = await registration_service.export_active_registrations(session, tournament_id)
     return admin_schemas.BalancerPlayerExportResponse(**payload)
@@ -349,7 +362,7 @@ async def export_players(
 async def export_applications_to_users(
     tournament_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("player", "import")),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("player", "import")),
 ):
     return await legacy_balancer_service.export_applications_to_users(session, tournament_id)
 
@@ -361,16 +374,50 @@ async def export_applications_to_users(
 async def sync_player_roles_from_applications(
     tournament_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("player", "update")),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("player", "update")),
 ):
     return await legacy_balancer_service.sync_player_roles_from_applications(session, tournament_id)
+
+
+@router.get(
+    "/tournaments/{tournament_id}/config",
+    response_model=admin_schemas.BalancerTournamentConfigRead | None,
+)
+async def get_tournament_config(
+    tournament_id: int,
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("team", "read")),
+):
+    tournament_config = await legacy_balancer_service.get_tournament_config(session, tournament_id)
+    if tournament_config is None:
+        return None
+    return _serialize_tournament_config(tournament_config)
+
+
+@router.put(
+    "/tournaments/{tournament_id}/config",
+    response_model=admin_schemas.BalancerTournamentConfigRead,
+)
+async def upsert_tournament_config(
+    tournament_id: int,
+    data: admin_schemas.BalancerTournamentConfigUpsert,
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("team", "import")),
+):
+    tournament_config = await legacy_balancer_service.upsert_tournament_config(
+        session,
+        tournament_id,
+        data.config_json,
+        user,
+    )
+    return _serialize_tournament_config(tournament_config)
 
 
 @router.get("/tournaments/{tournament_id}/balance", response_model=admin_schemas.BalanceRead | None)
 async def get_balance(
     tournament_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("team", "read")),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("team", "read")),
 ):
     balance = await legacy_balancer_service.get_balance(session, tournament_id)
     if balance is None:
@@ -383,7 +430,7 @@ async def save_balance(
     tournament_id: int,
     data: admin_schemas.BalanceSaveRequest,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("team", "import")),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("team", "import")),
 ):
     balance = await legacy_balancer_service.save_balance(session, tournament_id, data, user)
     return _serialize_balance(balance)
@@ -393,7 +440,7 @@ async def save_balance(
 async def export_balance(
     balance_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("team", "import")),
+    user: models.AuthUser = Depends(auth.require_balance_permission("team", "import")),
 ):
     balance, removed_teams, imported_teams = await legacy_balancer_service.export_balance(session, balance_id)
     return admin_schemas.BalanceExportResponse(
@@ -410,7 +457,7 @@ async def import_teams_from_json(
     data: UploadFile = File(...),
     payload_format: Literal["auto", "atravkovs", "internal"] = Form(default="auto"),
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("team", "import")),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("team", "import")),
 ):
     payload = json.loads((await data.read()).decode("utf-8"))
 

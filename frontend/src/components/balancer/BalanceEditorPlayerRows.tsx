@@ -107,8 +107,9 @@ function BalanceEditorPlayerTableRow({
   const division = resolveDivisionFromRank(divisionGrid, player.rating);
   const isSelected = playerId !== null && selectedPlayerId === playerId;
   const preferredRoles = player.preferences.slice(0, 3);
+  const preferredRole = preferredRoles[0];
   const assignedOffRole =
-    !player.isFlex && preferredRoles.length > 0 && preferredRoles[0] !== roleKey;
+    !player.isFlex && preferredRole !== undefined && preferredRole !== roleKey;
 
   return (
     <TableRow
@@ -140,11 +141,6 @@ function BalanceEditorPlayerTableRow({
           <span className="truncate text-sm font-semibold text-white/88" title={player.name}>
             {player.name}
           </span>
-          {assignedOffRole ? (
-            <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.14em] text-amber-300">
-              Off-role
-            </span>
-          ) : null}
         </div>
       </TableCell>
       <TableCell className="w-18 px-2 py-2.5">
@@ -161,14 +157,25 @@ function BalanceEditorPlayerTableRow({
       <TableCell className="w-22 px-3 py-2.5">
         <div className="flex items-center justify-center gap-1">
           {preferredRoles.length > 0 ? (
-            preferredRoles.map((preference, index) => (
-              <span
-                key={`${player.uuid}-${preference}-${index}`}
-                className="flex items-center justify-center opacity-85"
-              >
-                <PlayerRoleIcon role={preference} size={14} />
-              </span>
-            ))
+            preferredRoles.map((preference, index) => {
+              const highlightPreferredRole = assignedOffRole && index === 0;
+
+              return (
+                <span
+                  key={`${player.uuid}-${preference}-${index}`}
+                  className="flex items-center justify-center opacity-85"
+                  title={
+                    highlightPreferredRole ? `Off-role: assigned ${roleKey}` : undefined
+                  }
+                >
+                  <PlayerRoleIcon
+                    role={preference}
+                    size={14}
+                    color={highlightPreferredRole ? "#fbbf24" : undefined}
+                  />
+                </span>
+              );
+            })
           ) : (
             <span className="text-xs text-white/25">-</span>
           )}

@@ -34,6 +34,7 @@ import type { Hero } from "@/types/hero.types";
 import type { HeroCreateInput, HeroUpdateInput } from "@/types/admin.types";
 import { usePermissions } from "@/hooks/usePermissions";
 import { hasUnsavedChanges } from "@/lib/form-change";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 
 const HERO_ROLES = ["Tank", "Damage", "Support"];
 const emptyHeroForm: HeroCreateInput = {
@@ -94,17 +95,18 @@ function getHeroForm(hero: Hero | null): HeroCreateInput | HeroUpdateInput {
 
 export default function HeroesAdminPage() {
   const queryClient = useQueryClient();
-  const { hasPermission } = usePermissions();
+  const { canAccessPermission } = usePermissions();
+  const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingHero, setEditingHero] = useState<Hero | null>(null);
   const [deletingHero, setDeletingHero] = useState<Hero | null>(null);
   const [formData, setFormData] = useState<HeroCreateInput | HeroUpdateInput>({
     ...emptyHeroForm,
   });
-  const canCreate = hasPermission("hero.create");
-  const canUpdate = hasPermission("hero.update");
-  const canDelete = hasPermission("hero.delete");
-  const canSync = hasPermission("hero.sync");
+  const canCreate = canAccessPermission("hero.create", workspaceId);
+  const canUpdate = canAccessPermission("hero.update", workspaceId);
+  const canDelete = canAccessPermission("hero.delete", workspaceId);
+  const canSync = canAccessPermission("hero.sync", workspaceId);
 
   const createMutation = useMutation({
     mutationFn: (data: HeroCreateInput) => adminService.createHero(data),

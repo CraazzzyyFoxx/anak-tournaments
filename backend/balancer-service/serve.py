@@ -13,7 +13,8 @@ from src.core.job_store import JobStatus, get_job_store
 
 # New universal adapters (used alongside legacy paths during transition)
 from src.cpsat_bridge import run_cpsat
-from src.service import balance_teams
+from src.nsga_adapter import from_mixtura_response, to_mixtura_request
+from src.service import balance_teams, balance_teams_moo
 from src.services.admin import balancer_registration as registration_balancer_service
 
 from shared.messaging.config import BALANCER_JOBS_QUEUE
@@ -78,6 +79,54 @@ async def setup_worker_observability() -> None:
 @app.on_shutdown
 async def stop_scheduler() -> None:
     scheduler.shutdown(wait=False)
+
+
+async def _run_nsga(
+    *,
+    input_data: dict[str, Any],
+    config_overrides: dict[str, Any],
+    max_solutions: int,
+    mixtura_queue: str,
+    job_id: str,
+    job_store: Any,
+) -> list[dict[str, Any]]:
+    """Send a balance request to mixtura-balancer via RabbitMQ RPC and await the response."""
+    request_payload = to_mixtura_request(input_data, config_overrides)
+    timeout_seconds: int = 600
+
+    try:
+        msg = await broker.request(
+            request_payload,
+            queue=mixtura_queue,
+            timeout=timeout_seconds,
+        )
+    except Exception as exc:
+        raise RuntimeError(f"NSGA-II solver call failed: {exc}") from exc
+
+    if msg is None:
+        raise RuntimeError("NSGA-II solver returned no response (timeout or queue unavailable)")
+
+    import json as _json
+
+    # ResponseMessage envelope: {"status": int, "message": DraftBalances | ErrorResponse}
+    raw_body: bytes = msg.body if isinstance(msg.body, bytes) else bytes(msg.body)
+    envelope = _json.loads(raw_body.decode("utf-8"))
+
+    status_code: int = envelope.get("status", 0)
+    if status_code != 200:
+        error_msg = envelope.get("message", {})
+        if isinstance(error_msg, dict):
+            error_msg = error_msg.get("message", str(error_msg))
+        raise RuntimeError(f"NSGA-II solver error (status={status_code}): {error_msg}")
+
+    draft_balances: dict = envelope.get("message", envelope)
+
+    return from_mixtura_response(
+        draft_balances=draft_balances,
+        input_data=input_data,
+        config_overrides=config_overrides,
+        max_solutions=max_solutions,
+    )
 
 
 @broker.subscriber(BALANCER_JOBS_QUEUE, decoder=_decode_balancer_message)
@@ -183,6 +232,41 @@ async def process_balancer_job(data: dict, msg: RabbitMessage) -> None:
                 update_meta=True,
             )
             variants = await asyncio.to_thread(run_cpsat, input_data, max_solutions)
+            result = {"variants": variants}
+        elif algorithm == "nsga":
+            max_solutions = config_overrides.get("MAX_NSGA_SOLUTIONS", 10) if config_overrides else 10
+            mixtura_queue = config_overrides.get("MIXTURA_QUEUE", "mix_balance_service.balance")
+            await job_store.append_event(
+                event.job_id,
+                status="running",
+                stage="solving",
+                message="Running NSGA-II multi-objective solver…",
+                level="info",
+                progress=None,
+                update_meta=True,
+            )
+            variants = await _run_nsga(
+                input_data=input_data,
+                config_overrides=config_overrides,
+                max_solutions=max_solutions,
+                mixtura_queue=mixtura_queue,
+                job_id=event.job_id,
+                job_store=job_store,
+            )
+            result = {"variants": variants}
+        elif algorithm == "genetic_moo":
+            await job_store.append_event(
+                event.job_id,
+                status="running",
+                stage="solving",
+                message="Running multi-objective genetic optimizer…",
+                level="info",
+                progress=None,
+                update_meta=True,
+            )
+            variants = await asyncio.to_thread(
+                balance_teams_moo, input_data, config_overrides, progress_callback
+            )
             result = {"variants": variants}
         else:
             result_single = await asyncio.to_thread(balance_teams, input_data, config_overrides, progress_callback)

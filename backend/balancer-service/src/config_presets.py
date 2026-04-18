@@ -19,6 +19,7 @@ class ConfigPresets:
         "ELITISM_RATE": 0.2,
         "MUTATION_RATE": 0.4,
         "MUTATION_STRENGTH": 3,
+        "STAGNATION_THRESHOLD": 30,
         "MMR_DIFF_WEIGHT": 3.0,
         "DISCOMFORT_WEIGHT": 1.5,
         "INTRA_TEAM_VAR_WEIGHT": 0.8,
@@ -27,6 +28,7 @@ class ConfigPresets:
         "MAX_TEAM_GAP_WEIGHT": 1.0,
         "ROLE_BALANCE_WEIGHT": 1.0,
         "ROLE_SPREAD_WEIGHT": 1.0,
+        "SUBROLE_COLLISION_WEIGHT": 5.0,
         "USE_CAPTAINS": True,
         "ROLE_MAPPING": {"tank": "Tank", "dps": "Damage", "damage": "Damage", "support": "Support"},
     }
@@ -38,6 +40,7 @@ class ConfigPresets:
         "ELITISM_RATE": 0.15,
         "MUTATION_RATE": 0.5,
         "MUTATION_STRENGTH": 4,
+        "STAGNATION_THRESHOLD": 30,
         "MMR_DIFF_WEIGHT": 5.0,
         "DISCOMFORT_WEIGHT": 0.2,
         "INTRA_TEAM_VAR_WEIGHT": 1.0,
@@ -46,6 +49,7 @@ class ConfigPresets:
         "MAX_TEAM_GAP_WEIGHT": 1.0,
         "ROLE_BALANCE_WEIGHT": 1.0,
         "ROLE_SPREAD_WEIGHT": 1.0,
+        "SUBROLE_COLLISION_WEIGHT": 10.0,
         "USE_CAPTAINS": True,
     }
 
@@ -56,6 +60,7 @@ class ConfigPresets:
         "ELITISM_RATE": 0.25,
         "MUTATION_RATE": 0.35,
         "MUTATION_STRENGTH": 3,
+        "STAGNATION_THRESHOLD": 30,
         "MMR_DIFF_WEIGHT": 2.0,
         "DISCOMFORT_WEIGHT": 0.5,
         "INTRA_TEAM_VAR_WEIGHT": 0.5,
@@ -64,6 +69,7 @@ class ConfigPresets:
         "MAX_TEAM_GAP_WEIGHT": 1.0,
         "ROLE_BALANCE_WEIGHT": 1.0,
         "ROLE_SPREAD_WEIGHT": 1.0,
+        "SUBROLE_COLLISION_WEIGHT": 0.0,
         "USE_CAPTAINS": False,
     }
 
@@ -74,6 +80,7 @@ class ConfigPresets:
         "ELITISM_RATE": 0.3,
         "MUTATION_RATE": 0.3,
         "MUTATION_STRENGTH": 2,
+        "STAGNATION_THRESHOLD": 20,
         "MMR_DIFF_WEIGHT": 3.0,
         "DISCOMFORT_WEIGHT": 0.25,
         "INTRA_TEAM_VAR_WEIGHT": 0.8,
@@ -82,6 +89,7 @@ class ConfigPresets:
         "MAX_TEAM_GAP_WEIGHT": 1.0,
         "ROLE_BALANCE_WEIGHT": 1.0,
         "ROLE_SPREAD_WEIGHT": 1.0,
+        "SUBROLE_COLLISION_WEIGHT": 0.0,
         "USE_CAPTAINS": False,
     }
 
@@ -92,6 +100,7 @@ class ConfigPresets:
         "ELITISM_RATE": 0.2,
         "MUTATION_RATE": 0.4,
         "MUTATION_STRENGTH": 3,
+        "STAGNATION_THRESHOLD": 30,
         "MMR_DIFF_WEIGHT": 2.0,
         "DISCOMFORT_WEIGHT": 1.0,
         "INTRA_TEAM_VAR_WEIGHT": 0.5,
@@ -100,11 +109,40 @@ class ConfigPresets:
         "MAX_TEAM_GAP_WEIGHT": 1.0,
         "ROLE_BALANCE_WEIGHT": 1.0,
         "ROLE_SPREAD_WEIGHT": 1.0,
+        "SUBROLE_COLLISION_WEIGHT": 5.0,
         "USE_CAPTAINS": True,
     }
 
     # CP-SAT exact solver
     CPSAT: dict[str, Any] = {"ALGORITHM": "cpsat", "MAX_CPSAT_SOLUTIONS": 3}
+
+    # NSGA-II multi-objective optimizer (mixtura-balancer)
+    NSGA: dict[str, Any] = {
+        "ALGORITHM": "nsga",
+        "POPULATION_SIZE": 200,
+        "GENERATIONS": 1000,
+        "MAX_NSGA_SOLUTIONS": 10,
+    }
+
+    # Multi-objective legacy GA (returns a Pareto front of balance/comfort tradeoffs)
+    GENETIC_MOO: dict[str, Any] = {
+        "ALGORITHM": "genetic_moo",
+        "POPULATION_SIZE": 200,
+        "GENERATIONS": 750,
+        "MUTATION_RATE": 0.6,
+        "MUTATION_STRENGTH": 3,
+        "MAX_GENETIC_SOLUTIONS": 10,
+        "MMR_DIFF_WEIGHT": 3.0,
+        "DISCOMFORT_WEIGHT": 1.5,
+        "INTRA_TEAM_VAR_WEIGHT": 0.8,
+        "MAX_DISCOMFORT_WEIGHT": 1.5,
+        "TEAM_TOTAL_STD_WEIGHT": 1.0,
+        "MAX_TEAM_GAP_WEIGHT": 1.0,
+        "ROLE_BALANCE_WEIGHT": 1.0,
+        "ROLE_SPREAD_WEIGHT": 1.0,
+        "SUBROLE_COLLISION_WEIGHT": 5.0,
+        "USE_CAPTAINS": True,
+    }
 
     # High quality: slow but optimal
     HIGH_QUALITY: dict[str, Any] = {
@@ -113,24 +151,27 @@ class ConfigPresets:
         "ELITISM_RATE": 0.15,
         "MUTATION_RATE": 0.85,
         "MUTATION_STRENGTH": 4,     # 4 перестановки за мутацию, чтобы быстро тасовать составы
-        
+        "STAGNATION_THRESHOLD": 40,
+
         # 1. Равенство команд (Приоритет №1)
         "MAX_TEAM_GAP_WEIGHT": 60.0,    # Непреодолимый штраф, если сумма рейтинга одной команды сильно больше другой
         "TEAM_TOTAL_STD_WEIGHT": 40.0,  # Жестко стягивает все команды к единой сумме рейтинга
         "MMR_DIFF_WEIGHT": 30.0,        # Жестко стягивает все команды к единому среднему MMR
-        
+
         # 2. Искоренение off-ролей (Приоритет №2)
         "MAX_DISCOMFORT_WEIGHT": 150.0,  # Убивает любую ветку эволюции, где игрок стоит на роли, на которой не играет
         "DISCOMFORT_WEIGHT": 80.0,      # Сильный штраф за 2-й и 3-й пик предпочтений (заставляет искать мейнеров)
-        
+
         # 3. Отключаем то, на что нам "пофиг"
         "INTRA_TEAM_VAR_WEIGHT": 0.0,   # ВЫКЛЮЧЕНО. Алгоритму теперь плевать на разброс внутри команды.
         "ROLE_SPREAD_WEIGHT": 0.0,      # ВЫКЛЮЧЕНО.
         "ROLE_BALANCE_WEIGHT": 5.0,     # Оставлен небольшой вес, просто чтобы при абсолютно равных MMR алгоритм предпочитал зеркальные линии.
-        
+        "SUBROLE_COLLISION_WEIGHT": 10.0,  # Штраф за дубли subclass-ов.
+
         "USE_CAPTAINS": True,
     }
-    
+
+
 
 class ConfigBuilder:
     """Helper class to build custom configurations with validation"""

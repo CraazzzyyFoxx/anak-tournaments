@@ -4,6 +4,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { useMutation } from "@tanstack/react-query";
 import type React from "react";
 import type { JobAction } from "./useBalancerJob";
+import { sanitizeBalancerConfig } from "./balancer-config-helpers";
 import {
   buildBalancerInput,
   buildVariantFromSavedBalance,
@@ -47,6 +48,9 @@ type UseBalancerMutationsOptions = {
   poolPlayers: BalancerPlayerRecord[];
   selectedPreset: string;
   balancerConfigData: BalancerConfigResponse | undefined;
+  draftConfig: BalancerConfig;
+  isConfigDirty: boolean;
+  onTournamentConfigSaved: (config: BalancerConfig) => void;
   activeVariant: BalanceVariant | null;
   savedBalanceData: SavedBalance | null | undefined;
 };
@@ -67,6 +71,9 @@ export function useBalancerMutations({
   poolPlayers,
   selectedPreset,
   balancerConfigData,
+  draftConfig,
+  isConfigDirty,
+  onTournamentConfigSaved,
   activeVariant,
   savedBalanceData
 }: UseBalancerMutationsOptions) {
@@ -290,14 +297,26 @@ export function useBalancerMutations({
       const file = new File([JSON.stringify(input)], `balancer-${tournamentId}.json`, {
         type: "application/json"
       });
-      const config = balancerConfigData?.presets[selectedPreset] ?? balancerConfigData?.defaults;
+      const sanitizedDraftConfig = sanitizeBalancerConfig(draftConfig);
+      let config =
+        Object.keys(sanitizedDraftConfig).length > 0
+          ? sanitizedDraftConfig
+          : (balancerConfigData?.presets[selectedPreset] ?? balancerConfigData?.defaults);
+      if (config && isConfigDirty) {
+        const savedConfig = await balancerAdminService.upsertTournamentConfig(tournamentId, {
+          config_json: sanitizeBalancerConfig(config) as Record<string, unknown>
+        });
+        config = savedConfig.config_json as BalancerConfig;
+        onTournamentConfigSaved(config);
+      }
       const skipped = excludeInvalidPlayers ? invalidPlayerStates.length : 0;
       return {
         job: await balancerService.createBalanceJob(file, config as BalancerConfig | undefined),
-        skipped
+        skipped,
+        config: config as BalancerConfig | undefined
       };
     },
-    onSuccess: ({ job, skipped }) => {
+    onSuccess: ({ job, skipped, config }) => {
       dispatchJob({
         type: "update",
         status: job.status,
@@ -332,6 +351,7 @@ export function useBalancerMutations({
                     label: createVariantLabel(generatedCount + batchIndex + 1),
                     payload,
                     source: "generated",
+                    config: config ?? null,
                     skippedCount: batchIndex === 0 && skipped > 0 ? skipped : undefined
                   });
                 });
@@ -369,8 +389,13 @@ export function useBalancerMutations({
   const saveBalanceMutation = useMutation({
     mutationFn: async () => {
       if (!tournamentId || !activeVariant) throw new Error("No balance selected");
+      const sanitizedDraftConfig = sanitizeBalancerConfig(draftConfig);
       const config =
-        balancerConfigData?.presets[selectedPreset] ?? balancerConfigData?.defaults ?? null;
+        activeVariant.config ??
+        (Object.keys(sanitizedDraftConfig).length > 0
+          ? sanitizedDraftConfig
+          : (balancerConfigData?.presets[selectedPreset] ?? balancerConfigData?.defaults)) ??
+        null;
       const payload: BalanceSaveInput = {
         config_json: config as Record<string, unknown> | null,
         result_json: activeVariant.payload

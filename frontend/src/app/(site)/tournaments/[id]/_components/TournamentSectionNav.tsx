@@ -54,6 +54,13 @@ const normalizeSegment = (segment: string | null): TabId => {
   return "teams";
 };
 
+function getGroupScopeCount(stages: Stage[]) {
+  return stages.reduce(
+    (count, stage) => count + Math.max(stage.items.length, 1),
+    0
+  );
+}
+
 type TournamentSectionNavProps = {
   tournamentId: string;
   status: TournamentStatus;
@@ -90,15 +97,19 @@ export default function TournamentSectionNav({
     (viewParam === "groups" ||
       (!!activeStageId && groupStages.some((stage) => stage.id === activeStageId)));
   const areCompetitionTabsEnabled = unlockedStatuses.has(status);
+  const groupScopeCount = getGroupScopeCount(groupStages);
 
   const bracketEntries: NavEntry[] = [];
 
-  if (groupStages.length > 1) {
+  if (groupScopeCount > 1) {
     bracketEntries.push({
       key: "group-stage",
-      href: `/tournaments/${tournamentId}/bracket?view=groups`,
+      href:
+        groupStages.length === 1
+          ? `/tournaments/${tournamentId}/bracket?stage=${groupStages[0].id}`
+          : `/tournaments/${tournamentId}/bracket?view=groups`,
       label: "Group Stage",
-      subtitle: `${groupStages.length} groups`,
+      subtitle: `${groupScopeCount} groups`,
       icon: GitBranch,
       isActive: isGroupViewActive,
     });

@@ -8,17 +8,21 @@ from uuid import uuid4
 
 import httpx
 import sqlalchemy as sa
+from fastapi import HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
 import src.services.team as team_flows
 import src.services.user as user_flows
 import src.services.user as user_service
-from fastapi import HTTPException, status
+from shared.division_grid import DEFAULT_GRID, DivisionGrid
 from shared.domain.player_sub_roles import normalize_sub_role
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from shared.services.division_grid_resolution import resolve_tournament_division
 from src import models
 from src.schemas.admin import balancer as admin_schemas
 from src.schemas.team import InternalBalancerTeamsPayload
 from src.schemas.user import UserCSV
+from src.service import normalize_tournament_config_payload
 from src.services.admin.balance_analytics import create_balance_snapshot
 from src.services.admin.balancer_dual_write import sync_balance_variants_and_slots
 from src.services.admin.balancer_utils import (
@@ -41,9 +45,6 @@ from src.services.admin.balancer_utils import (
 from src.services.admin.balancer_utils import (
     extract_battle_tags as _extract_battle_tags,
 )
-
-from shared.division_grid import DEFAULT_GRID, DivisionGrid
-from shared.services.division_grid_resolution import resolve_tournament_division
 
 logger = logging.getLogger(__name__)
 
@@ -750,6 +751,56 @@ async def ensure_tournament_exists(session: AsyncSession, tournament_id: int) ->
     result = await session.execute(sa.select(models.Tournament.id).where(models.Tournament.id == tournament_id))
     if result.scalar_one_or_none() is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+
+
+async def get_tournament_workspace_id(session: AsyncSession, tournament_id: int) -> int:
+    workspace_id = await session.scalar(
+        sa.select(models.Tournament.workspace_id).where(models.Tournament.id == tournament_id)
+    )
+    if workspace_id is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+    return int(workspace_id)
+
+
+async def get_tournament_config(
+    session: AsyncSession,
+    tournament_id: int,
+) -> models.BalancerTournamentConfig | None:
+    result = await session.execute(
+        sa.select(models.BalancerTournamentConfig).where(
+            models.BalancerTournamentConfig.tournament_id == tournament_id
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def upsert_tournament_config(
+    session: AsyncSession,
+    tournament_id: int,
+    config_json: dict[str, Any] | None,
+    auth_user: models.AuthUser,
+) -> models.BalancerTournamentConfig:
+    workspace_id = await get_tournament_workspace_id(session, tournament_id)
+    normalized_config = normalize_tournament_config_payload(config_json)
+    tournament_config = await get_tournament_config(session, tournament_id)
+
+    if tournament_config is None:
+        tournament_config = models.BalancerTournamentConfig(
+            tournament_id=tournament_id,
+            workspace_id=workspace_id,
+            config_json=normalized_config,
+            updated_by=auth_user.id,
+            updated_at=datetime.now(UTC),
+        )
+        session.add(tournament_config)
+    else:
+        tournament_config.workspace_id = workspace_id
+        tournament_config.config_json = normalized_config
+        tournament_config.updated_by = auth_user.id
+        tournament_config.updated_at = datetime.now(UTC)
+
+    await session.commit()
+    return tournament_config
 
 
 async def upsert_tournament_sheet(

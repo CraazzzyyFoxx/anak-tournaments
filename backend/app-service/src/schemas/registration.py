@@ -112,6 +112,7 @@ class RegistrationRead(BaseModel):
     custom_fields_json: dict[str, Any] | None = None
     status: str = "pending"
     status_meta: dict[str, Any] | None = None
+    checked_in: bool = False
     submitted_at: datetime | None = None
     reviewed_at: datetime | None = None
 

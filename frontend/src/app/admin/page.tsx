@@ -57,18 +57,19 @@ function isDefined<T>(value: T | null): value is T {
 }
 
 export default function AdminDashboard() {
-  const { hasPermission } = usePermissions();
+  const { canAccessPermission, hasPermission } = usePermissions();
+  const workspaceId = useCurrentWorkspaceId();
 
-  const canReadTournaments = hasPermission("tournament.read");
-  const canReadTeams = hasPermission("team.read");
-  const canReadPlayers = hasPermission("player.read");
-  const canReadMatches = hasPermission("match.read");
-  const canReadStandings = hasPermission("standing.read");
-  const canReadUsers = hasPermission("user.read");
+  const canReadTournaments = canAccessPermission("tournament.read", workspaceId);
+  const canReadTeams = canAccessPermission("team.read", workspaceId);
+  const canReadPlayers = canAccessPermission("player.read", workspaceId);
+  const canReadMatches = canAccessPermission("match.read", workspaceId);
+  const canReadStandings = canAccessPermission("standing.read", workspaceId);
+  const canReadUsers = canAccessPermission("user.read", workspaceId);
   const canReadAccessUsers = hasPermission("auth_user.read");
-  const canReadHeroes = hasPermission("hero.read");
-  const canReadGamemodes = hasPermission("gamemode.read");
-  const canReadMaps = hasPermission("map.read");
+  const canReadHeroes = canAccessPermission("hero.read", workspaceId);
+  const canReadGamemodes = canAccessPermission("gamemode.read", workspaceId);
+  const canReadMaps = canAccessPermission("map.read", workspaceId);
   const canReadRoles = hasPermission("role.read");
   const canReadPermissions = hasPermission("permission.read");
 
@@ -80,7 +81,6 @@ export default function AdminDashboard() {
         ? "/admin/access/permissions"
         : null;
 
-  const workspaceId = useCurrentWorkspaceId();
   const logStream = useLogStream(true, workspaceId);
 
   // Aggregated counts from backend (single lightweight query)

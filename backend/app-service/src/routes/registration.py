@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import sqlalchemy as sa
-from fastapi import APIRouter, Depends, HTTPException, Response
+from cashews import Command, cache
+from fastapi import APIRouter, Depends, HTTPException
 from shared.balancer_registration_statuses import build_unknown_status_meta, get_status_metas_map
 from shared.division_grid import DivisionGrid, load_runtime_grid
 from sqlalchemy.exc import IntegrityError
@@ -81,6 +82,7 @@ def _reg_to_read(
             if status_meta_map is not None
             else None
         ) or build_unknown_status_meta("registration", reg.status),
+        checked_in=reg.checked_in,
         submitted_at=reg.submitted_at,
         reviewed_at=reg.reviewed_at,
     )
@@ -246,9 +248,31 @@ async def withdraw_my_registration(
     return RegistrationStatusResponse(status="withdrawn", message="Registration withdrawn")
 
 
+@router.post("/me/check-in", response_model=RegistrationRead)
+async def check_in_my_registration(
+    workspace_id: int,
+    tournament_id: int,
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.get_current_active_user),
+):
+    """Check in the current user's approved registration during the check-in window."""
+    reg = await reg_service.get_registration(session, tournament_id, user.id)
+    if reg is None:
+        raise HTTPException(status_code=404, detail="No registration found")
+    if reg.workspace_id != workspace_id:
+        raise HTTPException(status_code=400, detail="Tournament does not belong to this workspace")
+
+    checked_in = await reg_service.check_in_registration(
+        session,
+        reg,
+        checked_in_by=user.id,
+    )
+    status_meta_map = await get_status_metas_map(session, workspace_id=workspace_id)
+    return _reg_to_read(checked_in, status_meta_map=status_meta_map)
+
+
 @router.get("/list", response_model=list[RegistrationListRead])
 async def list_registrations(
-    response: Response,
     workspace_id: int,
     tournament_id: int,
     session: AsyncSession = Depends(db.get_async_session),
@@ -256,36 +280,35 @@ async def list_registrations(
     """Public list of registrations for a tournament (all statuses, non-deleted)."""
     from sqlalchemy.orm import selectinload
 
-    result = await session.execute(
-        sa.select(models.BalancerRegistration)
-        .where(
-            models.BalancerRegistration.tournament_id == tournament_id,
-            models.BalancerRegistration.workspace_id == workspace_id,
-            models.BalancerRegistration.deleted_at.is_(None),
+    with cache.disabling(Command.GET, Command.SET):
+        result = await session.execute(
+            sa.select(models.BalancerRegistration)
+            .where(
+                models.BalancerRegistration.tournament_id == tournament_id,
+                models.BalancerRegistration.workspace_id == workspace_id,
+                models.BalancerRegistration.deleted_at.is_(None),
+            )
+            .options(selectinload(models.BalancerRegistration.roles))
+            .order_by(models.BalancerRegistration.submitted_at.asc())
         )
-        .options(selectinload(models.BalancerRegistration.roles))
-        .order_by(models.BalancerRegistration.submitted_at.asc())
-    )
-    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    registrations = result.scalars().all()
-    status_meta_map = await get_status_metas_map(session, workspace_id=workspace_id)
+        registrations = result.scalars().all()
+        status_meta_map = await get_status_metas_map(session, workspace_id=workspace_id)
 
-    # Build tournament history for each participant
-    history_map = await _build_tournament_history(
-        session, registrations, tournament_id, workspace_id,
-    )
-
-    return [
-        RegistrationListRead(
-            **_reg_to_read(r, status_meta_map=status_meta_map).model_dump(),
-            balancer_status=r.balancer_status,
-            balancer_status_meta=status_meta_map["balancer"].get(r.balancer_status)
-            or build_unknown_status_meta("balancer", r.balancer_status),
-            checked_in=r.checked_in,
-            tournament_history=history_map.get(r.id, []),
+        # Build tournament history for each participant
+        history_map = await _build_tournament_history(
+            session, registrations, tournament_id, workspace_id,
         )
-        for r in registrations
-    ]
+
+        return [
+            RegistrationListRead(
+                **_reg_to_read(r, status_meta_map=status_meta_map).model_dump(),
+                balancer_status=r.balancer_status,
+                balancer_status_meta=status_meta_map["balancer"].get(r.balancer_status)
+                or build_unknown_status_meta("balancer", r.balancer_status),
+                tournament_history=history_map.get(r.id, []),
+            )
+            for r in registrations
+        ]
 
 
 async def _build_tournament_history(

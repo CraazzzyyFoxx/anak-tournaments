@@ -28,6 +28,7 @@ export type AdminNavItem = {
   permissions?: AppPermission[];
   superuserOnly?: boolean;
   workspaceAdminVisible?: boolean;
+  globalOnly?: boolean;
 };
 
 export type AdminNavGroup = {
@@ -74,6 +75,7 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         icon: LayoutDashboard,
         description: "Operations overview, live issues, and priority actions.",
         permissions: overviewPermissions,
+        workspaceAdminVisible: true,
       },
     ],
   },
@@ -180,6 +182,7 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         icon: Users,
         description: "Admin account access and assignments.",
         permissions: accessUsersPermissions,
+        globalOnly: true,
       },
       {
         title: "Roles",
@@ -195,6 +198,7 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         icon: Shield,
         description: "Permission visibility and governance.",
         permissions: accessPermissionsPermissions,
+        globalOnly: true,
       },
       {
         title: "OAuth Connections",
@@ -202,6 +206,7 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         icon: KeyRound,
         description: "View OAuth provider connections linked to user accounts.",
         permissions: accessUsersPermissions,
+        globalOnly: true,
       },
       {
         title: "Sessions",
@@ -240,13 +245,14 @@ export const adminRoutePermissions: Array<{
   permissions: AppPermission[];
   superuserOnly?: boolean;
   workspaceAdminVisible?: boolean;
+  globalOnly?: boolean;
 }> = [
-  { prefix: "/admin/access/users", permissions: accessUsersPermissions },
+  { prefix: "/admin/access/users", permissions: accessUsersPermissions, globalOnly: true },
   { prefix: "/admin/access/roles", permissions: accessRolesPermissions, workspaceAdminVisible: true },
-  { prefix: "/admin/access/oauth", permissions: accessUsersPermissions },
+  { prefix: "/admin/access/oauth", permissions: accessUsersPermissions, globalOnly: true },
   { prefix: "/admin/access/sessions", permissions: [], superuserOnly: true },
-  { prefix: "/admin/access/permissions", permissions: accessPermissionsPermissions },
-  { prefix: "/admin/access", permissions: accessAdminPermissions },
+  { prefix: "/admin/access/permissions", permissions: accessPermissionsPermissions, globalOnly: true },
+  { prefix: "/admin/access", permissions: accessAdminPermissions, globalOnly: true },
   { prefix: "/admin/workspaces/members", permissions: [], workspaceAdminVisible: true },
   { prefix: "/admin/workspaces", permissions: [], workspaceAdminVisible: true },
   { prefix: "/admin/settings", permissions: [], superuserOnly: true },
@@ -262,7 +268,7 @@ export const adminRoutePermissions: Array<{
   { prefix: "/admin/maps", permissions: ["map.read"] },
   { prefix: "/admin/achievements", permissions: ["achievement.read"] },
   { prefix: "/admin/divisions", permissions: [], workspaceAdminVisible: true },
-  { prefix: "/admin", permissions: adminEntryPermissions },
+  { prefix: "/admin", permissions: adminEntryPermissions, workspaceAdminVisible: true },
 ];
 
 export function getMatchingAdminRoute(pathname: string) {
@@ -305,30 +311,18 @@ export function getActiveAdminNavHref(pathname: string, allHrefs: string[]): str
 }
 
 export function getVisibleAdminNavigationGroups(
-  isSuperuser: boolean,
-  hasAnyPermission: (permissions: AppPermission[]) => boolean,
-  hasAdminRole = false,
-  canManageAnyWorkspace = false,
+  canAccessItem: (
+    item: Pick<
+      AdminNavItem,
+      "permissions" | "superuserOnly" | "workspaceAdminVisible" | "globalOnly"
+    >,
+  ) => boolean,
 ) {
   return adminNavigationGroups
-    .filter((group) => !group.superuserOnly || isSuperuser)
+    .filter((group) => !group.superuserOnly)
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) => {
-        if (item.superuserOnly) {
-          return isSuperuser;
-        }
-
-        if (item.workspaceAdminVisible) {
-          return isSuperuser || canManageAnyWorkspace;
-        }
-
-        if (!item.permissions || item.permissions.length === 0) {
-          return true;
-        }
-
-        return isSuperuser || hasAdminRole || hasAnyPermission(item.permissions);
-      }),
+      items: group.items.filter((item) => canAccessItem(item)),
     }))
     .filter((group) => group.items.length > 0);
 }

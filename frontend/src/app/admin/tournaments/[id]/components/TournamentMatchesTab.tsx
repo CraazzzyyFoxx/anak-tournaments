@@ -21,8 +21,10 @@ import {
 } from "lucide-react";
 import { AdminDetailTableShell, getAdminDetailTableStyles } from "@/components/admin/AdminDetailTable";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import { EncounterScoreControls } from "@/components/admin/EncounterScoreControls";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { StatusIcon } from "@/components/admin/StatusIcon";
+import { isGroupStageScoreContext } from "@/components/admin/encounter-score";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -363,6 +365,15 @@ export function TournamentMatchesTab({
     encounterDialogOpen && hasUnsavedChanges(encounterFormData, encounterFormInitial);
   const isStandingDirty =
     standingDialogOpen && hasUnsavedChanges(standingFormData, standingFormInitial);
+  const selectedEncounterStage =
+    stages.find((stage) => stage.id === encounterFormData.stage_id) ?? null;
+  const selectedEncounterStageItem =
+    selectedEncounterStage?.items.find((item) => item.id === encounterFormData.stage_item_id) ??
+    null;
+  const isEncounterGroupStage = isGroupStageScoreContext(
+    selectedEncounterStage,
+    selectedEncounterStageItem
+  );
 
   const standingGroups = getStandingGroups(standings);
   const filteredStandings =
@@ -891,38 +902,28 @@ export function TournamentMatchesTab({
             />
           </div>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div>
-              <Label htmlFor="workspace-encounter-home-score">Home Score</Label>
-              <Input
-                id="workspace-encounter-home-score"
-                type="number"
-                min="0"
-                value={encounterFormData.home_score}
-                onChange={(event) =>
-                  setEncounterFormData((current) => ({
-                    ...current,
-                    home_score: event.target.value ? Number(event.target.value) : 0,
-                  }))
-                }
-              />
-            </div>
-            <div>
-              <Label htmlFor="workspace-encounter-away-score">Away Score</Label>
-              <Input
-                id="workspace-encounter-away-score"
-                type="number"
-                min="0"
-                value={encounterFormData.away_score}
-                onChange={(event) =>
-                  setEncounterFormData((current) => ({
-                    ...current,
-                    away_score: event.target.value ? Number(event.target.value) : 0,
-                  }))
-                }
-              />
-            </div>
-          </div>
+          <EncounterScoreControls
+            idPrefix="workspace-encounter"
+            homeScore={encounterFormData.home_score}
+            awayScore={encounterFormData.away_score}
+            presetLabel={isEncounterGroupStage ? "Group stage presets" : "Result presets"}
+            showGroupStageHint={isEncounterGroupStage}
+            onScoreChange={(score) =>
+              setEncounterFormData((current) => ({
+                ...current,
+                home_score: score.homeScore,
+                away_score: score.awayScore,
+              }))
+            }
+            onPresetSelect={(score) =>
+              setEncounterFormData((current) => ({
+                ...current,
+                home_score: score.homeScore,
+                away_score: score.awayScore,
+                status: "completed",
+              }))
+            }
+          />
 
           <div>
             <Label htmlFor="workspace-encounter-status">Status</Label>

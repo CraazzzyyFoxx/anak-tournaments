@@ -21,6 +21,15 @@ class ConfigOverrides(BaseModel):
     ELITISM_RATE: float | None = Field(None, ge=0, le=1, description="Percentage of elite solutions to preserve")
     MUTATION_RATE: float | None = Field(None, ge=0, le=1, description="Probability of mutation")
     MUTATION_STRENGTH: int | None = Field(None, ge=1, le=10, description="Number of mutation operations per mutation")
+    STAGNATION_THRESHOLD: int | None = Field(
+        None,
+        ge=1,
+        le=500,
+        description=(
+            "Number of generations without best-cost improvement before reseeding "
+            "the bottom 70% of the population (elite preserved)."
+        ),
+    )
 
     # Cost function weights
     MMR_DIFF_WEIGHT: float | None = Field(None, ge=0, description="Weight for MMR difference between teams")
@@ -31,6 +40,23 @@ class ConfigOverrides(BaseModel):
     MAX_DISCOMFORT_WEIGHT: float | None = Field(None, ge=0, description="Weight for maximum discomfort penalty")
     ROLE_BALANCE_WEIGHT: float | None = Field(None, ge=0, description="Weight for balancing roles between teams")
     ROLE_SPREAD_WEIGHT: float | None = Field(None, ge=0, description="Penalty weight for rating spread within roles in a team")
+    INTRA_TEAM_STD_WEIGHT: float | None = Field(
+        None,
+        ge=0,
+        description=(
+            "NSGA-II blend coefficient for intra-team rating std. "
+            "Higher values push the optimizer to spread top players across teams "
+            "instead of pairing them with weak players to hit an average."
+        ),
+    )
+    SUBROLE_COLLISION_WEIGHT: float | None = Field(
+        None,
+        ge=0,
+        description=(
+            "Penalty weight per pair of players in the same team sharing the same "
+            "role subclass. Use 0 to disable."
+        ),
+    )
 
     # Strategy configuration
     USE_CAPTAINS: bool | None = Field(None, description="Whether to use captain assignment")
@@ -41,9 +67,20 @@ class ConfigOverrides(BaseModel):
     )
 
     # Algorithm selection
-    ALGORITHM: Literal["genetic", "cpsat"] | None = Field(None, description="Balancing algorithm to use")
+    ALGORITHM: Literal["genetic", "genetic_moo", "cpsat", "nsga"] | None = Field(
+        None, description="Balancing algorithm to use"
+    )
     MAX_CPSAT_SOLUTIONS: int | None = Field(
         None, ge=1, le=5, description="Maximum number of CP-SAT solutions to return"
+    )
+    MAX_GENETIC_SOLUTIONS: int | None = Field(
+        None,
+        ge=1,
+        le=50,
+        description="Maximum number of Pareto variants returned by the genetic_moo solver",
+    )
+    MAX_NSGA_SOLUTIONS: int | None = Field(
+        None, ge=1, le=200, description="Maximum number of NSGA-II Pareto solutions to return"
     )
 
     # Workspace & division (new)
@@ -120,6 +157,7 @@ class BalancerConfigResponse(BaseModel):
     defaults: dict[str, Any]
     limits: dict[str, dict[str, int | float]]
     presets: dict[str, dict[str, Any]]
+    fields: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class JobProgress(BaseModel):

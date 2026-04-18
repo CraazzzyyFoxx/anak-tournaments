@@ -66,6 +66,18 @@ const registrationService = {
     );
   },
 
+  async checkInMyRegistration(
+    workspaceId: number,
+    tournamentId: number,
+  ): Promise<Registration> {
+    const response = await apiFetch(
+      "app",
+      `workspaces/${workspaceId}/tournaments/${tournamentId}/registration/me/check-in`,
+      { method: "POST" },
+    );
+    return response.json();
+  },
+
   async listRegistrations(
     workspaceId: number,
     tournamentId: number,

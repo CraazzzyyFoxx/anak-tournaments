@@ -43,14 +43,43 @@ export interface BalancerConfig {
   ELITISM_RATE?: number;
   MUTATION_RATE?: number;
   MUTATION_STRENGTH?: number;
+  STAGNATION_THRESHOLD?: number;
   MMR_DIFF_WEIGHT?: number;
   DISCOMFORT_WEIGHT?: number;
   INTRA_TEAM_VAR_WEIGHT?: number;
   MAX_DISCOMFORT_WEIGHT?: number;
+  TEAM_TOTAL_STD_WEIGHT?: number;
+  MAX_TEAM_GAP_WEIGHT?: number;
+  ROLE_BALANCE_WEIGHT?: number;
+  ROLE_SPREAD_WEIGHT?: number;
+  INTRA_TEAM_STD_WEIGHT?: number;
+  SUBROLE_COLLISION_WEIGHT?: number;
   USE_CAPTAINS?: boolean;
   ROLE_MAPPING?: Record<string, string>;
-  ALGORITHM?: "genetic" | "cpsat";
+  ALGORITHM?: "genetic" | "genetic_moo" | "cpsat" | "nsga";
   MAX_CPSAT_SOLUTIONS?: number;
+  MAX_GENETIC_SOLUTIONS?: number;
+  MAX_NSGA_SOLUTIONS?: number;
+}
+
+export type BalancerConfigFieldType =
+  | "boolean"
+  | "float"
+  | "integer"
+  | "role_mask"
+  | "select"
+  | "string_map";
+
+export interface BalancerConfigField {
+  key: keyof BalancerConfig;
+  label: string;
+  description: string;
+  type: BalancerConfigFieldType;
+  group: "Roles" | "Algorithm" | "Quality weights" | "Strategy" | "Solver output";
+  default: unknown;
+  limits?: { min: number; max: number } | null;
+  options?: string[];
+  applies_to: Array<NonNullable<BalancerConfig["ALGORITHM"]>>;
 }
 
 export interface BalanceJobResult {
@@ -61,6 +90,7 @@ export interface BalancerConfigResponse {
   defaults: BalancerConfig;
   limits: Record<string, { min: number; max: number }>;
   presets: Record<string, BalancerConfig>;
+  fields: BalancerConfigField[];
 }
 
 export type BalanceJobStatus = "queued" | "running" | "succeeded" | "failed";

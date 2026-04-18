@@ -1,15 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
-import { ArrowLeftRight, Plus, Pencil, Sparkles, Trash2 } from "lucide-react";
+import { ArrowLeftRight, Check, ChevronsUpDown, Minus, Plus, Pencil, Sparkles, Trash2 } from "lucide-react";
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { UserSearchCombobox } from "@/components/admin/UserSearchCombobox";
+import { TournamentCombobox } from "@/components/admin/TournamentCombobox";
 import Image from "next/image";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -33,7 +43,10 @@ import {
 import { usePermissions } from "@/hooks/usePermissions";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import { MinimizedUser } from "@/types/user.types";
+import type { Tournament } from "@/types/tournament.types";
 import { paginateResults, sortArray } from "@/lib/paginate-results";
+import { useWorkspaceStore } from "@/stores/workspace.store";
+import { cn } from "@/lib/utils";
 
 interface PlayerFormData {
   name: string;
@@ -94,6 +107,175 @@ function RoleOptionContent({ role }: { role: PlayerRoleOption }) {
     <div className="flex items-center gap-2">
       <PlayerRoleIcon role={role} size={18} />
       <span>{role}</span>
+    </div>
+  );
+}
+
+interface PlayerOption {
+  value: string;
+  label: string;
+  meta?: string;
+}
+
+interface SearchableSelectProps {
+  value: string;
+  options: PlayerOption[];
+  onChange: (value: string) => void;
+  placeholder: string;
+  searchPlaceholder: string;
+  emptyMessage: string;
+  disabled?: boolean;
+}
+
+function SearchableSelect({
+  value,
+  options,
+  onChange,
+  placeholder,
+  searchPlaceholder,
+  emptyMessage,
+  disabled = false,
+}: SearchableSelectProps) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const selected = options.find((option) => option.value === value);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          ref={triggerRef}
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          disabled={disabled}
+          className="h-10 w-full justify-between border-border/60 bg-background/80 font-normal hover:bg-background/90"
+        >
+          <span className="truncate" title={selected?.label ?? placeholder}>
+            {selected?.label ?? placeholder}
+          </span>
+          <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="p-0"
+        style={{ width: triggerRef.current?.offsetWidth }}
+      >
+        <Command>
+          <CommandInput placeholder={searchPlaceholder} />
+          <CommandList>
+            <CommandEmpty>{emptyMessage}</CommandEmpty>
+            <CommandGroup>
+              {options.map((option) => (
+                <CommandItem
+                  key={option.value}
+                  value={`${option.label} ${option.meta ?? ""} ${option.value}`}
+                  onSelect={() => {
+                    onChange(option.value);
+                    setOpen(false);
+                  }}
+                >
+                  <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
+                    <span className="truncate">{option.label}</span>
+                    {option.meta ? <span className="shrink-0 text-xs text-muted-foreground">{option.meta}</span> : null}
+                  </div>
+                  <Check className={cn("ml-2 h-4 w-4", value === option.value ? "opacity-100" : "opacity-0")} />
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+interface PlayerNumberInputProps {
+  id: string;
+  value: number;
+  onChange: (value: number) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+}
+
+function clampNumber(value: number, min?: number, max?: number) {
+  if (typeof min === "number" && value < min) {
+    return min;
+  }
+  if (typeof max === "number" && value > max) {
+    return max;
+  }
+  return value;
+}
+
+function PlayerNumberInput({ id, value, onChange, min, max, step = 1 }: PlayerNumberInputProps) {
+  const [draft, setDraft] = useState(String(value));
+
+  useEffect(() => {
+    setDraft(String(value));
+  }, [value]);
+
+  const commitValue = (nextDraft: string) => {
+    const nextValue = Number.parseInt(nextDraft, 10);
+    if (Number.isNaN(nextValue)) {
+      setDraft(String(value));
+      return;
+    }
+
+    const clamped = clampNumber(nextValue, min, max);
+    setDraft(String(clamped));
+    onChange(clamped);
+  };
+
+  const stepValue = (direction: -1 | 1) => {
+    const nextValue = clampNumber(value + step * direction, min, max);
+    setDraft(String(nextValue));
+    onChange(nextValue);
+  };
+
+  return (
+    <div className="flex h-10 rounded-md border border-input bg-background/80 shadow-sm focus-within:ring-1 focus-within:ring-ring">
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-full w-10 shrink-0 rounded-r-none border-r"
+        onClick={() => stepValue(-1)}
+        disabled={typeof min === "number" && value <= min}
+        aria-label={`Decrease ${id}`}
+      >
+        <Minus className="h-3.5 w-3.5" />
+      </Button>
+      <Input
+        id={id}
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        value={draft}
+        onChange={(event) => {
+          const nextDraft = event.target.value.replace(/[^\d-]/g, "");
+          setDraft(nextDraft);
+          if (nextDraft && nextDraft !== "-") {
+            commitValue(nextDraft);
+          }
+        }}
+        onBlur={() => commitValue(draft)}
+        className="h-full rounded-none border-0 bg-transparent text-center shadow-none focus-visible:ring-0"
+      />
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-full w-10 shrink-0 rounded-l-none border-l"
+        onClick={() => stepValue(1)}
+        disabled={typeof max === "number" && value >= max}
+        aria-label={`Increase ${id}`}
+      >
+        <Plus className="h-3.5 w-3.5" />
+      </Button>
     </div>
   );
 }
@@ -170,11 +352,12 @@ function buildPlayerUpdateInput(formData: PlayerFormData): PlayerUpdateInput {
 
 export default function PlayersPage() {
   const { toast } = useToast();
-  const { hasPermission } = usePermissions();
+  const { canAccessPermission } = usePermissions();
+  const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const queryClient = useQueryClient();
-  const canCreate = hasPermission("player.create");
-  const canUpdate = hasPermission("player.update");
-  const canDelete = hasPermission("player.delete");
+  const canCreate = canAccessPermission("player.create", workspaceId);
+  const canUpdate = canAccessPermission("player.update", workspaceId);
+  const canDelete = canAccessPermission("player.delete", workspaceId);
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -317,6 +500,35 @@ export default function PlayersPage() {
 
   const subRoleOptions = filterSubRoleOptions(playerSubRoles, formData.role);
   const hasCurrentSubRoleOption = subRoleOptions.some((subRole) => subRole.slug === formData.sub_role);
+  const teamOptions = useMemo(
+    () =>
+      (teamsData?.results ?? []).map((team) => ({
+        value: team.id.toString(),
+        label: team.name,
+        meta: `${team.players?.length ?? 0} players`,
+      })),
+    [teamsData?.results]
+  );
+  const subRoleSelectOptions = useMemo(() => {
+    const options = [
+      { value: "none", label: "No sub-role" },
+      ...subRoleOptions.map((subRole) => ({
+        value: subRole.slug,
+        label: subRole.label,
+        meta: subRole.slug,
+      })),
+    ];
+
+    if (formData.sub_role && !hasCurrentSubRoleOption) {
+      options.push({
+        value: formData.sub_role,
+        label: formatSubRoleLabel(formData.sub_role) ?? formData.sub_role,
+        meta: "current",
+      });
+    }
+
+    return options;
+  }, [formData.sub_role, hasCurrentSubRoleOption, subRoleOptions]);
 
   const columns: ColumnDef<PlayerRow>[] = [
     {
@@ -410,24 +622,22 @@ export default function PlayersPage() {
 
       <div className="flex items-center gap-4">
         <Label htmlFor="tournament-filter">Filter by Tournament:</Label>
-        <Select
-          value={selectedTournamentId?.toString() || "all"}
-          onValueChange={(value) =>
-            setSelectedTournamentId(value === "all" ? null : parseInt(value))
-          }
-        >
-          <SelectTrigger className="w-[300px]">
-            <SelectValue placeholder="All Tournaments" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Tournaments</SelectItem>
-            {tournamentsData?.results.map((tournament) => (
-              <SelectItem key={tournament.id} value={tournament.id.toString()}>
-                {tournament.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div id="tournament-filter" className="w-full max-w-[360px]">
+          <TournamentCombobox
+            tournaments={tournamentsData?.results ?? []}
+            value={selectedTournamentId ?? undefined}
+            placeholder="All tournaments"
+            searchPlaceholder="Search tournament..."
+            onSelect={(tournament: Tournament | undefined) => {
+              setSelectedTournamentId(tournament?.id ?? null);
+              setFormData((current) => ({
+                ...current,
+                tournament_id: tournament?.id ?? 0,
+                team_id: 0,
+              }));
+            }}
+          />
+        </div>
       </div>
 
       <AdminDataTable
@@ -464,21 +674,15 @@ export default function PlayersPage() {
         <div className="space-y-4">
           <div>
             <Label htmlFor="team_id">Team *</Label>
-            <Select
+            <SearchableSelect
               value={formData.team_id ? formData.team_id.toString() : ""}
-              onValueChange={(value) => setFormData({ ...formData, team_id: parseInt(value) })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select team" />
-              </SelectTrigger>
-              <SelectContent>
-                {teamsData?.results.map((team) => (
-                  <SelectItem key={team.id} value={team.id.toString()}>
-                    {team.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              options={teamOptions}
+              placeholder={selectedTournamentId ? "Search and select team" : "Select tournament first"}
+              searchPlaceholder="Search team..."
+              emptyMessage="No teams found."
+              disabled={!selectedTournamentId}
+              onChange={(value) => setFormData({ ...formData, team_id: Number.parseInt(value, 10) })}
+            />
           </div>
 
           <div>
@@ -532,51 +736,40 @@ export default function PlayersPage() {
 
           <div>
             <Label htmlFor="sub_role">Sub-role</Label>
-            <Select
+            <SearchableSelect
               value={formData.sub_role || "none"}
-              onValueChange={(value) => {
+              options={subRoleSelectOptions}
+              placeholder="Select sub-role"
+              searchPlaceholder="Search sub-role..."
+              emptyMessage="No sub-roles found."
+              onChange={(value) => {
                 const subRole = value === "none" ? "" : value;
                 setFormData({
                   ...formData,
                   sub_role: subRole,
                 });
               }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select sub-role" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No sub-role</SelectItem>
-                {subRoleOptions.map((subRole) => (
-                  <SelectItem key={subRole.id} value={subRole.slug}>
-                    {subRole.label}
-                  </SelectItem>
-                ))}
-                {formData.sub_role && !hasCurrentSubRoleOption ? (
-                  <SelectItem value={formData.sub_role}>{formatSubRoleLabel(formData.sub_role)}</SelectItem>
-                ) : null}
-              </SelectContent>
-            </Select>
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label htmlFor="rank">Rank</Label>
-              <Input
+              <PlayerNumberInput
                 id="rank"
-                type="number"
                 value={formData.rank}
-                onChange={(e) => setFormData({ ...formData, rank: parseInt(e.target.value) })}
+                min={0}
+                onChange={(rank) => setFormData({ ...formData, rank })}
               />
             </div>
 
             <div>
               <Label htmlFor="div">Division</Label>
-              <Input
+              <PlayerNumberInput
                 id="div"
-                type="number"
                 value={formData.division}
-                onChange={(e) => setFormData({ ...formData, division: parseInt(e.target.value) })}
+                min={0}
+                onChange={(division) => setFormData({ ...formData, division })}
               />
             </div>
           </div>
@@ -656,51 +849,40 @@ export default function PlayersPage() {
 
           <div>
             <Label htmlFor="edit-sub_role">Sub-role</Label>
-            <Select
+            <SearchableSelect
               value={formData.sub_role || "none"}
-              onValueChange={(value) => {
+              options={subRoleSelectOptions}
+              placeholder="Select sub-role"
+              searchPlaceholder="Search sub-role..."
+              emptyMessage="No sub-roles found."
+              onChange={(value) => {
                 const subRole = value === "none" ? "" : value;
                 setFormData({
                   ...formData,
                   sub_role: subRole,
                 });
               }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select sub-role" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No sub-role</SelectItem>
-                {subRoleOptions.map((subRole) => (
-                  <SelectItem key={subRole.id} value={subRole.slug}>
-                    {subRole.label}
-                  </SelectItem>
-                ))}
-                {formData.sub_role && !hasCurrentSubRoleOption ? (
-                  <SelectItem value={formData.sub_role}>{formatSubRoleLabel(formData.sub_role)}</SelectItem>
-                ) : null}
-              </SelectContent>
-            </Select>
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label htmlFor="edit-rank">Rank</Label>
-              <Input
+              <PlayerNumberInput
                 id="edit-rank"
-                type="number"
                 value={formData.rank}
-                onChange={(e) => setFormData({ ...formData, rank: parseInt(e.target.value) })}
+                min={0}
+                onChange={(rank) => setFormData({ ...formData, rank })}
               />
             </div>
 
             <div>
               <Label htmlFor="edit-div">Division</Label>
-              <Input
+              <PlayerNumberInput
                 id="edit-div"
-                type="number"
                 value={formData.division}
-                onChange={(e) => setFormData({ ...formData, division: parseInt(e.target.value) })}
+                min={0}
+                onChange={(division) => setFormData({ ...formData, division })}
               />
             </div>
           </div>

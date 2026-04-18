@@ -91,11 +91,17 @@ const STATUS_BAR_CONFIG: Record<
 
 function MyRegistrationBar({
   registration,
+  canCheckIn,
+  onCheckIn,
   onWithdraw,
+  isCheckingIn,
   isWithdrawing,
 }: {
   registration: Registration;
+  canCheckIn: boolean;
+  onCheckIn: () => void;
   onWithdraw: () => void;
+  isCheckingIn: boolean;
   isWithdrawing: boolean;
 }) {
   const config =
@@ -105,34 +111,60 @@ function MyRegistrationBar({
   return (
     <div
       className={cn(
-        "flex items-center justify-between rounded-lg border p-3",
+        "flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between",
         config.color,
       )}
     >
-      <div className="flex items-center gap-2.5">
+      <div className="flex min-w-0 items-center gap-2.5">
         <StatusIcon className="size-4" />
-        <span className="text-sm font-medium">
+        <span className="text-sm font-medium break-words">
           Your registration: {config.label}
         </span>
         {registration.battle_tag && (
-          <span className="text-xs opacity-60">
+          <span className="truncate text-xs opacity-60">
             ({registration.battle_tag})
           </span>
         )}
       </div>
-      {(registration.status === "pending" ||
-        registration.status === "approved") && (
-        <button
-          type="button"
-          onClick={onWithdraw}
-          disabled={isWithdrawing}
-          className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-500/20"
-        >
-          {isWithdrawing ? "Withdrawing..." : "Withdraw"}
-        </button>
-      )}
+      <div className="flex shrink-0 items-center gap-2">
+        {canCheckIn && (
+          <button
+            type="button"
+            onClick={onCheckIn}
+            disabled={isCheckingIn}
+            className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-300 transition-colors hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isCheckingIn ? "Checking in..." : "Check-in"}
+          </button>
+        )}
+        {(registration.status === "pending" ||
+          registration.status === "approved") && (
+          <button
+            type="button"
+            onClick={onWithdraw}
+            disabled={isWithdrawing || isCheckingIn}
+            className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isWithdrawing ? "Withdrawing..." : "Withdraw"}
+          </button>
+        )}
+      </div>
     </div>
   );
+}
+
+function isCheckInWindowActive(tournament: Tournament) {
+  if (tournament.status !== "check_in") return false;
+
+  const now = Date.now();
+  const opensAt = tournament.check_in_opens_at
+    ? new Date(tournament.check_in_opens_at).getTime()
+    : null;
+  const closesAt = tournament.check_in_closes_at
+    ? new Date(tournament.check_in_closes_at).getTime()
+    : null;
+
+  return (opensAt === null || opensAt <= now) && (closesAt === null || now <= closesAt);
 }
 
 // ---------------------------------------------------------------------------
@@ -214,9 +246,40 @@ export default function TournamentParticipantsPage({
     },
   });
 
+  const checkInMutation = useMutation({
+    mutationFn: () =>
+      registrationService.checkInMyRegistration(
+        tournament.workspace_id,
+        tournament.id,
+      ),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: [
+            "registration",
+            tournament.workspace_id,
+            tournament.id,
+          ],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: [
+            "registrations-list",
+            tournament.workspace_id,
+            tournament.id,
+          ],
+        }),
+      ]);
+    },
+  });
+
   const registrations = listQuery.data ?? [];
   const myRegistration = myRegQuery.data;
   const form = formQuery.data ?? null;
+  const canCheckIn =
+    Boolean(myRegistration) &&
+    myRegistration?.status === "approved" &&
+    myRegistration.checked_in !== true &&
+    isCheckInWindowActive(tournament);
 
   // Dynamic columns
   const allColumns = useMemo(
@@ -245,7 +308,10 @@ export default function TournamentParticipantsPage({
       {myRegistration && (
         <MyRegistrationBar
           registration={myRegistration}
+          canCheckIn={canCheckIn}
+          onCheckIn={() => checkInMutation.mutate()}
           onWithdraw={() => setIsWithdrawDialogOpen(true)}
+          isCheckingIn={checkInMutation.isPending}
           isWithdrawing={withdrawMutation.isPending}
         />
       )}

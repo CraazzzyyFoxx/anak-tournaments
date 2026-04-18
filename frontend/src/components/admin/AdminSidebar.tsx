@@ -64,13 +64,20 @@ function getInitials(username?: string | null) {
 export function AdminSidebar() {
   const pathname = usePathname();
   const { user } = useAuthProfile();
-  const { hasAnyPermission, isSuperuser, isAdmin, isOrganizer, isModerator, canManageAnyWorkspace } = usePermissions();
+  const { canAccessAdminRoute, isSuperuser, isAdmin, isOrganizer, isModerator } = usePermissions();
 
   const { workspaces, currentWorkspaceId, setCurrentWorkspace } = useWorkspaceStore();
   const currentWorkspace = workspaces.find((w) => w.id === currentWorkspaceId);
 
-  const hasAdminRole = isAdmin || isOrganizer || isModerator;
-  const navigationGroups = getVisibleAdminNavigationGroups(isSuperuser, hasAnyPermission, hasAdminRole, canManageAnyWorkspace());
+  const navigationGroups = getVisibleAdminNavigationGroups((item) =>
+    canAccessAdminRoute({
+      permissions: item.permissions,
+      workspaceId: item.workspaceAdminVisible ? null : currentWorkspaceId,
+      globalOnly: item.globalOnly,
+      workspaceAdminVisible: item.workspaceAdminVisible,
+      superuserOnly: item.superuserOnly,
+    }),
+  );
   const adminToolsGroup = navigationGroups.find((group) => group.title === "Administration");
   const primaryGroups = navigationGroups.filter(
     (group) => group.title !== "Administration" && group.title !== "Overview",

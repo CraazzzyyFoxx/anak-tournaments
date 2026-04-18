@@ -8,9 +8,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from shared.core import db
 
 if TYPE_CHECKING:
-    from shared.models.user import User
-    from shared.models.rbac import Role
     from shared.models.oauth import OAuthConnection
+    from shared.models.rbac import Role
+    from shared.models.user import User
 
 __all__ = ("AuthUser", "RefreshToken", "AuthUserPlayer")
 
@@ -98,9 +98,13 @@ class AuthUser(db.TimeStampIntegerMixin):
     def has_workspace_permission(self, workspace_id: int, resource: str, action: str) -> bool:
         """Check permission within a specific workspace context.
 
-        Checks: superuser -> admin role -> global permissions -> workspace-scoped permissions.
+        Checks: superuser -> global admin role -> workspace admin role
+        -> global permissions -> workspace-scoped permissions.
         """
         if self.is_superuser or self._has_admin_equivalent_role():
+            return True
+
+        if self.is_workspace_admin(workspace_id):
             return True
 
         # Check global permissions first
