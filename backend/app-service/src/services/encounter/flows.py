@@ -66,18 +66,20 @@ async def to_pydantic(
             if "teams" in entities
             else utils.prepare_entities(entities, "home_team")
         )
-        home_team = await team_flows.to_pydantic(
-            session, encounter.home_team, teams_entities
-        )
+        if encounter.home_team is not None:
+            home_team = await team_flows.to_pydantic(
+                session, encounter.home_team, teams_entities
+            )
     if "teams" in entities or "away_team" in entities:
         teams_entities = (
             utils.prepare_entities(entities, "teams")
             if "teams" in entities
             else utils.prepare_entities(entities, "away_team")
         )
-        away_team = await team_flows.to_pydantic(
-            session, encounter.away_team, teams_entities
-        )
+        if encounter.away_team is not None:
+            away_team = await team_flows.to_pydantic(
+                session, encounter.away_team, teams_entities
+            )
     if "matches" in entities:
         matches_read = [
             await to_pydantic_match(
@@ -129,18 +131,20 @@ async def to_pydantic_match(
             if "teams" in entities
             else utils.prepare_entities(entities, "home_team")
         )
-        home_team = await team_flows.to_pydantic(
-            session, match.home_team, teams_entities
-        )
+        if match.home_team is not None:
+            home_team = await team_flows.to_pydantic(
+                session, match.home_team, teams_entities
+            )
     if "teams" in entities or "away_team" in entities:
         teams_entities = (
             utils.prepare_entities(entities, "teams")
             if "teams" in entities
             else utils.prepare_entities(entities, "away_team")
         )
-        away_team = await team_flows.to_pydantic(
-            session, match.away_team, teams_entities
-        )
+        if match.away_team is not None:
+            away_team = await team_flows.to_pydantic(
+                session, match.away_team, teams_entities
+            )
     if "encounter" in entities:
         encounter = await to_pydantic(
             session, match.encounter, utils.prepare_entities(entities, "encounter")
