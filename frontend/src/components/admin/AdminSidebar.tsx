@@ -16,11 +16,11 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarRail,
+  SidebarRail
 } from "@/components/ui/sidebar";
 import {
   getActiveAdminNavHref,
-  getVisibleAdminNavigationGroups,
+  getVisibleAdminNavigationGroups
 } from "@/components/admin/admin-navigation";
 import {
   DropdownMenu,
@@ -28,21 +28,21 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuTrigger,
+  DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { AdminCommandPalette, useCommandPalette } from "@/components/admin/AdminCommandPalette";
 import { SITE_FAVICON, SITE_NAME } from "@/config/site";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { usePermissions } from "@/hooks/usePermissions";
 import { WorkspaceAvatar } from "@/components/WorkspaceSwitcher";
-import { useWorkspaceStore } from "@/stores/workspace.store";
+import { filterAccessibleWorkspaces, useWorkspaceStore } from "@/stores/workspace.store";
 import { cn } from "@/lib/utils";
 
 function getRoleLabel({
   isSuperuser,
   isAdmin,
   isOrganizer,
-  isModerator,
+  isModerator
 }: {
   isSuperuser: boolean;
   isAdmin: boolean;
@@ -63,10 +63,15 @@ function getInitials(username?: string | null) {
 
 export function AdminSidebar() {
   const pathname = usePathname();
-  const { user } = useAuthProfile();
+  const { user, status } = useAuthProfile();
   const { canAccessAdminRoute, isSuperuser, isAdmin, isOrganizer, isModerator } = usePermissions();
 
-  const { workspaces, currentWorkspaceId, setCurrentWorkspace } = useWorkspaceStore();
+  const {
+    workspaces: allWorkspaces,
+    currentWorkspaceId,
+    setCurrentWorkspace
+  } = useWorkspaceStore();
+  const workspaces = filterAccessibleWorkspaces(allWorkspaces, status, user);
   const currentWorkspace = workspaces.find((w) => w.id === currentWorkspaceId);
 
   const navigationGroups = getVisibleAdminNavigationGroups((item) =>
@@ -75,12 +80,12 @@ export function AdminSidebar() {
       workspaceId: item.workspaceAdminVisible ? null : currentWorkspaceId,
       globalOnly: item.globalOnly,
       workspaceAdminVisible: item.workspaceAdminVisible,
-      superuserOnly: item.superuserOnly,
-    }),
+      superuserOnly: item.superuserOnly
+    })
   );
   const adminToolsGroup = navigationGroups.find((group) => group.title === "Administration");
   const primaryGroups = navigationGroups.filter(
-    (group) => group.title !== "Administration" && group.title !== "Overview",
+    (group) => group.title !== "Administration" && group.title !== "Overview"
   );
   const roleLabel = getRoleLabel({ isSuperuser, isAdmin, isOrganizer, isModerator });
   const profileHref = user?.username ? `/users/${user.username}` : "/users";
@@ -181,12 +186,17 @@ export function AdminSidebar() {
                             "bg-sidebar-accent text-sidebar-foreground font-medium",
                             // Left accent bar
                             "before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2",
-                            "before:h-4 before:w-[2px] before:rounded-full before:bg-sidebar-primary",
-                          ],
+                            "before:h-4 before:w-[2px] before:rounded-full before:bg-sidebar-primary"
+                          ]
                         )}
                       >
                         <Link href={item.href}>
-                          <item.icon className={cn("size-5", isActive ? "text-sidebar-primary" : "text-sidebar-foreground/40")} />
+                          <item.icon
+                            className={cn(
+                              "size-5",
+                              isActive ? "text-sidebar-primary" : "text-sidebar-foreground/40"
+                            )}
+                          />
                           <span>{item.title}</span>
                         </Link>
                       </SidebarMenuButton>
@@ -221,12 +231,17 @@ export function AdminSidebar() {
                         isActive && [
                           "bg-sidebar-accent/60 text-sidebar-foreground/80 font-medium",
                           "before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2",
-                          "before:h-3 before:w-[2px] before:rounded-full before:bg-sidebar-primary/70",
-                        ],
+                          "before:h-3 before:w-[2px] before:rounded-full before:bg-sidebar-primary/70"
+                        ]
                       )}
                     >
                       <Link href={item.href}>
-                        <item.icon className={cn("size-4.5", isActive ? "text-sidebar-primary/70" : "text-sidebar-foreground/30")} />
+                        <item.icon
+                          className={cn(
+                            "size-4.5",
+                            isActive ? "text-sidebar-primary/70" : "text-sidebar-foreground/30"
+                          )}
+                        />
                         <span>{item.title}</span>
                       </Link>
                     </SidebarMenuButton>
@@ -266,7 +281,10 @@ export function AdminSidebar() {
                     className="h-12 rounded-lg px-2 hover:bg-sidebar-accent/60 data-[state=open]:bg-sidebar-accent/60"
                   >
                     <Avatar className="size-8 rounded-lg ring-1 ring-sidebar-border/60">
-                      <AvatarImage src={user?.avatarUrl ?? undefined} alt={user?.username ?? "Admin"} />
+                      <AvatarImage
+                        src={user?.avatarUrl ?? undefined}
+                        alt={user?.username ?? "Admin"}
+                      />
                       <AvatarFallback className="rounded-lg bg-sidebar-accent text-[11px] font-medium text-sidebar-foreground/60">
                         {getInitials(user?.username)}
                       </AvatarFallback>
@@ -289,7 +307,9 @@ export function AdminSidebar() {
                   <div className="flex items-center gap-2.5 px-2 py-2">
                     <Avatar className="size-9 rounded-lg ring-1 ring-border/60">
                       <AvatarImage src={user?.avatarUrl ?? undefined} />
-                      <AvatarFallback className="rounded-lg text-xs">{getInitials(user?.username)}</AvatarFallback>
+                      <AvatarFallback className="rounded-lg text-xs">
+                        {getInitials(user?.username)}
+                      </AvatarFallback>
                     </Avatar>
                     <div className="flex flex-col">
                       <span className="text-[13px] font-medium">{user?.username ?? "Admin"}</span>

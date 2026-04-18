@@ -2,7 +2,6 @@ import Cookies from "js-cookie";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { AuthProfile } from "@/stores/auth-profile.store";
-import { useAuthProfileStore } from "@/stores/auth-profile.store";
 import { Workspace } from "@/types/workspace.types";
 import workspaceService from "@/services/workspace.service";
 
@@ -21,7 +20,7 @@ type WorkspaceState = {
 export function filterAccessibleWorkspaces(
   workspaces: Workspace[],
   authStatus: string,
-  user?: AuthProfile,
+  user?: AuthProfile
 ): Workspace[] {
   if (authStatus !== "authenticated" || !user) {
     return workspaces;
@@ -37,16 +36,17 @@ export function filterAccessibleWorkspaces(
 
 export function resolveCurrentWorkspaceId(
   workspaces: Workspace[],
-  currentWorkspaceId: number | null,
+  currentWorkspaceId: number | null
 ): number | null {
   if (workspaces.length === 0) {
     return null;
   }
 
   const hasCurrentWorkspace =
-    currentWorkspaceId !== null && workspaces.some((workspace) => workspace.id === currentWorkspaceId);
+    currentWorkspaceId !== null &&
+    workspaces.some((workspace) => workspace.id === currentWorkspaceId);
 
-  return hasCurrentWorkspace ? currentWorkspaceId : workspaces[0]?.id ?? null;
+  return hasCurrentWorkspace ? currentWorkspaceId : (workspaces[0]?.id ?? null);
 }
 
 export const useWorkspaceStore = create<WorkspaceState>()(
@@ -60,9 +60,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         if (get().isLoading) return;
         set({ isLoading: true });
         try {
-          const allWorkspaces = await workspaceService.getAll();
-          const { status, user } = useAuthProfileStore.getState();
-          const workspaces = filterAccessibleWorkspaces(allWorkspaces, status, user);
+          const workspaces = await workspaceService.getAll();
           const current = get().currentWorkspaceId;
           const nextId = resolveCurrentWorkspaceId(workspaces, current);
           if (nextId !== null) {
@@ -73,7 +71,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           set({
             workspaces,
             currentWorkspaceId: nextId,
-            isLoading: false,
+            isLoading: false
           });
         } catch {
           set({ isLoading: false });
@@ -88,11 +86,11 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       getCurrentWorkspace: () => {
         const { workspaces, currentWorkspaceId } = get();
         return workspaces.find((w) => w.id === currentWorkspaceId);
-      },
+      }
     }),
     {
       name: "aqt-workspace",
-      partialize: (state) => ({ currentWorkspaceId: state.currentWorkspaceId }),
+      partialize: (state) => ({ currentWorkspaceId: state.currentWorkspaceId })
     }
   )
 );

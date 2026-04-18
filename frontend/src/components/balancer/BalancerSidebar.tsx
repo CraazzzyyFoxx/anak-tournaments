@@ -14,7 +14,7 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuTrigger,
+  DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import {
   Sidebar,
@@ -27,14 +27,17 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
-  SidebarSeparator,
+  SidebarSeparator
 } from "@/components/ui/sidebar";
-import { balancerNavigationItems, isBalancerNavItemActive } from "@/components/balancer/balancer-navigation";
+import {
+  balancerNavigationItems,
+  isBalancerNavItemActive
+} from "@/components/balancer/balancer-navigation";
 import { SITE_FAVICON, SITE_NAME } from "@/config/site";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { usePermissions } from "@/hooks/usePermissions";
 import tournamentService from "@/services/tournament.service";
-import { useWorkspaceStore } from "@/stores/workspace.store";
+import { filterAccessibleWorkspaces, useWorkspaceStore } from "@/stores/workspace.store";
 import { cn } from "@/lib/utils";
 import type { Workspace } from "@/types/workspace.types";
 
@@ -42,7 +45,15 @@ import type { Workspace } from "@/types/workspace.types";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function getRoleLabel({ isSuperuser, isAdmin, isOrganizer }: { isSuperuser: boolean; isAdmin: boolean; isOrganizer: boolean }) {
+function getRoleLabel({
+  isSuperuser,
+  isAdmin,
+  isOrganizer
+}: {
+  isSuperuser: boolean;
+  isAdmin: boolean;
+  isOrganizer: boolean;
+}) {
   if (isSuperuser) return "Superuser";
   if (isAdmin) return "Admin";
   if (isOrganizer) return "Organizer";
@@ -71,7 +82,7 @@ const FALLBACK_COLORS = [
   "bg-rose-600",
   "bg-cyan-600",
   "bg-indigo-600",
-  "bg-pink-600",
+  "bg-pink-600"
 ];
 
 // ---------------------------------------------------------------------------
@@ -79,12 +90,19 @@ const FALLBACK_COLORS = [
 // ---------------------------------------------------------------------------
 
 function SidebarWorkspaceSwitcher() {
-  const { workspaces, currentWorkspaceId, fetchWorkspaces, setCurrentWorkspace } = useWorkspaceStore();
+  const {
+    workspaces: allWorkspaces,
+    currentWorkspaceId,
+    fetchWorkspaces,
+    setCurrentWorkspace
+  } = useWorkspaceStore();
+  const { status, user } = useAuthProfile();
 
   useEffect(() => {
     fetchWorkspaces();
   }, [fetchWorkspaces]);
 
+  const workspaces = filterAccessibleWorkspaces(allWorkspaces, status, user);
   const current = workspaces.find((w) => w.id === currentWorkspaceId);
 
   return (
@@ -102,7 +120,7 @@ function SidebarWorkspaceSwitcher() {
                   <AvatarFallback
                     className={cn(
                       "rounded-lg text-white font-semibold text-xs",
-                      FALLBACK_COLORS[current.id % FALLBACK_COLORS.length],
+                      FALLBACK_COLORS[current.id % FALLBACK_COLORS.length]
                     )}
                   >
                     {getWorkspaceInitials(current.name)}
@@ -112,14 +130,21 @@ function SidebarWorkspaceSwitcher() {
                 <div
                   className={cn(
                     "flex size-8 items-center justify-center rounded-lg text-white font-semibold text-xs",
-                    FALLBACK_COLORS[current.id % FALLBACK_COLORS.length],
+                    FALLBACK_COLORS[current.id % FALLBACK_COLORS.length]
                   )}
                 >
                   {getWorkspaceInitials(current.name)}
                 </div>
               ) : (
                 <div className="flex size-8 items-center justify-center rounded-lg bg-sidebar/80">
-                  <Image src={SITE_FAVICON} alt={SITE_NAME} width={20} height={20} unoptimized className="size-5 object-contain" />
+                  <Image
+                    src={SITE_FAVICON}
+                    alt={SITE_NAME}
+                    width={20}
+                    height={20}
+                    unoptimized
+                    className="size-5 object-contain"
+                  />
                 </div>
               )}
               <div className="grid flex-1 text-left leading-tight group-data-[collapsible=icon]:hidden">
@@ -137,7 +162,9 @@ function SidebarWorkspaceSwitcher() {
             align="start"
             sideOffset={6}
           >
-            <DropdownMenuLabel className="text-xs text-muted-foreground">Workspaces</DropdownMenuLabel>
+            <DropdownMenuLabel className="text-xs text-muted-foreground">
+              Workspaces
+            </DropdownMenuLabel>
             {workspaces.map((ws) => {
               const isActive = ws.id === currentWorkspaceId;
               return (
@@ -152,7 +179,7 @@ function SidebarWorkspaceSwitcher() {
                       <AvatarFallback
                         className={cn(
                           "rounded-md text-white font-semibold text-[10px]",
-                          FALLBACK_COLORS[ws.id % FALLBACK_COLORS.length],
+                          FALLBACK_COLORS[ws.id % FALLBACK_COLORS.length]
                         )}
                       >
                         {getWorkspaceInitials(ws.name)}
@@ -162,7 +189,7 @@ function SidebarWorkspaceSwitcher() {
                     <div
                       className={cn(
                         "flex size-5 items-center justify-center rounded-md text-white font-semibold text-[10px]",
-                        FALLBACK_COLORS[ws.id % FALLBACK_COLORS.length],
+                        FALLBACK_COLORS[ws.id % FALLBACK_COLORS.length]
                       )}
                     >
                       {getWorkspaceInitials(ws.name)}
@@ -196,7 +223,7 @@ function SidebarTournamentSwitcher() {
   const tournamentsQuery = useQuery({
     queryKey: ["balancer-public", "tournaments"],
     queryFn: () => tournamentService.getAll(),
-    staleTime: Number.POSITIVE_INFINITY,
+    staleTime: Number.POSITIVE_INFINITY
   });
 
   const tournaments = tournamentsQuery.data?.results ?? [];
@@ -252,7 +279,9 @@ function SidebarTournamentSwitcher() {
             align="start"
             sideOffset={6}
           >
-            <DropdownMenuLabel className="text-xs text-muted-foreground">Tournaments</DropdownMenuLabel>
+            <DropdownMenuLabel className="text-xs text-muted-foreground">
+              Tournaments
+            </DropdownMenuLabel>
             {tournaments.length === 0 && (
               <DropdownMenuItem disabled className="text-xs text-muted-foreground">
                 No tournaments found
@@ -362,15 +391,26 @@ export function BalancerSidebar() {
 
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild size="lg" tooltip={user?.username ?? "Profile"} className="h-11 rounded-lg px-2.5 text-sidebar-foreground/82 group-data-[collapsible=icon]:justify-center">
+            <SidebarMenuButton
+              asChild
+              size="lg"
+              tooltip={user?.username ?? "Profile"}
+              className="h-11 rounded-lg px-2.5 text-sidebar-foreground/82 group-data-[collapsible=icon]:justify-center"
+            >
               <Link href={profileHref}>
                 <Avatar className="size-7 rounded-lg">
                   <AvatarImage src={user?.avatarUrl ?? undefined} alt={user?.username ?? "User"} />
-                  <AvatarFallback className="rounded-lg">{getInitials(user?.username)}</AvatarFallback>
+                  <AvatarFallback className="rounded-lg">
+                    {getInitials(user?.username)}
+                  </AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
-                  <span className="truncate text-sm font-medium text-sidebar-foreground">{user?.username ?? "User"}</span>
-                  <span className="truncate text-[11px] text-sidebar-foreground/58">{roleLabel}</span>
+                  <span className="truncate text-sm font-medium text-sidebar-foreground">
+                    {user?.username ?? "User"}
+                  </span>
+                  <span className="truncate text-[11px] text-sidebar-foreground/58">
+                    {roleLabel}
+                  </span>
                 </div>
                 <ArrowUpRight className="ml-auto size-4 text-sidebar-foreground/40 group-data-[collapsible=icon]:hidden" />
               </Link>
