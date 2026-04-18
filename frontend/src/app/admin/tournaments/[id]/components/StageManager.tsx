@@ -91,12 +91,20 @@ function getTeamName(teamById: Map<number, Team>, teamId: number | null) {
   return teamById.get(teamId)?.name ?? `Team #${teamId}`;
 }
 
+function normalizeMaxRounds(value: string | number, fallback = 5) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(1, Math.floor(parsed));
+}
+
 export function StageManager({ tournamentId }: StageManagerProps) {
   const queryClient = useQueryClient();
   const { isSuperuser } = usePermissions();
   const [newStageName, setNewStageName] = useState("");
   const [newStageType, setNewStageType] = useState<StageType>("round_robin");
+  const [newStageMaxRounds, setNewStageMaxRounds] = useState("5");
   const [stageTypeDrafts, setStageTypeDrafts] = useState<Record<number, StageType>>({});
+  const [stageMaxRoundDrafts, setStageMaxRoundDrafts] = useState<Record<number, string>>({});
   const [stageItemDrafts, setStageItemDrafts] = useState<Record<number, StageItemDraft>>({});
   const [teamDrafts, setTeamDrafts] = useState<Record<number, string>>({});
 
@@ -138,19 +146,32 @@ export function StageManager({ tournamentId }: StageManagerProps) {
       adminService.createStage(tournamentId, {
         name: newStageName,
         stage_type: newStageType,
+        max_rounds: normalizeMaxRounds(newStageMaxRounds),
         order: stages.length
       }),
     onSuccess: () => {
       invalidateStageData();
       setNewStageName("");
+      setNewStageMaxRounds("5");
     }
   });
 
   const updateStageMutation = useMutation({
-    mutationFn: ({ stageId, data }: { stageId: number; data: { stage_type: StageType } }) =>
+    mutationFn: ({
+      stageId,
+      data
+    }: {
+      stageId: number;
+      data: { stage_type?: StageType; max_rounds?: number };
+    }) =>
       adminService.updateStage(stageId, data),
     onSuccess: (_stage, variables) => {
       setStageTypeDrafts((current) => {
+        const next = { ...current };
+        delete next[variables.stageId];
+        return next;
+      });
+      setStageMaxRoundDrafts((current) => {
         const next = { ...current };
         delete next[variables.stageId];
         return next;
@@ -333,7 +354,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
           </p>
         </CardHeader>
         <CardContent className="space-y-4 pt-0">
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_auto] lg:items-end">
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_150px_auto] lg:items-end">
             <div className="space-y-2">
               <Label htmlFor="new-stage-name">Stage name</Label>
               <Input
@@ -358,6 +379,18 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="new-stage-max-rounds">Swiss max rounds</Label>
+              <Input
+                id="new-stage-max-rounds"
+                min={1}
+                step={1}
+                type="number"
+                value={newStageMaxRounds}
+                onChange={(e) => setNewStageMaxRounds(e.target.value)}
+              />
             </div>
 
             <Button
@@ -389,11 +422,19 @@ export function StageManager({ tournamentId }: StageManagerProps) {
 
       {stages.map((stage: Stage) => {
         const stageTypeDraft = stageTypeDrafts[stage.id] ?? stage.stage_type;
+        const stageMaxRoundDraft =
+          stageMaxRoundDrafts[stage.id] ?? String(stage.max_rounds ?? 5);
         const itemDraft = stageItemDrafts[stage.id] ?? {
           name: "",
           type: getDefaultStageItemType(stage.stage_type)
         };
         const isTypeDirty = stageTypeDraft !== stage.stage_type;
+        const maxRoundsDraftValue = normalizeMaxRounds(
+          stageMaxRoundDraft,
+          stage.max_rounds ?? 5
+        );
+        const isMaxRoundsDirty = maxRoundsDraftValue !== (stage.max_rounds ?? 5);
+        const isStageDirty = isTypeDirty || isMaxRoundsDirty;
         const isUpdatingType =
           updateStageMutation.isPending && updateStageMutation.variables?.stageId === stage.id;
         const isActivating = activateMutation.isPending && activateMutation.variables === stage.id;
@@ -432,6 +473,11 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                     <span className="rounded-full border border-border/60 bg-muted/20 px-2.5 py-1">
                       {stage.items.length} item(s)
                     </span>
+                    {stage.stage_type === "swiss" ? (
+                      <span className="rounded-full border border-border/60 bg-muted/20 px-2.5 py-1">
+                        {stage.max_rounds ?? 5} max round(s)
+                      </span>
+                    ) : null}
                     <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/20 px-2.5 py-1">
                       <Users className="size-3" />
                       {teamSlots} slot(s)
@@ -928,14 +974,31 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                           ))}
                         </SelectContent>
                       </Select>
+                      <Input
+                        aria-label="Swiss max rounds"
+                        className="h-9 w-full sm:w-[120px]"
+                        min={1}
+                        step={1}
+                        type="number"
+                        value={stageMaxRoundDraft}
+                        onChange={(event) =>
+                          setStageMaxRoundDrafts((current) => ({
+                            ...current,
+                            [stage.id]: event.target.value
+                          }))
+                        }
+                      />
                       <Button
                         size="sm"
                         variant="secondary"
-                        disabled={updateStageMutation.isPending || !isTypeDirty}
+                        disabled={updateStageMutation.isPending || !isStageDirty}
                         onClick={() =>
                           updateStageMutation.mutate({
                             stageId: stage.id,
-                            data: { stage_type: stageTypeDraft }
+                            data: {
+                              stage_type: stageTypeDraft,
+                              max_rounds: maxRoundsDraftValue
+                            }
                           })
                         }
                       >

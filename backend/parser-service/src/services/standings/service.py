@@ -5,17 +5,19 @@ from dataclasses import dataclass, field
 
 import sqlalchemy as sa
 from loguru import logger
-from shared.core import enums
-from shared.core.enums import StageType
-from shared.services.tournament_utils import (
-    completed_encounters as _shared_completed_encounters,
-    completed_encounters_in_finished_rounds as _shared_completed_encounters_in_finished_rounds,
-)
-from shared.services.tournament_utils import sort_bracket_matches
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
+from shared.core import enums
+from shared.core.enums import StageType
+from shared.services.tournament_utils import (
+    completed_encounters as _shared_completed_encounters,
+)
+from shared.services.tournament_utils import (
+    completed_encounters_in_finished_rounds as _shared_completed_encounters_in_finished_rounds,
+)
+from shared.services.tournament_utils import sort_bracket_matches
 from src import models, schemas
 from src.services.encounter import service as encounter_service
 
@@ -24,6 +26,7 @@ ELIMINATION_STAGE_TYPES = {
     StageType.SINGLE_ELIMINATION,
     StageType.DOUBLE_ELIMINATION,
 }
+DEFAULT_STAGE_MAX_ROUNDS = 5
 
 RULE_PRESET_DEFAULTS: dict[str, list[str]] = {
     "challonge_round_robin": [
@@ -174,6 +177,19 @@ def _completed_encounters_in_finished_rounds(
 def _stage_settings(stage: models.Stage | None) -> dict:
     raw = stage.settings_json if stage and stage.settings_json else {}
     return raw if isinstance(raw, dict) else {}
+
+
+def _stage_max_rounds(stage: models.Stage) -> int:
+    raw_value = getattr(stage, "max_rounds", DEFAULT_STAGE_MAX_ROUNDS)
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError):
+        return DEFAULT_STAGE_MAX_ROUNDS
+    return max(1, value)
+
+
+def _swiss_scope_completed(total: int, completed: int, max_round: int, max_rounds: int) -> bool:
+    return total > 0 and completed == total and max_round >= max_rounds
 
 
 def _rule_profile(stage: models.Stage) -> str:
@@ -783,6 +799,7 @@ async def _update_stage_completion_flags(
     counts_result = await session.execute(
         sa.select(
             models.Encounter.stage_id,
+            models.Encounter.stage_item_id,
             sa.func.count(models.Encounter.id).label("total"),
             sa.func.sum(
                 sa.case(
@@ -793,14 +810,54 @@ async def _update_stage_completion_flags(
                     else_=0,
                 )
             ).label("completed"),
+            sa.func.coalesce(sa.func.max(models.Encounter.round), 0).label("max_round"),
         )
         .where(models.Encounter.stage_id.in_(stage_ids))
-        .group_by(models.Encounter.stage_id)
+        .group_by(models.Encounter.stage_id, models.Encounter.stage_item_id)
     )
-    by_stage = {row.stage_id: (int(row.total or 0), int(row.completed or 0)) for row in counts_result}
+    rows_by_stage: dict[int, list[tuple[int | None, int, int, int]]] = defaultdict(list)
+    for row in counts_result:
+        rows_by_stage[row.stage_id].append(
+            (
+                getattr(row, "stage_item_id", None),
+                int(row.total or 0),
+                int(row.completed or 0),
+                int(row.max_round or 0),
+            )
+        )
 
     for stage in stages:
-        total, completed = by_stage.get(stage.id, (0, 0))
+        stage_rows = rows_by_stage.get(stage.id, [])
+        if stage.stage_type == StageType.SWISS:
+            rows_by_item = {
+                stage_item_id: (total, completed, max_round)
+                for stage_item_id, total, completed, max_round in stage_rows
+            }
+            item_scopes = [
+                rows_by_item.get(item.id, (0, 0, 0))
+                for item in (getattr(stage, "items", []) or [])
+            ]
+            extra_scopes = [
+                (total, completed, max_round)
+                for stage_item_id, total, completed, max_round in stage_rows
+                if stage_item_id is None
+            ]
+            scopes = item_scopes or extra_scopes
+            should_be_completed = bool(scopes) and all(
+                _swiss_scope_completed(
+                    total,
+                    completed,
+                    max_round,
+                    _stage_max_rounds(stage),
+                )
+                for total, completed, max_round in scopes
+            )
+            if stage.is_completed != should_be_completed:
+                stage.is_completed = should_be_completed
+            continue
+
+        total = sum(row_total for _, row_total, _, _ in stage_rows)
+        completed = sum(row_completed for _, _, row_completed, _ in stage_rows)
         should_be_completed = total > 0 and completed == total
         if stage.is_completed != should_be_completed:
             stage.is_completed = should_be_completed

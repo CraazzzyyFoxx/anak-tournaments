@@ -33,6 +33,8 @@ os.environ.setdefault("S3_ACCESS_KEY", "test")
 os.environ.setdefault("S3_SECRET_KEY", "test")
 os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
 os.environ.setdefault("S3_BUCKET_NAME", "test")
+os.environ.setdefault("CHALLONGE_USERNAME", "test")
+os.environ.setdefault("CHALLONGE_API_KEY", "test")
 
 encounter_service = importlib.import_module("src.services.admin.encounter")
 admin_schemas = importlib.import_module("src.schemas.admin.encounter")

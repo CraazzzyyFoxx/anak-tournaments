@@ -5,9 +5,8 @@ import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from unittest import IsolatedAsyncioTestCase
+from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import AsyncMock, Mock, patch
-from unittest import TestCase
 
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
@@ -506,3 +505,107 @@ class StandingsServiceGroupedStageIsolationTests(IsolatedAsyncioTestCase):
         self.assertEqual(2.0, by_item_and_team[(item_b.id, 21)].points)
         self.assertEqual(2, by_item_and_team[(item_b.id, 21)].matches)
         self.assertEqual(1.0, by_item_and_team[(item_b.id, 22)].points)
+
+    async def test_swiss_stage_is_not_completed_before_max_rounds(self) -> None:
+        tournament = models.Tournament(
+            workspace_id=1,
+            number=72,
+            name="Tournament",
+            is_league=False,
+        )
+        tournament.id = 104
+
+        stage = models.Stage(
+            tournament_id=tournament.id,
+            name="Swiss Groups",
+            stage_type=enums.StageType.SWISS,
+            order=0,
+        )
+        stage.id = 11
+        stage.is_completed = False
+        stage.max_rounds = 5
+        tournament.stages = [stage]
+
+        class _CountsResult:
+            def __iter__(self):
+                return iter(
+                    [
+                        SimpleNamespace(
+                            stage_id=stage.id,
+                            total=2,
+                            completed=2,
+                            max_round=1,
+                        )
+                    ]
+                )
+
+        session = SimpleNamespace(execute=AsyncMock(return_value=_CountsResult()))
+
+        await standings_service._update_stage_completion_flags(session, tournament)
+
+        self.assertFalse(stage.is_completed)
+
+    async def test_swiss_stage_completion_requires_each_group_to_reach_max_rounds(
+        self,
+    ) -> None:
+        tournament = models.Tournament(
+            workspace_id=1,
+            number=73,
+            name="Tournament",
+            is_league=False,
+        )
+        tournament.id = 105
+
+        stage = models.Stage(
+            tournament_id=tournament.id,
+            name="Swiss Groups",
+            stage_type=enums.StageType.SWISS,
+            order=0,
+        )
+        stage.id = 12
+        stage.is_completed = False
+        stage.max_rounds = 5
+
+        item_a = models.StageItem(
+            stage_id=stage.id,
+            name="Group A",
+            type=enums.StageItemType.GROUP,
+            order=0,
+        )
+        item_a.id = 401
+        item_b = models.StageItem(
+            stage_id=stage.id,
+            name="Group B",
+            type=enums.StageItemType.GROUP,
+            order=1,
+        )
+        item_b.id = 402
+        stage.items = [item_a, item_b]
+        tournament.stages = [stage]
+
+        class _CountsResult:
+            def __iter__(self):
+                return iter(
+                    [
+                        SimpleNamespace(
+                            stage_id=stage.id,
+                            stage_item_id=item_a.id,
+                            total=8,
+                            completed=8,
+                            max_round=4,
+                        ),
+                        SimpleNamespace(
+                            stage_id=stage.id,
+                            stage_item_id=item_b.id,
+                            total=10,
+                            completed=10,
+                            max_round=5,
+                        ),
+                    ]
+                )
+
+        session = SimpleNamespace(execute=AsyncMock(return_value=_CountsResult()))
+
+        await standings_service._update_stage_completion_flags(session, tournament)
+
+        self.assertFalse(stage.is_completed)

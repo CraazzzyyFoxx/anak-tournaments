@@ -3,14 +3,14 @@
 from datetime import UTC, datetime
 
 from fastapi import HTTPException, status
-from shared.core.enums import EncounterResultStatus, EncounterStatus
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared.core.enums import EncounterResultStatus, EncounterStatus
 from src import models
 from src.services.challonge import sync as challonge_sync
-from src.services.standings import service as standings_service
+from src.services.standings import recalculation as standings_recalculation
 
 
 async def _resolve_captain_identity(
@@ -112,7 +112,7 @@ async def submit_result(
 
     tournament_id = encounter.tournament_id
     await session.commit()
-    await standings_service.recalculate_for_tournament(session, tournament_id)
+    await standings_recalculation.enqueue_tournament_recalculation(tournament_id)
     await session.refresh(encounter)
     return encounter
 
@@ -154,7 +154,7 @@ async def confirm_result(
     if encounter.challonge_id:
         await challonge_sync.auto_push_on_confirm(session, encounter.id)
 
-    await standings_service.recalculate_for_tournament(session, tournament_id)
+    await standings_recalculation.enqueue_tournament_recalculation(tournament_id)
     await session.refresh(encounter)
     return encounter
 
@@ -208,7 +208,7 @@ async def submit_match_report(
 
     tournament_id = encounter.tournament_id
     await session.commit()
-    await standings_service.recalculate_for_tournament(session, tournament_id)
+    await standings_recalculation.enqueue_tournament_recalculation(tournament_id)
     await session.refresh(encounter)
     return encounter
 
@@ -237,7 +237,7 @@ async def admin_confirm_result(
     if encounter.challonge_id:
         await challonge_sync.auto_push_on_confirm(session, encounter.id)
 
-    await standings_service.recalculate_for_tournament(session, tournament_id)
+    await standings_recalculation.enqueue_tournament_recalculation(tournament_id)
     await session.refresh(encounter)
     return encounter
 
@@ -263,6 +263,6 @@ async def dispute_result(
 
     tournament_id = encounter.tournament_id
     await session.commit()
-    await standings_service.recalculate_for_tournament(session, tournament_id)
+    await standings_recalculation.enqueue_tournament_recalculation(tournament_id)
     await session.refresh(encounter)
     return encounter

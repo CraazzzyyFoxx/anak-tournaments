@@ -2,18 +2,19 @@
 
 from fastapi import HTTPException, status
 from loguru import logger
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
 from shared.core import enums
 from shared.services.bracket.advancement import persist_advancement_edges
 from shared.services.bracket.engine import generate_bracket
 from shared.services.bracket.swiss import SwissStanding
 from shared.services.bracket.types import BracketSkeleton
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
-
 from src import models
 from src.schemas.admin import stage as admin_schemas
 from src.services.standings import service as standings_service
+from src.services.standings import swiss_auto_round
 
 GROUPED_GENERATION_STAGE_TYPES = {
     enums.StageType.ROUND_ROBIN,
@@ -342,6 +343,11 @@ async def _generate_stage_skeleton(
         swiss_standings, swiss_played_pairs, swiss_round = (
             await _get_swiss_generation_context(session, stage.id, stage_item_id)
         )
+        if not swiss_auto_round.stage_allows_next_round(stage, swiss_round):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Swiss stage reached max_rounds",
+            )
 
     return generate_bracket(
         stage.stage_type,

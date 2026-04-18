@@ -1,6 +1,6 @@
 import typing
 
-from sqlalchemy import Boolean, Enum, ForeignKey, Integer, JSON, String
+from sqlalchemy import JSON, Boolean, Enum, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db, enums
@@ -51,6 +51,7 @@ class Stage(db.TimeStampIntegerMixin):
     name: Mapped[str] = mapped_column(String())
     description: Mapped[str | None] = mapped_column(String(), nullable=True)
     stage_type: Mapped[enums.StageType] = mapped_column(STAGE_TYPE_ENUM)
+    max_rounds: Mapped[int] = mapped_column(Integer(), default=5, server_default="5")
     order: Mapped[int] = mapped_column(Integer(), default=0)
     is_active: Mapped[bool] = mapped_column(
         Boolean(), default=False, server_default="false"

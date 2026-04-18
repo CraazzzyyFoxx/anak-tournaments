@@ -4,14 +4,16 @@ from __future__ import annotations
 
 from typing import Any
 
+import sqlalchemy as sa
 from loguru import logger
-from shared.schemas.events import SwissNextRoundEvent
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.schemas.events import SwissNextRoundEvent
 from src import models
 from src.core import db
 from src.services.admin import stage as stage_service
 from src.services.standings import service as standings_service
+from src.services.standings import swiss_auto_round
 
 
 async def process_swiss_next_round_event(
@@ -19,12 +21,10 @@ async def process_swiss_next_round_event(
     *,
     session_factory: Any = db.async_session_maker,
 ) -> None:
-    """Handle SwissNextRoundEvent: generate next round for a Swiss stage item.
+    """Handle SwissNextRoundEvent for one Swiss stage item.
 
-    Idempotent — if a race condition caused duplicate events, the second call
-    simply generates another round using the already-updated standings.
-    The admin can always delete the extra encounters if needed, but in practice
-    deduplication at the publish side prevents this.
+    The handler re-checks current DB state before generating. If a newer round
+    already exists or the current round is still open, the stale event is ignored.
     """
     event = SwissNextRoundEvent.model_validate(data)
     log = logger.bind(
@@ -55,7 +55,6 @@ async def _generate_next_round(
         )
         return []
 
-    # Resolve the stage item (or None for ungrouped)
     item: models.StageItem | None = None
     team_ids: list[int] = []
 
@@ -80,6 +79,41 @@ async def _generate_next_round(
         )
         return []
 
+    current_encounters = await _get_stage_item_encounters(
+        session,
+        event.stage_id,
+        event.stage_item_id,
+    )
+    expected_next_round = swiss_auto_round.next_round_number(current_encounters)
+    if event.next_round is not None:
+        if expected_next_round != event.next_round:
+            logger.info(
+                "Swiss auto-round: stale event skipped",
+                stage_id=event.stage_id,
+                stage_item_id=event.stage_item_id,
+                event_next_round=event.next_round,
+                expected_next_round=expected_next_round,
+            )
+            return []
+
+    if not swiss_auto_round.stage_allows_next_round(stage, expected_next_round):
+        logger.info(
+            "Swiss auto-round: stage max rounds reached, skipping",
+            stage_id=event.stage_id,
+            stage_item_id=event.stage_item_id,
+            next_round=expected_next_round,
+            max_rounds=swiss_auto_round.stage_max_rounds(stage),
+        )
+        return []
+
+    if not swiss_auto_round.stage_item_ready_for_next_round(current_encounters):
+        logger.info(
+            "Swiss auto-round: current round is not closed, skipping",
+            stage_id=event.stage_id,
+            stage_item_id=event.stage_item_id,
+        )
+        return []
+
     skeleton = await stage_service._generate_stage_skeleton(
         session, stage, team_ids, event.stage_item_id
     )
@@ -96,7 +130,21 @@ async def _generate_next_round(
         stage_item_id=event.stage_item_id,
     )
 
-    # Recalculate standings so the new encounters appear
     await standings_service.recalculate_for_tournament(session, event.tournament_id)
 
     return encounters
+
+
+async def _get_stage_item_encounters(
+    session: AsyncSession,
+    stage_id: int,
+    stage_item_id: int | None,
+) -> list[models.Encounter]:
+    query = sa.select(models.Encounter).where(models.Encounter.stage_id == stage_id)
+    if stage_item_id is None:
+        query = query.where(models.Encounter.stage_item_id.is_(None))
+    else:
+        query = query.where(models.Encounter.stage_item_id == stage_item_id)
+
+    result = await session.execute(query)
+    return list(result.scalars().all())

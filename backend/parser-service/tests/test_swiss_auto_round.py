@@ -196,4 +196,123 @@ class SwissAutoRoundIsolationTests(IsolatedAsyncioTestCase):
 
         self.assertEqual(1, len(events))
         self.assertEqual(502, events[0].stage_item_id)
+        self.assertEqual(2, events[0].next_round)
         publish_message.assert_awaited_once()
+
+    async def test_enqueue_swiss_next_rounds_checks_stages_completed_by_recalculation(self) -> None:
+        stage = self._stage(78, [601])
+        stage.is_active = True
+        stage.is_completed = True
+        stage.max_rounds = 5
+
+        class _StageResult:
+            def scalars(self) -> SimpleNamespace:
+                return SimpleNamespace(all=lambda: [stage])
+
+        encounters = [
+            self._encounter(
+                stage_id=stage.id,
+                stage_item_id=601,
+                home_team_id=1,
+                away_team_id=2,
+                round_number=1,
+                status=enums.EncounterStatus.COMPLETED,
+            ),
+            self._encounter(
+                stage_id=stage.id,
+                stage_item_id=601,
+                home_team_id=3,
+                away_team_id=4,
+                round_number=1,
+                status=enums.EncounterStatus.COMPLETED,
+            ),
+        ]
+
+        class _EncounterResult:
+            def scalars(self) -> SimpleNamespace:
+                return SimpleNamespace(all=lambda: encounters)
+
+        async def execute(query):
+            query_text = str(query).lower()
+            if not hasattr(execute, "seen_stage_query"):
+                execute.seen_stage_query = True
+                self.assertNotIn("tournament.stage.is_completed = false", query_text)
+                return _StageResult()
+            return _EncounterResult()
+
+        session = SimpleNamespace(execute=AsyncMock(side_effect=execute))
+
+        with patch.object(swiss_auto_round, "publish_message", AsyncMock()) as publish_message:
+            events = await swiss_auto_round.enqueue_swiss_next_rounds(
+                session,
+                tournament_id=999,
+                broker=SimpleNamespace(),
+            )
+
+        self.assertEqual(1, len(events))
+        self.assertEqual(601, events[0].stage_item_id)
+        self.assertEqual(2, events[0].next_round)
+        publish_message.assert_awaited_once()
+
+    async def test_enqueue_swiss_next_rounds_stops_at_stage_max_rounds(self) -> None:
+        stage = self._stage(79, [701])
+        stage.is_active = True
+        stage.is_completed = False
+        stage.max_rounds = 2
+
+        class _StageResult:
+            def scalars(self) -> SimpleNamespace:
+                return SimpleNamespace(all=lambda: [stage])
+
+        encounters = [
+            self._encounter(
+                stage_id=stage.id,
+                stage_item_id=701,
+                home_team_id=1,
+                away_team_id=2,
+                round_number=1,
+                status=enums.EncounterStatus.COMPLETED,
+            ),
+            self._encounter(
+                stage_id=stage.id,
+                stage_item_id=701,
+                home_team_id=3,
+                away_team_id=4,
+                round_number=1,
+                status=enums.EncounterStatus.COMPLETED,
+            ),
+            self._encounter(
+                stage_id=stage.id,
+                stage_item_id=701,
+                home_team_id=1,
+                away_team_id=3,
+                round_number=2,
+                status=enums.EncounterStatus.COMPLETED,
+            ),
+            self._encounter(
+                stage_id=stage.id,
+                stage_item_id=701,
+                home_team_id=2,
+                away_team_id=4,
+                round_number=2,
+                status=enums.EncounterStatus.COMPLETED,
+            ),
+        ]
+
+        class _EncounterResult:
+            def scalars(self) -> SimpleNamespace:
+                return SimpleNamespace(all=lambda: encounters)
+
+        session = SimpleNamespace(
+            execute=AsyncMock(side_effect=[_StageResult(), _EncounterResult()])
+        )
+
+        with patch.object(swiss_auto_round, "publish_message", AsyncMock()) as publish_message:
+            events = await swiss_auto_round.enqueue_swiss_next_rounds(
+                session,
+                tournament_id=999,
+                broker=SimpleNamespace(),
+            )
+
+        self.assertEqual([], events)
+        publish_message.assert_not_awaited()

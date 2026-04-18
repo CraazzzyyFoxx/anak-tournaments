@@ -21,6 +21,10 @@ os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
 os.environ.setdefault("POSTGRES_DB", "postgres")
 os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
+os.environ.setdefault("S3_ACCESS_KEY", "test")
+os.environ.setdefault("S3_SECRET_KEY", "test")
+os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
+os.environ.setdefault("S3_BUCKET_NAME", "test")
 
 recalculation = importlib.import_module("src.services.standings.recalculation")
 
@@ -66,7 +70,14 @@ class RecalculationIdempotencyTests(IsolatedAsyncioTestCase):
         recalculate = AsyncMock(return_value=[])
         publish_mock = AsyncMock()
 
-        with patch.object(recalculation, "publish_message", publish_mock):
+        with (
+            patch.object(recalculation, "publish_message", publish_mock),
+            patch.object(
+                recalculation.swiss_auto_round,
+                "enqueue_swiss_next_rounds",
+                AsyncMock(return_value=[]),
+            ),
+        ):
             processed = await recalculation.process_tournament_recalculation_event(
                 {"tournament_id": 42},
                 broker=SimpleNamespace(),

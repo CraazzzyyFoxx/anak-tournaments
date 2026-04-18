@@ -1,7 +1,9 @@
 """Auto-generate next Swiss round when all encounters in a stage item finish.
 
-Called from recalculation.py after standings are rebuilt so that
-Stage.is_completed flags and encounter statuses are already up-to-date.
+Called from recalculation.py after standings are rebuilt. A Swiss stage can be
+temporarily marked completed when the current round is closed but the next
+round has not been generated yet, so stage completion is not used as a
+candidate filter here.
 """
 
 from __future__ import annotations
@@ -11,6 +13,9 @@ from typing import Any
 
 import sqlalchemy as sa
 from loguru import logger
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
 from shared.core import enums
 from shared.messaging.config import SWISS_NEXT_ROUND_QUEUE
 from shared.observability import publish_message
@@ -19,10 +24,9 @@ from shared.services.tournament_utils import (
     completed_encounters_in_finished_rounds,
     has_incomplete_playable_rounds,
 )
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
-
 from src import models
+
+DEFAULT_STAGE_MAX_ROUNDS = 5
 
 
 async def enqueue_swiss_next_rounds(
@@ -38,7 +42,6 @@ async def enqueue_swiss_next_rounds(
             models.Stage.tournament_id == tournament_id,
             models.Stage.stage_type == enums.StageType.SWISS,
             models.Stage.is_active == True,  # noqa: E712
-            models.Stage.is_completed == False,  # noqa: E712
         )
         .options(selectinload(models.Stage.items))
     )
@@ -60,22 +63,44 @@ async def enqueue_swiss_next_rounds(
         if items:
             for item in items:
                 item_encounters = encounters_by_key.get((stage.id, item.id), [])
-                if _stage_item_ready_for_next_round(item_encounters):
+                if stage_item_ready_for_next_round(item_encounters):
+                    next_round = next_round_number(item_encounters)
+                    if not stage_allows_next_round(stage, next_round):
+                        logger.info(
+                            "Swiss auto-round: stage max rounds reached",
+                            stage_id=stage.id,
+                            stage_item_id=item.id,
+                            next_round=next_round,
+                            max_rounds=stage_max_rounds(stage),
+                        )
+                        continue
                     events.append(
                         SwissNextRoundEvent(
                             stage_id=stage.id,
                             stage_item_id=item.id,
                             tournament_id=tournament_id,
+                            next_round=next_round,
                         )
                     )
         else:
             stage_encounters = encounters_by_key.get((stage.id, None), [])
-            if _stage_item_ready_for_next_round(stage_encounters):
+            if stage_item_ready_for_next_round(stage_encounters):
+                next_round = next_round_number(stage_encounters)
+                if not stage_allows_next_round(stage, next_round):
+                    logger.info(
+                        "Swiss auto-round: stage max rounds reached",
+                        stage_id=stage.id,
+                        stage_item_id=None,
+                        next_round=next_round,
+                        max_rounds=stage_max_rounds(stage),
+                    )
+                    continue
                 events.append(
                     SwissNextRoundEvent(
                         stage_id=stage.id,
                         stage_item_id=None,
                         tournament_id=tournament_id,
+                        next_round=next_round,
                     )
                 )
 
@@ -117,7 +142,7 @@ async def enqueue_swiss_next_rounds(
     return events
 
 
-def _stage_item_ready_for_next_round(
+def stage_item_ready_for_next_round(
     encounters: list[models.Encounter],
 ) -> bool:
     if not encounters:
@@ -125,3 +150,29 @@ def _stage_item_ready_for_next_round(
     if has_incomplete_playable_rounds(encounters):
         return False
     return bool(completed_encounters_in_finished_rounds(encounters))
+
+
+def _stage_item_ready_for_next_round(
+    encounters: list[models.Encounter],
+) -> bool:
+    return stage_item_ready_for_next_round(encounters)
+
+
+def next_round_number(encounters: list[models.Encounter]) -> int | None:
+    rounds = [encounter.round for encounter in encounters if encounter.round is not None]
+    if not rounds:
+        return None
+    return max(rounds) + 1
+
+
+def stage_max_rounds(stage: models.Stage) -> int:
+    raw_value = getattr(stage, "max_rounds", DEFAULT_STAGE_MAX_ROUNDS)
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError):
+        return DEFAULT_STAGE_MAX_ROUNDS
+    return max(1, value)
+
+
+def stage_allows_next_round(stage: models.Stage, next_round: int | None) -> bool:
+    return next_round is not None and next_round <= stage_max_rounds(stage)

@@ -104,6 +104,10 @@ class SwissNextRoundEvent(BaseEvent):
     stage_id: int = Field(..., description="Stage ID")
     stage_item_id: int | None = Field(..., description="StageItem ID (None for ungrouped stage)")
     tournament_id: int = Field(..., description="Tournament ID")
+    next_round: int | None = Field(
+        default=None,
+        description="Round number this event is expected to generate",
+    )
 
 
 class AchievementEvaluateEvent(BaseEvent):

@@ -33,6 +33,8 @@ os.environ.setdefault("S3_ACCESS_KEY", "test")
 os.environ.setdefault("S3_SECRET_KEY", "test")
 os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
 os.environ.setdefault("S3_BUCKET_NAME", "test")
+os.environ.setdefault("CHALLONGE_USERNAME", "test")
+os.environ.setdefault("CHALLONGE_API_KEY", "test")
 
 captain_service = importlib.import_module("src.services.encounter.captain")
 enums = importlib.import_module("shared.core.enums")
@@ -151,10 +153,10 @@ class CaptainMatchReportValidation(IsolatedAsyncioTestCase):
         user = _mk_user()
 
         with patch.object(
-            captain_service.standings_service,
-            "recalculate_for_tournament",
+            captain_service.standings_recalculation,
+            "enqueue_tournament_recalculation",
             AsyncMock(),
-        ):
+        ) as enqueue_recalc:
             await captain_service.submit_match_report(
                 session,
                 user,
@@ -164,6 +166,7 @@ class CaptainMatchReportValidation(IsolatedAsyncioTestCase):
                 closeness_stars=4,
             )
 
+        enqueue_recalc.assert_awaited_once_with(encounter.tournament_id)
         self.assertEqual(encounter.home_score, 2)
         self.assertEqual(encounter.away_score, 1)
         self.assertEqual(encounter.closeness, 4 / 5)
@@ -179,8 +182,8 @@ class CaptainMatchReportValidation(IsolatedAsyncioTestCase):
         user = _mk_user()
 
         with patch.object(
-            captain_service.standings_service,
-            "recalculate_for_tournament",
+            captain_service.standings_recalculation,
+            "enqueue_tournament_recalculation",
             AsyncMock(),
         ):
             await captain_service.submit_match_report(
@@ -220,11 +223,12 @@ class CaptainMatchReportValidation(IsolatedAsyncioTestCase):
         user = _mk_user()
 
         with patch.object(
-            captain_service.standings_service,
-            "recalculate_for_tournament",
+            captain_service.standings_recalculation,
+            "enqueue_tournament_recalculation",
             AsyncMock(),
-        ):
+        ) as enqueue_recalc:
             await captain_service.confirm_result(session, user, encounter_id=10)
 
+        enqueue_recalc.assert_awaited_once_with(encounter.tournament_id)
         self.assertEqual(encounter.confirmed_by_id, 200)
         self.assertEqual(encounter.status, enums.EncounterStatus.COMPLETED)

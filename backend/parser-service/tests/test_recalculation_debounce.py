@@ -21,6 +21,10 @@ os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
 os.environ.setdefault("POSTGRES_DB", "postgres")
 os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
+os.environ.setdefault("S3_ACCESS_KEY", "test")
+os.environ.setdefault("S3_SECRET_KEY", "test")
+os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
+os.environ.setdefault("S3_BUCKET_NAME", "test")
 
 recalculation = importlib.import_module("src.services.standings.recalculation")
 
