@@ -649,6 +649,7 @@ def serialize_player_for_export(player: models.BalancerPlayer, export_uuid: str)
         primary_flag, secondary_flag = build_class_subtype_flags(
             role, entry.get("subtype") if is_active and entry else None
         )
+        subtype = entry.get("subtype") if is_active and entry else None
         classes[role] = {
             "rank": entry.get("rank_value") if is_active and entry is not None else 0,
             "playHours": 0,
@@ -656,6 +657,7 @@ def serialize_player_for_export(player: models.BalancerPlayer, export_uuid: str)
             "primary": primary_flag,
             "isActive": is_active,
             "secondary": secondary_flag,
+            "subtype": subtype,
         }
 
     return {
