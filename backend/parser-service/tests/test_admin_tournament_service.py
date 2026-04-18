@@ -14,6 +14,7 @@ sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "parser-service"))
 
 os.environ.setdefault("PROJECT_URL", "http://localhost")
+os.environ["DEBUG"] = "false"
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("POSTGRES_USER", "postgres")
 os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
@@ -24,10 +25,13 @@ os.environ.setdefault("S3_ACCESS_KEY", "test")
 os.environ.setdefault("S3_SECRET_KEY", "test")
 os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
 os.environ.setdefault("S3_BUCKET_NAME", "test")
+os.environ.setdefault("CHALLONGE_USERNAME", "test")
+os.environ.setdefault("CHALLONGE_API_KEY", "test")
 
 admin_schemas = importlib.import_module("src.schemas.admin.tournament")
 admin_tournament_service = importlib.import_module("src.services.admin.tournament")
 models = importlib.import_module("src.models")
+enums = importlib.import_module("shared.core.enums")
 
 
 class AdminTournamentServiceTests(IsolatedAsyncioTestCase):
@@ -135,3 +139,135 @@ class AdminTournamentServiceTests(IsolatedAsyncioTestCase):
         invalidate_tournament.assert_awaited_once_with(123)
         invalidate_workspace.assert_awaited_once_with(10)
         get_tournament.assert_awaited_once_with(session, 123)
+
+    async def test_transition_to_live_auto_starts_first_ready_group_stage(self) -> None:
+        tournament = SimpleNamespace(
+            id=123,
+            status=enums.TournamentStatus.DRAFT,
+            is_finished=False,
+            stages=[
+            SimpleNamespace(
+                id=11,
+                order=0,
+                stage_type=enums.StageType.ROUND_ROBIN,
+                is_active=False,
+                is_completed=False,
+                items=[
+                    SimpleNamespace(
+                        id=21,
+                        inputs=[
+                            SimpleNamespace(slot=1, team_id=1),
+                            SimpleNamespace(slot=2, team_id=2),
+                        ],
+                    ),
+                    SimpleNamespace(
+                        id=22,
+                        inputs=[
+                            SimpleNamespace(slot=1, team_id=3),
+                            SimpleNamespace(slot=2, team_id=4),
+                        ],
+                    ),
+                ],
+            )
+            ],
+        )
+
+        result = Mock()
+        result.scalar_one_or_none.return_value = tournament
+        session = SimpleNamespace(
+            execute=AsyncMock(return_value=result),
+            scalar=AsyncMock(return_value=0),
+            commit=AsyncMock(),
+        )
+
+        with (
+            patch.object(
+                admin_tournament_service.stage_service,
+                "activate_stage",
+                AsyncMock(),
+            ) as activate_stage,
+            patch.object(
+                admin_tournament_service.stage_service,
+                "generate_encounters",
+                AsyncMock(return_value=["encounter"]),
+            ) as generate_encounters,
+            patch.object(
+                admin_tournament_service,
+                "get_tournament",
+                AsyncMock(return_value=tournament),
+            ) as get_tournament,
+        ):
+            result_tournament = await admin_tournament_service.transition_status(
+                session,
+                tournament.id,
+                enums.TournamentStatus.LIVE,
+            )
+
+        self.assertIs(result_tournament, tournament)
+        self.assertEqual(enums.TournamentStatus.LIVE, tournament.status)
+        self.assertFalse(tournament.is_finished)
+        session.commit.assert_awaited_once_with()
+        activate_stage.assert_awaited_once_with(session, 11)
+        generate_encounters.assert_awaited_once_with(session, 11)
+        get_tournament.assert_awaited_once_with(session, tournament.id)
+
+    async def test_transition_to_live_generates_for_already_active_group_stage(self) -> None:
+        tournament = SimpleNamespace(
+            id=123,
+            status=enums.TournamentStatus.CHECK_IN,
+            is_finished=False,
+            stages=[
+            SimpleNamespace(
+                id=11,
+                order=0,
+                stage_type=enums.StageType.SWISS,
+                is_active=True,
+                is_completed=False,
+                items=[
+                    SimpleNamespace(
+                        id=21,
+                        inputs=[
+                            SimpleNamespace(slot=1, team_id=1),
+                            SimpleNamespace(slot=2, team_id=2),
+                            SimpleNamespace(slot=3, team_id=3),
+                            SimpleNamespace(slot=4, team_id=4),
+                        ],
+                    )
+                ],
+            )
+            ],
+        )
+
+        result = Mock()
+        result.scalar_one_or_none.return_value = tournament
+        session = SimpleNamespace(
+            execute=AsyncMock(return_value=result),
+            scalar=AsyncMock(return_value=0),
+            commit=AsyncMock(),
+        )
+
+        with (
+            patch.object(
+                admin_tournament_service.stage_service,
+                "activate_stage",
+                AsyncMock(),
+            ) as activate_stage,
+            patch.object(
+                admin_tournament_service.stage_service,
+                "generate_encounters",
+                AsyncMock(return_value=["encounter"]),
+            ) as generate_encounters,
+            patch.object(
+                admin_tournament_service,
+                "get_tournament",
+                AsyncMock(return_value=tournament),
+            ),
+        ):
+            await admin_tournament_service.transition_status(
+                session,
+                tournament.id,
+                enums.TournamentStatus.LIVE,
+            )
+
+        activate_stage.assert_not_awaited()
+        generate_encounters.assert_awaited_once_with(session, 11)

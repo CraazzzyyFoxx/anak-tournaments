@@ -2,9 +2,10 @@
 
 from urllib.parse import urlparse
 
+import sqlalchemy as sa
 from fastapi import HTTPException, status
 from shared.core import tournament_state
-from shared.core.enums import TournamentStatus
+from shared.core.enums import StageType, TournamentStatus
 from shared.services import division_grid_cache
 from shared.services.division_grid_access import get_workspace_division_grid_version_id
 from sqlalchemy import delete, select
@@ -13,7 +14,10 @@ from sqlalchemy.orm import selectinload
 
 from src import models
 from src.schemas.admin import tournament as admin_schemas
+from src.services.admin import stage as stage_service
 from src.services.challonge import service as challonge_service
+
+GROUP_STAGE_TYPES = {StageType.ROUND_ROBIN, StageType.SWISS}
 
 
 def _normalize_challonge_slug(value: str) -> str:
@@ -186,6 +190,58 @@ async def delete_tournament(session: AsyncSession, tournament_id: int) -> None:
     await division_grid_cache.invalidate_workspace(workspace_id)
 
 
+def _stage_has_ready_inputs(stage: models.Stage) -> bool:
+    stage_items = list(getattr(stage, "items", []) or [])
+    if not stage_items:
+        return False
+
+    for item in stage_items:
+        team_count = sum(
+            1 for stage_input in getattr(item, "inputs", []) if stage_input.team_id is not None
+        )
+        if team_count < 2:
+            return False
+    return True
+
+
+async def _stage_has_encounters(session: AsyncSession, stage_id: int) -> bool:
+    count = await session.scalar(
+        sa.select(sa.func.count(models.Encounter.id)).where(models.Encounter.stage_id == stage_id)
+    )
+    return bool(count)
+
+
+async def _maybe_auto_start_group_stage(
+    session: AsyncSession,
+    tournament: models.Tournament,
+    *,
+    target_status: TournamentStatus,
+) -> None:
+    if target_status != TournamentStatus.LIVE:
+        return
+
+    stages = sorted(getattr(tournament, "stages", []) or [], key=lambda stage: stage.order)
+    group_stages = [
+        stage
+        for stage in stages
+        if stage.stage_type in GROUP_STAGE_TYPES and not getattr(stage, "is_completed", False)
+    ]
+    if not group_stages:
+        return
+
+    active_stage = next((stage for stage in group_stages if getattr(stage, "is_active", False)), None)
+    target_stage = active_stage or group_stages[0]
+    has_encounters = await _stage_has_encounters(session, target_stage.id)
+
+    if not active_stage:
+        if not has_encounters and not _stage_has_ready_inputs(target_stage):
+            return
+        await stage_service.activate_stage(session, target_stage.id)
+
+    if not has_encounters and _stage_has_ready_inputs(target_stage):
+        await stage_service.generate_encounters(session, target_stage.id)
+
+
 async def toggle_finished(session: AsyncSession, tournament_id: int) -> models.Tournament:
     """Toggle tournament is_finished flag (legacy — prefer transition_status)"""
     result = await session.execute(
@@ -240,6 +296,11 @@ async def transition_status(
     tournament.is_finished = tournament_state.is_finished_for_status(target_status)
 
     await session.commit()
+    await _maybe_auto_start_group_stage(
+        session,
+        tournament,
+        target_status=target_status,
+    )
     return await get_tournament(session, tournament_id)
 
 
