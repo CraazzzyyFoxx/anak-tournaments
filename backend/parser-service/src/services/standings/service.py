@@ -808,6 +808,9 @@ def calculate_overall_positions(
         for standing in playoff_standings:
             standing.overall_position = standing.position
 
+        # Number of distinct teams that reached playoffs
+        playoff_team_count = len(progressed_team_ids)
+
         remaining = _sort_for_overall(
             [
                 standing
@@ -816,17 +819,17 @@ def calculate_overall_positions(
             ],
             stage_order,
         )
-        next_position = len(playoff_standings) + len(remaining)
+        # Best group-only team gets position playoff_team_count + 1
+        next_position = playoff_team_count + 1
         for standing in remaining:
             standing.overall_position = next_position
-            next_position -= 1
+            next_position += 1
         return standings
 
     remaining = _sort_for_overall(standings, stage_order)
-    next_position = len(remaining)
-    for standing in remaining:
-        standing.overall_position = next_position
-        next_position -= 1
+    # Best team (first after sort) gets position 1
+    for position, standing in enumerate(remaining, start=1):
+        standing.overall_position = position
     return remaining
 
 

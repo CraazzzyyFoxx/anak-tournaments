@@ -1,6 +1,7 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from faststream import FastStream
 from faststream.rabbit import RabbitBroker
+from faststream.rabbit.annotations import RabbitMessage
 from shared.clients.s3 import S3Client
 from shared.messaging.config import (
     ACHIEVEMENT_EVALUATE_QUEUE,
@@ -77,7 +78,7 @@ async def stop_scheduler() -> None:
 
 
 @broker.subscriber(PROCESS_MATCH_LOG_QUEUE)
-async def process_match_log_async(data: dict, msg=None) -> None:
+async def process_match_log_async(data: dict, msg: RabbitMessage) -> None:
     async with observe_message_processing(
         queue=PROCESS_MATCH_LOG_QUEUE,
         handler="process_match_log_async",
@@ -115,7 +116,7 @@ async def process_match_log_async(data: dict, msg=None) -> None:
 
 
 @broker.subscriber(PROCESS_TOURNAMENT_LOGS_QUEUE)
-async def process_tournament_log(data: dict, msg=None) -> None:
+async def process_tournament_log(data: dict, msg: RabbitMessage) -> None:
     async with observe_message_processing(
         queue=PROCESS_TOURNAMENT_LOGS_QUEUE,
         handler="process_tournament_log",
@@ -138,7 +139,7 @@ async def process_tournament_log(data: dict, msg=None) -> None:
 
 
 @broker.subscriber(ACHIEVEMENT_EVALUATE_QUEUE)
-async def process_achievement_evaluate(data: dict, msg=None) -> None:
+async def process_achievement_evaluate(data: dict, msg: RabbitMessage) -> None:
     async with observe_message_processing(
         queue=ACHIEVEMENT_EVALUATE_QUEUE,
         handler="process_achievement_evaluate",
@@ -149,7 +150,7 @@ async def process_achievement_evaluate(data: dict, msg=None) -> None:
 
 
 @broker.subscriber(TOURNAMENT_RECALC_QUEUE, exchange=TOURNAMENT_RECALC_EXCHANGE)
-async def process_tournament_recalculation(data: dict, msg=None) -> None:
+async def process_tournament_recalculation(data: dict, msg: RabbitMessage) -> None:
     async with observe_message_processing(
         queue=TOURNAMENT_RECALC_QUEUE,
         handler="process_tournament_recalculation",
@@ -160,7 +161,7 @@ async def process_tournament_recalculation(data: dict, msg=None) -> None:
 
 
 @broker.subscriber(SWISS_NEXT_ROUND_QUEUE)
-async def process_swiss_next_round(data: dict, msg=None) -> None:
+async def process_swiss_next_round(data: dict, msg: RabbitMessage) -> None:
     async with observe_message_processing(
         queue=SWISS_NEXT_ROUND_QUEUE,
         handler="process_swiss_next_round",

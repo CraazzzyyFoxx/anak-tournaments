@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from cashews import cache
+from faststream.rabbit.annotations import RabbitMessage
 from faststream.rabbit.fastapi import RabbitRouter
 from loguru import logger
 from shared.messaging.config import TOURNAMENT_RECALC_EXCHANGE, TOURNAMENT_RECALCULATED_QUEUE
@@ -32,7 +33,7 @@ async def handle_tournament_recalculated_event(data: dict[str, Any]) -> None:
 
 
 @task_router.subscriber(TOURNAMENT_RECALCULATED_QUEUE, exchange=TOURNAMENT_RECALC_EXCHANGE)
-async def process_tournament_recalculated(data: dict[str, Any], msg=None) -> None:
+async def process_tournament_recalculated(data: dict[str, Any], msg: RabbitMessage) -> None:
     async with observe_message_processing(
         queue=TOURNAMENT_RECALCULATED_QUEUE,
         handler="process_tournament_recalculated",
