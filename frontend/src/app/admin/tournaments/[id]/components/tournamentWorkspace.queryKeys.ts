@@ -17,7 +17,7 @@ export function getTournamentWorkspaceQueryKeys(tournamentId: number) {
     encountersCollection: ["encounters"] as const,
     standingsCollection: ["standings"] as const,
     publicStandings: ["standings", tournamentId] as const,
-    publicEncounters: ["encounters", "tournament", tournamentId] as const,
+    publicEncounters: ["encounters", "tournament", tournamentId] as const
   };
 }
 
@@ -27,13 +27,13 @@ export function getTournamentWorkspaceQueryKeys(tournamentId: number) {
  * bracket view — ensures the public page matches the admin workspace
  * (Phase F consolidation of tournament workspace invalidation).
  */
-export async function invalidateTournamentWorkspace(
+export function invalidateTournamentWorkspace(
   queryClient: QueryClient,
   tournamentId: number
-) {
+): void {
   const keys = getTournamentWorkspaceQueryKeys(tournamentId);
 
-  await Promise.all([
+  void Promise.all([
     queryClient.invalidateQueries({ queryKey: keys.tournament }),
     queryClient.invalidateQueries({ queryKey: keys.teams }),
     queryClient.invalidateQueries({ queryKey: keys.standings }),
@@ -44,6 +44,6 @@ export async function invalidateTournamentWorkspace(
     queryClient.invalidateQueries({ queryKey: keys.encountersCollection }),
     queryClient.invalidateQueries({ queryKey: keys.standingsCollection }),
     queryClient.invalidateQueries({ queryKey: keys.publicStandings }),
-    queryClient.invalidateQueries({ queryKey: keys.publicEncounters }),
+    queryClient.invalidateQueries({ queryKey: keys.publicEncounters })
   ]);
 }

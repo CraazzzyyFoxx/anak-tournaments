@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
 import { Plus, Pencil, Trash2, Users } from "lucide-react";
@@ -29,6 +29,8 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import { paginateResults, sortArray } from "@/lib/paginate-results";
 import { useWorkspaceStore } from "@/stores/workspace.store";
+
+const TOURNAMENT_QUERY_PARAM = "tournament";
 
 interface TeamFormData {
   name: string;
@@ -61,8 +63,16 @@ function getEditTeamForm(team: Team): TeamFormData {
   };
 }
 
+function parseTournamentQueryParam(value: string | null): number | null {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
 export default function TeamsPage() {
+  const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const { canAccessPermission } = usePermissions();
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
@@ -75,7 +85,9 @@ export default function TeamsPage() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
-  const [selectedTournamentId, setSelectedTournamentId] = useState<number | null>(null);
+  const selectedTournamentId = parseTournamentQueryParam(
+    searchParams.get(TOURNAMENT_QUERY_PARAM)
+  );
 
   // Fetch tournaments for selector
   const { data: tournamentsData } = useQuery({
@@ -173,6 +185,18 @@ export default function TeamsPage() {
     }
   };
 
+  const handleTournamentFilterChange = (value: string) => {
+    const nextParams = new URLSearchParams(searchParams.toString());
+    if (value === "all") {
+      nextParams.delete(TOURNAMENT_QUERY_PARAM);
+    } else {
+      nextParams.set(TOURNAMENT_QUERY_PARAM, value);
+    }
+
+    const query = nextParams.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  };
+
   const createFormInitial = getCreateTeamForm(selectedTournamentId);
   const editFormInitial = selectedTeam ? getEditTeamForm(selectedTeam) : createFormInitial;
   const isCreateDirty = createDialogOpen && hasUnsavedChanges(formData, createFormInitial);
@@ -265,9 +289,7 @@ export default function TeamsPage() {
         <Label htmlFor="tournament-filter">Filter by Tournament:</Label>
         <Select
           value={selectedTournamentId?.toString() || "all"}
-          onValueChange={(value) =>
-            setSelectedTournamentId(value === "all" ? null : parseInt(value))
-          }
+          onValueChange={handleTournamentFilterChange}
         >
           <SelectTrigger className="w-[300px]">
             <SelectValue placeholder="All Tournaments" />

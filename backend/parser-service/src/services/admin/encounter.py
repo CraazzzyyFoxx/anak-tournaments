@@ -179,6 +179,7 @@ async def update_encounter(
             selectinload(models.Encounter.stage),
             selectinload(models.Encounter.stage_item),
         )
+        .with_for_update()
     )
     encounter = result.scalar_one_or_none()
 
@@ -341,7 +342,9 @@ async def bulk_update_encounters(
             ) from exc
 
     result = await session.execute(
-        select(models.Encounter).where(models.Encounter.id.in_(data.encounter_ids))
+        select(models.Encounter)
+        .where(models.Encounter.id.in_(data.encounter_ids))
+        .with_for_update()
     )
     encounters = list(result.scalars().all())
     if not encounters:

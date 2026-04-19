@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
 import { ArrowLeftRight, Check, ChevronsUpDown, Minus, Plus, Pencil, Sparkles, Trash2 } from "lucide-react";
@@ -47,6 +48,8 @@ import type { Tournament } from "@/types/tournament.types";
 import { paginateResults, sortArray } from "@/lib/paginate-results";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import { cn } from "@/lib/utils";
+
+const TOURNAMENT_QUERY_PARAM = "tournament";
 
 interface PlayerFormData {
   name: string;
@@ -137,14 +140,12 @@ function SearchableSelect({
   disabled = false,
 }: SearchableSelectProps) {
   const [open, setOpen] = useState(false);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
   const selected = options.find((option) => option.value === value);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
-          ref={triggerRef}
           type="button"
           variant="outline"
           role="combobox"
@@ -160,8 +161,7 @@ function SearchableSelect({
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        className="p-0"
-        style={{ width: triggerRef.current?.offsetWidth }}
+        className="w-[var(--radix-popover-trigger-width)] p-0"
       >
         <Command>
           <CommandInput placeholder={searchPlaceholder} />
@@ -350,7 +350,16 @@ function buildPlayerUpdateInput(formData: PlayerFormData): PlayerUpdateInput {
   };
 }
 
+function parseTournamentQueryParam(value: string | null): number | null {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
 export default function PlayersPage() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const { canAccessPermission } = usePermissions();
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
@@ -363,7 +372,9 @@ export default function PlayersPage() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
-  const [selectedTournamentId, setSelectedTournamentId] = useState<number | null>(null);
+  const selectedTournamentId = parseTournamentQueryParam(
+    searchParams.get(TOURNAMENT_QUERY_PARAM)
+  );
   const [selectedUserName, setSelectedUserName] = useState("");
 
   // Fetch tournaments and teams
@@ -491,6 +502,25 @@ export default function PlayersPage() {
     if (selectedPlayer) {
       deleteMutation.mutate(selectedPlayer.id);
     }
+  };
+
+  const handleTournamentFilterChange = (tournament: Tournament | undefined) => {
+    const nextTournamentId = tournament?.id ?? null;
+    const nextParams = new URLSearchParams(searchParams.toString());
+    if (nextTournamentId == null) {
+      nextParams.delete(TOURNAMENT_QUERY_PARAM);
+    } else {
+      nextParams.set(TOURNAMENT_QUERY_PARAM, nextTournamentId.toString());
+    }
+
+    setFormData((current) => ({
+      ...current,
+      tournament_id: nextTournamentId ?? 0,
+      team_id: 0,
+    }));
+
+    const query = nextParams.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
   };
 
   const createFormInitial = getCreatePlayerForm(selectedTournamentId);
@@ -628,14 +658,7 @@ export default function PlayersPage() {
             value={selectedTournamentId ?? undefined}
             placeholder="All tournaments"
             searchPlaceholder="Search tournament..."
-            onSelect={(tournament: Tournament | undefined) => {
-              setSelectedTournamentId(tournament?.id ?? null);
-              setFormData((current) => ({
-                ...current,
-                tournament_id: tournament?.id ?? 0,
-                team_id: 0,
-              }));
-            }}
+            onSelect={handleTournamentFilterChange}
           />
         </div>
       </div>

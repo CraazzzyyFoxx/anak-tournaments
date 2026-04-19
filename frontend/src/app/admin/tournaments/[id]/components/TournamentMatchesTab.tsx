@@ -18,9 +18,12 @@ import {
   Pencil,
   Plus,
   RefreshCw,
-  Trash2,
+  Trash2
 } from "lucide-react";
-import { AdminDetailTableShell, getAdminDetailTableStyles } from "@/components/admin/AdminDetailTable";
+import {
+  AdminDetailTableShell,
+  getAdminDetailTableStyles
+} from "@/components/admin/AdminDetailTable";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { EncounterScoreControls } from "@/components/admin/EncounterScoreControls";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
@@ -35,7 +38,7 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
+  SelectValue
 } from "@/components/ui/select";
 import {
   Table,
@@ -43,7 +46,7 @@ import {
   TableCell,
   TableHead,
   TableHeader,
-  TableRow,
+  TableRow
 } from "@/components/ui/table";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import { useToast } from "@/hooks/use-toast";
@@ -51,7 +54,7 @@ import adminService from "@/services/admin.service";
 import type {
   EncounterCreateInput,
   EncounterUpdateInput,
-  StandingUpdateInput,
+  StandingUpdateInput
 } from "@/types/admin.types";
 import type { Encounter } from "@/types/encounter.types";
 import type { Team } from "@/types/team.types";
@@ -71,7 +74,7 @@ import {
   type EncounterFormState,
   type StandingFormState,
   type StandingSortKey,
-  type StandingSortState,
+  type StandingSortState
 } from "./tournamentWorkspace.helpers";
 import { invalidateTournamentWorkspace } from "./tournamentWorkspace.queryKeys";
 
@@ -125,7 +128,7 @@ export function TournamentMatchesTab({
   canSyncEncounters,
   canUpdateStanding,
   canDeleteStanding,
-  canRecalculateStandings,
+  canRecalculateStandings
 }: TournamentMatchesTabProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -155,7 +158,7 @@ export function TournamentMatchesTab({
     points: 0,
     win: 0,
     draw: 0,
-    lose: 0,
+    lose: 0
   });
   const [standingPendingDelete, setStandingPendingDelete] = useState<Standings | null>(null);
   const [standingsExpanded, setStandingsExpanded] = useState(false);
@@ -197,7 +200,7 @@ export function TournamentMatchesTab({
     mutationFn: async ({
       mode,
       encounterId,
-      data,
+      data
     }: {
       mode: "create" | "update";
       encounterId?: number;
@@ -209,75 +212,75 @@ export function TournamentMatchesTab({
 
       return adminService.updateEncounter(encounterId!, data as EncounterUpdateInput);
     },
-    onSuccess: async (_data, variables) => {
-      await invalidateTournamentWorkspace(queryClient, tournamentId);
+    onSuccess: (_data, variables) => {
+      invalidateTournamentWorkspace(queryClient, tournamentId);
       resetEncounterDialog();
       toast({
-        title: variables.mode === "create" ? "Encounter created" : "Encounter updated",
+        title: variables.mode === "create" ? "Encounter created" : "Encounter updated"
       });
     },
     onError: (error: Error) => {
       setEncounterFormError(error.message);
-    },
+    }
   });
 
   const deleteEncounterMutation = useMutation({
     mutationFn: (encounterId: number) => adminService.deleteEncounter(encounterId),
-    onSuccess: async () => {
-      await invalidateTournamentWorkspace(queryClient, tournamentId);
+    onSuccess: () => {
+      invalidateTournamentWorkspace(queryClient, tournamentId);
       setEncounterPendingDelete(null);
       toast({ title: "Encounter deleted" });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
-    },
+    }
   });
 
   const syncEncountersMutation = useMutation({
     mutationFn: () => adminService.syncEncountersFromChallonge(tournamentId),
-    onSuccess: async () => {
-      await invalidateTournamentWorkspace(queryClient, tournamentId);
+    onSuccess: () => {
+      invalidateTournamentWorkspace(queryClient, tournamentId);
       toast({ title: "Encounters synced from Challonge" });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
-    },
+    }
   });
 
   const updateStandingMutation = useMutation({
     mutationFn: ({ standingId, data }: { standingId: number; data: StandingUpdateInput }) =>
       adminService.updateStanding(standingId, data),
-    onSuccess: async () => {
-      await invalidateTournamentWorkspace(queryClient, tournamentId);
+    onSuccess: () => {
+      invalidateTournamentWorkspace(queryClient, tournamentId);
       resetStandingDialog();
       toast({ title: "Standing updated" });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
-    },
+    }
   });
 
   const deleteStandingMutation = useMutation({
     mutationFn: (standingId: number) => adminService.deleteStanding(standingId),
-    onSuccess: async () => {
-      await invalidateTournamentWorkspace(queryClient, tournamentId);
+    onSuccess: () => {
+      invalidateTournamentWorkspace(queryClient, tournamentId);
       setStandingPendingDelete(null);
       toast({ title: "Standing deleted" });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
-    },
+    }
   });
 
   const calculateStandingsMutation = useMutation({
     mutationFn: () => adminService.calculateStandings(tournamentId),
-    onSuccess: async () => {
-      await invalidateTournamentWorkspace(queryClient, tournamentId);
+    onSuccess: () => {
+      invalidateTournamentWorkspace(queryClient, tournamentId);
       toast({ title: "Standings calculated" });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
-    },
+    }
   });
 
   const recalculateStandingsMutation = useMutation({
@@ -285,13 +288,13 @@ export function TournamentMatchesTab({
       await adminService.recalculateStandings(tournamentId);
       return adminService.calculateStandings(tournamentId);
     },
-    onSuccess: async () => {
-      await invalidateTournamentWorkspace(queryClient, tournamentId);
+    onSuccess: () => {
+      invalidateTournamentWorkspace(queryClient, tournamentId);
       toast({ title: "Standings recalculated" });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
-    },
+    }
   });
 
   const openCreateEncounterDialog = () => {
@@ -348,7 +351,7 @@ export function TournamentMatchesTab({
           round: encounterFormData.round,
           home_score: encounterFormData.home_score,
           away_score: encounterFormData.away_score,
-          status: encounterFormData.status,
+          status: encounterFormData.status
         } satisfies EncounterUpdateInput)
       : ({
           name: encounterFormData.name.trim(),
@@ -360,7 +363,7 @@ export function TournamentMatchesTab({
           round: encounterFormData.round,
           home_score: encounterFormData.home_score,
           away_score: encounterFormData.away_score,
-          status: encounterFormData.status,
+          status: encounterFormData.status
         } satisfies EncounterCreateInput);
 
     saveEncounterMutation.mutate(
@@ -379,7 +382,7 @@ export function TournamentMatchesTab({
       points: standingFormData.points,
       win: standingFormData.win,
       draw: standingFormData.draw,
-      lose: standingFormData.lose,
+      lose: standingFormData.lose
     };
 
     updateStandingMutation.mutate({ standingId: editingStanding.id, data: payload });
@@ -456,7 +459,7 @@ export function TournamentMatchesTab({
     rawStandingsScopeFilter,
     replaceSearchParams,
     searchParams,
-    standingsGroupFilter,
+    standingsGroupFilter
   ]);
 
   const toggleStandingSort = (key: StandingSortKey) => {
@@ -467,7 +470,7 @@ export function TournamentMatchesTab({
 
       return {
         key,
-        dir: current.dir === "asc" ? "desc" : "asc",
+        dir: current.dir === "asc" ? "desc" : "asc"
       };
     });
   };
@@ -512,9 +515,7 @@ export function TournamentMatchesTab({
                 </Label>
                 <Select
                   value={encounterScopeFilter}
-                  onValueChange={(value) =>
-                    updateScopeFilter(ENCOUNTERS_SCOPE_QUERY_PARAM, value)
-                  }
+                  onValueChange={(value) => updateScopeFilter(ENCOUNTERS_SCOPE_QUERY_PARAM, value)}
                 >
                   <SelectTrigger id="encounters-scope-filter" className="h-8 w-[220px]">
                     <SelectValue placeholder="All stages" />
@@ -577,15 +578,17 @@ export function TournamentMatchesTab({
                               );
                             }
                             if (status === "PENDING") {
-                              return (
-                                <StatusIcon icon={Clock} label="Pending" variant="warning" />
-                              );
+                              return <StatusIcon icon={Clock} label="Pending" variant="warning" />;
                             }
 
                             return (
                               <StatusIcon
                                 icon={CircleAlert}
-                                label={status ? `${status[0]}${status.slice(1).toLowerCase()}` : "Unknown"}
+                                label={
+                                  status
+                                    ? `${status[0]}${status.slice(1).toLowerCase()}`
+                                    : "Unknown"
+                                }
                                 variant="muted"
                               />
                             );
@@ -729,9 +732,7 @@ export function TournamentMatchesTab({
                 </Label>
                 <Select
                   value={standingsGroupFilter}
-                  onValueChange={(value) =>
-                    updateScopeFilter(STANDINGS_SCOPE_QUERY_PARAM, value)
-                  }
+                  onValueChange={(value) => updateScopeFilter(STANDINGS_SCOPE_QUERY_PARAM, value)}
                 >
                   <SelectTrigger id="standings-scope-filter" className="h-8 w-[220px]">
                     <SelectValue placeholder="All stages" />
@@ -752,15 +753,17 @@ export function TournamentMatchesTab({
               <Table>
                 <TableHeader>
                   <TableRow className={tableStyles.headerRow}>
-                    {([
-                      { key: "position", label: "Pos" },
-                      { key: "team", label: "Team" },
-                      { key: "scope", label: "Scope" },
-                      { key: "points", label: "Points" },
-                      { key: "win", label: "W" },
-                      { key: "draw", label: "D" },
-                      { key: "lose", label: "L" },
-                    ] as Array<{ key: StandingSortKey; label: string }>).map((column) => (
+                    {(
+                      [
+                        { key: "position", label: "Pos" },
+                        { key: "team", label: "Team" },
+                        { key: "scope", label: "Scope" },
+                        { key: "points", label: "Points" },
+                        { key: "win", label: "W" },
+                        { key: "draw", label: "D" },
+                        { key: "lose", label: "L" }
+                      ] as Array<{ key: StandingSortKey; label: string }>
+                    ).map((column) => (
                       <TableHead
                         key={column.key}
                         className={`${tableStyles.head} cursor-pointer select-none`}
@@ -830,7 +833,9 @@ export function TournamentMatchesTab({
                             <Button
                               variant="outline"
                               onClick={() => calculateStandingsMutation.mutate()}
-                              disabled={calculateStandingsMutation.isPending || !canManageStandingsNow}
+                              disabled={
+                                calculateStandingsMutation.isPending || !canManageStandingsNow
+                              }
                             >
                               <RefreshCw className="mr-2 h-4 w-4" />
                               Calculate Standings
@@ -884,7 +889,7 @@ export function TournamentMatchesTab({
                 setEncounterFormData((current) => ({
                   ...current,
                   stage_id: stage?.id ?? null,
-                  stage_item_id: stage?.items[0]?.id ?? null,
+                  stage_item_id: stage?.items[0]?.id ?? null
                 }));
               }}
             >
@@ -910,15 +915,15 @@ export function TournamentMatchesTab({
                   const nextStageItemId = value === "none" ? null : Number(value);
                   const nextStageId =
                     nextStageItemId != null
-                      ? stages.find((stage) =>
+                      ? (stages.find((stage) =>
                           stage.items.some((item) => item.id === nextStageItemId)
-                        )?.id ?? current.stage_id
+                        )?.id ?? current.stage_id)
                       : current.stage_id;
 
                   return {
                     ...current,
                     stage_id: nextStageId,
-                    stage_item_id: nextStageItemId,
+                    stage_item_id: nextStageItemId
                   };
                 })
               }
@@ -944,11 +949,13 @@ export function TournamentMatchesTab({
             <div>
               <Label htmlFor="workspace-encounter-home">Home Team</Label>
               <Select
-                value={encounterFormData.home_team_id ? encounterFormData.home_team_id.toString() : ""}
+                value={
+                  encounterFormData.home_team_id ? encounterFormData.home_team_id.toString() : ""
+                }
                 onValueChange={(value) =>
                   setEncounterFormData((current) => ({
                     ...current,
-                    home_team_id: Number(value),
+                    home_team_id: Number(value)
                   }))
                 }
               >
@@ -968,11 +975,13 @@ export function TournamentMatchesTab({
             <div>
               <Label htmlFor="workspace-encounter-away">Away Team</Label>
               <Select
-                value={encounterFormData.away_team_id ? encounterFormData.away_team_id.toString() : ""}
+                value={
+                  encounterFormData.away_team_id ? encounterFormData.away_team_id.toString() : ""
+                }
                 onValueChange={(value) =>
                   setEncounterFormData((current) => ({
                     ...current,
-                    away_team_id: Number(value),
+                    away_team_id: Number(value)
                   }))
                 }
               >
@@ -999,7 +1008,7 @@ export function TournamentMatchesTab({
               onChange={(event) =>
                 setEncounterFormData((current) => ({
                   ...current,
-                  round: event.target.value ? Number(event.target.value) : 1,
+                  round: event.target.value ? Number(event.target.value) : 1
                 }))
               }
             />
@@ -1015,7 +1024,7 @@ export function TournamentMatchesTab({
               setEncounterFormData((current) => ({
                 ...current,
                 home_score: score.homeScore,
-                away_score: score.awayScore,
+                away_score: score.awayScore
               }))
             }
             onPresetSelect={(score) =>
@@ -1023,7 +1032,7 @@ export function TournamentMatchesTab({
                 ...current,
                 home_score: score.homeScore,
                 away_score: score.awayScore,
-                status: "completed",
+                status: "completed"
               }))
             }
           />
@@ -1078,7 +1087,7 @@ export function TournamentMatchesTab({
               onChange={(event) =>
                 setStandingFormData((current) => ({
                   ...current,
-                  position: event.target.value ? Number(event.target.value) : 0,
+                  position: event.target.value ? Number(event.target.value) : 0
                 }))
               }
             />
@@ -1093,7 +1102,7 @@ export function TournamentMatchesTab({
               onChange={(event) =>
                 setStandingFormData((current) => ({
                   ...current,
-                  points: event.target.value ? Number(event.target.value) : 0,
+                  points: event.target.value ? Number(event.target.value) : 0
                 }))
               }
             />
@@ -1108,7 +1117,7 @@ export function TournamentMatchesTab({
               onChange={(event) =>
                 setStandingFormData((current) => ({
                   ...current,
-                  win: event.target.value ? Number(event.target.value) : 0,
+                  win: event.target.value ? Number(event.target.value) : 0
                 }))
               }
             />
@@ -1123,7 +1132,7 @@ export function TournamentMatchesTab({
               onChange={(event) =>
                 setStandingFormData((current) => ({
                   ...current,
-                  draw: event.target.value ? Number(event.target.value) : 0,
+                  draw: event.target.value ? Number(event.target.value) : 0
                 }))
               }
             />
@@ -1138,7 +1147,7 @@ export function TournamentMatchesTab({
               onChange={(event) =>
                 setStandingFormData((current) => ({
                   ...current,
-                  lose: event.target.value ? Number(event.target.value) : 0,
+                  lose: event.target.value ? Number(event.target.value) : 0
                 }))
               }
             />

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
 import {
@@ -45,6 +45,7 @@ import { hasUnsavedChanges } from "@/lib/form-change";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
 const ENCOUNTER_STATUS_OPTIONS = ["OPEN", "PENDING", "COMPLETED"] as const;
+const TOURNAMENT_QUERY_PARAM = "tournament";
 
 function normalizeEncounterStatus(status?: string | null): string {
   const normalizedStatus = status?.toUpperCase();
@@ -67,6 +68,18 @@ function closenessFloatToStars(closeness: number | null | undefined): number {
 
 function starsToCloseness(stars: number): number | null {
   return stars > 0 ? stars / 5 : null;
+}
+
+function getEncounterTeamsError(data: Pick<EncounterCreateInput, "home_team_id" | "away_team_id">) {
+  if (data.home_team_id <= 0 || data.away_team_id <= 0) {
+    return "Select both teams before saving the encounter.";
+  }
+
+  if (data.home_team_id === data.away_team_id) {
+    return "Home and away teams must be different.";
+  }
+
+  return null;
 }
 
 const emptyEncounterForm: EncounterCreateInput = {
@@ -100,6 +113,8 @@ function getEditEncounterForm(encounter: Encounter): EncounterUpdateInput {
     name: encounter.name,
     stage_id: encounter.stage_id,
     stage_item_id: encounter.stage_item_id,
+    home_team_id: encounter.home_team_id,
+    away_team_id: encounter.away_team_id,
     home_score: encounter.score.home,
     away_score: encounter.score.away,
     status: normalizeEncounterStatus(encounter.status),
@@ -112,8 +127,16 @@ function getEncounterStageLabel(encounter: Encounter): string {
   return encounter.stage_item?.name ?? encounter.stage?.name ?? "—";
 }
 
+function parseTournamentQueryParam(value: string | null): number | null {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
 export default function EncountersPage() {
+  const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const { canAccessPermission } = usePermissions();
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
@@ -126,7 +149,11 @@ export default function EncountersPage() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedEncounter, setSelectedEncounter] = useState<Encounter | null>(null);
-  const [selectedTournamentId, setSelectedTournamentId] = useState<number | null>(null);
+  const selectedTournamentId = parseTournamentQueryParam(
+    searchParams.get(TOURNAMENT_QUERY_PARAM)
+  );
+  const formTournamentId =
+    editDialogOpen && selectedEncounter ? selectedEncounter.tournament_id : selectedTournamentId;
 
   // Fetch tournaments and teams
   const { data: tournamentsData } = useQuery({
@@ -135,14 +162,14 @@ export default function EncountersPage() {
   });
 
   const { data: teamsData } = useQuery({
-    queryKey: ["teams", selectedTournamentId],
-    queryFn: () => teamService.getAll(selectedTournamentId)
+    queryKey: ["teams", formTournamentId],
+    queryFn: () => teamService.getAll(formTournamentId)
   });
 
   const { data: stagesData = [] } = useQuery({
-    queryKey: ["admin", "stages", selectedTournamentId],
-    queryFn: () => adminService.getStages(selectedTournamentId!),
-    enabled: selectedTournamentId != null
+    queryKey: ["admin", "stages", formTournamentId],
+    queryFn: () => adminService.getStages(formTournamentId!),
+    enabled: formTournamentId != null
   });
 
   const defaultStage = stagesData[0] ?? null;
@@ -227,12 +254,25 @@ export default function EncountersPage() {
 
   const handleSubmitCreate = (e: React.FormEvent) => {
     e.preventDefault();
+    const teamsError = getEncounterTeamsError(formData as EncounterCreateInput);
+    if (teamsError) {
+      toast({ title: "Error", description: teamsError, variant: "destructive" });
+      return;
+    }
     createMutation.mutate(formData as EncounterCreateInput);
   };
 
   const handleSubmitUpdate = (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedEncounter) {
+      const teamsError = getEncounterTeamsError({
+        home_team_id: (formData as EncounterUpdateInput).home_team_id ?? 0,
+        away_team_id: (formData as EncounterUpdateInput).away_team_id ?? 0
+      });
+      if (teamsError) {
+        toast({ title: "Error", description: teamsError, variant: "destructive" });
+        return;
+      }
       updateMutation.mutate({
         id: selectedEncounter.id,
         data: formData as EncounterUpdateInput
@@ -244,6 +284,18 @@ export default function EncountersPage() {
     if (selectedEncounter) {
       deleteMutation.mutate(selectedEncounter.id);
     }
+  };
+
+  const handleTournamentFilterChange = (value: string) => {
+    const nextParams = new URLSearchParams(searchParams.toString());
+    if (value === "all") {
+      nextParams.delete(TOURNAMENT_QUERY_PARAM);
+    } else {
+      nextParams.set(TOURNAMENT_QUERY_PARAM, value);
+    }
+
+    const query = nextParams.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
   };
 
   const createFormInitial = getCreateEncounterForm(
@@ -410,9 +462,7 @@ export default function EncountersPage() {
         <Label htmlFor="tournament-filter">Filter by Tournament:</Label>
         <Select
           value={selectedTournamentId?.toString() || "all"}
-          onValueChange={(value) =>
-            setSelectedTournamentId(value === "all" ? null : parseInt(value))
-          }
+          onValueChange={handleTournamentFilterChange}
         >
           <SelectTrigger className="w-[300px]">
             <SelectValue placeholder="All Tournaments" />
@@ -723,6 +773,48 @@ export default function EncountersPage() {
               value={(formData as EncounterUpdateInput).round}
               onChange={(e) => setFormData({ ...formData, round: parseInt(e.target.value) })}
             />
+          </div>
+
+          <div>
+            <Label htmlFor="edit-home_team_id">Home Team *</Label>
+            <Select
+              value={(formData as EncounterUpdateInput).home_team_id?.toString() ?? ""}
+              onValueChange={(value) =>
+                setFormData({ ...formData, home_team_id: parseInt(value, 10) })
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select home team" />
+              </SelectTrigger>
+              <SelectContent>
+                {teamsData?.results.map((team) => (
+                  <SelectItem key={team.id} value={team.id.toString()}>
+                    {team.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="edit-away_team_id">Away Team *</Label>
+            <Select
+              value={(formData as EncounterUpdateInput).away_team_id?.toString() ?? ""}
+              onValueChange={(value) =>
+                setFormData({ ...formData, away_team_id: parseInt(value, 10) })
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select away team" />
+              </SelectTrigger>
+              <SelectContent>
+                {teamsData?.results.map((team) => (
+                  <SelectItem key={team.id} value={team.id.toString()}>
+                    {team.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <EncounterScoreControls

@@ -15,10 +15,13 @@ import {
   RefreshCw,
   Sparkles,
   Trash2,
-  UserPlus,
+  UserPlus
 } from "lucide-react";
 
-import { AdminDetailTableShell, getAdminDetailTableStyles } from "@/components/admin/AdminDetailTable";
+import {
+  AdminDetailTableShell,
+  getAdminDetailTableStyles
+} from "@/components/admin/AdminDetailTable";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { StatusIcon } from "@/components/admin/StatusIcon";
@@ -33,7 +36,7 @@ import {
   CommandGroup,
   CommandInput,
   CommandItem,
-  CommandList,
+  CommandList
 } from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,7 +46,7 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
+  SelectValue
 } from "@/components/ui/select";
 import {
   Table,
@@ -51,7 +54,7 @@ import {
   TableCell,
   TableHead,
   TableHeader,
-  TableRow,
+  TableRow
 } from "@/components/ui/table";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import { cn } from "@/lib/utils";
@@ -62,7 +65,7 @@ import type {
   PlayerCreateInput,
   PlayerSubRole,
   PlayerUpdateInput,
-  TeamUpdateInput,
+  TeamUpdateInput
 } from "@/types/admin.types";
 import type { Team } from "@/types/team.types";
 import type { MinimizedUser } from "@/types/user.types";
@@ -71,7 +74,7 @@ import {
   TOURNAMENT_DETAIL_PREVIEW_LIMIT,
   getEmptyTeamForm,
   getTeamForm,
-  type TeamFormState,
+  type TeamFormState
 } from "./tournamentWorkspace.helpers";
 import { invalidateTournamentWorkspace } from "./tournamentWorkspace.queryKeys";
 import {
@@ -82,7 +85,7 @@ import {
   normalizePlayerRole,
   removeRosterDraftPlayer,
   type PlayerRoleOption,
-  type TeamRosterDraftPlayer,
+  type TeamRosterDraftPlayer
 } from "./tournamentRoster.helpers";
 
 interface TournamentTeamsTabProps {
@@ -170,7 +173,7 @@ function TeamNumberInput({
   max,
   step = 1,
   suffix,
-  disabled = false,
+  disabled = false
 }: TeamNumberInputProps) {
   const [draft, setDraft] = useState(normalizeTeamNumberDraft(value));
 
@@ -254,7 +257,7 @@ function SearchableSelect({
   placeholder,
   searchPlaceholder,
   emptyMessage,
-  disabled = false,
+  disabled = false
 }: SearchableSelectProps) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -278,10 +281,7 @@ function SearchableSelect({
           <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent
-        align="start"
-        className="w-[var(--radix-popover-trigger-width)] p-0"
-      >
+      <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-0">
         <Command>
           <CommandInput placeholder={searchPlaceholder} />
           <CommandList>
@@ -302,7 +302,12 @@ function SearchableSelect({
                       <span className="shrink-0 text-xs text-muted-foreground">{option.meta}</span>
                     ) : null}
                   </div>
-                  <Check className={cn("ml-2 h-4 w-4", value === option.value ? "opacity-100" : "opacity-0")} />
+                  <Check
+                    className={cn(
+                      "ml-2 h-4 w-4",
+                      value === option.value ? "opacity-100" : "opacity-0"
+                    )}
+                  />
                 </CommandItem>
               ))}
             </CommandGroup>
@@ -338,7 +343,7 @@ function getPlayerEditorState(draft: TeamRosterDraftPlayer | null): PlayerEditor
       sub_role: "",
       rank: 0,
       is_newcomer: false,
-      is_newcomer_role: false,
+      is_newcomer_role: false
     };
   }
 
@@ -350,7 +355,7 @@ function getPlayerEditorState(draft: TeamRosterDraftPlayer | null): PlayerEditor
     sub_role: draft.sub_role,
     rank: draft.rank,
     is_newcomer: draft.is_newcomer,
-    is_newcomer_role: draft.is_newcomer_role,
+    is_newcomer_role: draft.is_newcomer_role
   };
 }
 
@@ -396,7 +401,7 @@ function buildPlayerCreatePayload(
     is_newcomer: draft.is_newcomer,
     is_newcomer_role: draft.is_newcomer_role,
     is_substitution: draft.is_substitution,
-    related_player_id: draft.is_substitution ? input.relatedPlayerId : null,
+    related_player_id: draft.is_substitution ? input.relatedPlayerId : null
   };
 }
 
@@ -413,7 +418,7 @@ function buildPlayerUpdatePayload(
     is_newcomer: current.is_newcomer,
     is_newcomer_role: current.is_newcomer_role,
     is_substitution: current.is_substitution,
-    related_player_id: current.is_substitution ? relatedPlayerId : null,
+    related_player_id: current.is_substitution ? relatedPlayerId : null
   };
 
   const initialComparable = {
@@ -424,7 +429,7 @@ function buildPlayerUpdatePayload(
     is_newcomer: initial.is_newcomer,
     is_newcomer_role: initial.is_newcomer_role,
     is_substitution: initial.is_substitution,
-    related_player_id: initial.is_substitution ? initial.related_player_id : null,
+    related_player_id: initial.is_substitution ? initial.related_player_id : null
   };
 
   return hasUnsavedChanges(payload, initialComparable) ? payload : null;
@@ -442,7 +447,7 @@ export function TournamentTeamsTab({
   canImportTeams,
   canCreatePlayer,
   canUpdatePlayer,
-  canDeletePlayer,
+  canDeletePlayer
 }: TournamentTeamsTabProps) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -459,7 +464,9 @@ export function TournamentTeamsTab({
   const [teamPendingDelete, setTeamPendingDelete] = useState<Team | null>(null);
   const [playerDialogOpen, setPlayerDialogOpen] = useState(false);
   const [playerDialogState, setPlayerDialogState] = useState<PlayerDialogState | null>(null);
-  const [playerFormData, setPlayerFormData] = useState<PlayerEditorFormState>(getPlayerEditorState(null));
+  const [playerFormData, setPlayerFormData] = useState<PlayerEditorFormState>(
+    getPlayerEditorState(null)
+  );
   const [playerFormError, setPlayerFormError] = useState<string | undefined>();
 
   const canManageRoster = canCreatePlayer || canUpdatePlayer || canDeletePlayer;
@@ -469,17 +476,14 @@ export function TournamentTeamsTab({
   const { data: playerSubRoles } = useQuery({
     queryKey: ["admin", "player-sub-roles", workspaceId],
     queryFn: () => adminService.getPlayerSubRoles({ workspace_id: workspaceId! }),
-    enabled: Boolean(workspaceId && teamDialogOpen),
+    enabled: Boolean(workspaceId && teamDialogOpen)
   });
 
   const rosterByDraftId = useMemo(
     () => new Map(rosterDraftPlayers.map((player) => [player.draft_id, player])),
     [rosterDraftPlayers]
   );
-  const rosterTree = useMemo(
-    () => buildRosterDraftTree(rosterDraftPlayers),
-    [rosterDraftPlayers]
-  );
+  const rosterTree = useMemo(() => buildRosterDraftTree(rosterDraftPlayers), [rosterDraftPlayers]);
   const captainOptions = useMemo(
     () => buildCaptainOptions(rosterDraftPlayers),
     [rosterDraftPlayers]
@@ -512,7 +516,9 @@ export function TournamentTeamsTab({
     const nextOptions = buildCaptainOptions(nextRoster);
     setTeamFormData((current) => ({
       ...current,
-      captain_id: nextOptions.some((option) => option.user_id === current.captain_id) ? current.captain_id : 0,
+      captain_id: nextOptions.some((option) => option.user_id === current.captain_id)
+        ? current.captain_id
+        : 0
     }));
   };
 
@@ -522,7 +528,7 @@ export function TournamentTeamsTab({
       mode: parentDraft ? "create-substitute" : "create-root",
       targetDraftId: draftId,
       parentDraftId: parentDraft?.draft_id ?? null,
-      initialState: getPlayerEditorState(null),
+      initialState: getPlayerEditorState(null)
     };
 
     setPlayerDialogState(dialogState);
@@ -537,7 +543,7 @@ export function TournamentTeamsTab({
       targetDraftId: draft.draft_id,
       sourceDraftId: draft.draft_id,
       parentDraftId: draft.related_draft_id,
-      initialState: getPlayerEditorState(draft),
+      initialState: getPlayerEditorState(draft)
     };
 
     setPlayerDialogState(dialogState);
@@ -574,15 +580,7 @@ export function TournamentTeamsTab({
       initialTeam: Team | null;
       canPatchTeam: boolean;
     }) => {
-      const {
-        mode,
-        teamId,
-        teamData,
-        roster,
-        deletedIds,
-        initialTeam,
-        canPatchTeam,
-      } = variables;
+      const { mode, teamId, teamData, roster, deletedIds, initialTeam, canPatchTeam } = variables;
 
       const initialByPlayerId = new Map(
         (initialTeam ? createRosterDraftFromTeam(initialTeam) : [])
@@ -599,7 +597,7 @@ export function TournamentTeamsTab({
           tournament_id: tournamentId,
           captain_id: teamData.captain_id,
           avg_sr: teamData.avg_sr,
-          total_sr: teamData.total_sr,
+          total_sr: teamData.total_sr
         });
       } else if (canPatchTeam) {
         const captainInExistingRoster = roster.some(
@@ -608,7 +606,7 @@ export function TournamentTeamsTab({
         const initialPatch: TeamUpdateInput = {
           name: teamData.name.trim(),
           avg_sr: teamData.avg_sr,
-          total_sr: teamData.total_sr,
+          total_sr: teamData.total_sr
         };
 
         if (captainInExistingRoster) {
@@ -631,19 +629,23 @@ export function TournamentTeamsTab({
         }
       }
 
-      const newBasePlayers = roster.filter((player) => player.state === "new" && !player.is_substitution);
+      const newBasePlayers = roster.filter(
+        (player) => player.state === "new" && !player.is_substitution
+      );
       for (const draft of newBasePlayers) {
         const createdPlayer = await adminService.createPlayer(
           buildPlayerCreatePayload(draft, {
             teamId: savedTeam.id,
             tournamentId,
-            relatedPlayerId: null,
+            relatedPlayerId: null
           })
         );
         createdIdsByDraftId.set(draft.draft_id, createdPlayer.id);
       }
 
-      let pendingSubstitutes = roster.filter((player) => player.state === "new" && player.is_substitution);
+      let pendingSubstitutes = roster.filter(
+        (player) => player.state === "new" && player.is_substitution
+      );
       while (pendingSubstitutes.length > 0) {
         const unresolved: TeamRosterDraftPlayer[] = [];
         let progressed = false;
@@ -659,7 +661,7 @@ export function TournamentTeamsTab({
             buildPlayerCreatePayload(draft, {
               teamId: savedTeam.id,
               tournamentId,
-              relatedPlayerId,
+              relatedPlayerId
             })
           );
           createdIdsByDraftId.set(draft.draft_id, createdPlayer.id);
@@ -703,53 +705,53 @@ export function TournamentTeamsTab({
       return savedTeam;
     },
     onSuccess: async (_data, variables) => {
-      await invalidateTournamentWorkspace(queryClient, tournamentId);
+      invalidateTournamentWorkspace(queryClient, tournamentId);
       resetTeamDialog();
       toast({
-        title: variables.mode === "create" ? "Team and roster created" : "Team roster updated",
+        title: variables.mode === "create" ? "Team and roster created" : "Team roster updated"
       });
     },
     onError: (error: Error) => {
       setTeamFormError(error.message);
-    },
+    }
   });
 
   const deleteTeamMutation = useMutation({
     mutationFn: (teamId: number) => adminService.deleteTeam(teamId),
-    onSuccess: async () => {
-      await invalidateTournamentWorkspace(queryClient, tournamentId);
+    onSuccess: () => {
+      invalidateTournamentWorkspace(queryClient, tournamentId);
       setTeamPendingDelete(null);
       toast({ title: "Team deleted" });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
-    },
+    }
   });
 
   const syncTeamsMutation = useMutation({
     mutationFn: () => adminService.syncTeamsFromChallonge(tournamentId),
-    onSuccess: async () => {
-      await invalidateTournamentWorkspace(queryClient, tournamentId);
+    onSuccess: () => {
+      invalidateTournamentWorkspace(queryClient, tournamentId);
       toast({ title: "Teams synced from Challonge" });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
-    },
+    }
   });
 
   const importTeamsMutation = useMutation({
     mutationFn: (file: File) => balancerAdminService.importTeamsFromJson(tournamentId, file),
     onSuccess: async (result) => {
-      await invalidateTournamentWorkspace(queryClient, tournamentId);
+      invalidateTournamentWorkspace(queryClient, tournamentId);
       toast({ title: "Teams imported", description: `${result.imported_teams} teams created.` });
     },
     onError: (error: Error) => {
       toast({
         title: "Failed to import teams",
         description: error.message,
-        variant: "destructive",
+        variant: "destructive"
       });
-    },
+    }
   });
 
   const openCreateTeamDialog = () => {
@@ -784,7 +786,7 @@ export function TournamentTeamsTab({
 
     const existingDraft =
       playerDialogState.sourceDraftId != null
-        ? rosterByDraftId.get(playerDialogState.sourceDraftId) ?? null
+        ? (rosterByDraftId.get(playerDialogState.sourceDraftId) ?? null)
         : null;
 
     const requiresUser = existingDraft?.state !== "existing";
@@ -809,15 +811,19 @@ export function TournamentTeamsTab({
       is_newcomer: playerFormData.is_newcomer,
       is_newcomer_role: playerFormData.is_newcomer_role,
       is_substitution:
-        playerDialogState.mode === "create-substitute" ? true : (existingDraft?.is_substitution ?? false),
+        playerDialogState.mode === "create-substitute"
+          ? true
+          : (existingDraft?.is_substitution ?? false),
       related_player_id:
         playerDialogState.mode === "create-substitute"
-          ? (playerDialogState.parentDraftId ? rosterByDraftId.get(playerDialogState.parentDraftId)?.player_id ?? null : null)
+          ? playerDialogState.parentDraftId
+            ? (rosterByDraftId.get(playerDialogState.parentDraftId)?.player_id ?? null)
+            : null
           : (existingDraft?.related_player_id ?? null),
       related_draft_id:
         playerDialogState.mode === "create-substitute"
           ? (playerDialogState.parentDraftId ?? null)
-          : (existingDraft?.related_draft_id ?? null),
+          : (existingDraft?.related_draft_id ?? null)
     };
 
     const nextRoster =
@@ -866,7 +872,7 @@ export function TournamentTeamsTab({
       roster: rosterDraftPlayers,
       deletedIds: deletedExistingPlayerIds,
       initialTeam: editingTeam,
-      canPatchTeam: editingTeam ? canUpdateTeam : true,
+      canPatchTeam: editingTeam ? canUpdateTeam : true
     });
   };
 
@@ -877,17 +883,17 @@ export function TournamentTeamsTab({
       {
         team: teamFormData,
         roster: rosterDraftPlayers,
-        deletedIds: deletedExistingPlayerIds,
+        deletedIds: deletedExistingPlayerIds
       },
       {
         team: rosterSnapshot.team,
         roster: rosterSnapshot.roster,
-        deletedIds: [] as number[],
+        deletedIds: [] as number[]
       }
     );
 
   const playerDialogDraft = playerDialogState?.sourceDraftId
-    ? rosterByDraftId.get(playerDialogState.sourceDraftId) ?? null
+    ? (rosterByDraftId.get(playerDialogState.sourceDraftId) ?? null)
     : null;
   const playerDialogInitial = playerDialogState?.initialState ?? getPlayerEditorState(null);
   const isPlayerDirty = playerDialogOpen && hasUnsavedChanges(playerFormData, playerDialogInitial);
@@ -897,11 +903,14 @@ export function TournamentTeamsTab({
     ...playerSubRoleOptions.map((subRole) => ({
       value: subRole.slug,
       label: subRole.label,
-      meta: subRole.slug,
-    })),
+      meta: subRole.slug
+    }))
   ];
 
-  const renderRosterNodes = (nodes: ReturnType<typeof buildRosterDraftTree>, depth = 0): ReactNode =>
+  const renderRosterNodes = (
+    nodes: ReturnType<typeof buildRosterDraftTree>,
+    depth = 0
+  ): ReactNode =>
     nodes.map((node) => {
       const draft = node.player;
       const canEditDraft = draft.state === "new" ? canCreatePlayer : canUpdatePlayer;
@@ -919,11 +928,15 @@ export function TournamentTeamsTab({
                   {draft.state === "new" ? <Badge variant="outline">New</Badge> : null}
                 </div>
                 <div className="text-sm text-muted-foreground">
-                  {draft.user_id > 0 ? `${draft.user_name} · Rank ${draft.rank}` : "User not selected yet"}
+                  {draft.user_id > 0
+                    ? `${draft.user_name} · Rank ${draft.rank}`
+                    : "User not selected yet"}
                 </div>
                 <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                   <span>{formatSubRoleLabel(draft.sub_role) ?? "No sub-role"}</span>
-                  {draft.is_newcomer ? <StatusIcon icon={Sparkles} label="Newcomer" variant="warning" /> : null}
+                  {draft.is_newcomer ? (
+                    <StatusIcon icon={Sparkles} label="Newcomer" variant="warning" />
+                  ) : null}
                   {draft.is_newcomer_role ? (
                     <StatusIcon icon={ArrowLeftRight} label="Newcomer role" variant="info" />
                   ) : null}
@@ -942,7 +955,12 @@ export function TournamentTeamsTab({
                   </Button>
                 ) : null}
                 {canEditDraft ? (
-                  <Button type="button" variant="ghost" size="icon" onClick={() => openPlayerEditDialog(draft)}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => openPlayerEditDialog(draft)}
+                  >
                     <Pencil className="h-4 w-4" />
                   </Button>
                 ) : null}
@@ -1077,8 +1095,8 @@ export function TournamentTeamsTab({
                     <TableCell className={tableStyles.cell} colSpan={5}>
                       <div className="flex flex-col gap-3 rounded-xl border border-dashed border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
                         <span>
-                          No teams loaded for this tournament yet. Create one with a full roster or sync from
-                          Challonge if the workspace is linked.
+                          No teams loaded for this tournament yet. Create one with a full roster or
+                          sync from Challonge if the workspace is linked.
                         </span>
                         <div className="flex flex-wrap gap-2">
                           {canImportTeams ? (
@@ -1141,7 +1159,8 @@ export function TournamentTeamsTab({
               {editingTeam ? "Edit team data and roster" : "Create a team with its starting roster"}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Captain can only be selected from the roster below. Deleting a player removes its substitute chain.
+              Captain can only be selected from the roster below. Deleting a player removes its
+              substitute chain.
             </p>
           </div>
 
@@ -1165,7 +1184,7 @@ export function TournamentTeamsTab({
               onValueChange={(value) =>
                 setTeamFormData((current) => ({
                   ...current,
-                  captain_id: Number.parseInt(value, 10),
+                  captain_id: Number.parseInt(value, 10)
                 }))
               }
               disabled={editingTeam != null && !canUpdateTeam}
@@ -1201,7 +1220,7 @@ export function TournamentTeamsTab({
                 onChange={(value) =>
                   setTeamFormData((current) => ({
                     ...current,
-                    avg_sr: value,
+                    avg_sr: value
                   }))
                 }
               />
@@ -1219,7 +1238,7 @@ export function TournamentTeamsTab({
                 onChange={(value) =>
                   setTeamFormData((current) => ({
                     ...current,
-                    total_sr: value,
+                    total_sr: value
                   }))
                 }
               />
@@ -1292,8 +1311,16 @@ export function TournamentTeamsTab({
             <Label htmlFor="team-roster-player-user">Linked User</Label>
             <UserSearchCombobox
               id="team-roster-player-user"
-              value={playerDialogDraft?.state === "existing" ? playerDialogDraft.user_id : playerFormData.user_id || undefined}
-              selectedName={playerDialogDraft?.state === "existing" ? playerDialogDraft.user_name : playerFormData.user_name || undefined}
+              value={
+                playerDialogDraft?.state === "existing"
+                  ? playerDialogDraft.user_id
+                  : playerFormData.user_id || undefined
+              }
+              selectedName={
+                playerDialogDraft?.state === "existing"
+                  ? playerDialogDraft.user_name
+                  : playerFormData.user_name || undefined
+              }
               placeholder="Search user by name"
               searchPlaceholder="Search user..."
               disabled={playerDialogDraft?.state === "existing"}
@@ -1303,7 +1330,7 @@ export function TournamentTeamsTab({
                   ...current,
                   user_id: user?.id ?? 0,
                   user_name: user?.name ?? "",
-                  name: current.name || user?.name || "",
+                  name: current.name || user?.name || ""
                 }))
               }
             />
@@ -1322,7 +1349,7 @@ export function TournamentTeamsTab({
                 setPlayerFormData((current) => ({
                   ...current,
                   role: normalizePlayerRole(value),
-                  sub_role: "",
+                  sub_role: ""
                 }))
               }
             >
@@ -1350,7 +1377,7 @@ export function TournamentTeamsTab({
               onChange={(value) =>
                 setPlayerFormData((current) => ({
                   ...current,
-                  sub_role: value === "none" ? "" : value,
+                  sub_role: value === "none" ? "" : value
                 }))
               }
             />
@@ -1366,7 +1393,7 @@ export function TournamentTeamsTab({
               onChange={(value) =>
                 setPlayerFormData((current) => ({
                   ...current,
-                  rank: value,
+                  rank: value
                 }))
               }
             />
@@ -1380,7 +1407,7 @@ export function TournamentTeamsTab({
                 onCheckedChange={(checked) =>
                   setPlayerFormData((current) => ({
                     ...current,
-                    is_newcomer: checked === true,
+                    is_newcomer: checked === true
                   }))
                 }
               />
@@ -1396,7 +1423,7 @@ export function TournamentTeamsTab({
                 onCheckedChange={(checked) =>
                   setPlayerFormData((current) => ({
                     ...current,
-                    is_newcomer_role: checked === true,
+                    is_newcomer_role: checked === true
                   }))
                 }
               />
@@ -1425,7 +1452,7 @@ export function TournamentTeamsTab({
         cascadeInfo={[
           "Players in this team",
           "Related encounter references",
-          "Stored standings rows",
+          "Stored standings rows"
         ]}
         isDeleting={deleteTeamMutation.isPending}
       />

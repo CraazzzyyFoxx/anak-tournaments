@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
 import { Pencil, Trash2, RefreshCw, Trophy } from "lucide-react";
@@ -41,6 +42,8 @@ import { hasUnsavedChanges } from "@/lib/form-change";
 import { paginateResults, sortArray } from "@/lib/paginate-results";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
+const TOURNAMENT_QUERY_PARAM = "tournament";
+
 const emptyStandingForm: StandingUpdateInput = {
   position: 0,
   points: 0,
@@ -73,7 +76,16 @@ function getStandingScopeLabel(standing: Standings): string {
   return standing.stage_item?.name ?? standing.stage?.name ?? "Unassigned";
 }
 
+function parseTournamentQueryParam(value: string | null): number | null {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
 export default function StandingsPage() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const { canAccessPermission } = usePermissions();
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
@@ -86,7 +98,9 @@ export default function StandingsPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [recalculateDialogOpen, setRecalculateDialogOpen] = useState(false);
   const [selectedStanding, setSelectedStanding] = useState<Standings | null>(null);
-  const [selectedTournamentId, setSelectedTournamentId] = useState<number | null>(null);
+  const selectedTournamentId = parseTournamentQueryParam(
+    searchParams.get(TOURNAMENT_QUERY_PARAM)
+  );
   const [selectedScopeFilter, setSelectedScopeFilter] = useState<string>("all");
 
   useTournamentStandingsRealtime(selectedTournamentId);
@@ -209,6 +223,19 @@ export default function StandingsPage() {
     }
   };
 
+  const handleTournamentFilterChange = (value: string) => {
+    const nextParams = new URLSearchParams(searchParams.toString());
+    if (value === "all") {
+      nextParams.delete(TOURNAMENT_QUERY_PARAM);
+    } else {
+      nextParams.set(TOURNAMENT_QUERY_PARAM, value);
+    }
+
+    setSelectedScopeFilter("all");
+    const query = nextParams.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  };
+
   const isEditDirty = editDialogOpen && hasUnsavedChanges(formData, getStandingForm(selectedStanding));
 
   const columns: ColumnDef<Standings>[] = [
@@ -323,10 +350,7 @@ export default function StandingsPage() {
         <Label htmlFor="tournament-filter">Filter by Tournament:</Label>
         <Select
           value={selectedTournamentId?.toString() || "all"}
-          onValueChange={(value) => {
-            setSelectedTournamentId(value === "all" ? null : parseInt(value));
-            setSelectedScopeFilter("all");
-          }}
+          onValueChange={handleTournamentFilterChange}
         >
           <SelectTrigger className="w-[300px]">
             <SelectValue placeholder="All Tournaments" />

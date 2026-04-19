@@ -15,7 +15,7 @@ import {
   ShieldAlert,
   Trash2,
   Users,
-  XCircle,
+  XCircle
 } from "lucide-react";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
@@ -33,7 +33,7 @@ import type { DivisionGridVersion } from "@/types/workspace.types";
 import {
   formatDate,
   getTournamentForm,
-  type TournamentFormState,
+  type TournamentFormState
 } from "./tournamentWorkspace.helpers";
 import { TournamentStatusControl } from "./TournamentStatusControl";
 import { invalidateTournamentWorkspace } from "./tournamentWorkspace.queryKeys";
@@ -63,7 +63,7 @@ export function TournamentWorkspaceHeader({
   canDeleteTournament,
   canToggleFinished,
   divisionGridVersions,
-  divisionGridLoading,
+  divisionGridLoading
 }: TournamentWorkspaceHeaderProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -88,25 +88,25 @@ export function TournamentWorkspaceHeader({
 
   const updateTournamentMutation = useMutation({
     mutationFn: (data: TournamentUpdateInput) => adminService.updateTournament(tournamentId, data),
-    onSuccess: async () => {
-      await invalidateTournamentWorkspace(queryClient, tournamentId);
+    onSuccess: () => {
+      invalidateTournamentWorkspace(queryClient, tournamentId);
       resetTournamentDialog();
       toast({ title: "Tournament updated" });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
-    },
+    }
   });
 
   const toggleFinishedMutation = useMutation({
     mutationFn: () => adminService.toggleTournamentFinished(tournamentId),
-    onSuccess: async () => {
-      await invalidateTournamentWorkspace(queryClient, tournamentId);
+    onSuccess: () => {
+      invalidateTournamentWorkspace(queryClient, tournamentId);
       toast({ title: "Tournament status updated" });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
-    },
+    }
   });
 
   const deleteTournamentMutation = useMutation({
@@ -118,7 +118,7 @@ export function TournamentWorkspaceHeader({
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
-    },
+    }
   });
 
   const handleTournamentSubmit = (event: FormEvent) => {
@@ -142,7 +142,7 @@ export function TournamentWorkspaceHeader({
       registration_closes_at: tournamentFormData.registration_closes_at || null,
       check_in_opens_at: tournamentFormData.check_in_opens_at || null,
       check_in_closes_at: tournamentFormData.check_in_closes_at || null,
-      division_grid_version_id: tournamentFormData.division_grid_version_id,
+      division_grid_version_id: tournamentFormData.division_grid_version_id
     };
 
     updateTournamentMutation.mutate(payload);
@@ -285,7 +285,7 @@ export function TournamentWorkspaceHeader({
           "Tournament stages",
           "Teams and players",
           "Encounters and matches",
-          "Standings rows",
+          "Standings rows"
         ]}
         isDeleting={deleteTournamentMutation.isPending}
       />

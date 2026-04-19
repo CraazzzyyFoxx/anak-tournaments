@@ -122,7 +122,11 @@ async def advance_winner(
 
     updated: list[Encounter] = []
     for link in links:
-        target = await session.get(Encounter, link.target_encounter_id)
+        target = await session.get(
+            Encounter,
+            link.target_encounter_id,
+            with_for_update=True,
+        )
         if target is None:
             logger.warning(
                 "EncounterLink %s points to missing target encounter %s",
@@ -190,12 +194,14 @@ async def _maybe_create_grand_final_reset(
         return None
 
     existing_reset = await session.execute(
-        sa.select(Encounter).where(
+        sa.select(Encounter)
+        .where(
             Encounter.tournament_id == gf_encounter.tournament_id,
             Encounter.stage_id == gf_encounter.stage_id,
             Encounter.stage_item_id == gf_encounter.stage_item_id,
             Encounter.round == gf_encounter.round + 1,
         )
+        .with_for_update()
     )
     if existing_reset.scalar_one_or_none() is not None:
         return None
