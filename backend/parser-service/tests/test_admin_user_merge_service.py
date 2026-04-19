@@ -165,3 +165,12 @@ class AdminUserMergeServiceTests(IsolatedAsyncioTestCase):
         self.assertEqual([1], result["moved"]["discord"])
         self.assertEqual([2], result["deduped"]["discord"])
         session.delete.assert_awaited_once_with(source.discord[1])
+
+    async def test_reference_is_unavailable_when_legacy_achievement_table_missing(self) -> None:
+        session = SimpleNamespace(
+            execute=AsyncMock(return_value=SimpleNamespace(scalar=lambda: False))
+        )
+
+        is_available = await merge_service._reference_is_available(session, "achievements.user.user_id")  # type: ignore[attr-defined]
+
+        self.assertFalse(is_available)

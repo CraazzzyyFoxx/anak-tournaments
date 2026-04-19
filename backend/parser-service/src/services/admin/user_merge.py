@@ -37,6 +37,10 @@ REFERENCE_CONFIG: tuple[tuple[str, type, str], ...] = (
     ("log_processing.record.uploader_id", models.LogProcessingRecord, "uploader_id"),
 )
 
+OPTIONAL_REFERENCE_TABLES: dict[str, str] = {
+    "achievements.user.user_id": 'achievements."user"',
+}
+
 
 @dataclass
 class MergeContext:
@@ -152,6 +156,8 @@ async def execute_merge(
     try:
         await session.flush()
         for reference_key, model, column_name in REFERENCE_CONFIG:
+            if not await _reference_is_available(session, reference_key):
+                continue
             if reference_key == "achievements.evaluation_result.user_id":
                 affected_counts[reference_key] = await _merge_achievement_evaluation_results(
                     session,
@@ -294,6 +300,8 @@ async def _count_auth_links(session: AsyncSession, user_id: int) -> int:
 async def _count_affected_rows(session: AsyncSession, source_user_id: int) -> dict[str, int]:
     counts = empty_affected_counts()
     for reference_key, model, column_name in REFERENCE_CONFIG:
+        if not await _reference_is_available(session, reference_key):
+            continue
         column = getattr(model, column_name)
         result = await session.execute(select(func.count()).select_from(model).where(column == source_user_id))
         counts[reference_key] = int(result.scalar_one())
@@ -304,6 +312,20 @@ async def _count_affected_rows(session: AsyncSession, source_user_id: int) -> di
     )
     counts["auth.user_player.player_id"] = int(result.scalar_one())
     return counts
+
+
+async def _reference_is_available(session: AsyncSession, reference_key: str) -> bool:
+    table_name = OPTIONAL_REFERENCE_TABLES.get(reference_key)
+    if table_name is None:
+        return True
+    return await _table_exists(session, table_name)
+
+
+async def _table_exists(session: AsyncSession, table_name: str) -> bool:
+    result = await session.execute(
+        sa.text(f"SELECT to_regclass('{table_name}') IS NOT NULL")
+    )
+    return bool(result.scalar())
 
 
 def _build_user_summary(
