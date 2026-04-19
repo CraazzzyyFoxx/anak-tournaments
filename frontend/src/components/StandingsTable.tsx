@@ -11,6 +11,7 @@ import {
 import { Encounter } from "@/types/encounter.types";
 import { Standings } from "@/types/tournament.types";
 import { cn } from "@/lib/utils";
+import { sortStandingsMatches } from "@/lib/tournament-match-order";
 
 export interface StandingTableProps {
   standings: Standings[];
@@ -176,9 +177,7 @@ const StandingsTable = ({ standings, is_groups }: StandingTableProps) => {
             const teamColorClass = !is_groups
               ? getGroupTextClass(standing.team?.group?.name)
               : "text-white";
-            const history = [...(standing.matches_history ?? [])].sort(
-              (a, b) => a.round - b.round
-            );
+            const history = sortStandingsMatches(standing.matches_history ?? []);
 
             return (
               <TableRow
