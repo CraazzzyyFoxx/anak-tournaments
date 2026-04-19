@@ -10,6 +10,7 @@ from starlette.requests import Request
 
 from src import schemas, models
 from src.core import config, db, enums, pagination, auth
+from src.core.workspace import WorkspaceQuery
 
 from src.services.analytics import flows as analytics_flows
 
@@ -54,9 +55,15 @@ async def get_analytics(
     algorithm: int,
     start_tournament_id: int | None = None,
     end_tournament_id: int | None = None,
+    workspace_id: WorkspaceQuery = None,
     session: AsyncSession = Depends(db.get_async_session),
 ):
-    return await analytics_flows.get_analytics(session, tournament_id, algorithm)
+    return await analytics_flows.get_analytics(
+        session,
+        tournament_id,
+        algorithm,
+        workspace_id=workspace_id,
+    )
 
 
 @router.post(

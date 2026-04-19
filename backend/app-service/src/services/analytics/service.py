@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from src import models
+from src.core.workspace import workspace_filter
 
 
 async def get_algorithms(
@@ -26,7 +27,10 @@ async def get_algorithm(session: AsyncSession, id: int) -> models.AnalyticsAlgor
 
 
 async def get_analytics(
-    session: AsyncSession, tournament_id: int, algorithm: models.AnalyticsAlgorithm
+    session: AsyncSession,
+    tournament_id: int,
+    algorithm: models.AnalyticsAlgorithm,
+    workspace_id: int | None = None,
 ) -> typing.Sequence[
     tuple[models.Team, models.Player, models.AnalyticsShift, models.AnalyticsPlayer]
 ]:
@@ -35,9 +39,13 @@ async def get_analytics(
             models.Team, models.Player, models.AnalyticsShift, models.AnalyticsPlayer
         )
         .options(
+            sa.orm.joinedload(models.Team.tournament).joinedload(
+                models.Tournament.division_grid_version
+            ),
             sa.orm.joinedload(models.Team.standings),
             sa.orm.joinedload(models.Team.standings).joinedload(models.Standing.group),
         )
+        .join(models.Tournament, models.Team.tournament_id == models.Tournament.id)
         .join(models.Player, models.Player.team_id == models.Team.id)
         .join(
             models.AnalyticsPlayer, models.AnalyticsPlayer.player_id == models.Player.id
@@ -53,6 +61,7 @@ async def get_analytics(
         .where(
             sa.and_(
                 models.Team.tournament_id == tournament_id,
+                *workspace_filter(workspace_id),
             )
         )
     )

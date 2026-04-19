@@ -8,11 +8,16 @@ import {
 } from "@/types/analytics.types";
 
 export default class analyticsService {
-  static async getAnalytics(id: number, algorithm: number): Promise<TournamentAnalytics> {
+  static async getAnalytics(
+    id: number,
+    algorithm: number,
+    workspaceId?: number | null,
+  ): Promise<TournamentAnalytics> {
     return apiFetch("app",`analytics`, {
       query: {
         tournament_id: id,
-        algorithm: algorithm
+        algorithm: algorithm,
+        workspace_id: workspaceId,
       }
     }).then((response) => response.json());
   }
@@ -43,9 +48,13 @@ export default class analyticsService {
 
   static async recalculateAnalytics(
     tournamentId: number,
-    algorithmIds?: number[]
+    algorithmIds?: number[],
+    workspaceId?: number | null,
   ): Promise<AnalyticsRecalculateResponse> {
     return apiFetch("parser", "analytics/recalculate", {
+      query: {
+        workspace_id: workspaceId,
+      },
       method: "POST",
       body: {
         tournament_id: tournamentId,

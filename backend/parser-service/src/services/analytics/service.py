@@ -8,10 +8,12 @@ from shared.division_grid import DEFAULT_GRID, DivisionGrid, division_case_expr,
 from shared.models.division_grid import DivisionGridMapping, DivisionGridMappingRule, DivisionGridVersion
 
 from src import models
+from src.core.workspace import workspace_filter
 
 
 async def get_analytics(
     session: AsyncSession,
+    workspace_id: int | None = None,
 ) -> typing.Sequence[sa.RowMapping]:
     points_home = (
         sa.select(
@@ -23,7 +25,11 @@ async def get_analytics(
         )
         .join(models.Encounter, models.Player.team_id == models.Encounter.home_team_id)
         .join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
-        .where(models.Tournament.id >= 1, models.Tournament.is_league.is_(False))
+        .where(
+            models.Tournament.id >= 1,
+            models.Tournament.is_league.is_(False),
+            *workspace_filter(workspace_id),
+        )
         .group_by(models.Player.user_id, models.Player.role, models.Player.team_id)
     ).cte("player_points_home")
 
@@ -37,7 +43,11 @@ async def get_analytics(
         )
         .join(models.Encounter, models.Player.team_id == models.Encounter.away_team_id)
         .join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
-        .where(models.Tournament.id >= 1, models.Tournament.is_league.is_(False))
+        .where(
+            models.Tournament.id >= 1,
+            models.Tournament.is_league.is_(False),
+            *workspace_filter(workspace_id),
+        )
         .group_by(models.Player.user_id, models.Player.role, models.Player.team_id)
     ).cte("player_points_away")
 
@@ -47,7 +57,11 @@ async def get_analytics(
             sa.func.count(models.Encounter.id).label("match_count"),
         )
         .join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
-        .where(models.Tournament.id >= 1, models.Tournament.is_league.is_(False))
+        .where(
+            models.Tournament.id >= 1,
+            models.Tournament.is_league.is_(False),
+            *workspace_filter(workspace_id),
+        )
         .group_by(models.Encounter.home_team_id)
     ).cte("player_matches_home")
 
@@ -57,7 +71,11 @@ async def get_analytics(
             sa.func.count(models.Encounter.id).label("match_count"),
         )
         .join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
-        .where(models.Tournament.id >= 1, models.Tournament.is_league.is_(False))
+        .where(
+            models.Tournament.id >= 1,
+            models.Tournament.is_league.is_(False),
+            *workspace_filter(workspace_id),
+        )
         .group_by(models.Encounter.away_team_id)
     ).cte("player_matches_away")
 
@@ -66,6 +84,8 @@ async def get_analytics(
             models.Team.tournament_id.label("tournament_id"),
             sa.func.count(models.Team.id).label("team_count"),
         )
+        .join(models.Tournament, models.Team.tournament_id == models.Tournament.id)
+        .where(*workspace_filter(workspace_id))
         .group_by(models.Team.tournament_id)
     ).cte("team_counts")
 
@@ -75,6 +95,8 @@ async def get_analytics(
             models.Standing.tournament_id.label("tournament_id"),
             sa.func.min(models.Standing.overall_position).label("overall_position"),
         )
+        .join(models.Tournament, models.Standing.tournament_id == models.Tournament.id)
+        .where(*workspace_filter(workspace_id))
         .group_by(models.Standing.team_id, models.Standing.tournament_id)
     ).cte("team_standings")
 
@@ -87,12 +109,14 @@ async def get_analytics(
         .join(models.MatchStatistics, models.MatchStatistics.user_id == models.Player.user_id)
         .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
         .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
+        .join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
         .where(
             models.MatchStatistics.team_id == models.Player.team_id,
             models.MatchStatistics.round == 0,
             models.MatchStatistics.hero_id.is_(None),
             models.MatchStatistics.name == enums.LogStatsName.PerformancePoints,
             models.Player.tournament_id == models.Encounter.tournament_id,
+            *workspace_filter(workspace_id),
         )
         .group_by(models.Player.id)
     ).cte("performance_points")
@@ -175,6 +199,7 @@ async def get_analytics(
             models.Tournament.id >= 1,
             models.Tournament.is_league.is_(False),
             models.Player.is_substitution.is_(False),
+            *workspace_filter(workspace_id),
         )
         .order_by(models.Player.user_id, models.Player.role, models.Tournament.id)
     )
@@ -183,7 +208,12 @@ async def get_analytics(
     return result.mappings().all()
 
 
-async def get_matches(session: AsyncSession, start_range: int, end_range: int) -> typing.Sequence[models.Encounter]:
+async def get_matches(
+    session: AsyncSession,
+    start_range: int,
+    end_range: int,
+    workspace_id: int | None = None,
+) -> typing.Sequence[models.Encounter]:
     query = (
         sa.select(models.Encounter)
         .options(
@@ -203,6 +233,7 @@ async def get_matches(session: AsyncSession, start_range: int, end_range: int) -
         .where(
             models.Encounter.tournament_id.between(start_range, end_range),
             models.Tournament.is_league.is_(False),
+            *workspace_filter(workspace_id),
         )
         .order_by(models.Encounter.tournament_id, models.Encounter.id)
     )
@@ -230,11 +261,16 @@ async def get_algorithms(
 
 async def get_tournament_version_ids(
     session: AsyncSession,
+    workspace_id: int | None = None,
 ) -> dict[int, int | None]:
     """Maps tournament_id -> division_grid_version_id for all analytics-relevant tournaments."""
     result = await session.execute(
         sa.select(models.Tournament.id, models.Tournament.division_grid_version_id)
-        .where(models.Tournament.id >= 1, models.Tournament.is_league.is_(False))
+        .where(
+            models.Tournament.id >= 1,
+            models.Tournament.is_league.is_(False),
+            *workspace_filter(workspace_id),
+        )
     )
     return {row[0]: row[1] for row in result.all()}
 

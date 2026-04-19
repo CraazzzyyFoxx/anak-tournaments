@@ -40,6 +40,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { useToast } from "@/hooks/use-toast";
 import tournamentService from "@/services/tournament.service";
 import analyticsService from "@/services/analytics.service";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 
 const AnalyticsPage = () => {
   const router = useRouter();
@@ -48,6 +49,7 @@ const AnalyticsPage = () => {
   const queryClient = useQueryClient();
   const { hasPermission } = usePermissions();
   const { toast } = useToast();
+  const currentWorkspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
 
   const previousElementRef = React.useRef<HTMLElement | null>(null);
   const [selectedTeamState, setSelectedTeamState] = useState<{
@@ -85,8 +87,8 @@ const AnalyticsPage = () => {
     isLoading: loadingTournaments,
     isError: isErrorTournaments
   } = useQuery({
-    queryKey: ["tournaments"],
-    queryFn: () => tournamentService.getAll(false)
+    queryKey: ["tournaments", currentWorkspaceId ?? "global"],
+    queryFn: () => tournamentService.getAll(false, currentWorkspaceId)
   });
   const {
     data: algorithmData,
@@ -111,9 +113,9 @@ const AnalyticsPage = () => {
     isLoading: loadingAnalytics,
     isError: isErrorAnalytics
   } = useQuery({
-    queryKey: ["analytics", tournamentId, algorithmId],
+    queryKey: ["analytics", currentWorkspaceId ?? "global", tournamentId, algorithmId],
     // @ts-ignore
-    queryFn: () => analyticsService.getAnalytics(tournamentId, algorithmId),
+    queryFn: () => analyticsService.getAnalytics(tournamentId, algorithmId, currentWorkspaceId),
     enabled: canQueryAnalytics
   });
 
@@ -123,7 +125,11 @@ const AnalyticsPage = () => {
         throw new Error("Select a tournament before recalculating analytics.");
       }
 
-      return analyticsService.recalculateAnalytics(tournamentId, selectedAlgorithmIds);
+      return analyticsService.recalculateAnalytics(
+        tournamentId,
+        selectedAlgorithmIds,
+        currentWorkspaceId,
+      );
     },
     onSuccess: async (result, selectedAlgorithmIds) => {
       if (tournamentId == null) {
@@ -131,7 +137,7 @@ const AnalyticsPage = () => {
       }
 
       await Promise.all(
-        getAnalyticsRefreshKeys(tournamentId, algorithmId).map((queryKey) =>
+        getAnalyticsRefreshKeys(currentWorkspaceId, tournamentId, algorithmId).map((queryKey) =>
           queryClient.invalidateQueries({ queryKey })
         )
       );

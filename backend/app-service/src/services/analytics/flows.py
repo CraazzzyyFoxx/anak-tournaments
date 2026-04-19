@@ -63,7 +63,10 @@ async def get_algorithm(
 
 
 async def get_analytics(
-    session: AsyncSession, tournament_id: int, algorithm_id: int
+    session: AsyncSession,
+    tournament_id: int,
+    algorithm_id: int,
+    workspace_id: int | None = None,
 ) -> schemas.TournamentAnalytics:
     """
     Retrieves analytics data for a specific tournament.
@@ -86,7 +89,12 @@ async def get_analytics(
     cache_teams_wins: dict[int, int] = {}
     cache_teams_manual_shift: dict[int, int] = {}
 
-    data = await service.get_analytics(session, tournament_id, algorithm)
+    data = await service.get_analytics(
+        session,
+        tournament_id,
+        algorithm,
+        workspace_id=workspace_id,
+    )
     for team, player, shift, analytics in data:
         cache_teams[team.id] = team
         cache_players.setdefault(team.id, [])
@@ -102,11 +110,17 @@ async def get_analytics(
         sum([t.avg_sr for t in cache_teams.values()]) / max(len(cache_teams), 1)
     )
 
-    grid = await get_division_grid(session, None, tournament_id=tournament_id)
+    grid = await get_division_grid(
+        session,
+        workspace_id,
+        tournament_id=tournament_id,
+    )
 
     for team_id, team in cache_teams.items():
         players = cache_players[team_id]
-        team_read = await team_flows.to_pydantic(session, team, ["placement", "group"])
+        team_read = await team_flows.to_pydantic(
+            session, team, ["placement", "group", "tournament"]
+        )
         balancer_shift = -math.ceil(
             ((team.avg_sr - (team.avg_sr % 10)) - avg_team_cost) / 20
         )

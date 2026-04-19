@@ -40,13 +40,15 @@ export function canShowAnalyticsAdminToolbar(
 }
 
 export function getAnalyticsRefreshKeys(
+  workspaceId: number | null | undefined,
   tournamentId: number,
   algorithmId: number | null,
 ): Array<Array<string | number>> {
-  const keys: Array<Array<string | number>> = [["analytics", tournamentId]];
+  const scope = workspaceId ?? "global";
+  const keys: Array<Array<string | number>> = [["analytics", scope, tournamentId]];
 
   if (algorithmId != null) {
-    keys.push(["analytics", tournamentId, algorithmId]);
+    keys.push(["analytics", scope, tournamentId, algorithmId]);
   }
 
   return keys;

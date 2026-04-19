@@ -20,7 +20,6 @@ import {
 import { ArrowDown, ArrowUp } from "lucide-react";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import PlayerName from "@/components/PlayerName";
-import Image from "next/image";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { TypographyH4 } from "@/components/ui/typography";
@@ -45,6 +44,8 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import analyticsService from "@/services/analytics.service";
 import { usePermissions } from "@/hooks/usePermissions";
+import DivisionIcon from "@/components/DivisionIcon";
+import type { DivisionGridVersion } from "@/types/workspace.types";
 
 const ChangeDivisionModal = ({
   player,
@@ -97,7 +98,13 @@ const ChangeDivisionModal = ({
   );
 };
 
-const TournamentPlayerRow = ({ player }: { player: PlayerAnalytics }) => {
+const TournamentPlayerRow = ({
+  player,
+  tournamentGrid
+}: {
+  player: PlayerAnalytics;
+  tournamentGrid?: DivisionGridVersion | null;
+}) => {
   const [open, setOpen] = React.useState(false);
   const { hasPermission } = usePermissions();
   const canEdit = hasPermission("analytics.update");
@@ -139,7 +146,12 @@ const TournamentPlayerRow = ({ player }: { player: PlayerAnalytics }) => {
         </TableCell>
         <TableCell>
           <div className="flex justify-center">
-            <Image src={`/divisions/${player.division}.png`} alt="Division" width={30} height={30} />
+            <DivisionIcon
+              division={player.division}
+              tournamentGrid={tournamentGrid}
+              width={30}
+              height={30}
+            />
           </div>
         </TableCell>
         <TableCell className="text-center">{formatAnalyticsNumber(player.move_2)}</TableCell>
@@ -204,7 +216,13 @@ const TournamentPlayerRow = ({ player }: { player: PlayerAnalytics }) => {
   );
 };
 
-export const TournamentTeamTable = ({ players }: { players: PlayerAnalytics[] }) => {
+export const TournamentTeamTable = ({
+  players,
+  tournamentGrid
+}: {
+  players: PlayerAnalytics[];
+  tournamentGrid?: DivisionGridVersion | null;
+}) => {
   // @ts-ignore
   const sortedPlayers: PlayerAnalytics[] = useMemo(() => {
     return sortTeamPlayers(players);
@@ -227,7 +245,11 @@ export const TournamentTeamTable = ({ players }: { players: PlayerAnalytics[] })
           </TableHeader>
           <TableBody>
             {sortedPlayers.map((player) => (
-              <TournamentPlayerRow key={player.id} player={player} />
+              <TournamentPlayerRow
+                key={player.id}
+                player={player}
+                tournamentGrid={tournamentGrid}
+              />
             ))}
           </TableBody>
         </Table>
@@ -261,7 +283,10 @@ const TeamAnalyticsCard = ({ team }: { team: TeamAnalytics }) => {
         </div>
       </div>
       <CardContent className="p-0">
-        <TournamentTeamTable players={team.players} />
+        <TournamentTeamTable
+          players={team.players}
+          tournamentGrid={team.tournament?.division_grid_version}
+        />
       </CardContent>
     </Card>
   );

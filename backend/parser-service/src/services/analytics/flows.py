@@ -45,9 +45,15 @@ def rating_to_division(grid: DivisionGrid, rating_mu: float) -> int:
     )
 
 
-async def get_data_frame(session: AsyncSession) -> pd.DataFrame:
-    data = await service.get_analytics(session)
-    tournament_version_ids = await service.get_tournament_version_ids(session)
+async def get_data_frame(
+    session: AsyncSession,
+    workspace_id: int | None = None,
+) -> pd.DataFrame:
+    data = await service.get_analytics(session, workspace_id=workspace_id)
+    tournament_version_ids = await service.get_tournament_version_ids(
+        session,
+        workspace_id=workspace_id,
+    )
 
     rows: list[dict[str, typing.Any]] = []
     for row in data:
@@ -369,8 +375,14 @@ async def compute_openskill_shift_map(
     session: AsyncSession,
     tournament_id: int,
     df: pd.DataFrame,
+    workspace_id: int | None = None,
 ) -> tuple[dict[int, float], bool]:
-    matches = await service.get_matches(session, tournament_id - 10, tournament_id)
+    matches = await service.get_matches(
+        session,
+        tournament_id - 10,
+        tournament_id,
+        workspace_id=workspace_id,
+    )
     teams = await team_service.get_by_tournament(session, tournament_id, ["players", "players.user"])
     version_ids = {int(v) for v in df["version_id"].dropna().unique()}
     grids = await service.get_grid_versions(session, version_ids)
@@ -459,8 +471,9 @@ async def recalculate_analytics(
     session: AsyncSession,
     tournament_id: int,
     algorithm_names: typing.Iterable[str] | None = None,
+    workspace_id: int | None = None,
 ) -> list[str]:
-    df = await get_data_frame(session)
+    df = await get_data_frame(session, workspace_id=workspace_id)
     if df.empty:
         logger.warning("No analytics data found for tournament {}", tournament_id)
         return []
@@ -481,7 +494,12 @@ async def recalculate_analytics(
     openskill_shift_map: dict[int, float] = {}
     has_match_history = False
     if OPEN_SKILL in selected_set or LINEAR_HYBRID in selected_set:
-        openskill_shift_map, has_match_history = await compute_openskill_shift_map(session, tournament_id, df)
+        openskill_shift_map, has_match_history = await compute_openskill_shift_map(
+            session,
+            tournament_id,
+            df,
+            workspace_id=workspace_id,
+        )
 
     if POINTS in selected_set:
         await persist_algorithm(
@@ -494,7 +512,12 @@ async def recalculate_analytics(
 
     if OPEN_SKILL in selected_set:
         await persist_algorithm(session, tournament_id, OPEN_SKILL, current_df, openskill_shift_map)
-        await get_predictions_openskill(session, tournament_id, df=df)
+        await get_predictions_openskill(
+            session,
+            tournament_id,
+            df=df,
+            workspace_id=workspace_id,
+        )
 
     if LINEAR_STABLE in selected_set:
         await persist_algorithm(
@@ -526,21 +549,48 @@ async def recalculate_analytics(
     return selected_algorithms
 
 
-async def get_analytics(session: AsyncSession, tournament_id: int):
-    await recalculate_analytics(session, tournament_id, [POINTS])
+async def get_analytics(
+    session: AsyncSession,
+    tournament_id: int,
+    workspace_id: int | None = None,
+):
+    await recalculate_analytics(
+        session,
+        tournament_id,
+        [POINTS],
+        workspace_id=workspace_id,
+    )
 
 
-async def get_analytics_openskill(session: AsyncSession, tournament_id: int) -> None:
-    await recalculate_analytics(session, tournament_id, [OPEN_SKILL])
+async def get_analytics_openskill(
+    session: AsyncSession,
+    tournament_id: int,
+    workspace_id: int | None = None,
+) -> None:
+    await recalculate_analytics(
+        session,
+        tournament_id,
+        [OPEN_SKILL],
+        workspace_id=workspace_id,
+    )
 
 
 async def get_predictions_openskill(
     session: AsyncSession,
     tournament_id: int,
     df: pd.DataFrame | None = None,
+    workspace_id: int | None = None,
 ) -> None:
-    source_df = df if df is not None else await get_data_frame(session)
-    matches = await service.get_matches(session, tournament_id - 10, tournament_id)
+    source_df = df if df is not None else await get_data_frame(
+        session,
+        workspace_id=workspace_id,
+    )
+    matches = await service.get_matches(
+        session,
+        tournament_id - 10,
+        tournament_id,
+        workspace_id=workspace_id,
+    )
     teams = await team_service.get_by_tournament(session, tournament_id, ["players", "players.user"])
     algorithm = await service.get_algorithm(session, OPEN_SKILL)
     pl = get_plackett_luce()
