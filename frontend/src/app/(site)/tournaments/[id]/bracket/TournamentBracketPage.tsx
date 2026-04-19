@@ -184,13 +184,23 @@ export default function TournamentBracketPage({
       : [];
 
   const { data: allEncounters } = useQuery({
-    queryKey: ["encounters", "tournament", tournament.id],
-    queryFn: () => encounterService.getAll(1, "", tournament.id, -1),
+    queryKey: ["encounters", "tournament", tournament.id, tournament.workspace_id],
+    queryFn: () =>
+      encounterService.getAll(
+        1,
+        "",
+        tournament.id,
+        -1,
+        undefined,
+        undefined,
+        tournament.workspace_id
+      ),
   });
 
   const { data: allStandings = [] } = useQuery({
-    queryKey: ["standings", tournament.id],
-    queryFn: () => tournamentService.getStandings(tournament.id),
+    queryKey: ["standings", tournament.id, tournament.workspace_id],
+    queryFn: () =>
+      tournamentService.getStandings(tournament.id, tournament.workspace_id),
   });
 
   const groupStagePanels = useMemo(() => {

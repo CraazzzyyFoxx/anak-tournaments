@@ -43,10 +43,12 @@ export default class encounterService {
     tournamentId: number | null = null,
     perPage: number = 15,
     sort: string | null = null,
-    order: "asc" | "desc" = "desc"
+    order: "asc" | "desc" = "desc",
+    workspaceId?: number | null
   ): Promise<PaginatedResponse<Encounter>> {
     return apiFetch("app",`encounters`, {
       query: {
+        workspace_id: workspaceId,
         per_page: perPage,
         page: page,
         query: query,

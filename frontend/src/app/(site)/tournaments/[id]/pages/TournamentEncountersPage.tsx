@@ -14,7 +14,15 @@ const TournamentEncountersPage = async ({
   page,
   search
 }: TournamentEncounterPageProps) => {
-  const encounters = await encounterService.getAll(page, search, tournament.id);
+  const encounters = await encounterService.getAll(
+    page,
+    search,
+    tournament.id,
+    undefined,
+    undefined,
+    undefined,
+    tournament.workspace_id
+  );
 
   return (
     <Suspense>

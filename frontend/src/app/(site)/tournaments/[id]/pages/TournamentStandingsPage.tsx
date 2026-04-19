@@ -6,7 +6,10 @@ import StandingsTable from "@/components/StandingsTable";
 import { cn } from "@/lib/utils";
 
 const TournamentStandingsPage = async ({ tournament }: { tournament: Tournament }) => {
-  const standings = await tournamentService.getStandings(tournament.id);
+  const standings = await tournamentService.getStandings(
+    tournament.id,
+    tournament.workspace_id
+  );
 
   const stageStandings = new Map<number, { name: string; standings: Standings[] }>();
   const groupStandingsList = standings.filter((standing) =>

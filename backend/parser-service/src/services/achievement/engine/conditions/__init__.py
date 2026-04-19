@@ -18,6 +18,11 @@ from src import models
 # while Python StrEnum has lowercase values (e.g. 'performance').
 # We need to resolve both formats to the DB-stored PascalCase name.
 _LOWERCASE_TO_NAME: dict[str, str] = {m.value: m.name for m in LogStatsName}
+_VALID_STAT_NAMES: frozenset[str] = frozenset(m.name for m in LogStatsName)
+_LEGACY_STAT_ALIASES: dict[str, str] = {
+    # Legacy seeded rule value renamed on 2026-04-19.
+    "CriticalHitKills": "ScopedCriticalHitKills",
+}
 
 
 def resolve_stat_name(raw: str) -> str:
@@ -26,11 +31,24 @@ def resolve_stat_name(raw: str) -> str:
     Accepts both 'Performance' (PascalCase) and 'performance' (lowercase).
     Returns the PascalCase name that matches the DB enum value.
     """
+    alias = _LEGACY_STAT_ALIASES.get(raw)
+    if alias is not None:
+        return alias
     # If it's already PascalCase (a member name), return as-is
-    if raw in {m.name for m in LogStatsName}:
+    if raw in _VALID_STAT_NAMES:
         return raw
     # If it's lowercase (a value), map to PascalCase name
     return _LOWERCASE_TO_NAME.get(raw, raw)
+
+
+def validate_stat_name(raw: str) -> str | None:
+    """Return a validation error for unsupported stat names, if any."""
+    alias = _LEGACY_STAT_ALIASES.get(raw)
+    if alias is not None:
+        return f"legacy stat alias '{raw}' is no longer supported; use '{alias}'"
+    if raw in _VALID_STAT_NAMES or raw in _LOWERCASE_TO_NAME:
+        return None
+    return f"unknown stat '{raw}'"
 
 from ..context import EvalContext
 

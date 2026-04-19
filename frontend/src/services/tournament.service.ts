@@ -90,9 +90,13 @@ export default class tournamentService {
       },
     }).then((response) => response.json());
   }
-  static async getStandings(id: number): Promise<Standings[]> {
+  static async getStandings(
+    id: number,
+    workspaceId?: number | null
+  ): Promise<Standings[]> {
     return apiFetch("app",`tournaments/${id}/standings`, {
       query: {
+        workspace_id: workspaceId,
         entities: ["stage", "stage_item", "team", "matches_history", "team.group"],
       },
     }).then((response) => response.json());

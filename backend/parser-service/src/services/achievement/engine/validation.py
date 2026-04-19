@@ -6,7 +6,7 @@ from typing import Any
 
 from shared.models.achievement import AchievementGrain
 
-from .conditions import get_registered_types
+from .conditions import get_registered_types, validate_stat_name
 
 SUBCONDITION_ONLY_TYPES = {
     "player_role",
@@ -163,6 +163,7 @@ def _validate_leaf_params(
     """Validate params for a specific leaf type."""
     if ctype == "stat_threshold":
         _require_keys(params, ["stat", "op", "value"], errors, path)
+        _validate_stat_param(params, errors, path)
     elif ctype == "match_criteria":
         _require_keys(params, ["field", "op", "value"], errors, path)
         valid_fields = ("closeness", "match_time", "time")
@@ -208,12 +209,17 @@ def _validate_leaf_params(
         pass  # all params optional
     elif ctype == "hero_stat":
         _require_keys(params, ["hero_slug", "stat", "op", "value"], errors, path)
+        _validate_stat_param(params, errors, path)
     elif ctype == "encounter_score":
         _require_keys(params, ["scores"], errors, path)
     elif ctype == "encounter_revenge":
         pass
     elif ctype == "global_stat_sum":
         _require_keys(params, ["stat", "op", "value"], errors, path)
+        _validate_stat_param(params, errors, path)
+    elif ctype == "match_mvp_check":
+        if "stat" in params:
+            _validate_stat_param(params, errors, path)
     elif ctype == "global_winrate":
         pass  # flexible params
     elif ctype == "tournament_count":
@@ -243,6 +249,19 @@ def _require_keys(
     for key in keys:
         if key not in params:
             errors.append(f"{path}.params: missing required key '{key}'")
+
+
+def _validate_stat_param(
+    params: dict[str, Any],
+    errors: list[str],
+    path: str,
+) -> None:
+    raw = params.get("stat")
+    if not isinstance(raw, str):
+        return
+    stat_error = validate_stat_name(raw)
+    if stat_error is not None:
+        errors.append(f"{path}.params.stat: {stat_error}")
 
 
 def _collect_grains(node: dict[str, Any]) -> list[AchievementGrain]:
