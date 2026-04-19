@@ -4,7 +4,6 @@ import React from "react";
 import { UserTournamentWithStats } from "@/types/user.types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Box, Clock } from "lucide-react";
-import Image from "next/image";
 import { ChartConfig, ChartContainer } from "@/components/ui/chart";
 import { Label, Pie, PieChart } from "recharts";
 import { TypographyH4 } from "@/components/ui/typography";
@@ -20,6 +19,8 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import Link from "next/link";
+import DivisionIcon from "@/components/DivisionIcon";
+import { getLastTournamentGridVersion } from "@/app/(site)/users/components/user-last-tournament-card.helpers";
 
 export interface UserLastTournamentProps {
   tournament: UserTournamentWithStats | null;
@@ -132,16 +133,24 @@ const UserLastTournamentCardHerderSkeleton = () => {
   );
 };
 
-const UserLastTournamentCardHeader = ({ tournament }: { tournament: UserTournamentWithStats }) => {
+const UserLastTournamentCardHeader = ({
+  tournament,
+  tournaments
+}: {
+  tournament: UserTournamentWithStats;
+  tournaments: Tournament[];
+}) => {
+  const tournamentGrid = getLastTournamentGridVersion(tournament.id, tournaments);
+
   return (
     <div className="grid lg:grid-cols-3 xs:grid-cols-1 md:grid-cols-2 items-center">
       <div className="flex flex-row col-span-1 gap-6 md:ml-12">
         <div className="xs:ml-4">
-          <Image
-            src={`/divisions/${tournament.division}.png`}
+          <DivisionIcon
+            division={tournament.division}
+            tournamentGrid={tournamentGrid}
             width={60}
             height={60}
-            alt="Division"
           />
         </div>
         <div className="flex flex-col">
@@ -300,7 +309,7 @@ const UserLastTournamentCard = ({ tournament, tournaments }: UserLastTournamentP
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <UserLastTournamentCardHeader tournament={tournament} />
+        <UserLastTournamentCardHeader tournament={tournament} tournaments={tournaments} />
         {tournament.stats ? (
           <div className="grid grid-cols-1 xl:grid-cols-4 lg:grid-cols-3 md:grid-cols-2 gap-4 mt-8">
             <UserLastTournamentStatCard
