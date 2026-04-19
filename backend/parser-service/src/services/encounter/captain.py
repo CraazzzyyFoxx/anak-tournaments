@@ -11,6 +11,7 @@ from shared.core.enums import EncounterResultStatus, EncounterStatus
 from src import models
 from src.services.challonge import sync as challonge_sync
 from src.services.standings import recalculation as standings_recalculation
+from shared.services.bracket.advancement import advance_winner
 
 
 async def _resolve_captain_identity(
@@ -148,6 +149,7 @@ async def confirm_result(
     encounter.status = EncounterStatus.COMPLETED
 
     tournament_id = encounter.tournament_id
+    await advance_winner(session, encounter)
     await session.commit()
 
     # Auto-push to Challonge if linked
@@ -232,6 +234,7 @@ async def admin_confirm_result(
     encounter.status = EncounterStatus.COMPLETED
 
     tournament_id = encounter.tournament_id
+    await advance_winner(session, encounter)
     await session.commit()
 
     if encounter.challonge_id:
