@@ -1,34 +1,23 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
-import Link from "next/link";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeftRight,
   Check,
   ChevronsUpDown,
-  FolderInput,
-  Loader2,
-  Minus,
   Pencil,
   Plus,
-  RefreshCw,
   Sparkles,
   Trash2,
   UserPlus
 } from "lucide-react";
 
-import {
-  AdminDetailTableShell,
-  getAdminDetailTableStyles
-} from "@/components/admin/AdminDetailTable";
-import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { UserSearchCombobox } from "@/components/admin/UserSearchCombobox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Command,
@@ -48,87 +37,60 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow
-} from "@/components/ui/table";
+import { useToast } from "@/hooks/use-toast";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import { cn } from "@/lib/utils";
-import { useToast } from "@/hooks/use-toast";
 import adminService from "@/services/admin.service";
-import balancerAdminService from "@/services/balancer-admin.service";
 import type {
   PlayerCreateInput,
   PlayerSubRole,
   PlayerUpdateInput,
   TeamUpdateInput
 } from "@/types/admin.types";
-import type { Team } from "@/types/team.types";
+import type { Team, Player } from "@/types/team.types";
 import type { MinimizedUser } from "@/types/user.types";
 import { formatSubRoleLabel } from "@/utils/player";
-import {
-  TOURNAMENT_DETAIL_PREVIEW_LIMIT,
-  getEmptyTeamForm,
-  getTeamForm,
-  type TeamFormState
-} from "./tournamentWorkspace.helpers";
-import { invalidateTournamentWorkspace } from "./tournamentWorkspace.queryKeys";
-import {
-  buildCaptainOptions,
-  buildRosterDraftTree,
-  buildRosterInitialSnapshot,
-  createRosterDraftFromTeam,
-  normalizePlayerRole,
-  removeRosterDraftPlayer,
-  type PlayerRoleOption,
-  type TeamRosterDraftPlayer
-} from "./tournamentRoster.helpers";
 
-interface TournamentTeamsTabProps {
+type TeamRosterEditorDialogProps = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  mode: "create" | "edit";
   tournamentId: number;
   workspaceId: number | null;
-  teams: Team[];
-  stagesCount: number;
-  hasChallongeSource: boolean;
+  team?: Team | null;
   canCreateTeam: boolean;
   canUpdateTeam: boolean;
-  canDeleteTeam: boolean;
-  canImportTeams: boolean;
   canCreatePlayer: boolean;
   canUpdatePlayer: boolean;
   canDeletePlayer: boolean;
-}
+  onSaved?: (team: Team) => void;
+};
 
-interface TeamNumberInputProps {
-  id: string;
-  value: number;
-  onChange: (value: number) => void;
-  min?: number;
-  max?: number;
-  step?: number;
-  suffix?: string;
-  disabled?: boolean;
-}
+type TeamFormState = {
+  name: string;
+  captain_id: number;
+  avg_sr: number;
+  total_sr: number;
+};
 
-interface PlayerOption {
-  value: string;
-  label: string;
-  meta?: string;
-}
+type PlayerRoleOption = "Tank" | "Damage" | "Support";
 
-interface SearchableSelectProps {
-  value: string;
-  options: PlayerOption[];
-  onChange: (value: string) => void;
-  placeholder: string;
-  searchPlaceholder: string;
-  emptyMessage: string;
-  disabled?: boolean;
-}
+type TeamRosterDraftPlayer = {
+  draft_id: string;
+  player_id: number | null;
+  state: "existing" | "new";
+  name: string;
+  user_id: number;
+  user_name: string;
+  role: PlayerRoleOption;
+  sub_role: string;
+  rank: number;
+  is_newcomer: boolean;
+  is_newcomer_role: boolean;
+  is_substitution: boolean;
+  related_player_id: number | null;
+  related_draft_id: string | null;
+};
 
 type PlayerEditorFormState = {
   name: string;
@@ -149,188 +111,209 @@ type PlayerDialogState = {
   initialState: PlayerEditorFormState;
 };
 
-function clampTeamNumber(value: number, min?: number, max?: number) {
-  if (typeof min === "number" && value < min) {
-    return min;
-  }
-
-  if (typeof max === "number" && value > max) {
-    return max;
-  }
-
-  return value;
-}
-
-function normalizeTeamNumberDraft(value: number) {
-  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(1)));
-}
-
-function TeamNumberInput({
-  id,
-  value,
-  onChange,
-  min,
-  max,
-  step = 1,
-  suffix,
-  disabled = false
-}: TeamNumberInputProps) {
-  const [draft, setDraft] = useState(normalizeTeamNumberDraft(value));
-
-  useEffect(() => {
-    setDraft(normalizeTeamNumberDraft(value));
-  }, [value]);
-
-  const commitValue = (nextDraft: string) => {
-    const nextValue = Number.parseFloat(nextDraft);
-
-    if (Number.isNaN(nextValue)) {
-      setDraft(normalizeTeamNumberDraft(value));
-      return;
-    }
-
-    const clamped = clampTeamNumber(nextValue, min, max);
-    setDraft(normalizeTeamNumberDraft(clamped));
-    onChange(clamped);
-  };
-
-  const stepValue = (direction: -1 | 1) => {
-    const nextValue = clampTeamNumber(value + step * direction, min, max);
-    setDraft(normalizeTeamNumberDraft(nextValue));
-    onChange(nextValue);
-  };
-
-  return (
-    <div className="flex h-10 overflow-hidden rounded-md border border-input bg-background/80 shadow-sm focus-within:ring-1 focus-within:ring-ring">
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="h-full w-10 shrink-0 rounded-r-none border-r"
-        onClick={() => stepValue(-1)}
-        disabled={disabled || (typeof min === "number" && value <= min)}
-        aria-label={`Decrease ${id}`}
-      >
-        <Minus className="h-3.5 w-3.5" />
-      </Button>
-      <div className="flex min-w-0 flex-1 items-center">
-        <Input
-          id={id}
-          type="text"
-          inputMode="decimal"
-          value={draft}
-          onChange={(event) => {
-            const nextDraft = event.target.value.replace(/[^\d.-]/g, "");
-            setDraft(nextDraft);
-
-            if (nextDraft && nextDraft !== "-" && nextDraft !== "." && nextDraft !== "-.") {
-              commitValue(nextDraft);
-            }
-          }}
-          onBlur={() => commitValue(draft)}
-          disabled={disabled}
-          className="h-full rounded-none border-0 bg-transparent text-center shadow-none focus-visible:ring-0"
-        />
-        {suffix ? (
-          <span className="shrink-0 pr-3 text-xs font-medium text-muted-foreground">{suffix}</span>
-        ) : null}
-      </div>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="h-full w-10 shrink-0 rounded-l-none border-l"
-        onClick={() => stepValue(1)}
-        disabled={disabled || (typeof max === "number" && value >= max)}
-        aria-label={`Increase ${id}`}
-      >
-        <Plus className="h-3.5 w-3.5" />
-      </Button>
-    </div>
-  );
-}
-
-function SearchableSelect({
-  value,
-  options,
-  onChange,
-  placeholder,
-  searchPlaceholder,
-  emptyMessage,
-  disabled = false
-}: SearchableSelectProps) {
-  const [open, setOpen] = useState(false);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const selected = options.find((option) => option.value === value);
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          ref={triggerRef}
-          type="button"
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          disabled={disabled}
-          className="h-10 w-full justify-between border-border/60 bg-background/80 font-normal hover:bg-background/90"
-        >
-          <span className="truncate" title={selected?.label ?? placeholder}>
-            {selected?.label ?? placeholder}
-          </span>
-          <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-0">
-        <Command>
-          <CommandInput placeholder={searchPlaceholder} />
-          <CommandList>
-            <CommandEmpty>{emptyMessage}</CommandEmpty>
-            <CommandGroup>
-              {options.map((option) => (
-                <CommandItem
-                  key={option.value}
-                  value={`${option.label} ${option.meta ?? ""} ${option.value}`}
-                  onSelect={() => {
-                    onChange(option.value);
-                    setOpen(false);
-                  }}
-                >
-                  <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
-                    <span className="truncate">{option.label}</span>
-                    {option.meta ? (
-                      <span className="shrink-0 text-xs text-muted-foreground">{option.meta}</span>
-                    ) : null}
-                  </div>
-                  <Check
-                    className={cn(
-                      "ml-2 h-4 w-4",
-                      value === option.value ? "opacity-100" : "opacity-0"
-                    )}
-                  />
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
-  );
-}
+type TeamRosterDraftTreeNode = {
+  player: TeamRosterDraftPlayer;
+  children: TeamRosterDraftTreeNode[];
+};
 
 const PLAYER_ROLE_OPTIONS: PlayerRoleOption[] = ["Tank", "Damage", "Support"];
 
-function RoleOptionContent({ role }: { role: PlayerRoleOption }) {
-  return (
-    <div className="flex items-center gap-2">
-      <span>{role}</span>
-    </div>
-  );
+function getEmptyTeamForm(): TeamFormState {
+  return {
+    name: "",
+    captain_id: 0,
+    avg_sr: 0,
+    total_sr: 0
+  };
 }
 
-function filterSubRoleOptions(subRoles: PlayerSubRole[] | undefined, role: PlayerRoleOption) {
-  const catalogRole = role === "Tank" ? "tank" : role === "Support" ? "support" : "damage";
-  return (subRoles ?? []).filter((subRole) => subRole.role === catalogRole);
+function getTeamForm(team: Team): TeamFormState {
+  return {
+    name: team.name,
+    captain_id: team.captain_id,
+    avg_sr: team.avg_sr,
+    total_sr: team.total_sr
+  };
+}
+
+function normalizePlayerRole(role: string | null | undefined): PlayerRoleOption {
+  const normalized = role?.trim().toLowerCase();
+
+  if (normalized === "tank") {
+    return "Tank";
+  }
+
+  if (normalized === "support") {
+    return "Support";
+  }
+
+  return "Damage";
+}
+
+function createExistingRosterDraftPlayer(player: Player): TeamRosterDraftPlayer {
+  return {
+    draft_id: `existing:${player.id}`,
+    player_id: player.id,
+    state: "existing",
+    name: player.name,
+    user_id: player.user_id,
+    user_name: player.user?.name ?? `User #${player.user_id}`,
+    role: normalizePlayerRole(player.role),
+    sub_role: player.sub_role ?? "",
+    rank: player.rank,
+    is_newcomer: player.is_newcomer,
+    is_newcomer_role: player.is_newcomer_role,
+    is_substitution: player.is_substitution,
+    related_player_id: player.related_player_id,
+    related_draft_id: null
+  };
+}
+
+function createRosterDraftFromTeam(team: Team): TeamRosterDraftPlayer[] {
+  const drafts = (team.players ?? []).map(createExistingRosterDraftPlayer);
+  const draftByPlayerId = new Map(
+    drafts
+      .filter((draft) => draft.player_id != null)
+      .map((draft) => [draft.player_id as number, draft.draft_id])
+  );
+
+  return drafts.map((draft) => ({
+    ...draft,
+    related_draft_id:
+      draft.related_player_id != null
+        ? (draftByPlayerId.get(draft.related_player_id) ?? null)
+        : null
+  }));
+}
+
+function buildRosterInitialSnapshot(team: Team | null) {
+  return {
+    team: team ? getTeamForm(team) : getEmptyTeamForm(),
+    roster: team ? createRosterDraftFromTeam(team) : []
+  };
+}
+
+function getRolePriority(role: PlayerRoleOption): number {
+  if (role === "Tank") return 1;
+  if (role === "Damage") return 2;
+  if (role === "Support") return 3;
+  return 4;
+}
+
+function sortRosterDraftPlayers(players: TeamRosterDraftPlayer[]): TeamRosterDraftPlayer[] {
+  const draftById = new Map(players.map((player) => [player.draft_id, player]));
+  const children = new Map<string, TeamRosterDraftPlayer[]>();
+  const roots: TeamRosterDraftPlayer[] = [];
+
+  for (const player of players) {
+    const relatedDraftId = player.related_draft_id;
+    if (player.is_substitution && relatedDraftId && draftById.has(relatedDraftId)) {
+      const entries = children.get(relatedDraftId) ?? [];
+      entries.push(player);
+      children.set(relatedDraftId, entries);
+      continue;
+    }
+    roots.push(player);
+  }
+
+  for (const entries of children.values()) {
+    entries.sort((left, right) => right.rank - left.rank);
+  }
+
+  roots.sort((left, right) => {
+    const roleDelta = getRolePriority(left.role) - getRolePriority(right.role);
+    if (roleDelta !== 0) {
+      return roleDelta;
+    }
+    return right.rank - left.rank;
+  });
+
+  const flatten = (player: TeamRosterDraftPlayer): TeamRosterDraftPlayer[] => {
+    const descendants = children.get(player.draft_id) ?? [];
+    return [player, ...descendants.flatMap(flatten)];
+  };
+
+  return roots.flatMap(flatten);
+}
+
+function buildRosterDraftTree(players: TeamRosterDraftPlayer[]): TeamRosterDraftTreeNode[] {
+  const orderedPlayers = sortRosterDraftPlayers(players);
+  const nodeByDraftId = new Map<string, TeamRosterDraftTreeNode>(
+    orderedPlayers.map((player) => [player.draft_id, { player, children: [] }])
+  );
+  const roots: TeamRosterDraftTreeNode[] = [];
+
+  for (const player of orderedPlayers) {
+    const node = nodeByDraftId.get(player.draft_id);
+    if (!node) {
+      continue;
+    }
+    const parent = player.related_draft_id ? nodeByDraftId.get(player.related_draft_id) : null;
+    if (player.is_substitution && parent) {
+      parent.children.push(node);
+      continue;
+    }
+    roots.push(node);
+  }
+
+  return roots;
+}
+
+function collectRosterDraftSubtreeIds(players: TeamRosterDraftPlayer[], draftId: string): string[] {
+  const childMap = new Map<string, string[]>();
+
+  for (const player of players) {
+    if (!player.related_draft_id) {
+      continue;
+    }
+    const entries = childMap.get(player.related_draft_id) ?? [];
+    entries.push(player.draft_id);
+    childMap.set(player.related_draft_id, entries);
+  }
+
+  const collected: string[] = [];
+  const visit = (currentDraftId: string) => {
+    collected.push(currentDraftId);
+    const childIds = childMap.get(currentDraftId) ?? [];
+    for (const childId of childIds) {
+      visit(childId);
+    }
+  };
+
+  visit(draftId);
+  return collected;
+}
+
+function removeRosterDraftPlayer(
+  players: TeamRosterDraftPlayer[],
+  draftId: string
+): {
+  players: TeamRosterDraftPlayer[];
+  deletedExistingPlayerId: number | null;
+} {
+  const subtreeIds = new Set(collectRosterDraftSubtreeIds(players, draftId));
+  const deletedPlayer = players.find((player) => player.draft_id === draftId) ?? null;
+
+  return {
+    players: players.filter((player) => !subtreeIds.has(player.draft_id)),
+    deletedExistingPlayerId: deletedPlayer?.player_id ?? null
+  };
+}
+
+function buildCaptainOptions(players: TeamRosterDraftPlayer[]): Array<{
+  user_id: number;
+  label: string;
+}> {
+  const unique = new Map<number, string>();
+
+  for (const player of sortRosterDraftPlayers(players)) {
+    if (player.user_id <= 0 || unique.has(player.user_id)) {
+      continue;
+    }
+    unique.set(player.user_id, player.user_name || player.name || `User #${player.user_id}`);
+  }
+
+  return Array.from(unique.entries()).map(([user_id, label]) => ({ user_id, label }));
 }
 
 function getPlayerEditorState(draft: TeamRosterDraftPlayer | null): PlayerEditorFormState {
@@ -435,33 +418,236 @@ function buildPlayerUpdatePayload(
   return hasUnsavedChanges(payload, initialComparable) ? payload : null;
 }
 
-export function TournamentTeamsTab({
+function clampTeamNumber(value: number, min?: number, max?: number) {
+  if (typeof min === "number" && value < min) {
+    return min;
+  }
+
+  if (typeof max === "number" && value > max) {
+    return max;
+  }
+
+  return value;
+}
+
+function normalizeTeamNumberDraft(value: number) {
+  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(1)));
+}
+
+function TeamNumberInput({
+  id,
+  value,
+  onChange,
+  min,
+  max,
+  step = 1,
+  suffix,
+  disabled = false
+}: {
+  id: string;
+  value: number;
+  onChange: (value: number) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+  suffix?: string;
+  disabled?: boolean;
+}) {
+  const [draft, setDraft] = useState(normalizeTeamNumberDraft(value));
+
+  useEffect(() => {
+    setDraft(normalizeTeamNumberDraft(value));
+  }, [value]);
+
+  const commitValue = (nextDraft: string) => {
+    const nextValue = Number.parseFloat(nextDraft);
+
+    if (Number.isNaN(nextValue)) {
+      setDraft(normalizeTeamNumberDraft(value));
+      return;
+    }
+
+    const clamped = clampTeamNumber(nextValue, min, max);
+    setDraft(normalizeTeamNumberDraft(clamped));
+    onChange(clamped);
+  };
+
+  const stepValue = (direction: -1 | 1) => {
+    const nextValue = clampTeamNumber(value + step * direction, min, max);
+    setDraft(normalizeTeamNumberDraft(nextValue));
+    onChange(nextValue);
+  };
+
+  return (
+    <div className="flex h-10 overflow-hidden rounded-md border border-input bg-background/80 shadow-sm focus-within:ring-1 focus-within:ring-ring">
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-full w-10 shrink-0 rounded-r-none border-r"
+        onClick={() => stepValue(-1)}
+        disabled={disabled || (typeof min === "number" && value <= min)}
+        aria-label={`Decrease ${id}`}
+      >
+        <span className="sr-only">Decrease</span>
+        -
+      </Button>
+      <div className="flex min-w-0 flex-1 items-center">
+        <Input
+          id={id}
+          type="text"
+          inputMode="decimal"
+          value={draft}
+          onChange={(event) => {
+            const nextDraft = event.target.value.replace(/[^\d.-]/g, "");
+            setDraft(nextDraft);
+
+            if (nextDraft && nextDraft !== "-" && nextDraft !== "." && nextDraft !== "-.") {
+              commitValue(nextDraft);
+            }
+          }}
+          onBlur={() => commitValue(draft)}
+          disabled={disabled}
+          className="h-full rounded-none border-0 bg-transparent text-center shadow-none focus-visible:ring-0"
+        />
+        {suffix ? (
+          <span className="shrink-0 pr-3 text-xs font-medium text-muted-foreground">{suffix}</span>
+        ) : null}
+      </div>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-full w-10 shrink-0 rounded-l-none border-l"
+        onClick={() => stepValue(1)}
+        disabled={disabled || (typeof max === "number" && value >= max)}
+        aria-label={`Increase ${id}`}
+      >
+        <span className="sr-only">Increase</span>
+        +
+      </Button>
+    </div>
+  );
+}
+
+function SearchableSelect({
+  value,
+  options,
+  onChange,
+  placeholder,
+  searchPlaceholder,
+  emptyMessage,
+  disabled = false
+}: {
+  value: string;
+  options: Array<{ value: string; label: string; meta?: string }>;
+  onChange: (value: string) => void;
+  placeholder: string;
+  searchPlaceholder: string;
+  emptyMessage: string;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = options.find((option) => option.value === value);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          disabled={disabled}
+          className="h-10 w-full justify-between border-border/60 bg-background/80 font-normal hover:bg-background/90"
+        >
+          <span className="truncate" title={selected?.label ?? placeholder}>
+            {selected?.label ?? placeholder}
+          </span>
+          <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-0">
+        <Command>
+          <CommandInput placeholder={searchPlaceholder} />
+          <CommandList>
+            <CommandEmpty>{emptyMessage}</CommandEmpty>
+            <CommandGroup>
+              {options.map((option) => (
+                <CommandItem
+                  key={option.value}
+                  value={`${option.label} ${option.meta ?? ""} ${option.value}`}
+                  onSelect={() => {
+                    onChange(option.value);
+                    setOpen(false);
+                  }}
+                >
+                  <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
+                    <span className="truncate">{option.label}</span>
+                    {option.meta ? (
+                      <span className="shrink-0 text-xs text-muted-foreground">{option.meta}</span>
+                    ) : null}
+                  </div>
+                  <Check
+                    className={cn(
+                      "ml-2 h-4 w-4",
+                      value === option.value ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function filterSubRoleOptions(subRoles: PlayerSubRole[] | undefined, role: PlayerRoleOption) {
+  const catalogRole = role === "Tank" ? "tank" : role === "Support" ? "support" : "damage";
+  return (subRoles ?? []).filter((subRole) => subRole.role === catalogRole);
+}
+
+function invalidateTeamQueries(queryClient: ReturnType<typeof useQueryClient>, tournamentId: number, teamId?: number) {
+  void Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["teams"] }),
+    queryClient.invalidateQueries({ queryKey: ["tournaments"] }),
+    queryClient.invalidateQueries({ queryKey: ["admin", "tournament", tournamentId] }),
+    queryClient.invalidateQueries({ queryKey: ["admin", "tournament", tournamentId, "teams"] }),
+    teamId != null
+      ? queryClient.invalidateQueries({ queryKey: ["admin", "team", teamId] })
+      : Promise.resolve()
+  ]);
+}
+
+export function TeamRosterEditorDialog({
+  open,
+  onOpenChange,
+  mode,
   tournamentId,
   workspaceId,
-  teams,
-  stagesCount,
-  hasChallongeSource,
+  team = null,
   canCreateTeam,
   canUpdateTeam,
-  canDeleteTeam,
-  canImportTeams,
   canCreatePlayer,
   canUpdatePlayer,
-  canDeletePlayer
-}: TournamentTeamsTabProps) {
+  canDeletePlayer,
+  onSaved
+}: TeamRosterEditorDialogProps) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const tableStyles = getAdminDetailTableStyles("compact");
-  const importTeamsFileRef = useRef<HTMLInputElement>(null);
   const draftCounterRef = useRef(0);
+  const isEditing = mode === "edit";
+  const canManageRoster = canCreatePlayer || canUpdatePlayer || canDeletePlayer;
+  const initialTeamSnapshot = isEditing && team ? getTeamForm(team) : getEmptyTeamForm();
+  const initialRosterSnapshot = isEditing && team ? createRosterDraftFromTeam(team) : [];
 
-  const [teamDialogOpen, setTeamDialogOpen] = useState(false);
-  const [editingTeam, setEditingTeam] = useState<Team | null>(null);
-  const [teamFormData, setTeamFormData] = useState<TeamFormState>(getEmptyTeamForm());
-  const [rosterDraftPlayers, setRosterDraftPlayers] = useState<TeamRosterDraftPlayer[]>([]);
+  const [teamFormData, setTeamFormData] = useState<TeamFormState>(initialTeamSnapshot);
+  const [rosterDraftPlayers, setRosterDraftPlayers] =
+    useState<TeamRosterDraftPlayer[]>(initialRosterSnapshot);
   const [deletedExistingPlayerIds, setDeletedExistingPlayerIds] = useState<number[]>([]);
   const [teamFormError, setTeamFormError] = useState<string | undefined>();
-  const [teamPendingDelete, setTeamPendingDelete] = useState<Team | null>(null);
   const [playerDialogOpen, setPlayerDialogOpen] = useState(false);
   const [playerDialogState, setPlayerDialogState] = useState<PlayerDialogState | null>(null);
   const [playerFormData, setPlayerFormData] = useState<PlayerEditorFormState>(
@@ -469,14 +655,10 @@ export function TournamentTeamsTab({
   );
   const [playerFormError, setPlayerFormError] = useState<string | undefined>();
 
-  const canManageRoster = canCreatePlayer || canUpdatePlayer || canDeletePlayer;
-  const canManageTeams = canCreateTeam || canUpdateTeam || canDeleteTeam || canManageRoster;
-  const teamsAdminHref = `/admin/teams?tournament=${tournamentId}`;
-
   const { data: playerSubRoles } = useQuery({
     queryKey: ["admin", "player-sub-roles", workspaceId],
     queryFn: () => adminService.getPlayerSubRoles({ workspace_id: workspaceId! }),
-    enabled: Boolean(workspaceId && teamDialogOpen)
+    enabled: Boolean(open && workspaceId)
   });
 
   const rosterByDraftId = useMemo(
@@ -489,27 +671,16 @@ export function TournamentTeamsTab({
     [rosterDraftPlayers]
   );
 
+  const createNextDraftId = () => {
+    draftCounterRef.current += 1;
+    return `new:${draftCounterRef.current}`;
+  };
+
   const resetPlayerDialog = () => {
     setPlayerDialogOpen(false);
     setPlayerDialogState(null);
     setPlayerFormData(getPlayerEditorState(null));
     setPlayerFormError(undefined);
-  };
-
-  const resetTeamDialog = () => {
-    setTeamDialogOpen(false);
-    setEditingTeam(null);
-    setTeamFormData(getEmptyTeamForm());
-    setRosterDraftPlayers([]);
-    setDeletedExistingPlayerIds([]);
-    setTeamFormError(undefined);
-    saveTeamMutation.reset();
-    resetPlayerDialog();
-  };
-
-  const createNextDraftId = () => {
-    draftCounterRef.current += 1;
-    return `new:${draftCounterRef.current}`;
   };
 
   const syncCaptainSelection = (nextRoster: TeamRosterDraftPlayer[]) => {
@@ -572,15 +743,13 @@ export function TournamentTeamsTab({
 
   const saveTeamMutation = useMutation({
     mutationFn: async (variables: {
-      mode: "create" | "update";
-      teamId?: number;
       teamData: TeamFormState;
       roster: TeamRosterDraftPlayer[];
       deletedIds: number[];
       initialTeam: Team | null;
       canPatchTeam: boolean;
     }) => {
-      const { mode, teamId, teamData, roster, deletedIds, initialTeam, canPatchTeam } = variables;
+      const { teamData, roster, deletedIds, initialTeam, canPatchTeam } = variables;
 
       const initialByPlayerId = new Map(
         (initialTeam ? createRosterDraftFromTeam(initialTeam) : [])
@@ -591,7 +760,7 @@ export function TournamentTeamsTab({
       let savedTeam: Team;
       let deferCaptainPatch = false;
 
-      if (mode === "create") {
+      if (!isEditing) {
         savedTeam = await adminService.createTeam({
           name: teamData.name.trim(),
           tournament_id: tournamentId,
@@ -615,9 +784,9 @@ export function TournamentTeamsTab({
           deferCaptainPatch = true;
         }
 
-        savedTeam = await adminService.updateTeam(teamId!, initialPatch);
+        savedTeam = await adminService.updateTeam(team!.id, initialPatch);
       } else {
-        savedTeam = initialTeam as Team;
+        savedTeam = team!;
       }
 
       const rosterMap = new Map(roster.map((player) => [player.draft_id, player]));
@@ -698,59 +867,22 @@ export function TournamentTeamsTab({
         await adminService.deletePlayer(playerId);
       }
 
-      if (mode === "update" && canPatchTeam && deferCaptainPatch) {
+      if (isEditing && canPatchTeam && deferCaptainPatch) {
         await adminService.updateTeam(savedTeam.id, { captain_id: teamData.captain_id });
       }
 
       return savedTeam;
     },
-    onSuccess: async (_data, variables) => {
-      invalidateTournamentWorkspace(queryClient, tournamentId);
-      resetTeamDialog();
+    onSuccess: (savedTeam) => {
+      invalidateTeamQueries(queryClient, tournamentId, savedTeam.id);
+      onSaved?.(savedTeam);
+      onOpenChange(false);
       toast({
-        title: variables.mode === "create" ? "Team and roster created" : "Team roster updated"
+        title: isEditing ? "Team roster updated" : "Team and roster created"
       });
     },
     onError: (error: Error) => {
       setTeamFormError(error.message);
-    }
-  });
-
-  const deleteTeamMutation = useMutation({
-    mutationFn: (teamId: number) => adminService.deleteTeam(teamId),
-    onSuccess: () => {
-      invalidateTournamentWorkspace(queryClient, tournamentId);
-      setTeamPendingDelete(null);
-      toast({ title: "Team deleted" });
-    },
-    onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    }
-  });
-
-  const syncTeamsMutation = useMutation({
-    mutationFn: () => adminService.syncTeamsFromChallonge(tournamentId),
-    onSuccess: () => {
-      invalidateTournamentWorkspace(queryClient, tournamentId);
-      toast({ title: "Teams synced from Challonge" });
-    },
-    onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    }
-  });
-
-  const importTeamsMutation = useMutation({
-    mutationFn: (file: File) => balancerAdminService.importTeamsFromJson(tournamentId, file),
-    onSuccess: async (result) => {
-      invalidateTournamentWorkspace(queryClient, tournamentId);
-      toast({ title: "Teams imported", description: `${result.imported_teams} teams created.` });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Failed to import teams",
-        description: error.message,
-        variant: "destructive"
-      });
     }
   });
 
@@ -837,30 +969,28 @@ export function TournamentTeamsTab({
       return;
     }
 
-    if (!editingTeam && !canCreateTeam) {
+    if (!isEditing && !canCreateTeam) {
       setTeamFormError("You do not have permission to create teams.");
       return;
     }
 
-    if (editingTeam && !canUpdateTeam && !canManageRoster) {
+    if (isEditing && !canUpdateTeam && !canManageRoster) {
       setTeamFormError("You do not have permission to update this team.");
       return;
     }
 
     saveTeamMutation.mutate({
-      mode: editingTeam ? "update" : "create",
-      teamId: editingTeam?.id,
       teamData: teamFormData,
       roster: rosterDraftPlayers,
       deletedIds: deletedExistingPlayerIds,
-      initialTeam: editingTeam,
-      canPatchTeam: editingTeam ? canUpdateTeam : true
+      initialTeam: team,
+      canPatchTeam: isEditing ? canUpdateTeam : true
     });
   };
 
-  const rosterSnapshot = buildRosterInitialSnapshot(editingTeam);
+  const rosterSnapshot = buildRosterInitialSnapshot(isEditing ? team : null);
   const isTeamDirty =
-    teamDialogOpen &&
+    open &&
     hasUnsavedChanges(
       {
         team: teamFormData,
@@ -889,10 +1019,7 @@ export function TournamentTeamsTab({
     }))
   ];
 
-  const renderRosterNodes = (
-    nodes: ReturnType<typeof buildRosterDraftTree>,
-    depth = 0
-  ): ReactNode =>
+  const renderRosterNodes = (nodes: TeamRosterDraftTreeNode[], depth = 0): React.ReactNode =>
     nodes.map((node) => {
       const draft = node.player;
       const canEditDraft = draft.state === "new" ? canCreatePlayer : canUpdatePlayer;
@@ -910,9 +1037,7 @@ export function TournamentTeamsTab({
                   {draft.state === "new" ? <Badge variant="outline">New</Badge> : null}
                 </div>
                 <div className="text-sm text-muted-foreground">
-                  {draft.user_id > 0
-                    ? `${draft.user_name} · Rank ${draft.rank}`
-                    : "User not selected yet"}
+                  {draft.user_id > 0 ? `${draft.user_name} · Rank ${draft.rank}` : "User not selected yet"}
                 </div>
                 <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                   <span>{formatSubRoleLabel(draft.sub_role) ?? "No sub-role"}</span>
@@ -967,167 +1092,27 @@ export function TournamentTeamsTab({
 
   return (
     <>
-      <Card className="border-border/40">
-        <CardHeader className="flex flex-row items-center justify-between gap-3 px-4 py-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <CardTitle className="text-sm font-semibold">Teams</CardTitle>
-            <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground/50">
-              <span>{teams.length} teams</span>
-              <span>·</span>
-              <span>{stagesCount} stages configured</span>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {canImportTeams ? (
-              <Button
-                variant="outline"
-                onClick={() => syncTeamsMutation.mutate()}
-                disabled={syncTeamsMutation.isPending || !hasChallongeSource}
-              >
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Sync Teams
-              </Button>
-            ) : null}
-            {canImportTeams ? (
-              <>
-                <input
-                  ref={importTeamsFileRef}
-                  type="file"
-                  accept="application/json"
-                  className="hidden"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) importTeamsMutation.mutate(file);
-                    event.target.value = "";
-                  }}
-                />
-                <Button
-                  variant="outline"
-                  onClick={() => importTeamsFileRef.current?.click()}
-                  disabled={importTeamsMutation.isPending}
-                >
-                  {importTeamsMutation.isPending ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <FolderInput className="mr-2 h-4 w-4" />
-                  )}
-                  Import from JSON
-                </Button>
-              </>
-            ) : null}
-            {canManageTeams ? (
-              <Button asChild>
-                <Link href={teamsAdminHref}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Manage Teams
-                </Link>
-              </Button>
-            ) : null}
-          </div>
-        </CardHeader>
-        <CardContent>
-          <AdminDetailTableShell variant="compact">
-            <Table>
-              <TableHeader>
-                <TableRow className={tableStyles.headerRow}>
-                  <TableHead className={tableStyles.head}>Team</TableHead>
-                  <TableHead className={tableStyles.head}>Avg SR</TableHead>
-                  <TableHead className={tableStyles.head}>Total SR</TableHead>
-                  <TableHead className={tableStyles.head}>Players</TableHead>
-                  <TableHead className={`${tableStyles.head} text-right`}>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {teams.length ? (
-                  teams.slice(0, TOURNAMENT_DETAIL_PREVIEW_LIMIT).map((team) => (
-                    <TableRow key={team.id} className={tableStyles.row}>
-                      <TableCell className={tableStyles.cell}>
-                        <span className="font-medium">{team.name}</span>
-                      </TableCell>
-                      <TableCell className={tableStyles.cell}>{team.avg_sr.toFixed(0)}</TableCell>
-                      <TableCell className={tableStyles.cell}>{team.total_sr}</TableCell>
-                      <TableCell className={tableStyles.cell}>{team.players.length}</TableCell>
-                      <TableCell className={tableStyles.cell}>
-                        <div className="flex items-center justify-end gap-2">
-                          <Button asChild variant="ghost" size="sm" aria-label={`Open ${team.name}`}>
-                            <Link href={`/admin/teams/${team.id}`}>
-                              <Pencil className="mr-2 h-4 w-4" />
-                              Open
-                            </Link>
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow className={tableStyles.row}>
-                    <TableCell className={tableStyles.cell} colSpan={5}>
-                      <div className="flex flex-col gap-3 rounded-xl border border-dashed border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
-                        <span>
-                          No teams loaded for this tournament yet. Sync from Challonge or open the
-                          dedicated teams workspace to create the first roster.
-                        </span>
-                        <div className="flex flex-wrap gap-2">
-                          {canImportTeams ? (
-                            <Button
-                              variant="outline"
-                              onClick={() => syncTeamsMutation.mutate()}
-                              disabled={syncTeamsMutation.isPending || !hasChallongeSource}
-                            >
-                              <RefreshCw className="mr-2 h-4 w-4" />
-                              Sync Teams
-                            </Button>
-                          ) : null}
-                          {canManageTeams ? (
-                            <Button asChild variant="outline">
-                              <Link href={teamsAdminHref}>
-                                <Plus className="mr-2 h-4 w-4" />
-                                Manage Teams
-                              </Link>
-                            </Button>
-                          ) : null}
-                        </div>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </AdminDetailTableShell>
-
-          {teams.length > TOURNAMENT_DETAIL_PREVIEW_LIMIT ? (
-            <div className="border-t border-border/30 px-3 py-2">
-              <Link
-                href={teamsAdminHref}
-                className="text-[12px] text-muted-foreground/60 transition-colors hover:text-foreground"
-              >
-                Show all {teams.length} teams →
-              </Link>
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
-
       <EntityFormDialog
-        open={teamDialogOpen}
-        onOpenChange={(open) => {
-          setTeamDialogOpen(open);
-          if (!open) {
-            resetTeamDialog();
+        open={open}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            setTeamFormError(undefined);
+            resetPlayerDialog();
           }
+          onOpenChange(nextOpen);
         }}
-        title={editingTeam ? "Edit Team & Roster" : "Create Team & Roster"}
+        title={isEditing ? "Edit Team & Roster" : "Create Team & Roster"}
         description="Manage team identity, captain assignment, and the full tournament roster in one place."
         onSubmit={handleTeamSubmit}
         isSubmitting={saveTeamMutation.isPending}
-        submittingLabel={editingTeam ? "Saving team..." : "Creating team..."}
+        submittingLabel={isEditing ? "Saving team..." : "Creating team..."}
         errorMessage={teamFormError}
         isDirty={isTeamDirty}
       >
         <div className="space-y-5">
           <div className="rounded-md border border-border/60 bg-muted/20 p-3">
             <p className="text-sm font-medium">
-              {editingTeam ? "Edit team data and roster" : "Create a team with its starting roster"}
+              {isEditing ? "Edit team data and roster" : "Create a team with its starting roster"}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
               Captain can only be selected from the roster below. Deleting a player removes its
@@ -1140,7 +1125,7 @@ export function TournamentTeamsTab({
             <Input
               id="workspace-team-name"
               value={teamFormData.name}
-              disabled={editingTeam != null && !canUpdateTeam}
+              disabled={isEditing && !canUpdateTeam}
               placeholder="Team name"
               onChange={(event) =>
                 setTeamFormData((current) => ({ ...current, name: event.target.value }))
@@ -1158,7 +1143,7 @@ export function TournamentTeamsTab({
                   captain_id: Number.parseInt(value, 10)
                 }))
               }
-              disabled={editingTeam != null && !canUpdateTeam}
+              disabled={isEditing && !canUpdateTeam}
             >
               <SelectTrigger id="workspace-team-captain">
                 <SelectValue placeholder="Select captain from roster" />
@@ -1187,7 +1172,7 @@ export function TournamentTeamsTab({
                 min={0}
                 step={50}
                 suffix="SR"
-                disabled={editingTeam != null && !canUpdateTeam}
+                disabled={isEditing && !canUpdateTeam}
                 onChange={(value) =>
                   setTeamFormData((current) => ({
                     ...current,
@@ -1205,7 +1190,7 @@ export function TournamentTeamsTab({
                 min={0}
                 step={250}
                 suffix="SR"
-                disabled={editingTeam != null && !canUpdateTeam}
+                disabled={isEditing && !canUpdateTeam}
                 onChange={(value) =>
                   setTeamFormData((current) => ({
                     ...current,
@@ -1247,10 +1232,11 @@ export function TournamentTeamsTab({
 
       <EntityFormDialog
         open={playerDialogOpen}
-        onOpenChange={(open) => {
-          setPlayerDialogOpen(open);
-          if (!open) {
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
             resetPlayerDialog();
+          } else {
+            setPlayerDialogOpen(true);
           }
         }}
         title={
@@ -1330,7 +1316,7 @@ export function TournamentTeamsTab({
               <SelectContent>
                 {PLAYER_ROLE_OPTIONS.map((role) => (
                   <SelectItem key={role} value={role}>
-                    <RoleOptionContent role={role} />
+                    {role}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -1405,28 +1391,6 @@ export function TournamentTeamsTab({
           </div>
         </div>
       </EntityFormDialog>
-
-      <DeleteConfirmDialog
-        open={!!teamPendingDelete}
-        onOpenChange={(open) => {
-          if (!open) {
-            setTeamPendingDelete(null);
-          }
-        }}
-        onConfirm={() => {
-          if (teamPendingDelete) {
-            deleteTeamMutation.mutate(teamPendingDelete.id);
-          }
-        }}
-        title="Delete Team"
-        description={`Delete "${teamPendingDelete?.name ?? "this team"}"? This also removes roster members and related match records.`}
-        cascadeInfo={[
-          "Players in this team",
-          "Related encounter references",
-          "Stored standings rows"
-        ]}
-        isDeleting={deleteTeamMutation.isPending}
-      />
     </>
   );
 }

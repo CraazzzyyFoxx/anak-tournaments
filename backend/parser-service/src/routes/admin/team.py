@@ -32,7 +32,7 @@ async def create_team(
     """Create a new team (admin/organizer only)"""
     team = await admin_service.create_team(session, data)
     return await team_flows.to_pydantic(
-        session, team, ["tournament", "players.user", "captain"]
+        session, team, ["tournament", "players", "players.user", "captain"]
     )
 
 
@@ -45,7 +45,7 @@ async def get_team(
     """Get one team for admin workspace pages."""
     team = await admin_service.get_team(session, team_id)
     return await team_flows.to_pydantic(
-        session, team, ["tournament", "players.user", "captain"]
+        session, team, ["tournament", "players", "players.user", "captain"]
     )
 
 
@@ -59,7 +59,7 @@ async def update_team(
     """Update team fields (admin/organizer only)"""
     team = await admin_service.update_team(session, team_id, data)
     return await team_flows.to_pydantic(
-        session, team, ["tournament", "players.user", "captain"]
+        session, team, ["tournament", "players", "players.user", "captain"]
     )
 
 

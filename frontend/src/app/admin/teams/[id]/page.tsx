@@ -1,13 +1,24 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, ArrowLeftRight, Shield, Sparkles, Star, StarHalf, Trophy, UserCircle2, Users } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import {
+  ArrowLeft,
+  ArrowLeftRight,
+  Pencil,
+  Shield,
+  Sparkles,
+  Trophy,
+  UserCircle2,
+  Users
+} from "lucide-react";
 
 import { AdminDetailTableShell, getAdminDetailTableStyles } from "@/components/admin/AdminDetailTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { StatusIcon } from "@/components/admin/StatusIcon";
+import { TeamRosterEditorDialog } from "@/components/admin/teams/TeamRosterEditorDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,8 +29,9 @@ import {
   TableCell,
   TableHead,
   TableHeader,
-  TableRow,
+  TableRow
 } from "@/components/ui/table";
+import { usePermissions } from "@/hooks/usePermissions";
 import adminService from "@/services/admin.service";
 import type { Team, Player } from "@/types/team.types";
 import type { Tournament } from "@/types/tournament.types";
@@ -36,14 +48,23 @@ export default function AdminTeamWorkspacePage() {
   const params = useParams<{ id: string }>();
   const teamId = Number(params.id);
   const tableStyles = getAdminDetailTableStyles("comfortable");
+  const [editorOpen, setEditorOpen] = useState(false);
+  const { canAccessPermission } = usePermissions();
 
   const teamQuery = useQuery({
     queryKey: ["admin", "team", teamId],
     queryFn: () => adminService.getTeam(teamId) as Promise<AdminTeamDetail>,
-    enabled: Number.isFinite(teamId),
+    enabled: Number.isFinite(teamId)
   });
 
   const team = teamQuery.data;
+  const workspaceId = team?.tournament?.workspace_id ?? null;
+  const canUpdateTeam = canAccessPermission("team.update", workspaceId);
+  const canCreateTeam = canAccessPermission("team.create", workspaceId);
+  const canCreatePlayer = canAccessPermission("player.create", workspaceId);
+  const canUpdatePlayer = canAccessPermission("player.update", workspaceId);
+  const canDeletePlayer = canAccessPermission("player.delete", workspaceId);
+  const canOpenEditor = canUpdateTeam || canCreatePlayer || canUpdatePlayer || canDeletePlayer;
 
   if (teamQuery.isLoading) {
     return (
@@ -92,6 +113,12 @@ export default function AdminTeamWorkspacePage() {
                 </Link>
               </Button>
             ) : null}
+            {canOpenEditor ? (
+              <Button onClick={() => setEditorOpen(true)}>
+                <Pencil className="mr-2 h-4 w-4" />
+                Edit Team
+              </Button>
+            ) : null}
           </div>
         }
       />
@@ -102,14 +129,18 @@ export default function AdminTeamWorkspacePage() {
             <CardDescription>Average SR</CardDescription>
             <CardTitle>{team.avg_sr.toFixed(0)}</CardTitle>
           </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">Balanced roster average</CardContent>
+          <CardContent className="text-sm text-muted-foreground">
+            Balanced roster average
+          </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Total SR</CardDescription>
             <CardTitle>{team.total_sr}</CardTitle>
           </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">Combined current roster SR</CardContent>
+          <CardContent className="text-sm text-muted-foreground">
+            Combined current roster SR
+          </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
@@ -119,7 +150,9 @@ export default function AdminTeamWorkspacePage() {
               {team.players?.length ?? 0}
             </CardTitle>
           </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">Players assigned to this team</CardContent>
+          <CardContent className="text-sm text-muted-foreground">
+            Players assigned to this team
+          </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
@@ -154,33 +187,51 @@ export default function AdminTeamWorkspacePage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {team.players?.map((player) => (
-                    <TableRow key={player.id} className={tableStyles.row}>
-                      <TableCell className={tableStyles.cell}>
-                        <div className="font-medium">{player.name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {player.user?.name ? `Linked user: ${player.user.name}` : `User ID: ${player.user_id}`}
-                        </div>
-                      </TableCell>
-                      <TableCell className={tableStyles.cell}>
-                        <Badge variant="outline" className="capitalize">
-                          {player.role}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className={tableStyles.cell}>
-                        {formatSubRoleLabel(player.sub_role) ?? "-"}
-                      </TableCell>
-                      <TableCell className={tableStyles.cell}>
-                        {player.rank} / {player.division}
-                      </TableCell>
-                      <TableCell className={tableStyles.cell}>
-                        <div className="flex flex-wrap gap-2">
-                          {player.is_newcomer ? <StatusIcon icon={Sparkles} label="Newcomer" variant="warning" /> : null}
-                          {player.is_substitution ? <StatusIcon icon={ArrowLeftRight} label="Substitute" variant="info" /> : null}
-                        </div>
+                  {team.players?.length ? (
+                    team.players.map((player) => (
+                      <TableRow key={player.id} className={tableStyles.row}>
+                        <TableCell className={tableStyles.cell}>
+                          <div className="font-medium">{player.name}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {player.user?.name
+                              ? `Linked user: ${player.user.name}`
+                              : `User ID: ${player.user_id}`}
+                          </div>
+                        </TableCell>
+                        <TableCell className={tableStyles.cell}>
+                          <Badge variant="outline" className="capitalize">
+                            {player.role}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className={tableStyles.cell}>
+                          {formatSubRoleLabel(player.sub_role) ?? "-"}
+                        </TableCell>
+                        <TableCell className={tableStyles.cell}>
+                          {player.rank} / {player.division}
+                        </TableCell>
+                        <TableCell className={tableStyles.cell}>
+                          <div className="flex flex-wrap gap-2">
+                            {player.is_newcomer ? (
+                              <StatusIcon icon={Sparkles} label="Newcomer" variant="warning" />
+                            ) : null}
+                            {player.is_substitution ? (
+                              <StatusIcon
+                                icon={ArrowLeftRight}
+                                label="Substitute"
+                                variant="info"
+                              />
+                            ) : null}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow className={tableStyles.row}>
+                      <TableCell className={tableStyles.cell} colSpan={5}>
+                        No roster members loaded for this team yet.
                       </TableCell>
                     </TableRow>
-                  ))}
+                  )}
                 </TableBody>
               </Table>
             </AdminDetailTableShell>
@@ -224,18 +275,33 @@ export default function AdminTeamWorkspacePage() {
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               <Button asChild variant="outline" className="justify-start">
+                <Link href={`/admin/teams?tournament=${team.tournament_id}`}>Open Teams List</Link>
+              </Button>
+              <Button asChild variant="outline" className="justify-start">
                 <Link href="/admin/players">Manage Players</Link>
               </Button>
               <Button asChild variant="outline" className="justify-start">
                 <Link href="/admin/encounters">Manage Encounters</Link>
               </Button>
-              <Button asChild variant="outline" className="justify-start">
-                <Link href="/admin/standings">Manage Standings</Link>
-              </Button>
             </CardContent>
           </Card>
         </div>
       </div>
+
+      <TeamRosterEditorDialog
+        key={`team-detail-edit-${team.id}-${editorOpen ? "open" : "closed"}`}
+        open={editorOpen}
+        onOpenChange={setEditorOpen}
+        mode="edit"
+        tournamentId={team.tournament_id}
+        workspaceId={workspaceId}
+        team={team}
+        canCreateTeam={canCreateTeam}
+        canUpdateTeam={canUpdateTeam}
+        canCreatePlayer={canCreatePlayer}
+        canUpdatePlayer={canUpdatePlayer}
+        canDeletePlayer={canDeletePlayer}
+      />
     </div>
   );
 }
