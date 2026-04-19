@@ -14,6 +14,18 @@ from src.services.user import flows as user_flows
 from . import service
 
 
+def resolve_team_placement(team: models.Team) -> int | None:
+    standings = getattr(team, "standings", None) or []
+    positive_positions = [
+        standing.overall_position
+        for standing in standings
+        if getattr(standing, "overall_position", 0) > 0
+    ]
+    if positive_positions:
+        return min(positive_positions)
+    return None
+
+
 def resolve_hero_role_from_balancer(role: str) -> enums.HeroClass | None:
     if role is None:
         return None
@@ -52,8 +64,8 @@ async def to_pydantic(
         captain = await user_flows.to_pydantic(
             session, team.captain, utils.prepare_entities(entities, "captain")
         )
-    if "placement" in entities and getattr(team, "standings", None):
-        placement = team.standings[0].overall_position
+    if "placement" in entities:
+        placement = resolve_team_placement(team)
 
     return schemas.TeamRead(
         id=team.id,

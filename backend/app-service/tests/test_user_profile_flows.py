@@ -238,3 +238,77 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
         self.assertEqual(9, tournaments[0].division)
         self.assertIsNotNone(tournaments[0].division_grid_version)
         self.assertEqual(77, tournaments[0].division_grid_version.id)
+
+    async def test_get_tournaments_uses_best_positive_team_placement(self) -> None:
+        session = SimpleNamespace()
+        user = SimpleNamespace(id=42)
+        player = SimpleNamespace(user_id=42, role=enums.HeroClass.damage, rank=1500)
+        team = SimpleNamespace(
+            id=9,
+            name="Team Example",
+            tournament_id=3,
+            players=[player],
+            standings=[
+                SimpleNamespace(overall_position=0, win=0, lose=0, draw=0),
+                SimpleNamespace(overall_position=3, win=3, lose=1, draw=0),
+            ],
+            tournament=SimpleNamespace(
+                id=3,
+                number=12,
+                name="Tournament Example",
+                is_league=False,
+                division_grid_version=None,
+            ),
+        )
+
+        with (
+            patch.object(user_flows, "get", AsyncMock(return_value=user)),
+            patch.object(
+                user_flows.service,
+                "get_tournaments_with_stats",
+                AsyncMock(return_value=[(team, 4, 2, 0.75)]),
+            ),
+            patch.object(
+                user_flows.encounter_service,
+                "get_by_user_with_teams",
+                AsyncMock(return_value=[]),
+            ),
+            patch.object(
+                user_flows.team_service,
+                "get_team_count_by_tournament_bulk",
+                AsyncMock(return_value={3: 8}),
+            ),
+            patch.object(
+                user_flows.team_flows,
+                "to_pydantic_player",
+                AsyncMock(
+                    return_value=user_flows.schemas.PlayerRead.model_construct(
+                        id=91,
+                        name="Player Example",
+                        sub_role=None,
+                        rank=1500,
+                        division=9,
+                        role=enums.HeroClass.damage.value,
+                        tournament_id=3,
+                        user_id=42,
+                        team_id=9,
+                        is_newcomer=False,
+                        is_newcomer_role=False,
+                        is_substitution=False,
+                        related_player_id=None,
+                        tournament=None,
+                        team=None,
+                        user=None,
+                    )
+                ),
+            ),
+        ):
+            tournaments = await user_flows.get_tournaments(
+                session,
+                42,
+                workspace_id=5,
+                grid=division_grid.DEFAULT_GRID,
+            )
+
+        self.assertEqual(1, len(tournaments))
+        self.assertEqual(3, tournaments[0].placement)

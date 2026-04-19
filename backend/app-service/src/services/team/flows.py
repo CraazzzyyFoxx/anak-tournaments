@@ -11,6 +11,18 @@ from src.services.user import flows as user_flows
 from . import service
 
 
+def resolve_team_placement(team: models.Team) -> int | None:
+    standings = getattr(team, "standings", None) or []
+    positive_positions = [
+        standing.overall_position
+        for standing in standings
+        if getattr(standing, "overall_position", 0) > 0
+    ]
+    if positive_positions:
+        return min(positive_positions)
+    return None
+
+
 async def to_pydantic(
     session: AsyncSession,
     team: models.Team,
@@ -56,8 +68,7 @@ async def to_pydantic(
             session, team.captain, utils.prepare_entities(entities, "captain")
         )
     if "placement" in entities:
-        if team.standings:
-            placement = team.standings[0].overall_position
+        placement = resolve_team_placement(team)
     if "group" in entities:
         groups = [
             standing.group for standing in team.standings if standing.group is not None and standing.group.is_groups

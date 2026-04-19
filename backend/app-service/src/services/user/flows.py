@@ -808,9 +808,12 @@ async def get_profile(
         if team.tournament.is_league:
             continue
 
-        placements.append(team.standings[0].overall_position)
+        placement = team_flows.resolve_team_placement(team)
+        if placement is None:
+            continue
+        placements.append(placement)
         tournaments_count += 1
-        if team.standings[0].overall_position == 1:
+        if placement == 1:
             tournaments_won += 1
         for standing in team.standings:
             if standing.buchholz is None:
@@ -888,7 +891,7 @@ async def get_tournaments(
         won: int = 0
         lost: int = 0
         draw: int = 0
-        placement: int | None = team.standings[0].overall_position if team.standings else None
+        placement = team_flows.resolve_team_placement(team)
 
         # Use tournament-specific grid if available, otherwise fall back to workspace grid
         tournament_grid = (

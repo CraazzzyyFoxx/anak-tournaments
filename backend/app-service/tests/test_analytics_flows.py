@@ -97,3 +97,61 @@ class AnalyticsFlowsTests(IsolatedAsyncioTestCase):
         self.assertEqual(4, serialized_player.sample_tournaments)
         self.assertEqual(9, serialized_player.sample_matches)
         self.assertEqual(0.5, serialized_player.log_coverage)
+
+    async def test_get_analytics_uses_best_positive_team_placement(self) -> None:
+        session = SimpleNamespace()
+        algorithm = SimpleNamespace(id=11)
+        team = SimpleNamespace(
+            id=99,
+            name="Alpha",
+            avg_sr=2000,
+            total_sr=10000,
+            tournament_id=7,
+            captain_id=1,
+            standings=[
+                SimpleNamespace(overall_position=0, group=None),
+                SimpleNamespace(overall_position=2, group=None),
+            ],
+        )
+        player = SimpleNamespace(id=42, team_id=99, tournament_id=7)
+        analytics = SimpleNamespace(shift_one=100, shift_two=50, wins=4, shift=0)
+        shift = SimpleNamespace(
+            shift=1.25,
+            confidence=0.82,
+            effective_evidence=2.4,
+            sample_tournaments=4,
+            sample_matches=9,
+            log_coverage=0.5,
+        )
+        player_payload = {
+            "id": 42,
+            "name": "Player",
+            "sub_role": "hitscan",
+            "rank": 2200,
+            "division": 6,
+            "role": "Damage",
+            "tournament_id": 7,
+            "user_id": 8,
+            "team_id": 99,
+            "is_newcomer": False,
+            "is_newcomer_role": False,
+            "is_substitution": False,
+            "related_player_id": None,
+            "tournament": None,
+            "team": None,
+            "user": None,
+        }
+
+        with (
+            patch.object(analytics_flows.service, "get_algorithm", AsyncMock(return_value=algorithm)),
+            patch.object(analytics_flows.service, "get_analytics", AsyncMock(return_value=[(team, player, shift, analytics)])),
+            patch.object(
+                analytics_flows.team_flows,
+                "to_pydantic_player",
+                AsyncMock(return_value=_Dumpable(player_payload)),
+            ),
+            patch.object(analytics_flows, "get_division_grid", AsyncMock(return_value=None)),
+        ):
+            result = await analytics_flows.get_analytics(session, tournament_id=7, algorithm_id=11)
+
+        self.assertEqual(2, result.teams[0].placement)
