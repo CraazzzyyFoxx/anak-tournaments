@@ -27,10 +27,10 @@ import UserMenu from "@/components/UserMenu";
 import WorkspaceSwitcher from "@/components/WorkspaceSwitcher";
 import ActiveEvents from "@/components/ActiveEvents";
 import { adminEntryPermissions } from "@/components/admin/admin-navigation";
-import { getPlayerSlug } from "@/utils/player";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { usePermissions } from "@/hooks/usePermissions";
 import { getCurrentPathForAuthRedirect } from "@/lib/auth-redirect";
+import { getAuthProfileHref } from "@/lib/auth-profile-links";
 import { useAuthModalStore } from "@/stores/auth-modal.store";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
@@ -129,7 +129,7 @@ const Header = () => {
   const { isOrganizer, isLoaded, canAccessAdminRoute } = usePermissions();
   const username = user?.username;
   const avatarUrl = user?.avatarUrl;
-  const profileHref = username ? `/users/${getPlayerSlug(username)}` : "/users";
+  const profileHref = getAuthProfileHref(user);
   const canAccessAdmin =
     isLoaded &&
     canAccessAdminRoute({

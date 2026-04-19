@@ -1,6 +1,7 @@
 """Schemas for auth service."""
 
 from .auth import (
+    AuthLinkedPlayer,
     AuthUser,
     AuthUserWorkspace,
     PasswordSetRequest,
@@ -57,6 +58,7 @@ __all__ = [
     "ServiceTokenRequest",
     "ServiceToken",
     "ServiceTokenPayload",
+    "AuthLinkedPlayer",
     "AuthUser",
     "AuthUserWorkspace",
     "UserUpdate",

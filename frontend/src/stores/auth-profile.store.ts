@@ -9,6 +9,13 @@ export type WorkspaceRbac = {
   permissions: string[];
 };
 
+export type AuthLinkedPlayer = {
+  playerId: number;
+  playerName: string;
+  isPrimary: boolean;
+  linkedAt: string;
+};
+
 export type AuthProfile = {
   username: string;
   avatarUrl?: string | null;
@@ -16,6 +23,8 @@ export type AuthProfile = {
   permissions: string[];
   isSuperuser: boolean;
   workspaces: WorkspaceRbac[];
+  linkedPlayers: AuthLinkedPlayer[];
+  primaryLinkedPlayer?: AuthLinkedPlayer;
 };
 
 export type AuthProfileStatus = "idle" | "loading" | "authenticated" | "anonymous" | "error";
@@ -107,6 +116,12 @@ export const useAuthProfileStore = create<AuthProfileState>((set, get) => ({
         roles?: string[];
         permissions?: string[];
         is_superuser?: boolean;
+        linked_players?: Array<{
+          player_id: number;
+          player_name: string;
+          is_primary: boolean;
+          linked_at: string;
+        }>;
         workspaces?: Array<{
           workspace_id: number;
           slug: string;
@@ -115,6 +130,14 @@ export const useAuthProfileStore = create<AuthProfileState>((set, get) => ({
           rbac_permissions?: string[];
         }>;
       } = await res.json();
+      const linkedPlayers = (data.linked_players ?? []).map((player) => ({
+        playerId: player.player_id,
+        playerName: player.player_name,
+        isPrimary: player.is_primary,
+        linkedAt: player.linked_at
+      }));
+      const primaryLinkedPlayer =
+        linkedPlayers.find((player) => player.isPrimary) ?? linkedPlayers[0];
       set({
         status: "authenticated",
         user: {
@@ -130,6 +153,8 @@ export const useAuthProfileStore = create<AuthProfileState>((set, get) => ({
             roles: ws.rbac_roles ?? [],
             permissions: ws.rbac_permissions ?? [],
           })),
+          linkedPlayers,
+          primaryLinkedPlayer,
         },
         error: undefined,
         lastFetchedAt: fetchedAt

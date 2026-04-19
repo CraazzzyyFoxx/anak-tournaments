@@ -30,6 +30,7 @@ export interface AuthUser {
   is_verified: boolean;
   roles: string[];
   permissions: string[];
+  linked_players: LinkedPlayer[];
   created_at: string;
   updated_at?: string | null;
 }

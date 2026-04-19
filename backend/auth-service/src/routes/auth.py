@@ -27,6 +27,27 @@ def get_s3(request: Request) -> S3Client:
 router = APIRouter(tags=["Authentication"])
 
 
+def _linked_players_payload(user: models.AuthUser) -> list[schemas.AuthLinkedPlayer]:
+    player_links = sorted(
+        user.player_links,
+        key=lambda link: (
+            not link.is_primary,
+            link.created_at,
+            link.player_id,
+        ),
+    )
+    return [
+        schemas.AuthLinkedPlayer(
+            player_id=link.player_id,
+            player_name=link.player.name,
+            is_primary=link.is_primary,
+            linked_at=link.created_at.isoformat(),
+        )
+        for link in player_links
+        if link.player is not None
+    ]
+
+
 @router.get("/providers", response_model=list[schemas.OAuthProviderAvailability])
 async def list_available_oauth_providers():
     """List OAuth providers available for frontend auth flows."""
@@ -254,8 +275,16 @@ async def get_current_user_info(
     current_user: Annotated[models.AuthUser, Depends(auth_service.get_current_active_user)],
 ):
     """Get current user information including workspace RBAC."""
+    user = await auth_service.AuthService.get_user_with_rbac(
+        session,
+        current_user.id,
+        include_player_links=True,
+    )
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
     # Build base response from ORM
-    data = schemas.AuthUser.model_validate(current_user, from_attributes=True).model_dump()
+    data = schemas.AuthUser.model_validate(user, from_attributes=True).model_dump()
 
     # Fetch workspace memberships with RBAC data
     workspace_rows = await session.execute(
@@ -265,13 +294,13 @@ async def get_current_user_info(
             models.WorkspaceMember.role,
         )
         .join(models.Workspace, models.Workspace.id == models.WorkspaceMember.workspace_id)
-        .where(models.WorkspaceMember.auth_user_id == current_user.id)
+        .where(models.WorkspaceMember.auth_user_id == user.id)
     )
     ws_memberships = workspace_rows.all()
     ws_ids = [row[0] for row in ws_memberships]
 
     ws_rbac = await auth_service.AuthService.get_workspace_roles_and_permissions_db(
-        session, current_user.id, ws_ids
+        session, user.id, ws_ids
     )
 
     workspaces = []
@@ -296,6 +325,7 @@ async def get_current_user_info(
         )
 
     data["workspaces"] = [w.model_dump() for w in workspaces]
+    data["linked_players"] = [player.model_dump() for player in _linked_players_payload(user)]
     return schemas.AuthUser.model_validate(data)
 
 

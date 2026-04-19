@@ -14,6 +14,7 @@ __all__ = (
     "ServiceTokenRequest",
     "ServiceToken",
     "ServiceTokenPayload",
+    "AuthLinkedPlayer",
     "AuthUser",
     "UserUpdate",
     "WorkspaceMembership",
@@ -154,6 +155,15 @@ class AuthUserWorkspace(BaseModel):
     rbac_permissions: list[str] = Field(default_factory=list)
 
 
+class AuthLinkedPlayer(BaseModel):
+    """Analytics player linked to the authenticated user."""
+
+    player_id: int
+    player_name: str
+    is_primary: bool
+    linked_at: str
+
+
 class AuthUser(BaseModel):
     """Schema for authenticated user response"""
 
@@ -169,6 +179,7 @@ class AuthUser(BaseModel):
     roles: list[str] = Field(default_factory=list)  # List of role names
     permissions: list[str] = Field(default_factory=list)  # List of "resource.action" strings
     workspaces: list[AuthUserWorkspace] = Field(default_factory=list)
+    linked_players: list[AuthLinkedPlayer] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime | None = None
 

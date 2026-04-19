@@ -4,7 +4,7 @@ import UserHeader from "@/app/(site)/users/components/UserHeader";
 import { TabsContent } from "@/components/ui/tabs";
 import UserOverviewPage, { UserOverviewPageSkeleton } from "@/app/(site)/users/pages/UserOverviewPage";
 import UserMapsPage from "@/app/(site)/users/pages/UserMapsPage";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import UserHeroesPage from "@/app/(site)/users/pages/UserHeroesPage";
 import {
   UserEncountersPageSkeleton,
@@ -17,6 +17,7 @@ import {
 } from "@/app/(site)/users/pages/UserTournamentsPage";
 import UserAchievementPage from "@/app/(site)/users/pages/UserAchievementPage";
 import { SITE_NAME } from "@/config/site";
+import { ApiError } from "@/lib/api-error";
 import { decodePlayerSlug } from "@/utils/player";
 import { Skeleton } from "@/components/ui/skeleton";
 import UserTabsClient from "@/app/(site)/users/components/UserTabsClient";
@@ -52,33 +53,50 @@ export async function generateMetadata(props: {
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const params = await props.params;
-  const user = await userService.getUserByName(decodePlayerSlug(params.slug));
+  try {
+    const user = await userService.getUserByName(decodePlayerSlug(params.slug));
 
-  return {
-    title: `${user.name} Overview | ${SITE_NAME}`,
-    description: `Overview for ${user.name} on ${SITE_NAME}.`,
-    openGraph: {
-      title: `${user.name} Overview | on ${SITE_NAME}.`,
+    return {
+      title: `${user.name} Overview | ${SITE_NAME}`,
       description: `Overview for ${user.name} on ${SITE_NAME}.`,
-      url: SITE_NAME,
-      type: "website",
-      siteName: "AQT",
-      images: [
-        {
-          url: `/avatar/${user.id % 10}.png`,
-          width: 1200,
-          height: 630
-        }
-      ],
-      locale: "en_US"
+      openGraph: {
+        title: `${user.name} Overview | on ${SITE_NAME}.`,
+        description: `Overview for ${user.name} on ${SITE_NAME}.`,
+        url: SITE_NAME,
+        type: "website",
+        siteName: "AQT",
+        images: [
+          {
+            url: `/avatar/${user.id % 10}.png`,
+            width: 1200,
+            height: 630
+          }
+        ],
+        locale: "en_US"
+      }
+    };
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return {
+        title: `User Not Found | ${SITE_NAME}`,
+        description: `The requested user profile could not be found on ${SITE_NAME}.`
+      };
     }
-  };
+    throw error;
+  }
 }
 
 const getUserAndProfile = cache(async (slug: string) => {
-  const user = await userService.getUserByName(decodePlayerSlug(slug));
-  const profile = await userService.getUserProfile(user.id);
-  return { user, profile };
+  try {
+    const user = await userService.getUserByName(decodePlayerSlug(slug));
+    const profile = await userService.getUserProfile(user.id);
+    return { user, profile };
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      notFound();
+    }
+    throw error;
+  }
 });
 
 type UserAndProfile = Awaited<ReturnType<typeof getUserAndProfile>>;

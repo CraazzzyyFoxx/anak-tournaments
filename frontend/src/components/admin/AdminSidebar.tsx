@@ -34,6 +34,7 @@ import { AdminCommandPalette, useCommandPalette } from "@/components/admin/Admin
 import { SITE_FAVICON, SITE_NAME } from "@/config/site";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { usePermissions } from "@/hooks/usePermissions";
+import { getAuthProfileHref } from "@/lib/auth-profile-links";
 import { WorkspaceAvatar } from "@/components/WorkspaceSwitcher";
 import { filterAccessibleWorkspaces, useWorkspaceStore } from "@/stores/workspace.store";
 import { cn } from "@/lib/utils";
@@ -88,7 +89,7 @@ export function AdminSidebar() {
     (group) => group.title !== "Administration" && group.title !== "Overview"
   );
   const roleLabel = getRoleLabel({ isSuperuser, isAdmin, isOrganizer, isModerator });
-  const profileHref = user?.username ? `/users/${user.username}` : "/users";
+  const profileHref = getAuthProfileHref(user);
   const { open: commandOpen, setOpen: setCommandOpen } = useCommandPalette();
 
   const allHrefs = navigationGroups.flatMap((g) => g.items.map((i) => i.href));

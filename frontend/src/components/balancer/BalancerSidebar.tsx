@@ -36,6 +36,7 @@ import {
 import { SITE_FAVICON, SITE_NAME } from "@/config/site";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { usePermissions } from "@/hooks/usePermissions";
+import { getAuthProfileHref } from "@/lib/auth-profile-links";
 import tournamentService from "@/services/tournament.service";
 import { filterAccessibleWorkspaces, useWorkspaceStore } from "@/stores/workspace.store";
 import { cn } from "@/lib/utils";
@@ -319,7 +320,7 @@ export function BalancerSidebar() {
   const { isSuperuser, isAdmin, isOrganizer } = usePermissions();
 
   const roleLabel = getRoleLabel({ isSuperuser, isAdmin, isOrganizer });
-  const profileHref = user?.username ? `/users/${user.username}` : "/users";
+  const profileHref = getAuthProfileHref(user);
 
   return (
     <Sidebar collapsible="icon" variant="inset">

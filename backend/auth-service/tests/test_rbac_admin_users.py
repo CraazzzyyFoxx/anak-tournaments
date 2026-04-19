@@ -35,6 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src import models  # noqa: E402
+from src.routes import auth as auth_routes  # noqa: E402
 from src.routes import rbac as rbac_routes  # noqa: E402
 from src.services import auth_service  # noqa: E402
 
@@ -252,6 +253,54 @@ def test_get_auth_user_route_raises_not_found(monkeypatch: pytest.MonkeyPatch) -
 
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "User not found"
+
+
+def test_get_current_user_info_returns_linked_players(monkeypatch: pytest.MonkeyPatch) -> None:
+    admin_role = _role(1, "admin")
+    linked_player = _linked_player(42, "GracePlayer")
+    user = _user(9, "grace@example.com", roles=[admin_role], player_links=[linked_player])
+
+    async def fake_get_user_with_rbac(session, user_id, *, include_player_links=False):
+        assert user_id == 9
+        assert include_player_links is True
+        return user
+
+    async def fake_get_workspace_roles_and_permissions_db(session, user_id, ws_ids):
+        assert user_id == 9
+        assert ws_ids == []
+        return {}
+
+    class _WorkspaceRows:
+        @staticmethod
+        def all():
+            return []
+
+    class _SessionStub:
+        @staticmethod
+        async def execute(_query):
+            return _WorkspaceRows()
+
+    monkeypatch.setattr(
+        "src.routes.auth.auth_service.AuthService.get_user_with_rbac",
+        fake_get_user_with_rbac,
+    )
+    monkeypatch.setattr(
+        "src.routes.auth.auth_service.AuthService.get_workspace_roles_and_permissions_db",
+        fake_get_workspace_roles_and_permissions_db,
+    )
+
+    response = asyncio.run(
+        auth_routes.get_current_user_info(
+            session=_SessionStub(),
+            current_user=SimpleNamespace(id=9),
+        )
+    )
+
+    assert response.email == "grace@example.com"
+    assert len(response.linked_players) == 1
+    assert response.linked_players[0].player_id == 42
+    assert response.linked_players[0].player_name == "GracePlayer"
+    assert response.linked_players[0].is_primary is True
 
 
 def test_list_auth_sessions_route_returns_superuser_inventory(monkeypatch: pytest.MonkeyPatch) -> None:
