@@ -181,7 +181,7 @@ async def execute_merge(
             target_auth_links=context.target_auth_links,
         )
 
-        await session.delete(context.source)
+        await _delete_source_user_row(session, context.source.id)
         await session.flush()
 
         context.target.name = desired_name
@@ -414,6 +414,12 @@ async def _reassign_reference(
         .values({column_name: target_user_id})
     )
     return int(result.rowcount or 0)
+
+
+async def _delete_source_user_row(session: AsyncSession, source_user_id: int) -> None:
+    await session.execute(
+        delete(models.User).where(models.User.id == source_user_id)
+    )
 
 
 async def _merge_achievement_evaluation_results(
