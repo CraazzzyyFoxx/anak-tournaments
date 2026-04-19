@@ -91,7 +91,10 @@ class RecalculationIdempotencyTests(IsolatedAsyncioTestCase):
         self.assertNotIn("tournament_recalc:pending:42", redis.keys)
         self.assertNotIn("tournament_recalc:processing:42", redis.keys)
         self.assertEqual(1, publish_mock.await_count)
-        self.assertEqual("tournament.recalculated.42", publish_mock.await_args.kwargs["routing_key"])
+        self.assertEqual("tournament.changed.42", publish_mock.await_args.kwargs["routing_key"])
+        payload = publish_mock.await_args.args[1]
+        self.assertEqual("tournament_changed", payload["event_type"])
+        self.assertEqual("results_changed", payload["reason"])
 
     async def test_process_skips_duplicate_while_processing_lock_exists(self) -> None:
         redis = FakeRedis({"tournament_recalc:pending:42", "tournament_recalc:processing:42"})

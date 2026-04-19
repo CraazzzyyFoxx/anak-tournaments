@@ -246,6 +246,78 @@ export interface UserUpdateInput {
   name?: string;
 }
 
+export type UserMergeFieldChoice = "source" | "target";
+
+export interface UserMergePreviewRequest {
+  source_user_id: number;
+  target_user_id: number;
+}
+
+export interface UserMergeFieldPolicy {
+  name: UserMergeFieldChoice;
+  avatar_url: UserMergeFieldChoice;
+}
+
+export interface UserMergeIdentitySelection {
+  discord_ids: number[];
+  battle_tag_ids: number[];
+  twitch_ids: number[];
+}
+
+export interface UserMergeExecuteRequest extends UserMergePreviewRequest {
+  preview_fingerprint: string;
+  field_policy: UserMergeFieldPolicy;
+  identity_selection: UserMergeIdentitySelection;
+}
+
+export interface UserMergeIdentityOption {
+  id: number;
+  value: string;
+  duplicate_on_target: boolean;
+}
+
+export interface UserMergeUserSummary {
+  id: number;
+  name: string;
+  avatar_url: string | null;
+  discord: UserMergeIdentityOption[];
+  battle_tag: UserMergeIdentityOption[];
+  twitch: UserMergeIdentityOption[];
+  auth_links: number;
+}
+
+export interface UserMergeConflictSummary {
+  has_auth_conflict: boolean;
+  summary: string | null;
+}
+
+export interface UserMergeFieldOptions {
+  name: Record<UserMergeFieldChoice, string | null>;
+  avatar_url: Record<UserMergeFieldChoice, string | null>;
+}
+
+export interface UserMergePreviewResponse {
+  source: UserMergeUserSummary;
+  target: UserMergeUserSummary;
+  conflicts: UserMergeConflictSummary;
+  affected_counts: Record<string, number>;
+  field_options: UserMergeFieldOptions;
+  preview_fingerprint: string;
+}
+
+export interface UserMergeIdentityResult {
+  moved: Record<string, number[]>;
+  deduped: Record<string, number[]>;
+}
+
+export interface UserMergeExecuteResponse {
+  deleted_source_user_id: number;
+  surviving_target_user_id: number;
+  affected_counts: Record<string, number>;
+  identity_results: UserMergeIdentityResult;
+  audit_id: number;
+}
+
 // Discord Identity
 export interface DiscordIdentityCreateInput {
   name: string;

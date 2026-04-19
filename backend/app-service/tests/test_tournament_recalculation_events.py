@@ -25,16 +25,18 @@ events = importlib.import_module("src.services.tournament.recalculation_events")
 
 
 class TournamentRecalculationEventsTests(IsolatedAsyncioTestCase):
-    async def test_recalculated_event_invalidates_cache_and_broadcasts_websocket_event(self) -> None:
+    async def test_changed_event_invalidates_cache_and_broadcasts_websocket_event(self) -> None:
         invalidate = AsyncMock()
         broadcast = AsyncMock()
 
         with patch.object(events, "invalidate_tournament_standings_cache", invalidate), patch.object(
             events.tournament_realtime_manager,
-            "broadcast_recalculated",
+            "broadcast_updated",
             broadcast,
         ):
-            await events.handle_tournament_recalculated_event({"tournament_id": 42})
+            await events.handle_tournament_changed_event(
+                {"tournament_id": 42, "reason": "results_changed"}
+            )
 
         invalidate.assert_awaited_once_with(42)
-        broadcast.assert_awaited_once_with(42)
+        broadcast.assert_awaited_once_with(42, "results_changed")

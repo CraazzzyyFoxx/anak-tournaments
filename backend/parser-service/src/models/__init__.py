@@ -18,4 +18,5 @@ from shared.models.standings import *
 from shared.models.team import *
 from shared.models.tournament import *
 from shared.models.user import *
+from shared.models.user_merge_audit import *
 from shared.models.workspace import *

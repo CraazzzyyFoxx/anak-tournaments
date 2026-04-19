@@ -11,6 +11,7 @@ import {
   Loader2,
   Camera,
   ImageOff,
+  ArrowRightLeft,
 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -153,10 +154,9 @@ function IdentityRow({
 
   useEffect(() => {
     if (editing) {
-      setEditValue(displayName);
       setTimeout(() => inputRef.current?.select(), 0);
     }
-  }, [editing, displayName]);
+  }, [editing]);
 
   const updateMutation = useMutation({
     mutationFn: () =>
@@ -193,6 +193,12 @@ function IdentityRow({
   const handleCancel = () => {
     setEditing(false);
     updateMutation.reset();
+  };
+
+  const handleStartEditing = () => {
+    setEditValue(displayName);
+    updateMutation.reset();
+    setEditing(true);
   };
 
   if (editing) {
@@ -260,7 +266,7 @@ function IdentityRow({
                 size="icon"
                 variant="ghost"
                 className="h-7 w-7"
-                onClick={() => setEditing(true)}
+                onClick={handleStartEditing}
                 aria-label={`Edit ${displayName}`}
               >
                 <Pencil className="h-3.5 w-3.5" />
@@ -563,10 +569,6 @@ function NameSection({ user, canEdit, onUserUpdated }: NameSectionProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    setName(user.name);
-  }, [user.name]);
-
-  useEffect(() => {
     if (editing) {
       setTimeout(() => inputRef.current?.select(), 0);
     }
@@ -595,6 +597,12 @@ function NameSection({ user, canEdit, onUserUpdated }: NameSectionProps) {
     setEditing(false);
     setName(user.name);
     updateMutation.reset();
+  };
+
+  const handleStartEditing = () => {
+    setName(user.name);
+    updateMutation.reset();
+    setEditing(true);
   };
 
   if (editing) {
@@ -659,7 +667,7 @@ function NameSection({ user, canEdit, onUserUpdated }: NameSectionProps) {
           size="icon"
           variant="ghost"
           className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-          onClick={() => setEditing(true)}
+          onClick={handleStartEditing}
           aria-label="Edit name"
         >
           <Pencil className="h-3.5 w-3.5" />
@@ -676,6 +684,8 @@ interface PlayerProfileDialogProps {
   onClose: () => void;
   canEdit: boolean;
   canDelete: boolean;
+  canMerge?: boolean;
+  onMergeRequested?: (user: User) => void;
 }
 
 export function PlayerProfileDialog({
@@ -683,12 +693,10 @@ export function PlayerProfileDialog({
   onClose,
   canEdit,
   canDelete,
+  canMerge = false,
+  onMergeRequested,
 }: PlayerProfileDialogProps) {
   const [user, setUser] = useState(initialUser);
-
-  useEffect(() => {
-    setUser(initialUser);
-  }, [initialUser.id]);
 
   const handleUserUpdated = (updatedUser: User) => {
     setUser(updatedUser);
@@ -750,6 +758,17 @@ export function PlayerProfileDialog({
           <span className="text-xs text-muted-foreground tabular-nums">
             ID: {user.id}
           </span>
+          {canMerge && onMergeRequested ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => onMergeRequested(user)}
+            >
+              <ArrowRightLeft className="mr-2 h-4 w-4" />
+              Merge Into Another Profile
+            </Button>
+          ) : null}
         </div>
 
         {/* ── Identities tabs ──────────────────────────── */}

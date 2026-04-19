@@ -1,0 +1,98 @@
+import type { QueryClient } from "@tanstack/react-query";
+
+import { invalidateTournamentWorkspace } from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.queryKeys";
+
+export type TournamentChangedReason = "results_changed" | "structure_changed";
+
+type TournamentUpdatedMessage = {
+  type: "tournament:updated";
+  data?: {
+    tournament_id?: number;
+    reason?: TournamentChangedReason;
+  };
+};
+
+export type TournamentRealtimeUpdatePlan = {
+  invalidateAdminWorkspace: true;
+  queryKeys: readonly (readonly unknown[])[];
+  shouldRefreshRoute: boolean;
+};
+
+export function parseTournamentRealtimeMessage(
+  rawData: string,
+  tournamentId: number
+): { tournamentId: number; reason: TournamentChangedReason } | null {
+  let message: TournamentUpdatedMessage;
+
+  try {
+    message = JSON.parse(rawData) as TournamentUpdatedMessage;
+  } catch {
+    return null;
+  }
+
+  if (
+    message.type !== "tournament:updated" ||
+    message.data?.tournament_id !== tournamentId
+  ) {
+    return null;
+  }
+
+  if (
+    message.data.reason !== "results_changed" &&
+    message.data.reason !== "structure_changed"
+  ) {
+    return null;
+  }
+
+  return {
+    tournamentId,
+    reason: message.data.reason,
+  };
+}
+
+export function getTournamentRealtimeUpdatePlan(
+  tournamentId: number,
+  workspaceId: number | null | undefined,
+  reason: TournamentChangedReason
+): TournamentRealtimeUpdatePlan {
+  const queryKeys: (readonly unknown[])[] = [
+    ["standings", tournamentId],
+    ["standings-table", tournamentId],
+    ["encounters", "tournament", tournamentId],
+  ];
+
+  if (workspaceId != null) {
+    queryKeys.push(
+      ["standings", tournamentId, workspaceId],
+      ["encounters", "tournament", tournamentId, workspaceId]
+    );
+  }
+
+  return {
+    invalidateAdminWorkspace: true,
+    queryKeys,
+    shouldRefreshRoute: reason === "structure_changed",
+  };
+}
+
+export function applyTournamentRealtimeUpdate(
+  queryClient: QueryClient,
+  tournamentId: number,
+  workspaceId: number | null | undefined,
+  reason: TournamentChangedReason,
+  onStructureChanged?: () => void
+): void {
+  const plan = getTournamentRealtimeUpdatePlan(tournamentId, workspaceId, reason);
+
+  if (plan.invalidateAdminWorkspace) {
+    invalidateTournamentWorkspace(queryClient, tournamentId, workspaceId);
+  }
+
+  for (const queryKey of plan.queryKeys) {
+    void queryClient.invalidateQueries({ queryKey });
+  }
+
+  if (plan.shouldRefreshRoute) {
+    onStructureChanged?.();
+  }
+}

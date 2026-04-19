@@ -1,13 +1,15 @@
 """Admin routes for user and identity CRUD operations"""
 
 from fastapi import APIRouter, Depends, Request, UploadFile
+from shared.clients.s3 import S3Client, upload_avatar
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.clients.s3 import S3Client, upload_avatar
 from src import models, schemas
 from src.core import auth, db, pagination
 from src.schemas.admin import user as admin_schemas
+from src.schemas.admin import user_merge as merge_schemas
 from src.services.admin import user as admin_service
+from src.services.admin import user_merge as merge_service
 from src.services.user import flows as user_flows
 
 
@@ -72,6 +74,30 @@ async def delete_user(
 ):
     """Delete user and all identities (admin only)"""
     await admin_service.delete_user(session, user_id)
+
+
+@router.post("/merge/preview", response_model=merge_schemas.UserMergePreviewResponse)
+async def preview_user_merge(
+    data: merge_schemas.UserMergePreviewRequest,
+    session: AsyncSession = Depends(db.get_async_session),
+    auth_user: models.AuthUser = Depends(auth.get_current_superuser),
+):
+    """Preview a source -> target player profile merge (superuser only)."""
+    return await merge_service.preview_merge(session, data)
+
+
+@router.post("/merge/execute", response_model=merge_schemas.UserMergeExecuteResponse)
+async def execute_user_merge(
+    data: merge_schemas.UserMergeExecuteRequest,
+    session: AsyncSession = Depends(db.get_async_session),
+    auth_user: models.AuthUser = Depends(auth.get_current_superuser),
+):
+    """Execute a source -> target player profile merge (superuser only)."""
+    return await merge_service.execute_merge(
+        session,
+        data,
+        operator_auth_user_id=auth_user.id,
+    )
 
 
 # ─── Discord Identity Management ─────────────────────────────────────────────

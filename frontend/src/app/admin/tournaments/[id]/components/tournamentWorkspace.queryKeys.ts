@@ -29,11 +29,12 @@ export function getTournamentWorkspaceQueryKeys(tournamentId: number) {
  */
 export function invalidateTournamentWorkspace(
   queryClient: QueryClient,
-  tournamentId: number
+  tournamentId: number,
+  workspaceId?: number | null
 ): void {
   const keys = getTournamentWorkspaceQueryKeys(tournamentId);
 
-  void Promise.all([
+  const invalidations = [
     queryClient.invalidateQueries({ queryKey: keys.tournament }),
     queryClient.invalidateQueries({ queryKey: keys.teams }),
     queryClient.invalidateQueries({ queryKey: keys.standings }),
@@ -45,5 +46,16 @@ export function invalidateTournamentWorkspace(
     queryClient.invalidateQueries({ queryKey: keys.standingsCollection }),
     queryClient.invalidateQueries({ queryKey: keys.publicStandings }),
     queryClient.invalidateQueries({ queryKey: keys.publicEncounters })
-  ]);
+  ];
+
+  if (workspaceId != null) {
+    invalidations.push(
+      queryClient.invalidateQueries({ queryKey: ["standings", tournamentId, workspaceId] }),
+      queryClient.invalidateQueries({
+        queryKey: ["encounters", "tournament", tournamentId, workspaceId],
+      })
+    );
+  }
+
+  void Promise.all(invalidations);
 }

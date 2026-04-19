@@ -12,7 +12,7 @@ import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { useTournamentStandingsRealtime } from "@/hooks/useTournamentStandingsRealtime";
+import { useTournamentRealtime } from "@/hooks/useTournamentRealtime";
 import tournamentService from "@/services/tournament.service";
 import adminService from "@/services/admin.service";
 import { Standings } from "@/types/tournament.types";
@@ -103,7 +103,10 @@ export default function StandingsPage() {
   );
   const [selectedScopeFilter, setSelectedScopeFilter] = useState<string>("all");
 
-  useTournamentStandingsRealtime(selectedTournamentId);
+  useTournamentRealtime({
+    tournamentId: selectedTournamentId,
+    workspaceId,
+  });
 
   // Fetch tournaments
   const { data: tournamentsData } = useQuery({

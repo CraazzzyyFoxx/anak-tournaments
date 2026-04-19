@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { ColumnDef } from "@tanstack/react-table";
-import { MoreHorizontal, Plus, Minus, Pencil, Trash2, Upload } from "lucide-react";
+import { MoreHorizontal, Plus, Minus, Pencil, Trash2, Upload, ArrowRightLeft } from "lucide-react";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -11,6 +12,7 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { PlayerProfileDialog } from "@/components/admin/PlayerProfileDialog";
+import { UserMergeDialog } from "@/components/admin/UserMergeDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -280,16 +282,18 @@ function CsvImportDialog({ open, onOpenChange }: CsvImportDialogProps) {
 
 export default function UsersAdminPage() {
   const queryClient = useQueryClient();
-  const { canAccessPermission } = usePermissions();
+  const { canAccessPermission, isSuperuser } = usePermissions();
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [profileUser, setProfileUser] = useState<User | null>(null);
+  const [mergeUser, setMergeUser] = useState<User | null>(null);
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
   const [createName, setCreateName] = useState("");
   const canCreate = canAccessPermission("user.create", workspaceId);
   const canUpdate = canAccessPermission("user.update", workspaceId);
   const canDelete = canAccessPermission("user.delete", workspaceId);
+  const canMerge = isSuperuser;
   const canOpenProfile = canUpdate || canDelete;
   const isCreateDirty = createDialogOpen && hasUnsavedChanges({ name: createName }, { name: "" });
 
@@ -373,7 +377,7 @@ export default function UsersAdminPage() {
                       className="border-[#5865F2]/30 bg-[#5865F2]/10 text-[#5865F2] hover:bg-[#5865F2]/20 gap-1.5 cursor-default"
                       variant="outline"
                     >
-                      <img src="/discord.png" alt="" className="h-3 w-3" />
+                      <Image src="/discord.png" alt="" width={12} height={12} className="h-3 w-3" />
                       {discordCount}
                     </Badge>
                   </TooltipTrigger>
@@ -392,7 +396,7 @@ export default function UsersAdminPage() {
                       className="border-[#148EFF]/30 bg-[#148EFF]/10 text-[#148EFF] hover:bg-[#148EFF]/20 gap-1.5 cursor-default"
                       variant="outline"
                     >
-                      <img src="/battlenet.svg" alt="" className="h-3 w-3" />
+                      <Image src="/battlenet.svg" alt="" width={12} height={12} className="h-3 w-3" />
                       {battleTagCount}
                     </Badge>
                   </TooltipTrigger>
@@ -411,7 +415,7 @@ export default function UsersAdminPage() {
                       className="border-[#9146FF]/30 bg-[#9146FF]/10 text-[#9146FF] hover:bg-[#9146FF]/20 gap-1.5 cursor-default"
                       variant="outline"
                     >
-                      <img src="/twitch.png" alt="" className="h-3 w-3" />
+                      <Image src="/twitch.png" alt="" width={12} height={12} className="h-3 w-3" />
                       {twitchCount}
                     </Badge>
                   </TooltipTrigger>
@@ -433,7 +437,7 @@ export default function UsersAdminPage() {
       size: 50,
       cell: ({ row }) => {
         const user = row.original;
-        if (!canOpenProfile && !canDelete) {
+        if (!canOpenProfile && !canDelete && !canMerge) {
           return null;
         }
         return (
@@ -451,7 +455,13 @@ export default function UsersAdminPage() {
                   Edit Profile
                 </DropdownMenuItem>
               )}
-              {canOpenProfile && canDelete && <DropdownMenuSeparator />}
+              {canMerge && (
+                <DropdownMenuItem onClick={() => setMergeUser(user)}>
+                  <ArrowRightLeft className="mr-2 h-4 w-4" />
+                  Merge
+                </DropdownMenuItem>
+              )}
+              {(canOpenProfile || canMerge) && canDelete && <DropdownMenuSeparator />}
               {canDelete && (
                 <DropdownMenuItem onClick={() => setDeletingUser(user)} className="text-destructive">
                   <Trash2 className="mr-2 h-4 w-4" />
@@ -559,10 +569,30 @@ export default function UsersAdminPage() {
       {/* Unified Player Profile Dialog */}
       {profileUser && (
         <PlayerProfileDialog
+          key={profileUser.id}
           user={profileUser}
           onClose={() => setProfileUser(null)}
           canEdit={canUpdate}
           canDelete={canDelete}
+          canMerge={canMerge}
+          onMergeRequested={(user) => setMergeUser(user)}
+        />
+      )}
+
+      {mergeUser && (
+        <UserMergeDialog
+          key={mergeUser.id}
+          sourceUser={mergeUser}
+          open={!!mergeUser}
+          onOpenChange={(open) => {
+            if (!open) setMergeUser(null);
+          }}
+          onMerged={() => {
+            setMergeUser(null);
+            if (profileUser?.id === mergeUser.id) {
+              setProfileUser(null);
+            }
+          }}
         />
       )}
 

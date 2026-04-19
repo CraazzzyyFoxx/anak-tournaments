@@ -84,6 +84,7 @@ class AdminStageServiceTests(IsolatedAsyncioTestCase):
                 "recalculate_for_tournament",
                 AsyncMock(),
             ),
+            patch.object(stage_service, "_publish_tournament_changed", AsyncMock()),
         ):
             encounters = await stage_service.generate_encounters(session, stage.id)
 
@@ -126,6 +127,7 @@ class AdminStageServiceTests(IsolatedAsyncioTestCase):
                 "recalculate_for_tournament",
                 AsyncMock(),
             ) as recalculate,
+            patch.object(stage_service, "_publish_tournament_changed", AsyncMock()),
         ):
             result = await stage_service.create_stage_item(session, stage.id, data)
 
@@ -177,7 +179,11 @@ class AdminStageServiceTests(IsolatedAsyncioTestCase):
             stage_service.standings_service,
             "recalculate_for_tournament",
             AsyncMock(),
-        ) as recalculate:
+        ) as recalculate, patch.object(
+            stage_service,
+            "_publish_tournament_changed",
+            AsyncMock(),
+        ):
             result = await stage_service.update_stage_item_input(session, current_input.id, data)
 
         self.assertIs(result, current_input)
@@ -221,7 +227,11 @@ class AdminStageServiceTests(IsolatedAsyncioTestCase):
             stage_service.standings_service,
             "recalculate_for_tournament",
             AsyncMock(),
-        ) as recalculate:
+        ) as recalculate, patch.object(
+            stage_service,
+            "_publish_tournament_changed",
+            AsyncMock(),
+        ):
             result = await stage_service.update_stage_item_input(session, current_input.id, data)
 
         self.assertIs(result, current_input)
@@ -230,3 +240,53 @@ class AdminStageServiceTests(IsolatedAsyncioTestCase):
         self.assertIsNone(current_input.source_stage_item_id)
         self.assertIsNone(current_input.source_position)
         recalculate.assert_awaited_once_with(session, stage.tournament_id)
+
+    async def test_seed_teams_publishes_structure_changed_event(self) -> None:
+        stage = SimpleNamespace(
+            id=7,
+            tournament_id=99,
+            items=[
+                SimpleNamespace(id=10, order=0, inputs=[]),
+                SimpleNamespace(id=11, order=1, inputs=[]),
+            ],
+        )
+        teams = [
+            SimpleNamespace(id=1, tournament_id=stage.tournament_id, avg_sr=3200, total_sr=3200),
+            SimpleNamespace(id=2, tournament_id=stage.tournament_id, avg_sr=3100, total_sr=3100),
+        ]
+        teams_result = Mock()
+        teams_result.scalars.return_value.all.return_value = teams
+        session = SimpleNamespace(
+            execute=AsyncMock(return_value=teams_result),
+            add=Mock(),
+            delete=AsyncMock(),
+            commit=AsyncMock(),
+        )
+
+        with (
+            patch.object(stage_service, "get_stage", AsyncMock(return_value=stage)),
+            patch.object(stage_service.standings_service, "recalculate_for_tournament", AsyncMock()),
+            patch.object(stage_service, "_publish_tournament_changed", AsyncMock()) as publish_changed,
+        ):
+            await stage_service.seed_teams(session, stage.id, [1, 2], mode="snake_sr")
+
+        publish_changed.assert_awaited_once_with(stage.tournament_id, "structure_changed")
+
+    async def test_activate_and_generate_publishes_single_structure_changed_event(self) -> None:
+        session = SimpleNamespace()
+        stage = SimpleNamespace(id=7, tournament_id=99)
+        encounters = [SimpleNamespace(id=101)]
+
+        with (
+            patch.object(stage_service, "get_stage", AsyncMock(return_value=stage)),
+            patch.object(stage_service, "activate_stage", AsyncMock(return_value=stage)) as activate_stage,
+            patch.object(stage_service, "generate_encounters", AsyncMock(return_value=encounters)) as generate_encounters,
+            patch.object(stage_service, "_publish_tournament_changed", AsyncMock()) as publish_changed,
+        ):
+            result_stage, result_encounters = await stage_service.activate_and_generate(session, stage.id, force=True)
+
+        self.assertIs(result_stage, stage)
+        self.assertEqual(encounters, result_encounters)
+        activate_stage.assert_awaited_once_with(session, stage.id, notify=False)
+        generate_encounters.assert_awaited_once_with(session, stage.id, notify=False)
+        publish_changed.assert_awaited_once_with(stage.tournament_id, "structure_changed")

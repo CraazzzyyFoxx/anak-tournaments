@@ -21,3 +21,4 @@ from .rbac import *
 from .oauth import *
 from .balancer import *
 from .log_processing import *
+from .user_merge_audit import *

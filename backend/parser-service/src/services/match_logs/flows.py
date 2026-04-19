@@ -993,54 +993,6 @@ class MatchLogProcessor:
         return (home_team_db_final, home_final_player_map), (away_team_db_final, away_final_player_map)
 
 
-async def process_closeness(session: AsyncSession, payload: list[str]):
-    data = csv.reader(payload, delimiter=",")
-    for index, row in enumerate(data, 1):
-        if index == 1:
-            continue
-        (
-            tournament_name,
-            _,
-            _,
-            _,
-            _,
-            home_team_name,
-            away_team_name,
-            encounter_name,
-            _,
-            _,
-            _,
-            _,
-            closeness_percent,
-            _,
-            _,
-            _,
-        ) = row
-        logger.info(f"Processing row for encounter {encounter_name} in tournament {tournament_name}")
-        if tournament_name.startswith("OWAL_s2"):
-            tournament = await tournament_flows.get_by_name(session, f"OWAL Season 2 | Day {tournament_name[-1]}", [])
-        else:
-            tournament = await tournament_flows.get_by_number_and_league(session, int(tournament_name), False, [])
-
-        logger.info(f"Tournament {tournament.name} found [id={tournament.id}]")
-        logger.info(f"Home team name: {home_team_name}, away team name: {away_team_name}")
-        home_team = await team_service.get_by_name_and_tournament(session, tournament.id, home_team_name.strip(), [])
-        away_team = await team_service.get_by_name_and_tournament(session, tournament.id, away_team_name.strip(), [])
-
-        if not home_team or not away_team:
-            logger.error(f"Home team {home_team_name} or away team {away_team_name} not found")
-            continue
-
-        if closeness_percent:
-            if encounter := await encounter_service.get_by_teams(
-                session, home_team.id, away_team.id, [], has_closeness=False
-            ):
-                encounter.closeness = round(int(closeness_percent) / 100, 2)
-                session.add(encounter)
-                await session.commit()
-        logger.info(f"Row for encounter {encounter_name} in tournament {tournament.name} processed successfully")
-
-
 async def process_match_log(
     session: AsyncSession, tournament_id: int, filename: str, s3: S3Client, *, is_raise: bool = True
 ) -> None:
@@ -1083,14 +1035,3 @@ async def process_match_log(
             await record_service.set_failed(session, record, str(e))
         if is_raise:
             raise e
-
-
-async def make_tournament_folder(
-    session: AsyncSession, tournament: models.Tournament, filename: str, s3: S3Client
-) -> None:
-    tournament_folder = f"{tournament.id}/{filename}"
-    if not await s3.check_folder(tournament_folder):
-        await s3.create_folder(tournament_folder)
-        logger.info(f"Folder {tournament_folder} created in S3")
-    else:
-        logger.info(f"Folder {tournament_folder} already exists in S3")

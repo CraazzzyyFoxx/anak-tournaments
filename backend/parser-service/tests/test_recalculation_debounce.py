@@ -78,3 +78,40 @@ class RecalculationDebounceTests(IsolatedAsyncioTestCase):
                 await recalculation.enqueue_tournament_recalculation(42, broker=broker, redis=redis)
 
         self.assertNotIn("tournament_recalc:pending:42", redis.keys)
+
+    async def test_process_event_publishes_tournament_changed_results_event(self) -> None:
+        redis = FakeRedis()
+        broker = SimpleNamespace()
+        publish_mock = AsyncMock()
+        recalculate = AsyncMock()
+
+        class _SessionFactory:
+            def __call__(self):
+                return self
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        with (
+            patch.object(recalculation, "publish_message", publish_mock),
+            patch.object(recalculation.swiss_auto_round, "enqueue_swiss_next_rounds", AsyncMock()),
+        ):
+            processed = await recalculation.process_tournament_recalculation_event(
+                {"tournament_id": 42},
+                broker=broker,
+                redis=redis,
+                session_factory=_SessionFactory(),
+                recalculate=recalculate,
+            )
+
+        self.assertTrue(processed)
+        self.assertEqual(1, publish_mock.await_count)
+        _, message, queue, *_ = publish_mock.await_args.args
+        self.assertEqual("tournament_changed", message["event_type"])
+        self.assertEqual(42, message["tournament_id"])
+        self.assertEqual("results_changed", message["reason"])
+        self.assertEqual("tournament_changed", queue.name)
+        self.assertEqual("tournament.changed.42", publish_mock.await_args.kwargs["routing_key"])

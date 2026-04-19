@@ -8,6 +8,7 @@ import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/ca
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useTournamentRealtime } from "@/hooks/useTournamentRealtime";
 import adminService from "@/services/admin.service";
 import encounterService from "@/services/encounter.service";
 import teamService from "@/services/team.service";
@@ -120,8 +121,10 @@ export default function AdminTournamentWorkspacePage() {
     enabled: Number.isFinite(tournamentId) && tournamentId > 0,
   });
 
+  const tournamentWorkspaceId = tournamentQuery.data?.workspace_id ?? null;
+  useTournamentRealtime({ tournamentId, workspaceId: tournamentWorkspaceId });
+
   const tournament = tournamentQuery.data;
-  const tournamentWorkspaceId = tournament?.workspace_id ?? null;
   const canUpdateTournament = canAccessPermission("tournament.update", tournamentWorkspaceId);
   const canDeleteTournament = canAccessPermission("tournament.delete", tournamentWorkspaceId);
   const canReadAnalytics = canAccessPermission("analytics.read", tournamentWorkspaceId);

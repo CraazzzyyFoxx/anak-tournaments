@@ -22,12 +22,15 @@ class TournamentRealtimeManager:
         if not sockets:
             self._connections.pop(tournament_id, None)
 
-    async def broadcast_recalculated(self, tournament_id: int) -> None:
+    async def broadcast_updated(self, tournament_id: int, reason: str) -> None:
         await self.broadcast(
             tournament_id,
             {
-                "type": "tournament:recalculated",
-                "data": {"tournament_id": tournament_id},
+                "type": "tournament:updated",
+                "data": {
+                    "tournament_id": tournament_id,
+                    "reason": reason,
+                },
             },
         )
 

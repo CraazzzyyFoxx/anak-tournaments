@@ -24,6 +24,11 @@ from sqlalchemy import select
 
 from src.core.config import settings
 from src.core.db import async_session_maker
+from src.feedback import (
+    AttachmentFeedbackResult,
+    AttachmentFeedbackState,
+    build_message_feedback,
+)
 
 # Setup structured logging (replaces old src.core.logging)
 logger = setup_logging(
@@ -217,7 +222,7 @@ async def stop_pg_listener() -> None:
             _pg_listener_conn = None
 
 
-async def _wait_for_processing_result(tournament_id: int, filename: str) -> bool:
+async def _wait_for_processing_result(tournament_id: int, filename: str) -> bool | None:
     """Await a pg_notify push from parser-service; resolves when done/failed or times out."""
     key = (tournament_id, filename)
     loop = asyncio.get_event_loop()
@@ -228,7 +233,21 @@ async def _wait_for_processing_result(tournament_id: int, filename: str) -> bool
     except TimeoutError:
         logger.warning(f"⏱️ Timed out waiting for processing result of {filename}")
         _pending_results.pop(key, None)
-        return False
+        return None
+
+
+async def _get_latest_log_error(tournament_id: int, filename: str) -> str | None:
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(LogProcessingRecord.error_message)
+            .where(
+                LogProcessingRecord.tournament_id == tournament_id,
+                LogProcessingRecord.filename == filename,
+            )
+            .order_by(LogProcessingRecord.created_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
 
 
 async def process_attachment(
@@ -236,11 +255,11 @@ async def process_attachment(
     attachment: discord.Attachment,
     uploader_discord_name: str | None = None,
     wait_for_result: bool = True,
-) -> bool:
+) -> AttachmentFeedbackResult:
     """
     Download and process a single attachment.
     If wait_for_result is True, polls the DB until processing completes and
-    returns the actual success/failure. If False, returns True after queuing.
+     returns the actual success/failure. If False, returns True after queuing.
     """
     try:
         # Skip already-processed logs to avoid re-processing on restart
@@ -256,7 +275,10 @@ async def process_attachment(
             )
             if result.scalar_one_or_none() is not None:
                 logger.info(f"⏭️ Skipping {attachment.filename} - already processed")
-                return True
+                return AttachmentFeedbackResult(
+                    filename=attachment.filename,
+                    state=AttachmentFeedbackState.ALREADY_PROCESSED,
+                )
 
         logger.info(f"📥 Downloading {attachment.filename} for tournament {tournament_id}")
         async with await get_httpx_client(destination="discord") as http_client:
@@ -274,11 +296,16 @@ async def process_attachment(
             upload_response = await http_client.post(f"logs/{tournament_id}/upload", files=files, data=data)
 
             if upload_response.status_code != 200:
+                error_message = f"{upload_response.status_code} - {upload_response.text}"
                 logger.error(
                     f"❌ Upload failed for {attachment.filename}: "
-                    f"{upload_response.status_code} - {upload_response.text}"
+                    f"{error_message}"
                 )
-                return False
+                return AttachmentFeedbackResult(
+                    filename=attachment.filename,
+                    state=AttachmentFeedbackState.UPLOAD_FAILED,
+                    error_message=error_message,
+                )
 
         # Publish processing event to queue (worker picks it up asynchronously)
         if rabbit_broker is not None:
@@ -292,19 +319,66 @@ async def process_attachment(
             logger.success(f"✅ {attachment.filename} uploaded and queued for processing")
         else:
             logger.warning(f"⚠️ RabbitMQ not available, skipping queue publish for {attachment.filename}")
-            return False
+            return AttachmentFeedbackResult(
+                filename=attachment.filename,
+                state=AttachmentFeedbackState.UPLOAD_FAILED,
+                error_message="RabbitMQ unavailable",
+            )
 
         if wait_for_result:
-            return await _wait_for_processing_result(tournament_id, attachment.filename)
+            processing_result = await _wait_for_processing_result(tournament_id, attachment.filename)
+            if processing_result is True:
+                return AttachmentFeedbackResult(
+                    filename=attachment.filename,
+                    state=AttachmentFeedbackState.PROCESSED_OK,
+                )
+            if processing_result is None:
+                return AttachmentFeedbackResult(
+                    filename=attachment.filename,
+                    state=AttachmentFeedbackState.TIMED_OUT,
+                )
 
-        return True
+            return AttachmentFeedbackResult(
+                filename=attachment.filename,
+                state=AttachmentFeedbackState.PROCESSED_FAILED,
+                error_message=await _get_latest_log_error(tournament_id, attachment.filename),
+            )
+
+        return AttachmentFeedbackResult(
+            filename=attachment.filename,
+            state=AttachmentFeedbackState.UPLOADED_QUEUED,
+        )
 
     except httpx.HTTPError as e:
         logger.error(f"❌ HTTP error processing {attachment.filename}: {e}")
-        return False
+        return AttachmentFeedbackResult(
+            filename=attachment.filename,
+            state=AttachmentFeedbackState.UPLOAD_FAILED,
+            error_message=str(e),
+        )
     except Exception as e:
         logger.error(f"❌ Unexpected error processing {attachment.filename}: {e}")
-        return False
+        return AttachmentFeedbackResult(
+            filename=attachment.filename,
+            state=AttachmentFeedbackState.UPLOAD_FAILED,
+            error_message=str(e),
+        )
+
+
+async def _apply_message_reactions(message: discord.Message, reactions: tuple[str, ...]) -> None:
+    target_reactions = set(reactions)
+    for emoji in ("✅", "⚠️", "❌"):
+        if emoji in target_reactions:
+            await message.add_reaction(emoji)
+            continue
+        try:
+            await message.remove_reaction(emoji, client.user)
+        except discord.NotFound:
+            pass
+
+
+async def _send_feedback_reply(message: discord.Message, reply_text: str) -> None:
+    await message.reply(reply_text, mention_author=False)
 
 
 async def process_message(message: discord.Message, tournament_id: int, wait_for_result: bool = True) -> None:
@@ -322,16 +396,16 @@ async def process_message(message: discord.Message, tournament_id: int, wait_for
     processing_messages.add(message.id)
 
     try:
-        results = []
+        results: list[AttachmentFeedbackResult] = []
         for attachment in message.attachments:
             # Only process log files
             if attachment.filename.lower().endswith((".txt", ".log", ".json")):
-                success = await process_attachment(
+                result = await process_attachment(
                     tournament_id, attachment,
                     uploader_discord_name=message.author.name,
                     wait_for_result=wait_for_result,
                 )
-                results.append(success)
+                results.append(result)
             else:
                 logger.info(f"⏭️ Skipping non-log file: {attachment.filename}")
 
@@ -339,23 +413,21 @@ async def process_message(message: discord.Message, tournament_id: int, wait_for
             return
 
         # Update reactions based on results
+        summary = build_message_feedback(results, wait_for_result=wait_for_result)
         try:
-            if all(results):
-                await message.add_reaction("✅")
-                try:
-                    await message.remove_reaction("❌", client.user)
-                except discord.NotFound:
-                    pass
-            else:
-                await message.add_reaction("❌")
-                try:
-                    await message.remove_reaction("✅", client.user)
-                except discord.NotFound:
-                    pass
+            await _apply_message_reactions(message, summary.reactions)
         except discord.Forbidden:
             logger.warning("⚠️ Bot doesn't have permission to add reactions")
         except discord.HTTPException as e:
             logger.warning(f"⚠️ Failed to add reaction: {e}")
+
+        if summary.reply_text is not None:
+            try:
+                await _send_feedback_reply(message, summary.reply_text)
+            except discord.Forbidden:
+                logger.warning("⚠️ Bot doesn't have permission to reply to messages")
+            except discord.HTTPException as e:
+                logger.warning(f"⚠️ Failed to send reply: {e}")
 
     finally:
         processing_messages.discard(message.id)

@@ -7,6 +7,7 @@ from .user import *
 from .hero import *
 from .gamemode import *
 from .map import *
+from .user_merge import *
 from .player_sub_role import *
 
 __all__ = (
@@ -37,6 +38,17 @@ __all__ = (
     "BattleTagIdentityUpdate",
     "TwitchIdentityCreate",
     "TwitchIdentityUpdate",
+    "UserMergePreviewRequest",
+    "UserMergeFieldPolicy",
+    "UserMergeIdentitySelection",
+    "UserMergeExecuteRequest",
+    "UserMergeIdentityOption",
+    "UserMergeUserSummary",
+    "UserMergeConflictSummary",
+    "UserMergeFieldOptions",
+    "UserMergePreviewResponse",
+    "UserMergeIdentityResult",
+    "UserMergeExecuteResponse",
     # Hero schemas
     "HeroCreate",
     "HeroUpdate",

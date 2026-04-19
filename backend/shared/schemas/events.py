@@ -5,6 +5,7 @@ replacing untyped dict objects with validated Pydantic models.
 """
 
 import time
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -82,15 +83,22 @@ class TournamentRecalcEvent(BaseEvent):
     tournament_id: int = Field(..., description="Tournament ID to recalculate")
 
 
-class TournamentRecalculatedEvent(BaseEvent):
-    """Event emitted after standings recalculation finishes.
+TournamentChangedReason = Literal["results_changed", "structure_changed"]
 
-    Published by: parser-service worker
+
+class TournamentChangedEvent(BaseEvent):
+    """Event emitted when tournament bracket-related reads become stale.
+
+    Published by: parser-service worker and parser-service admin stage flows
     Consumed by: app-service API for cache invalidation and WebSocket fan-out
     """
 
-    event_type: str = Field(default="tournament_recalculated", frozen=True)
+    event_type: str = Field(default="tournament_changed", frozen=True)
     tournament_id: int = Field(..., description="Tournament ID that was recalculated")
+    reason: TournamentChangedReason = Field(
+        ...,
+        description="Why bracket-related tournament views should refresh",
+    )
 
 
 class SwissNextRoundEvent(BaseEvent):

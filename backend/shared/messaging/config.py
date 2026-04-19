@@ -118,19 +118,19 @@ TOURNAMENT_RECALC_DLQ = RabbitQueue(
     durable=True,
 )
 
-TOURNAMENT_RECALCULATED_QUEUE = RabbitQueue(
-    "tournament_recalculated",
+TOURNAMENT_CHANGED_QUEUE = RabbitQueue(
+    "tournament_changed",
     durable=True,
-    routing_key="tournament.recalculated.*",
+    routing_key="tournament.changed.*",
     arguments={
         "x-dead-letter-exchange": "dlx",
-        "x-dead-letter-routing-key": "tournament_recalculated.dlq",
+        "x-dead-letter-routing-key": "tournament_changed.dlq",
         "x-message-ttl": 300000,  # 5 minutes
     },
 )
 
-TOURNAMENT_RECALCULATED_DLQ = RabbitQueue(
-    "tournament_recalculated.dlq",
+TOURNAMENT_CHANGED_DLQ = RabbitQueue(
+    "tournament_changed.dlq",
     durable=True,
 )
 

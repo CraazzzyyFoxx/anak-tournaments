@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 
 import { BracketView } from "@/components/BracketView";
@@ -11,6 +11,7 @@ import { EncounterEditDialog } from "@/components/tournaments/EncounterEditDialo
 import { MatchReportDialog } from "@/components/tournaments/MatchReportDialog";
 import { useToast } from "@/hooks/use-toast";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
+import { useTournamentRealtime } from "@/hooks/useTournamentRealtime";
 import captainService from "@/services/captain.service";
 import encounterService from "@/services/encounter.service";
 import tournamentService from "@/services/tournament.service";
@@ -114,9 +115,16 @@ export default function TournamentBracketPage({
   tournament,
   stages,
 }: TournamentBracketPageProps) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const selectedStageParam = searchParams.get("stage");
   const viewParam = searchParams.get("view");
+
+  useTournamentRealtime({
+    tournamentId: tournament.id,
+    workspaceId: tournament.workspace_id,
+    onStructureChanged: () => router.refresh(),
+  });
 
   const { status: authStatus, user: authUser } = useAuthProfile();
   const { toast } = useToast();

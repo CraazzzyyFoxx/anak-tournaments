@@ -7,12 +7,12 @@ from faststream.rabbit.fastapi import RabbitRouter
 from loguru import logger
 from redis import asyncio as redis_async
 from shared.messaging.config import (
+    TOURNAMENT_CHANGED_QUEUE,
     TOURNAMENT_RECALC_EXCHANGE,
     TOURNAMENT_RECALC_QUEUE,
-    TOURNAMENT_RECALCULATED_QUEUE,
 )
 from shared.observability import publish_message
-from shared.schemas.events import TournamentRecalcEvent, TournamentRecalculatedEvent
+from shared.schemas.events import TournamentChangedEvent, TournamentChangedReason, TournamentRecalcEvent
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core import config, db
@@ -91,6 +91,24 @@ async def enqueue_tournament_recalculation(
     return True
 
 
+async def publish_tournament_changed(
+    tournament_id: int,
+    reason: TournamentChangedReason,
+    *,
+    broker: Any | None = None,
+) -> None:
+    event = TournamentChangedEvent(tournament_id=tournament_id, reason=reason)
+    await publish_message(
+        broker or task_router.broker,
+        event.model_dump(),
+        TOURNAMENT_CHANGED_QUEUE,
+        exchange=TOURNAMENT_RECALC_EXCHANGE,
+        routing_key=f"tournament.changed.{tournament_id}",
+        headers={DEDUPLICATION_HEADER: f"tournament-changed:{tournament_id}:{reason}"},
+        logger=logger.bind(tournament_id=tournament_id, reason=reason),
+    )
+
+
 async def process_tournament_recalculation_event(
     data: dict[str, Any],
     *,
@@ -124,15 +142,10 @@ async def process_tournament_recalculation_event(
                 broker=broker or task_router.broker,
             )
 
-        completion_event = TournamentRecalculatedEvent(tournament_id=event.tournament_id)
-        await publish_message(
-            broker or task_router.broker,
-            completion_event.model_dump(),
-            TOURNAMENT_RECALCULATED_QUEUE,
-            exchange=TOURNAMENT_RECALC_EXCHANGE,
-            routing_key=f"tournament.recalculated.{event.tournament_id}",
-            headers={DEDUPLICATION_HEADER: _dedupe_value(event.tournament_id)},
-            logger=logger.bind(tournament_id=event.tournament_id),
+        await publish_tournament_changed(
+            event.tournament_id,
+            "results_changed",
+            broker=broker or task_router.broker,
         )
         completion_published = True
         return True

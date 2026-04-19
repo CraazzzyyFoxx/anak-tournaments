@@ -16,6 +16,7 @@ from sqlalchemy.orm import selectinload
 
 from src import models
 from src.schemas.admin import stage as admin_schemas
+from src.services.standings import recalculation as standings_recalculation
 from src.services.standings import service as standings_service
 from src.services.standings import swiss_auto_round
 
@@ -23,6 +24,10 @@ GROUPED_GENERATION_STAGE_TYPES = {
     enums.StageType.ROUND_ROBIN,
     enums.StageType.SWISS,
 }
+
+
+async def _publish_tournament_changed(tournament_id: int, reason: str) -> None:
+    await standings_recalculation.publish_tournament_changed(tournament_id, reason)
 
 
 async def get_stage(session: AsyncSession, stage_id: int) -> models.Stage:
@@ -159,6 +164,7 @@ async def create_stage(
     stage = models.Stage(tournament_id=tournament_id, **data.model_dump())
     session.add(stage)
     await session.commit()
+    await _publish_tournament_changed(tournament_id, "structure_changed")
     return await get_stage(session, stage.id)
 
 
@@ -166,17 +172,21 @@ async def update_stage(
     session: AsyncSession, stage_id: int, data: admin_schemas.StageUpdate
 ) -> models.Stage:
     stage = await get_stage(session, stage_id)
+    tournament_id = stage.tournament_id
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(stage, field, value)
     await session.commit()
+    await _publish_tournament_changed(tournament_id, "structure_changed")
     return await get_stage(session, stage.id)
 
 
 async def delete_stage(session: AsyncSession, stage_id: int) -> None:
     stage = await get_stage(session, stage_id)
+    tournament_id = stage.tournament_id
     await session.delete(stage)
     await session.commit()
+    await _publish_tournament_changed(tournament_id, "structure_changed")
 
 
 async def _ensure_stage_item_compat_group(
@@ -216,6 +226,7 @@ async def create_stage_item(
     await session.commit()
     item_id = item.id
     await standings_service.recalculate_for_tournament(session, tournament_id)
+    await _publish_tournament_changed(tournament_id, "structure_changed")
     return await get_stage_item(session, item_id)
 
 
@@ -225,10 +236,18 @@ async def update_stage_item(
     data: admin_schemas.StageItemUpdate,
 ) -> models.StageItem:
     item = await get_stage_item(session, stage_item_id)
+    stage_result = await session.execute(
+        select(models.StageItem)
+        .where(models.StageItem.id == stage_item_id)
+        .options(selectinload(models.StageItem.stage))
+    )
+    item_with_stage = stage_result.scalar_one()
+    tournament_id = item_with_stage.stage.tournament_id
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(item, field, value)
     await session.commit()
+    await _publish_tournament_changed(tournament_id, "structure_changed")
     return await get_stage_item(session, stage_item_id)
 
 
@@ -253,6 +272,7 @@ async def create_stage_item_input(
     await session.commit()
     await session.refresh(inp)
     await standings_service.recalculate_for_tournament(session, tournament_id)
+    await _publish_tournament_changed(tournament_id, "structure_changed")
     await session.refresh(inp)
     return inp
 
@@ -365,11 +385,14 @@ async def update_stage_item_input(
 
     await session.commit()
     await standings_service.recalculate_for_tournament(session, tournament_id)
+    await _publish_tournament_changed(tournament_id, "structure_changed")
     await session.refresh(inp)
     return inp
 
 
-async def activate_stage(session: AsyncSession, stage_id: int) -> models.Stage:
+async def activate_stage(
+    session: AsyncSession, stage_id: int, *, notify: bool = True
+) -> models.Stage:
     """Activate a stage, resolving tentative inputs from previous stages."""
     stage = await get_stage(session, stage_id)
 
@@ -405,6 +428,8 @@ async def activate_stage(session: AsyncSession, stage_id: int) -> models.Stage:
                 inp.input_type = enums.StageItemInputType.FINAL
 
     await session.commit()
+    if notify:
+        await _publish_tournament_changed(stage.tournament_id, "structure_changed")
     return await get_stage(session, stage.id)
 
 
@@ -570,6 +595,7 @@ async def seed_teams(
     team_ids: list[int],
     *,
     mode: str = "snake_sr",
+    notify: bool = True,
 ) -> models.Stage:
     """Auto-distribute teams into the stage's stage_items (groups/brackets).
 
@@ -695,6 +721,8 @@ async def seed_teams(
 
     await session.commit()
     await standings_service.recalculate_for_tournament(session, stage.tournament_id)
+    if notify:
+        await _publish_tournament_changed(stage.tournament_id, "structure_changed")
 
     logger.info(
         "Seeded %d teams into stage %s across %d groups (mode=%s)",
@@ -773,6 +801,7 @@ async def wire_from_groups(
     *,
     top_lb: int = 0,
     mode: str = "cross",
+    notify: bool = True,
 ) -> models.Stage:
     """Wire TENTATIVE inputs in ``target_stage`` pointing to top-N of each group in
     ``source_stage``.
@@ -869,6 +898,8 @@ async def wire_from_groups(
         _apply_seeding(session, lb_seeding, lb_item)
 
     await session.commit()
+    if notify:
+        await _publish_tournament_changed(target_stage.tournament_id, "structure_changed")
 
     logger.info(
         "Wired TENTATIVE inputs from stage %s (%d groups × top %d, top_lb %d) "
@@ -916,6 +947,7 @@ async def activate_and_generate(
     stage_id: int,
     *,
     force: bool = False,
+    notify: bool = True,
 ) -> tuple[models.Stage, list[models.Encounter]]:
     """Combined endpoint: activate a stage (resolving TENTATIVE inputs) and
     immediately generate bracket encounters. Single click for the admin.
@@ -940,13 +972,15 @@ async def activate_and_generate(
                 },
             )
 
-    stage = await activate_stage(session, stage_id)
-    encounters = await generate_encounters(session, stage_id)
+    stage = await activate_stage(session, stage_id, notify=False)
+    encounters = await generate_encounters(session, stage_id, notify=False)
+    if notify:
+        await _publish_tournament_changed(stage.tournament_id, "structure_changed")
     return stage, encounters
 
 
 async def generate_encounters(
-    session: AsyncSession, stage_id: int
+    session: AsyncSession, stage_id: int, *, notify: bool = True
 ) -> list[models.Encounter]:
     """Generate bracket encounters for a stage based on its type and team inputs."""
     stage = await get_stage(session, stage_id)
@@ -979,6 +1013,8 @@ async def generate_encounters(
 
         await session.commit()
         await standings_service.recalculate_for_tournament(session, stage.tournament_id)
+        if notify:
+            await _publish_tournament_changed(stage.tournament_id, "structure_changed")
         return encounters
 
     team_ids: list[int] = []
@@ -1018,4 +1054,6 @@ async def generate_encounters(
 
     await session.commit()
     await standings_service.recalculate_for_tournament(session, stage.tournament_id)
+    if notify:
+        await _publish_tournament_changed(stage.tournament_id, "structure_changed")
     return encounters

@@ -61,6 +61,10 @@ import {
   HardResetResultRead,
   BulkOperationResult,
   CsvUserImportParams,
+  UserMergePreviewRequest,
+  UserMergePreviewResponse,
+  UserMergeExecuteRequest,
+  UserMergeExecuteResponse,
   DiscordChannelRead,
   DiscordChannelInput,
   LogHistoryResponse,
@@ -386,6 +390,22 @@ class AdminService {
     await apiFetch("parser", `admin/users/${id}`, {
       method: "DELETE"
     });
+  }
+
+  async previewUserMerge(data: UserMergePreviewRequest): Promise<UserMergePreviewResponse> {
+    const response = await apiFetch("parser", "admin/users/merge/preview", {
+      method: "POST",
+      body: data
+    });
+    return response.json();
+  }
+
+  async executeUserMerge(data: UserMergeExecuteRequest): Promise<UserMergeExecuteResponse> {
+    const response = await apiFetch("parser", "admin/users/merge/execute", {
+      method: "POST",
+      body: data
+    });
+    return response.json();
   }
 
   async bulkCreateUsersFromCsv(
