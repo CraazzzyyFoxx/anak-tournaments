@@ -18,6 +18,7 @@ import type { Encounter } from "@/types/encounter.types";
 import type { Standings, Tournament, Stage, StageItem } from "@/types/tournament.types";
 
 const ADMIN_ROLES = new Set(["admin", "superadmin", "tournament_admin"]);
+const BRACKET_REFRESH_INTERVAL_MS = 60_000;
 
 interface TournamentBracketPageProps {
   tournament: Tournament;
@@ -195,12 +196,16 @@ export default function TournamentBracketPage({
         undefined,
         tournament.workspace_id
       ),
+    refetchInterval: BRACKET_REFRESH_INTERVAL_MS,
+    refetchIntervalInBackground: true,
   });
 
   const { data: allStandings = [] } = useQuery({
     queryKey: ["standings", tournament.id, tournament.workspace_id],
     queryFn: () =>
       tournamentService.getStandings(tournament.id, tournament.workspace_id),
+    refetchInterval: BRACKET_REFRESH_INTERVAL_MS,
+    refetchIntervalInBackground: true,
   });
 
   const groupStagePanels = useMemo(() => {

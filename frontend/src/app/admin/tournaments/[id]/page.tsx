@@ -18,6 +18,7 @@ import { TournamentOverviewTab } from "./components/TournamentOverviewTab";
 import { TournamentWorkspaceHeader } from "./components/TournamentWorkspaceHeader";
 
 type TournamentWorkspaceTab = "overview" | "setup" | "teams" | "matches" | "logs";
+const TOURNAMENT_WORKSPACE_REFRESH_INTERVAL_MS = 60_000;
 
 const tabFallback = (
   <div className="space-y-4">
@@ -101,12 +102,16 @@ export default function AdminTournamentWorkspacePage() {
     queryKey: ["admin", "tournament", tournamentId, "standings"],
     queryFn: () => tournamentService.getStandings(tournamentId),
     enabled: Number.isFinite(tournamentId) && tournamentId > 0,
+    refetchInterval: TOURNAMENT_WORKSPACE_REFRESH_INTERVAL_MS,
+    refetchIntervalInBackground: true,
   });
 
   const encountersQuery = useQuery({
     queryKey: ["admin", "tournament", tournamentId, "encounters"],
     queryFn: () => encounterService.getAll(1, "", tournamentId, -1),
     enabled: Number.isFinite(tournamentId) && tournamentId > 0,
+    refetchInterval: TOURNAMENT_WORKSPACE_REFRESH_INTERVAL_MS,
+    refetchIntervalInBackground: true,
   });
 
   const discordChannelQuery = useQuery({
