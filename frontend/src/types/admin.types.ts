@@ -192,8 +192,8 @@ export interface EncounterCreateInput {
   tournament_group_id?: number | null;
   stage_id: number | null;
   stage_item_id: number | null;
-  home_team_id: number;
-  away_team_id: number;
+  home_team_id: number | null;
+  away_team_id: number | null;
   round: number;
   home_score?: number;
   away_score?: number;
@@ -205,8 +205,8 @@ export interface EncounterUpdateInput {
   tournament_group_id?: number | null;
   stage_id?: number | null;
   stage_item_id?: number | null;
-  home_team_id?: number;
-  away_team_id?: number;
+  home_team_id?: number | null;
+  away_team_id?: number | null;
   home_score?: number;
   away_score?: number;
   status?: string;

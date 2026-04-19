@@ -33,8 +33,8 @@ export type EncounterFormState = {
   name: string;
   stage_id: number | null;
   stage_item_id: number | null;
-  home_team_id: number;
-  away_team_id: number;
+  home_team_id: number | null;
+  away_team_id: number | null;
   round: number;
   home_score: number;
   away_score: number;
@@ -142,8 +142,8 @@ export function getEmptyEncounterForm(
     name: "",
     stage_id: defaultStageId,
     stage_item_id: defaultStageItemId,
-    home_team_id: 0,
-    away_team_id: 0,
+    home_team_id: null,
+    away_team_id: null,
     round: 1,
     home_score: 0,
     away_score: 0,

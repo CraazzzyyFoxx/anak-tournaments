@@ -114,18 +114,28 @@ async def create_encounter(session: AsyncSession, data: admin_schemas.EncounterC
     if not tournament:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
-    # Verify teams exist
-    result = await session.execute(select(models.Team).where(models.Team.id == data.home_team_id))
-    home_team = result.scalar_one_or_none()
+    # Verify selected teams exist when provided
+    if data.home_team_id is not None:
+        result = await session.execute(
+            select(models.Team).where(models.Team.id == data.home_team_id)
+        )
+        home_team = result.scalar_one_or_none()
 
-    if not home_team:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Home team not found")
+        if not home_team:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Home team not found"
+            )
 
-    result = await session.execute(select(models.Team).where(models.Team.id == data.away_team_id))
-    away_team = result.scalar_one_or_none()
+    if data.away_team_id is not None:
+        result = await session.execute(
+            select(models.Team).where(models.Team.id == data.away_team_id)
+        )
+        away_team = result.scalar_one_or_none()
 
-    if not away_team:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Away team not found")
+        if not away_team:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Away team not found"
+            )
 
     stage_id, stage_item_id, tournament_group_id = await _resolve_stage_refs(
         session,
@@ -189,15 +199,23 @@ async def update_encounter(
     # Update fields
     update_data = data.model_dump(exclude_unset=True)
 
-    if "home_team_id" in update_data:
-        result = await session.execute(select(models.Team).where(models.Team.id == update_data["home_team_id"]))
+    if "home_team_id" in update_data and update_data["home_team_id"] is not None:
+        result = await session.execute(
+            select(models.Team).where(models.Team.id == update_data["home_team_id"])
+        )
         if result.scalar_one_or_none() is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Home team not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Home team not found"
+            )
 
-    if "away_team_id" in update_data:
-        result = await session.execute(select(models.Team).where(models.Team.id == update_data["away_team_id"]))
+    if "away_team_id" in update_data and update_data["away_team_id"] is not None:
+        result = await session.execute(
+            select(models.Team).where(models.Team.id == update_data["away_team_id"])
+        )
         if result.scalar_one_or_none() is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Away team not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Away team not found"
+            )
 
     resolved_stage_id, resolved_stage_item_id, resolved_group_id = await _resolve_stage_refs(
         session,

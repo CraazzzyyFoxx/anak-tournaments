@@ -16,8 +16,8 @@ class EncounterCreate(BaseModel):
     tournament_group_id: int | None = None
     stage_id: int | None = None
     stage_item_id: int | None = None
-    home_team_id: int
-    away_team_id: int
+    home_team_id: int | None = None
+    away_team_id: int | None = None
     round: int
     home_score: int = 0
     away_score: int = 0

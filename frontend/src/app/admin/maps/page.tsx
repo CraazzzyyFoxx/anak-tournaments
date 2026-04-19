@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ColumnDef } from "@tanstack/react-table";
 import { MoreHorizontal, Plus, Pencil, Trash2, RefreshCw } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -43,6 +44,13 @@ const emptyMapForm: MapCreateInput = {
   name: "",
   gamemode_id: 0,
 };
+const GAMEMODE_QUERY_PARAM = "gamemode_id";
+
+function parseGamemodeQueryParam(value: string | null): number | null {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
 
 function MapImagePreview({
   imagePath,
@@ -77,6 +85,9 @@ function MapImagePreview({
 }
 
 export default function MapsAdminPage() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { canAccessPermission } = usePermissions();
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
@@ -90,6 +101,7 @@ export default function MapsAdminPage() {
   const canUpdate = canAccessPermission("map.update", workspaceId);
   const canDelete = canAccessPermission("map.delete", workspaceId);
   const canSync = canAccessPermission("map.sync", workspaceId);
+  const selectedGamemodeId = parseGamemodeQueryParam(searchParams.get(GAMEMODE_QUERY_PARAM));
 
   // Fetch gamemodes for selector
   const { data: gamemodesData } = useQuery({
@@ -142,6 +154,19 @@ export default function MapsAdminPage() {
     } else {
       createMutation.mutate(formData as MapCreateInput);
     }
+  };
+
+  const handleGamemodeFilterChange = (value: string) => {
+    const nextParams = new URLSearchParams(searchParams.toString());
+    if (value === "all") {
+      nextParams.delete(GAMEMODE_QUERY_PARAM);
+    } else {
+      nextParams.set(GAMEMODE_QUERY_PARAM, value);
+    }
+    nextParams.delete("page");
+
+    const query = nextParams.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
   };
 
   const formInitial = editingMap ? { name: editingMap.name, gamemode_id: editingMap.gamemode_id } : emptyMapForm;
@@ -267,13 +292,48 @@ export default function MapsAdminPage() {
       />
 
       <AdminDataTable
-        queryKey={(page, search, pageSize, sortField, sortDir) => ["admin", "maps", page, search, pageSize, sortField, sortDir]}
+        key={`maps-table-${selectedGamemodeId ?? "all"}`}
+        queryKey={(page, search, pageSize, sortField, sortDir) => [
+          "admin",
+          "maps",
+          selectedGamemodeId,
+          page,
+          search,
+          pageSize,
+          sortField,
+          sortDir,
+        ]}
         queryFn={(page, search, pageSize, sortField, sortDir) =>
-          adminService.getMaps({ page, search, per_page: pageSize, sort: sortField ?? undefined, order: sortDir })
+          adminService.getMaps({
+            page,
+            search,
+            per_page: pageSize,
+            gamemode_id: selectedGamemodeId ?? undefined,
+            sort: sortField ?? undefined,
+            order: sortDir,
+          })
         }
         columns={columns}
         searchPlaceholder="Search maps..."
         emptyMessage="No maps found."
+        actions={
+          <Select
+            value={selectedGamemodeId?.toString() ?? "all"}
+            onValueChange={handleGamemodeFilterChange}
+          >
+            <SelectTrigger className="w-[220px]">
+              <SelectValue placeholder="Filter by gamemode" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All gamemodes</SelectItem>
+              {gamemodesData?.map((gamemode) => (
+                <SelectItem key={gamemode.id} value={gamemode.id.toString()}>
+                  {gamemode.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        }
         onRowDoubleClick={
           canUpdate
             ? (row) => {

@@ -331,12 +331,11 @@ export function TournamentMatchesTab({
       return;
     }
 
-    if (encounterFormData.home_team_id <= 0 || encounterFormData.away_team_id <= 0) {
-      setEncounterFormError("Select both teams before saving the encounter.");
-      return;
-    }
-
-    if (encounterFormData.home_team_id === encounterFormData.away_team_id) {
+    if (
+      encounterFormData.home_team_id != null &&
+      encounterFormData.away_team_id != null &&
+      encounterFormData.home_team_id === encounterFormData.away_team_id
+    ) {
       setEncounterFormError("Home and away teams must be different.");
       return;
     }
@@ -949,13 +948,11 @@ export function TournamentMatchesTab({
             <div>
               <Label htmlFor="workspace-encounter-home">Home Team</Label>
               <Select
-                value={
-                  encounterFormData.home_team_id ? encounterFormData.home_team_id.toString() : ""
-                }
+                value={encounterFormData.home_team_id?.toString() ?? "none"}
                 onValueChange={(value) =>
                   setEncounterFormData((current) => ({
                     ...current,
-                    home_team_id: Number(value)
+                    home_team_id: value === "none" ? null : Number(value)
                   }))
                 }
               >
@@ -963,6 +960,7 @@ export function TournamentMatchesTab({
                   <SelectValue placeholder="Select home team" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="none">TBD</SelectItem>
                   {teams.map((team) => (
                     <SelectItem key={team.id} value={team.id.toString()}>
                       {team.name}
@@ -975,13 +973,11 @@ export function TournamentMatchesTab({
             <div>
               <Label htmlFor="workspace-encounter-away">Away Team</Label>
               <Select
-                value={
-                  encounterFormData.away_team_id ? encounterFormData.away_team_id.toString() : ""
-                }
+                value={encounterFormData.away_team_id?.toString() ?? "none"}
                 onValueChange={(value) =>
                   setEncounterFormData((current) => ({
                     ...current,
-                    away_team_id: Number(value)
+                    away_team_id: value === "none" ? null : Number(value)
                   }))
                 }
               >
@@ -989,6 +985,7 @@ export function TournamentMatchesTab({
                   <SelectValue placeholder="Select away team" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="none">TBD</SelectItem>
                   {teams.map((team) => (
                     <SelectItem key={team.id} value={team.id.toString()}>
                       {team.name}

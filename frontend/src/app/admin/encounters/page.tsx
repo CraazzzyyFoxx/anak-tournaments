@@ -71,11 +71,11 @@ function starsToCloseness(stars: number): number | null {
 }
 
 function getEncounterTeamsError(data: Pick<EncounterCreateInput, "home_team_id" | "away_team_id">) {
-  if (data.home_team_id <= 0 || data.away_team_id <= 0) {
-    return "Select both teams before saving the encounter.";
-  }
-
-  if (data.home_team_id === data.away_team_id) {
+  if (
+    data.home_team_id != null &&
+    data.away_team_id != null &&
+    data.home_team_id === data.away_team_id
+  ) {
     return "Home and away teams must be different.";
   }
 
@@ -87,8 +87,8 @@ const emptyEncounterForm: EncounterCreateInput = {
   tournament_id: 0,
   stage_id: null,
   stage_item_id: null,
-  home_team_id: 0,
-  away_team_id: 0,
+  home_team_id: null,
+  away_team_id: null,
   round: 1,
   home_score: 0,
   away_score: 0,
@@ -266,8 +266,8 @@ export default function EncountersPage() {
     e.preventDefault();
     if (selectedEncounter) {
       const teamsError = getEncounterTeamsError({
-        home_team_id: (formData as EncounterUpdateInput).home_team_id ?? 0,
-        away_team_id: (formData as EncounterUpdateInput).away_team_id ?? 0
+        home_team_id: (formData as EncounterUpdateInput).home_team_id ?? null,
+        away_team_id: (formData as EncounterUpdateInput).away_team_id ?? null
       });
       if (teamsError) {
         toast({ title: "Error", description: teamsError, variant: "destructive" });
@@ -591,15 +591,21 @@ export default function EncountersPage() {
           </div>
 
           <div>
-            <Label htmlFor="home_team_id">Home Team *</Label>
+            <Label htmlFor="home_team_id">Home Team</Label>
             <Select
-              value={(formData as EncounterCreateInput).home_team_id?.toString()}
-              onValueChange={(value) => setFormData({ ...formData, home_team_id: parseInt(value) })}
+              value={(formData as EncounterCreateInput).home_team_id?.toString() ?? "none"}
+              onValueChange={(value) =>
+                setFormData({
+                  ...formData,
+                  home_team_id: value === "none" ? null : parseInt(value, 10)
+                })
+              }
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select home team" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="none">TBD</SelectItem>
                 {teamsData?.results.map((team) => (
                   <SelectItem key={team.id} value={team.id.toString()}>
                     {team.name}
@@ -610,15 +616,21 @@ export default function EncountersPage() {
           </div>
 
           <div>
-            <Label htmlFor="away_team_id">Away Team *</Label>
+            <Label htmlFor="away_team_id">Away Team</Label>
             <Select
-              value={(formData as EncounterCreateInput).away_team_id?.toString()}
-              onValueChange={(value) => setFormData({ ...formData, away_team_id: parseInt(value) })}
+              value={(formData as EncounterCreateInput).away_team_id?.toString() ?? "none"}
+              onValueChange={(value) =>
+                setFormData({
+                  ...formData,
+                  away_team_id: value === "none" ? null : parseInt(value, 10)
+                })
+              }
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select away team" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="none">TBD</SelectItem>
                 {teamsData?.results.map((team) => (
                   <SelectItem key={team.id} value={team.id.toString()}>
                     {team.name}
@@ -776,17 +788,21 @@ export default function EncountersPage() {
           </div>
 
           <div>
-            <Label htmlFor="edit-home_team_id">Home Team *</Label>
+            <Label htmlFor="edit-home_team_id">Home Team</Label>
             <Select
-              value={(formData as EncounterUpdateInput).home_team_id?.toString() ?? ""}
+              value={(formData as EncounterUpdateInput).home_team_id?.toString() ?? "none"}
               onValueChange={(value) =>
-                setFormData({ ...formData, home_team_id: parseInt(value, 10) })
+                setFormData({
+                  ...formData,
+                  home_team_id: value === "none" ? null : parseInt(value, 10)
+                })
               }
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select home team" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="none">TBD</SelectItem>
                 {teamsData?.results.map((team) => (
                   <SelectItem key={team.id} value={team.id.toString()}>
                     {team.name}
@@ -797,17 +813,21 @@ export default function EncountersPage() {
           </div>
 
           <div>
-            <Label htmlFor="edit-away_team_id">Away Team *</Label>
+            <Label htmlFor="edit-away_team_id">Away Team</Label>
             <Select
-              value={(formData as EncounterUpdateInput).away_team_id?.toString() ?? ""}
+              value={(formData as EncounterUpdateInput).away_team_id?.toString() ?? "none"}
               onValueChange={(value) =>
-                setFormData({ ...formData, away_team_id: parseInt(value, 10) })
+                setFormData({
+                  ...formData,
+                  away_team_id: value === "none" ? null : parseInt(value, 10)
+                })
               }
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select away team" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="none">TBD</SelectItem>
                 {teamsData?.results.map((team) => (
                   <SelectItem key={team.id} value={team.id.toString()}>
                     {team.name}
