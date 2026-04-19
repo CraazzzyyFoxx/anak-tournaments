@@ -1,4 +1,5 @@
 from loguru import logger
+from shared.services.encounter_naming import build_encounter_name
 from shared.services.stage_refs import resolve_stage_refs_from_group
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -184,7 +185,7 @@ async def _create_encounter_from_challonge(
         home_score, away_score = map(int, match.scores_csv.split("-"))
     except ValueError:
         home_score, away_score = 0, 0
-    name = f"{home_team.name} vs {away_team.name}"
+    name = build_encounter_name(home_team.name, away_team.name)
     existed = await service.get_by_challonge_id(session, match.id, [])
     if existed:
         existed.home_score = home_score

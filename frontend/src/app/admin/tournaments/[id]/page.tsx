@@ -124,6 +124,9 @@ export default function AdminTournamentWorkspacePage() {
   const canUpdateTeam = canAccessPermission("team.update", tournamentWorkspaceId);
   const canDeleteTeam = canAccessPermission("team.delete", tournamentWorkspaceId);
   const canImportTeams = canAccessPermission("team.import", tournamentWorkspaceId);
+  const canCreatePlayer = canAccessPermission("player.create", tournamentWorkspaceId);
+  const canUpdatePlayer = canAccessPermission("player.update", tournamentWorkspaceId);
+  const canDeletePlayer = canAccessPermission("player.delete", tournamentWorkspaceId);
   const canCreateEncounter = canAccessPermission("match.create", tournamentWorkspaceId);
   const canUpdateEncounter = canAccessPermission("match.update", tournamentWorkspaceId);
   const canDeleteEncounter = canAccessPermission("match.delete", tournamentWorkspaceId);
@@ -187,6 +190,9 @@ export default function AdminTournamentWorkspacePage() {
       canUpdateTeam,
       canDeleteTeam,
       canImportTeams,
+      canCreatePlayer,
+      canUpdatePlayer,
+      canDeletePlayer,
       canCreateEncounter,
       canUpdateEncounter,
       canDeleteEncounter,
@@ -257,6 +263,7 @@ export default function AdminTournamentWorkspacePage() {
           {activeTab === "teams" ? (
             <TournamentTeamsTab
               tournamentId={tournamentId}
+              workspaceId={tournamentWorkspaceId}
               teams={teams}
               stagesCount={stages.length}
               hasChallongeSource={hasChallongeSource}
@@ -264,6 +271,9 @@ export default function AdminTournamentWorkspacePage() {
               canUpdateTeam={canUpdateTeam}
               canDeleteTeam={canDeleteTeam}
               canImportTeams={canImportTeams}
+              canCreatePlayer={canCreatePlayer}
+              canUpdatePlayer={canUpdatePlayer}
+              canDeletePlayer={canDeletePlayer}
             />
           ) : null}
         </TabsContent>

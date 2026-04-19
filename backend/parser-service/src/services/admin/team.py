@@ -14,6 +14,8 @@ def _prepare_player_create_data(data: admin_schemas.PlayerCreate) -> dict:
     player_data = data.model_dump()
     player_data.pop("div", None)
     player_data["sub_role"] = normalize_sub_role(player_data.get("sub_role"))
+    if not player_data.get("is_substitution"):
+        player_data["related_player_id"] = None
     return player_data
 
 
@@ -25,7 +27,79 @@ def _prepare_player_update_data(
     update_data.pop("div", None)
     if "sub_role" in update_data:
         update_data["sub_role"] = normalize_sub_role(update_data["sub_role"])
+    if update_data.get("is_substitution") is False:
+        update_data["related_player_id"] = None
     return update_data
+
+
+async def _get_related_player(
+    session: AsyncSession,
+    *,
+    related_player_id: int | None,
+) -> models.Player | None:
+    if related_player_id is None:
+        return None
+
+    result = await session.execute(
+        select(models.Player).where(models.Player.id == related_player_id)
+    )
+    return result.scalar_one_or_none()
+
+
+def _validate_related_player_scope(
+    *,
+    related_player: models.Player | None,
+    related_player_id: int | None,
+    team_id: int,
+    tournament_id: int,
+    player_id: int | None = None,
+) -> None:
+    if related_player_id is None:
+        return
+
+    if related_player is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Related player not found",
+        )
+
+    if player_id is not None and related_player.id == player_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Player cannot reference itself as related player",
+        )
+
+    if related_player.team_id != team_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Related player must belong to the same team",
+        )
+
+    if related_player.tournament_id != tournament_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Related player must belong to the same tournament",
+        )
+
+
+async def _collect_substitution_descendants(
+    session: AsyncSession,
+    *,
+    player_id: int,
+) -> list[models.Player]:
+    descendants: list[models.Player] = []
+    result = await session.execute(
+        select(models.Player).where(models.Player.related_player_id == player_id)
+    )
+    children = result.scalars().all()
+
+    for child in children:
+        descendants.append(child)
+        descendants.extend(
+            await _collect_substitution_descendants(session, player_id=child.id)
+        )
+
+    return descendants
 
 
 def _prepare_team_create_data(data: admin_schemas.TeamCreate) -> dict:
@@ -123,6 +197,11 @@ async def update_team(session: AsyncSession, team_id: int, data: admin_schemas.T
         captain = result.scalar_one_or_none()
         if not captain:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Captain user not found")
+        if team.players and all(player.user_id != data.captain_id for player in team.players):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Captain must belong to the current team roster",
+            )
 
     # Update fields
     update_data = _prepare_team_update_data(team, data)
@@ -168,6 +247,17 @@ async def add_player_to_team(session: AsyncSession, team_id: int, data: admin_sc
     # Override team_id from URL parameter
     player_data = _prepare_player_create_data(data)
     player_data["team_id"] = team_id
+    player_data["tournament_id"] = team.tournament_id
+    related_player = await _get_related_player(
+        session,
+        related_player_id=player_data.get("related_player_id"),
+    )
+    _validate_related_player_scope(
+        related_player=related_player,
+        related_player_id=player_data.get("related_player_id"),
+        team_id=team_id,
+        tournament_id=team.tournament_id,
+    )
 
     # Create player
     player = models.Player(**player_data)
@@ -210,6 +300,14 @@ async def create_player(session: AsyncSession, data: admin_schemas.PlayerCreate)
     if not team:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
 
+    related_player = await _get_related_player(session, related_player_id=data.related_player_id)
+    _validate_related_player_scope(
+        related_player=related_player,
+        related_player_id=data.related_player_id,
+        team_id=team.id,
+        tournament_id=team.tournament_id,
+    )
+
     # Create player
     player = models.Player(**_prepare_player_create_data(data))
 
@@ -230,6 +328,20 @@ async def update_player(session: AsyncSession, player_id: int, data: admin_schem
     if not player:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Player not found")
 
+    related_player_id = (
+        data.related_player_id
+        if "related_player_id" in data.model_fields_set
+        else player.related_player_id
+    )
+    related_player = await _get_related_player(session, related_player_id=related_player_id)
+    _validate_related_player_scope(
+        related_player=related_player,
+        related_player_id=related_player_id,
+        team_id=player.team_id,
+        tournament_id=player.tournament_id,
+        player_id=player.id,
+    )
+
     # Update fields
     update_data = _prepare_player_update_data(player, data)
     for field, value in update_data.items():
@@ -247,5 +359,8 @@ async def delete_player(session: AsyncSession, player_id: int) -> None:
     if not player:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Player not found")
 
+    descendants = await _collect_substitution_descendants(session, player_id=player.id)
+    for descendant in descendants:
+        await session.delete(descendant)
     await session.delete(player)
     await session.commit()

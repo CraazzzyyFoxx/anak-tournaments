@@ -140,6 +140,7 @@ export interface PlayerCreateInput {
   is_newcomer?: boolean;
   is_newcomer_role?: boolean;
   is_substitution?: boolean;
+  related_player_id?: number | null;
 }
 
 export interface PlayerUpdateInput {
@@ -151,6 +152,7 @@ export interface PlayerUpdateInput {
   is_newcomer?: boolean;
   is_newcomer_role?: boolean;
   is_substitution?: boolean;
+  related_player_id?: number | null;
 }
 
 export interface PlayerSubRole {

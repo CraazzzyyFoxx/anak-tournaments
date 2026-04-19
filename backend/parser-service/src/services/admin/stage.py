@@ -1,5 +1,7 @@
 """Admin service layer for stage CRUD and bracket generation."""
 
+from collections.abc import Sequence
+
 from fastapi import HTTPException, status
 from loguru import logger
 from shared.core import enums
@@ -7,6 +9,7 @@ from shared.services.bracket.advancement import persist_advancement_edges
 from shared.services.bracket.engine import generate_bracket
 from shared.services.bracket.swiss import SwissStanding
 from shared.services.bracket.types import BracketSkeleton
+from shared.services.encounter_naming import build_encounter_name_from_ids
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -413,6 +416,20 @@ def _collect_item_team_ids(item: models.StageItem) -> list[int]:
     ]
 
 
+async def _load_team_names(
+    session: AsyncSession,
+    team_ids: Sequence[int],
+) -> dict[int, str]:
+    unique_team_ids = sorted({team_id for team_id in team_ids if team_id is not None})
+    if not unique_team_ids:
+        return {}
+
+    result = await session.execute(
+        select(models.Team.id, models.Team.name).where(models.Team.id.in_(unique_team_ids))
+    )
+    return dict(result.all())
+
+
 async def _get_swiss_generation_context(
     session: AsyncSession,
     stage_id: int,
@@ -495,6 +512,7 @@ async def _create_encounters_from_skeleton(
     skeleton: BracketSkeleton,
     stage_item_id: int | None,
     *,
+    team_names_by_id: dict[int, str],
     lb_stage_item_id: int | None = None,
 ) -> list[models.Encounter]:
     """Persist bracket pairings as Encounter rows and wire up EncounterLink
@@ -513,7 +531,11 @@ async def _create_encounters_from_skeleton(
             else stage_item_id
         )
         encounter = models.Encounter(
-            name=pairing.name,
+            name=build_encounter_name_from_ids(
+                pairing.home_team_id,
+                pairing.away_team_id,
+                team_names_by_id,
+            ),
             home_team_id=pairing.home_team_id,
             away_team_id=pairing.away_team_id,
             home_score=0,
@@ -944,8 +966,15 @@ async def generate_encounters(
                 )
 
             skeleton = await _generate_stage_skeleton(session, stage, team_ids, item.id)
+            team_names_by_id = await _load_team_names(session, team_ids)
             encounters.extend(
-                await _create_encounters_from_skeleton(session, stage, skeleton, item.id)
+                await _create_encounters_from_skeleton(
+                    session,
+                    stage,
+                    skeleton,
+                    item.id,
+                    team_names_by_id=team_names_by_id,
+                )
             )
 
         await session.commit()
@@ -977,8 +1006,14 @@ async def generate_encounters(
             lb_stage_item_id = lb_item.id
 
     skeleton = await _generate_stage_skeleton(session, stage, team_ids, primary_item_id)
+    team_names_by_id = await _load_team_names(session, team_ids)
     encounters = await _create_encounters_from_skeleton(
-        session, stage, skeleton, primary_item_id, lb_stage_item_id=lb_stage_item_id
+        session,
+        stage,
+        skeleton,
+        primary_item_id,
+        team_names_by_id=team_names_by_id,
+        lb_stage_item_id=lb_stage_item_id,
     )
 
     await session.commit()

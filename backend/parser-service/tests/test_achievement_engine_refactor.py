@@ -41,6 +41,7 @@ from src.services.achievement.engine.seeder import (  # noqa: E402
     _all_default_rules,
     get_canonical_rule_catalog,
 )
+from src.services.achievement.engine.conditions import resolve_stat_name  # noqa: E402
 from src.services.achievement.engine.validation import infer_grain, validate_condition_tree  # noqa: E402
 
 
@@ -92,9 +93,21 @@ class DiffScopeTests(IsolatedAsyncioTestCase):
 
 
 class ValidationTests(TestCase):
+    def test_resolve_stat_name_maps_legacy_critical_hit_kills_alias(self) -> None:
+        self.assertEqual("ScopedCriticalHitKills", resolve_stat_name("CriticalHitKills"))
+
     def test_rejects_top_level_player_role_condition(self) -> None:
         errors = validate_condition_tree({"type": "player_role", "params": {"role": "Damage"}})
         self.assertTrue(any("top-level" in error for error in errors))
+
+    def test_rejects_legacy_stat_alias_in_condition_tree(self) -> None:
+        errors = validate_condition_tree(
+            {
+                "type": "stat_threshold",
+                "params": {"stat": "CriticalHitKills", "op": ">=", "value": 10},
+            }
+        )
+        self.assertTrue(any("ScopedCriticalHitKills" in error for error in errors))
 
     def test_distinct_count_with_tournament_scope_infers_tournament_grain(self) -> None:
         grain = infer_grain(

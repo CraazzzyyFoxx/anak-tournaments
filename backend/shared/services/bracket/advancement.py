@@ -17,11 +17,15 @@ from collections.abc import Iterable
 
 import sqlalchemy as sa
 from loguru import logger
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from shared.core import enums
 from shared.models.encounter import Encounter
 from shared.models.encounter_link import EncounterLink
+from shared.models.stage import Stage
+from shared.models.team import Team
 from shared.services.bracket.types import AdvancementEdge
-from sqlalchemy.ext.asyncio import AsyncSession
+from shared.services.encounter_naming import build_encounter_name_from_ids
 
 __all__ = (
     "persist_advancement_edges",
@@ -132,6 +136,11 @@ async def advance_winner(
             target.home_team_id = team_id
         else:
             target.away_team_id = team_id
+        target.name = await _build_encounter_name_for_ids(
+            session,
+            home_team_id=target.home_team_id,
+            away_team_id=target.away_team_id,
+        )
         updated.append(target)
 
     reset_match = await _maybe_create_grand_final_reset(session, encounter, winner_id)
@@ -151,12 +160,30 @@ async def _maybe_create_grand_final_reset(
     """Lazily create a Grand Final Reset match when the LB champion wins GF.
 
     Rules:
-    - ``gf_encounter.name`` must be "Grand Final".
+    - Encounter belongs to a double-elimination stage.
+    - Encounter is the highest currently materialised positive round in its
+      bracket item (the original Grand Final, not UB Final / Reset).
     - The GF winner must be the team that reached GF via the
       LB-final → GF winner-edge (target_slot = AWAY in our generator).
     - No Reset match exists yet for this stage_item_id.
     """
-    if gf_encounter.name != "Grand Final":
+    if gf_encounter.stage_id is None or gf_encounter.round <= 0:
+        return None
+
+    stage = await session.get(Stage, gf_encounter.stage_id)
+    if stage is None or stage.stage_type != enums.StageType.DOUBLE_ELIMINATION:
+        return None
+
+    max_round_result = await session.execute(
+        sa.select(sa.func.max(Encounter.round)).where(
+            Encounter.tournament_id == gf_encounter.tournament_id,
+            Encounter.stage_id == gf_encounter.stage_id,
+            Encounter.stage_item_id == gf_encounter.stage_item_id,
+            Encounter.round > 0,
+        )
+    )
+    max_positive_round = max_round_result.scalar_one()
+    if max_positive_round != gf_encounter.round:
         return None
     if gf_encounter.away_team_id != gf_winner_id:
         # UB champion won — tournament ends, no reset.
@@ -167,14 +194,18 @@ async def _maybe_create_grand_final_reset(
             Encounter.tournament_id == gf_encounter.tournament_id,
             Encounter.stage_id == gf_encounter.stage_id,
             Encounter.stage_item_id == gf_encounter.stage_item_id,
-            Encounter.name == "Grand Final Reset",
+            Encounter.round == gf_encounter.round + 1,
         )
     )
     if existing_reset.scalar_one_or_none() is not None:
         return None
 
     reset = Encounter(
-        name="Grand Final Reset",
+        name=await _build_encounter_name_for_ids(
+            session,
+            home_team_id=gf_encounter.home_team_id,
+            away_team_id=gf_encounter.away_team_id,
+        ),
         home_team_id=gf_encounter.home_team_id,
         away_team_id=gf_encounter.away_team_id,
         home_score=0,
@@ -193,3 +224,28 @@ async def _maybe_create_grand_final_reset(
         gf_encounter.stage_id,
     )
     return reset
+
+
+async def _build_encounter_name_for_ids(
+    session: AsyncSession,
+    *,
+    home_team_id: int | None,
+    away_team_id: int | None,
+) -> str:
+    team_ids = {
+        team_id
+        for team_id in (home_team_id, away_team_id)
+        if team_id is not None
+    }
+    if not team_ids:
+        return build_encounter_name_from_ids(home_team_id, away_team_id, {})
+
+    result = await session.execute(
+        sa.select(Team.id, Team.name).where(Team.id.in_(team_ids))
+    )
+    team_names_by_id = dict(result.all())
+    return build_encounter_name_from_ids(
+        home_team_id,
+        away_team_id,
+        team_names_by_id,
+    )

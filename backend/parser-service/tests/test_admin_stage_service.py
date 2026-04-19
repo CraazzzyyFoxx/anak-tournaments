@@ -70,6 +70,16 @@ class AdminStageServiceTests(IsolatedAsyncioTestCase):
         with (
             patch.object(stage_service, "get_stage", AsyncMock(return_value=stage)),
             patch.object(
+                stage_service,
+                "_load_team_names",
+                AsyncMock(
+                    side_effect=[
+                        {1: "Team One", 2: "Team Two"},
+                        {3: "Team Three", 4: "Team Four"},
+                    ]
+                ),
+            ),
+            patch.object(
                 stage_service.standings_service,
                 "recalculate_for_tournament",
                 AsyncMock(),
@@ -83,6 +93,10 @@ class AdminStageServiceTests(IsolatedAsyncioTestCase):
             (encounter.home_team_id, encounter.away_team_id)
             for encounter in encounters
         ])
+        self.assertEqual(
+            ["Team One vs Team Two", "Team Three vs Team Four"],
+            [encounter.name for encounter in encounters],
+        )
         session.commit.assert_awaited_once_with()
 
     async def test_create_stage_item_creates_compat_group_and_recalculates_standings(self) -> None:

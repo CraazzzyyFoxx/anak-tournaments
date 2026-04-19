@@ -6,6 +6,13 @@ import { Pencil, FileEdit } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Encounter } from "@/types/encounter.types";
 import type { StageType } from "@/types/tournament.types";
+import {
+  buildRoundGroups as buildBracketRoundGroups,
+  computeMatchNumbers as computeBracketMatchNumbers,
+  computeSlotHints as computeBracketSlotHints,
+  getDoubleEliminationFinalRounds as getBracketFinalRounds,
+  getGrandFinalLabel as getBracketGrandFinalLabel
+} from "@/components/bracket-view.helpers";
 
 interface BracketViewProps {
   encounters: Encounter[];
@@ -79,32 +86,6 @@ const BADGE_RIGHT = 44;
 const COMPLETED_STATUSES = new Set(["completed", "finished", "closed"]);
 const NAME_SEPARATORS = [" vs. ", " vs ", " VS ", " - ", " v "];
 
-function sortMatches(matches: Encounter[]) {
-  return [...matches].sort((left, right) => {
-    const leftKey = left.stage_item_id ?? left.challonge_id ?? left.id;
-    const rightKey = right.stage_item_id ?? right.challonge_id ?? right.id;
-
-    return leftKey - rightKey;
-  });
-}
-
-function buildRoundGroups(matches: Encounter[]) {
-  const groups = new Map<number, Encounter[]>();
-
-  for (const match of matches) {
-    const existing = groups.get(match.round) ?? [];
-    existing.push(match);
-    groups.set(match.round, existing);
-  }
-
-  return [...groups.entries()]
-    .sort((left, right) => Math.abs(left[0]) - Math.abs(right[0]))
-    .map(([round, roundMatches]) => ({
-      round,
-      matches: sortMatches(roundMatches)
-    }));
-}
-
 function splitEncounterName(name: string | null | undefined) {
   const value = name?.trim();
 
@@ -156,93 +137,6 @@ function buildPath(source: LayoutNode, target: LayoutNode) {
   const middleX = startX + ROUND_GAP_X / 2;
 
   return `M ${startX} ${startY} H ${middleX} V ${endY} H ${endX}`;
-}
-
-function computeMatchNumbers(
-  upperRounds: RoundGroup[],
-  lowerRounds: RoundGroup[],
-  finalRounds: RoundGroup[]
-): Map<number, number> {
-  const numbers = new Map<number, number>();
-  let counter = 1;
-  for (const g of upperRounds) for (const m of g.matches) numbers.set(m.id, counter++);
-  for (const g of lowerRounds) for (const m of g.matches) numbers.set(m.id, counter++);
-  for (const g of finalRounds) for (const m of g.matches) numbers.set(m.id, counter++);
-  return numbers;
-}
-
-function computeSlotHints(
-  upperRounds: RoundGroup[],
-  lowerRounds: RoundGroup[],
-  finalRounds: RoundGroup[],
-  matchNumbers: Map<number, number>,
-  isDE: boolean,
-  hasBracketConnections: boolean
-): Map<number, { home: string | null; away: string | null }> {
-  const hints = new Map<number, { home: string | null; away: string | null }>();
-
-  function label(match: Encounter, prefix: "W" | "L") {
-    const n = matchNumbers.get(match.id);
-    return n != null ? `${prefix} M${n}` : null;
-  }
-
-  function trackEdges(
-    groups: RoundGroup[],
-    prefix: "W" | "L",
-    mapper: (mi: number, tc: number) => number
-  ) {
-    for (let gi = 0; gi < groups.length - 1; gi++) {
-      const current = groups[gi].matches;
-      const next = groups[gi + 1].matches;
-      const feedCount = new Map<number, number>();
-
-      for (let mi = 0; mi < current.length; mi++) {
-        const ti = mapper(mi, next.length);
-        if (ti < 0 || ti >= next.length) continue;
-
-        const target = next[ti];
-        const source = current[mi];
-        const lbl = label(source, prefix);
-        if (!lbl) continue;
-
-        const count = feedCount.get(ti) ?? 0;
-        feedCount.set(ti, count + 1);
-
-        const existing = hints.get(target.id) ?? { home: null, away: null };
-        if (count === 0) {
-          hints.set(target.id, { ...existing, home: lbl });
-        } else {
-          hints.set(target.id, { ...existing, away: lbl });
-        }
-      }
-    }
-  }
-
-  if (hasBracketConnections) {
-    trackEdges(upperRounds, "W", (mi, tc) => {
-      const ti = Math.floor(mi / 2);
-      return ti < tc ? ti : -1;
-    });
-    trackEdges(lowerRounds, "W", (mi, tc) => {
-      if (tc === 0) return -1;
-      return Math.min(mi, tc - 1);
-    });
-  }
-
-  if (isDE && finalRounds.length > 0) {
-    const gfMatch = finalRounds[0]?.matches[0];
-    if (gfMatch) {
-      const ubFinal = upperRounds[upperRounds.length - 1]?.matches[0];
-      const lbFinal = lowerRounds[lowerRounds.length - 1]?.matches[0];
-      const existing = hints.get(gfMatch.id) ?? { home: null, away: null };
-      hints.set(gfMatch.id, {
-        home: ubFinal ? (label(ubFinal, "W") ?? existing.home) : existing.home,
-        away: lbFinal ? (label(lbFinal, "W") ?? existing.away) : existing.away
-      });
-    }
-  }
-
-  return hints;
 }
 
 function createNode(
@@ -309,33 +203,25 @@ function addSequentialEdges(
   }
 }
 
-function isGrandFinalMatch(match: Encounter): boolean {
-  return match.name?.includes("Grand Final") ?? false;
-}
-
-function getGrandFinalLabel(round: number, groups: RoundGroup[]): string {
-  const group = groups.find((g) => g.round === round);
-  if (!group) return `Round ${round}`;
-  const firstName = group.matches[0]?.name ?? "";
-  if (firstName.includes("Grand Final Reset")) return "Grand Final Reset";
-  if (firstName.includes("Grand Final")) return "Grand Final";
-  return `Round ${round}`;
-}
-
 function buildLayout(encounters: Encounter[], type: StageType): BracketLayout {
   const hasBracketConnections = type === "single_elimination" || type === "double_elimination";
 
   const isDE = type === "double_elimination";
+  const finalRoundNumbers = isDE ? getBracketFinalRounds(encounters) : new Set<number>();
 
   // For DE: split upper encounters into regular UB and Grand Final section.
   const ubEncounters = isDE
-    ? encounters.filter((m) => m.round > 0 && !isGrandFinalMatch(m))
+    ? encounters.filter((match) => match.round > 0 && !finalRoundNumbers.has(match.round))
     : encounters.filter((m) => m.round > 0);
-  const finalEncounters = isDE ? encounters.filter((m) => m.round > 0 && isGrandFinalMatch(m)) : [];
+  const finalEncounters = isDE
+    ? encounters.filter((match) => match.round > 0 && finalRoundNumbers.has(match.round))
+    : [];
 
-  const upperRounds = buildRoundGroups(ubEncounters);
-  const finalRounds = buildRoundGroups(finalEncounters);
-  const lowerRounds = isDE ? buildRoundGroups(encounters.filter((match) => match.round < 0)) : [];
+  const upperRounds = buildBracketRoundGroups(ubEncounters);
+  const finalRounds = buildBracketRoundGroups(finalEncounters);
+  const lowerRounds = isDE
+    ? buildBracketRoundGroups(encounters.filter((match) => match.round < 0))
+    : [];
 
   // Main bracket columns (UB and LB); finals go in extra columns at the right.
   const mainColumns = Math.max(upperRounds.length, lowerRounds.length, 1);
@@ -347,8 +233,8 @@ function buildLayout(encounters: Encounter[], type: StageType): BracketLayout {
   const edges: LayoutEdge[] = [];
   const headers: LayoutHeader[] = [];
 
-  const matchNumbers = computeMatchNumbers(upperRounds, lowerRounds, finalRounds);
-  const slotHints = computeSlotHints(
+  const matchNumbers = computeBracketMatchNumbers(upperRounds, lowerRounds, finalRounds);
+  const slotHints = computeBracketSlotHints(
     upperRounds,
     lowerRounds,
     finalRounds,
@@ -451,7 +337,7 @@ function buildLayout(encounters: Encounter[], type: StageType): BracketLayout {
       id: `final-header-${group.round}`,
       x,
       y: PADDING_Y,
-      label: getGrandFinalLabel(group.round, finalRounds),
+      label: getBracketGrandFinalLabel(group.round, finalRounds),
       section: "upper"
     });
 
