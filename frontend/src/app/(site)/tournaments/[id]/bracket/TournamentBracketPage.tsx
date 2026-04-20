@@ -323,7 +323,10 @@ export default function TournamentBracketPage({
               );
             }
 
-            const hasPlayoffStandings = playoffStandings.length > 0;
+            const stagePlayoffStandings = playoffStandings.filter(
+              (standing) => standing.stage_id === stage.id
+            );
+            const hasPlayoffStandings = stagePlayoffStandings.length > 0;
 
             return (
               <Tabs
@@ -360,7 +363,7 @@ export default function TournamentBracketPage({
                 {hasPlayoffStandings && (
                   <TabsContent value="standings" className="mt-0">
                     <div className="overflow-x-auto">
-                      <StandingsTable standings={[...playoffStandings]} is_groups={false} />
+                      <StandingsTable standings={[...stagePlayoffStandings]} is_groups={false} />
                     </div>
                   </TabsContent>
                 )}

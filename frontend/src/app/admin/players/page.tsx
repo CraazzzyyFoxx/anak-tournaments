@@ -12,7 +12,7 @@ import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { UserSearchCombobox } from "@/components/admin/UserSearchCombobox";
 import { TournamentCombobox } from "@/components/admin/TournamentCombobox";
-import Image from "next/image";
+import PlayerDivisionIcon from "@/components/PlayerDivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -48,6 +48,7 @@ import type { Tournament } from "@/types/tournament.types";
 import { paginateResults, sortArray } from "@/lib/paginate-results";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import { cn } from "@/lib/utils";
+import { getPlayerRowDivisionGrid } from "@/app/admin/players/playerRowDivisionGrid";
 
 const TOURNAMENT_QUERY_PARAM = "tournament";
 
@@ -588,7 +589,16 @@ export default function PlayersPage() {
     {
       accessorKey: "division",
       header: "Div",
-      cell: ({ row }) => <div className="flex justify-start"><Image src={`/divisions/${row.getValue<number>("division")}.png`} alt={`Division ${row.getValue<number>("division")}`} width={28} height={28} /></div>
+      cell: ({ row }) => (
+        <div className="flex justify-start">
+          <PlayerDivisionIcon
+            division={row.getValue<number>("division")}
+            tournamentGrid={getPlayerRowDivisionGrid(row.original.team)}
+            width={28}
+            height={28}
+          />
+        </div>
+      )
     },
     {
       accessorKey: "team",

@@ -38,6 +38,7 @@ import {
 } from "@/app/(site)/tournaments/analytics/analytics.helpers";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 import tournamentService from "@/services/tournament.service";
 import analyticsService from "@/services/analytics.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
@@ -280,116 +281,163 @@ const AnalyticsPage = () => {
     <Tabs value={activeTab} onValueChange={navToTab} className="liquid-glass">
       <div className="sticky top-14 z-40 -mx-4 md:-mx-6 xl:-mx-10 px-4 md:px-6 xl:px-10 pb-4">
         <Card className="overflow-hidden">
-          <CardHeader className="p-4 pb-3">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-              <div className="flex flex-col gap-1">
-                <h1 className="text-2xl font-semibold leading-none tracking-tight">Analytics</h1>
+          <CardHeader className="space-y-4 p-4 pb-0">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-2xl font-semibold leading-none tracking-tight">Analytics</h1>
+                  <Badge
+                    variant="outline"
+                    className="border-border/60 bg-background/40 text-[11px] uppercase tracking-[0.18em] text-muted-foreground"
+                  >
+                    Live workspace
+                  </Badge>
+                </div>
                 <p className="text-sm text-muted-foreground hidden sm:block">
                   Tournament overview, team standings, and division shift tables.
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
-                {loadingTournaments ? (
-                  <Skeleton className="h-6 w-56" />
-                ) : activeTournament ? (
-                  <Badge variant="secondary" className="max-w-88 truncate">
-                    {activeTournament.name}
-                  </Badge>
-                ) : null}
+              <div className="grid gap-2 sm:grid-cols-2 xl:min-w-[26rem] xl:max-w-[32rem]">
+                <div className="rounded-xl border border-border/60 bg-background/35 px-3 py-2.5">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">
+                    Tournament
+                  </div>
+                  {loadingTournaments ? (
+                    <Skeleton className="mt-2 h-5 w-full max-w-56" />
+                  ) : (
+                    <div className="mt-1 truncate text-sm font-medium text-foreground">
+                      {activeTournament?.name ?? "Not selected"}
+                    </div>
+                  )}
+                </div>
 
-                {loadingAlgorithms ? (
-                  <Skeleton className="h-6 w-40" />
-                ) : activeAlgorithm ? (
-                  <Badge variant="outline" className="max-w-[18rem] truncate">
-                    {activeAlgorithm.name}
-                  </Badge>
-                ) : null}
+                <div className="rounded-xl border border-border/60 bg-background/35 px-3 py-2.5">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">
+                    Algorithm
+                  </div>
+                  {loadingAlgorithms ? (
+                    <Skeleton className="mt-2 h-5 w-full max-w-40" />
+                  ) : (
+                    <div className="mt-1 truncate text-sm font-medium text-foreground">
+                      {activeAlgorithm?.name ?? "Not selected"}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </CardHeader>
 
-          <CardContent className="p-4 pt-3">
-            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-              <TabsList className="grid grid-cols-3 w-full md:w-[320px]">
-                <TabsTrigger value="overview">Overview</TabsTrigger>
-                <TabsTrigger value="teams">Teams</TabsTrigger>
-                <TabsTrigger value="ranks">Divisions</TabsTrigger>
-              </TabsList>
+          <CardContent className="p-4 pt-4">
+            <div
+              className={cn(
+                "grid gap-4 border-t border-border/50 pt-4",
+                canRecalculateAnalytics && "xl:grid-cols-[minmax(0,1fr)_18rem]"
+              )}
+            >
+              <div className="space-y-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="space-y-1">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">
+                      View
+                    </div>
+                    <TabsList className="grid h-10 w-full grid-cols-3 md:w-[340px]">
+                      <TabsTrigger value="overview">Overview</TabsTrigger>
+                      <TabsTrigger value="teams">Teams</TabsTrigger>
+                      <TabsTrigger value="ranks">Divisions</TabsTrigger>
+                    </TabsList>
+                  </div>
 
-              <div className="grid gap-3 xs:grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap lg:items-end">
-                <div className="grid gap-1">
-                  <span className="text-xs text-muted-foreground">Tournament</span>
-                  <Select
-                    value={tournamentId?.toString()}
-                    onValueChange={(value) => pushTournamentId(value)}
-                    disabled={loadingTournaments || isErrorTournaments}
-                  >
-                    <SelectTrigger
-                      aria-label="Tournament"
-                      className="h-10 cursor-pointer xs:w-full md:w-62.5"
-                    >
-                      <SelectValue
-                        placeholder={
-                          loadingTournaments
-                            ? "Loading tournaments..."
-                            : isErrorTournaments
-                              ? "Failed to load tournaments"
-                              : "Select a tournament"
-                        }
-                      />
-                    </SelectTrigger>
-                    <SelectContent className="liquid-glass-panel max-h-[min(var(--radix-select-content-available-height),20rem)]">
-                      <SelectGroup>
-                        {tournamentsData?.results.map((item) => (
-                          <SelectItem key={item.id} value={item.id.toString()}>
-                            {item.name}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
+                  <div className="text-xs text-muted-foreground/80 lg:max-w-[24rem] lg:text-right">
+                    Switch tournament context, choose the ranking algorithm, and jump directly to
+                    a team card when reviewing the overview.
+                  </div>
                 </div>
 
-                <div className="grid gap-1">
-                  <span className="text-xs text-muted-foreground">Algorithm</span>
-                  <Select
-                    value={algorithmId?.toString()}
-                    onValueChange={(value) => pushAlgorithm(value)}
-                    disabled={loadingAlgorithms || isErrorAlgorithms}
-                  >
-                    <SelectTrigger
-                      aria-label="Algorithm"
-                      className="h-10 cursor-pointer xs:w-full md:w-62.5"
+                <div
+                  className={cn(
+                    "grid gap-3 md:grid-cols-2",
+                    activeTab === "overview" && "2xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_1.2fr]"
+                  )}
+                >
+                  <div className="space-y-1.5">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">
+                      Tournament
+                    </div>
+                    <Select
+                      value={tournamentId?.toString()}
+                      onValueChange={(value) => pushTournamentId(value)}
+                      disabled={loadingTournaments || isErrorTournaments}
                     >
-                      <SelectValue
-                        placeholder={
-                          loadingAlgorithms
-                            ? "Loading algorithms..."
-                            : isErrorAlgorithms
-                              ? "Failed to load algorithms"
-                              : "Select an algorithm"
-                        }
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        {availableAlgorithms.map((item) => (
-                          <SelectItem key={item.id} value={item.id.toString()}>
-                            {item.name}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </div>
+                      <SelectTrigger
+                        aria-label="Tournament"
+                        className="h-11 w-full cursor-pointer liquid-glass-panel"
+                      >
+                        <SelectValue
+                          placeholder={
+                            loadingTournaments
+                              ? "Loading tournaments..."
+                              : isErrorTournaments
+                                ? "Failed to load tournaments"
+                                : "Select a tournament"
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent className="liquid-glass-panel max-h-[min(var(--radix-select-content-available-height),20rem)]">
+                        <SelectGroup>
+                          {tournamentsData?.results.map((item) => (
+                            <SelectItem key={item.id} value={item.id.toString()}>
+                              {item.name}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                {activeTab === "overview" ? (
-                  <div className="grid gap-1 sm:col-span-2">
-                    <span className="text-xs text-muted-foreground">Jump to team</span>
-                    {!canQueryAnalytics || loadingAnalytics ? (
-                      <Skeleton className="h-10 xs:w-full md:w-62.5" />
-                    ) : (
+                  <div className="space-y-1.5">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">
+                      Algorithm
+                    </div>
+                    <Select
+                      value={algorithmId?.toString()}
+                      onValueChange={(value) => pushAlgorithm(value)}
+                      disabled={loadingAlgorithms || isErrorAlgorithms}
+                    >
+                      <SelectTrigger
+                        aria-label="Algorithm"
+                        className="h-11 w-full cursor-pointer liquid-glass-panel"
+                      >
+                        <SelectValue
+                          placeholder={
+                            loadingAlgorithms
+                              ? "Loading algorithms..."
+                              : isErrorAlgorithms
+                                ? "Failed to load algorithms"
+                                : "Select an algorithm"
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent className="liquid-glass-panel">
+                        <SelectGroup>
+                          {availableAlgorithms.map((item) => (
+                            <SelectItem key={item.id} value={item.id.toString()}>
+                              {item.name}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {activeTab === "overview" ? (
+                    <div className="space-y-1.5 md:col-span-2 2xl:col-span-1">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">
+                        Jump to team
+                      </div>
+                      {!canQueryAnalytics || loadingAnalytics ? (
+                        <Skeleton className="h-11 w-full" />
+                      ) : (
                         <TeamComboBox
                           teams={analytics?.teams || []}
                           onSelect={scrollToTeam}
@@ -397,46 +445,54 @@ const AnalyticsPage = () => {
                           variant="glass"
                         />
                       )}
-                  </div>
-                ) : null}
+                    </div>
+                  ) : null}
+                </div>
               </div>
 
               {canRecalculateAnalytics ? (
-                <div className="flex flex-col gap-2 rounded-lg border border-dashed border-border/70 bg-muted/20 px-3 py-3 md:flex-row md:items-center md:justify-between">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    {isRecalculatePending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <RefreshCcw className="h-4 w-4" />
-                    )}
-                    <span>Admin actions</span>
+                <div className="flex h-full flex-col gap-3 rounded-xl border border-dashed border-border/70 bg-background/25 p-4 xl:justify-between">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                      {isRecalculatePending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCcw className="h-4 w-4 text-muted-foreground" />
+                      )}
+                      <span>Admin actions</span>
+                    </div>
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      Trigger refresh jobs for the active tournament without leaving analytics.
+                    </p>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
                     <Button
                       variant="outline"
                       size="sm"
+                      className="h-10 justify-between liquid-glass-panel"
                       onClick={() => recalculateMutation.mutate([algorithmId!])}
                       disabled={!canQueryAnalytics || isRecalculatePending}
                     >
+                      <span>Recalculate selected</span>
                       {isRecalculatePending ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
                         <RotateCcw className="h-4 w-4" />
                       )}
-                      Recalculate selected
                     </Button>
                     <Button
                       size="sm"
+                      className="h-10 justify-between"
                       onClick={() => recalculateMutation.mutate(undefined)}
                       disabled={tournamentId == null || isRecalculatePending}
                     >
+                      <span>Recalculate all</span>
                       {isRecalculatePending ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
                         <RefreshCcw className="h-4 w-4" />
                       )}
-                      Recalculate all
                     </Button>
                   </div>
                 </div>
@@ -651,24 +707,33 @@ const AnalyticsPageFallback = () => {
     <div className="flex flex-col gap-4 md:gap-8">
       <div className="liquid-glass">
         <Card className="overflow-hidden">
-          <CardHeader className="p-4 pb-3">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <CardHeader className="space-y-4 p-4 pb-0">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
               <div className="flex flex-col gap-2">
                 <Skeleton className="h-8 w-44" />
                 <Skeleton className="hidden sm:block h-4 w-80" />
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Skeleton className="h-6 w-56" />
-                <Skeleton className="h-6 w-40" />
+              <div className="grid gap-2 sm:grid-cols-2 xl:min-w-[26rem]">
+                <Skeleton className="h-16 w-full" />
+                <Skeleton className="h-16 w-full" />
               </div>
             </div>
           </CardHeader>
 
-          <CardContent className="p-4 pt-3">
-            <div className="grid gap-3 md:grid-cols-3">
-              <Skeleton className="h-9 w-full" />
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
+          <CardContent className="p-4 pt-4">
+            <div className="grid gap-4 border-t border-border/50 pt-4 xl:grid-cols-[minmax(0,1fr)_18rem]">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Skeleton className="h-3 w-12" />
+                  <Skeleton className="h-10 w-full max-w-[340px]" />
+                </div>
+                <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_1.2fr]">
+                  <Skeleton className="h-16 w-full" />
+                  <Skeleton className="h-16 w-full" />
+                  <Skeleton className="h-16 w-full md:col-span-2 2xl:col-span-1" />
+                </div>
+              </div>
+              <Skeleton className="h-36 w-full rounded-xl" />
             </div>
           </CardContent>
         </Card>

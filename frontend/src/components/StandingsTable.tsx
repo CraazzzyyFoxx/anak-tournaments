@@ -202,7 +202,7 @@ const StandingsTable = ({ standings, is_groups }: StandingTableProps) => {
                         <span className={cn("truncate text-sm font-semibold", teamColorClass)}>
                           {standing.team?.name}
                         </span>
-                        {standing.team?.group?.name && (
+                        {is_groups && standing.team?.group?.name && (
                           <span className="mt-0.5 text-xs text-white/35">
                             Group {standing.team.group.name}
                           </span>
@@ -255,11 +255,6 @@ const StandingsTable = ({ standings, is_groups }: StandingTableProps) => {
                         <span className={cn("truncate text-sm font-semibold", teamColorClass)}>
                           {standing.team?.name}
                         </span>
-                        {standing.team?.group?.name && (
-                          <span className="mt-0.5 text-xs text-white/35">
-                            Group {standing.team.group.name}
-                          </span>
-                        )}
                       </div>
                     </TableCell>
 

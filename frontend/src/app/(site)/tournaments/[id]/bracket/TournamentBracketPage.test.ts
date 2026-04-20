@@ -11,4 +11,11 @@ describe("TournamentBracketPage", () => {
     expect(source).toContain("workspaceId: tournament.workspace_id");
     expect(source).toContain("onStructureChanged: () => router.refresh()");
   });
+
+  it("filters playoff standings by the active stage before rendering", () => {
+    const source = readFileSync(join(import.meta.dir, "TournamentBracketPage.tsx"), "utf8");
+
+    expect(source).toContain("const stagePlayoffStandings = playoffStandings.filter(");
+    expect(source).toContain("standing.stage_id === stage.id");
+  });
 });
