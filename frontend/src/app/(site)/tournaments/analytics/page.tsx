@@ -306,11 +306,11 @@ const AnalyticsPage = () => {
                     </p>
                   </div>
 
-                  <div className="grid gap-2">
+                  <div className="flex items-center gap-2">
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-10 justify-between liquid-glass-panel"
+                      className="h-10 flex-1 justify-between liquid-glass-panel"
                       onClick={() => recalculateMutation.mutate([algorithmId!])}
                       disabled={!canQueryAnalytics || isRecalculatePending}
                     >
@@ -323,7 +323,7 @@ const AnalyticsPage = () => {
                     </Button>
                     <Button
                       size="sm"
-                      className="h-10 justify-between"
+                      className="h-10 flex-1 justify-between"
                       onClick={() => recalculateMutation.mutate(undefined)}
                       disabled={tournamentId == null || isRecalculatePending}
                     >
