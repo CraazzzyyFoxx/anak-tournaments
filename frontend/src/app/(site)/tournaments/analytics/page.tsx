@@ -291,8 +291,8 @@ const AnalyticsPage = () => {
               </div>
 
               {canRecalculateAnalytics ? (
-                <div className="flex w-full flex-col gap-3 rounded-xl border border-dashed border-border/70 bg-background/25 p-4 sm:max-w-[22rem] xl:ml-6 xl:w-[22rem]">
-                  <div className="space-y-2">
+                <div className="flex w-full flex-col gap-3 rounded-xl border border-dashed border-border/70 bg-background/25 p-4 xl:ml-6 xl:flex-1 xl:flex-row xl:items-center xl:justify-between">
+                  <div className="space-y-2 xl:min-w-0 xl:flex-1">
                     <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                       {isRecalculatePending ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -306,11 +306,11 @@ const AnalyticsPage = () => {
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 xl:flex-none">
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-10 flex-1 justify-between liquid-glass-panel"
+                      className="h-10 flex-1 justify-between liquid-glass-panel xl:min-w-52"
                       onClick={() => recalculateMutation.mutate([algorithmId!])}
                       disabled={!canQueryAnalytics || isRecalculatePending}
                     >
@@ -323,7 +323,7 @@ const AnalyticsPage = () => {
                     </Button>
                     <Button
                       size="sm"
-                      className="h-10 flex-1 justify-between"
+                      className="h-10 flex-1 justify-between xl:min-w-44"
                       onClick={() => recalculateMutation.mutate(undefined)}
                       disabled={tournamentId == null || isRecalculatePending}
                     >
