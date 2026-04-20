@@ -498,6 +498,62 @@ export interface AchievementRuleUpdateInput {
   min_tournament_id?: number | null;
 }
 
+export interface AchievementRulePortable {
+  slug: string;
+  name: string;
+  description_ru: string;
+  description_en: string;
+  image_url: string | null;
+  hero_id: number | null;
+  category: AchievementCategory;
+  scope: AchievementScope;
+  grain: AchievementGrain;
+  condition_tree: Record<string, unknown>;
+  depends_on: string[];
+  enabled: boolean;
+  rule_version: number;
+  min_tournament_id: number | null;
+}
+
+export interface AchievementRuleExportWorkspace {
+  id: number;
+  slug: string;
+  name: string;
+}
+
+export interface AchievementRuleExportEnvelope {
+  schema_version: number;
+  exported_at: string;
+  source_workspace: AchievementRuleExportWorkspace | null;
+  rules: AchievementRulePortable[];
+}
+
+export interface AchievementImportWarning {
+  slug: string;
+  message: string;
+}
+
+export interface AchievementRuleImportResult {
+  created: number;
+  updated: number;
+  warnings: AchievementImportWarning[];
+}
+
+export interface AchievementLibraryWorkspace {
+  id: number;
+  slug: string;
+  name: string;
+  rules_count: number;
+}
+
+export interface AchievementLibraryRule {
+  slug: string;
+  name: string;
+  category: AchievementCategory;
+  enabled: boolean;
+  image_url: string | null;
+}
+
 export interface EvaluationRunRead {
   id: string;
   workspace_id: number;

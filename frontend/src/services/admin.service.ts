@@ -50,6 +50,10 @@ import {
   AchievementCreateInput,
   AchievementUpdateInput,
   AchievementRegistryEntry,
+  AchievementLibraryRule,
+  AchievementLibraryWorkspace,
+  AchievementRuleExportEnvelope,
+  AchievementRuleImportResult,
   AchievementRule,
   AchievementRuleCreateInput,
   AchievementRuleUpdateInput,
@@ -888,6 +892,64 @@ class AdminService {
   async hardResetAchievementRules(workspaceId: number): Promise<HardResetResultRead> {
     const response = await apiFetch("parser", `admin/ws/${workspaceId}/achievements/rules/reset`, {
       method: "POST"
+    });
+    return response.json();
+  }
+
+  async exportAchievementRules(
+    workspaceId: number
+  ): Promise<{ blob: Blob; filename: string; data: AchievementRuleExportEnvelope }> {
+    const response = await apiFetch("parser", `admin/ws/${workspaceId}/achievements/rules/export`);
+    const blob = await response.blob();
+    const filename =
+      response.headers.get("Content-Disposition")?.match(/filename=\"?([^"]+)\"?/)?.[1] ??
+      `achievements-workspace-${workspaceId}.json`;
+    const data = JSON.parse(await blob.text()) as AchievementRuleExportEnvelope;
+    return {
+      blob: new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }),
+      filename,
+      data,
+    };
+  }
+
+  async importAchievementRules(
+    workspaceId: number,
+    data: AchievementRuleExportEnvelope
+  ): Promise<AchievementRuleImportResult> {
+    const response = await apiFetch("parser", `admin/ws/${workspaceId}/achievements/rules/import`, {
+      method: "POST",
+      body: data
+    });
+    return response.json();
+  }
+
+  async getAchievementLibraryWorkspaces(
+    workspaceId: number
+  ): Promise<AchievementLibraryWorkspace[]> {
+    const response = await apiFetch(
+      "parser",
+      `admin/ws/${workspaceId}/achievements/library/workspaces`
+    );
+    return response.json();
+  }
+
+  async getAchievementLibraryRules(
+    workspaceId: number,
+    sourceWorkspaceId: number
+  ): Promise<AchievementLibraryRule[]> {
+    const response = await apiFetch("parser", `admin/ws/${workspaceId}/achievements/library`, {
+      query: { source_workspace_id: sourceWorkspaceId }
+    });
+    return response.json();
+  }
+
+  async importAchievementLibraryRules(
+    workspaceId: number,
+    data: { source_workspace_id: number; slugs: string[] }
+  ): Promise<AchievementRuleImportResult> {
+    const response = await apiFetch("parser", `admin/ws/${workspaceId}/achievements/library/import`, {
+      method: "POST",
+      body: data
     });
     return response.json();
   }

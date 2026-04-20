@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ColumnDef } from "@tanstack/react-table";
 import {
@@ -15,6 +16,8 @@ import {
   Eye,
   EyeOff,
   Upload,
+  Download,
+  LibraryBig,
   UserPlus,
   X,
   Globe,
@@ -81,6 +84,8 @@ import adminService from "@/services/admin.service";
 import tournamentService from "@/services/tournament.service";
 import type {
   AchievementRule,
+  AchievementRuleExportEnvelope,
+  AchievementRuleImportResult,
   AchievementRuleCreateInput,
   AchievementRuleUpdateInput,
   AchievementCategory,
@@ -170,6 +175,11 @@ export default function AchievementsPage() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const jsonImportInputRef = useRef<HTMLInputElement>(null);
+  const [importResult, setImportResult] = useState<AchievementRuleImportResult | null>(null);
+  const [libraryDialogOpen, setLibraryDialogOpen] = useState(false);
+  const [librarySourceWorkspaceId, setLibrarySourceWorkspaceId] = useState<number | undefined>(undefined);
+  const [librarySelectedSlugs, setLibrarySelectedSlugs] = useState<Set<string>>(new Set());
 
   // Evaluate dialog state
   const [evaluateDialogOpen, setEvaluateDialogOpen] = useState(false);
@@ -209,6 +219,18 @@ export default function AchievementsPage() {
     queryKey: ["admin", "overrides", workspaceId],
     queryFn: () => adminService.getAchievementOverrides(workspaceId!),
     enabled: !!workspaceId,
+  });
+
+  const { data: libraryWorkspaces } = useQuery({
+    queryKey: ["admin", "achievement-library-workspaces", workspaceId],
+    queryFn: () => adminService.getAchievementLibraryWorkspaces(workspaceId!),
+    enabled: !!workspaceId && libraryDialogOpen,
+  });
+
+  const { data: libraryRules } = useQuery({
+    queryKey: ["admin", "achievement-library-rules", workspaceId, librarySourceWorkspaceId],
+    queryFn: () => adminService.getAchievementLibraryRules(workspaceId!, librarySourceWorkspaceId!),
+    enabled: !!workspaceId && libraryDialogOpen && !!librarySourceWorkspaceId,
   });
 
   // --- Mutations ---
@@ -262,6 +284,29 @@ export default function AchievementsPage() {
       queryClient.invalidateQueries({ queryKey: cacheKey });
       queryClient.invalidateQueries({ queryKey: ["admin", "overrides", workspaceId] });
       setEvaluationResult(data.run);
+    },
+  });
+
+  const importMutation = useMutation({
+    mutationFn: (data: AchievementRuleExportEnvelope) =>
+      adminService.importAchievementRules(workspaceId!, data),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: cacheKey });
+      setImportResult(data);
+      if (jsonImportInputRef.current) {
+        jsonImportInputRef.current.value = "";
+      }
+    },
+  });
+
+  const libraryImportMutation = useMutation({
+    mutationFn: (data: { source_workspace_id: number; slugs: string[] }) =>
+      adminService.importAchievementLibraryRules(workspaceId!, data),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: cacheKey });
+      setImportResult(data);
+      setLibraryDialogOpen(false);
+      setLibrarySelectedSlugs(new Set());
     },
   });
 
@@ -328,6 +373,51 @@ export default function AchievementsPage() {
     });
   };
 
+  const handleExport = async () => {
+    const { blob, filename } = await adminService.exportAchievementRules(workspaceId!);
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(objectUrl);
+  };
+
+  const handleJsonImportFile = async (file: File | null) => {
+    if (!file) return;
+    const text = await file.text();
+    let parsed: AchievementRuleExportEnvelope;
+    try {
+      parsed = JSON.parse(text) as AchievementRuleExportEnvelope;
+    } catch {
+      window.alert("Invalid JSON file");
+      if (jsonImportInputRef.current) {
+        jsonImportInputRef.current.value = "";
+      }
+      return;
+    }
+    importMutation.mutate(parsed);
+  };
+
+  const toggleLibrarySlug = (slug: string, checked: boolean) => {
+    setLibrarySelectedSlugs((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(slug);
+      else next.delete(slug);
+      return next;
+    });
+  };
+
+  const handleLibraryImport = () => {
+    if (!librarySourceWorkspaceId || librarySelectedSlugs.size === 0) return;
+    libraryImportMutation.mutate({
+      source_workspace_id: librarySourceWorkspaceId,
+      slugs: Array.from(librarySelectedSlugs),
+    });
+  };
+
   const formInitial = editingRule ? getFormData(editingRule) : emptyForm;
   const isFormDirty = (createDialogOpen || !!editingRule) && hasUnsavedChanges(formData, formInitial);
 
@@ -337,6 +427,10 @@ export default function AchievementsPage() {
     (acc[rule.category] ??= []).push(rule);
     return acc;
   }, {});
+
+  const allLibrarySlugs = (libraryRules ?? []).map((rule) => rule.slug);
+  const allLibrarySelected =
+    allLibrarySlugs.length > 0 && allLibrarySlugs.every((slug) => librarySelectedSlugs.has(slug));
 
   const toggleCategory = (category: string, checked: boolean) => {
     const ids = (rulesByCategory[category] ?? []).map((r) => r.id);
@@ -483,6 +577,37 @@ export default function AchievementsPage() {
         description="Manage achievements with condition tree evaluation engine"
         actions={
           <div className="flex gap-2">
+            <input
+              ref={jsonImportInputRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={(e) => void handleJsonImportFile(e.target.files?.[0] ?? null)}
+            />
+            <Button variant="outline" onClick={() => void handleExport()}>
+              <Download className="mr-2 h-4 w-4" />
+              Export JSON
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setLibraryDialogOpen(true);
+                setLibrarySelectedSlugs(new Set());
+              }}
+            >
+              <LibraryBig className="mr-2 h-4 w-4" />
+              Library
+            </Button>
+            {(canCreate || canUpdate) && (
+              <Button
+                variant="outline"
+                onClick={() => jsonImportInputRef.current?.click()}
+                disabled={importMutation.isPending}
+              >
+                <Upload className={`mr-2 h-4 w-4 ${importMutation.isPending ? "animate-spin" : ""}`} />
+                Import JSON
+              </Button>
+            )}
             <Button
               variant="outline"
               onClick={() => {
@@ -570,6 +695,33 @@ export default function AchievementsPage() {
               <span className="text-destructive ml-2">{evaluationResult.error_message}</span>
             )}
           </p>
+        </div>
+      )}
+
+      {importResult && (
+        <div className="rounded-lg border p-4 bg-muted/50 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="font-medium">
+              Import Result
+              <span className="ml-2 text-sm text-muted-foreground">
+                Created: +{importResult.created} | Updated: {importResult.updated}
+              </span>
+            </p>
+            <Button variant="ghost" size="icon" onClick={() => setImportResult(null)}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+          {importResult.warnings.length > 0 && (
+            <ScrollArea className="h-28 rounded border bg-background px-3 py-2">
+              <div className="space-y-1 text-sm">
+                {importResult.warnings.map((warning, index) => (
+                  <p key={`${warning.slug}-${index}`}>
+                    <span className="font-medium">{warning.slug}:</span> {warning.message}
+                  </p>
+                ))}
+              </div>
+            </ScrollArea>
+          )}
         </div>
       )}
 
@@ -667,6 +819,125 @@ export default function AchievementsPage() {
       )}
 
       {/* ─── Evaluate Dialog ──────────────────────────────────────────────── */}
+      <Dialog
+        open={libraryDialogOpen}
+        onOpenChange={(open) => {
+          setLibraryDialogOpen(open);
+          if (!open) {
+            setLibrarySelectedSlugs(new Set());
+          }
+        }}
+      >
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Achievement Library</DialogTitle>
+            <DialogDescription>
+              Import achievements from another workspace into the current workspace.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Source workspace</Label>
+              <Select
+                value={librarySourceWorkspaceId ? String(librarySourceWorkspaceId) : ""}
+                onValueChange={(value) => {
+                  setLibrarySourceWorkspaceId(value ? Number(value) : undefined);
+                  setLibrarySelectedSlugs(new Set());
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select workspace" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(libraryWorkspaces ?? []).map((workspace) => (
+                    <SelectItem key={workspace.id} value={String(workspace.id)}>
+                      {workspace.name} ({workspace.rules_count})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>
+                  Achievements ({librarySelectedSlugs.size > 0 ? `${librarySelectedSlugs.size} selected` : "none selected"})
+                </Label>
+                <div className="flex gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setLibrarySelectedSlugs(new Set(allLibrarySlugs))}
+                    disabled={allLibrarySlugs.length === 0 || allLibrarySelected}
+                  >
+                    Select all
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setLibrarySelectedSlugs(new Set())}
+                    disabled={librarySelectedSlugs.size === 0}
+                  >
+                    Clear
+                  </Button>
+                </div>
+              </div>
+              <ScrollArea className="h-[40vh] rounded border p-3">
+                {!librarySourceWorkspaceId && (
+                  <p className="text-sm text-muted-foreground">Select a source workspace to load achievements.</p>
+                )}
+                {librarySourceWorkspaceId && (libraryRules?.length ?? 0) === 0 && (
+                  <p className="text-sm text-muted-foreground">No achievements found in the selected workspace.</p>
+                )}
+                <div className="space-y-2">
+                  {(libraryRules ?? []).map((rule) => (
+                    <label
+                      key={rule.slug}
+                      className="flex items-center justify-between gap-3 rounded border px-3 py-2 text-sm"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Checkbox
+                          checked={librarySelectedSlugs.has(rule.slug)}
+                          onCheckedChange={(checked) => toggleLibrarySlug(rule.slug, !!checked)}
+                        />
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{rule.name}</p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {rule.slug} - {rule.category}
+                          </p>
+                        </div>
+                      </div>
+                      <Badge variant={rule.enabled ? "default" : "secondary"}>
+                        {rule.enabled ? "On" : "Off"}
+                      </Badge>
+                    </label>
+                  ))}
+                </div>
+              </ScrollArea>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLibraryDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleLibraryImport}
+              disabled={
+                !librarySourceWorkspaceId ||
+                librarySelectedSlugs.size === 0 ||
+                libraryImportMutation.isPending ||
+                !(canCreate || canUpdate)
+              }
+            >
+              <LibraryBig className={`mr-2 h-4 w-4 ${libraryImportMutation.isPending ? "animate-spin" : ""}`} />
+              {libraryImportMutation.isPending ? "Importing..." : "Import Selected"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={evaluateDialogOpen} onOpenChange={setEvaluateDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
@@ -958,9 +1229,11 @@ export default function AchievementsPage() {
               <Label>Image</Label>
               <div className="flex items-center gap-4">
                 {(imagePreview || formData.image_url) && (
-                  <img
+                  <Image
                     src={imagePreview ?? (formData.image_url as string) ?? ""}
                     alt="Achievement"
+                    width={64}
+                    height={64}
                     className="h-16 w-16 rounded-lg object-cover border"
                   />
                 )}

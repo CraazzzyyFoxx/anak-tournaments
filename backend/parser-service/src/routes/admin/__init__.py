@@ -14,6 +14,7 @@ from .discord_channel import router as discord_channel_router
 from .logs import router as logs_router
 from .achievement_rule import override_router as achievement_override_router
 from .achievement_rule import router as achievement_rule_router
+from .achievement_rule import library_router as achievement_library_router
 
 # Admin router - aggregates all admin CRUD endpoints
 # All endpoints require admin or tournament_organizer role
@@ -34,6 +35,7 @@ admin_router.include_router(player_sub_role_router)
 admin_router.include_router(discord_channel_router)
 admin_router.include_router(logs_router)
 admin_router.include_router(achievement_rule_router)
+admin_router.include_router(achievement_library_router)
 admin_router.include_router(achievement_override_router)
 
 # TODO: Include remaining routers (hero, gamemode, map, achievement)

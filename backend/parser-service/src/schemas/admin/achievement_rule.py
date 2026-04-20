@@ -14,6 +14,14 @@ __all__ = (
     "AchievementRuleRead",
     "AchievementRuleCreate",
     "AchievementRuleUpdate",
+    "AchievementRulePortable",
+    "AchievementRuleExportWorkspace",
+    "AchievementRuleExportEnvelope",
+    "AchievementRuleImportResult",
+    "AchievementImportWarning",
+    "AchievementLibraryWorkspaceRead",
+    "AchievementLibraryRuleRead",
+    "AchievementLibraryImportRequest",
     "AchievementRuleListParams",
     "AchievementRuleListQueryParams",
     "ConditionTreeValidateRequest",
@@ -81,6 +89,67 @@ class AchievementRuleUpdate(BaseModel):
     enabled: bool | None = None
     rule_version: int | None = None
     min_tournament_id: int | None = None
+
+
+class AchievementRulePortable(BaseModel):
+    slug: str
+    name: str
+    description_ru: str
+    description_en: str
+    image_url: str | None = None
+    hero_id: int | None = None
+    category: str
+    scope: str
+    grain: str
+    condition_tree: dict
+    depends_on: list[str] = Field(default_factory=list)
+    enabled: bool = True
+    rule_version: int = 1
+    min_tournament_id: int | None = None
+
+
+class AchievementRuleExportWorkspace(BaseModel):
+    id: int
+    slug: str
+    name: str
+
+
+class AchievementRuleExportEnvelope(BaseModel):
+    schema_version: int = 1
+    exported_at: datetime
+    source_workspace: AchievementRuleExportWorkspace | None = None
+    rules: list[AchievementRulePortable]
+
+
+class AchievementImportWarning(BaseModel):
+    slug: str
+    message: str
+
+
+class AchievementRuleImportResult(BaseModel):
+    created: int
+    updated: int
+    warnings: list[AchievementImportWarning] = Field(default_factory=list)
+
+
+class AchievementLibraryWorkspaceRead(BaseModel):
+    id: int
+    slug: str
+    name: str
+    rules_count: int
+
+
+class AchievementLibraryRuleRead(BaseModel):
+    slug: str
+    name: str
+    category: str
+    enabled: bool
+    image_url: str | None = None
+
+
+class AchievementLibraryImportRequest(BaseModel):
+    source_workspace_id: int
+    slugs: list[str] = Field(default_factory=list, min_length=1)
 
 
 class AchievementRuleListQueryParams(

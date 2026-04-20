@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import sqlalchemy as sa
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import JSONResponse
+from shared.clients import S3Client
 from shared.models.achievement import (
     AchievementEvaluationResult,
     AchievementOverride,
@@ -18,7 +22,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src import models
 from src.core import auth, db
 from src.schemas.admin.achievement_rule import (
+    AchievementLibraryImportRequest,
+    AchievementLibraryRuleRead,
+    AchievementLibraryWorkspaceRead,
     AchievementRuleCreate,
+    AchievementRuleExportEnvelope,
+    AchievementRuleImportResult,
+    AchievementRulePortable,
     AchievementRuleRead,
     AchievementRuleUpdate,
     ConditionTreeValidateRequest,
@@ -39,11 +49,57 @@ from src.services.achievement.engine.validation import (
     validate_condition_tree,
     validate_rule_definition,
 )
+from src.services.achievement.import_export import (
+    build_export_payload,
+    import_portable_rules,
+    load_rules_for_workspace,
+)
 
 router = APIRouter(
     prefix="/ws/{workspace_id}/achievements/rules",
     tags=["admin", "achievement-rules"],
 )
+
+
+library_router = APIRouter(
+    prefix="/ws/{workspace_id}/achievements/library",
+    tags=["admin", "achievement-library"],
+)
+
+
+def get_s3(request: Request) -> S3Client:
+    return request.app.state.s3
+
+
+async def _get_workspace_or_404(session: AsyncSession, workspace_id: int) -> models.Workspace:
+    workspace = await session.get(models.Workspace, workspace_id)
+    if workspace is None:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    return workspace
+
+
+def _get_visible_workspace_ids(user: models.AuthUser, target_workspace_id: int) -> list[int] | None:
+    if user.is_superuser:
+        return None
+    return [workspace_id for workspace_id in user.get_workspace_ids() if workspace_id != target_workspace_id]
+
+
+async def _get_source_workspace_or_404(
+    session: AsyncSession,
+    *,
+    target_workspace_id: int,
+    source_workspace_id: int,
+    user: models.AuthUser,
+) -> models.Workspace:
+    if source_workspace_id == target_workspace_id:
+        raise HTTPException(status_code=400, detail="Source and target workspace must be different")
+
+    workspace = await session.get(models.Workspace, source_workspace_id)
+    if workspace is None:
+        raise HTTPException(status_code=404, detail="Source workspace not found")
+    if not user.is_superuser and source_workspace_id not in user.get_workspace_ids():
+        raise HTTPException(status_code=403, detail="Source workspace is not accessible")
+    return workspace
 
 
 # ─── Condition Types Reference ───────────────────────────────────────────────
@@ -140,6 +196,56 @@ async def list_rules(
     query = query.order_by(AchievementRule.category, AchievementRule.slug)
     result = await session.execute(query)
     return [AchievementRuleRead.model_validate(r, from_attributes=True) for r in result.scalars()]
+
+
+@router.get("/export", response_model=AchievementRuleExportEnvelope)
+async def export_rules(
+    workspace_id: int,
+    session: AsyncSession = Depends(db.get_async_session),
+    _user: models.AuthUser = Depends(auth.require_permission("achievement", "read")),
+):
+    workspace = await _get_workspace_or_404(session, workspace_id)
+    rules = await load_rules_for_workspace(session, workspace_id)
+    payload = build_export_payload(workspace, rules)
+    filename = f"achievements-{workspace.slug}-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}.json"
+    return JSONResponse(
+        content=payload,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/import", response_model=AchievementRuleImportResult)
+async def import_rules(
+    workspace_id: int,
+    body: AchievementRuleExportEnvelope,
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_permission("achievement", "write")),
+    s3: S3Client = Depends(get_s3),
+):
+    target_workspace = await _get_workspace_or_404(session, workspace_id)
+    source_workspace = None
+    if body.source_workspace is not None:
+        source_workspace = await session.get(models.Workspace, body.source_workspace.id)
+        if source_workspace is None and body.source_workspace.slug:
+            source_workspace = await session.scalar(
+                sa.select(models.Workspace).where(models.Workspace.slug == body.source_workspace.slug)
+            )
+        if source_workspace is not None and not user.is_superuser and source_workspace.id not in user.get_workspace_ids():
+            raise HTTPException(status_code=403, detail="Source workspace is not accessible")
+
+    try:
+        result = await import_portable_rules(
+            session,
+            s3,
+            target_workspace=target_workspace,
+            rules=[AchievementRulePortable.model_validate(rule) for rule in body.rules],
+            source_workspace=source_workspace,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={"validation_errors": exc.args[0]}) from exc
+
+    await session.commit()
+    return result
 
 
 @router.get("/{rule_id}", response_model=AchievementRuleRead)
@@ -493,6 +599,112 @@ async def test_rule(
 
 
 # ─── Overrides ───────────────────────────────────────────────────────────────
+
+
+@library_router.get("/workspaces", response_model=list[AchievementLibraryWorkspaceRead])
+async def list_library_workspaces(
+    workspace_id: int,
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_permission("achievement", "read")),
+):
+    visible_workspace_ids = _get_visible_workspace_ids(user, workspace_id)
+    query = (
+        sa.select(
+            models.Workspace.id,
+            models.Workspace.slug,
+            models.Workspace.name,
+            sa.func.count(AchievementRule.id).label("rules_count"),
+        )
+        .join(AchievementRule, AchievementRule.workspace_id == models.Workspace.id)
+        .where(models.Workspace.id != workspace_id)
+        .group_by(models.Workspace.id, models.Workspace.slug, models.Workspace.name)
+        .having(sa.func.count(AchievementRule.id) > 0)
+        .order_by(models.Workspace.name.asc())
+    )
+    if visible_workspace_ids is not None:
+        if not visible_workspace_ids:
+            return []
+        query = query.where(models.Workspace.id.in_(visible_workspace_ids))
+
+    result = await session.execute(query)
+    return [
+        AchievementLibraryWorkspaceRead(
+            id=row.id,
+            slug=row.slug,
+            name=row.name,
+            rules_count=row.rules_count,
+        )
+        for row in result
+    ]
+
+
+@library_router.get("", response_model=list[AchievementLibraryRuleRead])
+async def list_library_rules(
+    workspace_id: int,
+    source_workspace_id: int,
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_permission("achievement", "read")),
+):
+    source_workspace = await _get_source_workspace_or_404(
+        session,
+        target_workspace_id=workspace_id,
+        source_workspace_id=source_workspace_id,
+        user=user,
+    )
+    rules = await load_rules_for_workspace(session, source_workspace.id)
+    return [
+        AchievementLibraryRuleRead(
+            slug=rule.slug,
+            name=rule.name,
+            category=str(rule.category),
+            enabled=bool(rule.enabled),
+            image_url=rule.image_url,
+        )
+        for rule in rules
+    ]
+
+
+@library_router.post("/import", response_model=AchievementRuleImportResult)
+async def import_library_rules(
+    workspace_id: int,
+    body: AchievementLibraryImportRequest,
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_permission("achievement", "write")),
+    s3: S3Client = Depends(get_s3),
+):
+    target_workspace = await _get_workspace_or_404(session, workspace_id)
+    source_workspace = await _get_source_workspace_or_404(
+        session,
+        target_workspace_id=workspace_id,
+        source_workspace_id=body.source_workspace_id,
+        user=user,
+    )
+
+    source_rules = await load_rules_for_workspace(session, source_workspace.id, slugs=body.slugs)
+    found_slugs = {rule.slug for rule in source_rules}
+    missing_slugs = sorted(set(body.slugs) - found_slugs)
+    portable_rules = [AchievementRulePortable.model_validate(rule, from_attributes=True) for rule in source_rules]
+
+    try:
+        result = await import_portable_rules(
+            session,
+            s3,
+            target_workspace=target_workspace,
+            rules=portable_rules,
+            source_workspace=source_workspace,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={"validation_errors": exc.args[0]}) from exc
+
+    result["warnings"].extend(
+        {
+            "slug": slug,
+            "message": f"Rule '{slug}' was not found in workspace '{source_workspace.slug}'",
+        }
+        for slug in missing_slugs
+    )
+    await session.commit()
+    return result
 
 
 override_router = APIRouter(
