@@ -84,8 +84,8 @@ export const PRESET_LABELS: Record<string, string> = {
   PREFERENCE_FOCUSED: "Preference Focused",
   HIGH_QUALITY: "High Quality",
   CPSAT: "CP-SAT (Exact)",
-  NSGA: "NSGA-II (Multi-Objective)",
-  GENETIC_MOO: "Genetic MOO (Legacy Pareto)"
+  MIXTURA_BALANCER: "mixtura-balancer",
+  MOO: "MOO"
 };
 
 export const ROLE_ACCENTS: Record<BalancerRoleCode, { text: string; card: string }> = {
@@ -193,7 +193,7 @@ export function calculateTeamTotalFromPayload(
 ): number {
   return BALANCE_ROSTER_KEYS.reduce(
     (sum, roleKey) =>
-      sum + team.roster[roleKey].reduce((roleSum, player) => roleSum + player.rating, 0),
+      sum + team.roster[roleKey].reduce((roleSum, player) => roleSum + player.assigned_rating, 0),
     0
   );
 }
@@ -209,10 +209,10 @@ export function calculateOffRoleCountFromPayload(
     (sum, roleKey) =>
       sum +
       team.roster[roleKey].filter((player) => {
-        if (player.isFlex) {
+        if (player.is_flex) {
           return false;
         }
-        const preferredRole = player.preferences[0];
+        const preferredRole = player.role_preferences[0];
         return Boolean(preferredRole) && preferredRole !== roleKey;
       }).length,
     0

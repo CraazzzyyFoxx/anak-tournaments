@@ -22,10 +22,10 @@ export function VariantSelector({
       {variants.map((variant) => {
         const isActive = variant.id === activeVariantId;
         const stats = variant.payload.statistics;
-        const offRoles = stats?.offRoleCount ?? 0;
-        const collisions = stats?.subRoleCollisionCount ?? 0;
-        const unbalanced = variant.payload.benchedPlayers?.length ?? stats?.unbalancedCount ?? 0;
-        const stddev = stats?.mmrStdDev;
+        const offRoles = stats?.off_role_count ?? 0;
+        const collisions = stats?.sub_role_collision_count ?? 0;
+        const unbalanced = variant.payload.benched_players?.length ?? stats?.unbalanced_count ?? 0;
+        const stddev = stats?.mmr_std_dev;
         return (
           <button
             key={variant.id}

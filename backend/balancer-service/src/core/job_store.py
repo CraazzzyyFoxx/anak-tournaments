@@ -78,8 +78,8 @@ class BalancerJobStore:
             "created_by": created_by,
         }
         payload = {
-            "data": input_data,
-            "config": config_overrides,
+            "player_data": input_data,
+            "config_overrides": config_overrides,
         }
 
         pipe = self._redis.pipeline()

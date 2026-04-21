@@ -48,9 +48,9 @@ export function BalancerActionsPanel({
           activeVariant.payload.statistics != null
             ? {
                 ...activeVariant.payload.statistics,
-                unbalancedCount:
-                  activeVariant.payload.benchedPlayers?.length ??
-                  activeVariant.payload.statistics.unbalancedCount ??
+                unbalanced_count:
+                  activeVariant.payload.benched_players?.length ??
+                  activeVariant.payload.statistics.unbalanced_count ??
                   0
               }
             : null

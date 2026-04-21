@@ -6,10 +6,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
-from src.core.config import config
-from src.core.job_store import close_job_store
-from src.routes.admin import admin_router
-from src.views import router, task_router
 
 from shared.clients import AuthClient
 from shared.core.middleware import ExceptionMiddleware, RequestSizeLimitMiddleware
@@ -25,6 +21,10 @@ from shared.observability import (
     setup_tracing,
 )
 from shared.schemas import HealthCheckResponse
+from src.core.config import config
+from src.core.job_store import close_job_store
+from src.presentation.http.public_router import router, task_router
+from src.routes.admin import router as organizer_router
 
 # Setup structured logging
 logger = setup_logging(
@@ -115,7 +115,7 @@ cache.setup(f"{config.redis_url}/4", prefix="backend:")
 
 app.include_router(router)
 app.include_router(task_router)
-app.include_router(admin_router)
+app.include_router(organizer_router)
 
 
 @app.get("/health/live")

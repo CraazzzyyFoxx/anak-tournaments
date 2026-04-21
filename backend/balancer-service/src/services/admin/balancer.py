@@ -12,17 +12,18 @@ from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-import src.services.team as team_flows
-import src.services.user as user_flows
-import src.services.user as user_service
 from shared.division_grid import DEFAULT_GRID, DivisionGrid
 from shared.domain.player_sub_roles import normalize_sub_role
 from shared.services.division_grid_resolution import resolve_tournament_division
 from src import models
+from src.domain.balancer.config_provider import normalize_tournament_config_payload, serialize_saved_config_payload
+from src.domain.balancer.public_contract import normalize_balance_response_payload
 from src.schemas.admin import balancer as admin_schemas
 from src.schemas.team import InternalBalancerTeamsPayload
 from src.schemas.user import UserCSV
-from src.service import normalize_tournament_config_payload
+from src.services import team as team_flows
+from src.services import user as user_flows
+from src.services import user as user_service
 from src.services.admin.balance_analytics import create_balance_snapshot
 from src.services.admin.balancer_dual_write import sync_balance_variants_and_slots
 from src.services.admin.balancer_utils import (
@@ -1440,7 +1441,7 @@ def materialize_balance_teams(
 ) -> list[models.BalancerTeam]:
     teams: list[models.BalancerTeam] = []
     for sort_order, team in enumerate(payload.teams):
-        total_sr = sum(player.rating for players in team.roster.values() for player in players)
+        total_sr = sum(player.assigned_rating for players in team.roster.values() for player in players)
         teams.append(
             models.BalancerTeam(
                 balance_id=balance_id,
@@ -1448,7 +1449,7 @@ def materialize_balance_teams(
                 name=team.name.split("#")[0],
                 balancer_name=team.name,
                 captain_battle_tag=team.name,
-                avg_sr=team.avg_mmr,
+                avg_sr=team.average_mmr,
                 total_sr=total_sr,
                 roster_json=team.model_dump(mode="python", by_alias=True)["roster"],
                 sort_order=sort_order,
@@ -1464,7 +1465,9 @@ async def save_balance(
     auth_user: models.AuthUser,
 ) -> models.BalancerBalance:
     await ensure_tournament_exists(session, tournament_id)
-    payload = InternalBalancerTeamsPayload.model_validate(data.result_json)
+    normalized_config_json = serialize_saved_config_payload(data.config_json)
+    normalized_result_json = normalize_balance_response_payload(data.result_json)
+    payload = InternalBalancerTeamsPayload.model_validate(normalized_result_json)
     if not payload.teams:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Balance result does not contain teams")
 
@@ -1472,8 +1475,8 @@ async def save_balance(
     if balance is None:
         balance = models.BalancerBalance(
             tournament_id=tournament_id,
-            config_json=data.config_json,
-            result_json=data.result_json,
+            config_json=normalized_config_json,
+            result_json=normalized_result_json,
             saved_by=auth_user.id,
             saved_at=datetime.now(UTC),
             export_status=None,
@@ -1483,8 +1486,8 @@ async def save_balance(
         session.add(balance)
         await session.flush()
     else:
-        balance.config_json = data.config_json
-        balance.result_json = data.result_json
+        balance.config_json = normalized_config_json
+        balance.result_json = normalized_result_json
         balance.saved_by = auth_user.id
         balance.saved_at = datetime.now(UTC)
         balance.export_status = None
@@ -1495,7 +1498,7 @@ async def save_balance(
     session.add_all(materialize_balance_teams(balance.id, payload))
     await session.flush()
 
-    algorithm = (data.config_json or {}).get("ALGORITHM", "unknown") if data.config_json else "unknown"
+    algorithm = normalized_config_json.get("algorithm", "unknown") if normalized_config_json else "unknown"
     await sync_balance_variants_and_slots(session, balance, payload, algorithm=algorithm)
 
     await session.commit()
@@ -1567,7 +1570,7 @@ async def export_balance(session: AsyncSession, balance_id: int) -> tuple[models
     if balance is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Balance not found")
 
-    payload = InternalBalancerTeamsPayload.model_validate(balance.result_json)
+    payload = InternalBalancerTeamsPayload.model_validate(normalize_balance_response_payload(balance.result_json))
 
     linked_team_ids = [team.exported_team_id for team in balance.teams if team.exported_team_id is not None]
     removed_teams = len(linked_team_ids)

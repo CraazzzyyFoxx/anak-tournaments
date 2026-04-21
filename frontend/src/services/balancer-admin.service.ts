@@ -39,7 +39,7 @@ import {
 
 export default class balancerAdminService {
   static async getTournamentSheet(tournamentId: number): Promise<AdminGoogleSheetFeed | null> {
-    const response = await apiFetch("balancer", `admin/balancer/tournaments/${tournamentId}/sheet`);
+    const response = await apiFetch("balancer", `balancer/tournaments/${tournamentId}/sheet`);
     return response.json();
   }
 
@@ -49,7 +49,7 @@ export default class balancerAdminService {
   ): Promise<AdminGoogleSheetFeed> {
     const response = await apiFetch(
       "balancer",
-      `admin/balancer/tournaments/${tournamentId}/sheet`,
+      `balancer/tournaments/${tournamentId}/sheet`,
       {
         method: "PUT",
         body: data
@@ -63,7 +63,7 @@ export default class balancerAdminService {
   ): Promise<AdminGoogleSheetFeedSyncResponse> {
     const response = await apiFetch(
       "balancer",
-      `admin/balancer/tournaments/${tournamentId}/sheet/sync`,
+      `balancer/tournaments/${tournamentId}/sheet/sync`,
       {
         method: "POST",
         body: {}
@@ -78,7 +78,7 @@ export default class balancerAdminService {
   ): Promise<AdminGoogleSheetMappingSuggestResponse> {
     const response = await apiFetch(
       "balancer",
-      `admin/balancer/tournaments/${tournamentId}/sheet/suggest-mapping`,
+      `balancer/tournaments/${tournamentId}/sheet/suggest-mapping`,
       {
         method: "POST",
         body: data
@@ -93,7 +93,7 @@ export default class balancerAdminService {
   ): Promise<AdminGoogleSheetMappingPreviewResponse> {
     const response = await apiFetch(
       "balancer",
-      `admin/balancer/tournaments/${tournamentId}/sheet/preview`,
+      `balancer/tournaments/${tournamentId}/sheet/preview`,
       {
         method: "POST",
         body: data
@@ -108,7 +108,7 @@ export default class balancerAdminService {
   ): Promise<BalancerApplication[]> {
     const response = await apiFetch(
       "balancer",
-      `admin/balancer/tournaments/${tournamentId}/applications`,
+      `balancer/tournaments/${tournamentId}/applications`,
       {
         query: { include_inactive: includeInactive }
       }
@@ -122,7 +122,7 @@ export default class balancerAdminService {
   ): Promise<BalancerPlayerRecord[]> {
     const response = await apiFetch(
       "balancer",
-      `admin/balancer/tournaments/${tournamentId}/players`,
+      `balancer/tournaments/${tournamentId}/players`,
       {
         method: "POST",
         body: data
@@ -137,7 +137,7 @@ export default class balancerAdminService {
   ): Promise<BalancerPlayerRecord[]> {
     const response = await apiFetch(
       "balancer",
-      `admin/balancer/tournaments/${tournamentId}/players`,
+      `balancer/tournaments/${tournamentId}/players`,
       {
         query: { in_pool_only: inPoolOnly }
       }
@@ -149,7 +149,7 @@ export default class balancerAdminService {
     playerId: number,
     data: BalancerPlayerUpdateInput
   ): Promise<BalancerPlayerRecord> {
-    const response = await apiFetch("balancer", `admin/balancer/players/${playerId}`, {
+    const response = await apiFetch("balancer", `balancer/players/${playerId}`, {
       method: "PATCH",
       body: data
     });
@@ -157,7 +157,7 @@ export default class balancerAdminService {
   }
 
   static async deletePlayer(playerId: number): Promise<void> {
-    await apiFetch("balancer", `admin/balancer/players/${playerId}`, {
+    await apiFetch("balancer", `balancer/players/${playerId}`, {
       method: "DELETE"
     });
   }
@@ -173,7 +173,7 @@ export default class balancerAdminService {
 
     const response = await apiFetch(
       "balancer",
-      `admin/balancer/tournaments/${tournamentId}/players/import/preview`,
+      `balancer/tournaments/${tournamentId}/players/import/preview`,
       {
         method: "POST",
         body: formData
@@ -199,7 +199,7 @@ export default class balancerAdminService {
 
     const response = await apiFetch(
       "balancer",
-      `admin/balancer/tournaments/${tournamentId}/players/import`,
+      `balancer/tournaments/${tournamentId}/players/import`,
       {
         method: "POST",
         body: formData
@@ -211,7 +211,7 @@ export default class balancerAdminService {
   static async exportPlayers(tournamentId: number): Promise<BalancerPlayerExportResponse> {
     const response = await apiFetch(
       "balancer",
-      `admin/balancer/tournaments/${tournamentId}/players/export`
+      `balancer/tournaments/${tournamentId}/players/export`
     );
     return response.json();
   }
@@ -221,7 +221,7 @@ export default class balancerAdminService {
   ): Promise<BalancerPlayerRoleSyncResponse> {
     const response = await apiFetch(
       "balancer",
-      `admin/balancer/tournaments/${tournamentId}/players/application-roles`,
+      `balancer/tournaments/${tournamentId}/players/application-roles`,
       {
         method: "POST",
         body: {}
@@ -233,7 +233,7 @@ export default class balancerAdminService {
   static async getTournamentConfig(tournamentId: number): Promise<BalancerTournamentConfig | null> {
     const response = await apiFetch(
       "balancer",
-      `admin/balancer/tournaments/${tournamentId}/config`
+      `balancer/tournaments/${tournamentId}/config`
     );
     return response.json();
   }
@@ -244,7 +244,7 @@ export default class balancerAdminService {
   ): Promise<BalancerTournamentConfig> {
     const response = await apiFetch(
       "balancer",
-      `admin/balancer/tournaments/${tournamentId}/config`,
+      `balancer/tournaments/${tournamentId}/config`,
       {
         method: "PUT",
         body: data
@@ -256,7 +256,7 @@ export default class balancerAdminService {
   static async getBalance(tournamentId: number): Promise<SavedBalance | null> {
     const response = await apiFetch(
       "balancer",
-      `admin/balancer/tournaments/${tournamentId}/balance`
+      `balancer/tournaments/${tournamentId}/balance`
     );
     return response.json();
   }
@@ -264,7 +264,7 @@ export default class balancerAdminService {
   static async saveBalance(tournamentId: number, data: BalanceSaveInput): Promise<SavedBalance> {
     const response = await apiFetch(
       "balancer",
-      `admin/balancer/tournaments/${tournamentId}/balance`,
+      `balancer/tournaments/${tournamentId}/balance`,
       {
         method: "PUT",
         body: data
@@ -274,7 +274,7 @@ export default class balancerAdminService {
   }
 
   static async exportBalance(balanceId: number): Promise<BalanceExportResponse> {
-    const response = await apiFetch("balancer", `admin/balancer/balances/${balanceId}/export`, {
+    const response = await apiFetch("balancer", `balancer/balances/${balanceId}/export`, {
       method: "POST",
       body: {}
     });
@@ -286,7 +286,7 @@ export default class balancerAdminService {
   ): Promise<ApplicationUserExportResponse> {
     const response = await apiFetch(
       "balancer",
-      `admin/balancer/tournaments/${tournamentId}/applications/export-users`,
+      `balancer/tournaments/${tournamentId}/applications/export-users`,
       {
         method: "POST",
         body: {}
@@ -300,7 +300,7 @@ export default class balancerAdminService {
   ): Promise<RegistrationUserExportResponse> {
     const response = await apiFetch(
       "balancer",
-      `admin/balancer/tournaments/${tournamentId}/registrations/export-users`,
+      `balancer/tournaments/${tournamentId}/registrations/export-users`,
       {
         method: "POST",
         body: {}
@@ -319,7 +319,7 @@ export default class balancerAdminService {
     formData.append("payload_format", payloadFormat);
     const response = await apiFetch(
       "balancer",
-      `admin/balancer/tournaments/${tournamentId}/teams/import`,
+      `balancer/tournaments/${tournamentId}/teams/import`,
       {
         method: "POST",
         body: formData
@@ -335,7 +335,7 @@ export default class balancerAdminService {
   static async getRegistrationForm(tournamentId: number): Promise<AdminRegistrationForm | null> {
     const response = await apiFetch(
       "balancer",
-      `admin/balancer/tournaments/${tournamentId}/registration-form`
+      `balancer/tournaments/${tournamentId}/registration-form`
     );
     return response.json();
   }
@@ -346,7 +346,7 @@ export default class balancerAdminService {
   ): Promise<AdminRegistrationForm> {
     const response = await apiFetch(
       "balancer",
-      `admin/balancer/tournaments/${tournamentId}/registration-form`,
+      `balancer/tournaments/${tournamentId}/registration-form`,
       {
         method: "PUT",
         body: data
@@ -366,7 +366,7 @@ export default class balancerAdminService {
   ): Promise<AdminRegistration[]> {
     const response = await apiFetch(
       "balancer",
-      `admin/balancer/tournaments/${tournamentId}/registrations`,
+      `balancer/tournaments/${tournamentId}/registrations`,
       {
         query: filters
       }
@@ -380,7 +380,7 @@ export default class balancerAdminService {
   ): Promise<AdminRegistration> {
     const response = await apiFetch(
       "balancer",
-      `admin/balancer/tournaments/${tournamentId}/registrations`,
+      `balancer/tournaments/${tournamentId}/registrations`,
       {
         method: "POST",
         body: data
@@ -393,7 +393,7 @@ export default class balancerAdminService {
     registrationId: number,
     data: AdminRegistrationUpdateInput
   ): Promise<AdminRegistration> {
-    const response = await apiFetch("balancer", `admin/balancer/registrations/${registrationId}`, {
+    const response = await apiFetch("balancer", `balancer/registrations/${registrationId}`, {
       method: "PATCH",
       body: data
     });
@@ -403,7 +403,7 @@ export default class balancerAdminService {
   static async approveRegistration(registrationId: number): Promise<AdminRegistration> {
     const response = await apiFetch(
       "balancer",
-      `admin/balancer/registrations/${registrationId}/approve`,
+      `balancer/registrations/${registrationId}/approve`,
       {
         method: "PATCH"
       }
@@ -414,7 +414,7 @@ export default class balancerAdminService {
   static async rejectRegistration(registrationId: number): Promise<AdminRegistration> {
     const response = await apiFetch(
       "balancer",
-      `admin/balancer/registrations/${registrationId}/reject`,
+      `balancer/registrations/${registrationId}/reject`,
       {
         method: "PATCH"
       }
@@ -428,7 +428,7 @@ export default class balancerAdminService {
   ): Promise<AdminRegistration> {
     const response = await apiFetch(
       "balancer",
-      `admin/balancer/registrations/${registrationId}/exclusion`,
+      `balancer/registrations/${registrationId}/exclusion`,
       {
         method: "PATCH",
         body: data
@@ -440,7 +440,7 @@ export default class balancerAdminService {
   static async withdrawRegistration(registrationId: number): Promise<AdminRegistration> {
     const response = await apiFetch(
       "balancer",
-      `admin/balancer/registrations/${registrationId}/withdraw`,
+      `balancer/registrations/${registrationId}/withdraw`,
       {
         method: "PATCH"
       }
@@ -451,7 +451,7 @@ export default class balancerAdminService {
   static async restoreRegistration(registrationId: number): Promise<AdminRegistration> {
     const response = await apiFetch(
       "balancer",
-      `admin/balancer/registrations/${registrationId}/restore`,
+      `balancer/registrations/${registrationId}/restore`,
       {
         method: "PATCH"
       }
@@ -460,7 +460,7 @@ export default class balancerAdminService {
   }
 
   static async deleteRegistration(registrationId: number): Promise<void> {
-    await apiFetch("balancer", `admin/balancer/registrations/${registrationId}`, {
+    await apiFetch("balancer", `balancer/registrations/${registrationId}`, {
       method: "DELETE"
     });
   }
@@ -471,7 +471,7 @@ export default class balancerAdminService {
   ): Promise<{ approved: number; skipped: number }> {
     const response = await apiFetch(
       "balancer",
-      `admin/balancer/tournaments/${tournamentId}/registrations/bulk-approve`,
+      `balancer/tournaments/${tournamentId}/registrations/bulk-approve`,
       {
         method: "POST",
         body: { registration_ids: registrationIds }
@@ -488,7 +488,7 @@ export default class balancerAdminService {
   ): Promise<AdminRegistration> {
     const response = await apiFetch(
       "balancer",
-      `admin/balancer/registrations/${registrationId}/balancer-status`,
+      `balancer/registrations/${registrationId}/balancer-status`,
       {
         method: "PATCH",
         body: { balancer_status: balancerStatus }
@@ -504,7 +504,7 @@ export default class balancerAdminService {
   ): Promise<{ updated: number; skipped: number }> {
     const response = await apiFetch(
       "balancer",
-      `admin/balancer/tournaments/${tournamentId}/registrations/bulk-add-to-balancer`,
+      `balancer/tournaments/${tournamentId}/registrations/bulk-add-to-balancer`,
       {
         method: "POST",
         body: { registration_ids: registrationIds, balancer_status: balancerStatus }
@@ -521,7 +521,7 @@ export default class balancerAdminService {
   ): Promise<AdminRegistration> {
     const response = await apiFetch(
       "balancer",
-      `admin/balancer/registrations/${registrationId}/check-in`,
+      `balancer/registrations/${registrationId}/check-in`,
       {
         method: "PATCH",
         body: { checked_in: checkedIn }
@@ -531,14 +531,14 @@ export default class balancerAdminService {
   }
 
   static async listCustomStatuses(workspaceId: number): Promise<BalancerCustomStatus[]> {
-    const response = await apiFetch("balancer", `admin/ws/${workspaceId}/balancer-statuses`);
+    const response = await apiFetch("balancer", `ws/${workspaceId}/balancer-statuses`);
     return response.json();
   }
 
   static async listStatusCatalog(workspaceId: number): Promise<BalancerCustomStatus[]> {
     const response = await apiFetch(
       "balancer",
-      `admin/ws/${workspaceId}/balancer-statuses/catalog`
+      `ws/${workspaceId}/balancer-statuses/catalog`
     );
     return response.json();
   }
@@ -549,7 +549,7 @@ export default class balancerAdminService {
   ): Promise<BalancerCustomStatus> {
     const response = await apiFetch(
       "balancer",
-      `admin/ws/${workspaceId}/balancer-statuses/custom`,
+      `ws/${workspaceId}/balancer-statuses/custom`,
       {
         method: "POST",
         body: data
@@ -565,7 +565,7 @@ export default class balancerAdminService {
   ): Promise<BalancerCustomStatus> {
     const response = await apiFetch(
       "balancer",
-      `admin/ws/${workspaceId}/balancer-statuses/custom/${statusId}`,
+      `ws/${workspaceId}/balancer-statuses/custom/${statusId}`,
       {
         method: "PATCH",
         body: data
@@ -575,7 +575,7 @@ export default class balancerAdminService {
   }
 
   static async deleteCustomStatus(workspaceId: number, statusId: number): Promise<void> {
-    await apiFetch("balancer", `admin/ws/${workspaceId}/balancer-statuses/custom/${statusId}`, {
+    await apiFetch("balancer", `ws/${workspaceId}/balancer-statuses/custom/${statusId}`, {
       method: "DELETE"
     });
   }
@@ -588,7 +588,7 @@ export default class balancerAdminService {
   ): Promise<BalancerCustomStatus> {
     const response = await apiFetch(
       "balancer",
-      `admin/ws/${workspaceId}/balancer-statuses/system/${scope}/${slug}`,
+      `ws/${workspaceId}/balancer-statuses/system/${scope}/${slug}`,
       {
         method: "PUT",
         body: data
@@ -604,7 +604,7 @@ export default class balancerAdminService {
   ): Promise<void> {
     await apiFetch(
       "balancer",
-      `admin/ws/${workspaceId}/balancer-statuses/system/${scope}/${slug}`,
+      `ws/${workspaceId}/balancer-statuses/system/${scope}/${slug}`,
       {
         method: "DELETE"
       }

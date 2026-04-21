@@ -73,37 +73,37 @@ export interface SheetSyncResponse {
 export interface InternalBalancePlayer {
   uuid: string;
   name: string;
-  rating: number;
-  discomfort?: number;
-  isCaptain?: boolean;
-  isFlex?: boolean;
-  preferences: string[];
-  subRole?: BalancerRoleSubtype | null;
-  allRatings?: Record<string, number>;
+  assigned_rating: number;
+  role_discomfort?: number;
+  is_captain?: boolean;
+  is_flex?: boolean;
+  role_preferences: string[];
+  sub_role?: BalancerRoleSubtype | null;
+  all_ratings?: Record<string, number>;
 }
 
 export interface InternalBalanceTeam {
   id: number;
   name: string;
-  avgMMR: number;
-  variance?: number | null;
-  totalDiscomfort?: number | null;
-  maxDiscomfort?: number | null;
+  average_mmr: number;
+  rating_variance?: number | null;
+  total_discomfort?: number | null;
+  max_discomfort?: number | null;
   roster: Record<BalancerRosterKey, InternalBalancePlayer[]>;
 }
 
 export interface InternalBalancePayload {
   teams: InternalBalanceTeam[];
   statistics?: {
-    averageMMR?: number;
-    mmrStdDev?: number;
-    totalTeams?: number;
-    playersPerTeam?: number;
-    offRoleCount?: number;
-    subRoleCollisionCount?: number;
-    unbalancedCount?: number;
+    average_mmr?: number;
+    mmr_std_dev?: number;
+    total_teams?: number;
+    players_per_team?: number;
+    off_role_count?: number;
+    sub_role_collision_count?: number;
+    unbalanced_count?: number;
   };
-  benchedPlayers?: InternalBalancePlayer[];
+  benched_players?: InternalBalancePlayer[];
 }
 
 export interface SavedBalancerTeam {

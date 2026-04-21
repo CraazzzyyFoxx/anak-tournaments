@@ -4,52 +4,54 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ConfigOverrides(BaseModel):
-    """Optional configuration overrides for the balancing algorithm"""
+    """Optional public configuration overrides for the balancing algorithm."""
 
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    model_config = ConfigDict(extra="forbid")
 
-    # Role mask configuration
-    MASK: dict[str, int] | None = Field(
+    role_mask: dict[str, int] | None = Field(
         None,
-        alias="DEFAULT_MASK",
         description="Role mask defining required players per role (e.g., {'Tank': 1, 'Damage': 2, 'Support': 2})",
     )
-
-    # Genetic Algorithm parameters
-    POPULATION_SIZE: int | None = Field(None, ge=10, le=1000, description="Population size for genetic algorithm")
-    GENERATIONS: int | None = Field(None, ge=10, le=5000, description="Number of generations")
-    ELITISM_RATE: float | None = Field(None, ge=0, le=1, description="Percentage of elite solutions to preserve")
-    MUTATION_RATE: float | None = Field(None, ge=0, le=1, description="Probability of mutation")
-    MUTATION_STRENGTH: int | None = Field(None, ge=1, le=10, description="Number of mutation operations per mutation")
-    STAGNATION_THRESHOLD: int | None = Field(
+    algorithm: Literal["moo", "cpsat", "mixtura_balancer"] | None = Field(
         None,
-        ge=1,
-        le=500,
-        description=(
-            "Number of generations without best-cost improvement before reseeding "
-            "the bottom 70% of the population (elite preserved)."
-        ),
+        description="Balancing algorithm to use",
     )
 
-    # Cost function weights
-    MMR_DIFF_WEIGHT: float | None = Field(None, ge=0, description="Weight for MMR difference between teams")
-    TEAM_TOTAL_STD_WEIGHT: float | None = Field(None, ge=0, description="Weight for aligning total rating sums among all teams")
-    MAX_TEAM_GAP_WEIGHT: float | None = Field(None, ge=0, description="Penalty weight for the rating gap between strongest and weakest team")
-    DISCOMFORT_WEIGHT: float | None = Field(None, ge=0, description="Weight for player role discomfort")
-    INTRA_TEAM_VAR_WEIGHT: float | None = Field(None, ge=0, description="Weight for variance within teams")
-    MAX_DISCOMFORT_WEIGHT: float | None = Field(None, ge=0, description="Weight for maximum discomfort penalty")
-    ROLE_BALANCE_WEIGHT: float | None = Field(None, ge=0, description="Weight for balancing roles between teams")
-    ROLE_SPREAD_WEIGHT: float | None = Field(None, ge=0, description="Penalty weight for rating spread within roles in a team")
-    INTRA_TEAM_STD_WEIGHT: float | None = Field(
+    population_size: int | None = Field(None, ge=10, le=1000, description="Population size for the moo solver")
+    generation_count: int | None = Field(None, ge=10, le=5000, description="Number of generations")
+    mutation_rate: float | None = Field(None, ge=0, le=1, description="Probability of mutation")
+    mutation_strength: int | None = Field(None, ge=1, le=10, description="Number of mutation operations per mutation")
+
+    average_mmr_balance_weight: float | None = Field(None, ge=0, description="Weight for MMR difference between teams")
+    team_total_balance_weight: float | None = Field(
+        None,
+        ge=0,
+        description="Weight for aligning total rating sums among all teams",
+    )
+    max_team_gap_weight: float | None = Field(
+        None,
+        ge=0,
+        description="Penalty weight for the rating gap between strongest and weakest team",
+    )
+    role_discomfort_weight: float | None = Field(None, ge=0, description="Weight for player role discomfort")
+    intra_team_variance_weight: float | None = Field(None, ge=0, description="Weight for variance within teams")
+    max_role_discomfort_weight: float | None = Field(None, ge=0, description="Weight for maximum discomfort penalty")
+    role_line_balance_weight: float | None = Field(None, ge=0, description="Weight for balancing roles between teams")
+    role_spread_weight: float | None = Field(None, ge=0, description="Penalty weight for rating spread within roles in a team")
+    intra_team_std_weight: float | None = Field(
         None,
         ge=0,
         description=(
-            "NSGA-II blend coefficient for intra-team rating std. "
-            "Higher values push the optimizer to spread top players across teams "
-            "instead of pairing them with weak players to hit an average."
+            "Weight for the standard deviation of ratings inside each team. "
+            "Higher values push the optimizer to spread top players across teams."
         ),
     )
-    SUBROLE_COLLISION_WEIGHT: float | None = Field(
+    internal_role_spread_weight: float | None = Field(
+        None,
+        ge=0,
+        description="Weight for uneven role-average strength inside the same team",
+    )
+    sub_role_collision_weight: float | None = Field(
         None,
         ge=0,
         description=(
@@ -58,106 +60,83 @@ class ConfigOverrides(BaseModel):
         ),
     )
 
-    # Strategy configuration
-    USE_CAPTAINS: bool | None = Field(None, description="Whether to use captain assignment")
-    ROLE_MAPPING: dict[str, str] | None = Field(
-        None,
-        alias="DEFAULT_ROLE_MAPPING",
-        description="Mapping from input role names to algorithm role names",
-    )
-
-    # Algorithm selection
-    ALGORITHM: Literal["genetic", "genetic_moo", "cpsat", "nsga"] | None = Field(
-        None, description="Balancing algorithm to use"
-    )
-    MAX_CPSAT_SOLUTIONS: int | None = Field(
-        None, ge=1, le=5, description="Maximum number of CP-SAT solutions to return"
-    )
-    MAX_GENETIC_SOLUTIONS: int | None = Field(
+    use_captains: bool | None = Field(None, description="Whether to use captain assignment")
+    max_result_variants: int | None = Field(
         None,
         ge=1,
-        le=50,
-        description="Maximum number of Pareto variants returned by the genetic_moo solver",
+        le=200,
+        description="Maximum number of result variants to return for the selected solver",
     )
-    MAX_NSGA_SOLUTIONS: int | None = Field(
-        None, ge=1, le=200, description="Maximum number of NSGA-II Pareto solutions to return"
+    team_variance_weight: float | None = Field(None, ge=0.0, description="Weight of team variance in balance objective.")
+    team_spread_weight: float | None = Field(
+        None,
+        ge=0.0,
+        description="Blend coefficient for per-team player spread variance in the folded balance objective.",
     )
-    WEIGHT_TEAM_VARIANCE: float | None = Field(None, ge=0.0, description="Weight of team variance in balance objective.")
-    TEAM_SPREAD_BLEND: float | None = Field(None, ge=0.0, description="Blend coefficient for per-team player spread variance in the folded balance objective.")
-    SUBROLE_BLEND: float | None = Field(None, ge=0.0, description="Blend coefficient for subrole penalty in the folded balance objective.")
-
-    # Workspace & division (new)
-    workspace_id: int | None = Field(None, description="Workspace context for division grid resolution")
-    tournament_id: int | None = Field(None, description="Tournament context")
-    division_grid: dict[str, Any] | None = Field(None, description="Resolved division grid JSON")
-    division_scope: Literal["cross", "within"] | None = Field(
-        None, description="Balancing scope: 'cross' (all players together) or 'within' (per division)"
+    sub_role_penalty_weight: float | None = Field(
+        None,
+        ge=0.0,
+        description="Blend coefficient for subrole penalty in the folded balance objective.",
     )
 
 
 class BalanceRequest(BaseModel):
-    """Request schema for team balancing"""
+    """Request schema for direct team balancing."""
 
-    data: dict = Field(..., description="Player data in the tournament format")
-    config: ConfigOverrides | None = Field(None, description="Optional configuration overrides")
+    player_data: dict = Field(..., description="Player data in the tournament format")
+    config_overrides: ConfigOverrides | None = Field(None, description="Optional configuration overrides")
 
 
 class PlayerData(BaseModel):
-    """Individual player data in a team"""
-
     uuid: str
     name: str
-    rating: int
-    discomfort: int
-    isCaptain: bool
-    preferences: list[str]
-    allRatings: dict[str, int]
-    isFlex: bool = False
-    subRole: str | None = None
+    assigned_rating: int
+    role_discomfort: int
+    is_captain: bool
+    role_preferences: list[str]
+    all_ratings: dict[str, int]
+    is_flex: bool = False
+    sub_role: str | None = None
 
 
 class TeamData(BaseModel):
-    """Team data with roster and statistics"""
-
     id: int
     name: str
-    avgMMR: float
-    variance: float
-    totalDiscomfort: int
-    maxDiscomfort: int
+    average_mmr: float
+    rating_variance: float
+    total_discomfort: int
+    max_discomfort: int
     roster: dict[str, list[PlayerData]]
 
 
 class Statistics(BaseModel):
-    """Overall statistics for the balanced teams"""
-
-    averageMMR: float
-    mmrStdDev: float
-    totalTeams: int
-    playersPerTeam: int
-    offRoleCount: int = 0
-    subRoleCollisionCount: int = 0
-    unbalancedCount: int = 0
+    average_mmr: float
+    mmr_std_dev: float
+    total_teams: int
+    players_per_team: int
+    off_role_count: int = 0
+    sub_role_collision_count: int = 0
+    unbalanced_count: int = 0
+    average_total_rating: float | None = None
+    total_rating_std_dev: float | None = None
+    max_total_rating_gap: float | None = None
+    balance_objective: float | None = None
+    comfort_objective: float | None = None
+    composite_score: float | None = None
 
 
 class BalanceResponse(BaseModel):
-    """Response schema for team balancing"""
-
     teams: list[TeamData]
     statistics: Statistics
-    benchedPlayers: list[PlayerData] = Field(default_factory=list)
-    appliedConfig: dict[str, Any] | None = None
+    benched_players: list[PlayerData] = Field(default_factory=list)
+    applied_config: dict[str, Any] | None = None
 
 
 class BalanceJobResult(BaseModel):
-    """Wrapper containing one or more balance result variants."""
-
     variants: list[BalanceResponse]
 
 
 class BalancerConfigResponse(BaseModel):
-    """Runtime balancing configuration exposed for UI forms."""
-
     defaults: dict[str, Any]
     limits: dict[str, dict[str, int | float]]
     presets: dict[str, dict[str, Any]]

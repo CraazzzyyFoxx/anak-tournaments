@@ -5,28 +5,25 @@ export const CUSTOM_PRESET = "CUSTOM";
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
 const NUMERIC_CONFIG_KEYS = new Set<string>([
-  "POPULATION_SIZE",
-  "GENERATIONS",
-  "ELITISM_RATE",
-  "MUTATION_RATE",
-  "MUTATION_STRENGTH",
-  "STAGNATION_THRESHOLD",
-  "MMR_DIFF_WEIGHT",
-  "TEAM_TOTAL_STD_WEIGHT",
-  "MAX_TEAM_GAP_WEIGHT",
-  "DISCOMFORT_WEIGHT",
-  "INTRA_TEAM_VAR_WEIGHT",
-  "MAX_DISCOMFORT_WEIGHT",
-  "ROLE_BALANCE_WEIGHT",
-  "ROLE_SPREAD_WEIGHT",
-  "INTRA_TEAM_STD_WEIGHT",
-  "SUBROLE_COLLISION_WEIGHT",
-  "MAX_CPSAT_SOLUTIONS",
-  "MAX_GENETIC_SOLUTIONS",
-  "MAX_NSGA_SOLUTIONS",
-  "WEIGHT_TEAM_VARIANCE",
-  "TEAM_SPREAD_BLEND",
-  "SUBROLE_BLEND"
+  "population_size",
+  "generation_count",
+  "mutation_rate",
+  "mutation_strength",
+  "average_mmr_balance_weight",
+  "team_total_balance_weight",
+  "max_team_gap_weight",
+  "role_discomfort_weight",
+  "intra_team_variance_weight",
+  "max_role_discomfort_weight",
+  "role_line_balance_weight",
+  "role_spread_weight",
+  "intra_team_std_weight",
+  "internal_role_spread_weight",
+  "sub_role_collision_weight",
+  "max_result_variants",
+  "team_variance_weight",
+  "team_spread_weight",
+  "sub_role_penalty_weight"
 ]);
 
 type SanitizeOptions = {

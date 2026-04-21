@@ -268,9 +268,9 @@ function applyAssignedRolePreference(
   player: InternalBalancePlayer,
   roleKey: BalancerRosterKey,
 ) {
-  player.preferences = [
+  player.role_preferences = [
     roleKey,
-    ...player.preferences.filter((preference) => preference !== roleKey),
+    ...player.role_preferences.filter((preference) => preference !== roleKey),
   ];
 }
 
@@ -279,11 +279,11 @@ function recalculateBalancePayloadStats(
 ): InternalBalancePayload {
   next.teams = next.teams.map((team) => ({
     ...team,
-    avgMMR: calculateTeamAverageValueFromPayload(team),
+    average_mmr: calculateTeamAverageValueFromPayload(team),
   }));
 
   if (next.statistics) {
-    next.statistics.averageMMR =
+    next.statistics.average_mmr =
       next.teams.reduce(
         (sum, team) => sum + calculateTeamAverageValueFromPayload(team),
         0,

@@ -84,7 +84,7 @@ export const BalanceEditor = forwardRef<HTMLDivElement, BalanceEditorProps>(func
     }
   };
 
-  const benchedPlayers = value.benchedPlayers ?? [];
+  const benchedPlayers = value.benched_players ?? [];
 
   return (
     <DndContext

@@ -104,12 +104,12 @@ function BalanceEditorPlayerTableRow({
   onSelectPlayer,
 }: BalanceEditorPlayerTableRowProps) {
   const playerId = parseInternalBalancePlayerId(player);
-  const division = resolveDivisionFromRank(divisionGrid, player.rating);
+  const division = resolveDivisionFromRank(divisionGrid, player.assigned_rating);
   const isSelected = playerId !== null && selectedPlayerId === playerId;
-  const preferredRoles = player.preferences.slice(0, 3);
+  const preferredRoles = player.role_preferences.slice(0, 3);
   const preferredRole = preferredRoles[0];
   const assignedOffRole =
-    !player.isFlex && preferredRole !== undefined && preferredRole !== roleKey;
+    !player.is_flex && preferredRole !== undefined && preferredRole !== roleKey;
 
   return (
     <TableRow
@@ -137,7 +137,7 @@ function BalanceEditorPlayerTableRow({
       </TableCell>
       <TableCell className="min-w-45 py-2.5 pr-2">
         <div className="flex min-w-0 items-center gap-2">
-          {player.isCaptain ? <Crown className="h-3.5 w-3.5 shrink-0 text-amber-300" /> : null}
+          {player.is_captain ? <Crown className="h-3.5 w-3.5 shrink-0 text-amber-300" /> : null}
           <span className="truncate text-sm font-semibold text-white/88" title={player.name}>
             {player.name}
           </span>

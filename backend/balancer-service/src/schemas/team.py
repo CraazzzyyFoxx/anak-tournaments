@@ -33,29 +33,29 @@ class BalancerTeam(BaseModel):
 class InternalBalancerPlayer(BaseModel):
     """Player schema for the internal balancer format (teams.json)."""
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
 
     uuid: str | UUID4
     name: str
-    rating: int
-    discomfort: int | None = 0
-    is_captain: bool = Field(default=False, alias="isCaptain")
-    preferences: list[str] = []
-    sub_role: str | None = Field(default=None, alias="subRole")
-    all_ratings: dict[str, typing.Any] | None = Field(default=None, alias="allRatings")
+    assigned_rating: int
+    role_discomfort: int | None = 0
+    is_captain: bool = False
+    role_preferences: list[str] = Field(default_factory=list)
+    sub_role: str | None = None
+    all_ratings: dict[str, typing.Any] | None = None
 
 
 class InternalBalancerTeam(BaseModel):
     """Team schema for the internal balancer format (teams.json)."""
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
 
     id: int
     name: str
-    avg_mmr: float = Field(alias="avgMMR")
-    variance: float | None = None
-    total_discomfort: int | None = Field(default=None, alias="totalDiscomfort")
-    max_discomfort: int | None = Field(default=None, alias="maxDiscomfort")
+    average_mmr: float
+    rating_variance: float | None = None
+    total_discomfort: int | None = None
+    max_discomfort: int | None = None
     roster: dict[str, list[InternalBalancerPlayer]]
 
     @staticmethod
@@ -76,7 +76,7 @@ class InternalBalancerTeam(BaseModel):
         for roster_role, players in self.roster.items():
             mapped_role = self._map_role(roster_role)
             for player in players:
-                total_sr += player.rating
+                total_sr += player.assigned_rating
 
                 members.append(
                     BalancerTeamMember(
@@ -84,13 +84,13 @@ class InternalBalancerTeam(BaseModel):
                         name=player.name,
                         sub_role=player.sub_role,
                         role=mapped_role,
-                        rank=player.rating,
+                        rank=player.assigned_rating,
                     )
                 )
 
         return BalancerTeam(
             uuid=uuid4(),
-            avgSr=self.avg_mmr,
+            avgSr=self.average_mmr,
             name=self.name,
             totalSr=total_sr,
             members=members,
@@ -100,6 +100,6 @@ class InternalBalancerTeam(BaseModel):
 class InternalBalancerTeamsPayload(BaseModel):
     """Root schema for the internal balancer format (teams.json)."""
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="ignore")
 
     teams: list[InternalBalancerTeam]

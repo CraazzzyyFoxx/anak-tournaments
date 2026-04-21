@@ -1,4 +1,4 @@
-import { ArrowLeftRight, FileSpreadsheet, type LucideIcon, UserPlus } from "lucide-react";
+import { ArrowLeftRight, FileSpreadsheet, Settings2, type LucideIcon, UserPlus } from "lucide-react";
 
 import type { AppRole } from "@/hooks/usePermissions";
 
@@ -29,6 +29,12 @@ export const balancerNavigationItems: BalancerNavItem[] = [
     href: "/balancer/registrations/feed",
     icon: FileSpreadsheet,
     description: "Configure feed sync, mapping, and source ingestion.",
+  },
+  {
+    title: "Statuses",
+    href: "/balancer/statuses",
+    icon: Settings2,
+    description: "Manage workspace-specific registration and balancer statuses.",
   },
 ];
 

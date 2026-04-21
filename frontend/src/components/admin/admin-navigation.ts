@@ -1,5 +1,4 @@
 import {
-  ArrowLeftRight,
   Award,
   BarChart3,
   Building2,
@@ -137,13 +136,6 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         icon: Award,
         description: "Manage achievements with condition tree evaluation engine.",
         permissions: ["achievement.read"],
-      },
-      {
-        title: "Balancer",
-        href: "/admin/balancer",
-        icon: ArrowLeftRight,
-        description: "Manage workspace balancer status catalogs.",
-        permissions: ["team.import"],
       },
     ],
   },

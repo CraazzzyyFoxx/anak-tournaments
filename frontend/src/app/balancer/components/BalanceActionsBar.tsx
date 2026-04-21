@@ -20,10 +20,10 @@ import type { InternalBalancePayload } from "@/types/balancer-admin.types";
 import { MUTED_BUTTON_CLASS } from "./balancer-page-helpers";
 
 type VariantStats = {
-  mmrStdDev?: number | null;
-  offRoleCount?: number | null;
-  subRoleCollisionCount?: number | null;
-  unbalancedCount?: number | null;
+  mmr_std_dev?: number | null;
+  off_role_count?: number | null;
+  sub_role_collision_count?: number | null;
+  unbalanced_count?: number | null;
 } | null;
 
 type BalanceActionsBarProps = {
@@ -66,28 +66,28 @@ export function BalanceActionsBar({
   return (
     <div className="flex flex-col gap-3 p-3 lg:flex-row lg:items-center lg:justify-between">
       <div className="flex flex-wrap gap-2">
-        {activeVariantStats?.mmrStdDev != null ? (
+        {activeVariantStats?.mmr_std_dev != null ? (
           <Badge className="rounded-full border-blue-400/20 bg-blue-500/10 text-blue-200 hover:bg-blue-500/10">
             <BarChart2 className="mr-1.5 h-3.5 w-3.5" />
-            StdDev {activeVariantStats.mmrStdDev.toFixed(1)}
+            StdDev {activeVariantStats.mmr_std_dev.toFixed(1)}
           </Badge>
         ) : null}
-        {activeVariantStats?.offRoleCount != null ? (
+        {activeVariantStats?.off_role_count != null ? (
           <Badge className="rounded-full border-orange-400/20 bg-orange-500/10 text-orange-200 hover:bg-orange-500/10">
             <AlertCircle className="mr-1.5 h-3.5 w-3.5" />
-            Off-role {activeVariantStats.offRoleCount}
+            Off-role {activeVariantStats.off_role_count}
           </Badge>
         ) : null}
-        {activeVariantStats?.subRoleCollisionCount != null ? (
+        {activeVariantStats?.sub_role_collision_count != null ? (
           <Badge className="rounded-full border-violet-400/20 bg-violet-500/10 text-violet-200 hover:bg-violet-500/10">
             <Shuffle className="mr-1.5 h-3.5 w-3.5" />
-            Collisions {activeVariantStats.subRoleCollisionCount}
+            Collisions {activeVariantStats.sub_role_collision_count}
           </Badge>
         ) : null}
-        {activeVariantStats?.unbalancedCount != null ? (
+        {activeVariantStats?.unbalanced_count != null ? (
           <Badge className="rounded-full border-rose-400/20 bg-rose-500/10 text-rose-200 hover:bg-rose-500/10">
             <UserX className="mr-1.5 h-3.5 w-3.5" />
-            Benched {activeVariantStats.unbalancedCount}
+            Benched {activeVariantStats.unbalanced_count}
           </Badge>
         ) : null}
       </div>

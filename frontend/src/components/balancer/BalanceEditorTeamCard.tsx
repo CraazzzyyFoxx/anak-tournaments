@@ -1,16 +1,12 @@
 "use client";
 
-import { ChevronDown, ChevronUp } from "lucide-react";
-
 import {
   BALANCE_ROSTER_KEYS,
   TEAM_BADGE_ACCENTS,
-  calculateOffRoleCountFromPayload,
   calculateTeamAverageFromPayload,
   calculateTeamTotalFromPayload,
 } from "@/app/balancer/components/balancer-page-helpers";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   Table,
   TableHead,
@@ -40,13 +36,10 @@ export function BalanceEditorTeamCard({
   teamIndex,
   divisionGrid,
   selectedPlayerId,
-  collapsed,
   onSelectPlayer,
-  onToggleTeam,
 }: BalanceEditorTeamCardProps) {
   const total = Math.round(calculateTeamTotalFromPayload(team));
   const average = Math.round(calculateTeamAverageFromPayload(team));
-  const offRoleCount = calculateOffRoleCountFromPayload(team);
   const teamAccent = TEAM_BADGE_ACCENTS[teamIndex % TEAM_BADGE_ACCENTS.length];
 
   return (
@@ -76,25 +69,7 @@ export function BalanceEditorTeamCard({
                 Avg: <span className="tabular-nums text-white/88">{average}</span>
               </span>
             </div>
-            <div className="mt-1 flex flex-wrap justify-end gap-1.5">
-              {/* <Badge
-                variant="outline"
-                className="border-white/10 bg-white/4 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.16em] text-white/70"
-              >
-                {team.totalDiscomfort ?? 0} discomfort
-              </Badge> */}
-              {/* <Badge
-                variant="outline"
-                className={cn(
-                  "px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.16em]",
-                  offRoleCount > 0
-                    ? "border-amber-400/20 bg-amber-500/10 text-amber-200"
-                    : "border-emerald-400/20 bg-emerald-500/10 text-emerald-200",
-                )}
-              >
-                {offRoleCount > 0 ? `${offRoleCount} off-role` : "clean roles"}
-              </Badge> */}
-            </div>
+            <div className="mt-1 flex flex-wrap justify-end gap-1.5" />
           </div>
           
         </div>

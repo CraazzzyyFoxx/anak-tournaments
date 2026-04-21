@@ -80,7 +80,7 @@ export function TeamDistributionPanel({ variant, variantSelector }: TeamDistribu
           </div>
           <div className="mt-1 flex items-baseline gap-3">
             <span className="text-2xl font-semibold text-cyan-300">
-              {average ?? stats?.averageMMR ?? "-"}
+              {average ?? stats?.average_mmr ?? "-"}
             </span>
             <span className="text-sm text-white/38">Average SR</span>
           </div>
@@ -101,7 +101,7 @@ export function TeamDistributionPanel({ variant, variantSelector }: TeamDistribu
           <div>
             <div className="text-[10px] uppercase tracking-[0.16em] text-white/24">StdDev</div>
             <div className="mt-0.5 text-sm text-white/74">
-              {stats?.mmrStdDev != null ? stats.mmrStdDev.toFixed(1) : "-"}
+              {stats?.mmr_std_dev != null ? stats.mmr_std_dev.toFixed(1) : "-"}
             </div>
           </div>
         </div>

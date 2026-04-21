@@ -36,6 +36,22 @@ COPY ./shared /app/shared
 
 ARG APP_PATH
 
+RUN if [ "${APP_PATH}" = "balancer" ]; then \
+        set -eux; \
+        sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources; \
+        for attempt in 1 2 3; do \
+            if apt-get update -o Acquire::Retries=3 \
+                && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends -o Acquire::Retries=3 build-essential cargo rustc; then \
+                break; \
+            fi; \
+            if [ "${attempt}" -eq 3 ]; then \
+                exit 1; \
+            fi; \
+            sleep "$((attempt * 5))"; \
+        done; \
+        rm -rf /var/lib/apt/lists/*; \
+    fi
+
 # Install dependencies for the target service only
 # Ref: https://docs.astral.sh/uv/guides/integration/docker/#intermediate-layers
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -53,6 +69,12 @@ COPY ./${APP_PATH}-service /app/${APP_PATH}-service
 # Ref: https://docs.astral.sh/uv/guides/integration/docker/#intermediate-layers
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --package ${APP_PATH}-service
+
+RUN if [ "${APP_PATH}" = "balancer" ]; then \
+        uvx --from maturin maturin develop \
+            --release \
+            --manifest-path /app/balancer-service/native/moo_core/Cargo.toml; \
+    fi
 
 # Set working directory to the service
 WORKDIR /app/${APP_PATH}-service

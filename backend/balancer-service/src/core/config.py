@@ -11,7 +11,7 @@ from shared.core.config import BaseServiceSettings
 
 
 class AlgorithmConfig(BaseSettings):
-    """Configuration for the genetic algorithm balancing parameters."""
+    """Configuration for balancer solver parameters."""
 
     model_config = SettingsConfigDict(
         env_prefix="BALANCER_",
@@ -19,38 +19,29 @@ class AlgorithmConfig(BaseSettings):
     )
 
     # Role configuration
-    DEFAULT_MASK: dict[str, int] = Field(
+    role_mask: dict[str, int] = Field(
         default={"Tank": 1, "Damage": 2, "Support": 2},
         description="Default role mask defining required players per role",
     )
 
-    # Genetic Algorithm parameters
-    POPULATION_SIZE: int = Field(default=200, ge=10, le=1000)
-    GENERATIONS: int = Field(default=750, ge=10, le=5000)
-    ELITISM_RATE: float = Field(default=0.2, ge=0.0, le=1.0)
-    MUTATION_RATE: float = Field(default=0.4, ge=0.0, le=1.0)
-    MUTATION_STRENGTH: int = Field(default=3, ge=1, le=10)
-    STAGNATION_THRESHOLD: int = Field(
-        default=30,
-        ge=1,
-        le=500,
-        description=(
-            "Number of generations without best-cost improvement before reseeding "
-            "the bottom 70% of the population (elite preserved)."
-        ),
-    )
+    # Shared optimizer parameters
+    population_size: int = Field(default=200, ge=10, le=1000)
+    generation_count: int = Field(default=750, ge=10, le=5000)
+    mutation_rate: float = Field(default=0.4, ge=0.0, le=1.0)
+    mutation_strength: int = Field(default=3, ge=1, le=10)
 
     # Cost function weights
-    MMR_DIFF_WEIGHT: float = Field(default=3.0, ge=0.0)
-    TEAM_TOTAL_STD_WEIGHT: float = Field(default=1.0, ge=0.0)
-    MAX_TEAM_GAP_WEIGHT: float = Field(default=1.0, ge=0.0)
-    DISCOMFORT_WEIGHT: float = Field(default=1.5, ge=0.0)
-    INTRA_TEAM_VAR_WEIGHT: float = Field(default=0.8, ge=0.0)
-    MAX_DISCOMFORT_WEIGHT: float = Field(default=1.5, ge=0.0)
-    ROLE_BALANCE_WEIGHT: float = Field(default=1.0, ge=0.0)
-    ROLE_SPREAD_WEIGHT: float = Field(default=1.0, ge=0.0)
-    INTRA_TEAM_STD_WEIGHT: float = Field(default=0.0, ge=0.0)
-    SUBROLE_COLLISION_WEIGHT: float = Field(
+    average_mmr_balance_weight: float = Field(default=3.0, ge=0.0)
+    team_total_balance_weight: float = Field(default=1.0, ge=0.0)
+    max_team_gap_weight: float = Field(default=1.0, ge=0.0)
+    role_discomfort_weight: float = Field(default=1.5, ge=0.0)
+    intra_team_variance_weight: float = Field(default=0.8, ge=0.0)
+    max_role_discomfort_weight: float = Field(default=1.5, ge=0.0)
+    role_line_balance_weight: float = Field(default=1.0, ge=0.0)
+    role_spread_weight: float = Field(default=1.0, ge=0.0)
+    intra_team_std_weight: float = Field(default=1.0, ge=0.0)
+    internal_role_spread_weight: float = Field(default=0.5, ge=0.0)
+    sub_role_collision_weight: float = Field(
         default=5.0,
         ge=0.0,
         description=(
@@ -60,36 +51,28 @@ class AlgorithmConfig(BaseSettings):
     )
 
     # Strategy configuration
-    USE_CAPTAINS: bool = Field(default=True)
-    DEFAULT_ROLE_MAPPING: dict[str, str] = Field(
-        default={"tank": "Tank", "dps": "Damage", "support": "Support"},
-    )
+    use_captains: bool = Field(default=True)
 
     # Algorithm selection
-    ALGORITHM: typing.Literal["genetic", "genetic_moo", "cpsat", "nsga"] = Field(default="genetic")
-    MAX_CPSAT_SOLUTIONS: int = Field(default=3, ge=1, le=5)
-    MAX_GENETIC_SOLUTIONS: int = Field(
+    algorithm: typing.Literal["moo", "cpsat", "mixtura_balancer"] = Field(default="moo")
+    max_result_variants: int = Field(
         default=10,
         ge=1,
-        le=50,
-        description=(
-            "Maximum number of Pareto solutions returned by the genetic_moo "
-            "algorithm (multi-objective legacy GA)."
-        ),
+        le=200,
+        description="Maximum number of solution variants returned by the selected solver.",
     )
 
-    # NSGA-II (mixtura-balancer) settings
-    MAX_NSGA_SOLUTIONS: int = Field(default=10, ge=1, le=50)
-    MIXTURA_QUEUE: str = Field(default="mix_balance_service.balance")
-    WEIGHT_TEAM_VARIANCE: float = Field(default=1.0, ge=0.0, description="Weight of team variance in balance objective.")
-    TEAM_SPREAD_BLEND: float = Field(default=0.1, ge=0.0, description="Blend coefficient for per-team player spread variance in the folded balance objective.")
-    SUBROLE_BLEND: float = Field(default=0.1, ge=0.0, description="Blend coefficient for subrole penalty in the folded balance objective.")
+    # mixtura-balancer settings
+    mixtura_queue: str = Field(default="mix_balance_service.balance")
+    team_variance_weight: float = Field(default=1.0, ge=0.0, description="Weight of team variance in balance objective.")
+    team_spread_weight: float = Field(default=0.1, ge=0.0, description="Blend coefficient for per-team player spread variance in the folded balance objective.")
+    sub_role_penalty_weight: float = Field(default=0.1, ge=0.0, description="Blend coefficient for subrole penalty in the folded balance objective.")
 
 
 class Settings(BaseServiceSettings):
     # Balancer-specific fields
     project_name: str = "Anak Tournaments"
-    description: str = "Tournament team balancing service using genetic algorithms"
+    description: str = "Tournament team balancing service"
     debug: bool = False
     port: int = 8005
 

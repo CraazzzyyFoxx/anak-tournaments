@@ -29,3 +29,6 @@ proxy/xray.json
 !proxy/xray.json.example
 
 *.egg-info/
+
+target/
+debug/

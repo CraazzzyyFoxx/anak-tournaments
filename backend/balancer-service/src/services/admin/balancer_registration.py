@@ -18,8 +18,8 @@ from shared.core import enums
 from shared.division_grid import DivisionGrid, load_runtime_grid
 from shared.domain.player_sub_roles import normalize_sub_role
 from src import models
-import src.services.user as user_flows
 from src.schemas.user import UserCSV
+from src.services import user as user_flows
 from src.services.admin.balancer_utils import (
     DEFAULT_BOOLEAN_TRUE_VALUES,
     DEFAULT_ROLE_VALUE_MAP,

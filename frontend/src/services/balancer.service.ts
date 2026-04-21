@@ -13,11 +13,52 @@ const BALANCER_STREAM_PREFIX = (
   process.env.NEXT_PUBLIC_BALANCER_API_URL || "http://localhost/api/balancer"
 ).replace(/\/$/, "");
 
+const SUPPORTED_CONFIG_FIELD_TYPES = new Set([
+  "boolean",
+  "float",
+  "integer",
+  "role_mask",
+  "select"
+]);
+
+function stripLegacyConfigKeys(
+  config: BalancerConfig | Record<string, unknown> | null | undefined
+): BalancerConfig {
+  if (!config || typeof config !== "object") {
+    return {};
+  }
+
+  const { input_role_mapping: _legacyRoleMapping, ...rest } = config as Record<string, unknown> & {
+    input_role_mapping?: unknown;
+  };
+
+  return rest as BalancerConfig;
+}
+
+function normalizeConfigResponse(payload: BalancerConfigResponse): BalancerConfigResponse {
+  return {
+    ...payload,
+    defaults: stripLegacyConfigKeys(payload.defaults),
+    presets: Object.fromEntries(
+      Object.entries(payload.presets).map(([presetName, presetConfig]) => [
+        presetName,
+        stripLegacyConfigKeys(presetConfig)
+      ])
+    ),
+    fields: payload.fields.filter(
+      (field) =>
+        field.key !== "input_role_mapping" &&
+        SUPPORTED_CONFIG_FIELD_TYPES.has(field.type as string)
+    )
+  };
+}
+
 export default class balancerService {
   static async getConfig(): Promise<BalancerConfigResponse> {
     try {
       const response = await apiFetch("balancer", "config", { timeout: 10_000 });
-      return response.json();
+      const payload = (await response.json()) as BalancerConfigResponse;
+      return normalizeConfigResponse(payload);
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         throw new Error("Failed to load balancer config: request timed out");
@@ -28,10 +69,10 @@ export default class balancerService {
 
   static async createBalanceJob(file: File, config?: BalancerConfig): Promise<BalanceJobCreateResponse> {
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("player_data_file", file);
 
     if (config && Object.keys(config).length > 0) {
-      formData.append("config", JSON.stringify(config));
+      formData.append("config_overrides", JSON.stringify(config));
     }
 
     try {

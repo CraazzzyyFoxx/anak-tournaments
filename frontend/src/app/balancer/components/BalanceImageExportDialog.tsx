@@ -441,13 +441,13 @@ function BalanceExportTeamCard({
                 <td className="w-18 px-2 py-2.5">
                   <ExportDivisionIcon
                     divisionGrid={divisionGrid}
-                    rank={player.rating}
+                    rank={player.assigned_rating}
                   />
                 </td>
                 <td className="w-22 px-3 py-2.5">
                   <div className="flex items-center justify-center gap-1">
-                    {player.preferences.length > 0 ? (
-                      player.preferences.slice(0, 3).map((preference, index) => (
+                    {player.role_preferences.length > 0 ? (
+                      player.role_preferences.slice(0, 3).map((preference, index) => (
                         <span
                           key={`${player.uuid}-${preference}-${index}`}
                           className="flex items-center justify-center opacity-85"

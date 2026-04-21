@@ -259,12 +259,12 @@ function ConfigFieldControl({
     );
   }
 
-  if (field.type === "role_mask" || field.type === "string_map") {
+  if (field.type === "role_mask") {
     return (
       <ConfigMapEditor
         id={`config-${field.key}`}
         value={(value as Record<string, number | string> | undefined) ?? {}}
-        valueType={field.type === "role_mask" ? "number" : "string"}
+        valueType="number"
         onChange={onChange}
       />
     );

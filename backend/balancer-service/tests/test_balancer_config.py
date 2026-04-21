@@ -32,11 +32,12 @@ os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
 os.environ.setdefault("S3_BUCKET_NAME", "test")
 os.environ["DEBUG"] = "false"
 
-from src.service import (  # noqa: E402
+from src.domain.balancer.config_provider import (  # noqa: E402
     EDITABLE_CONFIG_FIELD_KEYS,
     get_balancer_config_payload,
     normalize_tournament_config_payload,
 )
+from src.schemas.team import InternalBalancerTeamsPayload  # noqa: E402
 from src.services.admin import balancer as balancer_admin_service  # noqa: E402
 
 
@@ -47,18 +48,21 @@ def test_config_payload_exposes_complete_editable_field_metadata() -> None:
     field_keys = {field["key"] for field in fields}
 
     assert field_keys == EDITABLE_CONFIG_FIELD_KEYS
-    assert {"workspace_id", "tournament_id", "division_grid", "MIXTURA_QUEUE"}.isdisjoint(field_keys)
+    assert {"workspace_id", "tournament_id", "division_grid", "mixtura_queue"}.isdisjoint(field_keys)
 
     fields_by_key = {field["key"]: field for field in fields}
-    assert fields_by_key["POPULATION_SIZE"]["limits"] == {"min": 10, "max": 1000}
-    assert fields_by_key["MAX_CPSAT_SOLUTIONS"]["limits"] == {"min": 1, "max": 5}
-    assert fields_by_key["MAX_NSGA_SOLUTIONS"]["limits"] == {"min": 1, "max": 200}
-    assert fields_by_key["MAX_GENETIC_SOLUTIONS"]["limits"] == {"min": 1, "max": 50}
-    assert fields_by_key["STAGNATION_THRESHOLD"]["limits"] == {"min": 1, "max": 500}
-    assert fields_by_key["SUBROLE_COLLISION_WEIGHT"]["limits"] == {"min": 0.0, "max": 10000.0}
-    assert fields_by_key["ALGORITHM"]["options"] == ["genetic", "genetic_moo", "cpsat", "nsga"]
-    assert fields_by_key["MASK"]["type"] == "role_mask"
-    assert fields_by_key["ROLE_MAPPING"]["type"] == "string_map"
+    assert fields_by_key["population_size"]["limits"] == {"min": 10, "max": 1000}
+    assert fields_by_key["max_result_variants"]["limits"] == {"min": 1, "max": 200}
+    assert fields_by_key["sub_role_collision_weight"]["limits"] == {"min": 0.0, "max": 10000.0}
+    assert fields_by_key["internal_role_spread_weight"]["limits"] == {"min": 0.0, "max": 10000.0}
+    assert fields_by_key["algorithm"]["options"] == ["moo", "cpsat", "mixtura_balancer"]
+    assert fields_by_key["role_mask"]["type"] == "role_mask"
+    assert "input_role_mapping" not in field_keys
+    assert "elitism_rate" not in field_keys
+    assert "stagnation_threshold" not in field_keys
+    assert payload["defaults"]["algorithm"] == "moo"
+    assert payload["defaults"]["intra_team_std_weight"] == 1.0
+    assert payload["defaults"]["internal_role_spread_weight"] == 0.5
 
     for field in fields:
         assert field["label"]
@@ -71,23 +75,75 @@ def test_config_payload_exposes_complete_editable_field_metadata() -> None:
 def test_normalize_tournament_config_payload_keeps_only_valid_editable_fields() -> None:
     normalized = normalize_tournament_config_payload(
         {
-            "POPULATION_SIZE": 150,
-            "USE_CAPTAINS": None,
-            "MASK": {"Tank": 1, "Damage": 2, "Support": 2},
+            "population_size": 150,
+            "use_captains": None,
+            "role_mask": {"Tank": 1, "Damage": 2, "Support": 2},
             "workspace_id": 7,
-            "MIXTURA_QUEUE": "private.queue",
+            "mixtura_queue": "private.queue",
         }
     )
 
     assert normalized == {
-        "POPULATION_SIZE": 150,
-        "MASK": {"Tank": 1, "Damage": 2, "Support": 2},
+        "population_size": 150,
+        "role_mask": {"Tank": 1, "Damage": 2, "Support": 2},
+    }
+
+
+def test_normalize_tournament_config_payload_ignores_legacy_role_mapping() -> None:
+    normalized = normalize_tournament_config_payload(
+        {
+            "population_size": 150,
+            "input_role_mapping": {"tank": "Tank", "dps": "Damage"},
+        }
+    )
+
+    assert normalized == {
+        "population_size": 150,
+    }
+
+
+def test_normalize_tournament_config_payload_drops_deprecated_moo_keys() -> None:
+    normalized = normalize_tournament_config_payload(
+        {
+            "population_size": 150,
+            "elitism_rate": 0.2,
+            "stagnation_threshold": 30,
+        }
+    )
+
+    assert normalized == {
+        "population_size": 150,
     }
 
 
 def test_normalize_tournament_config_payload_rejects_invalid_values() -> None:
     with pytest.raises(ValidationError):
-        normalize_tournament_config_payload({"POPULATION_SIZE": 1})
+        normalize_tournament_config_payload({"population_size": 1})
+
+
+def test_normalize_tournament_config_payload_rejects_legacy_keys_and_algorithms() -> None:
+    with pytest.raises(ValidationError):
+        normalize_tournament_config_payload({"ALGORITHM": "moo"})
+
+    with pytest.raises(ValidationError):
+        normalize_tournament_config_payload({"algorithm": "genetic_moo"})
+
+
+def test_internal_balance_payload_rejects_legacy_result_shape() -> None:
+    with pytest.raises(ValidationError):
+        InternalBalancerTeamsPayload.model_validate(
+            {
+                "teams": [
+                    {
+                        "id": 1,
+                        "name": "Team 1",
+                        "avgMMR": 2500.0,
+                        "variance": 1.0,
+                        "roster": {"Tank": []},
+                    }
+                ]
+            }
+        )
 
 
 class TournamentConfigPersistenceTests(IsolatedAsyncioTestCase):
@@ -103,13 +159,13 @@ class TournamentConfigPersistenceTests(IsolatedAsyncioTestCase):
             result = await balancer_admin_service.upsert_tournament_config(
                 session,
                 77,
-                {"POPULATION_SIZE": 150, "USE_CAPTAINS": None, "workspace_id": 9},
+                {"population_size": 150, "use_captains": None, "workspace_id": 9},
                 user,
             )
 
         self.assertEqual(result.tournament_id, 77)
         self.assertEqual(result.workspace_id, 9)
-        self.assertEqual(result.config_json, {"POPULATION_SIZE": 150})
+        self.assertEqual(result.config_json, {"population_size": 150})
         self.assertEqual(result.updated_by, 42)
         session.add.assert_called_once_with(result)
         session.commit.assert_awaited_once()
@@ -121,7 +177,7 @@ class TournamentConfigPersistenceTests(IsolatedAsyncioTestCase):
         existing = SimpleNamespace(
             tournament_id=77,
             workspace_id=9,
-            config_json={"POPULATION_SIZE": 150},
+            config_json={"population_size": 150},
             updated_by=42,
             updated_at=None,
         )
@@ -133,12 +189,12 @@ class TournamentConfigPersistenceTests(IsolatedAsyncioTestCase):
             result = await balancer_admin_service.upsert_tournament_config(
                 session,
                 77,
-                {"ALGORITHM": "nsga", "MAX_NSGA_SOLUTIONS": 6},
+                {"algorithm": "mixtura_balancer", "max_result_variants": 6},
                 user,
             )
 
         self.assertIs(result, existing)
-        self.assertEqual(existing.config_json, {"ALGORITHM": "nsga", "MAX_NSGA_SOLUTIONS": 6})
+        self.assertEqual(existing.config_json, {"algorithm": "mixtura_balancer", "max_result_variants": 6})
         self.assertEqual(existing.updated_by, 43)
         session.add.assert_not_called()
         session.commit.assert_awaited_once()

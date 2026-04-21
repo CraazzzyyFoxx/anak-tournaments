@@ -1,4 +1,4 @@
-"""Bridge between xv-1 input format and ow_balancer_cpsat, and back to genetic-compatible output."""
+"""Bridge between xv-1 input format and ow_balancer_cpsat, and back to canonical balancer output."""
 
 import math
 from collections import Counter
@@ -12,7 +12,7 @@ from ow_balancer_cpsat import (
     TeamBalancer,
 )
 
-# Map CP-SAT Role enum to genetic-compatible role name strings
+# Map CP-SAT Role enum to canonical role name strings
 ROLE_NAME_MAP = {
     Role.TANK: "Tank",
     Role.DPS: "Damage",
@@ -115,7 +115,7 @@ def _compute_low_thresholds(players):
 
 
 def _team_avg(roster):
-    vals = [pl["rating"] for arr in roster.values() for pl in arr]
+    vals = [pl["assigned_rating"] for arr in roster.values() for pl in arr]
     return sum(vals) / len(vals) if vals else 0.0
 
 
@@ -123,7 +123,7 @@ def _violates_low_rule(roster, role_name, low_thresholds):
     thr = low_thresholds.get(role_name, 0)
     if thr <= 0:
         return False
-    lows = sum(1 for pl in roster.get(role_name, []) if 0 < pl["rating"] <= thr)
+    lows = sum(1 for pl in roster.get(role_name, []) if 0 < pl["assigned_rating"] <= thr)
     return lows > 1
 
 
@@ -133,7 +133,7 @@ def _improve_team_equality(teams_list, players, max_iters=2000):
         return
 
     for _ in range(max_iters):
-        team_avgs = [t["avgMMR"] for t in teams_list]
+        team_avgs = [t["average_mmr"] for t in teams_list]
         hi = max(range(len(teams_list)), key=lambda i: team_avgs[i])
         lo = min(range(len(teams_list)), key=lambda i: team_avgs[i])
         current_range = team_avgs[hi] - team_avgs[lo]
@@ -149,12 +149,12 @@ def _improve_team_equality(teams_list, players, max_iters=2000):
                 continue
 
             for i, a in enumerate(high_players):
-                if a.get("isCaptain"):
+                if a.get("is_captain"):
                     continue
                 for j, b in enumerate(low_players):
-                    if b.get("isCaptain"):
+                    if b.get("is_captain"):
                         continue
-                    if a["rating"] <= b["rating"]:
+                    if a["assigned_rating"] <= b["assigned_rating"]:
                         continue
 
                     # виртуальный swap
@@ -181,7 +181,7 @@ def _improve_team_equality(teams_list, players, max_iters=2000):
                     cand = (
                         new_range,
                         pair_gap,
-                        -(a["rating"] - b["rating"]),
+                        -(a["assigned_rating"] - b["assigned_rating"]),
                         role_name,
                         i,
                         j,
@@ -199,12 +199,12 @@ def _improve_team_equality(teams_list, players, max_iters=2000):
             low_team["roster"][role_name][j],
             high_team["roster"][role_name][i],
         )
-        high_team["avgMMR"] = new_high_avg
-        low_team["avgMMR"] = new_low_avg
+        high_team["average_mmr"] = new_high_avg
+        low_team["average_mmr"] = new_low_avg
 
 
 def output_adapter(results: list, num_teams: int) -> list[dict]:
-    """Convert list of CP-SAT BalanceResult objects to genetic-compatible dicts."""
+    """Convert list of CP-SAT BalanceResult objects to canonical balancer payloads."""
     output = []
     for balance_result in results:
         teams_dict = balance_result.teams()  # dict[int, list[tuple[Player, Role]]]
@@ -246,13 +246,13 @@ def output_adapter(results: list, num_teams: int) -> list[dict]:
                 player_data = {
                     "uuid": player.id,
                     "name": player.name,
-                    "rating": player.role_sr.get(assigned_role, 0),
-                    "discomfort": discomfort,
-                    "isCaptain": player.is_captain,
-                    "isFlex": player.is_flex,
-                    "preferences": [ROLE_NAME_MAP[r] for r in player.preferred_roles],
-                    "allRatings": {ROLE_NAME_MAP[r]: sr for r, sr in player.role_sr.items()},
-                    "subRole": player.subclasses.get(assigned_role) or None,
+                    "assigned_rating": player.role_sr.get(assigned_role, 0),
+                    "role_discomfort": discomfort,
+                    "is_captain": player.is_captain,
+                    "is_flex": player.is_flex,
+                    "role_preferences": [ROLE_NAME_MAP[r] for r in player.preferred_roles],
+                    "all_ratings": {ROLE_NAME_MAP[r]: sr for r, sr in player.role_sr.items()},
+                    "sub_role": player.subclasses.get(assigned_role) or None,
                 }
 
                 if role_name not in roster:
@@ -263,10 +263,10 @@ def output_adapter(results: list, num_teams: int) -> list[dict]:
                 {
                     "id": t + 1,
                     "name": f"Team {t + 1}",
-                    "avgMMR": team_sr,
-                    "variance": 0.0,
-                    "totalDiscomfort": total_discomfort,
-                    "maxDiscomfort": max_discomfort,
+                    "average_mmr": team_sr,
+                    "rating_variance": 0.0,
+                    "total_discomfort": total_discomfort,
+                    "max_discomfort": max_discomfort,
                     "roster": roster,
                 }
             )
@@ -295,11 +295,11 @@ def output_adapter(results: list, num_teams: int) -> list[dict]:
             {
                 "uuid": p.id,
                 "name": p.name,
-                "rating": p.avg_sr,
-                "discomfort": 0,
-                "isCaptain": p.is_captain,
-                "preferences": [ROLE_NAME_MAP[r] for r in p.preferred_roles],
-                "allRatings": {ROLE_NAME_MAP[r]: sr for r, sr in p.role_sr.items()},
+                "assigned_rating": p.avg_sr,
+                "role_discomfort": 0,
+                "is_captain": p.is_captain,
+                "role_preferences": [ROLE_NAME_MAP[r] for r in p.preferred_roles],
+                "all_ratings": {ROLE_NAME_MAP[r]: sr for r, sr in p.role_sr.items()},
             }
             for p in benched
         ]
@@ -315,21 +315,21 @@ def output_adapter(results: list, num_teams: int) -> list[dict]:
             {
                 "teams": teams_list,
                 "statistics": {
-                    "averageMMR": avg_mmr,
-                    "mmrStdDev": std_dev,
+                    "average_mmr": avg_mmr,
+                    "mmr_std_dev": std_dev,
                     "mmrRange": m["sr_range"],
                     "mmrMAD": m["sr_mad"],
-                    "totalTeams": num_teams,
-                    "playersPerTeam": 5,
+                    "total_teams": num_teams,
+                    "players_per_team": 5,
                     "objective": m["objective"],
                     "rolePrefPenalty": m["role_pref_penalty"],
                     "subclassCollisions": m["subclass_collisions"],
-                    "offRoleCount": off_role_count,
-                    "subRoleCollisionCount": sub_role_collision_count,
-                    "unbalancedCount": len(benched),
+                    "off_role_count": off_role_count,
+                    "sub_role_collision_count": sub_role_collision_count,
+                    "unbalanced_count": len(benched),
                 },
-                "benchedPlayers": benched_players_data,
-                "appliedConfig": {"ALGORITHM": "heuristic_v4"},
+                "benched_players": benched_players_data,
+                "applied_config": {"algorithm": "cpsat"},
             }
         )
 
@@ -337,7 +337,7 @@ def output_adapter(results: list, num_teams: int) -> list[dict]:
 
 
 def run_cpsat(input_data: dict, max_solutions: int = 3) -> list[dict]:
-    """Run the fast heuristic balancer and return genetic-compatible result dicts."""
+    """Run the fast heuristic balancer and return canonical balancer payloads."""
     players_raw = input_data.get("players", {})
 
     # Count active players (any active class with rank > 0)

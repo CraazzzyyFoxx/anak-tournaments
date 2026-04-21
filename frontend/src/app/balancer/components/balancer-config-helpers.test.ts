@@ -4,6 +4,7 @@ import {
   findMatchingPreset,
   getRunConfig,
   resolveInitialBalancerConfig,
+  sanitizeBalancerConfig,
 } from "./balancer-config-helpers";
 import type { BalancerConfigResponse } from "@/types/balancer.types";
 
@@ -19,18 +20,18 @@ declare const expect: <T>(actual: T) => Expectation<T>;
 
 const configData: BalancerConfigResponse = {
   defaults: {
-    ALGORITHM: "genetic",
-    POPULATION_SIZE: 200,
+    algorithm: "moo",
+    population_size: 200,
   },
   limits: {},
   presets: {
     DEFAULT: {
-      ALGORITHM: "genetic",
-      POPULATION_SIZE: 200,
+      algorithm: "moo",
+      population_size: 200,
     },
     QUICK: {
-      ALGORITHM: "genetic",
-      POPULATION_SIZE: 50,
+      algorithm: "moo",
+      population_size: 50,
     },
   },
   fields: [],
@@ -38,8 +39,8 @@ const configData: BalancerConfigResponse = {
 
 describe("balancer config helpers", () => {
   it("resolves tournament config before runtime defaults", () => {
-    expect(resolveInitialBalancerConfig(configData, { POPULATION_SIZE: 150 })).toEqual({
-      POPULATION_SIZE: 150,
+    expect(resolveInitialBalancerConfig(configData, { population_size: 150 })).toEqual({
+      population_size: 150,
     });
   });
 
@@ -47,8 +48,8 @@ describe("balancer config helpers", () => {
     expect(
       findMatchingPreset(
         {
-          POPULATION_SIZE: 50,
-          ALGORITHM: "genetic",
+          population_size: 50,
+          algorithm: "moo",
         },
         configData.presets
       )
@@ -56,13 +57,19 @@ describe("balancer config helpers", () => {
   });
 
   it("uses draft config as the run config for custom settings", () => {
-    expect(getRunConfig({ MAX_NSGA_SOLUTIONS: 6, ALGORITHM: "nsga" }, configData, CUSTOM_PRESET)).toEqual({
-      ALGORITHM: "nsga",
-      MAX_NSGA_SOLUTIONS: 6,
+    expect(getRunConfig({ max_result_variants: 6, algorithm: "mixtura_balancer" }, configData, CUSTOM_PRESET)).toEqual({
+      algorithm: "mixtura_balancer",
+      max_result_variants: 6,
     });
   });
 
   it("treats null and undefined values as unset when comparing configs", () => {
-    expect(areBalancerConfigsEqual({ USE_CAPTAINS: undefined }, {})).toBe(true);
+    expect(areBalancerConfigsEqual({ use_captains: undefined }, {})).toBe(true);
+  });
+
+  it("treats internal_role_spread_weight as a numeric config key", () => {
+    expect(sanitizeBalancerConfig({ internal_role_spread_weight: "0.75" as unknown as number })).toEqual({
+      internal_role_spread_weight: 0.75,
+    });
   });
 });

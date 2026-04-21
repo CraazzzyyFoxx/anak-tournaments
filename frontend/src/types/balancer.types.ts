@@ -1,68 +1,71 @@
 export interface PlayerData {
   uuid: string;
   name: string;
-  rating: number;
-  discomfort: number;
-  isCaptain: boolean;
-  isFlex?: boolean;
-  preferences: string[];
-  allRatings: Record<string, number>;
+  assigned_rating: number;
+  role_discomfort: number;
+  is_captain: boolean;
+  is_flex?: boolean;
+  role_preferences: string[];
+  all_ratings: Record<string, number>;
+  sub_role?: string | null;
 }
 
 export interface TeamData {
   id: number;
   name: string;
-  avgMMR: number;
-  variance: number;
-  totalDiscomfort: number;
-  maxDiscomfort: number;
+  average_mmr: number;
+  rating_variance: number;
+  total_discomfort: number;
+  max_discomfort: number;
   roster: Record<string, PlayerData[]>;
 }
 
 export interface Statistics {
-  averageMMR: number;
-  mmrStdDev: number;
-  totalTeams: number;
-  playersPerTeam: number;
-  offRoleCount?: number;
-  subRoleCollisionCount?: number;
-  unbalancedCount?: number;
+  average_mmr: number;
+  mmr_std_dev: number;
+  total_teams: number;
+  players_per_team: number;
+  off_role_count?: number;
+  sub_role_collision_count?: number;
+  unbalanced_count?: number;
+  average_total_rating?: number | null;
+  total_rating_std_dev?: number | null;
+  max_total_rating_gap?: number | null;
+  balance_objective?: number | null;
+  comfort_objective?: number | null;
+  composite_score?: number | null;
 }
 
 export interface BalanceResponse {
   teams: TeamData[];
   statistics: Statistics;
-  benchedPlayers?: PlayerData[];
-  appliedConfig?: BalancerConfig;
+  benched_players?: PlayerData[];
+  applied_config?: BalancerConfig;
 }
 
 export interface BalancerConfig {
-  MASK?: Record<string, number>;
-  POPULATION_SIZE?: number;
-  GENERATIONS?: number;
-  ELITISM_RATE?: number;
-  MUTATION_RATE?: number;
-  MUTATION_STRENGTH?: number;
-  STAGNATION_THRESHOLD?: number;
-  MMR_DIFF_WEIGHT?: number;
-  DISCOMFORT_WEIGHT?: number;
-  INTRA_TEAM_VAR_WEIGHT?: number;
-  MAX_DISCOMFORT_WEIGHT?: number;
-  TEAM_TOTAL_STD_WEIGHT?: number;
-  MAX_TEAM_GAP_WEIGHT?: number;
-  ROLE_BALANCE_WEIGHT?: number;
-  ROLE_SPREAD_WEIGHT?: number;
-  INTRA_TEAM_STD_WEIGHT?: number;
-  SUBROLE_COLLISION_WEIGHT?: number;
-  USE_CAPTAINS?: boolean;
-  ROLE_MAPPING?: Record<string, string>;
-  ALGORITHM?: "genetic" | "genetic_moo" | "cpsat" | "nsga";
-  MAX_CPSAT_SOLUTIONS?: number;
-  MAX_GENETIC_SOLUTIONS?: number;
-  MAX_NSGA_SOLUTIONS?: number;
-  WEIGHT_TEAM_VARIANCE?: number;
-  TEAM_SPREAD_BLEND?: number;
-  SUBROLE_BLEND?: number;
+  role_mask?: Record<string, number>;
+  algorithm?: "moo" | "cpsat" | "mixtura_balancer";
+  population_size?: number;
+  generation_count?: number;
+  mutation_rate?: number;
+  mutation_strength?: number;
+  average_mmr_balance_weight?: number;
+  role_discomfort_weight?: number;
+  intra_team_variance_weight?: number;
+  max_role_discomfort_weight?: number;
+  team_total_balance_weight?: number;
+  max_team_gap_weight?: number;
+  role_line_balance_weight?: number;
+  role_spread_weight?: number;
+  intra_team_std_weight?: number;
+  internal_role_spread_weight?: number;
+  sub_role_collision_weight?: number;
+  use_captains?: boolean;
+  max_result_variants?: number;
+  team_variance_weight?: number;
+  team_spread_weight?: number;
+  sub_role_penalty_weight?: number;
 }
 
 export type BalancerConfigFieldType =
@@ -70,8 +73,7 @@ export type BalancerConfigFieldType =
   | "float"
   | "integer"
   | "role_mask"
-  | "select"
-  | "string_map";
+  | "select";
 
 export interface BalancerConfigField {
   key: keyof BalancerConfig;
@@ -82,7 +84,7 @@ export interface BalancerConfigField {
   default: unknown;
   limits?: { min: number; max: number } | null;
   options?: string[];
-  applies_to: Array<NonNullable<BalancerConfig["ALGORITHM"]>>;
+  applies_to: Array<NonNullable<BalancerConfig["algorithm"]>>;
 }
 
 export interface BalanceJobResult {

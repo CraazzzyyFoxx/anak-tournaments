@@ -15,6 +15,11 @@ import userService from "@/services/user.service";
 import { DivisionGridNormalizer } from "@/lib/division-grid-normalizer";
 
 const ROLE_ORDER: BalancerRoleCode[] = ["tank", "dps", "support"];
+const API_ROLE_KEYS: Record<BalancerRoleCode, "Tank" | "Damage" | "Support"> = {
+  tank: "Tank",
+  dps: "Damage",
+  support: "Support"
+};
 
 export type BalanceVariant = {
   id: string;
@@ -293,10 +298,10 @@ export function convertBalanceResponseToInternalPayload(
     teams: response.teams.map((team) => ({
       id: team.id,
       name: team.name,
-      avgMMR: team.avgMMR,
-      variance: team.variance,
-      totalDiscomfort: team.totalDiscomfort,
-      maxDiscomfort: team.maxDiscomfort,
+      average_mmr: team.average_mmr,
+      rating_variance: team.rating_variance,
+      total_discomfort: team.total_discomfort,
+      max_discomfort: team.max_discomfort,
       roster: {
         Tank: team.roster.Tank ?? [],
         Damage: team.roster.Damage ?? [],
@@ -304,7 +309,7 @@ export function convertBalanceResponseToInternalPayload(
       }
     })),
     statistics: response.statistics,
-    benchedPlayers: response.benchedPlayers ?? []
+    benched_players: response.benched_players ?? []
   });
 }
 
@@ -332,11 +337,9 @@ export function buildBalancerInput(players: BalancerPlayerRecord[]): Record<stri
         isFullFlex: player.is_flex
       },
       stats: {
-        classes: {
-          tank: toClassConfig("tank"),
-          dps: toClassConfig("dps"),
-          support: toClassConfig("support")
-        }
+        classes: Object.fromEntries(
+          ROLE_ORDER.map((role) => [API_ROLE_KEYS[role], toClassConfig(role)])
+        )
       }
     };
     return accumulator;
