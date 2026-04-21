@@ -1,3 +1,5 @@
+import type { Statistics as BalancerStatistics } from "@/types/balancer.types";
+
 export type BalancerRoleCode = "tank" | "dps" | "support";
 export type BalancerRosterKey = "Tank" | "Damage" | "Support";
 export type BalancerRoleSubtype = string;
@@ -94,15 +96,7 @@ export interface InternalBalanceTeam {
 
 export interface InternalBalancePayload {
   teams: InternalBalanceTeam[];
-  statistics?: {
-    average_mmr?: number;
-    mmr_std_dev?: number;
-    total_teams?: number;
-    players_per_team?: number;
-    off_role_count?: number;
-    sub_role_collision_count?: number;
-    unbalanced_count?: number;
-  };
+  statistics?: Partial<BalancerStatistics>;
   benched_players?: InternalBalancePlayer[];
 }
 

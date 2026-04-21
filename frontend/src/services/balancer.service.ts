@@ -4,7 +4,8 @@ import {
   BalanceJobResult,
   BalanceJobStatusResponse,
   BalancerConfig,
-  BalancerConfigResponse
+  BalancerConfigResponse,
+  RawBalancerConfigResponse
 } from "@/types/balancer.types";
 import { apiFetch } from "@/lib/api-fetch";
 import { getTokenFromCookies } from "@/lib/auth-tokens";
@@ -21,6 +22,15 @@ const SUPPORTED_CONFIG_FIELD_TYPES = new Set([
   "select"
 ]);
 
+function isSupportedConfigField(
+  field: RawBalancerConfigResponse["fields"][number]
+): field is BalancerConfigResponse["fields"][number] {
+  return (
+    field.key !== "input_role_mapping" &&
+    SUPPORTED_CONFIG_FIELD_TYPES.has(field.type as string)
+  );
+}
+
 function stripLegacyConfigKeys(
   config: BalancerConfig | Record<string, unknown> | null | undefined
 ): BalancerConfig {
@@ -35,7 +45,7 @@ function stripLegacyConfigKeys(
   return rest as BalancerConfig;
 }
 
-function normalizeConfigResponse(payload: BalancerConfigResponse): BalancerConfigResponse {
+function normalizeConfigResponse(payload: RawBalancerConfigResponse): BalancerConfigResponse {
   return {
     ...payload,
     defaults: stripLegacyConfigKeys(payload.defaults),
@@ -45,11 +55,7 @@ function normalizeConfigResponse(payload: BalancerConfigResponse): BalancerConfi
         stripLegacyConfigKeys(presetConfig)
       ])
     ),
-    fields: payload.fields.filter(
-      (field) =>
-        field.key !== "input_role_mapping" &&
-        SUPPORTED_CONFIG_FIELD_TYPES.has(field.type as string)
-    )
+    fields: payload.fields.filter(isSupportedConfigField)
   };
 }
 
@@ -57,7 +63,7 @@ export default class balancerService {
   static async getConfig(): Promise<BalancerConfigResponse> {
     try {
       const response = await apiFetch("balancer", "config", { timeout: 10_000 });
-      const payload = (await response.json()) as BalancerConfigResponse;
+      const payload = (await response.json()) as RawBalancerConfigResponse;
       return normalizeConfigResponse(payload);
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {

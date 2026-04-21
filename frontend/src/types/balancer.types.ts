@@ -25,9 +25,9 @@ export interface Statistics {
   mmr_std_dev: number;
   total_teams: number;
   players_per_team: number;
-  off_role_count?: number;
-  sub_role_collision_count?: number;
-  unbalanced_count?: number;
+  off_role_count: number;
+  sub_role_collision_count: number;
+  unbalanced_count: number;
   average_total_rating?: number | null;
   total_rating_std_dev?: number | null;
   max_total_rating_gap?: number | null;
@@ -40,7 +40,7 @@ export interface BalanceResponse {
   teams: TeamData[];
   statistics: Statistics;
   benched_players?: PlayerData[];
-  applied_config?: BalancerConfig;
+  applied_config?: BalancerConfig | null;
 }
 
 export interface BalancerConfig {
@@ -87,6 +87,10 @@ export interface BalancerConfigField {
   applies_to: Array<NonNullable<BalancerConfig["algorithm"]>>;
 }
 
+export interface LegacyBalancerConfigField extends Omit<BalancerConfigField, "key"> {
+  key: "input_role_mapping";
+}
+
 export interface BalanceJobResult {
   variants: BalanceResponse[];
 }
@@ -96,6 +100,11 @@ export interface BalancerConfigResponse {
   limits: Record<string, { min: number; max: number }>;
   presets: Record<string, BalancerConfig>;
   fields: BalancerConfigField[];
+}
+
+export interface RawBalancerConfigResponse
+  extends Omit<BalancerConfigResponse, "fields"> {
+  fields: Array<BalancerConfigField | LegacyBalancerConfigField>;
 }
 
 export type BalanceJobStatus = "queued" | "running" | "succeeded" | "failed";
