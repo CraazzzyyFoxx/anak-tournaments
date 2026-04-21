@@ -50,8 +50,25 @@ class AlgorithmConfig(BaseSettings):
         ),
     )
 
+    # Rust MOO advanced objective shaping
+    tank_impact_weight: float = Field(default=1.4, ge=0.0)
+    dps_impact_weight: float = Field(default=1.0, ge=0.0)
+    support_impact_weight: float = Field(default=1.1, ge=0.0)
+    tank_gap_weight: float = Field(default=3.0, ge=0.0)
+    tank_std_weight: float = Field(default=2.0, ge=0.0)
+    effective_total_std_weight: float = Field(default=1.5, ge=0.0)
+
     # Strategy configuration
     use_captains: bool = Field(default=True)
+    convergence_patience: int = Field(default=0, ge=0, le=5000)
+    convergence_epsilon: float = Field(default=0.005, ge=0.0, le=1.0)
+    mutation_rate_min: float = Field(default=0.15, ge=0.0, le=1.0)
+    mutation_rate_max: float = Field(default=0.65, ge=0.0, le=1.0)
+    island_count: int = Field(default=4, ge=1, le=64)
+    polish_max_passes: int = Field(default=50, ge=0, le=1000)
+    greedy_seed_count: int = Field(default=3, ge=0, le=1000)
+    stagnation_kick_patience: int = Field(default=20, ge=0, le=5000)
+    crossover_rate: float = Field(default=0.8, ge=0.0, le=1.0)
 
     # Algorithm selection
     algorithm: typing.Literal["moo", "cpsat", "mixtura_balancer"] = Field(default="moo")

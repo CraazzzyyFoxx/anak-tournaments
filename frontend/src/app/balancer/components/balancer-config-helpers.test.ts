@@ -56,9 +56,9 @@ describe("balancer config helpers", () => {
     ).toBe("QUICK");
   });
 
-  it("uses draft config as the run config for custom settings", () => {
-    expect(getRunConfig({ max_result_variants: 6, algorithm: "mixtura_balancer" }, configData, CUSTOM_PRESET)).toEqual({
-      algorithm: "mixtura_balancer",
+  it("uses draft config as the run config for supported custom settings", () => {
+    expect(getRunConfig({ max_result_variants: 6, algorithm: "cpsat" }, configData, CUSTOM_PRESET)).toEqual({
+      algorithm: "cpsat",
       max_result_variants: 6,
     });
   });
@@ -67,9 +67,23 @@ describe("balancer config helpers", () => {
     expect(areBalancerConfigsEqual({ use_captains: undefined }, {})).toBe(true);
   });
 
-  it("treats internal_role_spread_weight as a numeric config key", () => {
-    expect(sanitizeBalancerConfig({ internal_role_spread_weight: "0.75" as unknown as number })).toEqual({
-      internal_role_spread_weight: 0.75,
+  it("drops unsupported algorithms and unsupported config keys", () => {
+    expect(
+      sanitizeBalancerConfig(
+        {
+          algorithm: "mixtura_balancer",
+          team_variance_weight: 2,
+          max_result_variants: 5,
+        } as unknown as Parameters<typeof sanitizeBalancerConfig>[0]
+      )
+    ).toEqual({
+      max_result_variants: 5,
+    });
+  });
+
+  it("treats mutation_rate_min as a numeric config key", () => {
+    expect(sanitizeBalancerConfig({ mutation_rate_min: "0.25" as unknown as number })).toEqual({
+      mutation_rate_min: 0.25,
     });
   });
 });

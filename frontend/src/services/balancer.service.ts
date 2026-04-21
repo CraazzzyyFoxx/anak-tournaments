@@ -5,7 +5,9 @@ import {
   BalanceJobStatusResponse,
   BalancerConfig,
   BalancerConfigResponse,
-  RawBalancerConfigResponse
+  BalancerConfigField,
+  SUPPORTED_BALANCER_ALGORITHMS,
+  SUPPORTED_BALANCER_CONFIG_KEYS
 } from "@/types/balancer.types";
 import { apiFetch } from "@/lib/api-fetch";
 import { getTokenFromCookies } from "@/lib/auth-tokens";
@@ -22,40 +24,108 @@ const SUPPORTED_CONFIG_FIELD_TYPES = new Set([
   "select"
 ]);
 
-function isSupportedConfigField(
-  field: RawBalancerConfigResponse["fields"][number]
-): field is BalancerConfigResponse["fields"][number] {
-  return (
-    field.key !== "input_role_mapping" &&
-    SUPPORTED_CONFIG_FIELD_TYPES.has(field.type as string)
-  );
+type RawBalancerConfigField = Omit<BalancerConfigField, "key" | "applies_to"> & {
+  key: string;
+  applies_to: string[];
+};
+
+type RawBalancerConfigResponse = Omit<BalancerConfigResponse, "defaults" | "presets" | "fields"> & {
+  defaults: Record<string, unknown>;
+  presets: Record<string, Record<string, unknown>>;
+  fields: RawBalancerConfigField[];
+};
+
+const SUPPORTED_BALANCER_ALGORITHM_SET = new Set<string>(SUPPORTED_BALANCER_ALGORITHMS);
+const SUPPORTED_BALANCER_CONFIG_KEY_SET = new Set<string>(SUPPORTED_BALANCER_CONFIG_KEYS);
+
+function normalizeAlgorithm(
+  value: unknown
+): BalancerConfig["algorithm"] | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  return SUPPORTED_BALANCER_ALGORITHM_SET.has(value)
+    ? (value as BalancerConfig["algorithm"])
+    : undefined;
 }
 
-function stripLegacyConfigKeys(
+function sanitizeConfigForFrontend(
   config: BalancerConfig | Record<string, unknown> | null | undefined
 ): BalancerConfig {
   if (!config || typeof config !== "object") {
     return {};
   }
 
-  const { input_role_mapping: _legacyRoleMapping, ...rest } = config as Record<string, unknown> & {
-    input_role_mapping?: unknown;
-  };
+  const entries = Object.entries(config).flatMap(([key, value]) => {
+    if (!SUPPORTED_BALANCER_CONFIG_KEY_SET.has(key) || value === undefined || value === null) {
+      return [];
+    }
 
-  return rest as BalancerConfig;
+    if (key === "algorithm") {
+      const algorithm = normalizeAlgorithm(value);
+      return algorithm ? [[key, algorithm]] : [];
+    }
+
+    return [[key, value]];
+  });
+
+  return Object.fromEntries(entries) as BalancerConfig;
+}
+
+function normalizeConfigField(
+  field: RawBalancerConfigField,
+  defaults: BalancerConfig
+): BalancerConfigField | null {
+  if (
+    !SUPPORTED_BALANCER_CONFIG_KEY_SET.has(field.key) ||
+    !SUPPORTED_CONFIG_FIELD_TYPES.has(field.type as string)
+  ) {
+    return null;
+  }
+
+  const appliesTo = field.applies_to.filter((algorithm) =>
+    SUPPORTED_BALANCER_ALGORITHM_SET.has(algorithm)
+  ) as BalancerConfigField["applies_to"];
+
+  if (appliesTo.length === 0) {
+    return null;
+  }
+
+  const options =
+    field.key === "algorithm"
+      ? (field.options ?? []).filter((option) => SUPPORTED_BALANCER_ALGORITHM_SET.has(option))
+      : field.options;
+
+  return {
+    ...field,
+    key: field.key as BalancerConfigField["key"],
+    applies_to: appliesTo,
+    options,
+    default: defaults[field.key as keyof BalancerConfig] ?? field.default
+  };
 }
 
 function normalizeConfigResponse(payload: RawBalancerConfigResponse): BalancerConfigResponse {
+  const defaults = sanitizeConfigForFrontend(payload.defaults);
+  const presets = Object.fromEntries(
+    Object.entries(payload.presets).flatMap(([presetName, presetConfig]) => {
+      const algorithm = normalizeAlgorithm(presetConfig.algorithm);
+      if (presetConfig.algorithm !== undefined && !algorithm) {
+        return [];
+      }
+
+      return [[presetName, sanitizeConfigForFrontend(presetConfig)]];
+    })
+  );
+
   return {
     ...payload,
-    defaults: stripLegacyConfigKeys(payload.defaults),
-    presets: Object.fromEntries(
-      Object.entries(payload.presets).map(([presetName, presetConfig]) => [
-        presetName,
-        stripLegacyConfigKeys(presetConfig)
-      ])
-    ),
-    fields: payload.fields.filter(isSupportedConfigField)
+    defaults,
+    presets,
+    fields: payload.fields
+      .map((field) => normalizeConfigField(field, defaults))
+      .filter((field): field is BalancerConfigField => field !== null)
   };
 }
 

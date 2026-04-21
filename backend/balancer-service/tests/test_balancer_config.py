@@ -52,9 +52,13 @@ def test_config_payload_exposes_complete_editable_field_metadata() -> None:
 
     fields_by_key = {field["key"]: field for field in fields}
     assert fields_by_key["population_size"]["limits"] == {"min": 10, "max": 1000}
+    assert fields_by_key["mutation_strength"]["limits"] == {"min": 1, "max": 10}
     assert fields_by_key["max_result_variants"]["limits"] == {"min": 1, "max": 200}
     assert fields_by_key["sub_role_collision_weight"]["limits"] == {"min": 0.0, "max": 10000.0}
     assert fields_by_key["internal_role_spread_weight"]["limits"] == {"min": 0.0, "max": 10000.0}
+    assert fields_by_key["tank_impact_weight"]["limits"] == {"min": 0.0, "max": 10000.0}
+    assert fields_by_key["mutation_rate_min"]["limits"] == {"min": 0.0, "max": 1.0}
+    assert fields_by_key["island_count"]["limits"] == {"min": 1, "max": 64}
     assert fields_by_key["algorithm"]["options"] == ["moo", "cpsat", "mixtura_balancer"]
     assert fields_by_key["role_mask"]["type"] == "role_mask"
     assert "input_role_mapping" not in field_keys
@@ -63,6 +67,9 @@ def test_config_payload_exposes_complete_editable_field_metadata() -> None:
     assert payload["defaults"]["algorithm"] == "moo"
     assert payload["defaults"]["intra_team_std_weight"] == 1.0
     assert payload["defaults"]["internal_role_spread_weight"] == 0.5
+    assert payload["defaults"]["tank_impact_weight"] == 1.4
+    assert payload["defaults"]["mutation_rate_min"] == 0.15
+    assert payload["defaults"]["crossover_rate"] == 0.8
 
     for field in fields:
         assert field["label"]

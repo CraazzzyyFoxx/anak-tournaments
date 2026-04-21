@@ -292,6 +292,10 @@ class MooBackendContractTests(TestCase):
         config = AlgorithmConfig()
         config.intra_team_std_weight = 1.25
         config.internal_role_spread_weight = 0.75
+        config.tank_impact_weight = 1.7
+        config.mutation_rate_min = 0.2
+        config.island_count = 6
+        config.crossover_rate = 0.9
 
         player = Player(
             name="Player One",
@@ -307,14 +311,20 @@ class MooBackendContractTests(TestCase):
                 num_teams=1,
                 config=config,
                 role_assignment={"player-1": "Tank"},
+                seed=123,
             )
         )
 
         config_payload = payload["config"]
         self.assertEqual(config_payload["intra_team_std_weight"], 1.25)
         self.assertEqual(config_payload["internal_role_spread_weight"], 0.75)
+        self.assertEqual(config_payload["tank_impact_weight"], 1.7)
+        self.assertEqual(config_payload["mutation_rate_min"], 0.2)
+        self.assertEqual(config_payload["island_count"], 6)
+        self.assertEqual(config_payload["crossover_rate"], 0.9)
         self.assertNotIn("elitism_rate", config_payload)
         self.assertNotIn("stagnation_threshold", config_payload)
+        self.assertNotIn("default_convergence_patience", config_payload)
 
 
 class MooBackendRuntimeTests(TestCase):

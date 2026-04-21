@@ -59,8 +59,92 @@ class ConfigOverrides(BaseModel):
             "role subclass. Use 0 to disable."
         ),
     )
+    tank_impact_weight: float | None = Field(
+        None,
+        ge=0,
+        description="Importance multiplier for Tank role contribution in the effective team total.",
+    )
+    dps_impact_weight: float | None = Field(
+        None,
+        ge=0,
+        description="Importance multiplier for Damage role contribution in the effective team total.",
+    )
+    support_impact_weight: float | None = Field(
+        None,
+        ge=0,
+        description="Importance multiplier for Support role contribution in the effective team total.",
+    )
+    tank_gap_weight: float | None = Field(
+        None,
+        ge=0,
+        description="Penalty multiplier for the rating gap between the strongest and weakest Tank lines.",
+    )
+    tank_std_weight: float | None = Field(
+        None,
+        ge=0,
+        description="Penalty multiplier for Tank-line standard deviation across teams.",
+    )
+    effective_total_std_weight: float | None = Field(
+        None,
+        ge=0,
+        description="Penalty multiplier for the weighted effective team-total standard deviation.",
+    )
 
     use_captains: bool | None = Field(None, description="Whether to use captain assignment")
+    convergence_patience: int | None = Field(
+        None,
+        ge=0,
+        le=5000,
+        description="Number of generations without meaningful Pareto improvement before early stop logic can trigger.",
+    )
+    convergence_epsilon: float | None = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Minimum relative improvement required to continue once convergence patience is reached.",
+    )
+    mutation_rate_min: float | None = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Lower bound for adaptive mutation rate during the Rust MOO search.",
+    )
+    mutation_rate_max: float | None = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Upper bound for adaptive mutation rate during the Rust MOO search.",
+    )
+    island_count: int | None = Field(
+        None,
+        ge=1,
+        le=64,
+        description="Number of independent Rust MOO islands explored in parallel.",
+    )
+    polish_max_passes: int | None = Field(
+        None,
+        ge=0,
+        le=1000,
+        description="Maximum local-polishing passes applied to final archive solutions.",
+    )
+    greedy_seed_count: int | None = Field(
+        None,
+        ge=0,
+        le=1000,
+        description="How many initial individuals are built from greedy seeding before random fill.",
+    )
+    stagnation_kick_patience: int | None = Field(
+        None,
+        ge=0,
+        le=5000,
+        description="Generations without archive improvement before a stronger mutation kick is applied.",
+    )
+    crossover_rate: float | None = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Probability of crossover when producing Rust MOO offspring.",
+    )
     max_result_variants: int | None = Field(
         None,
         ge=1,

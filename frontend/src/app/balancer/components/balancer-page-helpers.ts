@@ -84,7 +84,6 @@ export const PRESET_LABELS: Record<string, string> = {
   PREFERENCE_FOCUSED: "Preference Focused",
   HIGH_QUALITY: "High Quality",
   CPSAT: "CP-SAT (Exact)",
-  MIXTURA_BALANCER: "mixtura-balancer",
   MOO: "MOO"
 };
 

@@ -1,4 +1,9 @@
-import type { BalancerConfig, BalancerConfigResponse } from "@/types/balancer.types";
+import {
+  SUPPORTED_BALANCER_ALGORITHMS,
+  SUPPORTED_BALANCER_CONFIG_KEYS,
+  type BalancerConfig,
+  type BalancerConfigResponse,
+} from "@/types/balancer.types";
 
 export const CUSTOM_PRESET = "CUSTOM";
 
@@ -20,11 +25,26 @@ const NUMERIC_CONFIG_KEYS = new Set<string>([
   "intra_team_std_weight",
   "internal_role_spread_weight",
   "sub_role_collision_weight",
+  "tank_impact_weight",
+  "dps_impact_weight",
+  "support_impact_weight",
+  "tank_gap_weight",
+  "tank_std_weight",
+  "effective_total_std_weight",
+  "convergence_patience",
+  "convergence_epsilon",
+  "mutation_rate_min",
+  "mutation_rate_max",
+  "island_count",
+  "polish_max_passes",
+  "greedy_seed_count",
+  "stagnation_kick_patience",
+  "crossover_rate",
   "max_result_variants",
-  "team_variance_weight",
-  "team_spread_weight",
-  "sub_role_penalty_weight"
 ]);
+
+const SUPPORTED_CONFIG_KEY_SET = new Set<string>(SUPPORTED_BALANCER_CONFIG_KEYS);
+const SUPPORTED_BALANCER_ALGORITHM_SET = new Set<string>(SUPPORTED_BALANCER_ALGORITHMS);
 
 type SanitizeOptions = {
   preserveDraftStrings?: boolean;
@@ -65,6 +85,10 @@ export function sanitizeBalancerConfig(
   }
 
   const entries = Object.entries(config).flatMap(([key, value]) => {
+    if (!SUPPORTED_CONFIG_KEY_SET.has(key)) {
+      return [];
+    }
+
     if (value === undefined || value === null) {
       return [];
     }
@@ -75,6 +99,10 @@ export function sanitizeBalancerConfig(
         return options.preserveDraftStrings ? [[key, ""]] : [];
       }
 
+      if (key === "algorithm") {
+        return SUPPORTED_BALANCER_ALGORITHM_SET.has(trimmedValue) ? [[key, trimmedValue]] : [];
+      }
+
       if (NUMERIC_CONFIG_KEYS.has(key)) {
         if (options.preserveDraftStrings) {
           return [[key, trimmedValue]];
@@ -83,6 +111,12 @@ export function sanitizeBalancerConfig(
         const numericValue = Number(trimmedValue);
         return Number.isFinite(numericValue) ? [[key, numericValue]] : [];
       }
+    }
+
+    if (key === "algorithm") {
+      return typeof value === "string" && SUPPORTED_BALANCER_ALGORITHM_SET.has(value)
+        ? [[key, value]]
+        : [];
     }
 
     return [[key, value]];
