@@ -1,4 +1,4 @@
-import { AlertCircle, BarChart2, Shuffle, Trash2, UserX } from "lucide-react";
+import { AlertCircle, BarChart2, Shuffle, Sparkles, Trash2, UserX } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BalanceVariant } from "./workspace-helpers";
 
@@ -26,6 +26,7 @@ export function VariantSelector({
         const collisions = stats?.sub_role_collision_count ?? 0;
         const unbalanced = variant.payload.benched_players?.length ?? stats?.unbalanced_count ?? 0;
         const stddev = stats?.mmr_std_dev;
+        const quality = stats?.composite_score;
         return (
           <button
             key={variant.id}
@@ -101,6 +102,15 @@ export function VariantSelector({
                   >
                     <BarChart2 className="h-3 w-3" />
                     {stddev.toFixed(1)}
+                  </span>
+                ) : null}
+                {quality != null ? (
+                  <span
+                    title="Composite quality score (lower = better)"
+                    className="flex items-center gap-1 text-[10px] font-semibold tabular-nums text-emerald-300/80"
+                  >
+                    <Sparkles className="h-3 w-3" />
+                    {quality.toFixed(2)}
                   </span>
                 ) : null}
               </div>

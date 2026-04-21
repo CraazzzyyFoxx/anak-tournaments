@@ -68,12 +68,7 @@ export interface BalancerConfig {
   sub_role_penalty_weight?: number;
 }
 
-export type BalancerConfigFieldType =
-  | "boolean"
-  | "float"
-  | "integer"
-  | "role_mask"
-  | "select";
+export type BalancerConfigFieldType = "boolean" | "float" | "integer" | "role_mask" | "select";
 
 export interface BalancerConfigField {
   key: keyof BalancerConfig;
@@ -102,8 +97,7 @@ export interface BalancerConfigResponse {
   fields: BalancerConfigField[];
 }
 
-export interface RawBalancerConfigResponse
-  extends Omit<BalancerConfigResponse, "fields"> {
+export interface RawBalancerConfigResponse extends Omit<BalancerConfigResponse, "fields"> {
   fields: Array<BalancerConfigField | LegacyBalancerConfigField>;
 }
 

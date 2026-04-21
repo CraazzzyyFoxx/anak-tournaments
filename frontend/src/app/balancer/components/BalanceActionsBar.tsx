@@ -24,6 +24,9 @@ type VariantStats = {
   off_role_count?: number | null;
   sub_role_collision_count?: number | null;
   unbalanced_count?: number | null;
+  composite_score?: number | null;
+  balance_objective?: number | null;
+  comfort_objective?: number | null;
 } | null;
 
 type BalanceActionsBarProps = {
@@ -88,6 +91,15 @@ export function BalanceActionsBar({
           <Badge className="rounded-full border-rose-400/20 bg-rose-500/10 text-rose-200 hover:bg-rose-500/10">
             <UserX className="mr-1.5 h-3.5 w-3.5" />
             Benched {activeVariantStats.unbalanced_count}
+          </Badge>
+        ) : null}
+        {activeVariantStats?.composite_score != null ? (
+          <Badge
+            title={`balance=${activeVariantStats.balance_objective?.toFixed(3) ?? "—"} comfort=${activeVariantStats.comfort_objective?.toFixed(3) ?? "—"}`}
+            className="rounded-full border-emerald-400/20 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/10"
+          >
+            <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+            Quality {activeVariantStats.composite_score.toFixed(2)}
           </Badge>
         ) : null}
       </div>
