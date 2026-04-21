@@ -1564,8 +1564,31 @@ fn run_single_island(ctx: &Context, island_seed: u64) -> Result<Vec<(Objectives,
         if archive_improved { gens_without_archive_improvement = 0; }
         else { gens_without_archive_improvement += 1; }
 
+        // Elitism: инжектим топ-K из архива в пул отбора, чтобы лучшие исторические
+        // решения гарантированно участвовали в next-gen и не терялись из-за неудачных мутаций.
+        // K=3 — компромисс между давлением отбора и разнообразием.
+        let elite_k = 3.min(archive.len());
+        let elite_items: Vec<(Objectives, Solution)> = if elite_k > 0 {
+            let a_objs: Vec<Objectives> = archive.iter().map(|(o, _)| *o).collect();
+            let a_norm = normalize_objectives(&a_objs);
+            let mut a_scored: Vec<(usize, f64)> = a_norm
+                .iter()
+                .enumerate()
+                .map(|(i, o)| (i, o.balance + o.comfort))
+                .collect();
+            a_scored.sort_by(|x, y| x.1.partial_cmp(&y.1).unwrap_or(Ordering::Equal));
+            a_scored
+                .into_iter()
+                .take(elite_k)
+                .map(|(i, _)| archive[i].clone())
+                .collect()
+        } else {
+            Vec::new()
+        };
+
         let parent_count = pop.len();
         let mut comb = pop; comb.extend(off);
+        comb.extend(elite_items);
         let c_objs: Vec<Objectives> = comb.iter().map(|(o,_)| *o).collect();
         let c_norm = normalize_objectives(&c_objs);
         let c_fronts = fast_non_dominated_sort(&c_norm);
@@ -1624,6 +1647,55 @@ fn run_single_island(ctx: &Context, island_seed: u64) -> Result<Vec<(Objectives,
     Ok(archive)
 }
 
+/// Профиль острова — мультипликаторы для весов, определяющие "характер" поиска.
+/// Гетерогенные острова расширяют Парето-фронт: каждый ищет в своей области
+/// компромисса между balance и comfort, вместо 4 копий одной и той же скаляризации.
+#[derive(Debug, Clone, Copy)]
+struct IslandProfile {
+    /// Множитель для всех balance-related весов (std, gap, role-line, tank).
+    balance_scale: f64,
+    /// Множитель для comfort-related весов (discomfort, sub-role collisions).
+    comfort_scale: f64,
+    /// Множитель для максимумов (max_team_gap, max_role_discomfort) —
+    /// профиль "экстремальные хвосты", ищет решения без провалов.
+    extreme_scale: f64,
+}
+
+fn default_island_profiles() -> [IslandProfile; 4] {
+    [
+        // 0: нейтральный — базовые веса
+        IslandProfile { balance_scale: 1.0, comfort_scale: 1.0, extreme_scale: 1.0 },
+        // 1: balance-heavy — жёсткая балансировка по MMR/gap, comfort полуоблегчён
+        IslandProfile { balance_scale: 2.0, comfort_scale: 0.5, extreme_scale: 1.0 },
+        // 2: comfort-heavy — максимум комфорта ролей
+        IslandProfile { balance_scale: 0.5, comfort_scale: 2.0, extreme_scale: 1.0 },
+        // 3: extreme tails — штраф за выбросы усилен
+        IslandProfile { balance_scale: 1.0, comfort_scale: 1.0, extreme_scale: 2.5 },
+    ]
+}
+
+/// Возвращает копию контекста с весами, скорректированными под профиль острова.
+fn ctx_with_profile(base: &Context, profile: IslandProfile) -> Context {
+    let mut c = base.clone();
+    let cfg = &mut c.config;
+    // balance-related
+    cfg.average_mmr_balance_weight *= profile.balance_scale;
+    cfg.team_total_balance_weight *= profile.balance_scale;
+    cfg.tank_gap_weight *= profile.balance_scale;
+    cfg.tank_std_weight *= profile.balance_scale;
+    cfg.effective_total_std_weight *= profile.balance_scale;
+    cfg.intra_team_std_weight *= profile.balance_scale;
+    cfg.role_line_balance_weight *= profile.balance_scale;
+    cfg.internal_role_spread_weight *= profile.balance_scale;
+    // comfort-related
+    cfg.role_discomfort_weight *= profile.comfort_scale;
+    cfg.sub_role_collision_weight *= profile.comfort_scale;
+    // extreme tails
+    cfg.max_team_gap_weight *= profile.extreme_scale;
+    cfg.max_role_discomfort_weight *= profile.extreme_scale;
+    c
+}
+
 fn run_optimizer(ctx: &Context) -> Result<NativeResponse, String> {
     let islands = ctx.config.island_count.max(1);
 
@@ -1631,10 +1703,30 @@ fn run_optimizer(ctx: &Context) -> Result<NativeResponse, String> {
     let mut seed_rng = StdRng::seed_from_u64(ctx.seed);
     let island_seeds: Vec<u64> = (0..islands).map(|_| seed_rng.gen::<u64>()).collect();
 
-    // Параллельно запускаем все острова. Результат каждого — локальный Парето-архив.
+    // Гетерогенные острова: каждый остров получает свой профиль весов.
+    // Профили циклически переиспользуются, если островов больше, чем профилей.
+    let profiles = default_island_profiles();
+    let per_island_ctx: Vec<Context> = (0..islands)
+        .map(|i| ctx_with_profile(ctx, profiles[i % profiles.len()]))
+        .collect();
+
+    // Параллельно запускаем все острова. Каждый оптимизируется по своим весам,
+    // но после завершения мы пересчитываем objectives по каноническим весам,
+    // чтобы глобальный архив сравнивал решения в одной системе координат.
     let island_results: Vec<Result<Vec<(Objectives, Solution)>, String>> = island_seeds
         .par_iter()
-        .map(|&s| run_single_island(ctx, s))
+        .enumerate()
+        .map(|(i, &s)| {
+            let local_ctx = &per_island_ctx[i];
+            run_single_island(local_ctx, s).map(|arch| {
+                arch.into_iter()
+                    .map(|(_, sol)| {
+                        let obj = calculate_objectives(&sol, ctx);
+                        (obj, sol)
+                    })
+                    .collect()
+            })
+        })
         .collect();
 
     // Сливаем архивы в один глобальный
