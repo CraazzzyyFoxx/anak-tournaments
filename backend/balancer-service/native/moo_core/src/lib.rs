@@ -128,6 +128,7 @@ struct Context {
     tank_role_idx: Option<usize>,
     dps_role_idx: Option<usize>,
     support_role_idx: Option<usize>,
+    captain_team_assignment: Vec<Option<usize>>,
 }
 
 #[derive(Debug, Clone)]
@@ -254,6 +255,18 @@ impl Context {
             });
         }
 
+        let mut captain_indices: Vec<usize> = players.iter().enumerate()
+            .filter(|(_, p)| p.is_captain)
+            .map(|(i, _)| i)
+            .collect();
+        captain_indices.sort();
+        let mut captain_team_assignment = vec![None; players.len()];
+        if request.config.use_captains {
+            for (i, &p_idx) in captain_indices.iter().enumerate() {
+                captain_team_assignment[p_idx] = Some(i % request.num_teams);
+            }
+        }
+
         Ok(Self {
             roles,
             capacities,
@@ -264,6 +277,7 @@ impl Context {
             tank_role_idx,
             dps_role_idx,
             support_role_idx,
+            captain_team_assignment,
         })
     }
 }
@@ -512,8 +526,6 @@ fn fast_non_dominated_sort(objectives: &[Objectives]) -> Vec<Vec<usize>> {
     fronts
 }
 
-/// Возвращает Vec<f64> длины front.len(), где distances[k] соответствует front[k].
-/// Вызывающая сторона сопоставляет позицию во фронте с population index через front[pos].
 fn crowding_distance(front: &[usize], objectives: &[Objectives]) -> Vec<f64> {
     let n = front.len();
     let mut distances = vec![0.0; n];
@@ -523,7 +535,6 @@ fn crowding_distance(front: &[usize], objectives: &[Objectives]) -> Vec<f64> {
         return distances;
     }
 
-    // order переиспользуется между итерациями m — одна аллокация на вызов
     let mut order: Vec<usize> = (0..n).collect();
     for m in 0..2 {
         order.sort_by(|&a, &b| {
@@ -544,7 +555,6 @@ fn crowding_distance(front: &[usize], objectives: &[Objectives]) -> Vec<f64> {
             let next_pos = order[k + 1];
             let prev = if m == 0 { objectives[front[prev_pos]].balance } else { objectives[front[prev_pos]].comfort };
             let next = if m == 0 { objectives[front[next_pos]].balance } else { objectives[front[next_pos]].comfort };
-            // если уже INFINITY (edge в m=0) — ∞ + finite = ∞, семантика сохраняется
             distances[order[k]] += (next - prev) / span;
         }
     }
@@ -575,45 +585,42 @@ fn create_empty_solution(context: &Context) -> Solution {
     (0..context.num_teams).map(|i| TeamState { id: i+1, roster: vec![Vec::new(); context.roles.len()] }).collect()
 }
 
-/// Распределяет игроков, предварительно отсортированных по убыванию приоритетного
-/// критерия, round-robin по командам в "змейке" (snake draft) внутри каждой роли.
-/// Это даёт сильно сбалансированное стартовое решение по MMR.
+fn place_captains(teams: &mut Solution, ctx: &Context) {
+    if !ctx.config.use_captains { return; }
+    for (p_idx, &team_opt) in ctx.captain_team_assignment.iter().enumerate() {
+        if let Some(t) = team_opt {
+            let r = ctx.players[p_idx].seed_role;
+            if teams[t].roster[r].len() < ctx.capacities[r] {
+                teams[t].roster[r].push(p_idx);
+            }
+        }
+    }
+}
+
 fn create_snake_draft_solution(context: &Context) -> Solution {
     let mut teams = create_empty_solution(context);
     if context.num_teams == 0 || context.players.is_empty() { return teams; }
 
+    place_captains(&mut teams, context);
+
     let mut buckets: Vec<Vec<usize>> = vec![Vec::new(); context.roles.len()];
     for (i, p) in context.players.iter().enumerate() {
-        buckets[p.seed_role].push(i);
+        if !p.is_captain || !context.config.use_captains {
+            buckets[p.seed_role].push(i);
+        }
     }
 
     for r in 0..context.roles.len() {
-        // Капитаны распределяются первыми, по одному в команду (если use_captains)
-        let (mut captains, mut others): (Vec<usize>, Vec<usize>) = if context.config.use_captains {
-            buckets[r].iter().copied().partition(|&i| context.players[i].is_captain)
-        } else {
-            (Vec::new(), buckets[r].clone())
-        };
-        captains.sort_by(|&a, &b| context.players[b].ratings[r].cmp(&context.players[a].ratings[r]));
-        others.sort_by(|&a, &b| context.players[b].ratings[r].cmp(&context.players[a].ratings[r]));
+        buckets[r].sort_by(|&a, &b| context.players[b].ratings[r].cmp(&context.players[a].ratings[r]));
 
-        let mut t = 0usize;
-        for p in captains {
-            if teams[t].roster[r].len() < context.capacities[r] {
-                teams[t].roster[r].push(p);
-            }
-            t = (t + 1) % context.num_teams;
-        }
-
-        // Змейка: чередуем направление на каждой "волне"
         let mut idx = 0usize;
         let mut forward = true;
-        for p in others {
+        for p in &buckets[r] {
             let mut placed = false;
             for _ in 0..context.num_teams {
                 let target = if forward { idx } else { context.num_teams - 1 - idx };
                 if teams[target].roster[r].len() < context.capacities[r] {
-                    teams[target].roster[r].push(p);
+                    teams[target].roster[r].push(*p);
                     placed = true;
                     idx += 1;
                     if idx >= context.num_teams {
@@ -635,25 +642,22 @@ fn create_snake_draft_solution(context: &Context) -> Solution {
     teams
 }
 
-/// Жадное распределение, минимизирующее дискомфорт: для каждой позиции
-/// выбирается игрок с наименьшим discomfort[role], игроки с `first_preference == role`
-/// идут первыми.
 fn create_comfort_greedy_solution(context: &Context) -> Solution {
     let mut teams = create_empty_solution(context);
     if context.num_teams == 0 || context.players.is_empty() { return teams; }
 
+    place_captains(&mut teams, context);
+
     let mut buckets: Vec<Vec<usize>> = vec![Vec::new(); context.roles.len()];
     for (i, p) in context.players.iter().enumerate() {
-        buckets[p.seed_role].push(i);
+        if !p.is_captain || !context.config.use_captains {
+            buckets[p.seed_role].push(i);
+        }
     }
 
     for r in 0..context.roles.len() {
-        // Сортируем: капитаны первыми, затем по возрастанию discomfort, затем по убыванию rating
         buckets[r].sort_by(|&a, &b| {
-            let ca = context.players[a].is_captain && context.config.use_captains;
-            let cb = context.players[b].is_captain && context.config.use_captains;
-            cb.cmp(&ca)
-                .then_with(|| context.players[a].discomfort[r].cmp(&context.players[b].discomfort[r]))
+            context.players[a].discomfort[r].cmp(&context.players[b].discomfort[r])
                 .then_with(|| context.players[b].ratings[r].cmp(&context.players[a].ratings[r]))
         });
 
@@ -676,32 +680,15 @@ fn create_random_solution(context: &Context, rng: &mut StdRng) -> Solution {
     let mut teams = create_empty_solution(context);
     if context.num_teams == 0 || context.players.is_empty() { return teams; }
 
+    place_captains(&mut teams, context);
+
     let mut buckets = vec![Vec::new(); context.roles.len()];
-    let mut captain_buckets = vec![Vec::new(); context.roles.len()];
-
     for (i, p) in context.players.iter().enumerate() {
-        if context.config.use_captains && p.is_captain { captain_buckets[p.seed_role].push(i); }
-        else { buckets[p.seed_role].push(i); }
-    }
-    for b in &mut buckets { b.shuffle(rng); }
-    for b in &mut captain_buckets { b.shuffle(rng); }
-
-    if context.config.use_captains {
-        let mut caps = Vec::new();
-        for (r, b) in captain_buckets.iter().enumerate() { for &p in b { caps.push((r, p)); } }
-        caps.shuffle(rng);
-        let mut cur = 0;
-        for (r, p) in caps {
-            let mut placed = false;
-            for _ in 0..context.num_teams {
-                let t = cur % context.num_teams; cur += 1;
-                if teams[t].roster[r].len() < context.capacities[r] {
-                    teams[t].roster[r].push(p); placed = true; break;
-                }
-            }
-            if !placed { buckets[r].push(p); }
+        if !p.is_captain || !context.config.use_captains {
+            buckets[p.seed_role].push(i);
         }
     }
+    for b in &mut buckets { b.shuffle(rng); }
 
     for (r, b) in buckets.iter_mut().enumerate() {
         let mut cur = 0;
@@ -719,8 +706,6 @@ fn create_random_solution(context: &Context, rng: &mut StdRng) -> Solution {
     teams
 }
 
-/// Приоритет размещения игрока в роли. Выше — лучше.
-/// Капитан в seed_role при use_captains имеет абсолютный приоритет.
 #[inline]
 fn placement_score(ctx: &Context, p: usize, r: usize) -> i32 {
     let pl = &ctx.players[p];
@@ -728,114 +713,66 @@ fn placement_score(ctx: &Context, p: usize, r: usize) -> i32 {
     if ctx.config.use_captains && pl.is_captain && pl.seed_role == r { s += 1000; }
     if pl.can_play[r] { s += 100; }
     if pl.seed_role == r { s += 20; }
-    // Штраф за явно неигровую роль — чтобы попасть туда только в крайнем случае
     if !pl.can_play[r] && pl.seed_role != r { s -= 50; }
     s
 }
 
-/// Восстанавливает решение после мутаций/crossover:
-/// 1) очищает out-of-range и выходы за capacity;
-/// 2) из дубликатов оставляет копию в лучшей позиции по `placement_score`
-///    (т.е. в играбельной роли / seed_role, сохраняя капитанство);
-/// 3) каждый пропущенный игрок добавляется в пул РОВНО ОДИН РАЗ;
-/// 4) пул матчится к вакансиям жадно с предпочтением `can_play` → `seed_role` →
-///    форс-назначение только если подходящих не осталось.
 fn ensure_feasibility(sol: &mut Solution, ctx: &Context, rng: &mut StdRng) {
     let p_count = ctx.players.len();
     let num_roles = ctx.roles.len();
     if p_count == 0 || num_roles == 0 || ctx.num_teams == 0 { return; }
 
-    // --- Шаг 1: обрезка невалидных индексов и превышений capacity ---
-    for t in 0..ctx.num_teams {
-        for r in 0..num_roles {
-            let cap = ctx.capacities[r];
-            let roster = &mut sol[t].roster[r];
-            roster.retain(|&p| p < p_count);
-            if cap == 0 {
-                roster.clear();
-                continue;
-            }
-            if roster.len() > cap {
-                if ctx.config.use_captains {
-                    roster.sort_by(|&a, &b| {
-                        let ca = ctx.players[a].is_captain;
-                        let cb = ctx.players[b].is_captain;
-                        cb.cmp(&ca)
-                    });
+    let mut new_sol = create_empty_solution(ctx);
+    let mut is_captain_placed = vec![false; p_count];
+    if ctx.config.use_captains {
+        for (p_idx, &team_opt) in ctx.captain_team_assignment.iter().enumerate() {
+            if let Some(t) = team_opt {
+                let r = ctx.players[p_idx].seed_role;
+                if new_sol[t].roster[r].len() < ctx.capacities[r] {
+                    new_sol[t].roster[r].push(p_idx);
+                    is_captain_placed[p_idx] = true;
                 }
-                roster.truncate(cap);
             }
         }
     }
 
-    // --- Шаг 2: собрать все позиции по каждому игроку ---
-    let mut positions: Vec<Vec<(usize, usize)>> = vec![Vec::new(); p_count];
+    let mut pool: Vec<usize> = Vec::new();
+    let mut present = vec![false; p_count];
     for t in 0..ctx.num_teams {
         for r in 0..num_roles {
             for &p in &sol[t].roster[r] {
-                positions[p].push((t, r));
+                if p < p_count && !is_captain_placed[p] {
+                    pool.push(p);
+                    present[p] = true;
+                }
             }
         }
     }
-
-    // --- Шаг 3: выбрать лучшую "keep"-позицию для каждого игрока; остальные очищаем ---
-    // Сначала очищаем весь roster, затем кладём только keep-позиции.
-    for t in 0..ctx.num_teams {
-        for r in 0..num_roles {
-            sol[t].roster[r].clear();
-        }
-    }
-
-    let mut missing: Vec<usize> = Vec::new();
     for p in 0..p_count {
-        let locs = &positions[p];
-        if locs.is_empty() {
-            missing.push(p);
-            continue;
-        }
-        // Выбираем позицию с максимальным placement_score; при равенстве —
-        // предпочитаем меньший team_id, затем меньший role_idx (детерминизм).
-        let best = locs.iter().copied().max_by(|&(ta, ra), &(tb, rb)| {
-            let sa = placement_score(ctx, p, ra);
-            let sb = placement_score(ctx, p, rb);
-            sa.cmp(&sb)
-                .then_with(|| tb.cmp(&ta)) // reverse: меньший t — выше score
-                .then_with(|| rb.cmp(&ra))
-        });
-        if let Some((t, r)) = best {
-            // Capacity уже была обрезана в шаге 1, но из-за клиринга ростеров
-            // сейчас capacity гарантированно доступна (игрок попадает первым в пустой слот).
-            if sol[t].roster[r].len() < ctx.capacities[r] {
-                sol[t].roster[r].push(p);
-            } else {
-                // Теоретически недостижимо после шага 1, но подстрахуемся
-                missing.push(p);
-            }
+        if !is_captain_placed[p] && !present[p] {
+            pool.push(p);
         }
     }
+    pool.shuffle(rng);
 
-    // --- Шаг 4: собрать вакансии ---
     let mut vacancies: Vec<(usize, usize)> = Vec::new();
     for t in 0..ctx.num_teams {
         for r in 0..num_roles {
             let cap = ctx.capacities[r];
-            let have = sol[t].roster[r].len();
-            for _ in have..cap { vacancies.push((t, r)); }
+            let have = new_sol[t].roster[r].len();
+            for _ in have..cap {
+                vacancies.push((t, r));
+            }
         }
     }
-
-    // --- Шаг 5: жадный матчинг pool → vacancies ---
-    // Стратегия: перебираем вакансии в случайном порядке (для разнообразия),
-    // но для каждой ищем кандидата с лучшим placement_score по всему пулу.
-    missing.shuffle(rng);
     vacancies.shuffle(rng);
 
-    let mut pool_alive: Vec<bool> = vec![true; missing.len()];
-
-    for (t, r) in vacancies.iter().copied() {
+    // 4. Жадный матчинг пула к вакансиям
+    let mut pool_alive = vec![true; pool.len()];
+    for (t, r) in vacancies {
         let mut best_idx: Option<usize> = None;
         let mut best_score = i32::MIN;
-        for (i, &p) in missing.iter().enumerate() {
+        for (i, &p) in pool.iter().enumerate() {
             if !pool_alive[i] { continue; }
             let s = placement_score(ctx, p, r);
             if s > best_score {
@@ -845,11 +782,11 @@ fn ensure_feasibility(sol: &mut Solution, ctx: &Context, rng: &mut StdRng) {
         }
         if let Some(i) = best_idx {
             pool_alive[i] = false;
-            sol[t].roster[r].push(missing[i]);
+            new_sol[t].roster[r].push(pool[i]);
         }
-        // Если пул пуст — вакансия остаётся (не должно происходить при
-        // валидных входных данных, т.к. sum(capacities) == num_players).
     }
+
+    *sol = new_sol;
 }
 
 fn swap_players(sol: &mut Solution, ta: usize, ra: usize, sa: usize, tb: usize, rb: usize, sb: usize) {
@@ -1024,25 +961,11 @@ fn mutate_random(sol: &Solution, ctx: &Context, str: usize, rng: &mut StdRng) ->
     nxt
 }
 
-/// Role-line uniform crossover. Для каждой роли независимо с вероятностью 0.5
-/// берём её "линию" (игроков этой роли во всех командах) у родителя A, иначе у B.
-/// Team.id наследуется от A для детерминизма сигнатуры. Возможные дубли игроков
-/// (если игрок назначен на разные роли у A и B) и недостающие игроки (если он
-/// был только в неотобранной линии) исправляются последующим `ensure_feasibility`.
-///
-/// Captain-инвариант сохраняется автоматически: каждая роль-линия у каждого
-/// родителя уже feasible, значит капитан этой роли попадёт в ребёнка целиком
-/// из выбранного источника (A или B). Конфликт капитана (один и тот же
-/// капитан в двух ролях одновременно) невозможен, т.к. у родителей игрок
-/// занимает ровно одну позицию.
 fn crossover_role_lines(a: &Solution, b: &Solution, ctx: &Context, rng: &mut StdRng) -> Solution {
     let mut child = create_empty_solution(ctx);
     if ctx.roles.is_empty() || a.len() != b.len() || a.len() != child.len() {
-        // Фолбэк: клонируем A, если структуры не совпадают
         return a.clone();
     }
-    // Гарантируем, что хотя бы одна роль от каждого родителя — иначе ребёнок
-    // идентичен одному из них и crossover вырождается в клон.
     let num_roles = ctx.roles.len();
     let mut from_a: Vec<bool> = (0..num_roles).map(|_| rng.gen::<bool>()).collect();
     if num_roles >= 2 {
@@ -1077,10 +1000,6 @@ fn mutate_targeted(sol: &Solution, ctx: &Context, rng: &mut StdRng, strength: us
     nxt
 }
 
-/// Принять ход, если новое решение доминирует старое по Парето ИЛИ
-/// скалярный рефери (взвешенная сумма) строго улучшается при нестрогом
-/// доминировании по Парето. Это позволяет принимать "латеральные" ходы,
-/// ускоряя сходимость к угловым точкам Парето.
 #[inline]
 fn accept_move(old: &Objectives, new: &Objectives) -> bool {
     const EPS: f64 = 1e-6;
@@ -1088,17 +1007,11 @@ fn accept_move(old: &Objectives, new: &Objectives) -> bool {
     if !pareto_ok { return false; }
     let strictly_pareto = new.balance < old.balance - EPS || new.comfort < old.comfort - EPS;
     if strictly_pareto { return true; }
-    // Скалярный tie-breaker для латеральных ходов
     let old_s = old.balance + old.comfort;
     let new_s = new.balance + new.comfort;
     new_s < old_s - EPS
 }
 
-/// Расширенный локальный поиск:
-/// 1) same-role swap между командами;
-/// 2) cross-role swap внутри одной команды (часто снимает role-line penalty);
-/// 3) cross-role swap между разными командами.
-/// Идёт до фиксированной точки (с лимитом `max_passes` как safety-net).
 fn polish_pareto(sol: &Solution, ctx: &Context, max_passes: usize) -> Solution {
     let mut cur = sol.clone();
     if ctx.roles.is_empty() || cur.len() < 2 { return cur; }
@@ -1110,7 +1023,6 @@ fn polish_pareto(sol: &Solution, ctx: &Context, max_passes: usize) -> Solution {
     for _ in 0..max_passes {
         let mut improved = false;
 
-        // (1) same-role swap между парами команд
         'same_role: for i in 0..cur.len() {
             for j in (i+1)..cur.len() {
                 for r in 0..ctx.roles.len() {
@@ -1146,7 +1058,6 @@ fn polish_pareto(sol: &Solution, ctx: &Context, max_passes: usize) -> Solution {
         }
         if improved { continue; }
 
-        // (2) cross-role swap внутри одной команды
         'intra_cross: for t in 0..cur.len() {
             for r1 in 0..ctx.roles.len() {
                 for r2 in (r1+1)..ctx.roles.len() {
@@ -1176,7 +1087,6 @@ fn polish_pareto(sol: &Solution, ctx: &Context, max_passes: usize) -> Solution {
         }
         if improved { continue; }
 
-        // (3) cross-role swap между разными командами
         'cross_team: for i in 0..cur.len() {
             for j in 0..cur.len() {
                 if i == j { continue; }
@@ -1215,8 +1125,6 @@ fn polish_pareto(sol: &Solution, ctx: &Context, max_passes: usize) -> Solution {
     cur
 }
 
-/// Обновить внешний Парето-архив кандидатом. Возвращает true если кандидат
-/// попал в архив. Удаляет все доминируемые им элементы. Дедуп по сигнатуре.
 fn archive_update(
     archive: &mut Vec<(Objectives, Solution)>,
     archive_sigs: &mut HashSet<u64>,
@@ -1227,13 +1135,11 @@ fn archive_update(
     if archive_sigs.contains(&sig) { return false; }
     for (obj, _) in archive.iter() {
         if dominates(obj, &candidate.0) { return false; }
-        // Равенство — считаем "есть уже"
         if (obj.balance - candidate.0.balance).abs() < 1e-9
             && (obj.comfort - candidate.0.comfort).abs() < 1e-9 {
-            // Разные по сигнатуре, но численно идентичны — оставляем оба не нужно, добавим один раз
+            return false;
         }
     }
-    // Удаляем всех, кого кандидат доминирует
     let mut i = 0;
     while i < archive.len() {
         if dominates(&candidate.0, &archive[i].0) {
@@ -1249,8 +1155,6 @@ fn archive_update(
     true
 }
 
-/// Бинарный турнир без аллокации: два случайных индекса (без повтора при n>1),
-/// победитель по rank, tie-break по crowding distance. Поведение 1:1 с прежней версией.
 fn tournament_pick(ranks: &[usize], dists: &[f64], rng: &mut StdRng) -> usize {
     let n = ranks.len();
     debug_assert!(n > 0);
@@ -1264,9 +1168,6 @@ fn tournament_pick(ranks: &[usize], dists: &[f64], rng: &mut StdRng) -> usize {
     a
 }
 
-/// Канонический хэш решения, инвариантный к перестановке команд.
-/// Для каждой команды строится отсортированный набор (role_idx, player_idx),
-/// хэш команды независим от её team.id; затем сортируются хэши команд.
 fn signature(sol: &Solution, _ctx: &Context) -> u64 {
     let mut team_hashes: Vec<u64> = Vec::with_capacity(sol.len());
     for t in sol {
@@ -1285,18 +1186,12 @@ fn signature(sol: &Solution, _ctx: &Context) -> u64 {
     h.finish()
 }
 
-/// Запускает один "остров" NSGA-II с заданным сидом. Поддерживает внешний
-/// Парето-архив (Hall of Fame) — все недоминируемые решения, встреченные
-/// за весь прогон, включая промежуточные поколения.
 fn run_single_island(ctx: &Context, island_seed: u64) -> Result<Vec<(Objectives, Solution)>, String> {
     let mut rng = StdRng::seed_from_u64(island_seed);
     let mut pop: Vec<(Objectives, Solution)> = Vec::new();
     let mut archive: Vec<(Objectives, Solution)> = Vec::new();
     let mut archive_sigs: HashSet<u64> = HashSet::new();
 
-    // Жадные seed-решения (только на первом острове для детерминизма —
-    // на всех островах они одинаковы, так что нет смысла добавлять больше одного раза,
-    // но tournament + мутации расходятся сильно из-за разных сидов).
     let greedy_count = ctx.config.greedy_seed_count.min(ctx.config.population_size);
     if greedy_count >= 1 {
         let mut sol = create_snake_draft_solution(ctx);
@@ -1317,7 +1212,6 @@ fn run_single_island(ctx: &Context, island_seed: u64) -> Result<Vec<(Objectives,
         }
     }
     if greedy_count >= 3 {
-        // Гибрид: snake draft + одно применение strategy_fix_discomfort
         let mut sol = create_snake_draft_solution(ctx);
         strategy_fix_discomfort(&mut sol, ctx);
         ensure_feasibility(&mut sol, ctx, &mut rng);
@@ -1361,7 +1255,6 @@ fn run_single_island(ctx: &Context, island_seed: u64) -> Result<Vec<(Objectives,
 
         let mut off = Vec::with_capacity(ctx.config.population_size);
         let mut offspring_survived = 0usize;
-        // Kick при долгой стагнации архива: временно увеличиваем силу мутации
         let kick_active = ctx.config.stagnation_kick_patience > 0
             && gens_without_archive_improvement >= ctx.config.stagnation_kick_patience;
         let effective_strength = if kick_active { cur_mut_strength.saturating_mul(3).max(2) } else { cur_mut_strength };
@@ -1377,14 +1270,12 @@ fn run_single_island(ctx: &Context, island_seed: u64) -> Result<Vec<(Objectives,
             let crossed = pop.len() >= 2 && rng.gen::<f64>() < effective_crossover_rate;
             let mutated = rng.gen::<f64>() < effective_rate;
 
-            // Если ни crossover, ни мутации — дешёвый elitism-путь: клонируем родителя как есть.
             if !crossed && !mutated {
                 off.push(pop[p1_idx].clone());
                 continue;
             }
 
             let mut child_sol: Solution = if crossed {
-                // Второй родитель — предпочтительно отличный от первого
                 let mut p2_idx = tournament_pick(&ranks, &dists, &mut rng);
                 let mut tries = 0;
                 while p2_idx == p1_idx && pop.len() > 1 && tries < 8 {
@@ -1425,7 +1316,6 @@ fn run_single_island(ctx: &Context, island_seed: u64) -> Result<Vec<(Objectives,
                 }
             } else {
                 let cd = crowding_distance(&f, &c_norm);
-                // pair (pop_index, distance), сортируем по distance по убыванию
                 let mut pairs: Vec<(usize, f64)> = f.iter().copied().zip(cd.into_iter()).collect();
                 pairs.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
                 let rem = ctx.config.population_size - nxt.len();
@@ -1463,7 +1353,6 @@ fn run_single_island(ctx: &Context, island_seed: u64) -> Result<Vec<(Objectives,
         }
     }
 
-    // Финально: добавляем всю текущую популяцию в архив
     for item in &pop {
         archive_update(&mut archive, &mut archive_sigs, item.clone(), ctx);
     }
@@ -1473,17 +1362,14 @@ fn run_single_island(ctx: &Context, island_seed: u64) -> Result<Vec<(Objectives,
 fn run_optimizer(ctx: &Context) -> Result<NativeResponse, String> {
     let islands = ctx.config.island_count.max(1);
 
-    // Генерируем независимые под-сиды из основного сида детерминированно
     let mut seed_rng = StdRng::seed_from_u64(ctx.seed);
     let island_seeds: Vec<u64> = (0..islands).map(|_| seed_rng.gen::<u64>()).collect();
 
-    // Параллельно запускаем все острова. Результат каждого — локальный Парето-архив.
     let island_results: Vec<Result<Vec<(Objectives, Solution)>, String>> = island_seeds
         .par_iter()
         .map(|&s| run_single_island(ctx, s))
         .collect();
 
-    // Сливаем архивы в один глобальный
     let mut global_archive: Vec<(Objectives, Solution)> = Vec::new();
     let mut global_sigs: HashSet<u64> = HashSet::new();
     for r in island_results {
@@ -1496,8 +1382,6 @@ fn run_optimizer(ctx: &Context) -> Result<NativeResponse, String> {
         return Err("empty global archive".into());
     }
 
-    // Полируем ВЕСЬ глобальный архив — каждое решение до фиксированной точки.
-    // Полированные варианты обновляют архив, если оказываются недоминируемыми.
     let polished: Vec<(Objectives, Solution)> = global_archive
         .par_iter()
         .map(|(_, sol)| {
@@ -1516,10 +1400,6 @@ fn run_optimizer(ctx: &Context) -> Result<NativeResponse, String> {
         archive_update(&mut final_archive, &mut final_sigs, item, ctx);
     }
 
-    // Ранжирование по композитному качеству: нормируем balance и comfort по min-max
-    // в пределах финального архива и складываем — чем меньше, тем лучше.
-    // Это даёт полный порядок на Парето-фронте (которого при чистом лексикографическом
-    // сравнении не существует) и ставит лучшие решения в начало, худшие — в конец.
     let res = final_archive;
     let objs: Vec<Objectives> = res.iter().map(|(o, _)| *o).collect();
     let normed = normalize_objectives(&objs);
@@ -1528,14 +1408,12 @@ fn run_optimizer(ctx: &Context) -> Result<NativeResponse, String> {
     indexed.sort_by(|a, b| {
         a.1.partial_cmp(&b.1)
             .unwrap_or(Ordering::Equal)
-            // Тай-брейки: сырой balance, затем сырой comfort, затем сигнатура
             .then_with(|| res[a.0].0.balance.partial_cmp(&res[b.0].0.balance).unwrap_or(Ordering::Equal))
             .then_with(|| res[a.0].0.comfort.partial_cmp(&res[b.0].0.comfort).unwrap_or(Ordering::Equal))
             .then_with(|| signature(&res[a.0].1, ctx).cmp(&signature(&res[b.0].1, ctx)))
     });
     let order: Vec<usize> = indexed.iter().map(|(i, _)| *i).collect();
     let score_by_idx: Vec<f64> = scores.clone();
-    // Переупорядочиваем res согласно order, не ломая элементы
     let mut sorted: Vec<(Objectives, Solution, f64)> = Vec::with_capacity(res.len());
     let mut taken: Vec<Option<(Objectives, Solution)>> = res.into_iter().map(Some).collect();
     for i in order {
