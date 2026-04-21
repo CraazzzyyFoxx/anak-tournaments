@@ -2,6 +2,7 @@ use std::cmp::Ordering;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
+use std::sync::Mutex;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use rand::prelude::*;
@@ -10,6 +11,20 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 type Solution = Vec<TeamState>;
+
+// --- Island migration / bounded archive (#1 + #2) ---
+// Migration: раз в MIGRATION_INTERVAL поколений каждый остров публикует
+// свои топ-K решений в общий пул и забирает K случайных обратно — это
+// распространяет хорошие находки между островами с разными профилями весов.
+const MIGRATION_INTERVAL: usize = 20;
+const MIGRATION_SIZE: usize = 3;
+// Bounded archive: держим не больше cap точек во внутреннем архиве острова
+// и в финальном/глобальном архиве — при переполнении вытесняем по crowding
+// distance (наиболее "скученные" уходят), чтобы в UI было max_result_variants
+// реально разных точек Парето-фронта, а не 10 почти одинаковых.
+const ARCHIVE_CAP_ISLAND: usize = 48;
+const ARCHIVE_CAP_GLOBAL: usize = 64;
+const MIGRATION_POOL_CAP: usize = 32;
 
 // --- OW2 & MOO Config Defaults ---
 fn default_tank_impact() -> f64 { 1.4 }
@@ -1404,6 +1419,143 @@ fn archive_update(
     true
 }
 
+/// Обрезает архив до `target` точек, вытесняя по минимальной crowding distance
+/// (наиболее "скученные" — самые избыточные, без потери краевых точек фронта).
+/// Архив по инварианту состоит из mutually non-dominated решений, поэтому
+/// corona distance определена над ним как над единственным Парето-фронтом.
+fn archive_prune(
+    archive: &mut Vec<(Objectives, Solution)>,
+    archive_sigs: &mut HashSet<u64>,
+    target: usize,
+    ctx: &Context,
+) {
+    while archive.len() > target {
+        let objs: Vec<Objectives> = archive.iter().map(|(o, _)| *o).collect();
+        let norm = normalize_objectives(&objs);
+        let indices: Vec<usize> = (0..archive.len()).collect();
+        let cd = crowding_distance(&indices, &norm);
+        // Находим индекс с минимальной дистанцией (самый "скученный").
+        let mut min_idx = 0usize;
+        let mut min_cd = cd[0];
+        for (i, &d) in cd.iter().enumerate().skip(1) {
+            if d < min_cd {
+                min_cd = d;
+                min_idx = i;
+            }
+        }
+        let removed_sig = signature(&archive[min_idx].1, ctx);
+        archive_sigs.remove(&removed_sig);
+        archive.swap_remove(min_idx);
+    }
+}
+
+/// Топ-K решений из архива по нормированному композитному скору (balance + comfort).
+/// Используется при миграции между островами — отправляем "лучшие на данный момент",
+/// но с нормированной шкалой, чтобы не перекашивало ни в balance, ни в comfort.
+fn top_k_by_composite(
+    archive: &[(Objectives, Solution)],
+    k: usize,
+) -> Vec<(Objectives, Solution)> {
+    if archive.is_empty() || k == 0 {
+        return Vec::new();
+    }
+    let objs: Vec<Objectives> = archive.iter().map(|(o, _)| *o).collect();
+    let norm = normalize_objectives(&objs);
+    let mut scored: Vec<(usize, f64)> = norm
+        .iter()
+        .enumerate()
+        .map(|(i, o)| (i, o.balance + o.comfort))
+        .collect();
+    scored.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
+    scored
+        .into_iter()
+        .take(k.min(archive.len()))
+        .map(|(i, _)| archive[i].clone())
+        .collect()
+}
+
+/// Разделяемый между островами пул для миграции. Каждый остров раз в
+/// MIGRATION_INTERVAL поколений push'ит свои топ-K решений и pull'ит K случайных
+/// обратно.
+///
+/// Важно: хранятся только Solution'ы (без Objectives), потому что острова
+/// гетерогенны — objectives у них в разных шкалах и прямое сравнение между
+/// островами некорректно. Получатель пересчитывает objectives под свой локальный
+/// ctx (profile-scaled) до внедрения в pop/архив. Pool — просто "grab bag"
+/// хороших решений, не настоящий Парето-архив.
+///
+/// Переполнение: FIFO eviction самых старых решений (новые intersting solutions
+/// вытесняют устаревшие со старых поколений).
+struct MigrationPool {
+    inner: Mutex<MigrationPoolState>,
+}
+
+struct MigrationPoolState {
+    items: Vec<Solution>,
+    sigs: Vec<u64>,
+}
+
+impl MigrationPool {
+    fn new() -> Self {
+        Self {
+            inner: Mutex::new(MigrationPoolState {
+                items: Vec::new(),
+                sigs: Vec::new(),
+            }),
+        }
+    }
+
+    fn push_many(&self, items: Vec<Solution>, ctx: &Context) {
+        if items.is_empty() {
+            return;
+        }
+        let mut state = match self.inner.lock() {
+            Ok(s) => s,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        for sol in items {
+            let sig = signature(&sol, ctx);
+            if state.sigs.contains(&sig) {
+                continue;
+            }
+            state.sigs.push(sig);
+            state.items.push(sol);
+        }
+        // FIFO-eviction: старейшие элементы уходят первыми, давая дорогу свежим
+        // решениям из поздних поколений.
+        while state.items.len() > MIGRATION_POOL_CAP {
+            state.items.remove(0);
+            state.sigs.remove(0);
+        }
+    }
+
+    fn sample(&self, k: usize, rng: &mut StdRng) -> Vec<Solution> {
+        if k == 0 {
+            return Vec::new();
+        }
+        let state = match self.inner.lock() {
+            Ok(s) => s,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        if state.items.is_empty() {
+            return Vec::new();
+        }
+        let n = state.items.len();
+        let take = k.min(n);
+        let mut chosen = HashSet::with_capacity(take);
+        let mut out = Vec::with_capacity(take);
+        let mut attempts = 0;
+        while out.len() < take && attempts < take * 4 {
+            let idx = rng.gen_range(0..n);
+            if chosen.insert(idx) {
+                out.push(state.items[idx].clone());
+            }
+            attempts += 1;
+        }
+        out
+    }
+}
+
 /// Бинарный турнир без аллокации: два случайных индекса (без повтора при n>1),
 /// победитель по rank, tie-break по crowding distance. Поведение 1:1 с прежней версией.
 fn tournament_pick(ranks: &[usize], dists: &[f64], rng: &mut StdRng) -> usize {
@@ -1443,7 +1595,11 @@ fn signature(sol: &Solution, _ctx: &Context) -> u64 {
 /// Запускает один "остров" NSGA-II с заданным сидом. Поддерживает внешний
 /// Парето-архив (Hall of Fame) — все недоминируемые решения, встреченные
 /// за весь прогон, включая промежуточные поколения.
-fn run_single_island(ctx: &Context, island_seed: u64) -> Result<Vec<(Objectives, Solution)>, String> {
+fn run_single_island(
+    ctx: &Context,
+    island_seed: u64,
+    migration: Option<&MigrationPool>,
+) -> Result<Vec<(Objectives, Solution)>, String> {
     let mut rng = StdRng::seed_from_u64(island_seed);
     let mut pop: Vec<(Objectives, Solution)> = Vec::new();
     let mut archive: Vec<(Objectives, Solution)> = Vec::new();
@@ -1640,11 +1796,43 @@ fn run_single_island(ctx: &Context, island_seed: u64) -> Result<Vec<(Objectives,
                 }
             }
         }
+
+        // #1: миграция между островами. Публикуем топ-K по нормированному скору
+        // и забираем K случайных mutually non-dominated immigrants из общего пула.
+        // Immigrants попадают и в архив острова (могут стать новыми Парето-точками,
+        // что сбросит stagnation-счётчик), и в популяцию — на следующую итерацию
+        // они участвуют в ranking/turnament как дополнительные родители. Селекция
+        // сузит pop обратно до population_size.
+        if let Some(pool) = migration {
+            if gen > 0 && gen % MIGRATION_INTERVAL == 0 {
+                let outgoing = top_k_by_composite(&archive, MIGRATION_SIZE);
+                if !outgoing.is_empty() {
+                    pool.push_many(outgoing, ctx);
+                }
+                let incoming = pool.sample(MIGRATION_SIZE, &mut rng);
+                for item in incoming {
+                    if archive_update(&mut archive, &mut archive_sigs, item.clone(), ctx) {
+                        gens_without_archive_improvement = 0;
+                    }
+                    pop.push(item);
+                }
+            }
+        }
+
+        // #2: держим архив острова в пределах cap — при превышении
+        // вытесняем по crowding distance (скученные уходят).
+        if archive.len() > ARCHIVE_CAP_ISLAND {
+            archive_prune(&mut archive, &mut archive_sigs, ARCHIVE_CAP_ISLAND, ctx);
+        }
     }
 
     // Финально: добавляем всю текущую популяцию в архив
     for item in &pop {
         archive_update(&mut archive, &mut archive_sigs, item.clone(), ctx);
+    }
+    // #2: финальный prune архива острова перед возвратом.
+    if archive.len() > ARCHIVE_CAP_ISLAND {
+        archive_prune(&mut archive, &mut archive_sigs, ARCHIVE_CAP_ISLAND, ctx);
     }
     Ok(archive)
 }
@@ -1712,15 +1900,24 @@ fn run_optimizer(ctx: &Context) -> Result<NativeResponse, String> {
         .map(|i| ctx_with_profile(ctx, profiles[i % profiles.len()]))
         .collect();
 
+    // #1: общий пул миграции. Передаётся во все острова; делится через Mutex.
+    // Включается только если островов > 1 — иначе миграция бессмысленна.
+    let migration_pool = if islands > 1 {
+        Some(MigrationPool::new())
+    } else {
+        None
+    };
+
     // Параллельно запускаем все острова. Каждый оптимизируется по своим весам,
     // но после завершения мы пересчитываем objectives по каноническим весам,
     // чтобы глобальный архив сравнивал решения в одной системе координат.
+    let pool_ref = migration_pool.as_ref();
     let island_results: Vec<Result<Vec<(Objectives, Solution)>, String>> = island_seeds
         .par_iter()
         .enumerate()
         .map(|(i, &s)| {
             let local_ctx = &per_island_ctx[i];
-            run_single_island(local_ctx, s).map(|arch| {
+            run_single_island(local_ctx, s, pool_ref).map(|arch| {
                 arch.into_iter()
                     .map(|(_, sol)| {
                         let obj = calculate_objectives(&sol, ctx);
@@ -1743,6 +1940,11 @@ fn run_optimizer(ctx: &Context) -> Result<NativeResponse, String> {
     if global_archive.is_empty() {
         return Err("empty global archive".into());
     }
+    // #2: ограничиваем глобальный архив перед дорогим polish-этапом —
+    // polish'ить 200 решений вместо 50 нет смысла, они избыточны по фронту.
+    if global_archive.len() > ARCHIVE_CAP_GLOBAL {
+        archive_prune(&mut global_archive, &mut global_sigs, ARCHIVE_CAP_GLOBAL, ctx);
+    }
 
     // Полируем ВЕСЬ глобальный архив — каждое решение до фиксированной точки.
     // Полированные варианты обновляют архив, если оказываются недоминируемыми.
@@ -1762,6 +1964,12 @@ fn run_optimizer(ctx: &Context) -> Result<NativeResponse, String> {
     }
     for item in polished {
         archive_update(&mut final_archive, &mut final_sigs, item, ctx);
+    }
+    // #2: финальный prune — гарантирует, что в UI покажется max_result_variants
+    // реально разных точек Парето-фронта, а не 10 почти одинаковых дубликатов.
+    let final_cap = ARCHIVE_CAP_GLOBAL.max(ctx.config.max_result_variants * 2);
+    if final_archive.len() > final_cap {
+        archive_prune(&mut final_archive, &mut final_sigs, final_cap, ctx);
     }
 
     // Ранжирование по композитному качеству: нормируем balance и comfort по min-max
