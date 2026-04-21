@@ -1505,7 +1505,7 @@ impl MigrationPool {
         }
     }
 
-    fn push_many(&self, items: Vec<Solution>, ctx: &Context) {
+    fn push_many(&self, items: Vec<(Objectives, Solution)>, ctx: &Context) {
         if items.is_empty() {
             return;
         }
@@ -1513,7 +1513,7 @@ impl MigrationPool {
             Ok(s) => s,
             Err(poisoned) => poisoned.into_inner(),
         };
-        for sol in items {
+        for (_, sol) in items {
             let sig = signature(&sol, ctx);
             if state.sigs.contains(&sig) {
                 continue;
@@ -1810,11 +1810,12 @@ fn run_single_island(
                     pool.push_many(outgoing, ctx);
                 }
                 let incoming = pool.sample(MIGRATION_SIZE, &mut rng);
-                for item in incoming {
-                    if archive_update(&mut archive, &mut archive_sigs, item.clone(), ctx) {
+                for sol in incoming {
+                    let obj = calculate_objectives(&sol, ctx);
+                    if archive_update(&mut archive, &mut archive_sigs, (obj, sol.clone()), ctx) {
                         gens_without_archive_improvement = 0;
                     }
-                    pop.push(item);
+                    pop.push((obj, sol));
                 }
             }
         }
