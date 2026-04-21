@@ -16,7 +16,10 @@ def teams_to_json(
 ) -> dict[str, typing.Any]:
     """Convert teams to a JSON-serializable dictionary for API responses."""
     result = {"teams": [], "statistics": {}, "benched_players": []}
-    teams = sorted(teams, key=lambda team: team.total_rating)
+    # Канонический порядок отображения: сильнейшая команда первой, слабейшая — последней.
+    # Даёт стабильное side-by-side сравнение между вариантами (независимо от того, какой
+    # backend сгенерировал решение) и убирает "прыжки" команд между слотами в UI.
+    teams = sorted(teams, key=lambda team: team.total_rating, reverse=True)
 
     for team in teams:
         captain_name = None
@@ -143,6 +146,8 @@ def _build_response_payload(
         stats = response_payload.get("statistics") or {}
         stats["balance_objective"] = round(float(metrics.get("balance_objective", 0.0)), 4)
         stats["comfort_objective"] = round(float(metrics.get("comfort_objective", 0.0)), 4)
+        stats["balance_objective_norm"] = round(float(metrics.get("balance_objective_norm", 0.0)), 4)
+        stats["comfort_objective_norm"] = round(float(metrics.get("comfort_objective_norm", 0.0)), 4)
         stats["composite_score"] = round(float(metrics.get("composite_score", 0.0)), 4)
         response_payload["statistics"] = stats
     if has_applied_overrides:

@@ -25,24 +25,24 @@ class AlgorithmConfig(BaseSettings):
     )
 
     # Shared optimizer parameters
-    population_size: int = Field(default=200, ge=10, le=1000)
-    generation_count: int = Field(default=750, ge=10, le=5000)
-    mutation_rate: float = Field(default=0.4, ge=0.0, le=1.0)
-    mutation_strength: int = Field(default=3, ge=1, le=10)
+    population_size: int = Field(default=100, ge=10, le=1000)
+    generation_count: int = Field(default=200, ge=10, le=5000)
+    mutation_rate: float = Field(default=0.35, ge=0.0, le=1.0)
+    mutation_strength: int = Field(default=2, ge=1, le=10)
 
     # Cost function weights
-    average_mmr_balance_weight: float = Field(default=3.0, ge=0.0)
+    average_mmr_balance_weight: float = Field(default=0.8, ge=0.0)
     team_total_balance_weight: float = Field(default=1.0, ge=0.0)
-    max_team_gap_weight: float = Field(default=1.0, ge=0.0)
-    role_discomfort_weight: float = Field(default=1.5, ge=0.0)
+    max_team_gap_weight: float = Field(default=1.5, ge=0.0)
+    role_discomfort_weight: float = Field(default=1.0, ge=0.0)
     intra_team_variance_weight: float = Field(default=0.8, ge=0.0)
-    max_role_discomfort_weight: float = Field(default=1.5, ge=0.0)
+    max_role_discomfort_weight: float = Field(default=2.0, ge=0.0)
     role_line_balance_weight: float = Field(default=1.0, ge=0.0)
     role_spread_weight: float = Field(default=1.0, ge=0.0)
-    intra_team_std_weight: float = Field(default=1.0, ge=0.0)
-    internal_role_spread_weight: float = Field(default=0.5, ge=0.0)
+    intra_team_std_weight: float = Field(default=0.7, ge=0.0)
+    internal_role_spread_weight: float = Field(default=0.3, ge=0.0)
     sub_role_collision_weight: float = Field(
-        default=5.0,
+        default=1.5,
         ge=0.0,
         description=(
             "Penalty weight per subclass-collision pair in a team "
@@ -54,9 +54,9 @@ class AlgorithmConfig(BaseSettings):
     tank_impact_weight: float = Field(default=1.4, ge=0.0)
     dps_impact_weight: float = Field(default=1.0, ge=0.0)
     support_impact_weight: float = Field(default=1.1, ge=0.0)
-    tank_gap_weight: float = Field(default=3.0, ge=0.0)
-    tank_std_weight: float = Field(default=2.0, ge=0.0)
-    effective_total_std_weight: float = Field(default=1.5, ge=0.0)
+    tank_gap_weight: float = Field(default=2.0, ge=0.0)
+    tank_std_weight: float = Field(default=1.5, ge=0.0)
+    effective_total_std_weight: float = Field(default=1.2, ge=0.0)
 
     # Strategy configuration
     use_captains: bool = Field(default=True)
@@ -67,8 +67,8 @@ class AlgorithmConfig(BaseSettings):
     island_count: int = Field(default=4, ge=1, le=64)
     polish_max_passes: int = Field(default=50, ge=0, le=1000)
     greedy_seed_count: int = Field(default=3, ge=0, le=1000)
-    stagnation_kick_patience: int = Field(default=20, ge=0, le=5000)
-    crossover_rate: float = Field(default=0.8, ge=0.0, le=1.0)
+    stagnation_kick_patience: int = Field(default=15, ge=0, le=5000)
+    crossover_rate: float = Field(default=0.85, ge=0.0, le=1.0)
 
     # Algorithm selection
     algorithm: typing.Literal["moo", "cpsat", "mixtura_balancer"] = Field(default="moo")

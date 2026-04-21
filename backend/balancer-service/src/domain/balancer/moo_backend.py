@@ -123,6 +123,8 @@ def _deserialize_native_variants(
             metrics = {
                 "balance_objective": float(variant_payload.get("balance", 0.0)),
                 "comfort_objective": float(variant_payload.get("comfort", 0.0)),
+                "balance_objective_norm": float(variant_payload.get("balance_norm", 0.0)),
+                "comfort_objective_norm": float(variant_payload.get("comfort_norm", 0.0)),
                 "composite_score": float(variant_payload.get("score", 0.0)),
             }
             variants.append((teams, metrics))

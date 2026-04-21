@@ -36,7 +36,7 @@ export const SUPPORTED_BALANCER_CONFIG_KEYS = [
   "greedy_seed_count",
   "stagnation_kick_patience",
   "crossover_rate",
-  "max_result_variants",
+  "max_result_variants"
 ] as const;
 
 export type BalancerConfigKey = (typeof SUPPORTED_BALANCER_CONFIG_KEYS)[number];
@@ -76,6 +76,8 @@ export interface Statistics {
   max_total_rating_gap?: number | null;
   balance_objective?: number | null;
   comfort_objective?: number | null;
+  balance_objective_norm?: number | null;
+  comfort_objective_norm?: number | null;
   composite_score?: number | null;
 }
 

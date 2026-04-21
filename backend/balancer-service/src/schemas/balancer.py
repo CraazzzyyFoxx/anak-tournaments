@@ -206,6 +206,8 @@ class Statistics(BaseModel):
     max_total_rating_gap: float | None = None
     balance_objective: float | None = None
     comfort_objective: float | None = None
+    balance_objective_norm: float | None = None
+    comfort_objective_norm: float | None = None
     composite_score: float | None = None
 
 

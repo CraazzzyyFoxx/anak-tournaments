@@ -27,6 +27,8 @@ type VariantStats = {
   composite_score?: number | null;
   balance_objective?: number | null;
   comfort_objective?: number | null;
+  balance_objective_norm?: number | null;
+  comfort_objective_norm?: number | null;
 } | null;
 
 type BalanceActionsBarProps = {
@@ -95,7 +97,7 @@ export function BalanceActionsBar({
         ) : null}
         {activeVariantStats?.composite_score != null ? (
           <Badge
-            title={`balance=${activeVariantStats.balance_objective?.toFixed(3) ?? "—"} comfort=${activeVariantStats.comfort_objective?.toFixed(3) ?? "—"}`}
+            title={`balance=${activeVariantStats.balance_objective_norm?.toFixed(3) ?? activeVariantStats.balance_objective?.toFixed(3) ?? "—"} comfort=${activeVariantStats.comfort_objective_norm?.toFixed(3) ?? activeVariantStats.comfort_objective?.toFixed(3) ?? "—"} (normalized 0..1)`}
             className="rounded-full border-emerald-400/20 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/10"
           >
             <Sparkles className="mr-1.5 h-3.5 w-3.5" />

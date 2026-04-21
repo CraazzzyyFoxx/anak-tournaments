@@ -15,11 +15,11 @@ type Solution = Vec<TeamState>;
 fn default_tank_impact() -> f64 { 1.4 }
 fn default_dps_impact() -> f64 { 1.0 }
 fn default_support_impact() -> f64 { 1.1 }
-fn default_tank_gap_weight() -> f64 { 3.0 }
-fn default_tank_std_weight() -> f64 { 2.0 }
-fn default_eff_total_std_weight() -> f64 { 1.5 }
-fn default_intra_team_std_weight() -> f64 { 1.0 }
-fn default_internal_role_spread_weight() -> f64 { 0.5 }
+fn default_tank_gap_weight() -> f64 { 2.0 }
+fn default_tank_std_weight() -> f64 { 1.5 }
+fn default_eff_total_std_weight() -> f64 { 1.2 }
+fn default_intra_team_std_weight() -> f64 { 0.7 }
+fn default_internal_role_spread_weight() -> f64 { 0.3 }
 fn default_convergence_patience() -> usize { 0 }
 fn default_convergence_epsilon() -> f64 { 0.005 }
 fn default_mut_rate_min() -> f64 { 0.15 }
@@ -27,8 +27,8 @@ fn default_mut_rate_max() -> f64 { 0.65 }
 fn default_island_count() -> usize { 4 }
 fn default_polish_max_passes() -> usize { 50 }
 fn default_greedy_seed_count() -> usize { 3 }
-fn default_stagnation_kick_patience() -> usize { 20 }
-fn default_crossover_rate() -> f64 { 0.8 }
+fn default_stagnation_kick_patience() -> usize { 15 }
+fn default_crossover_rate() -> f64 { 0.85 }
 
 #[derive(Debug, Clone, Deserialize)]
 struct ConfigSpec {
@@ -167,6 +167,8 @@ struct VariantResponse {
     teams: Vec<TeamResponse>,
     balance: f64,
     comfort: f64,
+    balance_norm: f64,
+    comfort_norm: f64,
     score: f64,
 }
 
@@ -1781,25 +1783,53 @@ fn run_optimizer(ctx: &Context) -> Result<NativeResponse, String> {
     });
     let order: Vec<usize> = indexed.iter().map(|(i, _)| *i).collect();
     let score_by_idx: Vec<f64> = scores.clone();
+    let norm_by_idx: Vec<Objectives> = normed.clone();
     // Переупорядочиваем res согласно order, не ломая элементы
-    let mut sorted: Vec<(Objectives, Solution, f64)> = Vec::with_capacity(res.len());
+    let mut sorted: Vec<(Objectives, Solution, f64, Objectives)> = Vec::with_capacity(res.len());
     let mut taken: Vec<Option<(Objectives, Solution)>> = res.into_iter().map(Some).collect();
     for i in order {
         if let Some(item) = taken[i].take() {
-            sorted.push((item.0, item.1, score_by_idx[i]));
+            sorted.push((item.0, item.1, score_by_idx[i], norm_by_idx[i]));
         }
     }
     let res = sorted;
 
     let cnt = res.len().min(ctx.config.max_result_variants.max(1));
-    let variants = res.into_iter().take(cnt).map(|(obj, sol, score)| VariantResponse {
-        teams: sol.into_iter().map(|t| TeamResponse {
-            id: t.id,
-            roster: t.roster.into_iter().enumerate().map(|(r, ps)| (ctx.roles[r].clone(), ps.into_iter().map(|p| ctx.players[p].uuid.clone()).collect())).collect()
-        }).collect(),
-        balance: obj.balance,
-        comfort: obj.comfort,
-        score,
+    let variants = res.into_iter().take(cnt).map(|(obj, sol, score, norm)| {
+        // #6: канонический порядок отображения — team_1 = самая сильная по total_rating,
+        // team_N = самая слабая. Устраняет "прыжки" команд между вариантами в UI,
+        // даёт side-by-side сравнимость. На фитнес не влияет (симметрия уже сколлапсирована
+        // в signature для дедупа архива).
+        let mut indexed_teams: Vec<(TeamState, f64)> = sol
+            .into_iter()
+            .map(|t| {
+                let stats = calculate_team_stats(ctx, &t);
+                (t, stats.total_rating)
+            })
+            .collect();
+        indexed_teams.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1)
+                .unwrap_or(Ordering::Equal)
+                .then_with(|| a.0.id.cmp(&b.0.id))
+        });
+        let teams = indexed_teams
+            .into_iter()
+            .enumerate()
+            .map(|(idx, (t, _))| TeamResponse {
+                id: idx + 1,
+                roster: t.roster.into_iter().enumerate().map(|(r, ps)| {
+                    (ctx.roles[r].clone(), ps.into_iter().map(|p| ctx.players[p].uuid.clone()).collect())
+                }).collect(),
+            })
+            .collect();
+        VariantResponse {
+            teams,
+            balance: obj.balance,
+            comfort: obj.comfort,
+            balance_norm: norm.balance,
+            comfort_norm: norm.comfort,
+            score,
+        }
     }).collect();
     Ok(NativeResponse { variants })
 }
