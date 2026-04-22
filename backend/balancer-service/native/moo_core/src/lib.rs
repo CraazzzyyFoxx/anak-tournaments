@@ -2297,15 +2297,7 @@ fn run_single_island(
         }
 
         if ctx.config.convergence_patience > 0 && gen >= ctx.config.convergence_patience {
-            let f0_objs: Vec<Objectives> = fronts[0].iter().map(|&i| pop[i].0).collect();
-            let cur_b = f0_objs
-                .iter()
-                .map(|o| o.balance)
-                .fold(f64::INFINITY, f64::min);
-            let cur_c = f0_objs
-                .iter()
-                .map(|o| o.comfort)
-                .fold(f64::INFINITY, f64::min);
+            let (cur_b, cur_c) = best_front_progress(&pop);
             hist_bal.push(cur_b);
             hist_com.push(cur_c);
 
@@ -2981,6 +2973,302 @@ fn run_moo_optimizer(request_json: &str) -> PyResult<String> {
         run_optimizer(&ctx).map_err(|e| PyValueError::new_err(format!("optimizer failed: {e}")))?;
     serde_json::to_string(&resp)
         .map_err(|e| PyValueError::new_err(format!("serialize failed: {e}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug)]
+    struct VariantMetrics {
+        off_role_count: usize,
+        mmr_std_dev: f64,
+    }
+
+    fn regression_config() -> ConfigSpec {
+        ConfigSpec {
+            population_size: 40,
+            generation_count: 60,
+            mutation_rate: 0.35,
+            mutation_strength: 2,
+            max_result_variants: 7,
+            average_mmr_balance_weight: 0.8,
+            team_total_balance_weight: 1.0,
+            max_team_gap_weight: 1.5,
+            role_discomfort_weight: 1.0,
+            intra_team_variance_weight: 0.8,
+            max_role_discomfort_weight: 2.0,
+            role_line_balance_weight: 1.0,
+            role_spread_weight: 1.0,
+            sub_role_collision_weight: 1.5,
+            use_captains: false,
+            tank_impact_weight: 1.4,
+            dps_impact_weight: 1.0,
+            support_impact_weight: 1.1,
+            tank_gap_weight: 2.0,
+            tank_std_weight: 1.5,
+            effective_total_std_weight: 1.2,
+            intra_team_std_weight: 0.7,
+            internal_role_spread_weight: 0.3,
+            convergence_patience: 0,
+            convergence_epsilon: 0.005,
+            mutation_rate_min: 0.15,
+            mutation_rate_max: 0.65,
+            island_count: 4,
+            polish_max_passes: 50,
+            greedy_seed_count: 3,
+            stagnation_kick_patience: 15,
+            crossover_rate: 0.85,
+        }
+    }
+
+    fn player(
+        uuid: &str,
+        seed_role: &str,
+        ratings: &[(&str, i32)],
+        preferences: &[&str],
+    ) -> PlayerSpec {
+        PlayerSpec {
+            uuid: uuid.to_string(),
+            name: uuid.to_string(),
+            ratings: ratings
+                .iter()
+                .map(|(role, rating)| (role.to_string(), *rating))
+                .collect(),
+            preferences: preferences.iter().map(|role| role.to_string()).collect(),
+            subclasses: HashMap::new(),
+            is_captain: false,
+            is_flex: false,
+            seed_role: Some(seed_role.to_string()),
+        }
+    }
+
+    fn regression_request() -> NativeRequest {
+        NativeRequest {
+            players: vec![
+                player(
+                    "tank-1",
+                    "Tank",
+                    &[("Tank", 2980), ("Damage", 2550), ("Support", 2480)],
+                    &["Tank", "Damage"],
+                ),
+                player(
+                    "tank-2",
+                    "Tank",
+                    &[("Tank", 2890), ("Damage", 2490), ("Support", 2520)],
+                    &["Tank", "Support"],
+                ),
+                player(
+                    "tank-3",
+                    "Tank",
+                    &[("Tank", 2810), ("Damage", 2460), ("Support", 2440)],
+                    &["Tank", "Support"],
+                ),
+                player(
+                    "tank-4",
+                    "Tank",
+                    &[("Tank", 2740), ("Damage", 2400), ("Support", 2470)],
+                    &["Tank", "Damage"],
+                ),
+                player(
+                    "dps-1",
+                    "Damage",
+                    &[("Damage", 2860), ("Support", 2540)],
+                    &["Damage", "Support"],
+                ),
+                player(
+                    "dps-2",
+                    "Damage",
+                    &[("Damage", 2800), ("Support", 2510)],
+                    &["Damage", "Support"],
+                ),
+                player(
+                    "dps-3",
+                    "Damage",
+                    &[("Damage", 2730), ("Support", 2480)],
+                    &["Damage", "Support"],
+                ),
+                player(
+                    "dps-4",
+                    "Damage",
+                    &[("Damage", 2690), ("Support", 2450)],
+                    &["Damage", "Support"],
+                ),
+                player(
+                    "dps-5",
+                    "Damage",
+                    &[("Damage", 2620), ("Support", 2440), ("Tank", 2350)],
+                    &["Damage", "Support"],
+                ),
+                player(
+                    "dps-6",
+                    "Damage",
+                    &[("Damage", 2580), ("Support", 2410)],
+                    &["Damage", "Support"],
+                ),
+                player(
+                    "dps-7",
+                    "Damage",
+                    &[("Damage", 2520), ("Support", 2390)],
+                    &["Damage", "Support"],
+                ),
+                player(
+                    "dps-8",
+                    "Damage",
+                    &[("Damage", 2470), ("Support", 2360)],
+                    &["Damage", "Support"],
+                ),
+                player(
+                    "sup-1",
+                    "Support",
+                    &[("Support", 2840), ("Damage", 2560)],
+                    &["Support", "Damage"],
+                ),
+                player(
+                    "sup-2",
+                    "Support",
+                    &[("Support", 2780), ("Damage", 2520)],
+                    &["Support", "Damage"],
+                ),
+                player(
+                    "sup-3",
+                    "Support",
+                    &[("Support", 2720), ("Damage", 2490)],
+                    &["Support", "Damage"],
+                ),
+                player(
+                    "sup-4",
+                    "Support",
+                    &[("Support", 2680), ("Damage", 2460)],
+                    &["Support", "Damage"],
+                ),
+                player(
+                    "sup-5",
+                    "Support",
+                    &[("Support", 2610), ("Damage", 2430)],
+                    &["Support", "Damage"],
+                ),
+                player(
+                    "sup-6",
+                    "Support",
+                    &[("Support", 2570), ("Damage", 2400)],
+                    &["Support", "Damage"],
+                ),
+                player(
+                    "sup-7",
+                    "Support",
+                    &[("Support", 2510), ("Damage", 2370)],
+                    &["Support", "Damage"],
+                ),
+                player(
+                    "sup-8",
+                    "Support",
+                    &[("Support", 2460), ("Damage", 2350)],
+                    &["Support", "Damage"],
+                ),
+            ],
+            num_teams: 4,
+            seed: 20260422,
+            mask: [
+                ("Tank".to_string(), 1usize),
+                ("Damage".to_string(), 2usize),
+                ("Support".to_string(), 2usize),
+            ]
+            .into_iter()
+            .collect(),
+            config: regression_config(),
+        }
+    }
+
+    fn variant_metrics(
+        variant: &VariantResponse,
+        ctx: &Context,
+        original_players: &HashMap<String, PlayerSpec>,
+    ) -> VariantMetrics {
+        let player_index: HashMap<&str, usize> = ctx
+            .players
+            .iter()
+            .enumerate()
+            .map(|(idx, player)| (player.uuid.as_str(), idx))
+            .collect();
+        let role_index: HashMap<&str, usize> = ctx
+            .roles
+            .iter()
+            .enumerate()
+            .map(|(idx, role)| (role.as_str(), idx))
+            .collect();
+
+        let mut mmr_sum = 0.0;
+        let mut mmr_sum2 = 0.0;
+        let mut team_count = 0usize;
+        let mut off_role_count = 0usize;
+
+        for (team_pos, team) in variant.teams.iter().enumerate() {
+            let mut state = TeamState {
+                id: team_pos + 1,
+                roster: vec![Vec::new(); ctx.roles.len()],
+            };
+            for (role, uuids) in &team.roster {
+                let r = *role_index
+                    .get(role.as_str())
+                    .expect("unknown role in variant");
+                for uuid in uuids {
+                    let idx = *player_index
+                        .get(uuid.as_str())
+                        .expect("unknown player in variant");
+                    state.roster[r].push(idx);
+
+                    let original = original_players
+                        .get(uuid)
+                        .expect("missing original player metadata");
+                    if !original.is_flex
+                        && !original.preferences.is_empty()
+                        && original.preferences[0] != *role
+                    {
+                        off_role_count += 1;
+                    }
+                }
+            }
+
+            let stats = calculate_team_stats(ctx, &state);
+            mmr_sum += stats.mmr;
+            mmr_sum2 += stats.mmr * stats.mmr;
+            team_count += 1;
+        }
+
+        VariantMetrics {
+            off_role_count,
+            mmr_std_dev: sample_stdev_from_sums(mmr_sum, mmr_sum2, team_count),
+        }
+    }
+
+    #[test]
+    fn best_variant_regression_fixture_metrics() {
+        let request = regression_request();
+        let original_players: HashMap<String, PlayerSpec> = request
+            .players
+            .iter()
+            .cloned()
+            .map(|player| (player.uuid.clone(), player))
+            .collect();
+        let ctx = Context::from_request(request).expect("regression fixture should be valid");
+        let response = run_optimizer(&ctx).expect("optimizer should return variants");
+
+        assert!(
+            !response.variants.is_empty(),
+            "expected at least one variant"
+        );
+        let best = variant_metrics(&response.variants[0], &ctx, &original_players);
+        assert_eq!(
+            best.off_role_count, 0,
+            "top variant should preserve zero off-roles on regression fixture"
+        );
+        assert!(
+            best.mmr_std_dev <= 2.0 + 1e-9,
+            "top variant mmr stddev regressed: got {}",
+            best.mmr_std_dev
+        );
+    }
 }
 
 #[pymodule]
