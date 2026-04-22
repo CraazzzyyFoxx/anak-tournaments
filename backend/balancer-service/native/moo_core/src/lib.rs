@@ -2589,22 +2589,15 @@ fn inject_migrants(state: &mut IslandState, migrants: &[(Objectives, Solution)])
         return;
     }
 
-    let mut archive_changed = false;
     for (_, sol) in migrants {
         let local_obj = calculate_objectives(sol, &state.ctx);
         let candidate = (local_obj, sol.clone());
-        if archive_update(
+        archive_update(
             &mut state.archive,
             &mut state.archive_sigs,
-            candidate.clone(),
+            candidate,
             &state.ctx,
-        ) {
-            archive_changed = true;
-        }
-    }
-
-    if archive_changed {
-        state.gens_without_archive_improvement = 0;
+        );
     }
 }
 
@@ -2797,52 +2790,92 @@ fn run_optimizer(ctx: &Context) -> Result<NativeResponse, String> {
     // в пределах финального архива и складываем — чем меньше, тем лучше.
     // Это даёт полный порядок на Парето-фронте (которого при чистом лексикографическом
     // сравнении не существует) и ставит лучшие решения в начало, худшие — в конец.
-    let res = if final_archive.len() > ctx.config.max_result_variants.max(1) {
-        archive_select_items(&final_archive, ctx.config.max_result_variants.max(1), ctx)
-    } else {
-        final_archive
-    };
-    let objs: Vec<Objectives> = res.iter().map(|(o, _)| *o).collect();
+    let variant_limit = ctx
+        .config
+        .max_result_variants
+        .max(1)
+        .min(final_archive.len());
+    let objs: Vec<Objectives> = final_archive.iter().map(|(o, _)| *o).collect();
     let normed = normalize_objectives(&objs);
     let scores: Vec<f64> = normed.iter().map(|o| o.balance + o.comfort).collect();
-    let mut indexed: Vec<(usize, f64)> = scores.iter().copied().enumerate().collect();
-    indexed.sort_by(|a, b| {
-        a.1.partial_cmp(&b.1)
+    let signatures: Vec<u64> = final_archive
+        .iter()
+        .map(|(_, sol)| signature(sol, ctx))
+        .collect();
+    let mut score_order: Vec<usize> = (0..final_archive.len()).collect();
+    score_order.sort_by(|&left, &right| {
+        scores[left]
+            .partial_cmp(&scores[right])
             .unwrap_or(Ordering::Equal)
             // Тай-брейки: сырой balance, затем сырой comfort, затем сигнатура
             .then_with(|| {
-                res[a.0]
+                final_archive[left]
                     .0
                     .balance
-                    .partial_cmp(&res[b.0].0.balance)
+                    .partial_cmp(&final_archive[right].0.balance)
                     .unwrap_or(Ordering::Equal)
             })
             .then_with(|| {
-                res[a.0]
+                final_archive[left]
                     .0
                     .comfort
-                    .partial_cmp(&res[b.0].0.comfort)
+                    .partial_cmp(&final_archive[right].0.comfort)
                     .unwrap_or(Ordering::Equal)
             })
-            .then_with(|| signature(&res[a.0].1, ctx).cmp(&signature(&res[b.0].1, ctx)))
+            .then_with(|| signatures[left].cmp(&signatures[right]))
     });
-    let order: Vec<usize> = indexed.iter().map(|(i, _)| *i).collect();
-    let score_by_idx: Vec<f64> = scores.clone();
-    let norm_by_idx: Vec<Objectives> = normed.clone();
+    let selected_indices: Vec<usize> = if final_archive.len() > variant_limit {
+        let primary_idx = score_order[0];
+        let mut selected = Vec::with_capacity(variant_limit);
+        selected.push(primary_idx);
+        for idx in archive_selection_order(&final_archive, ctx) {
+            if idx != primary_idx {
+                selected.push(idx);
+                if selected.len() >= variant_limit {
+                    break;
+                }
+            }
+        }
+        let mut tail = selected[1..].to_vec();
+        tail.sort_by(|&left, &right| {
+            scores[left]
+                .partial_cmp(&scores[right])
+                .unwrap_or(Ordering::Equal)
+                .then_with(|| {
+                    final_archive[left]
+                        .0
+                        .balance
+                        .partial_cmp(&final_archive[right].0.balance)
+                        .unwrap_or(Ordering::Equal)
+                })
+                .then_with(|| {
+                    final_archive[left]
+                        .0
+                        .comfort
+                        .partial_cmp(&final_archive[right].0.comfort)
+                        .unwrap_or(Ordering::Equal)
+                })
+                .then_with(|| signatures[left].cmp(&signatures[right]))
+        });
+        let mut ordered = Vec::with_capacity(variant_limit);
+        ordered.push(primary_idx);
+        ordered.extend(tail);
+        ordered
+    } else {
+        score_order.into_iter().take(variant_limit).collect()
+    };
     // Переупорядочиваем res согласно order, не ломая элементы
-    let mut sorted: Vec<(Objectives, Solution, f64, Objectives)> = Vec::with_capacity(res.len());
-    let mut taken: Vec<Option<(Objectives, Solution)>> = res.into_iter().map(Some).collect();
-    for i in order {
-        if let Some(item) = taken[i].take() {
-            sorted.push((item.0, item.1, score_by_idx[i], norm_by_idx[i]));
+    let mut selected: Vec<(Objectives, Solution, f64, Objectives)> =
+        Vec::with_capacity(selected_indices.len());
+    let mut taken: Vec<Option<(Objectives, Solution)>> =
+        final_archive.into_iter().map(Some).collect();
+    for idx in selected_indices {
+        if let Some(item) = taken[idx].take() {
+            selected.push((item.0, item.1, scores[idx], normed[idx]));
         }
     }
-    let res = sorted;
-
-    let cnt = res.len().min(ctx.config.max_result_variants.max(1));
-    let variants = res
+    let variants = selected
         .into_iter()
-        .take(cnt)
         .map(|(obj, sol, score, norm)| {
             // #6: канонический порядок отображения — team_1 = самая сильная по total_rating,
             // team_N = самая слабая. Устраняет "прыжки" команд между вариантами в UI,
