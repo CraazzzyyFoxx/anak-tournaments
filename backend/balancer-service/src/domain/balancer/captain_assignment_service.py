@@ -11,7 +11,10 @@ def assign_captains(players: list[Player], count: int, mask: dict[str, int] | No
         player.is_captain = False
         player.captain_role = None
 
-    sorted_players = sorted(players, key=lambda player: player.max_rating, reverse=True)
+    sorted_players = sorted(
+        players,
+        key=lambda player: (-player.max_rating, player.uuid),
+    )
     for index in range(min(count, len(sorted_players))):
         player = sorted_players[index]
         player.is_captain = True
@@ -26,7 +29,7 @@ def assign_captains(players: list[Player], count: int, mask: dict[str, int] | No
             break
 
         if pinned_role is None:
-            for role in player.ratings:
+            for role in sorted(player.ratings):
                 if active_roles is not None and role not in active_roles:
                     continue
                 pinned_role = role

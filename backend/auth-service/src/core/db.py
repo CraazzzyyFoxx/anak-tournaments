@@ -1,4 +1,4 @@
-from shared.core.db import Base, TimeStampIntegerMixin, TimeStampUUIDMixin, DateTime, create_database
+from shared.core.db import create_database
 
 from src.core.config import settings
 
@@ -7,6 +7,10 @@ _db = create_database(
     sync_url=settings.db_url,
     pool_size=settings.db_pool_size,
     max_overflow=settings.db_max_overflow,
+    pool_timeout=settings.db_pool_timeout,
+    pool_recycle=settings.db_pool_recycle,
+    pool_pre_ping=settings.db_pool_pre_ping,
+    pool_use_lifo=settings.db_pool_use_lifo,
     statement_timeout=settings.db_statement_timeout,
 )
 

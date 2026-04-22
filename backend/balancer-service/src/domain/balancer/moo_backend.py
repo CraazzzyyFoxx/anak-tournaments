@@ -26,6 +26,7 @@ def _serialize_native_request(
     role_assignment: dict[str, str] | None,
     seed: int,
 ) -> str:
+    ordered_players = sorted(players, key=lambda player: player.uuid)
     return json.dumps(
         {
             "players": [
@@ -39,7 +40,7 @@ def _serialize_native_request(
                     "is_flex": player.is_flex,
                     "seed_role": role_assignment.get(player.uuid) if role_assignment else None,
                 }
-                for player in players
+                for player in ordered_players
             ],
             "num_teams": num_teams,
             "seed": seed,

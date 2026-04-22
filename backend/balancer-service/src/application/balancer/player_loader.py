@@ -23,7 +23,7 @@ def parse_player_node(
         role_priorities: list[tuple[int, str]] = []
         subclasses: dict[str, str] = {}
 
-        for json_role, stats in raw_classes.items():
+        for json_role, stats in sorted(raw_classes.items()):
             if not stats.get("isActive", False):
                 continue
             rank = stats.get("rank", 0)
@@ -41,7 +41,7 @@ def parse_player_node(
         if not ratings:
             return None
 
-        role_priorities.sort(key=lambda item: item[0])
+        role_priorities.sort(key=lambda item: (item[0], item[1]))
         preferences = [role for _, role in role_priorities]
         return Player(name, ratings, preferences, uuid, mask, is_flex=is_flex, subclasses=subclasses)
     except Exception as exc:
@@ -62,7 +62,7 @@ def load_players_from_dict(
             logger.error(f"Could not find players data in input. Available keys: {list(data.keys())}")
             raise ValueError("Could not find players data in input")
 
-        for uuid, player_data in players_dict.items():
+        for uuid, player_data in sorted(players_dict.items()):
             player = parse_player_node(uuid, player_data, mask)
             if player is not None:
                 players.append(player)

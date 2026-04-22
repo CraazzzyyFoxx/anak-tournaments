@@ -422,6 +422,31 @@ class PlayerLoaderTests(TestCase):
         self.assertEqual(players[0].ratings, {"Tank": 2500, "Damage": 2400, "Support": 2300})
         self.assertEqual(players[0].preferences, ["Tank", "Damage", "Support"])
 
+    def test_builds_stable_preferences_when_role_priorities_tie(self) -> None:
+        players = load_players_from_dict(
+            {
+                "players": {
+                    "player-1": {
+                        "identity": {
+                            "name": "Player One",
+                            "isFullFlex": False,
+                        },
+                        "stats": {
+                            "classes": {
+                                "support": {"isActive": True, "rank": 2300, "priority": 0},
+                                "tank": {"isActive": True, "rank": 2500, "priority": 0},
+                                "damage": {"isActive": True, "rank": 2400, "priority": 0},
+                            }
+                        },
+                    }
+                }
+            },
+            {"Tank": 1, "Damage": 2, "Support": 2},
+        )
+
+        self.assertEqual(len(players), 1)
+        self.assertEqual(players[0].preferences, ["Damage", "Support", "Tank"])
+
 
 class BalancerJobStoreTests(IsolatedAsyncioTestCase):
     async def test_persists_canonical_payload_keys_only(self) -> None:
@@ -690,3 +715,65 @@ class MooDeterminismTests(TestCase):
         self.assertEqual(runs[1], runs[2])
         self.assertEqual(observed_seeds[0], observed_seeds[1])
         self.assertEqual(observed_seeds[1], observed_seeds[2])
+
+    def test_balance_teams_moo_ignores_input_player_order(self) -> None:
+        def make_input(order: list[int]) -> dict[str, dict[str, dict[str, object]]]:
+            return {
+                "players": {
+                    f"player-{index}": {
+                        "identity": {
+                            "name": f"Player {index}",
+                            "isFullFlex": False,
+                        },
+                        "stats": {
+                            "classes": {
+                                "tank": {
+                                    "isActive": True,
+                                    "rank": 2500 + index,
+                                    "priority": 0,
+                                }
+                            }
+                        },
+                    }
+                    for index in order
+                }
+            }
+
+        config_overrides = {
+            "algorithm": "moo",
+            "role_mask": {"Tank": 1},
+            "population_size": 10,
+            "generation_count": 10,
+            "mutation_strength": 1,
+            "max_result_variants": 1,
+            "use_captains": False,
+        }
+
+        observed_player_orders: list[list[str]] = []
+
+        def fake_run_moo_optimizer(request_payload: str) -> str:
+            payload = json.loads(request_payload)
+            observed_player_orders.append([player["uuid"] for player in payload["players"]])
+            role_name = sorted(payload["mask"].keys())[0]
+            teams = [
+                {
+                    "id": index,
+                    "roster": {role_name: [player["uuid"]]},
+                }
+                for index, player in enumerate(payload["players"], start=1)
+            ]
+            return json.dumps({"variants": [{"teams": teams}]})
+
+        native_module = SimpleNamespace(run_moo_optimizer=fake_run_moo_optimizer)
+
+        with patch("src.domain.balancer.moo_backend.platform.system", return_value="Linux"):
+            with patch("src.domain.balancer.moo_backend._load_native_module", return_value=native_module):
+                ordered_run = balance_teams_moo(make_input([1, 2, 3, 4, 5, 6]), config_overrides)[0]["teams"]
+                reversed_run = balance_teams_moo(make_input([6, 5, 4, 3, 2, 1]), config_overrides)[0]["teams"]
+
+        self.assertEqual(ordered_run, reversed_run)
+        self.assertEqual(observed_player_orders[0], observed_player_orders[1])
+        self.assertEqual(
+            observed_player_orders[0],
+            [f"player-{index}" for index in range(1, 7)],
+        )

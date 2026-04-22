@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import BigInteger, DateTime, Engine, Uuid, func, ColumnCollection, create_engine
+from sqlalchemy import BigInteger, ColumnCollection, DateTime, Engine, Uuid, create_engine, func
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
@@ -98,6 +98,10 @@ def create_database(
     *,
     pool_size: int = 10,
     max_overflow: int = 20,
+    pool_timeout: int = 30,
+    pool_recycle: int = 1800,
+    pool_pre_ping: bool = True,
+    pool_use_lifo: bool = True,
     statement_timeout: int = 30000,
 ) -> DatabaseEngines:
     """Factory for creating database engine + session maker pairs.
@@ -107,6 +111,10 @@ def create_database(
         sync_url: Optional sync database URL (e.g. postgresql+psycopg://...).
         pool_size: Connection pool size.
         max_overflow: Max overflow connections beyond pool_size.
+        pool_timeout: Seconds to wait for a pooled connection before timing out.
+        pool_recycle: Seconds after which pooled connections are recycled.
+        pool_pre_ping: Test pooled connections before handing them out.
+        pool_use_lifo: Prefer recently-used connections to reduce stale idle sockets.
         statement_timeout: Query timeout in milliseconds (0 to disable).
 
     Returns:
@@ -120,6 +128,10 @@ def create_database(
         url=async_url,
         pool_size=pool_size,
         max_overflow=max_overflow,
+        pool_timeout=pool_timeout,
+        pool_recycle=pool_recycle,
+        pool_pre_ping=pool_pre_ping,
+        pool_use_lifo=pool_use_lifo,
         connect_args=connect_args,
     )
     async_session = async_sessionmaker(
@@ -136,6 +148,10 @@ def create_database(
             url=sync_url,
             pool_size=pool_size,
             max_overflow=max_overflow,
+            pool_timeout=pool_timeout,
+            pool_recycle=pool_recycle,
+            pool_pre_ping=pool_pre_ping,
+            pool_use_lifo=pool_use_lifo,
             connect_args=sync_connect_args,
         )
         sync_session = sessionmaker(sync_engine, class_=Session, expire_on_commit=False)
