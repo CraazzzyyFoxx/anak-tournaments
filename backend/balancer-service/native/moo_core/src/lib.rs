@@ -841,6 +841,46 @@ fn archive_select_items(
         .collect()
 }
 
+fn archive_select_best_items(
+    archive: &[(Objectives, Solution)],
+    count: usize,
+    ctx: &Context,
+) -> Vec<(Objectives, Solution)> {
+    if archive.is_empty() {
+        return Vec::new();
+    }
+
+    let objectives: Vec<Objectives> = archive.iter().map(|(obj, _)| *obj).collect();
+    let normed = normalize_objectives(&objectives);
+    let mut ranked: Vec<usize> = (0..archive.len()).collect();
+    ranked.sort_by(|&left, &right| {
+        let left_score = normed[left].balance + normed[left].comfort;
+        let right_score = normed[right].balance + normed[right].comfort;
+        left_score
+            .partial_cmp(&right_score)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| {
+                objectives[left]
+                    .balance
+                    .partial_cmp(&objectives[right].balance)
+                    .unwrap_or(Ordering::Equal)
+            })
+            .then_with(|| {
+                objectives[left]
+                    .comfort
+                    .partial_cmp(&objectives[right].comfort)
+                    .unwrap_or(Ordering::Equal)
+            })
+            .then_with(|| signature(&archive[left].1, ctx).cmp(&signature(&archive[right].1, ctx)))
+    });
+
+    ranked
+        .into_iter()
+        .take(count.min(archive.len()))
+        .map(|idx| archive[idx].clone())
+        .collect()
+}
+
 fn prune_archive(
     archive: &mut Vec<(Objectives, Solution)>,
     archive_sigs: &mut HashSet<u64>,
@@ -2484,7 +2524,7 @@ fn run_island_epoch(state: &mut IslandState, epoch_generations: usize) -> Result
             state.gens_without_archive_improvement += 1;
         }
 
-        let elite_items = archive_select_items(
+        let elite_items = archive_select_best_items(
             &state.archive,
             ARCHIVE_ELITE_COUNT.min(state.archive.len()),
             &state.ctx,
@@ -2544,27 +2584,14 @@ fn run_island_epoch(state: &mut IslandState, epoch_generations: usize) -> Result
     Ok(())
 }
 
-fn inject_population_candidates(state: &mut IslandState, incoming: Vec<(Objectives, Solution)>) {
-    if incoming.is_empty() {
-        return;
-    }
-    let mut comb = std::mem::take(&mut state.pop);
-    comb.extend(incoming);
-    let (selected, _) = environmental_select(comb, state.ctx.config.population_size, usize::MAX);
-    state.pop = selected;
-}
-
 fn inject_migrants(state: &mut IslandState, migrants: &[(Objectives, Solution)]) {
     if state.stopped || migrants.is_empty() {
         return;
     }
 
-    let mut incoming = Vec::new();
     let mut archive_changed = false;
     for (_, sol) in migrants {
         let local_obj = calculate_objectives(sol, &state.ctx);
-        let sig = signature(sol, &state.ctx);
-        let was_present = state.archive_sigs.contains(&sig);
         let candidate = (local_obj, sol.clone());
         if archive_update(
             &mut state.archive,
@@ -2574,14 +2601,10 @@ fn inject_migrants(state: &mut IslandState, migrants: &[(Objectives, Solution)])
         ) {
             archive_changed = true;
         }
-        if !was_present && state.archive_sigs.contains(&sig) {
-            incoming.push(candidate);
-        }
     }
 
     if archive_changed {
         state.gens_without_archive_improvement = 0;
-        inject_population_candidates(state, incoming);
     }
 }
 
