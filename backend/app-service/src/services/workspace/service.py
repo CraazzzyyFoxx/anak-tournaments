@@ -2,6 +2,7 @@ import typing
 
 import sqlalchemy as sa
 from shared.services import division_grid_cache
+from shared.services.division_grid_access import get_default_division_grid_version_id
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -59,8 +60,27 @@ async def get_user_workspaces(
     return result.all()
 
 
+async def _resolve_default_division_grid_version_id(
+    session: AsyncSession,
+    version_id: int | None,
+) -> int:
+    if version_id is not None:
+        return version_id
+
+    resolved_version_id = await get_default_division_grid_version_id(session)
+    if resolved_version_id is None:
+        raise RuntimeError("System default division grid version is not configured")
+    return resolved_version_id
+
+
 async def create(session: AsyncSession, **kwargs) -> models.Workspace:
-    workspace = models.Workspace(**kwargs)
+    payload = dict(kwargs)
+    payload["default_division_grid_version_id"] = await _resolve_default_division_grid_version_id(
+        session,
+        payload.get("default_division_grid_version_id"),
+    )
+
+    workspace = models.Workspace(**payload)
     session.add(workspace)
     await session.flush()
     return workspace
@@ -69,11 +89,18 @@ async def create(session: AsyncSession, **kwargs) -> models.Workspace:
 async def update(
     session: AsyncSession, workspace: models.Workspace, data: dict
 ) -> models.Workspace:
+    resolved_data = dict(data)
+    if "default_division_grid_version_id" in resolved_data:
+        resolved_data["default_division_grid_version_id"] = await _resolve_default_division_grid_version_id(
+            session,
+            resolved_data["default_division_grid_version_id"],
+        )
+
     should_invalidate_grid = (
-        "default_division_grid_version_id" in data
-        and data["default_division_grid_version_id"] != workspace.default_division_grid_version_id
+        "default_division_grid_version_id" in resolved_data
+        and resolved_data["default_division_grid_version_id"] != workspace.default_division_grid_version_id
     )
-    for field, value in data.items():
+    for field, value in resolved_data.items():
         setattr(workspace, field, value)
     await session.flush()
     if should_invalidate_grid:
