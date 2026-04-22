@@ -1,83 +1,34 @@
+use std::cmp::Ordering;
+use std::collections::hash_map::DefaultHasher;
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use rand::prelude::*;
 use rand::rngs::StdRng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::cmp::Ordering;
-use std::collections::hash_map::DefaultHasher;
-use std::collections::{BTreeMap, HashMap, HashSet};
-use std::hash::{Hash, Hasher};
-use std::sync::Mutex;
 
 type Solution = Vec<TeamState>;
 
-// --- Island migration / bounded archive (#1 + #2) ---
-// Migration: раз в MIGRATION_INTERVAL поколений каждый остров публикует
-// свои топ-K решений в общий пул и забирает K случайных обратно — это
-// распространяет хорошие находки между островами с разными профилями весов.
-const MIGRATION_INTERVAL: usize = 20;
-const MIGRATION_SIZE: usize = 3;
-// Bounded archive: держим не больше cap точек во внутреннем архиве острова
-// и в финальном/глобальном архиве — при переполнении вытесняем по crowding
-// distance (наиболее "скученные" уходят), чтобы в UI было max_result_variants
-// реально разных точек Парето-фронта, а не 10 почти одинаковых.
-const ARCHIVE_CAP_ISLAND: usize = 48;
-const ARCHIVE_CAP_GLOBAL: usize = 64;
-const MIGRATION_POOL_CAP: usize = 32;
-
 // --- OW2 & MOO Config Defaults ---
-fn default_tank_impact() -> f64 {
-    1.4
-}
-fn default_dps_impact() -> f64 {
-    1.0
-}
-fn default_support_impact() -> f64 {
-    1.1
-}
-fn default_tank_gap_weight() -> f64 {
-    2.0
-}
-fn default_tank_std_weight() -> f64 {
-    1.5
-}
-fn default_eff_total_std_weight() -> f64 {
-    1.2
-}
-fn default_intra_team_std_weight() -> f64 {
-    0.7
-}
-fn default_internal_role_spread_weight() -> f64 {
-    0.3
-}
-fn default_convergence_patience() -> usize {
-    0
-}
-fn default_convergence_epsilon() -> f64 {
-    0.005
-}
-fn default_mut_rate_min() -> f64 {
-    0.15
-}
-fn default_mut_rate_max() -> f64 {
-    0.65
-}
-fn default_island_count() -> usize {
-    4
-}
-fn default_polish_max_passes() -> usize {
-    50
-}
-fn default_greedy_seed_count() -> usize {
-    3
-}
-fn default_stagnation_kick_patience() -> usize {
-    15
-}
-fn default_crossover_rate() -> f64 {
-    0.85
-}
+fn default_tank_impact() -> f64 { 1.4 }
+fn default_dps_impact() -> f64 { 1.0 }
+fn default_support_impact() -> f64 { 1.1 }
+fn default_tank_gap_weight() -> f64 { 2.0 }
+fn default_tank_std_weight() -> f64 { 1.5 }
+fn default_eff_total_std_weight() -> f64 { 1.2 }
+fn default_intra_team_std_weight() -> f64 { 0.7 }
+fn default_internal_role_spread_weight() -> f64 { 0.3 }
+fn default_convergence_patience() -> usize { 0 }
+fn default_convergence_epsilon() -> f64 { 0.005 }
+fn default_mut_rate_min() -> f64 { 0.15 }
+fn default_mut_rate_max() -> f64 { 0.65 }
+fn default_island_count() -> usize { 4 }
+fn default_polish_max_passes() -> usize { 50 }
+fn default_greedy_seed_count() -> usize { 3 }
+fn default_stagnation_kick_patience() -> usize { 15 }
+fn default_crossover_rate() -> f64 { 0.85 }
 
 #[derive(Debug, Clone, Deserialize)]
 struct ConfigSpec {
@@ -260,12 +211,10 @@ impl Context {
                 .seed_role
                 .as_deref()
                 .ok_or_else(|| format!("player {} is missing seed_role", player.uuid))?;
-            let seed_role = role_index.get(seed_role_name).copied().ok_or_else(|| {
-                format!(
-                    "player {} has unknown seed_role {}",
-                    player.uuid, seed_role_name
-                )
-            })?;
+            let seed_role = role_index
+                .get(seed_role_name)
+                .copied()
+                .ok_or_else(|| format!("player {} has unknown seed_role {}", player.uuid, seed_role_name))?;
 
             let mut ratings = Vec::with_capacity(roles.len());
             let mut can_play = Vec::with_capacity(roles.len());
@@ -281,11 +230,7 @@ impl Context {
 
                 let pain = if player.is_flex && role_is_playable {
                     0
-                } else if let Some(position) = player
-                    .preferences
-                    .iter()
-                    .position(|preference| preference == role)
-                {
+                } else if let Some(position) = player.preferences.iter().position(|preference| preference == role) {
                     (position as i32) * 100
                 } else if role_is_playable {
                     1000
@@ -323,9 +268,7 @@ impl Context {
                 .collect();
             // Детерминированный порядок: сперва по seed_role, затем по uuid
             captain_indices.sort_by(|&a, &b| {
-                players[a]
-                    .seed_role
-                    .cmp(&players[b].seed_role)
+                players[a].seed_role.cmp(&players[b].seed_role)
                     .then_with(|| players[a].uuid.cmp(&players[b].uuid))
             });
             for (i, p) in captain_indices.iter().copied().enumerate() {
@@ -350,40 +293,25 @@ impl Context {
 }
 
 fn sample_stdev_from_sums(sum_x: f64, sum_x2: f64, count: usize) -> f64 {
-    if count < 2 {
-        return 0.0;
-    }
+    if count < 2 { return 0.0; }
     let variance = (sum_x2 - (sum_x * sum_x) / count as f64) / (count as f64 - 1.0);
-    if variance <= 0.0 {
-        return 0.0;
-    }
+    if variance <= 0.0 { return 0.0; }
     variance.sqrt()
 }
 
 fn calculate_gap_penalty(max_team_gap: f64) -> f64 {
-    if max_team_gap <= 25.0 {
-        max_team_gap
-    } else if max_team_gap <= 50.0 {
-        max_team_gap * 2.0
-    } else if max_team_gap <= 100.0 {
-        max_team_gap * 5.0
-    } else if max_team_gap <= 200.0 {
-        max_team_gap * 12.0
-    } else {
-        max_team_gap * 30.0
-    }
+    if max_team_gap <= 25.0 { max_team_gap }
+    else if max_team_gap <= 50.0 { max_team_gap * 2.0 }
+    else if max_team_gap <= 100.0 { max_team_gap * 5.0 }
+    else if max_team_gap <= 200.0 { max_team_gap * 12.0 }
+    else { max_team_gap * 30.0 }
 }
 
 fn tank_gap_penalty(gap: f64) -> f64 {
-    if gap <= 50.0 {
-        gap * 1.0
-    } else if gap <= 100.0 {
-        gap * 3.0
-    } else if gap <= 200.0 {
-        gap * 8.0
-    } else {
-        gap * 20.0
-    }
+    if gap <= 50.0 { gap * 1.0 }
+    else if gap <= 100.0 { gap * 3.0 }
+    else if gap <= 200.0 { gap * 8.0 }
+    else { gap * 20.0 }
 }
 
 fn calculate_team_stats(context: &Context, team: &TeamState) -> TeamStats {
@@ -400,9 +328,7 @@ fn calculate_team_stats(context: &Context, team: &TeamState) -> TeamStats {
     let mut role_avg_count = 0usize;
 
     for (role_index, roster) in team.roster.iter().enumerate() {
-        if roster.is_empty() {
-            continue;
-        }
+        if roster.is_empty() { continue; }
 
         let mut role_sum_rating = 0.0;
         let mut subclass_counts: HashMap<&str, usize> = HashMap::new();
@@ -416,9 +342,7 @@ fn calculate_team_stats(context: &Context, team: &TeamState) -> TeamStats {
             sum_rating2 += rating * rating;
             total_pain += pain as f64;
             count += 1;
-            if pain > max_pain {
-                max_pain = pain;
-            }
+            if pain > max_pain { max_pain = pain; }
 
             if let Some(subclass) = player.subclasses[role_index].as_deref() {
                 *subclass_counts.entry(subclass).or_insert(0) += 1;
@@ -441,20 +365,14 @@ fn calculate_team_stats(context: &Context, team: &TeamState) -> TeamStats {
         }
     }
 
-    let mmr = if count > 0 {
-        sum_rating / count as f64
-    } else {
-        0.0
-    };
+    let mmr = if count > 0 { sum_rating / count as f64 } else { 0.0 };
     let intra_std = sample_stdev_from_sums(sum_rating, sum_rating2, count);
 
     let internal_role_spread = if role_avg_count >= 2 {
         let mean = role_avg_sum / role_avg_count as f64;
         let var = (role_avg_sum2 / role_avg_count as f64) - mean.powi(2);
         var.max(0.0).sqrt()
-    } else {
-        0.0
-    };
+    } else { 0.0 };
 
     TeamStats {
         mmr,
@@ -471,32 +389,22 @@ fn calculate_team_stats(context: &Context, team: &TeamState) -> TeamStats {
 
 fn calculate_objectives_from_stats(stats: &[TeamStats], ctx: &Context) -> Objectives {
     if stats.is_empty() {
-        return Objectives {
-            balance: f64::INFINITY,
-            comfort: f64::INFINITY,
-        };
+        return Objectives { balance: f64::INFINITY, comfort: f64::INFINITY };
     }
     let team_count = stats.len();
-    let mut sum_mmr = 0.0;
-    let mut sum_mmr2 = 0.0;
-    let mut sum_total = 0.0;
-    let mut sum_total2 = 0.0;
-    let mut min_team_total = f64::INFINITY;
-    let mut max_team_total = f64::NEG_INFINITY;
+    let mut sum_mmr = 0.0; let mut sum_mmr2 = 0.0;
+    let mut sum_total = 0.0; let mut sum_total2 = 0.0;
+    let mut min_team_total = f64::INFINITY; let mut max_team_total = f64::NEG_INFINITY;
     let mut role_line_avgs: Vec<Vec<f64>> = vec![Vec::new(); ctx.roles.len()];
-    let mut sum_discomfort = 0.0;
-    let mut global_max_pain = 0i32;
-    let mut sum_subrole_collisions = 0i32;
-    let mut sum_intra_std = 0.0;
+    let mut sum_discomfort = 0.0; let mut global_max_pain = 0i32;
+    let mut sum_subrole_collisions = 0i32; let mut sum_intra_std = 0.0;
     let mut sum_internal_role_spread = 0.0;
     let mut tank_ratings: Vec<f64> = Vec::with_capacity(team_count);
     let mut effective_totals: Vec<f64> = Vec::with_capacity(team_count);
 
     for s in stats {
-        sum_mmr += s.mmr;
-        sum_mmr2 += s.mmr * s.mmr;
-        sum_total += s.total_rating;
-        sum_total2 += s.total_rating * s.total_rating;
+        sum_mmr += s.mmr; sum_mmr2 += s.mmr * s.mmr;
+        sum_total += s.total_rating; sum_total2 += s.total_rating * s.total_rating;
         min_team_total = min_team_total.min(s.total_rating);
         max_team_total = max_team_total.max(s.total_rating);
         sum_discomfort += s.discomfort;
@@ -509,21 +417,14 @@ fn calculate_objectives_from_stats(stats: &[TeamStats], ctx: &Context) -> Object
         let mut team_tank_rating = 0.0;
 
         for (r_idx, &total) in s.role_totals.iter().enumerate() {
-            if s.role_counts[r_idx] == 0 {
-                continue;
-            }
+            if s.role_counts[r_idx] == 0 { continue; }
             let avg = total / s.role_counts[r_idx] as f64;
             role_line_avgs[r_idx].push(avg);
 
-            let impact = if ctx.tank_role_idx == Some(r_idx) {
-                ctx.config.tank_impact_weight
-            } else if ctx.dps_role_idx == Some(r_idx) {
-                ctx.config.dps_impact_weight
-            } else if ctx.support_role_idx == Some(r_idx) {
-                ctx.config.support_impact_weight
-            } else {
-                1.0
-            };
+            let impact = if ctx.tank_role_idx == Some(r_idx) { ctx.config.tank_impact_weight }
+                         else if ctx.dps_role_idx == Some(r_idx) { ctx.config.dps_impact_weight }
+                         else if ctx.support_role_idx == Some(r_idx) { ctx.config.support_impact_weight }
+                         else { 1.0 };
             eff_total += total * impact;
 
             if ctx.tank_role_idx == Some(r_idx) {
@@ -535,53 +436,39 @@ fn calculate_objectives_from_stats(stats: &[TeamStats], ctx: &Context) -> Object
     }
 
     let total_rating_std = sample_stdev_from_sums(sum_total, sum_total2, team_count);
-    let max_team_gap = if team_count >= 2 {
-        max_team_total - min_team_total
-    } else {
-        0.0
-    };
+    let max_team_gap = if team_count >= 2 { max_team_total - min_team_total } else { 0.0 };
     let gap_penalty = calculate_gap_penalty(max_team_gap);
     let inter_team_std = sample_stdev_from_sums(sum_mmr, sum_mmr2, team_count);
 
     let mut role_line_penalty = 0.0;
     let mut counted_roles = 0usize;
     for averages in role_line_avgs {
-        if averages.len() < 2 {
-            continue;
-        }
+        if averages.len() < 2 { continue; }
         let mean = averages.iter().sum::<f64>() / averages.len() as f64;
-        let variance =
-            averages.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / averages.len() as f64;
+        let variance = averages.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / averages.len() as f64;
         role_line_penalty += variance.sqrt();
         counted_roles += 1;
     }
-    if counted_roles > 0 {
-        role_line_penalty /= counted_roles as f64;
-    }
+    if counted_roles > 0 { role_line_penalty /= counted_roles as f64; }
 
     let intra_team_penalty = sum_intra_std * ctx.config.intra_team_std_weight;
     let role_spread_penalty = sum_internal_role_spread * ctx.config.internal_role_spread_weight;
 
     let tank_gap = if team_count >= 2 {
-        let t_max = tank_ratings
-            .iter()
-            .cloned()
-            .fold(f64::NEG_INFINITY, f64::max);
+        let t_max = tank_ratings.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
         let t_min = tank_ratings.iter().cloned().fold(f64::INFINITY, f64::min);
         t_max - t_min
-    } else {
-        0.0
-    };
+    } else { 0.0 };
 
     let tank_std = sample_stdev_from_sums(
         tank_ratings.iter().sum(),
         tank_ratings.iter().map(|v| v * v).sum(),
-        team_count,
+        team_count
     );
     let eff_total_std = sample_stdev_from_sums(
         effective_totals.iter().sum(),
         effective_totals.iter().map(|v| v * v).sum(),
-        team_count,
+        team_count
     );
 
     let ow2_tank_penalty = tank_gap_penalty(tank_gap) * ctx.config.tank_gap_weight
@@ -601,17 +488,11 @@ fn calculate_objectives_from_stats(stats: &[TeamStats], ctx: &Context) -> Object
         + global_max_pain as f64 * ctx.config.max_role_discomfort_weight
         + sum_subrole_collisions as f64 * ctx.config.sub_role_collision_weight;
 
-    Objectives {
-        balance: objective_balance,
-        comfort: objective_comfort,
-    }
+    Objectives { balance: objective_balance, comfort: objective_comfort }
 }
 
 fn calculate_objectives(solution: &Solution, context: &Context) -> Objectives {
-    let stats: Vec<TeamStats> = solution
-        .iter()
-        .map(|t| calculate_team_stats(context, t))
-        .collect();
+    let stats: Vec<TeamStats> = solution.iter().map(|t| calculate_team_stats(context, t)).collect();
     calculate_objectives_from_stats(&stats, context)
 }
 
@@ -622,9 +503,7 @@ fn dominates(left: &Objectives, right: &Objectives) -> bool {
 }
 
 fn fast_non_dominated_sort(objectives: &[Objectives]) -> Vec<Vec<usize>> {
-    if objectives.is_empty() {
-        return Vec::new();
-    }
+    if objectives.is_empty() { return Vec::new(); }
     let count = objectives.len();
     let mut dominated_sets: Vec<Vec<usize>> = vec![Vec::new(); count];
     let mut domination_counts = vec![0usize; count];
@@ -632,18 +511,14 @@ fn fast_non_dominated_sort(objectives: &[Objectives]) -> Vec<Vec<usize>> {
 
     for left in 0..count {
         for right in 0..count {
-            if left == right {
-                continue;
-            }
+            if left == right { continue; }
             if dominates(&objectives[left], &objectives[right]) {
                 dominated_sets[left].push(right);
             } else if dominates(&objectives[right], &objectives[left]) {
                 domination_counts[left] += 1;
             }
         }
-        if domination_counts[left] == 0 {
-            fronts[0].push(left);
-        }
+        if domination_counts[left] == 0 { fronts[0].push(left); }
     }
 
     let mut current = 0usize;
@@ -652,14 +527,10 @@ fn fast_non_dominated_sort(objectives: &[Objectives]) -> Vec<Vec<usize>> {
         for &left in &fronts[current] {
             for &right in &dominated_sets[left] {
                 domination_counts[right] -= 1;
-                if domination_counts[right] == 0 {
-                    next_front.push(right);
-                }
+                if domination_counts[right] == 0 { next_front.push(right); }
             }
         }
-        if !next_front.is_empty() {
-            fronts.push(next_front);
-        }
+        if !next_front.is_empty() { fronts.push(next_front); }
         current += 1;
     }
     fronts
@@ -670,13 +541,9 @@ fn fast_non_dominated_sort(objectives: &[Objectives]) -> Vec<Vec<usize>> {
 fn crowding_distance(front: &[usize], objectives: &[Objectives]) -> Vec<f64> {
     let n = front.len();
     let mut distances = vec![0.0; n];
-    if n == 0 {
-        return distances;
-    }
+    if n == 0 { return distances; }
     if n <= 2 {
-        for d in distances.iter_mut() {
-            *d = f64::INFINITY;
-        }
+        for d in distances.iter_mut() { *d = f64::INFINITY; }
         return distances;
     }
 
@@ -684,30 +551,14 @@ fn crowding_distance(front: &[usize], objectives: &[Objectives]) -> Vec<f64> {
     let mut order: Vec<usize> = (0..n).collect();
     for m in 0..2 {
         order.sort_by(|&a, &b| {
-            let va = if m == 0 {
-                objectives[front[a]].balance
-            } else {
-                objectives[front[a]].comfort
-            };
-            let vb = if m == 0 {
-                objectives[front[b]].balance
-            } else {
-                objectives[front[b]].comfort
-            };
+            let va = if m == 0 { objectives[front[a]].balance } else { objectives[front[a]].comfort };
+            let vb = if m == 0 { objectives[front[b]].balance } else { objectives[front[b]].comfort };
             va.partial_cmp(&vb).unwrap_or(Ordering::Equal)
         });
         let first = order[0];
         let last = order[n - 1];
-        let min_v = if m == 0 {
-            objectives[front[first]].balance
-        } else {
-            objectives[front[first]].comfort
-        };
-        let max_v = if m == 0 {
-            objectives[front[last]].balance
-        } else {
-            objectives[front[last]].comfort
-        };
+        let min_v = if m == 0 { objectives[front[first]].balance } else { objectives[front[first]].comfort };
+        let max_v = if m == 0 { objectives[front[last]].balance } else { objectives[front[last]].comfort };
         let span = if max_v > min_v { max_v - min_v } else { 1.0 };
 
         distances[first] = f64::INFINITY;
@@ -715,16 +566,8 @@ fn crowding_distance(front: &[usize], objectives: &[Objectives]) -> Vec<f64> {
         for k in 1..n - 1 {
             let prev_pos = order[k - 1];
             let next_pos = order[k + 1];
-            let prev = if m == 0 {
-                objectives[front[prev_pos]].balance
-            } else {
-                objectives[front[prev_pos]].comfort
-            };
-            let next = if m == 0 {
-                objectives[front[next_pos]].balance
-            } else {
-                objectives[front[next_pos]].comfort
-            };
+            let prev = if m == 0 { objectives[front[prev_pos]].balance } else { objectives[front[prev_pos]].comfort };
+            let next = if m == 0 { objectives[front[next_pos]].balance } else { objectives[front[next_pos]].comfort };
             // если уже INFINITY (edge в m=0) — ∞ + finite = ∞, семантика сохраняется
             distances[order[k]] += (next - prev) / span;
         }
@@ -733,52 +576,27 @@ fn crowding_distance(front: &[usize], objectives: &[Objectives]) -> Vec<f64> {
 }
 
 fn normalize_objectives(objectives: &[Objectives]) -> Vec<Objectives> {
-    if objectives.is_empty() {
-        return vec![];
-    }
-    let b_min = objectives
-        .iter()
-        .map(|o| o.balance)
-        .fold(f64::INFINITY, f64::min);
-    let b_max = objectives
-        .iter()
-        .map(|o| o.balance)
-        .fold(f64::NEG_INFINITY, f64::max);
-    let c_min = objectives
-        .iter()
-        .map(|o| o.comfort)
-        .fold(f64::INFINITY, f64::min);
-    let c_max = objectives
-        .iter()
-        .map(|o| o.comfort)
-        .fold(f64::NEG_INFINITY, f64::max);
+    if objectives.is_empty() { return vec![]; }
+    let b_min = objectives.iter().map(|o| o.balance).fold(f64::INFINITY, f64::min);
+    let b_max = objectives.iter().map(|o| o.balance).fold(f64::NEG_INFINITY, f64::max);
+    let c_min = objectives.iter().map(|o| o.comfort).fold(f64::INFINITY, f64::min);
+    let c_max = objectives.iter().map(|o| o.comfort).fold(f64::NEG_INFINITY, f64::max);
     let b_span = (b_max - b_min).max(1e-6);
     let c_span = (c_max - c_min).max(1e-6);
-    objectives
-        .iter()
-        .map(|o| Objectives {
-            balance: (o.balance - b_min) / b_span,
-            comfort: (o.comfort - c_min) / c_span,
-        })
-        .collect()
+    objectives.iter().map(|o| Objectives {
+        balance: (o.balance - b_min) / b_span,
+        comfort: (o.comfort - c_min) / c_span,
+    }).collect()
 }
 
 fn solution_is_complete(solution: &Solution, context: &Context) -> bool {
     solution.iter().all(|team| {
-        team.roster
-            .iter()
-            .enumerate()
-            .all(|(r_idx, r)| r.len() == context.capacities[r_idx])
+        team.roster.iter().enumerate().all(|(r_idx, r)| r.len() == context.capacities[r_idx])
     })
 }
 
 fn create_empty_solution(context: &Context) -> Solution {
-    (0..context.num_teams)
-        .map(|i| TeamState {
-            id: i + 1,
-            roster: vec![Vec::new(); context.roles.len()],
-        })
-        .collect()
+    (0..context.num_teams).map(|i| TeamState { id: i+1, roster: vec![Vec::new(); context.roles.len()] }).collect()
 }
 
 /// Распределяет игроков, предварительно отсортированных по убыванию приоритетного
@@ -786,9 +604,7 @@ fn create_empty_solution(context: &Context) -> Solution {
 /// Это даёт сильно сбалансированное стартовое решение по MMR.
 fn create_snake_draft_solution(context: &Context) -> Solution {
     let mut teams = create_empty_solution(context);
-    if context.num_teams == 0 || context.players.is_empty() {
-        return teams;
-    }
+    if context.num_teams == 0 || context.players.is_empty() { return teams; }
 
     let mut buckets: Vec<Vec<usize>> = vec![Vec::new(); context.roles.len()];
     for (i, p) in context.players.iter().enumerate() {
@@ -798,15 +614,11 @@ fn create_snake_draft_solution(context: &Context) -> Solution {
     for r in 0..context.roles.len() {
         // Капитаны распределяются первыми, по одному в команду (если use_captains)
         let (mut captains, mut others): (Vec<usize>, Vec<usize>) = if context.config.use_captains {
-            buckets[r]
-                .iter()
-                .copied()
-                .partition(|&i| context.players[i].is_captain)
+            buckets[r].iter().copied().partition(|&i| context.players[i].is_captain)
         } else {
             (Vec::new(), buckets[r].clone())
         };
-        captains
-            .sort_by(|&a, &b| context.players[b].ratings[r].cmp(&context.players[a].ratings[r]));
+        captains.sort_by(|&a, &b| context.players[b].ratings[r].cmp(&context.players[a].ratings[r]));
         others.sort_by(|&a, &b| context.players[b].ratings[r].cmp(&context.players[a].ratings[r]));
 
         // Залоченные капитаны — строго на свою команду; остальные (без лока) — по кругу.
@@ -830,11 +642,7 @@ fn create_snake_draft_solution(context: &Context) -> Solution {
         for p in others {
             let mut placed = false;
             for _ in 0..context.num_teams {
-                let target = if forward {
-                    idx
-                } else {
-                    context.num_teams - 1 - idx
-                };
+                let target = if forward { idx } else { context.num_teams - 1 - idx };
                 if teams[target].roster[r].len() < context.capacities[r] {
                     teams[target].roster[r].push(p);
                     placed = true;
@@ -852,9 +660,7 @@ fn create_snake_draft_solution(context: &Context) -> Solution {
                     }
                 }
             }
-            if !placed {
-                break;
-            }
+            if !placed { break; }
         }
     }
     teams
@@ -865,9 +671,7 @@ fn create_snake_draft_solution(context: &Context) -> Solution {
 /// идут первыми.
 fn create_comfort_greedy_solution(context: &Context) -> Solution {
     let mut teams = create_empty_solution(context);
-    if context.num_teams == 0 || context.players.is_empty() {
-        return teams;
-    }
+    if context.num_teams == 0 || context.players.is_empty() { return teams; }
 
     let mut buckets: Vec<Vec<usize>> = vec![Vec::new(); context.roles.len()];
     for (i, p) in context.players.iter().enumerate() {
@@ -880,9 +684,7 @@ fn create_comfort_greedy_solution(context: &Context) -> Solution {
             let ca = context.players[a].is_captain && context.config.use_captains;
             let cb = context.players[b].is_captain && context.config.use_captains;
             cb.cmp(&ca)
-                .then_with(|| {
-                    context.players[a].discomfort[r].cmp(&context.players[b].discomfort[r])
-                })
+                .then_with(|| context.players[a].discomfort[r].cmp(&context.players[b].discomfort[r]))
                 .then_with(|| context.players[b].ratings[r].cmp(&context.players[a].ratings[r]))
         });
 
@@ -903,50 +705,32 @@ fn create_comfort_greedy_solution(context: &Context) -> Solution {
 
 fn create_random_solution(context: &Context, rng: &mut StdRng) -> Solution {
     let mut teams = create_empty_solution(context);
-    if context.num_teams == 0 || context.players.is_empty() {
-        return teams;
-    }
+    if context.num_teams == 0 || context.players.is_empty() { return teams; }
 
     let mut buckets = vec![Vec::new(); context.roles.len()];
     let mut captain_buckets = vec![Vec::new(); context.roles.len()];
 
     for (i, p) in context.players.iter().enumerate() {
-        if context.config.use_captains && p.is_captain {
-            captain_buckets[p.seed_role].push(i);
-        } else {
-            buckets[p.seed_role].push(i);
-        }
+        if context.config.use_captains && p.is_captain { captain_buckets[p.seed_role].push(i); }
+        else { buckets[p.seed_role].push(i); }
     }
-    for b in &mut buckets {
-        b.shuffle(rng);
-    }
-    for b in &mut captain_buckets {
-        b.shuffle(rng);
-    }
+    for b in &mut buckets { b.shuffle(rng); }
+    for b in &mut captain_buckets { b.shuffle(rng); }
 
     if context.config.use_captains {
         let mut caps = Vec::new();
-        for (r, b) in captain_buckets.iter().enumerate() {
-            for &p in b {
-                caps.push((r, p));
-            }
-        }
+        for (r, b) in captain_buckets.iter().enumerate() { for &p in b { caps.push((r, p)); } }
         caps.shuffle(rng);
         let mut cur = 0;
         for (r, p) in caps {
             let mut placed = false;
             for _ in 0..context.num_teams {
-                let t = cur % context.num_teams;
-                cur += 1;
+                let t = cur % context.num_teams; cur += 1;
                 if teams[t].roster[r].len() < context.capacities[r] {
-                    teams[t].roster[r].push(p);
-                    placed = true;
-                    break;
+                    teams[t].roster[r].push(p); placed = true; break;
                 }
             }
-            if !placed {
-                buckets[r].push(p);
-            }
+            if !placed { buckets[r].push(p); }
         }
     }
 
@@ -955,17 +739,12 @@ fn create_random_solution(context: &Context, rng: &mut StdRng) -> Solution {
         while let Some(p) = b.pop() {
             let mut placed = false;
             for _ in 0..context.num_teams {
-                let t = cur % context.num_teams;
-                cur += 1;
+                let t = cur % context.num_teams; cur += 1;
                 if teams[t].roster[r].len() < context.capacities[r] {
-                    teams[t].roster[r].push(p);
-                    placed = true;
-                    break;
+                    teams[t].roster[r].push(p); placed = true; break;
                 }
             }
-            if !placed {
-                break;
-            }
+            if !placed { break; }
         }
     }
     teams
@@ -977,19 +756,11 @@ fn create_random_solution(context: &Context, rng: &mut StdRng) -> Solution {
 fn placement_score(ctx: &Context, p: usize, r: usize) -> i32 {
     let pl = &ctx.players[p];
     let mut s = 0;
-    if ctx.config.use_captains && pl.is_captain && pl.seed_role == r {
-        s += 1000;
-    }
-    if pl.can_play[r] {
-        s += 100;
-    }
-    if pl.seed_role == r {
-        s += 20;
-    }
+    if ctx.config.use_captains && pl.is_captain && pl.seed_role == r { s += 1000; }
+    if pl.can_play[r] { s += 100; }
+    if pl.seed_role == r { s += 20; }
     // Штраф за явно неигровую роль — чтобы попасть туда только в крайнем случае
-    if !pl.can_play[r] && pl.seed_role != r {
-        s -= 50;
-    }
+    if !pl.can_play[r] && pl.seed_role != r { s -= 50; }
     s
 }
 
@@ -1000,32 +771,22 @@ fn placement_score(ctx: &Context, p: usize, r: usize) -> i32 {
 /// вытесняется один не-капитан (он попадает туда, откуда пришёл капитан).
 /// Вызывается перед `ensure_feasibility` после crossover/мутаций.
 fn enforce_captain_locks(sol: &mut Solution, ctx: &Context) {
-    if !ctx.config.use_captains {
-        return;
-    }
+    if !ctx.config.use_captains { return; }
     let num_roles = ctx.roles.len();
-    if num_roles == 0 || ctx.num_teams == 0 {
-        return;
-    }
+    if num_roles == 0 || ctx.num_teams == 0 { return; }
 
     for p in 0..ctx.players.len() {
         let pl = &ctx.players[p];
-        let Some(t0) = pl.captain_team else {
-            continue;
-        };
+        let Some(t0) = pl.captain_team else { continue; };
         let r0 = pl.seed_role;
-        if t0 >= sol.len() || r0 >= num_roles {
-            continue;
-        }
+        if t0 >= sol.len() || r0 >= num_roles { continue; }
 
         // Уже на своём месте?
         if sol[t0].roster[r0].iter().any(|&x| x == p) {
             // Заодно убираем возможные дубликаты капитана из чужих слотов
             for t in 0..sol.len() {
                 for r in 0..num_roles {
-                    if t == t0 && r == r0 {
-                        continue;
-                    }
+                    if t == t0 && r == r0 { continue; }
                     sol[t].roster[r].retain(|&x| x != p);
                 }
             }
@@ -1056,9 +817,9 @@ fn enforce_captain_locks(sol: &mut Solution, ctx: &Context) {
             sol[t0].roster[r0].push(p);
         } else {
             // Ищем не-капитана в целевом слоте для вытеснения
-            let evict_idx = sol[t0].roster[r0].iter().rposition(|&x| {
-                !ctx.players[x].is_captain || ctx.players[x].captain_team != Some(t0)
-            });
+            let evict_idx = sol[t0].roster[r0]
+                .iter()
+                .rposition(|&x| !ctx.players[x].is_captain || ctx.players[x].captain_team != Some(t0));
             if let Some(idx) = evict_idx {
                 let evicted = sol[t0].roster[r0].remove(idx);
                 sol[t0].roster[r0].push(p);
@@ -1092,9 +853,7 @@ fn enforce_captain_locks(sol: &mut Solution, ctx: &Context) {
 fn ensure_feasibility(sol: &mut Solution, ctx: &Context, rng: &mut StdRng) {
     let p_count = ctx.players.len();
     let num_roles = ctx.roles.len();
-    if p_count == 0 || num_roles == 0 || ctx.num_teams == 0 {
-        return;
-    }
+    if p_count == 0 || num_roles == 0 || ctx.num_teams == 0 { return; }
 
     // Сначала вкорачиваем капитанов на их зафиксированные места —
     // это гарантирует инвариант "один капитан на команду, фиксированная роль".
@@ -1114,10 +873,8 @@ fn ensure_feasibility(sol: &mut Solution, ctx: &Context, rng: &mut StdRng) {
                 if ctx.config.use_captains {
                     // Приоритет: залоченный капитан этого (t,r) → любой капитан → остальные
                     roster.sort_by(|&a, &b| {
-                        let la =
-                            ctx.players[a].captain_team == Some(t) && ctx.players[a].seed_role == r;
-                        let lb =
-                            ctx.players[b].captain_team == Some(t) && ctx.players[b].seed_role == r;
+                        let la = ctx.players[a].captain_team == Some(t) && ctx.players[a].seed_role == r;
+                        let lb = ctx.players[b].captain_team == Some(t) && ctx.players[b].seed_role == r;
                         let ca = ctx.players[a].is_captain;
                         let cb = ctx.players[b].is_captain;
                         lb.cmp(&la).then(cb.cmp(&ca))
@@ -1159,22 +916,16 @@ fn ensure_feasibility(sol: &mut Solution, ctx: &Context, rng: &mut StdRng) {
         let pl = &ctx.players[p];
         let locked = if ctx.config.use_captains && pl.is_captain {
             pl.captain_team.map(|t| (t, pl.seed_role))
-        } else {
-            None
-        };
+        } else { None };
         let best = if let Some((lt, lr)) = locked {
-            locs.iter()
-                .copied()
-                .find(|&(t, r)| t == lt && r == lr)
-                .or_else(|| {
-                    locs.iter().copied().max_by(|&(ta, ra), &(tb, rb)| {
-                        let sa = placement_score(ctx, p, ra);
-                        let sb = placement_score(ctx, p, rb);
-                        sa.cmp(&sb)
-                            .then_with(|| tb.cmp(&ta))
-                            .then_with(|| rb.cmp(&ra))
-                    })
-                })
+            locs.iter().copied().find(|&(t, r)| t == lt && r == lr)
+                .or_else(|| locs.iter().copied().max_by(|&(ta, ra), &(tb, rb)| {
+                    let sa = placement_score(ctx, p, ra);
+                    let sb = placement_score(ctx, p, rb);
+                    sa.cmp(&sb)
+                        .then_with(|| tb.cmp(&ta))
+                        .then_with(|| rb.cmp(&ra))
+                }))
         } else {
             locs.iter().copied().max_by(|&(ta, ra), &(tb, rb)| {
                 let sa = placement_score(ctx, p, ra);
@@ -1202,9 +953,7 @@ fn ensure_feasibility(sol: &mut Solution, ctx: &Context, rng: &mut StdRng) {
         for r in 0..num_roles {
             let cap = ctx.capacities[r];
             let have = sol[t].roster[r].len();
-            for _ in have..cap {
-                vacancies.push((t, r));
-            }
+            for _ in have..cap { vacancies.push((t, r)); }
         }
     }
 
@@ -1220,17 +969,11 @@ fn ensure_feasibility(sol: &mut Solution, ctx: &Context, rng: &mut StdRng) {
     // обязательно закрываем им его зафиксированный (captain_team, seed_role).
     if ctx.config.use_captains {
         for i in 0..missing.len() {
-            if !pool_alive[i] {
-                continue;
-            }
+            if !pool_alive[i] { continue; }
             let p = missing[i];
             let pl = &ctx.players[p];
-            if !pl.is_captain {
-                continue;
-            }
-            let Some(lt) = pl.captain_team else {
-                continue;
-            };
+            if !pl.is_captain { continue; }
+            let Some(lt) = pl.captain_team else { continue; };
             let lr = pl.seed_role;
             if let Some(vi) = vacancies.iter().position(|&(t, r)| t == lt && r == lr) {
                 let (t, r) = vacancies.remove(vi);
@@ -1248,9 +991,7 @@ fn ensure_feasibility(sol: &mut Solution, ctx: &Context, rng: &mut StdRng) {
         let mut best_idx: Option<usize> = None;
         let mut best_score = i32::MIN;
         for (i, &p) in missing.iter().enumerate() {
-            if !pool_alive[i] {
-                continue;
-            }
+            if !pool_alive[i] { continue; }
             let s = placement_score(ctx, p, r);
             if s > best_score {
                 best_score = s;
@@ -1266,15 +1007,7 @@ fn ensure_feasibility(sol: &mut Solution, ctx: &Context, rng: &mut StdRng) {
     }
 }
 
-fn swap_players(
-    sol: &mut Solution,
-    ta: usize,
-    ra: usize,
-    sa: usize,
-    tb: usize,
-    rb: usize,
-    sb: usize,
-) {
+fn swap_players(sol: &mut Solution, ta: usize, ra: usize, sa: usize, tb: usize, rb: usize, sb: usize) {
     let pa = sol[ta].roster[ra][sa];
     let pb = sol[tb].roster[rb][sb];
     sol[ta].roster[ra][sa] = pb;
@@ -1282,74 +1015,41 @@ fn swap_players(
 }
 
 fn strategy_robin_hood(sol: &mut Solution, ctx: &Context, rng: &mut StdRng) -> bool {
-    if sol.len() < 2 || ctx.roles.is_empty() {
-        return false;
-    }
-    let totals: Vec<f64> = sol
-        .iter()
-        .map(|t| calculate_team_stats(ctx, t).total_rating)
-        .collect();
-    let max_i = totals
-        .iter()
-        .enumerate()
-        .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(Ordering::Equal))
-        .map(|(i, _)| i)
-        .unwrap_or(0);
-    let min_i = totals
-        .iter()
-        .enumerate()
-        .min_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(Ordering::Equal))
-        .map(|(i, _)| i)
-        .unwrap_or(0);
-    if max_i == min_i {
-        return false;
-    }
+    if sol.len() < 2 || ctx.roles.is_empty() { return false; }
+    let totals: Vec<f64> = sol.iter().map(|t| calculate_team_stats(ctx, t).total_rating).collect();
+    let max_i = totals.iter().enumerate().max_by(|a,b| a.1.partial_cmp(b.1).unwrap_or(Ordering::Equal)).map(|(i,_)|i).unwrap_or(0);
+    let min_i = totals.iter().enumerate().min_by(|a,b| a.1.partial_cmp(b.1).unwrap_or(Ordering::Equal)).map(|(i,_)|i).unwrap_or(0);
+    if max_i == min_i { return false; }
     let orig_gap = totals[max_i] - totals[min_i];
-    if orig_gap <= 0.0 {
-        return false;
-    }
+    if orig_gap <= 0.0 { return false; }
 
     let mut roles = (0..ctx.roles.len()).collect::<Vec<_>>();
     roles.shuffle(rng);
     for r in roles {
         let rich = sol[max_i].roster[r].clone();
         let poor = sol[min_i].roster[r].clone();
-        if rich.is_empty() || poor.is_empty() {
-            continue;
-        }
+        if rich.is_empty() || poor.is_empty() { continue; }
         let mut r_ord = (0..rich.len()).collect::<Vec<_>>();
-        r_ord.sort_by(|&a, &b| {
-            ctx.players[rich[b]].ratings[r].cmp(&ctx.players[rich[a]].ratings[r])
-        });
+        r_ord.sort_by(|&a,&b| ctx.players[rich[b]].ratings[r].cmp(&ctx.players[rich[a]].ratings[r]));
         let mut p_ord = (0..poor.len()).collect::<Vec<_>>();
         p_ord.sort_by_key(|&i| ctx.players[poor[i]].ratings[r]);
 
         for &ri in &r_ord {
             let strong = rich[ri];
-            if ctx.config.use_captains && ctx.players[strong].is_captain {
-                continue;
-            }
+            if ctx.config.use_captains && ctx.players[strong].is_captain { continue; }
             for &pi in &p_ord {
                 let weak = poor[pi];
-                if ctx.config.use_captains && ctx.players[weak].is_captain {
-                    continue;
-                }
+                if ctx.config.use_captains && ctx.players[weak].is_captain { continue; }
                 let delta = ctx.players[strong].ratings[r] - ctx.players[weak].ratings[r];
-                if delta <= 0 {
-                    continue;
-                }
+                if delta <= 0 { continue; }
                 let nr = totals[max_i] - delta as f64;
                 let np = totals[min_i] + delta as f64;
                 let mut ng = (nr - np).abs();
                 for (k, &v) in totals.iter().enumerate() {
-                    if k == max_i || k == min_i {
-                        continue;
-                    }
+                    if k == max_i || k == min_i { continue; }
                     ng = ng.max(v.max(nr).max(np) - v.min(nr).min(np));
                 }
-                if ng >= orig_gap {
-                    continue;
-                }
+                if ng >= orig_gap { continue; }
                 swap_players(sol, max_i, r, ri, min_i, r, pi);
                 return true;
             }
@@ -1359,49 +1059,33 @@ fn strategy_robin_hood(sol: &mut Solution, ctx: &Context, rng: &mut StdRng) -> b
 }
 
 fn strategy_fix_discomfort(sol: &mut Solution, ctx: &Context) -> bool {
-    if sol.len() < 2 {
-        return false;
-    }
+    if sol.len() < 2 { return false; }
     let mut painful = Vec::new();
     for (ti, t) in sol.iter().enumerate() {
         for (ri, r) in t.roster.iter().enumerate() {
             for (si, &pi) in r.iter().enumerate() {
-                if ctx.config.use_captains && ctx.players[pi].is_captain {
-                    continue;
-                }
+                if ctx.config.use_captains && ctx.players[pi].is_captain { continue; }
                 let d = ctx.players[pi].discomfort[ri];
-                if d >= 1000 {
-                    painful.push((ti, ri, si, d));
-                }
+                if d >= 1000 { painful.push((ti, ri, si, d)); }
             }
         }
     }
-    painful.sort_by(|a, b| b.3.cmp(&a.3));
+    painful.sort_by(|a,b| b.3.cmp(&a.3));
     for &(sti, sri, ssi, sd) in &painful {
         let sp = sol[sti].roster[sri][ssi];
         let sp_data = &ctx.players[sp];
         for dti in 0..sol.len() {
-            if dti == sti {
-                continue;
-            }
+            if dti == sti { continue; }
             for dri in 0..ctx.roles.len() {
                 for dsi in 0..sol[dti].roster[dri].len() {
                     let dp = sol[dti].roster[dri][dsi];
                     let dp_data = &ctx.players[dp];
-                    if ctx.config.use_captains && dp_data.is_captain {
-                        continue;
-                    }
-                    if dp_data.first_preference != Some(sri) {
-                        continue;
-                    }
-                    if !sp_data.can_play[dri] {
-                        continue;
-                    }
+                    if ctx.config.use_captains && dp_data.is_captain { continue; }
+                    if dp_data.first_preference != Some(sri) { continue; }
+                    if !sp_data.can_play[dri] { continue; }
                     let nd = sp_data.discomfort[dri] + dp_data.discomfort[sri];
                     let od = sd + dp_data.discomfort[dri];
-                    if nd >= od {
-                        continue;
-                    }
+                    if nd >= od { continue; }
                     swap_players(sol, sti, sri, ssi, dti, dri, dsi);
                     return true;
                 }
@@ -1412,88 +1096,51 @@ fn strategy_fix_discomfort(sol: &mut Solution, ctx: &Context) -> bool {
 }
 
 fn strategy_role_rebalance(sol: &mut Solution, ctx: &Context) -> bool {
-    if sol.len() < 2 || ctx.roles.is_empty() {
-        return false;
-    }
-    let mut best_r = None;
-    let mut best_sd = 0.0;
-    let mut best_avgs = Vec::new();
+    if sol.len() < 2 || ctx.roles.is_empty() { return false; }
+    let mut best_r = None; let mut best_sd = 0.0; let mut best_avgs = Vec::new();
     for r in 0..ctx.roles.len() {
         let mut avgs = Vec::new();
         for (ti, t) in sol.iter().enumerate() {
-            if t.roster[r].is_empty() {
-                continue;
-            }
-            let s: f64 = t.roster[r]
-                .iter()
-                .map(|&p| ctx.players[p].ratings[r] as f64)
-                .sum();
+            if t.roster[r].is_empty() { continue; }
+            let s: f64 = t.roster[r].iter().map(|&p| ctx.players[p].ratings[r] as f64).sum();
             avgs.push((ti, s / t.roster[r].len() as f64));
         }
-        if avgs.len() < 2 {
-            continue;
-        }
-        let vals: Vec<f64> = avgs.iter().map(|&(_, v)| v).collect();
+        if avgs.len() < 2 { continue; }
+        let vals: Vec<f64> = avgs.iter().map(|&(_,v)|v).collect();
         let m = vals.iter().sum::<f64>() / vals.len() as f64;
-        let v = vals.iter().map(|x| (x - m).powi(2)).sum::<f64>() / (vals.len() as f64 - 1.0);
+        let v = vals.iter().map(|x| (x-m).powi(2)).sum::<f64>() / (vals.len() as f64 - 1.0);
         let sd = if v > 0.0 { v.sqrt() } else { 0.0 };
-        if sd > best_sd {
-            best_sd = sd;
-            best_r = Some(r);
-            best_avgs = avgs;
-        }
+        if sd > best_sd { best_sd = sd; best_r = Some(r); best_avgs = avgs; }
     }
-    let Some(br) = best_r else {
-        return false;
-    };
-    if best_sd <= 0.0 {
-        return false;
-    }
-    best_avgs.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
-    let wi = best_avgs[0].0;
-    let si = best_avgs[best_avgs.len() - 1].0;
-    if wi == si {
-        return false;
-    }
-    let sr = sol[si].roster[br].clone();
-    let wr = sol[wi].roster[br].clone();
-    if sr.is_empty() || wr.is_empty() {
-        return false;
-    }
+    let Some(br) = best_r else { return false; };
+    if best_sd <= 0.0 { return false; }
+    best_avgs.sort_by(|a,b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
+    let wi = best_avgs[0].0; let si = best_avgs[best_avgs.len()-1].0;
+    if wi == si { return false; }
+    let sr = sol[si].roster[br].clone(); let wr = sol[wi].roster[br].clone();
+    if sr.is_empty() || wr.is_empty() { return false; }
     let mut s_ord = (0..sr.len()).collect::<Vec<_>>();
     s_ord.sort_by_key(|&i| ctx.players[sr[i]].ratings[br]);
     let mut w_ord = (0..wr.len()).collect::<Vec<_>>();
-    w_ord.sort_by(|&a, &b| ctx.players[wr[b]].ratings[br].cmp(&ctx.players[wr[a]].ratings[br]));
+    w_ord.sort_by(|&a,&b| ctx.players[wr[b]].ratings[br].cmp(&ctx.players[wr[a]].ratings[br]));
     for &si_slot in &s_ord {
         let sp = sr[si_slot];
-        if ctx.config.use_captains && ctx.players[sp].is_captain {
-            continue;
-        }
+        if ctx.config.use_captains && ctx.players[sp].is_captain { continue; }
         for &wi_slot in &w_ord {
             let wp = wr[wi_slot];
-            if ctx.config.use_captains && ctx.players[wp].is_captain {
-                continue;
-            }
+            if ctx.config.use_captains && ctx.players[wp].is_captain { continue; }
             let d = ctx.players[wp].ratings[br] - ctx.players[sp].ratings[br];
-            if d >= 0 {
-                continue;
-            }
+            if d >= 0 { continue; }
             let mut navgs = Vec::new();
             for &(ti, avg) in &best_avgs {
-                if ti == si {
-                    navgs.push(avg + d as f64 / sol[ti].roster[br].len() as f64);
-                } else if ti == wi {
-                    navgs.push(avg - d as f64 / sol[ti].roster[br].len() as f64);
-                } else {
-                    navgs.push(avg);
-                }
+                if ti == si { navgs.push(avg + d as f64 / sol[ti].roster[br].len() as f64); }
+                else if ti == wi { navgs.push(avg - d as f64 / sol[ti].roster[br].len() as f64); }
+                else { navgs.push(avg); }
             }
             let m = navgs.iter().sum::<f64>() / navgs.len() as f64;
-            let v = navgs.iter().map(|x| (x - m).powi(2)).sum::<f64>() / (navgs.len() as f64 - 1.0);
+            let v = navgs.iter().map(|x| (x-m).powi(2)).sum::<f64>() / (navgs.len() as f64 - 1.0);
             let nsd = if v > 0.0 { v.sqrt() } else { 0.0 };
-            if nsd >= best_sd {
-                continue;
-            }
+            if nsd >= best_sd { continue; }
             swap_players(sol, si, br, si_slot, wi, br, wi_slot);
             return true;
         }
@@ -1503,75 +1150,30 @@ fn strategy_role_rebalance(sol: &mut Solution, ctx: &Context) -> bool {
 
 fn mutate_random(sol: &Solution, ctx: &Context, str: usize, rng: &mut StdRng) -> Solution {
     let mut nxt = sol.clone();
-    if ctx.roles.is_empty() || nxt.len() < 2 {
-        return nxt;
-    }
+    if ctx.roles.is_empty() || nxt.len() < 2 { return nxt; }
     for _ in 0..str.max(1) {
         if rng.gen::<f64>() < 0.8 {
             let r = rng.gen_range(0..ctx.roles.len());
-            let mut ts = (0..nxt.len()).collect::<Vec<_>>();
-            ts.shuffle(rng);
-            let a = ts[0];
-            let b = ts[1];
-            if nxt[a].roster[r].is_empty() || nxt[b].roster[r].is_empty() {
-                continue;
-            }
+            let mut ts = (0..nxt.len()).collect::<Vec<_>>(); ts.shuffle(rng);
+            let a = ts[0]; let b = ts[1];
+            if nxt[a].roster[r].is_empty() || nxt[b].roster[r].is_empty() { continue; }
             let sa = rng.gen_range(0..nxt[a].roster[r].len());
             let sb = rng.gen_range(0..nxt[b].roster[r].len());
-            if ctx.config.use_captains
-                && (ctx.players[nxt[a].roster[r][sa]].is_captain
-                    || ctx.players[nxt[b].roster[r][sb]].is_captain)
-            {
-                continue;
-            }
+            if ctx.config.use_captains && (ctx.players[nxt[a].roster[r][sa]].is_captain || ctx.players[nxt[b].roster[r][sb]].is_captain) { continue; }
             swap_players(&mut nxt, a, r, sa, b, r, sb);
         } else if ctx.roles.len() >= 2 {
             let t = rng.gen_range(0..nxt.len());
-            let mut rs = (0..ctx.roles.len()).collect::<Vec<_>>();
-            rs.shuffle(rng);
-            let r1 = rs[0];
-            let r2 = rs[1];
-            if nxt[t].roster[r1].is_empty() || nxt[t].roster[r2].is_empty() {
-                continue;
-            }
-            let c1: Vec<usize> = nxt[t].roster[r1]
-                .iter()
-                .enumerate()
-                .filter_map(|(i, &p)| {
-                    if ctx.players[p].can_play[r2]
-                        && (!ctx.config.use_captains || !ctx.players[p].is_captain)
-                    {
-                        Some(i)
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-            let c2: Vec<usize> = nxt[t].roster[r2]
-                .iter()
-                .enumerate()
-                .filter_map(|(i, &p)| {
-                    if ctx.players[p].can_play[r1]
-                        && (!ctx.config.use_captains || !ctx.players[p].is_captain)
-                    {
-                        Some(i)
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-            if c1.is_empty() || c2.is_empty() {
-                continue;
-            }
-            swap_players(
-                &mut nxt,
-                t,
-                r1,
-                c1[rng.gen_range(0..c1.len())],
-                t,
-                r2,
-                c2[rng.gen_range(0..c2.len())],
-            );
+            let mut rs = (0..ctx.roles.len()).collect::<Vec<_>>(); rs.shuffle(rng);
+            let r1 = rs[0]; let r2 = rs[1];
+            if nxt[t].roster[r1].is_empty() || nxt[t].roster[r2].is_empty() { continue; }
+            let c1: Vec<usize> = nxt[t].roster[r1].iter().enumerate().filter_map(|(i, &p)| {
+                if ctx.players[p].can_play[r2] && (!ctx.config.use_captains || !ctx.players[p].is_captain) { Some(i) } else { None }
+            }).collect();
+            let c2: Vec<usize> = nxt[t].roster[r2].iter().enumerate().filter_map(|(i, &p)| {
+                if ctx.players[p].can_play[r1] && (!ctx.config.use_captains || !ctx.players[p].is_captain) { Some(i) } else { None }
+            }).collect();
+            if c1.is_empty() || c2.is_empty() { continue; }
+            swap_players(&mut nxt, t, r1, c1[rng.gen_range(0..c1.len())], t, r2, c2[rng.gen_range(0..c2.len())]);
         }
     }
     nxt
@@ -1620,18 +1222,11 @@ fn mutate_targeted(sol: &Solution, ctx: &Context, rng: &mut StdRng, strength: us
     let mut nxt = sol.clone();
     for _ in 0..strength.max(1) {
         let roll = rng.gen::<f64>();
-        let applied = if roll < 0.35 {
-            strategy_robin_hood(&mut nxt, ctx, rng)
-        } else if roll < 0.70 {
-            strategy_fix_discomfort(&mut nxt, ctx)
-        } else if roll < 0.90 {
-            strategy_role_rebalance(&mut nxt, ctx)
-        } else {
-            false
-        };
-        if applied {
-            continue;
-        }
+        let applied = if roll < 0.35 { strategy_robin_hood(&mut nxt, ctx, rng) }
+        else if roll < 0.70 { strategy_fix_discomfort(&mut nxt, ctx) }
+        else if roll < 0.90 { strategy_role_rebalance(&mut nxt, ctx) }
+        else { false };
+        if applied { continue; }
         nxt = mutate_random(&nxt, ctx, 1, rng);
     }
     nxt
@@ -1645,13 +1240,9 @@ fn mutate_targeted(sol: &Solution, ctx: &Context, rng: &mut StdRng, strength: us
 fn accept_move(old: &Objectives, new: &Objectives) -> bool {
     const EPS: f64 = 1e-6;
     let pareto_ok = new.balance <= old.balance + EPS && new.comfort <= old.comfort + EPS;
-    if !pareto_ok {
-        return false;
-    }
+    if !pareto_ok { return false; }
     let strictly_pareto = new.balance < old.balance - EPS || new.comfort < old.comfort - EPS;
-    if strictly_pareto {
-        return true;
-    }
+    if strictly_pareto { return true; }
     // Скалярный tie-breaker для латеральных ходов
     let old_s = old.balance + old.comfort;
     let new_s = new.balance + new.comfort;
@@ -1665,9 +1256,7 @@ fn accept_move(old: &Objectives, new: &Objectives) -> bool {
 /// Идёт до фиксированной точки (с лимитом `max_passes` как safety-net).
 fn polish_pareto(sol: &Solution, ctx: &Context, max_passes: usize) -> Solution {
     let mut cur = sol.clone();
-    if ctx.roles.is_empty() || cur.len() < 2 {
-        return cur;
-    }
+    if ctx.roles.is_empty() || cur.len() < 2 { return cur; }
     let mut stats: Vec<TeamStats> = cur.iter().map(|t| calculate_team_stats(ctx, t)).collect();
     let mut best_obj = calculate_objectives_from_stats(&stats, ctx);
 
@@ -1678,29 +1267,20 @@ fn polish_pareto(sol: &Solution, ctx: &Context, max_passes: usize) -> Solution {
 
         // (1) same-role swap между парами команд
         'same_role: for i in 0..cur.len() {
-            for j in (i + 1)..cur.len() {
+            for j in (i+1)..cur.len() {
                 for r in 0..ctx.roles.len() {
                     let li = cur[i].roster[r].len();
                     let lj = cur[j].roster[r].len();
-                    if li == 0 || lj == 0 {
-                        continue;
-                    }
+                    if li == 0 || lj == 0 { continue; }
                     for a in 0..li {
                         let pa = cur[i].roster[r][a];
-                        if is_captain(pa) || !ctx.players[pa].can_play[r] {
-                            continue;
-                        }
+                        if is_captain(pa) || !ctx.players[pa].can_play[r] { continue; }
                         for b in 0..lj {
                             let pb = cur[j].roster[r][b];
-                            if is_captain(pb) || !ctx.players[pb].can_play[r] {
-                                continue;
-                            }
-                            if ctx.players[pa].ratings[r] == ctx.players[pb].ratings[r]
-                                && ctx.players[pa].discomfort[r] == ctx.players[pb].discomfort[r]
-                                && ctx.players[pa].subclasses[r] == ctx.players[pb].subclasses[r]
-                            {
-                                continue;
-                            }
+                            if is_captain(pb) || !ctx.players[pb].can_play[r] { continue; }
+                            if ctx.players[pa].ratings[r] == ctx.players[pb].ratings[r] &&
+                               ctx.players[pa].discomfort[r] == ctx.players[pb].discomfort[r] &&
+                               ctx.players[pa].subclasses[r] == ctx.players[pb].subclasses[r] { continue; }
 
                             swap_players(&mut cur, i, r, a, j, r, b);
                             stats[i] = calculate_team_stats(ctx, &cur[i]);
@@ -1719,29 +1299,21 @@ fn polish_pareto(sol: &Solution, ctx: &Context, max_passes: usize) -> Solution {
                 }
             }
         }
-        if improved {
-            continue;
-        }
+        if improved { continue; }
 
         // (2) cross-role swap внутри одной команды
         'intra_cross: for t in 0..cur.len() {
             for r1 in 0..ctx.roles.len() {
-                for r2 in (r1 + 1)..ctx.roles.len() {
+                for r2 in (r1+1)..ctx.roles.len() {
                     let l1 = cur[t].roster[r1].len();
                     let l2 = cur[t].roster[r2].len();
-                    if l1 == 0 || l2 == 0 {
-                        continue;
-                    }
+                    if l1 == 0 || l2 == 0 { continue; }
                     for a in 0..l1 {
                         let pa = cur[t].roster[r1][a];
-                        if is_captain(pa) || !ctx.players[pa].can_play[r2] {
-                            continue;
-                        }
+                        if is_captain(pa) || !ctx.players[pa].can_play[r2] { continue; }
                         for b in 0..l2 {
                             let pb = cur[t].roster[r2][b];
-                            if is_captain(pb) || !ctx.players[pb].can_play[r1] {
-                                continue;
-                            }
+                            if is_captain(pb) || !ctx.players[pb].can_play[r1] { continue; }
                             swap_players(&mut cur, t, r1, a, t, r2, b);
                             stats[t] = calculate_team_stats(ctx, &cur[t]);
                             let nw = calculate_objectives_from_stats(&stats, ctx);
@@ -1757,36 +1329,24 @@ fn polish_pareto(sol: &Solution, ctx: &Context, max_passes: usize) -> Solution {
                 }
             }
         }
-        if improved {
-            continue;
-        }
+        if improved { continue; }
 
         // (3) cross-role swap между разными командами
         'cross_team: for i in 0..cur.len() {
             for j in 0..cur.len() {
-                if i == j {
-                    continue;
-                }
+                if i == j { continue; }
                 for r1 in 0..ctx.roles.len() {
                     for r2 in 0..ctx.roles.len() {
-                        if r1 == r2 {
-                            continue;
-                        }
+                        if r1 == r2 { continue; }
                         let l1 = cur[i].roster[r1].len();
                         let l2 = cur[j].roster[r2].len();
-                        if l1 == 0 || l2 == 0 {
-                            continue;
-                        }
+                        if l1 == 0 || l2 == 0 { continue; }
                         for a in 0..l1 {
                             let pa = cur[i].roster[r1][a];
-                            if is_captain(pa) || !ctx.players[pa].can_play[r2] {
-                                continue;
-                            }
+                            if is_captain(pa) || !ctx.players[pa].can_play[r2] { continue; }
                             for b in 0..l2 {
                                 let pb = cur[j].roster[r2][b];
-                                if is_captain(pb) || !ctx.players[pb].can_play[r1] {
-                                    continue;
-                                }
+                                if is_captain(pb) || !ctx.players[pb].can_play[r1] { continue; }
                                 swap_players(&mut cur, i, r1, a, j, r2, b);
                                 stats[i] = calculate_team_stats(ctx, &cur[i]);
                                 stats[j] = calculate_team_stats(ctx, &cur[j]);
@@ -1805,9 +1365,7 @@ fn polish_pareto(sol: &Solution, ctx: &Context, max_passes: usize) -> Solution {
                 }
             }
         }
-        if !improved {
-            break;
-        }
+        if !improved { break; }
     }
     cur
 }
@@ -1821,22 +1379,12 @@ fn archive_update(
     ctx: &Context,
 ) -> bool {
     let sig = signature(&candidate.1, ctx);
-    if archive_sigs.contains(&sig) {
-        return false;
-    }
+    if archive_sigs.contains(&sig) { return false; }
     for (obj, _) in archive.iter() {
-        if dominates(obj, &candidate.0) {
-            return false;
-        }
-        if (obj.balance - candidate.0.balance).abs() < 1e-9
-            && (obj.comfort - candidate.0.comfort).abs() < 1e-9
-        {
-            return false;
-        }
+        if dominates(obj, &candidate.0) { return false; }
         // Равенство — считаем "есть уже"
         if (obj.balance - candidate.0.balance).abs() < 1e-9
-            && (obj.comfort - candidate.0.comfort).abs() < 1e-9
-        {
+            && (obj.comfort - candidate.0.comfort).abs() < 1e-9 {
             // Разные по сигнатуре, но численно идентичны — оставляем оба не нужно, добавим один раз
         }
     }
@@ -1856,147 +1404,6 @@ fn archive_update(
     true
 }
 
-/// Обрезает архив до `target` точек, вытесняя по минимальной crowding distance
-/// (наиболее "скученные" — самые избыточные, без потери краевых точек фронта).
-/// Архив по инварианту состоит из mutually non-dominated решений, поэтому
-/// corona distance определена над ним как над единственным Парето-фронтом.
-fn archive_prune(
-    archive: &mut Vec<(Objectives, Solution)>,
-    archive_sigs: &mut HashSet<u64>,
-    target: usize,
-    ctx: &Context,
-) {
-    while archive.len() > target {
-        let objs: Vec<Objectives> = archive.iter().map(|(o, _)| *o).collect();
-        let norm = normalize_objectives(&objs);
-        let indices: Vec<usize> = (0..archive.len()).collect();
-        let cd = crowding_distance(&indices, &norm);
-        // Находим индекс с минимальной дистанцией (самый "скученный").
-        let mut min_idx = 0usize;
-        let mut min_cd = cd[0];
-        for (i, &d) in cd.iter().enumerate().skip(1) {
-            if d < min_cd {
-                min_cd = d;
-                min_idx = i;
-            }
-        }
-        let removed_sig = signature(&archive[min_idx].1, ctx);
-        archive_sigs.remove(&removed_sig);
-        archive.swap_remove(min_idx);
-    }
-}
-
-/// Топ-K решений из архива по нормированному композитному скору (balance + comfort).
-/// Используется при миграции между островами — отправляем "лучшие на данный момент",
-/// но с нормированной шкалой, чтобы не перекашивало ни в balance, ни в comfort.
-fn top_k_by_composite(archive: &[(Objectives, Solution)], k: usize) -> Vec<Solution> {
-    if archive.is_empty() || k == 0 {
-        return Vec::new();
-    }
-    let objs: Vec<Objectives> = archive.iter().map(|(o, _)| *o).collect();
-    let norm = normalize_objectives(&objs);
-    let mut scored: Vec<(usize, f64)> = norm
-        .iter()
-        .enumerate()
-        .map(|(i, o)| (i, o.balance + o.comfort))
-        .collect();
-    scored.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
-    scored
-        .into_iter()
-        .take(k.min(archive.len()))
-        .map(|(i, _)| archive[i].1.clone())
-        .collect()
-}
-
-/// Разделяемый между островами пул для миграции. Каждый остров раз в
-/// MIGRATION_INTERVAL поколений push'ит свои топ-K решений и pull'ит K случайных
-/// обратно.
-///
-/// Важно: хранятся только Solution'ы (без Objectives), потому что острова
-/// гетерогенны — objectives у них в разных шкалах и прямое сравнение между
-/// островами некорректно. Получатель пересчитывает objectives под свой локальный
-/// ctx (profile-scaled) до внедрения в pop/архив. Pool — просто "grab bag"
-/// хороших решений, не настоящий Парето-архив.
-///
-/// Переполнение: FIFO eviction самых старых решений (новые intersting solutions
-/// вытесняют устаревшие со старых поколений).
-struct MigrationPool {
-    inner: Mutex<MigrationPoolState>,
-}
-
-struct MigrationPoolState {
-    items: Vec<Solution>,
-    sigs: Vec<u64>,
-}
-
-impl MigrationPool {
-    fn new() -> Self {
-        Self {
-            inner: Mutex::new(MigrationPoolState {
-                items: Vec::new(),
-                sigs: Vec::new(),
-            }),
-        }
-    }
-
-    fn push_many(&self, items: Vec<Solution>, ctx: &Context) {
-        if items.is_empty() {
-            return;
-        }
-        let mut state = match self.inner.lock() {
-            Ok(s) => s,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        for sol in items {
-            let sig = signature(&sol, ctx);
-            if state.sigs.contains(&sig) {
-                continue;
-            }
-            state.sigs.push(sig);
-            state.items.push(sol);
-        }
-        // FIFO-eviction: старейшие элементы уходят первыми, давая дорогу свежим
-        // решениям из поздних поколений.
-        while state.items.len() > MIGRATION_POOL_CAP {
-            state.items.remove(0);
-            state.sigs.remove(0);
-        }
-    }
-
-    fn sample_excluding(
-        &self,
-        k: usize,
-        exclude: &HashSet<u64>,
-        rng: &mut StdRng,
-    ) -> Vec<Solution> {
-        if k == 0 {
-            return Vec::new();
-        }
-        let state = match self.inner.lock() {
-            Ok(s) => s,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        if state.items.is_empty() {
-            return Vec::new();
-        }
-        let mut eligible: Vec<usize> = state
-            .sigs
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, sig)| (!exclude.contains(sig)).then_some(idx))
-            .collect();
-        if eligible.is_empty() {
-            return Vec::new();
-        }
-        eligible.shuffle(rng);
-        eligible
-            .into_iter()
-            .take(k)
-            .map(|idx| state.items[idx].clone())
-            .collect()
-    }
-}
-
 /// Бинарный турнир без аллокации: два случайных индекса (без повтора при n>1),
 /// победитель по rank, tie-break по crowding distance. Поведение 1:1 с прежней версией.
 fn tournament_pick(ranks: &[usize], dists: &[f64], rng: &mut StdRng) -> usize {
@@ -2004,21 +1411,11 @@ fn tournament_pick(ranks: &[usize], dists: &[f64], rng: &mut StdRng) -> usize {
     debug_assert!(n > 0);
     let a = rng.gen_range(0..n);
     let mut b = rng.gen_range(0..n);
-    while n > 1 && b == a {
-        b = rng.gen_range(0..n);
-    }
-    if ranks[a] < ranks[b] {
-        return a;
-    }
-    if ranks[b] < ranks[a] {
-        return b;
-    }
-    if dists[a] > dists[b] {
-        return a;
-    }
-    if dists[b] > dists[a] {
-        return b;
-    }
+    while n > 1 && b == a { b = rng.gen_range(0..n); }
+    if ranks[a] < ranks[b] { return a; }
+    if ranks[b] < ranks[a] { return b; }
+    if dists[a] > dists[b] { return a; }
+    if dists[b] > dists[a] { return b; }
     a
 }
 
@@ -2030,9 +1427,7 @@ fn signature(sol: &Solution, _ctx: &Context) -> u64 {
     for t in sol {
         let mut entries: Vec<(usize, usize)> = Vec::new();
         for (r, rs) in t.roster.iter().enumerate() {
-            for &p in rs {
-                entries.push((r, p));
-            }
+            for &p in rs { entries.push((r, p)); }
         }
         entries.sort_unstable();
         let mut h = DefaultHasher::new();
@@ -2048,11 +1443,7 @@ fn signature(sol: &Solution, _ctx: &Context) -> u64 {
 /// Запускает один "остров" NSGA-II с заданным сидом. Поддерживает внешний
 /// Парето-архив (Hall of Fame) — все недоминируемые решения, встреченные
 /// за весь прогон, включая промежуточные поколения.
-fn run_single_island(
-    ctx: &Context,
-    island_seed: u64,
-    migration: Option<&MigrationPool>,
-) -> Result<Vec<(Objectives, Solution)>, String> {
+fn run_single_island(ctx: &Context, island_seed: u64) -> Result<Vec<(Objectives, Solution)>, String> {
     let mut rng = StdRng::seed_from_u64(island_seed);
     let mut pop: Vec<(Objectives, Solution)> = Vec::new();
     let mut archive: Vec<(Objectives, Solution)> = Vec::new();
@@ -2097,16 +1488,12 @@ fn run_single_island(
         let mut sol = create_random_solution(ctx, &mut rng);
         ensure_feasibility(&mut sol, ctx, &mut rng);
         att += 1;
-        if !solution_is_complete(&sol, ctx) {
-            return Err("Incomplete initial solution".into());
-        }
+        if !solution_is_complete(&sol, ctx) { return Err("Incomplete initial solution".into()); }
         let obj = calculate_objectives(&sol, ctx);
         archive_update(&mut archive, &mut archive_sigs, (obj, sol.clone()), ctx);
         pop.push((obj, sol));
     }
-    if pop.is_empty() {
-        return Err("Failed to build population".into());
-    }
+    if pop.is_empty() { return Err("Failed to build population".into()); }
 
     let mut cur_mut_rate = ctx.config.mutation_rate;
     let cur_mut_strength = ctx.config.mutation_strength;
@@ -2115,7 +1502,7 @@ fn run_single_island(
     let mut gens_without_archive_improvement = 0usize;
 
     for gen in 0..ctx.config.generation_count {
-        let objs: Vec<Objectives> = pop.iter().map(|(o, _)| *o).collect();
+        let objs: Vec<Objectives> = pop.iter().map(|(o,_)| *o).collect();
         let norm = normalize_objectives(&objs);
         let fronts = fast_non_dominated_sort(&norm);
         let mut ranks = vec![0; pop.len()];
@@ -2133,16 +1520,8 @@ fn run_single_island(
         // Kick при долгой стагнации архива: временно увеличиваем силу мутации
         let kick_active = ctx.config.stagnation_kick_patience > 0
             && gens_without_archive_improvement >= ctx.config.stagnation_kick_patience;
-        let effective_strength = if kick_active {
-            cur_mut_strength.saturating_mul(3).max(2)
-        } else {
-            cur_mut_strength
-        };
-        let effective_rate = if kick_active {
-            cur_mut_rate.max(0.8)
-        } else {
-            cur_mut_rate
-        };
+        let effective_strength = if kick_active { cur_mut_strength.saturating_mul(3).max(2) } else { cur_mut_strength };
+        let effective_rate = if kick_active { cur_mut_rate.max(0.8) } else { cur_mut_rate };
         let mut archive_improved = false;
         let effective_crossover_rate = if kick_active {
             ctx.config.crossover_rate.max(0.9)
@@ -2179,21 +1558,13 @@ fn run_single_island(
 
             ensure_feasibility(&mut child_sol, ctx, &mut rng);
             let child_obj = calculate_objectives(&child_sol, ctx);
-            if archive_update(
-                &mut archive,
-                &mut archive_sigs,
-                (child_obj, child_sol.clone()),
-                ctx,
-            ) {
+            if archive_update(&mut archive, &mut archive_sigs, (child_obj, child_sol.clone()), ctx) {
                 archive_improved = true;
             }
             off.push((child_obj, child_sol));
         }
-        if archive_improved {
-            gens_without_archive_improvement = 0;
-        } else {
-            gens_without_archive_improvement += 1;
-        }
+        if archive_improved { gens_without_archive_improvement = 0; }
+        else { gens_without_archive_improvement += 1; }
 
         // Elitism: инжектим топ-K из архива в пул отбора, чтобы лучшие исторические
         // решения гарантированно участвовали в next-gen и не терялись из-за неудачных мутаций.
@@ -2218,10 +1589,9 @@ fn run_single_island(
         };
 
         let parent_count = pop.len();
-        let mut comb = pop;
-        comb.extend(off);
+        let mut comb = pop; comb.extend(off);
         comb.extend(elite_items);
-        let c_objs: Vec<Objectives> = comb.iter().map(|(o, _)| *o).collect();
+        let c_objs: Vec<Objectives> = comb.iter().map(|(o,_)| *o).collect();
         let c_norm = normalize_objectives(&c_objs);
         let c_fronts = fast_non_dominated_sort(&c_norm);
         let mut nxt = Vec::with_capacity(ctx.config.population_size);
@@ -2229,9 +1599,7 @@ fn run_single_island(
         for f in c_fronts {
             if nxt.len() + f.len() <= ctx.config.population_size {
                 for &i in &f {
-                    if i >= parent_count {
-                        offspring_survived += 1;
-                    }
+                    if i >= parent_count { offspring_survived += 1; }
                     nxt.push(comb[i].clone());
                 }
             } else {
@@ -2241,9 +1609,7 @@ fn run_single_island(
                 pairs.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
                 let rem = ctx.config.population_size - nxt.len();
                 for (i, _) in pairs.into_iter().take(rem) {
-                    if i >= parent_count {
-                        offspring_survived += 1;
-                    }
+                    if i >= parent_count { offspring_survived += 1; }
                     nxt.push(comb[i].clone());
                 }
                 break;
@@ -2260,77 +1626,25 @@ fn run_single_island(
         }
 
         if ctx.config.convergence_patience > 0 && gen >= ctx.config.convergence_patience {
-            let pop_objs: Vec<Objectives> = pop.iter().map(|(o, _)| *o).collect();
-            let pop_norm = normalize_objectives(&pop_objs);
-            let pop_fronts = fast_non_dominated_sort(&pop_norm);
-            let f0_objs: Vec<Objectives> = pop_fronts[0].iter().map(|&i| pop_objs[i]).collect();
-            let cur_b = f0_objs
-                .iter()
-                .map(|o| o.balance)
-                .fold(f64::INFINITY, f64::min);
-            let cur_c = f0_objs
-                .iter()
-                .map(|o| o.comfort)
-                .fold(f64::INFINITY, f64::min);
-            hist_bal.push(cur_b);
-            hist_com.push(cur_c);
+            let f0_objs: Vec<Objectives> = fronts[0].iter().map(|&i| pop[i].0).collect();
+            let cur_b = f0_objs.iter().map(|o| o.balance).fold(f64::INFINITY, f64::min);
+            let cur_c = f0_objs.iter().map(|o| o.comfort).fold(f64::INFINITY, f64::min);
+            hist_bal.push(cur_b); hist_com.push(cur_c);
 
             if hist_bal.len() > ctx.config.convergence_patience {
                 let idx = hist_bal.len() - ctx.config.convergence_patience - 1;
-                let imp_b = if hist_bal[idx] > 0.0 {
-                    (hist_bal[idx] - cur_b) / hist_bal[idx]
-                } else {
-                    0.0
-                };
-                let imp_c = if hist_com[idx] > 0.0 {
-                    (hist_com[idx] - cur_c) / hist_com[idx]
-                } else {
-                    0.0
-                };
-                if imp_b < ctx.config.convergence_epsilon && imp_c < ctx.config.convergence_epsilon
-                {
+                let imp_b = if hist_bal[idx] > 0.0 { (hist_bal[idx] - cur_b) / hist_bal[idx] } else { 0.0 };
+                let imp_c = if hist_com[idx] > 0.0 { (hist_com[idx] - cur_c) / hist_com[idx] } else { 0.0 };
+                if imp_b < ctx.config.convergence_epsilon && imp_c < ctx.config.convergence_epsilon {
                     break;
                 }
             }
-        }
-
-        // #1: миграция между островами. Публикуем топ-K по нормированному скору
-        // и забираем K случайных mutually non-dominated immigrants из общего пула.
-        // Immigrants попадают и в архив острова (могут стать новыми Парето-точками,
-        // что сбросит stagnation-счётчик), и в популяцию — на следующую итерацию
-        // они участвуют в ranking/turnament как дополнительные родители. Селекция
-        // сузит pop обратно до population_size.
-        if let Some(pool) = migration {
-            if gen > 0 && gen % MIGRATION_INTERVAL == 0 {
-                let outgoing = top_k_by_composite(&archive, MIGRATION_SIZE);
-                if !outgoing.is_empty() {
-                    pool.push_many(outgoing, ctx);
-                }
-                let incoming = pool.sample_excluding(MIGRATION_SIZE, &archive_sigs, &mut rng);
-                for sol in incoming {
-                    let obj = calculate_objectives(&sol, ctx);
-                    if archive_update(&mut archive, &mut archive_sigs, (obj, sol.clone()), ctx) {
-                        gens_without_archive_improvement = 0;
-                    }
-                    pop.push((obj, sol));
-                }
-            }
-        }
-
-        // #2: держим архив острова в пределах cap — при превышении
-        // вытесняем по crowding distance (скученные уходят).
-        if archive.len() > ARCHIVE_CAP_ISLAND {
-            archive_prune(&mut archive, &mut archive_sigs, ARCHIVE_CAP_ISLAND, ctx);
         }
     }
 
     // Финально: добавляем всю текущую популяцию в архив
     for item in &pop {
         archive_update(&mut archive, &mut archive_sigs, item.clone(), ctx);
-    }
-    // #2: финальный prune архива острова перед возвратом.
-    if archive.len() > ARCHIVE_CAP_ISLAND {
-        archive_prune(&mut archive, &mut archive_sigs, ARCHIVE_CAP_ISLAND, ctx);
     }
     Ok(archive)
 }
@@ -2352,29 +1666,13 @@ struct IslandProfile {
 fn default_island_profiles() -> [IslandProfile; 4] {
     [
         // 0: нейтральный — базовые веса
-        IslandProfile {
-            balance_scale: 1.0,
-            comfort_scale: 1.0,
-            extreme_scale: 1.0,
-        },
+        IslandProfile { balance_scale: 1.0, comfort_scale: 1.0, extreme_scale: 1.0 },
         // 1: balance-heavy — жёсткая балансировка по MMR/gap, comfort полуоблегчён
-        IslandProfile {
-            balance_scale: 2.0,
-            comfort_scale: 0.5,
-            extreme_scale: 1.0,
-        },
+        IslandProfile { balance_scale: 2.0, comfort_scale: 0.5, extreme_scale: 1.0 },
         // 2: comfort-heavy — максимум комфорта ролей
-        IslandProfile {
-            balance_scale: 0.5,
-            comfort_scale: 2.0,
-            extreme_scale: 1.0,
-        },
+        IslandProfile { balance_scale: 0.5, comfort_scale: 2.0, extreme_scale: 1.0 },
         // 3: extreme tails — штраф за выбросы усилен
-        IslandProfile {
-            balance_scale: 1.0,
-            comfort_scale: 1.0,
-            extreme_scale: 2.5,
-        },
+        IslandProfile { balance_scale: 1.0, comfort_scale: 1.0, extreme_scale: 2.5 },
     ]
 }
 
@@ -2414,24 +1712,15 @@ fn run_optimizer(ctx: &Context) -> Result<NativeResponse, String> {
         .map(|i| ctx_with_profile(ctx, profiles[i % profiles.len()]))
         .collect();
 
-    // #1: общий пул миграции. Передаётся во все острова; делится через Mutex.
-    // Включается только если островов > 1 — иначе миграция бессмысленна.
-    let migration_pool = if islands > 1 {
-        Some(MigrationPool::new())
-    } else {
-        None
-    };
-
     // Параллельно запускаем все острова. Каждый оптимизируется по своим весам,
     // но после завершения мы пересчитываем objectives по каноническим весам,
     // чтобы глобальный архив сравнивал решения в одной системе координат.
-    let pool_ref = migration_pool.as_ref();
     let island_results: Vec<Result<Vec<(Objectives, Solution)>, String>> = island_seeds
         .par_iter()
         .enumerate()
         .map(|(i, &s)| {
             let local_ctx = &per_island_ctx[i];
-            run_single_island(local_ctx, s, pool_ref).map(|arch| {
+            run_single_island(local_ctx, s).map(|arch| {
                 arch.into_iter()
                     .map(|(_, sol)| {
                         let obj = calculate_objectives(&sol, ctx);
@@ -2454,16 +1743,6 @@ fn run_optimizer(ctx: &Context) -> Result<NativeResponse, String> {
     if global_archive.is_empty() {
         return Err("empty global archive".into());
     }
-    // #2: ограничиваем глобальный архив перед дорогим polish-этапом —
-    // polish'ить 200 решений вместо 50 нет смысла, они избыточны по фронту.
-    if global_archive.len() > ARCHIVE_CAP_GLOBAL {
-        archive_prune(
-            &mut global_archive,
-            &mut global_sigs,
-            ARCHIVE_CAP_GLOBAL,
-            ctx,
-        );
-    }
 
     // Полируем ВЕСЬ глобальный архив — каждое решение до фиксированной точки.
     // Полированные варианты обновляют архив, если оказываются недоминируемыми.
@@ -2484,12 +1763,6 @@ fn run_optimizer(ctx: &Context) -> Result<NativeResponse, String> {
     for item in polished {
         archive_update(&mut final_archive, &mut final_sigs, item, ctx);
     }
-    // #2: финальный prune — гарантирует, что в UI покажется max_result_variants
-    // реально разных точек Парето-фронта, а не 10 почти одинаковых дубликатов.
-    let final_cap = ARCHIVE_CAP_GLOBAL.max(ctx.config.max_result_variants * 2);
-    if final_archive.len() > final_cap {
-        archive_prune(&mut final_archive, &mut final_sigs, final_cap, ctx);
-    }
 
     // Ранжирование по композитному качеству: нормируем balance и comfort по min-max
     // в пределах финального архива и складываем — чем меньше, тем лучше.
@@ -2504,20 +1777,8 @@ fn run_optimizer(ctx: &Context) -> Result<NativeResponse, String> {
         a.1.partial_cmp(&b.1)
             .unwrap_or(Ordering::Equal)
             // Тай-брейки: сырой balance, затем сырой comfort, затем сигнатура
-            .then_with(|| {
-                res[a.0]
-                    .0
-                    .balance
-                    .partial_cmp(&res[b.0].0.balance)
-                    .unwrap_or(Ordering::Equal)
-            })
-            .then_with(|| {
-                res[a.0]
-                    .0
-                    .comfort
-                    .partial_cmp(&res[b.0].0.comfort)
-                    .unwrap_or(Ordering::Equal)
-            })
+            .then_with(|| res[a.0].0.balance.partial_cmp(&res[b.0].0.balance).unwrap_or(Ordering::Equal))
+            .then_with(|| res[a.0].0.comfort.partial_cmp(&res[b.0].0.comfort).unwrap_or(Ordering::Equal))
             .then_with(|| signature(&res[a.0].1, ctx).cmp(&signature(&res[b.0].1, ctx)))
     });
     let order: Vec<usize> = indexed.iter().map(|(i, _)| *i).collect();
@@ -2534,243 +1795,55 @@ fn run_optimizer(ctx: &Context) -> Result<NativeResponse, String> {
     let res = sorted;
 
     let cnt = res.len().min(ctx.config.max_result_variants.max(1));
-    let variants = res
-        .into_iter()
-        .take(cnt)
-        .map(|(obj, sol, score, norm)| {
-            // #6: канонический порядок отображения — team_1 = самая сильная по total_rating,
-            // team_N = самая слабая. Устраняет "прыжки" команд между вариантами в UI,
-            // даёт side-by-side сравнимость. На фитнес не влияет (симметрия уже сколлапсирована
-            // в signature для дедупа архива).
-            let mut indexed_teams: Vec<(TeamState, f64)> = sol
-                .into_iter()
-                .map(|t| {
-                    let stats = calculate_team_stats(ctx, &t);
-                    (t, stats.total_rating)
-                })
-                .collect();
-            indexed_teams.sort_by(|a, b| {
-                b.1.partial_cmp(&a.1)
-                    .unwrap_or(Ordering::Equal)
-                    .then_with(|| a.0.id.cmp(&b.0.id))
-            });
-            let teams = indexed_teams
-                .into_iter()
-                .enumerate()
-                .map(|(idx, (t, _))| TeamResponse {
-                    id: idx + 1,
-                    roster: t
-                        .roster
-                        .into_iter()
-                        .enumerate()
-                        .map(|(r, ps)| {
-                            (
-                                ctx.roles[r].clone(),
-                                ps.into_iter()
-                                    .map(|p| ctx.players[p].uuid.clone())
-                                    .collect(),
-                            )
-                        })
-                        .collect(),
-                })
-                .collect();
-            VariantResponse {
-                teams,
-                balance: obj.balance,
-                comfort: obj.comfort,
-                balance_norm: norm.balance,
-                comfort_norm: norm.comfort,
-                score,
-            }
-        })
-        .collect();
+    let variants = res.into_iter().take(cnt).map(|(obj, sol, score, norm)| {
+        // #6: канонический порядок отображения — team_1 = самая сильная по total_rating,
+        // team_N = самая слабая. Устраняет "прыжки" команд между вариантами в UI,
+        // даёт side-by-side сравнимость. На фитнес не влияет (симметрия уже сколлапсирована
+        // в signature для дедупа архива).
+        let mut indexed_teams: Vec<(TeamState, f64)> = sol
+            .into_iter()
+            .map(|t| {
+                let stats = calculate_team_stats(ctx, &t);
+                (t, stats.total_rating)
+            })
+            .collect();
+        indexed_teams.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1)
+                .unwrap_or(Ordering::Equal)
+                .then_with(|| a.0.id.cmp(&b.0.id))
+        });
+        let teams = indexed_teams
+            .into_iter()
+            .enumerate()
+            .map(|(idx, (t, _))| TeamResponse {
+                id: idx + 1,
+                roster: t.roster.into_iter().enumerate().map(|(r, ps)| {
+                    (ctx.roles[r].clone(), ps.into_iter().map(|p| ctx.players[p].uuid.clone()).collect())
+                }).collect(),
+            })
+            .collect();
+        VariantResponse {
+            teams,
+            balance: obj.balance,
+            comfort: obj.comfort,
+            balance_norm: norm.balance,
+            comfort_norm: norm.comfort,
+            score,
+        }
+    }).collect();
     Ok(NativeResponse { variants })
 }
 
 #[pyfunction]
 fn run_moo_optimizer(request_json: &str) -> PyResult<String> {
-    let req = serde_json::from_str::<NativeRequest>(request_json)
-        .map_err(|e| PyValueError::new_err(format!("invalid payload: {e}")))?;
-    let ctx = Context::from_request(req)
-        .map_err(|e| PyValueError::new_err(format!("invalid data: {e}")))?;
-    let resp =
-        run_optimizer(&ctx).map_err(|e| PyValueError::new_err(format!("optimizer failed: {e}")))?;
-    serde_json::to_string(&resp)
-        .map_err(|e| PyValueError::new_err(format!("serialize failed: {e}")))
+    let req = serde_json::from_str::<NativeRequest>(request_json).map_err(|e| PyValueError::new_err(format!("invalid payload: {e}")))?;
+    let ctx = Context::from_request(req).map_err(|e| PyValueError::new_err(format!("invalid data: {e}")))?;
+    let resp = run_optimizer(&ctx).map_err(|e| PyValueError::new_err(format!("optimizer failed: {e}")))?;
+    serde_json::to_string(&resp).map_err(|e| PyValueError::new_err(format!("serialize failed: {e}")))
 }
 
 #[pymodule]
 fn moo_core(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(run_moo_optimizer, m)?)?;
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn test_config() -> ConfigSpec {
-        ConfigSpec {
-            population_size: 8,
-            generation_count: 8,
-            mutation_rate: 0.25,
-            mutation_strength: 1,
-            max_result_variants: 4,
-            average_mmr_balance_weight: 1.0,
-            team_total_balance_weight: 1.0,
-            max_team_gap_weight: 1.0,
-            role_discomfort_weight: 1.0,
-            intra_team_variance_weight: 1.0,
-            max_role_discomfort_weight: 1.0,
-            role_line_balance_weight: 1.0,
-            role_spread_weight: 1.0,
-            sub_role_collision_weight: 1.0,
-            use_captains: false,
-            tank_impact_weight: 1.0,
-            dps_impact_weight: 1.0,
-            support_impact_weight: 1.0,
-            tank_gap_weight: 1.0,
-            tank_std_weight: 1.0,
-            effective_total_std_weight: 1.0,
-            intra_team_std_weight: 1.0,
-            internal_role_spread_weight: 1.0,
-            convergence_patience: 0,
-            convergence_epsilon: 0.0,
-            mutation_rate_min: 0.1,
-            mutation_rate_max: 0.9,
-            island_count: 1,
-            polish_max_passes: 0,
-            greedy_seed_count: 0,
-            stagnation_kick_patience: 0,
-            crossover_rate: 0.5,
-        }
-    }
-
-    fn test_context() -> Context {
-        Context {
-            roles: vec!["Damage".to_string()],
-            capacities: vec![1],
-            num_teams: 1,
-            seed: 1,
-            players: Vec::new(),
-            config: test_config(),
-            tank_role_idx: None,
-            dps_role_idx: Some(0),
-            support_role_idx: None,
-        }
-    }
-
-    fn test_solution(player_idx: usize) -> Solution {
-        vec![TeamState {
-            id: 1,
-            roster: vec![vec![player_idx]],
-        }]
-    }
-
-    #[test]
-    fn archive_update_rejects_equal_objectives() {
-        let ctx = test_context();
-        let mut archive = Vec::new();
-        let mut sigs = HashSet::new();
-
-        assert!(archive_update(
-            &mut archive,
-            &mut sigs,
-            (
-                Objectives {
-                    balance: 1.0,
-                    comfort: 2.0,
-                },
-                test_solution(0),
-            ),
-            &ctx,
-        ));
-        assert!(!archive_update(
-            &mut archive,
-            &mut sigs,
-            (
-                Objectives {
-                    balance: 1.0,
-                    comfort: 2.0,
-                },
-                test_solution(1),
-            ),
-            &ctx,
-        ));
-        assert_eq!(archive.len(), 1);
-    }
-
-    #[test]
-    fn archive_prune_preserves_extreme_points() {
-        let ctx = test_context();
-        let mut archive = vec![
-            (
-                Objectives {
-                    balance: 0.0,
-                    comfort: 1.0,
-                },
-                test_solution(0),
-            ),
-            (
-                Objectives {
-                    balance: 0.25,
-                    comfort: 0.75,
-                },
-                test_solution(1),
-            ),
-            (
-                Objectives {
-                    balance: 0.75,
-                    comfort: 0.25,
-                },
-                test_solution(2),
-            ),
-            (
-                Objectives {
-                    balance: 1.0,
-                    comfort: 0.0,
-                },
-                test_solution(3),
-            ),
-        ];
-        let mut sigs: HashSet<u64> = archive
-            .iter()
-            .map(|(_, sol)| signature(sol, &ctx))
-            .collect();
-
-        archive_prune(&mut archive, &mut sigs, 3, &ctx);
-
-        assert_eq!(archive.len(), 3);
-        let remaining: HashSet<u64> = archive
-            .iter()
-            .map(|(_, sol)| signature(sol, &ctx))
-            .collect();
-        assert!(remaining.contains(&signature(&test_solution(0), &ctx)));
-        assert!(remaining.contains(&signature(&test_solution(3), &ctx)));
-    }
-
-    #[test]
-    fn migration_pool_returns_only_novel_solutions() {
-        let ctx = test_context();
-        let pool = MigrationPool::new();
-        let first = test_solution(0);
-        let second = test_solution(1);
-        let third = test_solution(2);
-
-        pool.push_many(
-            vec![first.clone(), second.clone(), third.clone(), third.clone()],
-            &ctx,
-        );
-
-        let exclude = HashSet::from([signature(&first, &ctx)]);
-        let mut rng = StdRng::seed_from_u64(7);
-        let incoming = pool.sample_excluding(10, &exclude, &mut rng);
-
-        let incoming_sigs: HashSet<u64> = incoming.iter().map(|sol| signature(sol, &ctx)).collect();
-        assert_eq!(incoming.len(), 2);
-        assert_eq!(incoming_sigs.len(), 2);
-        assert!(!incoming_sigs.contains(&signature(&first, &ctx)));
-        assert!(incoming_sigs.contains(&signature(&second, &ctx)));
-        assert!(incoming_sigs.contains(&signature(&third, &ctx)));
-    }
 }
