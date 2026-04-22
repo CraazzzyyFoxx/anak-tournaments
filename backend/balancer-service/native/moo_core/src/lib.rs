@@ -216,6 +216,97 @@ struct VariantResponse {
 #[derive(Debug, Serialize)]
 struct NativeResponse {
     variants: Vec<VariantResponse>,
+    repair_diagnostics: RepairDiagnostics,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize)]
+struct RepairDiagnostics {
+    offspring_total: usize,
+    crossover_children: usize,
+    crossover_children_requiring_repair: usize,
+    crossover_children_changed_by_repair: usize,
+    crossover_duplicate_assignments_total: usize,
+    crossover_missing_players_total: usize,
+    crossover_over_capacity_total: usize,
+    crossover_invalid_player_refs_total: usize,
+    crossover_captain_lock_conflicts_total: usize,
+    mutation_only_children: usize,
+    mutation_only_children_requiring_repair: usize,
+    mutation_only_children_changed_by_repair: usize,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct RepairNeed {
+    duplicate_assignments: usize,
+    missing_players: usize,
+    over_capacity_assignments: usize,
+    invalid_player_refs: usize,
+    captain_lock_conflicts: usize,
+}
+
+impl RepairNeed {
+    fn needs_repair(&self) -> bool {
+        self.duplicate_assignments > 0
+            || self.missing_players > 0
+            || self.over_capacity_assignments > 0
+            || self.invalid_player_refs > 0
+            || self.captain_lock_conflicts > 0
+    }
+}
+
+impl RepairDiagnostics {
+    fn record_child(
+        &mut self,
+        crossed: bool,
+        mutated: bool,
+        repair_need: RepairNeed,
+        changed_by_repair: bool,
+    ) {
+        if !crossed && !mutated {
+            return;
+        }
+
+        self.offspring_total += 1;
+        if crossed {
+            self.crossover_children += 1;
+            if repair_need.needs_repair() {
+                self.crossover_children_requiring_repair += 1;
+            }
+            if changed_by_repair {
+                self.crossover_children_changed_by_repair += 1;
+            }
+            self.crossover_duplicate_assignments_total += repair_need.duplicate_assignments;
+            self.crossover_missing_players_total += repair_need.missing_players;
+            self.crossover_over_capacity_total += repair_need.over_capacity_assignments;
+            self.crossover_invalid_player_refs_total += repair_need.invalid_player_refs;
+            self.crossover_captain_lock_conflicts_total += repair_need.captain_lock_conflicts;
+        } else if mutated {
+            self.mutation_only_children += 1;
+            if repair_need.needs_repair() {
+                self.mutation_only_children_requiring_repair += 1;
+            }
+            if changed_by_repair {
+                self.mutation_only_children_changed_by_repair += 1;
+            }
+        }
+    }
+
+    fn merge(&mut self, other: &Self) {
+        self.offspring_total += other.offspring_total;
+        self.crossover_children += other.crossover_children;
+        self.crossover_children_requiring_repair += other.crossover_children_requiring_repair;
+        self.crossover_children_changed_by_repair += other.crossover_children_changed_by_repair;
+        self.crossover_duplicate_assignments_total += other.crossover_duplicate_assignments_total;
+        self.crossover_missing_players_total += other.crossover_missing_players_total;
+        self.crossover_over_capacity_total += other.crossover_over_capacity_total;
+        self.crossover_invalid_player_refs_total += other.crossover_invalid_player_refs_total;
+        self.crossover_captain_lock_conflicts_total += other.crossover_captain_lock_conflicts_total;
+        self.mutation_only_children += other.mutation_only_children;
+        self.mutation_only_children_requiring_repair +=
+            other.mutation_only_children_requiring_repair;
+        self.mutation_only_children_changed_by_repair +=
+            other.mutation_only_children_changed_by_repair;
+    }
 }
 
 impl Context {
@@ -1173,6 +1264,54 @@ fn placement_score(ctx: &Context, p: usize, r: usize) -> i32 {
         s -= 50;
     }
     s
+}
+
+fn analyze_repair_need(sol: &Solution, ctx: &Context) -> RepairNeed {
+    let p_count = ctx.players.len();
+    let num_roles = ctx.roles.len();
+    if p_count == 0 || num_roles == 0 || ctx.num_teams == 0 {
+        return RepairNeed::default();
+    }
+
+    let mut need = RepairNeed::default();
+    let mut seen = vec![0usize; p_count];
+
+    for team in sol {
+        for (r, roster) in team.roster.iter().enumerate() {
+            let cap = ctx.capacities.get(r).copied().unwrap_or(0);
+            if roster.len() > cap {
+                need.over_capacity_assignments += roster.len() - cap;
+            }
+            for &p in roster {
+                if p < p_count {
+                    seen[p] += 1;
+                } else {
+                    need.invalid_player_refs += 1;
+                }
+            }
+        }
+    }
+
+    need.duplicate_assignments = seen.iter().map(|&count| count.saturating_sub(1)).sum();
+    need.missing_players = seen.iter().filter(|&&count| count == 0).count();
+
+    if ctx.config.use_captains {
+        for (p, player) in ctx.players.iter().enumerate() {
+            let Some(team_idx) = player.captain_team else {
+                continue;
+            };
+            let role_idx = player.seed_role;
+            let locked_present = sol
+                .get(team_idx)
+                .and_then(|team| team.roster.get(role_idx))
+                .is_some_and(|roster| roster.iter().any(|&assigned| assigned == p));
+            if !locked_present {
+                need.captain_lock_conflicts += 1;
+            }
+        }
+    }
+
+    need
 }
 
 /// Гарантирует инвариант "один капитан на команду, зафиксированная роль":
@@ -2339,6 +2478,7 @@ struct IslandState {
     hist_com: Vec<f64>,
     gens_without_archive_improvement: usize,
     completed_generations: usize,
+    repair_diagnostics: RepairDiagnostics,
     stopped: bool,
 }
 
@@ -2460,6 +2600,7 @@ fn init_island_state(ctx: Context, island_seed: u64) -> Result<IslandState, Stri
         hist_com: Vec::new(),
         gens_without_archive_improvement: 0,
         completed_generations: 0,
+        repair_diagnostics: RepairDiagnostics::default(),
         stopped: start_stopped,
     })
 }
@@ -2542,7 +2683,13 @@ fn run_island_epoch(state: &mut IslandState, epoch_generations: usize) -> Result
                     mutate_targeted(&child_sol, &state.ctx, &mut state.rng, effective_strength);
             }
 
+            let repair_need = analyze_repair_need(&child_sol, &state.ctx);
+            let pre_repair_sig = signature(&child_sol, &state.ctx);
             ensure_feasibility(&mut child_sol, &state.ctx, &mut state.rng);
+            let changed_by_repair = pre_repair_sig != signature(&child_sol, &state.ctx);
+            state
+                .repair_diagnostics
+                .record_child(crossed, mutated, repair_need, changed_by_repair);
             let child_obj = calculate_objectives(&child_sol, &state.ctx);
             if archive_update(
                 &mut state.archive,
@@ -2790,6 +2937,10 @@ fn run_optimizer(ctx: &Context) -> Result<NativeResponse, String> {
                 .collect()
         })
         .collect();
+    let mut repair_diagnostics = RepairDiagnostics::default();
+    for state in &island_states {
+        repair_diagnostics.merge(&state.repair_diagnostics);
+    }
 
     // Сливаем архивы в один глобальный
     let mut global_archive: Vec<(Objectives, Solution)> = Vec::new();
@@ -2960,7 +3111,10 @@ fn run_optimizer(ctx: &Context) -> Result<NativeResponse, String> {
             }
         })
         .collect();
-    Ok(NativeResponse { variants })
+    Ok(NativeResponse {
+        variants,
+        repair_diagnostics,
+    })
 }
 
 #[pyfunction]
@@ -3257,6 +3411,10 @@ mod tests {
         assert!(
             !response.variants.is_empty(),
             "expected at least one variant"
+        );
+        assert!(
+            response.repair_diagnostics.crossover_children > 0,
+            "expected crossover diagnostics to capture generated children"
         );
         let best = variant_metrics(&response.variants[0], &ctx, &original_players);
         assert_eq!(

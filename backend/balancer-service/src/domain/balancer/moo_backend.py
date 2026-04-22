@@ -133,6 +133,44 @@ def _deserialize_native_variants(
     return variants
 
 
+def _log_native_repair_diagnostics(payload: dict[str, Any]) -> None:
+    diagnostics = payload.get("repair_diagnostics")
+    if not isinstance(diagnostics, dict):
+        return
+
+    crossover_children = int(diagnostics.get("crossover_children", 0) or 0)
+    crossover_repaired = int(diagnostics.get("crossover_children_requiring_repair", 0) or 0)
+    crossover_changed = int(diagnostics.get("crossover_children_changed_by_repair", 0) or 0)
+    mutation_only_children = int(diagnostics.get("mutation_only_children", 0) or 0)
+    mutation_only_repaired = int(
+        diagnostics.get("mutation_only_children_requiring_repair", 0) or 0
+    )
+
+    crossover_repair_rate = (
+        crossover_repaired / crossover_children if crossover_children > 0 else 0.0
+    )
+    mutation_repair_rate = (
+        mutation_only_repaired / mutation_only_children if mutation_only_children > 0 else 0.0
+    )
+
+    logger.info(
+        "Rust MOO repair diagnostics: crossover repaired {}/{} ({:.1%}), "
+        "crossover changed by repair {}, duplicates {}, missing {}, over-capacity {}, "
+        "captain-lock conflicts {}, mutation-only repaired {}/{} ({:.1%})",
+        crossover_repaired,
+        crossover_children,
+        crossover_repair_rate,
+        crossover_changed,
+        int(diagnostics.get("crossover_duplicate_assignments_total", 0) or 0),
+        int(diagnostics.get("crossover_missing_players_total", 0) or 0),
+        int(diagnostics.get("crossover_over_capacity_total", 0) or 0),
+        int(diagnostics.get("crossover_captain_lock_conflicts_total", 0) or 0),
+        mutation_only_repaired,
+        mutation_only_children,
+        mutation_repair_rate,
+    )
+
+
 def _run_native_backend(
     native_module,
     players: list[Player],
@@ -151,6 +189,8 @@ def _run_native_backend(
         raise ValueError("Rust MOO backend returned unsupported response type")
 
     payload = json.loads(raw_response)
+    if isinstance(payload, dict):
+        _log_native_repair_diagnostics(payload)
     return _deserialize_native_variants(payload, players_by_uuid, config.role_mask)
 
 
