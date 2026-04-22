@@ -1,6 +1,12 @@
-from shared.core.db import create_database
+from shared.core.db import Base, create_database
 
 from src.core.config import settings
+
+__all__ = (
+    "Base",
+    "async_engine",
+    "async_session_maker",
+)
 
 _db = create_database(
     async_url=settings.db_url_asyncpg,

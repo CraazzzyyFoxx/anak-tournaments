@@ -1,6 +1,17 @@
-from shared.core.db import create_database
+from shared.core.db import Base, TimeStampIntegerMixin, TimeStampUUIDMixin, create_database
 
 from src.core import config
+
+__all__ = (
+    "Base",
+    "TimeStampIntegerMixin",
+    "TimeStampUUIDMixin",
+    "async_engine",
+    "engine",
+    "async_session_maker",
+    "session_maker",
+    "get_async_session",
+)
 
 _db = create_database(
     async_url=config.settings.db_url_asyncpg,
