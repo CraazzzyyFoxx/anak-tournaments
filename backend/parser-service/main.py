@@ -75,7 +75,7 @@ async def lifespan(_: FastAPI):
         sampler_name=config.settings.otel_traces_sampler,
         sampler_arg=config.settings.otel_traces_sampler_arg,
     )
-    instrument_sqlalchemy(db.engine)
+    instrument_sqlalchemy(db.async_engine.sync_engine)
 
     await auth_client.start()
     await s3_client.start()

@@ -8,15 +8,12 @@ __all__ = (
     "TimeStampIntegerMixin",
     "TimeStampUUIDMixin",
     "async_engine",
-    "engine",
     "async_session_maker",
-    "session_maker",
     "get_async_session",
 )
 
 _db = create_database(
     async_url=config.settings.db_url_asyncpg,
-    sync_url=config.settings.db_url,
     pool_size=config.settings.db_pool_size,
     max_overflow=config.settings.db_max_overflow,
     pool_timeout=config.settings.db_pool_timeout,
@@ -27,7 +24,5 @@ _db = create_database(
 )
 
 async_engine = _db.async_engine
-engine = _db.sync_engine
 async_session_maker = _db.async_session_maker
-session_maker = _db.sync_session_maker
 get_async_session = _db.get_async_session

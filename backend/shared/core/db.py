@@ -3,9 +3,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import BigInteger, ColumnCollection, DateTime, Engine, Uuid, create_engine, func
+from sqlalchemy import BigInteger, ColumnCollection, DateTime, Uuid, func
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from shared.core import errors
 
@@ -83,9 +83,7 @@ class DatabaseEngines:
     """Container for database engine and session factory instances."""
 
     async_engine: AsyncEngine
-    sync_engine: Engine | None
     async_session_maker: async_sessionmaker[AsyncSession]
-    sync_session_maker: sessionmaker[Session] | None
 
     async def get_async_session(self) -> AsyncGenerator[AsyncSession, None]:
         async with self.async_session_maker() as session:
@@ -94,7 +92,6 @@ class DatabaseEngines:
 
 def create_database(
     async_url: str,
-    sync_url: str | None = None,
     *,
     pool_size: int = 10,
     max_overflow: int = 20,
@@ -108,7 +105,6 @@ def create_database(
 
     Args:
         async_url: Async database URL (e.g. postgresql+asyncpg://...).
-        sync_url: Optional sync database URL (e.g. postgresql+psycopg://...).
         pool_size: Connection pool size.
         max_overflow: Max overflow connections beyond pool_size.
         pool_timeout: Seconds to wait for a pooled connection before timing out.
@@ -138,27 +134,7 @@ def create_database(
         async_engine, class_=AsyncSession, expire_on_commit=False
     )
 
-    sync_engine: Engine | None = None
-    sync_session: sessionmaker[Session] | None = None
-    if sync_url:
-        sync_connect_args: dict[str, Any] = {}
-        if statement_timeout > 0:
-            sync_connect_args["options"] = f"-c statement_timeout={statement_timeout}"
-        sync_engine = create_engine(
-            url=sync_url,
-            pool_size=pool_size,
-            max_overflow=max_overflow,
-            pool_timeout=pool_timeout,
-            pool_recycle=pool_recycle,
-            pool_pre_ping=pool_pre_ping,
-            pool_use_lifo=pool_use_lifo,
-            connect_args=sync_connect_args,
-        )
-        sync_session = sessionmaker(sync_engine, class_=Session, expire_on_commit=False)
-
     return DatabaseEngines(
         async_engine=async_engine,
-        sync_engine=sync_engine,
         async_session_maker=async_session,
-        sync_session_maker=sync_session,
     )

@@ -13,8 +13,8 @@ from shared.observability import (
     TimeMiddleware,
     instrument_fastapi,
     instrument_sqlalchemy,
-    setup_sentry,
     setup_logging,
+    setup_sentry,
     setup_tracing,
 )
 from starlette.requests import Request
@@ -63,7 +63,7 @@ async def lifespan(app: FastAPI):
         sampler_name=settings.otel_traces_sampler,
         sampler_arg=settings.otel_traces_sampler_arg,
     )
-    instrument_sqlalchemy(db.engine)
+    instrument_sqlalchemy(db.async_engine.sync_engine)
 
     logger.info(f"Starting {settings.project_name} - Auth Service...")
     logger.info(f"Environment: {settings.environment}")
