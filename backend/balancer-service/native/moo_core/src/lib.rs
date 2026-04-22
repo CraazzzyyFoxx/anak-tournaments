@@ -64,9 +64,10 @@ fn default_crossover_rate() -> f64 {
     0.85
 }
 
-const DEFAULT_ARCHIVE_LIMIT: usize = 50;
+const DEFAULT_ARCHIVE_LIMIT: usize = 96;
 const MAX_ARCHIVE_LIMIT: usize = 200;
 const ARCHIVE_ELITE_COUNT: usize = 3;
+const ARCHIVE_SCORE_KEEP: usize = 5;
 const MIGRATION_INTERVAL_GENS: usize = 20;
 const MIGRATION_TOP_K: usize = 3;
 
@@ -772,19 +773,34 @@ fn archive_selection_order(archive: &[(Objectives, Solution)], ctx: &Context) ->
     let crowding = crowding_distance(&front, &objectives);
     let signatures: Vec<u64> = archive.iter().map(|(_, sol)| signature(sol, ctx)).collect();
 
-    let best_idx = (0..archive.len())
+    let mut score_ranked: Vec<usize> = (0..archive.len()).collect();
+    score_ranked.sort_by(|&left, &right| {
+        let left_score = normed[left].balance + normed[left].comfort;
+        let right_score = normed[right].balance + normed[right].comfort;
+        left_score
+            .partial_cmp(&right_score)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| {
+                objectives[left]
+                    .balance
+                    .partial_cmp(&objectives[right].balance)
+                    .unwrap_or(Ordering::Equal)
+            })
+            .then_with(|| {
+                objectives[left]
+                    .comfort
+                    .partial_cmp(&objectives[right].comfort)
+                    .unwrap_or(Ordering::Equal)
+            })
+            .then_with(|| signatures[left].cmp(&signatures[right]))
+    });
+
+    let best_balance_idx = (0..archive.len())
         .min_by(|&left, &right| {
-            let left_score = normed[left].balance + normed[left].comfort;
-            let right_score = normed[right].balance + normed[right].comfort;
-            left_score
-                .partial_cmp(&right_score)
+            objectives[left]
+                .balance
+                .partial_cmp(&objectives[right].balance)
                 .unwrap_or(Ordering::Equal)
-                .then_with(|| {
-                    objectives[left]
-                        .balance
-                        .partial_cmp(&objectives[right].balance)
-                        .unwrap_or(Ordering::Equal)
-                })
                 .then_with(|| {
                     objectives[left]
                         .comfort
@@ -794,9 +810,37 @@ fn archive_selection_order(archive: &[(Objectives, Solution)], ctx: &Context) ->
                 .then_with(|| signatures[left].cmp(&signatures[right]))
         })
         .unwrap_or(0);
+    let best_comfort_idx = (0..archive.len())
+        .min_by(|&left, &right| {
+            objectives[left]
+                .comfort
+                .partial_cmp(&objectives[right].comfort)
+                .unwrap_or(Ordering::Equal)
+                .then_with(|| {
+                    objectives[left]
+                        .balance
+                        .partial_cmp(&objectives[right].balance)
+                        .unwrap_or(Ordering::Equal)
+                })
+                .then_with(|| signatures[left].cmp(&signatures[right]))
+        })
+        .unwrap_or(0);
 
-    let mut ranked: Vec<usize> = (0..archive.len()).collect();
-    ranked.sort_by(|&left, &right| {
+    let mut anchor_seen = HashSet::new();
+    let mut order = Vec::with_capacity(archive.len());
+    for idx in score_ranked
+        .iter()
+        .copied()
+        .take(ARCHIVE_SCORE_KEEP.min(score_ranked.len()))
+        .chain([best_balance_idx, best_comfort_idx].into_iter())
+    {
+        if anchor_seen.insert(idx) {
+            order.push(idx);
+        }
+    }
+
+    let mut crowding_ranked: Vec<usize> = (0..archive.len()).collect();
+    crowding_ranked.sort_by(|&left, &right| {
         let left_score = normed[left].balance + normed[left].comfort;
         let right_score = normed[right].balance + normed[right].comfort;
         crowding[right]
@@ -822,10 +866,11 @@ fn archive_selection_order(archive: &[(Objectives, Solution)], ctx: &Context) ->
             .then_with(|| signatures[left].cmp(&signatures[right]))
     });
 
-    ranked.retain(|&idx| idx != best_idx);
-    let mut order = Vec::with_capacity(archive.len());
-    order.push(best_idx);
-    order.extend(ranked);
+    for idx in crowding_ranked {
+        if anchor_seen.insert(idx) {
+            order.push(idx);
+        }
+    }
     order
 }
 
