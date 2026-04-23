@@ -120,14 +120,22 @@ class ExecuteBalanceJobTests(IsolatedAsyncioTestCase):
         marked: dict[str, object] = {}
 
         class FakeJobRepository:
+            def __init__(self) -> None:
+                self.meta = {"status": "queued", "created_at": 0.0, "events_count": 0}
+
             async def get_job_payload(self, job_id: str) -> dict:
                 return {"player_data": {"players": {}}, "config_overrides": {"algorithm": "moo"}}
 
             async def get_job_meta(self, job_id: str) -> dict:
-                return {"status": "queued"}
+                return self.meta
 
-            async def mark_running(self, job_id: str) -> None:
+            async def mark_running(self, job_id: str, meta: dict | None = None) -> dict:
                 marked["running"] = job_id
+                self.meta = dict(meta or self.meta)
+                self.meta["status"] = "running"
+                self.meta["stage"] = "running"
+                self.meta["error"] = None
+                return self.meta
 
             async def append_event(
                 self,
@@ -139,14 +147,29 @@ class ExecuteBalanceJobTests(IsolatedAsyncioTestCase):
                 level: str = "info",
                 progress=None,
                 update_meta: bool = False,
+                meta: dict | None = None,
             ) -> None:
                 events.append((status, stage, message))
+                if meta is not None:
+                    meta["events_count"] = int(meta.get("events_count", 0)) + 1
+                    if update_meta:
+                        meta["status"] = status
+                        meta["stage"] = stage
+                        if progress is not None:
+                            meta["progress"] = progress
+                    self.meta = meta
 
-            async def mark_succeeded(self, job_id: str, result: dict) -> None:
+            async def mark_succeeded(self, job_id: str, result: dict, meta: dict | None = None) -> dict:
                 marked["succeeded"] = (job_id, result)
+                self.meta = dict(meta or self.meta)
+                self.meta["status"] = "succeeded"
+                return self.meta
 
-            async def mark_failed(self, job_id: str, error_message: str) -> None:
+            async def mark_failed(self, job_id: str, error_message: str, meta: dict | None = None) -> dict:
                 marked["failed"] = (job_id, error_message)
+                self.meta = dict(meta or self.meta)
+                self.meta["status"] = "failed"
+                return self.meta
 
         class FakeSolver:
             async def solve(self, input_data: dict, config_overrides: dict, progress_callback) -> dict:
@@ -185,16 +208,24 @@ class ExecuteBalanceJobTests(IsolatedAsyncioTestCase):
         self.assertIn(("running", "optimizing", "Working"), events)
         self.assertNotIn("failed", marked)
 
-    async def test_ignores_legacy_job_payload_config_key(self) -> None:
+    async def test_flushes_last_throttled_progress_update_before_completion(self) -> None:
+        messages: list[str] = []
+
         class FakeJobRepository:
+            def __init__(self) -> None:
+                self.meta = {"status": "queued", "created_at": 0.0, "events_count": 0}
+
             async def get_job_payload(self, job_id: str) -> dict:
-                return {"player_data": {"players": {}}, "config": {"algorithm": "cpsat"}}
+                return {"player_data": {"players": {}}, "config_overrides": {"algorithm": "moo"}}
 
             async def get_job_meta(self, job_id: str) -> dict:
-                return {"status": "queued"}
+                return self.meta
 
-            async def mark_running(self, job_id: str) -> None:
-                return None
+            async def mark_running(self, job_id: str, meta: dict | None = None) -> dict:
+                self.meta = dict(meta or self.meta)
+                self.meta["status"] = "running"
+                self.meta["stage"] = "running"
+                return self.meta
 
             async def append_event(
                 self,
@@ -206,13 +237,108 @@ class ExecuteBalanceJobTests(IsolatedAsyncioTestCase):
                 level: str = "info",
                 progress=None,
                 update_meta: bool = False,
+                meta: dict | None = None,
             ) -> None:
+                if stage == "optimizing":
+                    messages.append(message)
+                if meta is not None:
+                    meta["events_count"] = int(meta.get("events_count", 0)) + 1
+                    if update_meta:
+                        meta["status"] = status
+                        meta["stage"] = stage
+                        if progress is not None:
+                            meta["progress"] = progress
+                    self.meta = meta
+
+            async def mark_succeeded(self, job_id: str, result: dict, meta: dict | None = None) -> dict:
+                self.meta = dict(meta or self.meta)
+                self.meta["status"] = "succeeded"
+                return self.meta
+
+            async def mark_failed(self, job_id: str, error_message: str, meta: dict | None = None) -> dict:
+                raise AssertionError(error_message)
+
+        class FakeSolver:
+            async def solve(self, input_data: dict, config_overrides: dict, progress_callback) -> dict:
+                progress_callback(
+                    {
+                        "status": "running",
+                        "stage": "optimizing",
+                        "message": "Phase 1",
+                        "progress": {"percent": 0.0},
+                    }
+                )
+                progress_callback(
+                    {
+                        "status": "running",
+                        "stage": "optimizing",
+                        "message": "Phase 2",
+                        "progress": {"percent": 1.0},
+                    }
+                )
+                return {
+                    "variants": [
+                        {
+                            "teams": [],
+                            "statistics": {
+                                "average_mmr": 0,
+                                "mmr_std_dev": 0,
+                                "total_teams": 0,
+                                "players_per_team": 5,
+                            },
+                            "benched_players": [],
+                        }
+                    ]
+                }
+
+        clock_values = iter([1.0, 1.1, 1.2])
+        await ExecuteBalanceJob(
+            job_repository=FakeJobRepository(),
+            solver_factory=SimpleNamespace(get_solver=lambda algorithm: FakeSolver()),
+            progress_clock=lambda: next(clock_values),
+        ).execute("job-throttle")
+
+        self.assertEqual(messages, ["Phase 1", "Phase 2"])
+
+    async def test_ignores_legacy_job_payload_config_key(self) -> None:
+        class FakeJobRepository:
+            def __init__(self) -> None:
+                self.meta = {"status": "queued", "created_at": 0.0, "events_count": 0}
+
+            async def get_job_payload(self, job_id: str) -> dict:
+                return {"player_data": {"players": {}}, "config": {"algorithm": "cpsat"}}
+
+            async def get_job_meta(self, job_id: str) -> dict:
+                return self.meta
+
+            async def mark_running(self, job_id: str, meta: dict | None = None) -> dict:
+                self.meta = dict(meta or self.meta)
+                self.meta["status"] = "running"
+                return self.meta
+
+            async def append_event(
+                self,
+                job_id: str,
+                *,
+                status: str,
+                stage: str,
+                message: str,
+                level: str = "info",
+                progress=None,
+                update_meta: bool = False,
+                meta: dict | None = None,
+            ) -> None:
+                if meta is not None:
+                    meta["events_count"] = int(meta.get("events_count", 0)) + 1
+                    self.meta = meta
                 return None
 
-            async def mark_succeeded(self, job_id: str, result: dict) -> None:
-                return None
+            async def mark_succeeded(self, job_id: str, result: dict, meta: dict | None = None) -> dict:
+                self.meta = dict(meta or self.meta)
+                self.meta["status"] = "succeeded"
+                return self.meta
 
-            async def mark_failed(self, job_id: str, error_message: str) -> None:
+            async def mark_failed(self, job_id: str, error_message: str, meta: dict | None = None) -> dict:
                 raise AssertionError(error_message)
 
         class FakeSolver:
@@ -493,58 +619,74 @@ class PlayerLoaderTests(TestCase):
 
 
 class BalancerJobStoreTests(IsolatedAsyncioTestCase):
+    class FakePipeline:
+        def __init__(self, redis_client) -> None:
+            self._redis = redis_client
+            self._operations: list[tuple[str, tuple[object, ...]]] = []
+
+        def set(self, key, value, ex=None):
+            self._operations.append(("set", (key, value, ex)))
+            return self
+
+        def expire(self, key, ttl):
+            self._operations.append(("expire", (key, ttl)))
+            return self
+
+        def rpush(self, key, value):
+            self._operations.append(("rpush", (key, value)))
+            return self
+
+        async def execute(self):
+            for operation, args in self._operations:
+                if operation == "set":
+                    await self._redis.set(*args)
+                elif operation == "expire":
+                    await self._redis.expire(*args)
+                elif operation == "rpush":
+                    await self._redis.rpush(*args)
+            self._operations.clear()
+
+    class FakeRedis:
+        def __init__(self) -> None:
+            self.values: dict[str, object] = {}
+            self.get_calls = 0
+            self.llen_calls = 0
+
+        def pipeline(self):
+            return BalancerJobStoreTests.FakePipeline(self)
+
+        async def set(self, key, value, ex=None):
+            self.values[key] = value
+
+        async def get(self, key):
+            self.get_calls += 1
+            return self.values.get(key)
+
+        async def incr(self, key):
+            next_value = int(self.values.get(key, 0)) + 1
+            self.values[key] = next_value
+            return next_value
+
+        async def rpush(self, key, value):
+            self.values.setdefault(key, [])
+            self.values[key].append(value)
+
+        async def llen(self, key):
+            self.llen_calls += 1
+            return len(self.values.get(key, []))
+
+        async def lrange(self, key, start, end):
+            values = list(self.values.get(key, []))
+            if end == -1:
+                return values[start:]
+            return values[start : end + 1]
+
+        async def expire(self, key, ttl):
+            return True
+
     async def test_persists_canonical_payload_keys_only(self) -> None:
-        class FakePipeline:
-            def __init__(self, redis_client) -> None:
-                self._redis = redis_client
-                self._operations: list[tuple[str, tuple[object, ...]]] = []
-
-            def set(self, key, value, ex=None):
-                self._operations.append(("set", (key, value, ex)))
-                return self
-
-            def expire(self, key, ttl):
-                self._operations.append(("expire", (key, ttl)))
-                return self
-
-            async def execute(self):
-                for operation, args in self._operations:
-                    if operation == "set":
-                        await self._redis.set(*args)
-                    elif operation == "expire":
-                        await self._redis.expire(*args)
-                self._operations.clear()
-
-        class FakeRedis:
-            def __init__(self) -> None:
-                self.values: dict[str, object] = {}
-
-            def pipeline(self):
-                return FakePipeline(self)
-
-            async def set(self, key, value, ex=None):
-                self.values[key] = value
-
-            async def get(self, key):
-                return self.values.get(key)
-
-            async def incr(self, key):
-                next_value = int(self.values.get(key, 0)) + 1
-                self.values[key] = next_value
-                return next_value
-
-            async def rpush(self, key, value):
-                self.values.setdefault(key, [])
-                self.values[key].append(value)
-
-            async def llen(self, key):
-                return len(self.values.get(key, []))
-
-            async def expire(self, key, ttl):
-                return True
-
         store = BalancerJobStore.__new__(BalancerJobStore)
-        store._redis = FakeRedis()
+        store._redis = self.FakeRedis()
         store._ttl_seconds = 3600
 
         job_id = await store.create_job(
@@ -557,6 +699,94 @@ class BalancerJobStoreTests(IsolatedAsyncioTestCase):
         payload = await store.get_job_payload(job_id)
 
         self.assertEqual(payload, {"player_data": {"players": {}}, "config_overrides": {"algorithm": "moo"}})
+
+    async def test_get_job_meta_uses_persisted_events_count_without_llen(self) -> None:
+        store = BalancerJobStore.__new__(BalancerJobStore)
+        store._redis = self.FakeRedis()
+        store._ttl_seconds = 3600
+        job_id = "job-meta"
+        meta = {
+            "job_id": job_id,
+            "status": "running",
+            "stage": "optimizing",
+            "created_at": 1.0,
+            "started_at": 2.0,
+            "finished_at": None,
+            "progress": {"percent": 10.0},
+            "error": None,
+            "workspace_id": 7,
+            "created_by": 9,
+            "events_count": 4,
+        }
+        store._redis.values[store._meta_key(job_id)] = json.dumps(meta)
+
+        loaded = await store.get_job_meta(job_id)
+
+        self.assertEqual(loaded["events_count"], 4)
+        self.assertEqual(store._redis.llen_calls, 0)
+
+    async def test_append_event_updates_meta_without_reread_when_meta_passed(self) -> None:
+        store = BalancerJobStore.__new__(BalancerJobStore)
+        store._redis = self.FakeRedis()
+        store._ttl_seconds = 3600
+        job_id = "job-progress"
+        meta = {
+            "job_id": job_id,
+            "status": "running",
+            "stage": "solving",
+            "created_at": 1.0,
+            "started_at": 2.0,
+            "finished_at": None,
+            "progress": None,
+            "error": None,
+            "workspace_id": 7,
+            "created_by": 9,
+            "events_count": 1,
+        }
+        store._redis.values[store._event_sequence_key(job_id)] = 1
+
+        await store.append_event(
+            job_id,
+            status="running",
+            stage="optimizing",
+            message="Progress update",
+            progress={"percent": 25.0},
+            update_meta=True,
+            meta=meta,
+        )
+
+        self.assertEqual(store._redis.get_calls, 0)
+        self.assertEqual(meta["events_count"], 2)
+        self.assertEqual(meta["stage"], "optimizing")
+        self.assertEqual(meta["progress"], {"percent": 25.0})
+
+    async def test_mark_succeeded_persists_result_and_final_event_count(self) -> None:
+        store = BalancerJobStore.__new__(BalancerJobStore)
+        store._redis = self.FakeRedis()
+        store._ttl_seconds = 3600
+        job_id = "job-success"
+        meta = {
+            "job_id": job_id,
+            "status": "running",
+            "stage": "optimizing",
+            "created_at": 1.0,
+            "started_at": 2.0,
+            "finished_at": None,
+            "progress": {"percent": 100.0},
+            "error": None,
+            "workspace_id": 7,
+            "created_by": 9,
+            "events_count": 2,
+        }
+        result = {"variants": [{"teams": [], "statistics": {}, "benched_players": []}]}
+        store._redis.values[store._event_sequence_key(job_id)] = 2
+
+        updated_meta = await store.mark_succeeded(job_id, result, meta=meta)
+        stored_result = await store.get_job_result(job_id)
+
+        self.assertEqual(updated_meta["status"], "succeeded")
+        self.assertEqual(updated_meta["events_count"], 3)
+        self.assertEqual(stored_result, result)
 
 
 class SolverDomainServiceTests(TestCase):

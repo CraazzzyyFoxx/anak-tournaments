@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import importlib
-import json
 import platform
 from typing import Any
 
+import orjson
 from loguru import logger
 
 from src.core.config import AlgorithmConfig
@@ -27,60 +27,59 @@ def _serialize_native_request(
     seed: int,
 ) -> str:
     ordered_players = sorted(players, key=lambda player: player.uuid)
-    return json.dumps(
-        {
-            "players": [
-                {
-                    "uuid": player.uuid,
-                    "name": player.name,
-                    "ratings": player.ratings,
-                    "preferences": player.preferences,
-                    "subclasses": player.subclasses,
-                    "is_captain": player.is_captain,
-                    "is_flex": player.is_flex,
-                    "seed_role": role_assignment.get(player.uuid) if role_assignment else None,
-                }
-                for player in ordered_players
-            ],
-            "num_teams": num_teams,
-            "seed": seed,
-            "mask": config.role_mask,
-            "config": {
-                "population_size": config.population_size,
-                "generation_count": config.generation_count,
-                "mutation_rate": config.mutation_rate,
-                "mutation_strength": config.mutation_strength,
-                "max_result_variants": config.max_result_variants,
-                "average_mmr_balance_weight": config.average_mmr_balance_weight,
-                "team_total_balance_weight": config.team_total_balance_weight,
-                "max_team_gap_weight": config.max_team_gap_weight,
-                "role_discomfort_weight": config.role_discomfort_weight,
-                "intra_team_variance_weight": config.intra_team_variance_weight,
-                "max_role_discomfort_weight": config.max_role_discomfort_weight,
-                "role_line_balance_weight": config.role_line_balance_weight,
-                "role_spread_weight": config.role_spread_weight,
-                "intra_team_std_weight": config.intra_team_std_weight,
-                "internal_role_spread_weight": config.internal_role_spread_weight,
-                "sub_role_collision_weight": config.sub_role_collision_weight,
-                "tank_impact_weight": config.tank_impact_weight,
-                "dps_impact_weight": config.dps_impact_weight,
-                "support_impact_weight": config.support_impact_weight,
-                "tank_gap_weight": config.tank_gap_weight,
-                "tank_std_weight": config.tank_std_weight,
-                "effective_total_std_weight": config.effective_total_std_weight,
-                "use_captains": config.use_captains,
-                "convergence_patience": config.convergence_patience,
-                "convergence_epsilon": config.convergence_epsilon,
-                "mutation_rate_min": config.mutation_rate_min,
-                "mutation_rate_max": config.mutation_rate_max,
-                "island_count": config.island_count,
-                "polish_max_passes": config.polish_max_passes,
-                "greedy_seed_count": config.greedy_seed_count,
-                "stagnation_kick_patience": config.stagnation_kick_patience,
-                "crossover_rate": config.crossover_rate,
-            },
-        }
-    )
+    payload = {
+        "players": [
+            {
+                "uuid": player.uuid,
+                "name": player.name,
+                "ratings": player.ratings,
+                "preferences": player.preferences,
+                "subclasses": player.subclasses,
+                "is_captain": player.is_captain,
+                "is_flex": player.is_flex,
+                "seed_role": role_assignment.get(player.uuid) if role_assignment else None,
+            }
+            for player in ordered_players
+        ],
+        "num_teams": num_teams,
+        "seed": seed,
+        "mask": config.role_mask,
+        "config": {
+            "population_size": config.population_size,
+            "generation_count": config.generation_count,
+            "mutation_rate": config.mutation_rate,
+            "mutation_strength": config.mutation_strength,
+            "max_result_variants": config.max_result_variants,
+            "average_mmr_balance_weight": config.average_mmr_balance_weight,
+            "team_total_balance_weight": config.team_total_balance_weight,
+            "max_team_gap_weight": config.max_team_gap_weight,
+            "role_discomfort_weight": config.role_discomfort_weight,
+            "intra_team_variance_weight": config.intra_team_variance_weight,
+            "max_role_discomfort_weight": config.max_role_discomfort_weight,
+            "role_line_balance_weight": config.role_line_balance_weight,
+            "role_spread_weight": config.role_spread_weight,
+            "intra_team_std_weight": config.intra_team_std_weight,
+            "internal_role_spread_weight": config.internal_role_spread_weight,
+            "sub_role_collision_weight": config.sub_role_collision_weight,
+            "tank_impact_weight": config.tank_impact_weight,
+            "dps_impact_weight": config.dps_impact_weight,
+            "support_impact_weight": config.support_impact_weight,
+            "tank_gap_weight": config.tank_gap_weight,
+            "tank_std_weight": config.tank_std_weight,
+            "effective_total_std_weight": config.effective_total_std_weight,
+            "use_captains": config.use_captains,
+            "convergence_patience": config.convergence_patience,
+            "convergence_epsilon": config.convergence_epsilon,
+            "mutation_rate_min": config.mutation_rate_min,
+            "mutation_rate_max": config.mutation_rate_max,
+            "island_count": config.island_count,
+            "polish_max_passes": config.polish_max_passes,
+            "greedy_seed_count": config.greedy_seed_count,
+            "stagnation_kick_patience": config.stagnation_kick_patience,
+            "crossover_rate": config.crossover_rate,
+        },
+    }
+    return orjson.dumps(payload).decode("utf-8")
 
 
 def _deserialize_native_variants(
@@ -192,7 +191,7 @@ def _run_native_backend(
     if not isinstance(raw_response, str):
         raise ValueError("Rust MOO backend returned unsupported response type")
 
-    payload = json.loads(raw_response)
+    payload = orjson.loads(raw_response)
     if isinstance(payload, dict):
         _log_native_repair_diagnostics(payload)
     return _deserialize_native_variants(payload, players_by_uuid, config.role_mask)

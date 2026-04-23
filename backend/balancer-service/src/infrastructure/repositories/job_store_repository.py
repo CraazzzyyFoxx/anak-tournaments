@@ -43,6 +43,7 @@ class JobStoreRepository:
         level: str = "info",
         progress: dict[str, Any] | None = None,
         update_meta: bool = False,
+        meta: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         return await self._store.append_event(
             job_id,
@@ -52,16 +53,39 @@ class JobStoreRepository:
             level=level,
             progress=progress,
             update_meta=update_meta,
+            meta=meta,
         )
 
-    async def mark_running(self, job_id: str) -> None:
-        await self._store.mark_running(job_id)
+    async def mark_running(self, job_id: str, meta: dict[str, Any] | None = None) -> dict[str, Any]:
+        return await self._store.mark_running(job_id, meta=meta)
 
-    async def mark_succeeded(self, job_id: str, result: dict[str, Any]) -> None:
-        await self._store.mark_succeeded(job_id, result)
+    async def mark_succeeded(
+        self,
+        job_id: str,
+        result: dict[str, Any],
+        meta: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return await self._store.mark_succeeded(job_id, result, meta=meta)
 
-    async def mark_failed(self, job_id: str, error_message: str) -> None:
-        await self._store.mark_failed(job_id, error_message)
+    async def mark_failed(self, job_id: str, error_message: str, meta: dict[str, Any] | None = None) -> dict[str, Any]:
+        return await self._store.mark_failed(job_id, error_message, meta=meta)
+
+    async def update_runtime_state(
+        self,
+        job_id: str,
+        *,
+        stage: str,
+        status: str = "running",
+        progress: dict[str, Any] | None = None,
+        meta: dict[str, Any] | None = None,
+    ) -> None:
+        await self._store.update_runtime_state(
+            job_id,
+            stage=stage,
+            status=status,
+            progress=progress,
+            meta=meta,
+        )
 
     async def get_events_since(self, job_id: str, after_event_id: int = 0) -> list[dict[str, Any]]:
         return await self._store.get_events_since(job_id, after_event_id)

@@ -13,7 +13,26 @@ from src.domain.balancer.config_provider import normalize_config_overrides
 from src.domain.balancer.determinism import build_balancer_seed, derive_balancer_seed
 from src.domain.balancer.moo_backend import run_moo_optimizer
 from src.domain.balancer.progress import ProgressCallback, emit_progress
-from src.domain.balancer.role_assignment_service import diagnose_role_shortage, find_feasible_role_assignment
+from src.domain.balancer.role_assignment_service import find_feasible_role_assignment
+
+
+def _filter_valid_players_and_role_counts(
+    all_players: list,
+    needed_roles: list[str],
+) -> tuple[list, dict[str, int]]:
+    valid_players: list = []
+    role_capable_counts: dict[str, int] = dict.fromkeys(needed_roles, 0)
+
+    for player in all_players:
+        player_roles: list[str] = []
+        for role in needed_roles:
+            if player.can_play(role):
+                role_capable_counts[role] += 1
+                player_roles.append(role)
+        if player_roles:
+            valid_players.append(player)
+
+    return valid_players, role_capable_counts
 
 
 def _prepare_balance_context(
@@ -57,7 +76,7 @@ def _prepare_balance_context(
 
     all_players = load_players_from_dict(input_data, mask)
     needed_roles = [role for role, count in mask.items() if count > 0]
-    valid_players = [player for player in all_players if any(player.can_play(role) for role in needed_roles)]
+    valid_players, role_capable_counts = _filter_valid_players_and_role_counts(all_players, needed_roles)
 
     if not valid_players:
         logger.error("No valid players found after filtering")
@@ -73,9 +92,9 @@ def _prepare_balance_context(
     for role, count in mask.items():
         if count <= 0:
             continue
-        role_players = [player for player in valid_players if player.can_play(role)]
-        logger.info(f"Role '{role}' requires {count} per team, {len(role_players)} players can play it")
-        if not role_players:
+        capable_count = role_capable_counts.get(role, 0)
+        logger.info(f"Role '{role}' requires {count} per team, {capable_count} players can play it")
+        if capable_count <= 0:
             raise ValueError(f"No players can play required role '{role}'")
 
     players_per_team = sum(mask.values())
@@ -111,7 +130,11 @@ def _prepare_balance_context(
             message=f"Assigned {captain_count} captains",
         )
 
-    shortages = diagnose_role_shortage(valid_players, num_teams, mask)
+    shortages = {
+        role: (count * num_teams) - role_capable_counts.get(role, 0)
+        for role, count in mask.items()
+        if count > 0 and role_capable_counts.get(role, 0) < count * num_teams
+    }
     if shortages:
         shortage_desc = ", ".join(f"'{role}' short by {missing}" for role, missing in shortages.items())
         raise ValueError(
