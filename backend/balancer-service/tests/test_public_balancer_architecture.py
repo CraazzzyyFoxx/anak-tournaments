@@ -50,7 +50,6 @@ from src.domain.balancer.population_seeder import PopulationSeeder, create_rando
 from src.domain.balancer.role_assignment_service import RoleAssignmentService  # noqa: E402
 from src.domain.balancer.team_cost_evaluator import TeamCostEvaluator, calculate_cost  # noqa: E402
 from src.infrastructure.parsers.balancer_request_parser import BalancerRequestParser  # noqa: E402
-from src.infrastructure.solvers.mixtura_balancer_solver import MixturaBalancerSolver  # noqa: E402
 from src.infrastructure.solvers.moo_balance_solver import MooBalanceSolver  # noqa: E402
 
 
@@ -272,21 +271,6 @@ class SolverAdapterTests(IsolatedAsyncioTestCase):
         self.assertEqual(result, {"variants": variants})
         to_thread.assert_awaited_once()
 
-    async def test_mixtura_balancer_solver_delegates_to_gateway(self) -> None:
-        gateway = AsyncMock()
-        gateway.run.return_value = [{"teams": [], "statistics": {}, "benched_players": []}]
-        solver = MixturaBalancerSolver(gateway=gateway)
-
-        result = await solver.solve(
-            {"players": {}},
-            {"algorithm": "mixtura_balancer", "max_result_variants": 4},
-            None,
-        )
-
-        self.assertEqual(result, {"variants": [{"teams": [], "statistics": {}, "benched_players": []}]})
-        gateway.run.assert_awaited_once()
-
-
 class MooBackendContractTests(TestCase):
     def test_serializes_current_rust_config_contract(self) -> None:
         config = AlgorithmConfig()
@@ -376,6 +360,66 @@ class MooBackendRuntimeTests(TestCase):
                         role_assignment=self.role_assignment,
                         seed=123,
                     )
+
+    def test_forwards_progress_callback_to_native_backend_when_present(self) -> None:
+        observed_events: list[dict[str, object]] = []
+
+        def progress_callback(payload: dict[str, object]) -> None:
+            observed_events.append(payload)
+
+        def fake_run_moo_optimizer(request_payload: str, native_progress_callback=None) -> str:
+            self.assertIsNotNone(native_progress_callback)
+            native_progress_callback(
+                {
+                    "status": "running",
+                    "stage": "optimizing",
+                    "message": "Rust MOO initialized 1 search islands",
+                    "progress": {"current": 0, "total": 10, "percent": 0.0},
+                }
+            )
+            payload = json.loads(request_payload)
+            return json.dumps(
+                {
+                    "variants": [
+                        {
+                            "teams": [
+                                {
+                                    "id": 1,
+                                    "roster": {
+                                        payload["players"][0]["seed_role"]: [payload["players"][0]["uuid"]]
+                                    },
+                                }
+                            ]
+                        }
+                    ]
+                }
+            )
+
+        native_module = SimpleNamespace(run_moo_optimizer=fake_run_moo_optimizer)
+
+        with patch("src.domain.balancer.moo_backend.platform.system", return_value="Linux"):
+            with patch("src.domain.balancer.moo_backend._load_native_module", return_value=native_module):
+                result = run_moo_optimizer(
+                    [self.player],
+                    1,
+                    self.config,
+                    progress_callback,
+                    role_assignment=self.role_assignment,
+                    seed=123,
+                )
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(
+            observed_events,
+            [
+                {
+                    "status": "running",
+                    "stage": "optimizing",
+                    "message": "Rust MOO initialized 1 search islands",
+                    "progress": {"current": 0, "total": 10, "percent": 0.0},
+                }
+            ],
+        )
 
 
 class BalancerRequestParserTests(TestCase):
@@ -637,16 +681,13 @@ class SolverDomainServiceTests(TestCase):
     def test_solver_factory_returns_requested_solver(self) -> None:
         moo_solver = object()
         cpsat_solver = object()
-        mixtura_balancer_solver = object()
         factory = BalanceSolverFactory(
             moo_solver=moo_solver,
             cpsat_solver=cpsat_solver,
-            mixtura_balancer_solver=mixtura_balancer_solver,
         )
 
         self.assertIs(factory.get_solver("moo"), moo_solver)
         self.assertIs(factory.get_solver("cpsat"), cpsat_solver)
-        self.assertIs(factory.get_solver("mixtura_balancer"), mixtura_balancer_solver)
 
         with self.assertRaises(ValueError):
             factory.get_solver("unknown")

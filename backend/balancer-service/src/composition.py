@@ -63,7 +63,6 @@ from src.application.balancer.public_use_cases import (
 )
 from src.domain.balancer.balance_solver_factory import BalanceSolverFactory
 from src.domain.balancer.config_provider import BalancerConfigService
-from src.infrastructure.gateways.mixtura_balancer_gateway import MixturaBalancerGateway
 from src.infrastructure.gateways.service_gateways import (
     BalancerAdminGateway,
     RegistrationAdminGateway,
@@ -75,7 +74,6 @@ from src.infrastructure.publishers.balancer_job_publisher import BalancerJobPubl
 from src.infrastructure.repositories.job_store_repository import JobStoreRepository
 from src.infrastructure.security.workspace_access_policy import WorkspaceAccessPolicy
 from src.infrastructure.solvers.cpsat_balance_solver import CpsatBalanceSolver
-from src.infrastructure.solvers.mixtura_balancer_solver import MixturaBalancerSolver
 from src.infrastructure.solvers.moo_balance_solver import MooBalanceSolver
 
 registration_service = RegistrationAdminGateway()
@@ -85,11 +83,9 @@ team_gateway = TeamGateway()
 
 
 def build_solver_factory(*, broker) -> BalanceSolverFactory:
-    mixtura_gateway = MixturaBalancerGateway(broker=broker)
     return BalanceSolverFactory(
         moo_solver=MooBalanceSolver(),
         cpsat_solver=CpsatBalanceSolver(),
-        mixtura_balancer_solver=MixturaBalancerSolver(gateway=mixtura_gateway),
     )
 
 

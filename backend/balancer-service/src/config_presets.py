@@ -132,18 +132,6 @@ class ConfigPresets:
         "max_result_variants": 3,
     }
 
-    MIXTURA_BALANCER: dict[str, Any] = {
-        "algorithm": "mixtura_balancer",
-        "population_size": 200,
-        "generation_count": 1000,
-        "max_result_variants": 10,
-        "team_variance_weight": 1.0,
-        "role_spread_weight": 0.0,
-        "team_spread_weight": 0.1,
-        "sub_role_penalty_weight": 0.1,
-        "intra_team_std_weight": 0.0,
-    }
-
     HIGH_QUALITY: dict[str, Any] = {
         "population_size": 300,
         "generation_count": 1000,

@@ -12,7 +12,7 @@ class ConfigOverrides(BaseModel):
         None,
         description="Role mask defining required players per role (e.g., {'Tank': 1, 'Damage': 2, 'Support': 2})",
     )
-    algorithm: Literal["moo", "cpsat", "mixtura_balancer"] | None = Field(
+    algorithm: Literal["moo", "cpsat"] | None = Field(
         None,
         description="Balancing algorithm to use",
     )
@@ -151,18 +151,6 @@ class ConfigOverrides(BaseModel):
         le=200,
         description="Maximum number of result variants to return for the selected solver",
     )
-    team_variance_weight: float | None = Field(None, ge=0.0, description="Weight of team variance in balance objective.")
-    team_spread_weight: float | None = Field(
-        None,
-        ge=0.0,
-        description="Blend coefficient for per-team player spread variance in the folded balance objective.",
-    )
-    sub_role_penalty_weight: float | None = Field(
-        None,
-        ge=0.0,
-        description="Blend coefficient for subrole penalty in the folded balance objective.",
-    )
-
 
 class BalanceRequest(BaseModel):
     """Request schema for direct team balancing."""

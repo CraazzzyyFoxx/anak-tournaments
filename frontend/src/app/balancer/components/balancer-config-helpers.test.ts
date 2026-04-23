@@ -71,8 +71,8 @@ describe("balancer config helpers", () => {
     expect(
       sanitizeBalancerConfig(
         {
-          algorithm: "mixtura_balancer",
-          team_variance_weight: 2,
+          algorithm: "legacy_solver",
+          unsupported_weight: 2,
           max_result_variants: 5,
         } as unknown as Parameters<typeof sanitizeBalancerConfig>[0]
       )

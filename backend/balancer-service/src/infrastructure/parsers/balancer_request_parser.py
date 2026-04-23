@@ -31,6 +31,9 @@ class BalancerRequestParser:
         if not isinstance(payload, dict):
             raise ValueError("'config_overrides' field must contain a JSON object")
 
+        if "config_overrides" in payload:
+            raise ValueError("'config_overrides' field must not contain a nested config_overrides object")
+
         try:
             validated = normalize_persisted_config_payload(payload)
         except ValidationError as exc:

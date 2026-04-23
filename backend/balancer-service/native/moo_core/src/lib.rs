@@ -1,5 +1,6 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use pyo3::types::PyDict;
 use rand::prelude::*;
 use rand::rngs::StdRng;
 use rayon::prelude::*;
@@ -2861,12 +2862,81 @@ fn ctx_with_profile(base: &Context, profile: IslandProfile) -> Context {
     c
 }
 
-fn run_optimizer(ctx: &Context) -> Result<NativeResponse, String> {
+#[derive(Debug, Clone, Copy, Default)]
+struct ProgressSnapshot {
+    current: Option<usize>,
+    total: Option<usize>,
+    percent: Option<f64>,
+}
+
+fn emit_progress_event(
+    progress_callback: Option<&Py<PyAny>>,
+    stage: &str,
+    message: String,
+    progress: Option<ProgressSnapshot>,
+) -> Result<(), String> {
+    let Some(callback) = progress_callback else {
+        return Ok(());
+    };
+
+    Python::with_gil(|py| -> PyResult<()> {
+        let payload = PyDict::new_bound(py);
+        payload.set_item("status", "running")?;
+        payload.set_item("stage", stage)?;
+        payload.set_item("message", message)?;
+        payload.set_item("level", "info")?;
+
+        if let Some(progress) = progress {
+            let progress_payload = PyDict::new_bound(py);
+            if let Some(current) = progress.current {
+                progress_payload.set_item("current", current)?;
+            }
+            if let Some(total) = progress.total {
+                progress_payload.set_item("total", total)?;
+            }
+            if let Some(percent) = progress.percent {
+                progress_payload.set_item("percent", percent)?;
+            }
+            payload.set_item("progress", progress_payload)?;
+        }
+
+        callback.call1(py, (payload,))?;
+        Ok(())
+    })
+    .map_err(|err| err.to_string())
+}
+
+fn generation_progress_snapshot(current: usize, total: usize) -> ProgressSnapshot {
+    let percent = if total == 0 {
+        0.0
+    } else {
+        ((current as f64 / total as f64) * 1000.0).round() / 10.0
+    };
+
+    ProgressSnapshot {
+        current: Some(current),
+        total: Some(total),
+        percent: Some(percent.min(99.0)),
+    }
+}
+
+fn run_optimizer(
+    ctx: &Context,
+    progress_callback: Option<&Py<PyAny>>,
+) -> Result<NativeResponse, String> {
     let islands = ctx.config.island_count.max(1);
 
     // Генерируем независимые под-сиды из основного сида детерминированно
     let mut seed_rng = StdRng::seed_from_u64(ctx.seed);
     let island_seeds: Vec<u64> = (0..islands).map(|_| seed_rng.gen::<u64>()).collect();
+    let total_generations = islands.saturating_mul(ctx.config.generation_count);
+
+    emit_progress_event(
+        progress_callback,
+        "optimizing",
+        format!("Rust MOO initialized {islands} search islands"),
+        Some(generation_progress_snapshot(0, total_generations)),
+    )?;
 
     // Гетерогенные острова: каждый остров получает свой профиль весов.
     // Профили циклически переиспользуются, если островов больше, чем профилей.
@@ -2888,6 +2958,28 @@ fn run_optimizer(ctx: &Context) -> Result<NativeResponse, String> {
         island_states
             .par_iter_mut()
             .try_for_each(|state| run_island_epoch(state, MIGRATION_INTERVAL_GENS))?;
+
+        let completed_generations = island_states
+            .iter()
+            .map(|state| state.completed_generations)
+            .sum::<usize>();
+        let active_islands = island_states.iter().filter(|state| !state.stopped).count();
+        let archive_candidates = island_states
+            .iter()
+            .map(|state| state.archive.len())
+            .sum::<usize>();
+
+        emit_progress_event(
+            progress_callback,
+            "optimizing",
+            format!(
+                "Rust MOO searched {completed_generations}/{total_generations} island generations; {active_islands} islands still active, archive candidates {archive_candidates}"
+            ),
+            Some(generation_progress_snapshot(
+                completed_generations,
+                total_generations,
+            )),
+        )?;
 
         if islands > 1 {
             let migrants_by_island: Vec<Vec<(Objectives, Solution)>> = island_states
@@ -2922,6 +3014,22 @@ fn run_optimizer(ctx: &Context) -> Result<NativeResponse, String> {
             }
         }
     }
+
+    let completed_generations = island_states
+        .iter()
+        .map(|state| state.completed_generations)
+        .sum::<usize>();
+    emit_progress_event(
+        progress_callback,
+        "optimizing",
+        format!(
+            "Rust MOO search complete after {completed_generations} island generations; preparing Pareto archive"
+        ),
+        Some(ProgressSnapshot {
+            percent: Some(99.0),
+            ..ProgressSnapshot::default()
+        }),
+    )?;
 
     let island_results: Vec<Vec<(Objectives, Solution)>> = island_states
         .iter_mut()
@@ -3118,13 +3226,14 @@ fn run_optimizer(ctx: &Context) -> Result<NativeResponse, String> {
 }
 
 #[pyfunction]
-fn run_moo_optimizer(request_json: &str) -> PyResult<String> {
+#[pyo3(signature = (request_json, progress_callback=None))]
+fn run_moo_optimizer(request_json: &str, progress_callback: Option<Py<PyAny>>) -> PyResult<String> {
     let req = serde_json::from_str::<NativeRequest>(request_json)
         .map_err(|e| PyValueError::new_err(format!("invalid payload: {e}")))?;
     let ctx = Context::from_request(req)
         .map_err(|e| PyValueError::new_err(format!("invalid data: {e}")))?;
-    let resp =
-        run_optimizer(&ctx).map_err(|e| PyValueError::new_err(format!("optimizer failed: {e}")))?;
+    let resp = run_optimizer(&ctx, progress_callback.as_ref())
+        .map_err(|e| PyValueError::new_err(format!("optimizer failed: {e}")))?;
     serde_json::to_string(&resp)
         .map_err(|e| PyValueError::new_err(format!("serialize failed: {e}")))
 }
@@ -3406,7 +3515,7 @@ mod tests {
             .map(|player| (player.uuid.clone(), player))
             .collect();
         let ctx = Context::from_request(request).expect("regression fixture should be valid");
-        let response = run_optimizer(&ctx).expect("optimizer should return variants");
+        let response = run_optimizer(&ctx, None).expect("optimizer should return variants");
 
         assert!(
             !response.variants.is_empty(),

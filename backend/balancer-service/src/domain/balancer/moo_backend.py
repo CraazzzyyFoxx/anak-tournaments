@@ -176,12 +176,16 @@ def _run_native_backend(
     players: list[Player],
     num_teams: int,
     config: AlgorithmConfig,
+    progress_callback,
     role_assignment: dict[str, str] | None,
     seed: int,
 ) -> list[tuple[list[Team], dict[str, float]]]:
     players_by_uuid = {player.uuid: player for player in players}
     request_payload = _serialize_native_request(players, num_teams, config, role_assignment, seed)
-    raw_response = native_module.run_moo_optimizer(request_payload)
+    if progress_callback is None:
+        raw_response = native_module.run_moo_optimizer(request_payload)
+    else:
+        raw_response = native_module.run_moo_optimizer(request_payload, progress_callback)
 
     if isinstance(raw_response, bytes):
         raw_response = raw_response.decode("utf-8")
@@ -218,6 +222,7 @@ def run_moo_optimizer(
         players,
         num_teams,
         config,
+        progress_callback,
         role_assignment,
         resolved_seed,
     )

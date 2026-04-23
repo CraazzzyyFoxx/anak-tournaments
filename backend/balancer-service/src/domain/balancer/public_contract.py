@@ -3,6 +3,8 @@ from __future__ import annotations
 import typing
 from collections.abc import Mapping
 
+from pydantic import ValidationError
+
 from src.core.config import AlgorithmConfig
 
 PUBLIC_CONFIG_KEYS = {
@@ -40,9 +42,6 @@ PUBLIC_CONFIG_KEYS = {
     "stagnation_kick_patience",
     "crossover_rate",
     "max_result_variants",
-    "team_variance_weight",
-    "team_spread_weight",
-    "sub_role_penalty_weight",
 }
 
 LEGACY_PUBLIC_CONFIG_KEYS = {
@@ -66,9 +65,19 @@ def drop_legacy_public_config_keys(config_payload: Mapping[str, typing.Any] | No
 def normalize_persisted_config_payload(config_payload: Mapping[str, typing.Any] | None) -> dict[str, typing.Any]:
     from src.schemas.balancer import ConfigOverrides
 
-    sanitized_payload = drop_legacy_public_config_keys(config_payload)
+    sanitized_payload = {
+        key: value
+        for key, value in drop_legacy_public_config_keys(config_payload).items()
+        if key in PUBLIC_CONFIG_KEYS
+    }
     if not sanitized_payload:
         return {}
+
+    if "algorithm" in sanitized_payload:
+        try:
+            ConfigOverrides.model_validate({"algorithm": sanitized_payload["algorithm"]})
+        except ValidationError:
+            sanitized_payload.pop("algorithm", None)
 
     validated = ConfigOverrides.model_validate(sanitized_payload)
     return validated.model_dump(exclude_none=True)

@@ -71,19 +71,13 @@ class AlgorithmConfig(BaseSettings):
     crossover_rate: float = Field(default=0.85, ge=0.0, le=1.0)
 
     # Algorithm selection
-    algorithm: typing.Literal["moo", "cpsat", "mixtura_balancer"] = Field(default="moo")
+    algorithm: typing.Literal["moo", "cpsat"] = Field(default="moo")
     max_result_variants: int = Field(
         default=10,
         ge=1,
         le=200,
         description="Maximum number of solution variants returned by the selected solver.",
     )
-
-    # mixtura-balancer settings
-    mixtura_queue: str = Field(default="mix_balance_service.balance")
-    team_variance_weight: float = Field(default=1.0, ge=0.0, description="Weight of team variance in balance objective.")
-    team_spread_weight: float = Field(default=0.1, ge=0.0, description="Blend coefficient for per-team player spread variance in the folded balance objective.")
-    sub_role_penalty_weight: float = Field(default=0.1, ge=0.0, description="Blend coefficient for subrole penalty in the folded balance objective.")
 
 
 class Settings(BaseServiceSettings):

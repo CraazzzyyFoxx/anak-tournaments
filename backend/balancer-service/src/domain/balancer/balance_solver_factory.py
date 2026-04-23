@@ -4,12 +4,10 @@ class BalanceSolverFactory:
         *,
         moo_solver,
         cpsat_solver,
-        mixtura_balancer_solver,
     ) -> None:
         self._solvers = {
             "moo": moo_solver,
             "cpsat": cpsat_solver,
-            "mixtura_balancer": mixtura_balancer_solver,
         }
 
     def get_solver(self, algorithm: str):

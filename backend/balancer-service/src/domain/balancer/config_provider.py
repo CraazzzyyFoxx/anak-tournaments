@@ -45,9 +45,6 @@ CONFIG_LIMITS: dict[str, dict[str, int | float]] = {
     "stagnation_kick_patience": {"min": 0, "max": 5000},
     "crossover_rate": {"min": 0.0, "max": 1.0},
     "max_result_variants": {"min": 1, "max": 200},
-    "team_variance_weight": {"min": 0.0, "max": 10.0},
-    "team_spread_weight": {"min": 0.0, "max": 10.0},
-    "sub_role_penalty_weight": {"min": 0.0, "max": 10.0},
 }
 
 EDITABLE_CONFIG_FIELD_KEYS = {
@@ -85,9 +82,6 @@ EDITABLE_CONFIG_FIELD_KEYS = {
     "stagnation_kick_patience",
     "crossover_rate",
     "max_result_variants",
-    "team_variance_weight",
-    "team_spread_weight",
-    "sub_role_penalty_weight",
 }
 
 SYSTEM_CONFIG_FIELD_KEYS = {
@@ -95,7 +89,6 @@ SYSTEM_CONFIG_FIELD_KEYS = {
     "tournament_id",
     "division_grid",
     "division_scope",
-    "mixtura_queue",
 }
 
 CONFIG_FIELD_DEFINITIONS: list[dict[str, typing.Any]] = [
@@ -105,7 +98,7 @@ CONFIG_FIELD_DEFINITIONS: list[dict[str, typing.Any]] = [
         "description": "Required player count per team role. Default Overwatch format is 1 Tank, 2 Damage, 2 Support.",
         "type": "role_mask",
         "group": "Roles",
-        "applies_to": ["moo", "cpsat", "mixtura_balancer"],
+        "applies_to": ["moo", "cpsat"],
     },
     {
         "key": "algorithm",
@@ -113,8 +106,8 @@ CONFIG_FIELD_DEFINITIONS: list[dict[str, typing.Any]] = [
         "description": "Selects the solver used to produce teams.",
         "type": "select",
         "group": "Algorithm",
-        "options": ["moo", "cpsat", "mixtura_balancer"],
-        "applies_to": ["moo", "cpsat", "mixtura_balancer"],
+        "options": ["moo", "cpsat"],
+        "applies_to": ["moo", "cpsat"],
     },
     {
         "key": "population_size",
@@ -122,7 +115,7 @@ CONFIG_FIELD_DEFINITIONS: list[dict[str, typing.Any]] = [
         "description": "Number of candidate balances kept per generation. Higher values improve search coverage and cost more time.",
         "type": "integer",
         "group": "Algorithm",
-        "applies_to": ["moo", "mixtura_balancer"],
+        "applies_to": ["moo"],
     },
     {
         "key": "generation_count",
@@ -130,7 +123,7 @@ CONFIG_FIELD_DEFINITIONS: list[dict[str, typing.Any]] = [
         "description": "Maximum optimization iterations. Higher values can improve quality and increase runtime.",
         "type": "integer",
         "group": "Algorithm",
-        "applies_to": ["moo", "mixtura_balancer"],
+        "applies_to": ["moo"],
     },
     {
         "key": "mutation_rate",
@@ -210,7 +203,7 @@ CONFIG_FIELD_DEFINITIONS: list[dict[str, typing.Any]] = [
         "description": "Penalty weight for uneven role-line strength inside a team.",
         "type": "float",
         "group": "Quality weights",
-        "applies_to": ["moo", "mixtura_balancer"],
+        "applies_to": ["moo"],
     },
     {
         "key": "sub_role_collision_weight",
@@ -271,10 +264,10 @@ CONFIG_FIELD_DEFINITIONS: list[dict[str, typing.Any]] = [
     {
         "key": "intra_team_std_weight",
         "label": "Intra-team rating std",
-        "description": "Weight for rating spread inside each team. Used by Rust MOO and as a blend coefficient in mixtura-balancer.",
+        "description": "Weight for rating spread inside each team.",
         "type": "float",
         "group": "Quality weights",
-        "applies_to": ["moo", "mixtura_balancer"],
+        "applies_to": ["moo"],
     },
     {
         "key": "internal_role_spread_weight",
@@ -370,31 +363,7 @@ CONFIG_FIELD_DEFINITIONS: list[dict[str, typing.Any]] = [
         "description": "Maximum number of solution variants returned by the selected solver.",
         "type": "integer",
         "group": "Solver output",
-        "applies_to": ["moo", "cpsat", "mixtura_balancer"],
-    },
-    {
-        "key": "team_variance_weight",
-        "label": "Team variance weight",
-        "description": "Weight of team rating variance in the mixtura-balancer objective.",
-        "type": "float",
-        "group": "Quality weights",
-        "applies_to": ["mixtura_balancer"],
-    },
-    {
-        "key": "team_spread_weight",
-        "label": "Team spread blend",
-        "description": "Blend coefficient for per-team player spread variance in the folded balance objective.",
-        "type": "float",
-        "group": "Quality weights",
-        "applies_to": ["mixtura_balancer"],
-    },
-    {
-        "key": "sub_role_penalty_weight",
-        "label": "Subrole blend",
-        "description": "Blend coefficient for subrole penalty in the folded balance objective.",
-        "type": "float",
-        "group": "Quality weights",
-        "applies_to": ["mixtura_balancer"],
+        "applies_to": ["moo", "cpsat"],
     },
 ]
 
