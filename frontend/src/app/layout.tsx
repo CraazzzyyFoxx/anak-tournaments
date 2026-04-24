@@ -1,7 +1,15 @@
 import type { Metadata } from "next";
 import { GeistSans } from "geist/font/sans";
+import { Barlow_Condensed } from "next/font/google";
 import "./globals.css";
 import React from "react";
+
+const barlowCondensed = Barlow_Condensed({
+  subsets: ["latin"],
+  weight: ["600", "700", "800"],
+  variable: "--font-barlow-condensed",
+  display: "swap",
+});
 import { Providers } from "@/app/providers";
 import { GoogleAnalytics } from "@next/third-parties/google";
 import { SITE_FAVICON, SITE_NAME } from "@/config/site";
@@ -37,7 +45,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={cn(GeistSans.className, "dark")}>
+      <body className={cn(GeistSans.className, barlowCondensed.variable, "dark")}>
         <GoogleAnalytics gaId="G-6TYE0K6SQM" />
         <Providers>
           <Suspense fallback={null}>

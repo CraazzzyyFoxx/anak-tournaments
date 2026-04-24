@@ -37,17 +37,20 @@ export default class heroService {
     page: number = 1,
     perPage: number = 10,
     userId: number | string = "all",
-    tournamentId: number | null = null
+    tournamentId: number | null = null,
+    opts?: { workspaceId?: number; skipWorkspace?: boolean }
   ): Promise<PaginatedResponse<HeroPlaytime>> {
-    return apiFetch("app",`heroes/statistics/playtime`, {
+    return apiFetch("app", "heroes/statistics/playtime", {
+      skipWorkspace: opts?.skipWorkspace,
       query: {
-        page: page,
+        page,
         per_page: perPage,
         user_id: userId,
         tournament_id: tournamentId,
         sort: "playtime",
-        order: "desc"
-      }
+        order: "desc",
+        ...(opts?.workspaceId != null ? { workspace_id: opts.workspaceId } : {}),
+      },
     }).then((res) => res.json());
   }
 

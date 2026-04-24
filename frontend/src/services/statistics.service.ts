@@ -7,30 +7,50 @@ import {
 import { apiFetch } from "@/lib/api-fetch";
 import { PaginatedResponse } from "@/types/pagination.types";
 
+interface StatsOpts {
+  workspaceId?: number;
+  skipWorkspace?: boolean;
+}
+
+function buildWorkspaceOpts(opts?: StatsOpts) {
+  return {
+    skipWorkspace: opts?.skipWorkspace,
+    query: opts?.workspaceId != null ? { workspace_id: opts.workspaceId } : undefined,
+  };
+}
+
 export default class statisticsService {
-  static async getTournaments(): Promise<TournamentStatistics[]> {
-    return apiFetch("app",`tournaments/statistics/history`).then((res) => res.json());
+  static async getTournaments(opts?: StatsOpts): Promise<TournamentStatistics[]> {
+    return apiFetch("app", "tournaments/statistics/history", buildWorkspaceOpts(opts)).then(
+      (res) => res.json()
+    );
   }
-  static async getTournamentsDivision(): Promise<TournamentDivisionStatistics[]> {
-    return apiFetch("app",`tournaments/statistics/division`).then((res) => res.json());
+
+  static async getTournamentsDivision(opts?: StatsOpts): Promise<TournamentDivisionStatistics[]> {
+    return apiFetch("app", "tournaments/statistics/division", buildWorkspaceOpts(opts)).then(
+      (res) => res.json()
+    );
   }
-  static async getOverallStatistics(): Promise<TournamentOverall> {
-    return apiFetch("app",`tournaments/statistics/overall`).then((res) => res.json());
+
+  static async getOverallStatistics(opts?: StatsOpts): Promise<TournamentOverall> {
+    return apiFetch("app", "tournaments/statistics/overall", buildWorkspaceOpts(opts)).then(
+      (res) => res.json()
+    );
   }
-  static async getChampions(): Promise<PaginatedResponse<PlayerStatistics>> {
-    return apiFetch("app",`statistics/champion`, {
-      query: {
-        sort: "value",
-        order: "desc"
-      }
+
+  static async getChampions(opts?: StatsOpts): Promise<PaginatedResponse<PlayerStatistics>> {
+    const base = buildWorkspaceOpts(opts);
+    return apiFetch("app", "statistics/champion", {
+      ...base,
+      query: { ...base.query, sort: "value", order: "desc" },
     }).then((res) => res.json());
   }
-  static async getTopWinratePlayers(): Promise<PaginatedResponse<PlayerStatistics>> {
-    return apiFetch("app",`statistics/winrate`, {
-      query: {
-        sort: "value",
-        order: "desc"
-      }
+
+  static async getTopWinratePlayers(opts?: StatsOpts): Promise<PaginatedResponse<PlayerStatistics>> {
+    const base = buildWorkspaceOpts(opts);
+    return apiFetch("app", "statistics/winrate", {
+      ...base,
+      query: { ...base.query, sort: "value", order: "desc" },
     }).then((res) => res.json());
   }
 }

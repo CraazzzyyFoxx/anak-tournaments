@@ -45,11 +45,11 @@ const tournament_components: { title: string; href: string; description: string 
     href: "/teams",
     description: "Place where all teams are listed"
   },
-  {
-    title: "OWAL",
-    href: "/owal",
-    description: "Place where all OWAL tournaments are listed"
-  },
+  // {
+  //   title: "OWAL",
+  //   href: "/owal",
+  //   description: "Place where all OWAL tournaments are listed"
+  // },
   {
     title: "Analytics",
     href: "/tournaments/analytics",
