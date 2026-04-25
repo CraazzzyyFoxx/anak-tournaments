@@ -182,6 +182,154 @@ class ChallongeSyncImportTests(IsolatedAsyncioTestCase):
         session.commit.assert_awaited_once_with()
         enqueue_recalculation.assert_awaited_once_with(tournament.id)
 
+    async def test_import_creates_bracket_structure_and_pending_advancement_match(self) -> None:
+        tournament = SimpleNamespace(
+            id=7,
+            challonge_id=700,
+            challonge_slug="sample",
+            stages=[],
+            groups=[],
+        )
+        teams = [
+            SimpleNamespace(id=1, name="Alpha"),
+            SimpleNamespace(id=2, name="Beta"),
+            SimpleNamespace(id=3, name="Gamma"),
+            SimpleNamespace(id=4, name="Delta"),
+        ]
+        mappings = [
+            SimpleNamespace(group_id=None, challonge_id=101, team_id=1),
+            SimpleNamespace(group_id=None, challonge_id=102, team_id=2),
+            SimpleNamespace(group_id=None, challonge_id=103, team_id=3),
+            SimpleNamespace(group_id=None, challonge_id=104, team_id=4),
+        ]
+        challonge_matches = [
+            _challonge_match(
+                match_id=900,
+                player1_id=101,
+                player2_id=102,
+                state="complete",
+                scores_csv="2-0",
+                round=1,
+                identifier="A",
+            ),
+            _challonge_match(
+                match_id=902,
+                player1_id=103,
+                player2_id=104,
+                state="open",
+                scores_csv="",
+                round=1,
+                identifier="B",
+            ),
+            _challonge_match(
+                match_id=901,
+                player1_id=None,
+                player2_id=None,
+                state="pending",
+                scores_csv="",
+                round=2,
+                identifier="C",
+                player1_prereq_match_id=900,
+                player2_prereq_match_id=902,
+            ),
+        ]
+        session = SimpleNamespace(
+            execute=AsyncMock(
+                side_effect=[
+                    _Result(one=tournament),
+                    _Result(all_values=[]),
+                    _Result(all_values=mappings),
+                    _Result(all_values=teams),
+                    _Result(all_values=[]),
+                ]
+            ),
+            add=Mock(),
+            flush=AsyncMock(),
+            commit=AsyncMock(),
+        )
+
+        next_ids = {
+            sync.models.Stage: 20,
+            sync.models.StageItem: 30,
+            sync.models.TournamentGroup: 10,
+            sync.models.EncounterLink: 800,
+        }
+
+        def add_side_effect(obj):
+            for model, next_id in list(next_ids.items()):
+                if isinstance(obj, model):
+                    obj.id = next_id
+                    next_ids[model] = next_id + 1
+                    return
+            if isinstance(obj, sync.models.Encounter):
+                obj.id = 500 + obj.challonge_id
+
+        session.add.side_effect = add_side_effect
+
+        with (
+            patch.object(sync.challonge_service, "fetch_matches", AsyncMock(return_value=challonge_matches)),
+            patch.object(sync.challonge_service, "fetch_participants", AsyncMock(return_value=[])),
+            patch.object(
+                sync,
+                "resolve_stage_refs_from_group",
+                AsyncMock(
+                    return_value=stage_refs.StageRefs(
+                        stage_id=20,
+                        stage_item_id=30,
+                        tournament_group_id=10,
+                    )
+                ),
+            ),
+            patch.object(sync, "_advance_completed_challonge_matches", AsyncMock()),
+            patch.object(
+                sync.standings_recalculation,
+                "enqueue_tournament_recalculation",
+                AsyncMock(),
+            ),
+        ):
+            result = await sync.import_tournament(session, tournament.id)
+
+        added_objects = [obj for call in session.add.call_args_list for obj in call.args]
+        created_encounters = [
+            obj for obj in added_objects if isinstance(obj, sync.models.Encounter)
+        ]
+        created_links = [
+            obj for obj in added_objects if isinstance(obj, sync.models.EncounterLink)
+        ]
+        created_group = next(
+            obj for obj in added_objects if isinstance(obj, sync.models.TournamentGroup)
+        )
+        created_stage = next(
+            obj for obj in added_objects if isinstance(obj, sync.models.Stage)
+        )
+        pending = next(obj for obj in created_encounters if obj.challonge_id == 901)
+
+        self.assertEqual(3, result["matches_synced"])
+        self.assertEqual(3, result["matches_created"])
+        self.assertEqual(1, result["groups_created"])
+        self.assertEqual(1, result["stages_created"])
+        self.assertEqual(2, result["bracket_links_created"])
+        self.assertEqual("Playoffs", created_group.name)
+        self.assertEqual(enums.StageType.SINGLE_ELIMINATION, created_stage.stage_type)
+        self.assertEqual((None, None), (pending.home_team_id, pending.away_team_id))
+        self.assertEqual(enums.EncounterStatus.PENDING, pending.status)
+        self.assertEqual("TBD vs TBD", pending.name)
+        self.assertEqual(
+            {
+                (1400, 1401, enums.EncounterLinkRole.WINNER, enums.EncounterLinkSlot.HOME),
+                (1402, 1401, enums.EncounterLinkRole.WINNER, enums.EncounterLinkSlot.AWAY),
+            },
+            {
+                (
+                    link.source_encounter_id,
+                    link.target_encounter_id,
+                    link.role,
+                    link.target_slot,
+                )
+                for link in created_links
+            },
+        )
+
     async def test_import_reports_missing_team_mapping_as_error(self) -> None:
         tournament = SimpleNamespace(
             id=7,
