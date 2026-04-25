@@ -7,6 +7,7 @@ from shared.models.challonge_sync import *
 from shared.models.discord_channel import *
 from shared.models.division_grid import *
 from shared.models.encounter import *
+from shared.models.encounter_link import *
 from shared.models.encounter_map import *
 from shared.models.gamemode import *
 from shared.models.hero import *
