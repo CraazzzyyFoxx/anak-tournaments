@@ -152,6 +152,50 @@ def test_internal_balance_payload_rejects_legacy_result_shape() -> None:
         )
 
 
+def test_internal_balance_payload_accepts_public_player_shape_with_is_flex() -> None:
+    payload = InternalBalancerTeamsPayload.model_validate(
+        {
+            "teams": [
+                {
+                    "id": 1,
+                    "name": "Team 1",
+                    "average_mmr": 2500.0,
+                    "rating_variance": 0.0,
+                    "total_discomfort": 0,
+                    "max_discomfort": 0,
+                    "roster": {
+                        "Damage": [
+                            {
+                                "uuid": "player-1",
+                                "name": "Player#1234",
+                                "assigned_rating": 2500,
+                                "role_discomfort": 0,
+                                "is_captain": False,
+                                "role_preferences": ["Damage", "Support"],
+                                "all_ratings": {"Damage": 2500, "Support": 2400},
+                                "is_flex": True,
+                            }
+                        ]
+                    },
+                }
+            ],
+            "statistics": {
+                "average_mmr": 2500.0,
+                "mmr_std_dev": 0.0,
+                "total_teams": 1,
+                "players_per_team": 1,
+            },
+            "benched_players": [],
+        }
+    )
+
+    player = payload.teams[0].roster["Damage"][0]
+    assert player.is_flex is True
+    assert player.rating == 2500
+    assert player.discomfort == 0
+    assert player.preferences == ["Damage", "Support"]
+
+
 class TournamentConfigPersistenceTests(IsolatedAsyncioTestCase):
     async def test_upsert_tournament_config_creates_normalized_row(self) -> None:
         session = AsyncMock()

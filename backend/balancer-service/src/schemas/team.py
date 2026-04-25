@@ -3,8 +3,6 @@ from uuid import uuid4
 
 from pydantic import UUID4, BaseModel, ConfigDict, Field
 
-from src.schemas.base import BaseRead
-
 __all__ = (
     "BalancerTeamMember",
     "BalancerTeam",
@@ -41,8 +39,21 @@ class InternalBalancerPlayer(BaseModel):
     role_discomfort: int | None = 0
     is_captain: bool = False
     role_preferences: list[str] = Field(default_factory=list)
+    is_flex: bool = False
     sub_role: str | None = None
     all_ratings: dict[str, typing.Any] | None = None
+
+    @property
+    def rating(self) -> int:
+        return self.assigned_rating
+
+    @property
+    def discomfort(self) -> int | None:
+        return self.role_discomfort
+
+    @property
+    def preferences(self) -> list[str]:
+        return self.role_preferences
 
 
 class InternalBalancerTeam(BaseModel):
