@@ -112,7 +112,7 @@ export function TournamentSetupTab({
             <CardContent className="pt-4">
               <ChallongeSyncPanel
                 tournamentId={tournamentId}
-                challongeId={tournament.challonge_id}
+                hasChallongeSource={hasChallongeSource}
               />
             </CardContent>
           </Card>

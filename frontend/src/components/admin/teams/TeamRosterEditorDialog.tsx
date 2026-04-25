@@ -1108,6 +1108,7 @@ export function TeamRosterEditorDialog({
         submittingLabel={isEditing ? "Saving team..." : "Creating team..."}
         errorMessage={teamFormError}
         isDirty={isTeamDirty}
+        contentClassName="h-[min(900px,calc(100vh-2rem))] max-h-[calc(100dvh-2rem)] max-w-4xl"
       >
         <div className="space-y-5">
           <div className="rounded-md border border-border/60 bg-muted/20 p-3">

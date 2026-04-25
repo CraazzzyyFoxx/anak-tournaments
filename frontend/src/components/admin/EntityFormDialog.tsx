@@ -15,13 +15,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { AlertTriangle, LoaderCircle } from "lucide-react";
 import {
   getInternalNavigationTarget,
   isChangedInternalNavigation,
   shouldIgnoreNavigationClick,
 } from "@/lib/navigation-guard.mjs";
+import { cn } from "@/lib/utils";
 
 interface EntityFormDialogProps {
   open: boolean;
@@ -38,6 +38,7 @@ interface EntityFormDialogProps {
   isDirty?: boolean;
   dirtyTitle?: string;
   dirtyDescription?: string;
+  contentClassName?: string;
   children: React.ReactNode;
 }
 
@@ -56,6 +57,7 @@ export function EntityFormDialog({
   isDirty = false,
   dirtyTitle = "Discard unsaved changes?",
   dirtyDescription = "You have unsaved changes in this form. Leave now and the current edits will be lost.",
+  contentClassName,
   children
 }: EntityFormDialogProps) {
   const router = useRouter();
@@ -173,16 +175,21 @@ export function EntityFormDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="flex max-h-[calc(100dvh-2rem)] max-w-2xl flex-col gap-0 overflow-hidden sm:max-h-[90dvh]">
+        <DialogContent
+          className={cn(
+            "flex max-h-[calc(100dvh-2rem)] max-w-2xl flex-col gap-0 overflow-hidden sm:max-h-[90dvh]",
+            contentClassName
+          )}
+        >
           <DialogHeader className="shrink-0 border-b border-border/60 pb-4">
             <DialogTitle>{title}</DialogTitle>
             {description && <DialogDescription>{description}</DialogDescription>}
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <ScrollArea className="min-h-0 flex-1 pr-4">
+            <div className="min-h-0 flex-1 overflow-y-auto pr-4">
               <div className="space-y-4 py-4">{children}</div>
-            </ScrollArea>
+            </div>
 
             {errorMessage ? (
               <div

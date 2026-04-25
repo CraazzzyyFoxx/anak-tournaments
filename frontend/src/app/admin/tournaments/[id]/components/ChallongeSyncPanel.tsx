@@ -6,22 +6,23 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import adminService from "@/services/admin.service";
 import type { ChallongeSyncLogEntry } from "@/types/admin.types";
+import { invalidateTournamentWorkspace } from "./tournamentWorkspace.queryKeys";
 
 interface ChallongeSyncPanelProps {
   tournamentId: number;
-  challongeId: number | null;
+  hasChallongeSource: boolean;
 }
 
 export function ChallongeSyncPanel({
   tournamentId,
-  challongeId,
+  hasChallongeSource,
 }: ChallongeSyncPanelProps) {
   const queryClient = useQueryClient();
 
   const { data: logs = [], isLoading } = useQuery({
     queryKey: ["admin", "challonge-sync-log", tournamentId],
     queryFn: () => adminService.challongeSyncLog(tournamentId, 20),
-    enabled: !!challongeId,
+    enabled: hasChallongeSource,
   });
 
   const importMutation = useMutation({
@@ -33,6 +34,7 @@ export function ChallongeSyncPanel({
       queryClient.invalidateQueries({
         queryKey: ["admin", "tournament", tournamentId],
       });
+      invalidateTournamentWorkspace(queryClient, tournamentId);
     },
   });
 
@@ -45,11 +47,11 @@ export function ChallongeSyncPanel({
     },
   });
 
-  if (!challongeId) {
+  if (!hasChallongeSource) {
     return (
       <Card>
         <CardContent className="py-6 text-center text-muted-foreground">
-          No Challonge tournament linked. Set challonge_id to enable sync.
+          No Challonge tournament or stage linked. Add a Challonge source to enable sync.
         </CardContent>
       </Card>
     );

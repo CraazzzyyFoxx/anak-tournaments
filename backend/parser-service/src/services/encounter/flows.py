@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from src import models, schemas
 from src.core import enums, errors, utils
-from src.services.challonge import service as challonge_service
+from src.services.challonge import sync as challonge_sync
 from src.services.map import flows as map_flows
 from src.services.team import flows as team_flows
 from src.services.tournament import flows as tournament_flows
@@ -225,38 +225,40 @@ async def bulk_create_for_tournament_from_challonge(
     session: AsyncSession,
     tournament_id: int,
     skip_finals: bool = False,
-) -> None:
-    tournament = await tournament_flows.get(session, tournament_id, ["groups"])
-    if not tournament.challonge_id:
-        for group in tournament.groups:
-            matches = await challonge_service.fetch_matches(group.challonge_id)
-            for match in matches:
-                if match.group_id is None and skip_finals:
-                    continue
-                await _create_encounter_from_challonge(session, tournament, group.id, match)
-    else:
-        matches = await challonge_service.fetch_matches(tournament.challonge_id)
-        groups_dict = {group.challonge_id: group.id for group in tournament.groups}
-
-        for match in matches:
-            if match.group_id is None and len(groups_dict.keys()) == 1:
-                group_id = list(groups_dict.values())[0]
-            else:
-                group_id = groups_dict[match.group_id]
-
-            if match.group_id is None and skip_finals:
-                continue
-
-            await _create_encounter_from_challonge(session, tournament, group_id, match)
+) -> dict:
+    if skip_finals:
+        logger.warning("skip_finals is ignored by unified Challonge import")
+    return await challonge_sync.import_tournament(session, tournament_id)
 
 
-async def bulk_create_for_from_challonge(session: AsyncSession) -> None:
+async def bulk_create_for_from_challonge(session: AsyncSession) -> dict:
     tournaments = await tournament_service.get_all(session)
+    totals = {
+        "tournaments_synced": 0,
+        "matches_synced": 0,
+        "matches_created": 0,
+        "matches_updated": 0,
+        "matches_skipped": 0,
+        "errors": 0,
+    }
     for tournament in tournaments:
         if tournament.id == 4:
             continue  # In this tournament we have two brackets, but the first bracket is not finished.
             # Suz Playoffs filled manually
-        await bulk_create_for_tournament_from_challonge(session, tournament.id)
+        result = await bulk_create_for_tournament_from_challonge(session, tournament.id)
+        totals["tournaments_synced"] += 1
+        if "error" in result:
+            totals["errors"] += 1
+            continue
+        for key in (
+            "matches_synced",
+            "matches_created",
+            "matches_updated",
+            "matches_skipped",
+            "errors",
+        ):
+            totals[key] += int(result.get(key, 0) or 0)
+    return totals
 
 
 async def create_match(
