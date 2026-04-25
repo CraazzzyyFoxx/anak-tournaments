@@ -176,6 +176,7 @@ async def _resolve_stage_refs_for_match(
 async def _build_team_lookup(
     session: AsyncSession,
     tournament_id: int,
+    sources: list[_ImportSource],
 ) -> _TeamLookup:
     ct_result = await session.execute(
         select(models.ChallongeTeam).where(models.ChallongeTeam.tournament_id == tournament_id)
@@ -204,11 +205,67 @@ async def _build_team_lookup(
         )
         teams_by_id = {team.id: team for team in team_result.scalars().all()}
 
+    await _add_challonge_participant_aliases(
+        by_group_and_challonge_id,
+        unique_by_challonge_id,
+        sources,
+    )
+
     return _TeamLookup(
         by_group_and_challonge_id=by_group_and_challonge_id,
         unique_by_challonge_id=unique_by_challonge_id,
         teams_by_id=teams_by_id,
     )
+
+
+def _participant_aliases(participant: schemas.ChallongeParticipant) -> set[int]:
+    return {participant.id, *participant.group_player_ids}
+
+
+async def _add_challonge_participant_aliases(
+    by_group_and_challonge_id: dict[tuple[int | None, int], int],
+    unique_by_challonge_id: dict[int, int],
+    sources: list[_ImportSource],
+) -> None:
+    source_ids = sorted({source.challonge_id for source in sources})
+    group_ids = {group_id for group_id, _ in by_group_and_challonge_id}
+
+    for challonge_tournament_id in source_ids:
+        try:
+            participants = await challonge_service.fetch_participants(challonge_tournament_id)
+        except Exception as exc:
+            logger.warning(
+                "Could not fetch Challonge participants for alias lookup",
+                challonge_tournament_id=challonge_tournament_id,
+                error=str(exc),
+            )
+            continue
+
+        for participant in participants:
+            aliases = _participant_aliases(participant)
+            if len(aliases) <= 1:
+                continue
+
+            for group_id in group_ids:
+                team_ids = {
+                    team_id
+                    for alias in aliases
+                    if (team_id := by_group_and_challonge_id.get((group_id, alias))) is not None
+                }
+                if len(team_ids) == 1:
+                    team_id = next(iter(team_ids))
+                    for alias in aliases:
+                        by_group_and_challonge_id.setdefault((group_id, alias), team_id)
+
+            unique_team_ids = {
+                team_id
+                for alias in aliases
+                if (team_id := unique_by_challonge_id.get(alias)) is not None
+            }
+            if len(unique_team_ids) == 1:
+                team_id = next(iter(unique_team_ids))
+                for alias in aliases:
+                    unique_by_challonge_id.setdefault(alias, team_id)
 
 
 def _resolve_team_id(
@@ -293,6 +350,7 @@ async def _upsert_encounter_from_challonge(
         local_encounters[match.id] = encounter
         return "created", encounter
 
+    was_completed = encounter.status == enums.EncounterStatus.COMPLETED
     if not missing_team_mapping and not missing_local_team:
         encounter.name = build_encounter_name(home_team.name, away_team.name)
         encounter.home_team_id = home_team_id
@@ -306,7 +364,7 @@ async def _upsert_encounter_from_challonge(
     encounter.status = status
     await session.flush()
 
-    if status == enums.EncounterStatus.COMPLETED:
+    if not was_completed and status == enums.EncounterStatus.COMPLETED:
         from shared.services.bracket.advancement import advance_winner  # noqa: PLC0415
 
         await advance_winner(session, encounter)
@@ -351,7 +409,8 @@ async def import_tournament(
         )
     )
     local_encounters = {e.challonge_id: e for e in enc_result.scalars().all()}
-    team_lookup = await _build_team_lookup(session, tournament_id)
+    team_lookup = await _build_team_lookup(session, tournament_id, sources)
+    processed_match_ids: set[int] = set()
 
     for source in sources:
         try:
@@ -366,6 +425,10 @@ async def import_tournament(
             continue
 
         for cm in challonge_matches:
+            if cm.id in processed_match_ids:
+                continue
+            processed_match_ids.add(cm.id)
+
             try:
                 action, encounter = await _upsert_encounter_from_challonge(
                     session,

@@ -53,6 +53,7 @@ def _challonge_match(
     player2_id: int | None = 102,
     state: str = "complete",
     scores_csv: str = "2-1",
+    group_id: int | None = None,
 ) -> schemas.ChallongeMatch:
     now = datetime.now(UTC)
     return schemas.ChallongeMatch(
@@ -67,7 +68,25 @@ def _challonge_match(
         state=state,
         scores_csv=scores_csv,
         tournament_id=700,
-        group_id=None,
+        group_id=group_id,
+    )
+
+
+def _challonge_participant(
+    *,
+    participant_id: int,
+    name: str,
+    group_player_ids: list[int],
+) -> schemas.ChallongeParticipant:
+    now = datetime.now(UTC)
+    return schemas.ChallongeParticipant(
+        id=participant_id,
+        active=True,
+        created_at=now,
+        updated_at=now,
+        name=name,
+        tournament_id=700,
+        group_player_ids=group_player_ids,
     )
 
 
@@ -117,6 +136,7 @@ class ChallongeSyncImportTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(sync.challonge_service, "fetch_matches", AsyncMock(return_value=[_challonge_match()])),
+            patch.object(sync.challonge_service, "fetch_participants", AsyncMock(return_value=[])),
             patch.object(
                 sync,
                 "resolve_stage_refs_from_group",
@@ -175,6 +195,7 @@ class ChallongeSyncImportTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(sync.challonge_service, "fetch_matches", AsyncMock(return_value=[_challonge_match()])),
+            patch.object(sync.challonge_service, "fetch_participants", AsyncMock(return_value=[])),
             patch.object(
                 sync.standings_recalculation,
                 "enqueue_tournament_recalculation",
@@ -240,6 +261,7 @@ class ChallongeSyncImportTests(IsolatedAsyncioTestCase):
                     ]
                 ),
             ),
+            patch.object(sync.challonge_service, "fetch_participants", AsyncMock(return_value=[])),
             patch.object(
                 sync,
                 "resolve_stage_refs_from_group",
@@ -274,6 +296,117 @@ class ChallongeSyncImportTests(IsolatedAsyncioTestCase):
             )
         )
         enqueue_recalculation.assert_awaited_once_with(tournament.id)
+
+    async def test_import_resolves_match_group_player_ids_from_participant_mapping(self) -> None:
+        tournament = SimpleNamespace(
+            id=7,
+            challonge_id=700,
+            challonge_slug="sample",
+            stages=[],
+            groups=[
+                SimpleNamespace(
+                    id=10,
+                    is_groups=True,
+                    challonge_id=123,
+                    stage=None,
+                )
+            ],
+        )
+        home_team = SimpleNamespace(id=1, name="Alpha")
+        away_team = SimpleNamespace(id=2, name="Beta")
+        session = SimpleNamespace(
+            execute=AsyncMock(
+                side_effect=[
+                    _Result(one=tournament),
+                    _Result(all_values=[]),
+                    _Result(
+                        all_values=[
+                            SimpleNamespace(
+                                group_id=10,
+                                challonge_id=101,
+                                team_id=home_team.id,
+                            ),
+                            SimpleNamespace(
+                                group_id=10,
+                                challonge_id=102,
+                                team_id=away_team.id,
+                            ),
+                        ]
+                    ),
+                    _Result(all_values=[home_team, away_team]),
+                ]
+            ),
+            add=Mock(),
+            flush=AsyncMock(),
+            commit=AsyncMock(),
+        )
+
+        def add_side_effect(obj):
+            if isinstance(obj, sync.models.Encounter):
+                obj.id = 502
+
+        session.add.side_effect = add_side_effect
+
+        with (
+            patch.object(
+                sync.challonge_service,
+                "fetch_participants",
+                AsyncMock(
+                    return_value=[
+                        _challonge_participant(
+                            participant_id=101,
+                            name="Alpha",
+                            group_player_ids=[44066538],
+                        ),
+                        _challonge_participant(
+                            participant_id=102,
+                            name="Beta",
+                            group_player_ids=[44066539],
+                        ),
+                    ]
+                ),
+            ),
+            patch.object(
+                sync.challonge_service,
+                "fetch_matches",
+                AsyncMock(
+                    return_value=[
+                        _challonge_match(
+                            player1_id=44066538,
+                            player2_id=44066539,
+                            group_id=123,
+                        )
+                    ]
+                ),
+            ),
+            patch.object(
+                sync,
+                "resolve_stage_refs_from_group",
+                AsyncMock(
+                    return_value=stage_refs.StageRefs(
+                        stage_id=20,
+                        stage_item_id=30,
+                        tournament_group_id=10,
+                    )
+                ),
+            ),
+            patch.object(
+                sync.standings_recalculation,
+                "enqueue_tournament_recalculation",
+                AsyncMock(),
+            ),
+        ):
+            result = await sync.import_tournament(session, tournament.id)
+
+        self.assertEqual(1, result["matches_synced"])
+        self.assertEqual(1, result["matches_created"])
+        self.assertEqual(0, result["errors"])
+        created = next(
+            obj for call in session.add.call_args_list
+            for obj in call.args
+            if isinstance(obj, sync.models.Encounter)
+        )
+        self.assertEqual((home_team.id, away_team.id), (created.home_team_id, created.away_team_id))
 
     async def test_legacy_encounter_challonge_wrapper_uses_unified_import(self) -> None:
         session = SimpleNamespace()
