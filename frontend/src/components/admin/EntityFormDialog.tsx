@@ -173,14 +173,14 @@ export function EntityFormDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="flex max-h-[90vh] max-w-2xl flex-col overflow-hidden">
-          <DialogHeader className="border-b border-border/60 pb-4">
+        <DialogContent className="flex max-h-[calc(100dvh-2rem)] max-w-2xl flex-col gap-0 overflow-hidden sm:max-h-[90dvh]">
+          <DialogHeader className="shrink-0 border-b border-border/60 pb-4">
             <DialogTitle>{title}</DialogTitle>
             {description && <DialogDescription>{description}</DialogDescription>}
           </DialogHeader>
 
-          <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-hidden">
-            <ScrollArea className="flex-1 pr-4">
+          <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <ScrollArea className="min-h-0 flex-1 pr-4">
               <div className="space-y-4 py-4">{children}</div>
             </ScrollArea>
 
@@ -188,7 +188,7 @@ export function EntityFormDialog({
               <div
                 aria-live="polite"
                 role="alert"
-                className="mt-4 flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+                className="mt-4 flex shrink-0 items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
               >
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                 <div className="space-y-1">
@@ -198,7 +198,7 @@ export function EntityFormDialog({
               </div>
             ) : null}
 
-            <DialogFooter className="mt-4 border-t border-border/60 pt-4">
+            <DialogFooter className="mt-4 shrink-0 border-t border-border/60 pt-4">
               <Button type="button" variant="outline" onClick={handleCancel} disabled={isSubmitting}>
                 {cancelLabel}
               </Button>
