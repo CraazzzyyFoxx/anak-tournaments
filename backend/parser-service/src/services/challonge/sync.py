@@ -5,6 +5,7 @@ Export: Local -> Challonge (push encounter results to Challonge)
 Auto-push: triggered when encounter result_status becomes 'confirmed'
 """
 
+import asyncio
 import re
 from dataclasses import dataclass
 
@@ -20,6 +21,7 @@ from src import models, schemas
 from src.services.challonge import service as challonge_service
 from src.services.standings import recalculation as standings_recalculation
 
+_AMBIGUOUS = -1
 _SCORE_RE = re.compile(r"\s*(-?\d+)\s*-\s*(-?\d+)")
 
 
@@ -31,10 +33,25 @@ class _ImportSource:
 
 
 @dataclass(frozen=True)
+class _SourceFetch:
+    matches: list[schemas.ChallongeMatch]
+    participants: list[schemas.ChallongeParticipant]
+
+
+@dataclass
 class _TeamLookup:
-    by_group_and_challonge_id: dict[tuple[int | None, int], int]
-    unique_by_challonge_id: dict[int, int]
+    by_key: dict[tuple[int | None, int], int]
     teams_by_id: dict[int, models.Team]
+
+    def resolve(self, group_id: int | None, challonge_id: int | None) -> int | None:
+        if challonge_id is None:
+            return None
+        if (tid := self.by_key.get((group_id, challonge_id))) is not None:
+            return tid
+        if (tid := self.by_key.get((None, challonge_id))) is not None:
+            return tid
+        candidates = {tid for (gid, cid), tid in self.by_key.items() if cid == challonge_id}
+        return next(iter(candidates)) if len(candidates) == 1 else None
 
 
 @dataclass(frozen=True)
@@ -468,31 +485,193 @@ async def _resolve_stage_refs_for_match(
     )
 
 
-async def _build_team_lookup(
+def _normalize_team_name(name: str | None) -> str:
+    if not name:
+        return ""
+    return re.sub(r"\s+", " ", name.lower()).strip()
+
+
+async def _build_team_name_index(
     session: AsyncSession,
     tournament_id: int,
+) -> dict[str, int]:
+    """Build a normalized-name → team_id index for auto-mapping.
+
+    Collisions (two teams with the same normalized name) are marked _AMBIGUOUS.
+    balancer_name is used as a fallback only when name produces no entry.
+    """
+    result = await session.execute(
+        select(models.Team).where(models.Team.tournament_id == tournament_id)
+    )
+    teams = list(result.scalars().all())
+    index: dict[str, int] = {}
+
+    for team in teams:
+        key = _normalize_team_name(team.name)
+        if not key:
+            continue
+        if key in index and index[key] != team.id:
+            index[key] = _AMBIGUOUS
+            logger.warning(
+                "Ambiguous team name for Challonge auto-mapping",
+                key=key,
+                tournament_id=tournament_id,
+            )
+        elif key not in index:
+            index[key] = team.id
+
+    for team in teams:
+        key = _normalize_team_name(getattr(team, "balancer_name", None))
+        if not key or key in index:
+            continue
+        index[key] = team.id
+
+    return index
+
+
+async def _fetch_source_data(source: _ImportSource) -> _SourceFetch:
+    """Fetch matches and participants for one Challonge source in parallel."""
+    results = await asyncio.gather(
+        challonge_service.fetch_matches(source.challonge_id),
+        challonge_service.fetch_participants(source.challonge_id),
+        return_exceptions=True,
+    )
+    matches_result, participants_result = results
+
+    if isinstance(matches_result, Exception):
+        raise matches_result
+
+    if isinstance(participants_result, Exception):
+        logger.warning(
+            "Failed to fetch Challonge participants; auto-mapping disabled for this source",
+            challonge_id=source.challonge_id,
+            error=str(participants_result),
+        )
+        participants_result = []
+
+    return _SourceFetch(matches=matches_result, participants=participants_result)
+
+
+async def _fetch_all_sources(
     sources: list[_ImportSource],
+) -> list[tuple[_ImportSource, _SourceFetch | Exception]]:
+    """Fetch all sources concurrently, returning (source, result_or_exception) pairs."""
+    results = await asyncio.gather(
+        *[_fetch_source_data(s) for s in sources],
+        return_exceptions=True,
+    )
+    return list(zip(sources, results))
+
+
+async def _auto_map_participants(
+    session: AsyncSession,
+    tournament: models.Tournament,
+    fetches: list[tuple[_ImportSource, _SourceFetch]],
+    existing_rows: list[models.ChallongeTeam],
+    name_index: dict[str, int],
+) -> list[models.ChallongeTeam]:
+    """Auto-create ChallongeTeam rows by matching participant names to local teams.
+
+    Manual/existing rows always win. Ambiguous name matches are skipped.
+    group_player_id aliases are created as tournament-wide (group_id=None) mappings.
+    """
+    existing_keys: set[tuple[int | None, int]] = {
+        (r.group_id, r.challonge_id) for r in existing_rows
+    }
+    created: list[tuple[models.ChallongeTeam, str]] = []
+
+    for source, fetch in fetches:
+        source_group_id = source.group.id if source.group is not None else None
+
+        for participant in fetch.participants:
+            key = _normalize_team_name(participant.name)
+            if not key:
+                continue
+
+            team_id = name_index.get(key)
+            if team_id is None:
+                logger.debug(
+                    "No local team matches Challonge participant",
+                    participant_name=participant.name,
+                    challonge_id=participant.id,
+                    tournament_id=tournament.id,
+                )
+                continue
+            if team_id == _AMBIGUOUS:
+                logger.warning(
+                    "Ambiguous team name; skipping Challonge auto-map",
+                    participant_name=participant.name,
+                    challonge_id=participant.id,
+                )
+                continue
+
+            main_key = (source_group_id, participant.id)
+            if main_key not in existing_keys:
+                row = models.ChallongeTeam(
+                    challonge_id=participant.id,
+                    group_id=source_group_id,
+                    team_id=team_id,
+                    tournament_id=tournament.id,
+                )
+                session.add(row)
+                created.append((row, participant.name))
+                existing_keys.add(main_key)
+
+            for gpid in participant.group_player_ids:
+                alias_key = (None, gpid)
+                if alias_key not in existing_keys:
+                    alias_row = models.ChallongeTeam(
+                        challonge_id=gpid,
+                        group_id=None,
+                        team_id=team_id,
+                        tournament_id=tournament.id,
+                    )
+                    session.add(alias_row)
+                    created.append((alias_row, participant.name))
+                    existing_keys.add(alias_key)
+
+    if created:
+        await session.flush()
+        for row, participant_name in created:
+            await _log_sync(
+                session,
+                tournament.id,
+                "import",
+                "participant",
+                row.team_id,
+                row.challonge_id,
+                "success",
+                payload={
+                    "action": "auto_mapped",
+                    "participant_name": participant_name,
+                    "group_id": row.group_id,
+                },
+            )
+
+    return [row for row, _ in created]
+
+
+async def _build_team_lookup(
+    session: AsyncSession,
+    tournament: models.Tournament,
+    fetches: list[tuple[_ImportSource, _SourceFetch]],
 ) -> _TeamLookup:
     ct_result = await session.execute(
-        select(models.ChallongeTeam).where(models.ChallongeTeam.tournament_id == tournament_id)
+        select(models.ChallongeTeam).where(
+            models.ChallongeTeam.tournament_id == tournament.id
+        )
     )
-    mappings = list(ct_result.scalars().all())
-    by_group_and_challonge_id = {
-        (mapping.group_id, mapping.challonge_id): mapping.team_id
-        for mapping in mappings
-    }
+    existing_rows = list(ct_result.scalars().all())
 
-    candidates: dict[int, set[int]] = {}
-    for mapping in mappings:
-        candidates.setdefault(mapping.challonge_id, set()).add(mapping.team_id)
+    name_index = await _build_team_name_index(session, tournament.id)
+    created_rows = await _auto_map_participants(
+        session, tournament, fetches, existing_rows, name_index
+    )
 
-    unique_by_challonge_id = {
-        challonge_id: next(iter(team_ids))
-        for challonge_id, team_ids in candidates.items()
-        if len(team_ids) == 1
-    }
+    all_rows = existing_rows + created_rows
+    by_key = {(r.group_id, r.challonge_id): r.team_id for r in all_rows}
 
-    team_ids = sorted({mapping.team_id for mapping in mappings})
+    team_ids = sorted({r.team_id for r in all_rows})
     teams_by_id: dict[int, models.Team] = {}
     if team_ids:
         team_result = await session.execute(
@@ -500,82 +679,7 @@ async def _build_team_lookup(
         )
         teams_by_id = {team.id: team for team in team_result.scalars().all()}
 
-    await _add_challonge_participant_aliases(
-        by_group_and_challonge_id,
-        unique_by_challonge_id,
-        sources,
-    )
-
-    return _TeamLookup(
-        by_group_and_challonge_id=by_group_and_challonge_id,
-        unique_by_challonge_id=unique_by_challonge_id,
-        teams_by_id=teams_by_id,
-    )
-
-
-def _participant_aliases(participant: schemas.ChallongeParticipant) -> set[int]:
-    return {participant.id, *participant.group_player_ids}
-
-
-async def _add_challonge_participant_aliases(
-    by_group_and_challonge_id: dict[tuple[int | None, int], int],
-    unique_by_challonge_id: dict[int, int],
-    sources: list[_ImportSource],
-) -> None:
-    source_ids = sorted({source.challonge_id for source in sources})
-    group_ids = {group_id for group_id, _ in by_group_and_challonge_id}
-
-    for challonge_tournament_id in source_ids:
-        try:
-            participants = await challonge_service.fetch_participants(challonge_tournament_id)
-        except Exception as exc:
-            logger.warning(
-                "Could not fetch Challonge participants for alias lookup",
-                challonge_tournament_id=challonge_tournament_id,
-                error=str(exc),
-            )
-            continue
-
-        for participant in participants:
-            aliases = _participant_aliases(participant)
-            if len(aliases) <= 1:
-                continue
-
-            for group_id in group_ids:
-                team_ids = {
-                    team_id
-                    for alias in aliases
-                    if (team_id := by_group_and_challonge_id.get((group_id, alias))) is not None
-                }
-                if len(team_ids) == 1:
-                    team_id = next(iter(team_ids))
-                    for alias in aliases:
-                        by_group_and_challonge_id.setdefault((group_id, alias), team_id)
-
-            unique_team_ids = {
-                team_id
-                for alias in aliases
-                if (team_id := unique_by_challonge_id.get(alias)) is not None
-            }
-            if len(unique_team_ids) == 1:
-                team_id = next(iter(unique_team_ids))
-                for alias in aliases:
-                    unique_by_challonge_id.setdefault(alias, team_id)
-
-
-def _resolve_team_id(
-    lookup: _TeamLookup,
-    group_id: int | None,
-    challonge_id: int | None,
-) -> int | None:
-    if challonge_id is None:
-        return None
-
-    return (
-        lookup.by_group_and_challonge_id.get((group_id, challonge_id))
-        or lookup.by_group_and_challonge_id.get((None, challonge_id))
-        or lookup.unique_by_challonge_id.get(challonge_id)
-    )
+    return _TeamLookup(by_key=by_key, teams_by_id=teams_by_id)
 
 
 async def _upsert_encounter_from_challonge(
@@ -589,8 +693,8 @@ async def _upsert_encounter_from_challonge(
 ) -> tuple[str, models.Encounter | None]:
     encounter = local_encounters.get(match.id)
     group = _resolve_group_for_match(tournament, source, match)
-    home_team_id = _resolve_team_id(team_lookup, group.id if group else None, match.player1_id)
-    away_team_id = _resolve_team_id(team_lookup, group.id if group else None, match.player2_id)
+    home_team_id = team_lookup.resolve(group.id if group else None, match.player1_id)
+    away_team_id = team_lookup.resolve(group.id if group else None, match.player2_id)
     missing_team_mapping = [
         str(challonge_id)
         for challonge_id, team_id in (
@@ -802,7 +906,9 @@ async def import_tournament(
         select(models.Tournament)
         .where(models.Tournament.id == tournament_id)
         .options(
-            selectinload(models.Tournament.groups).selectinload(models.TournamentGroup.stage),
+            selectinload(models.Tournament.groups)
+            .selectinload(models.TournamentGroup.stage)
+            .selectinload(models.Stage.items),
             selectinload(models.Tournament.stages).selectinload(models.Stage.items),
         )
     )
@@ -826,19 +932,25 @@ async def import_tournament(
         "errors": 0,
     }
 
-    source_matches: list[tuple[_ImportSource, list[schemas.ChallongeMatch]]] = []
-    for source in sources:
+    raw_fetches = await _fetch_all_sources(sources)
+
+    fetches: list[tuple[_ImportSource, _SourceFetch]] = []
+    for source, fetch_result in raw_fetches:
+        if isinstance(fetch_result, Exception):
+            stats["errors"] += 1
+            await _log_sync(
+                session, tournament_id, "import", "tournament",
+                tournament_id, source.challonge_id,
+                "failed", error_message=str(fetch_result),
+            )
+            continue
         try:
-            challonge_matches = await challonge_service.fetch_matches(source.challonge_id)
             structure_stats = await _ensure_stage_structure_for_matches(
-                session,
-                tournament,
-                source,
-                challonge_matches,
+                session, tournament, source, fetch_result.matches,
             )
             stats["groups_created"] += structure_stats["groups_created"]
             stats["stages_created"] += structure_stats["stages_created"]
-            source_matches.append((source, challonge_matches))
+            fetches.append((source, fetch_result))
         except Exception as e:
             stats["errors"] += 1
             await _log_sync(
@@ -847,7 +959,6 @@ async def import_tournament(
                 "failed", error_message=str(e),
             )
 
-    # Build challonge_id -> local encounter mapping
     enc_result = await session.execute(
         select(models.Encounter)
         .where(
@@ -856,12 +967,13 @@ async def import_tournament(
         )
     )
     local_encounters = {e.challonge_id: e for e in enc_result.scalars().all()}
-    team_lookup = await _build_team_lookup(session, tournament_id, sources)
+    team_lookup = await _build_team_lookup(session, tournament, fetches)
+
     processed_match_ids: set[int] = set()
     processed_matches: list[schemas.ChallongeMatch] = []
 
-    for source, challonge_matches in source_matches:
-        for cm in challonge_matches:
+    for source, fetch in fetches:
+        for cm in fetch.matches:
             if cm.id in processed_match_ids:
                 continue
             processed_match_ids.add(cm.id)
