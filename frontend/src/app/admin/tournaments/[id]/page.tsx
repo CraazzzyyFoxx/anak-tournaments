@@ -31,7 +31,7 @@ const tabFallback = (
 const TournamentSetupTab = dynamic(
   () =>
     import("./components/TournamentSetupTab").then((module) => ({
-      default: module.TournamentSetupTab,
+      default: module.TournamentSetupTab
     })),
   { loading: () => tabFallback }
 );
@@ -39,7 +39,7 @@ const TournamentSetupTab = dynamic(
 const TournamentTeamsTab = dynamic(
   () =>
     import("./components/TournamentTeamsTab").then((module) => ({
-      default: module.TournamentTeamsTab,
+      default: module.TournamentTeamsTab
     })),
   { loading: () => tabFallback }
 );
@@ -47,7 +47,7 @@ const TournamentTeamsTab = dynamic(
 const TournamentMatchesTab = dynamic(
   () =>
     import("./components/TournamentMatchesTab").then((module) => ({
-      default: module.TournamentMatchesTab,
+      default: module.TournamentMatchesTab
     })),
   { loading: () => tabFallback }
 );
@@ -55,7 +55,7 @@ const TournamentMatchesTab = dynamic(
 const TournamentLogsTab = dynamic(
   () =>
     import("./components/TournamentLogsTab").then((module) => ({
-      default: module.TournamentLogsTab,
+      default: module.TournamentLogsTab
     })),
   { loading: () => tabFallback }
 );
@@ -65,7 +65,9 @@ function UnauthorizedTournamentWorkspaceState() {
     <Card>
       <CardHeader>
         <CardTitle>Unauthorized</CardTitle>
-        <CardDescription>You do not have permission to access this tournament workspace.</CardDescription>
+        <CardDescription>
+          You do not have permission to access this tournament workspace.
+        </CardDescription>
       </CardHeader>
     </Card>
   );
@@ -74,19 +76,39 @@ function UnauthorizedTournamentWorkspaceState() {
 export default function AdminTournamentWorkspacePage() {
   const params = useParams<{ id: string }>();
   const tournamentId = Number(params.id);
-  const { canAccessPermission, isSuperuser } = usePermissions();
+  const isValidTournamentId = Number.isFinite(tournamentId) && tournamentId > 0;
+  const { canAccessPermission, isLoaded: permissionsLoaded, isSuperuser } = usePermissions();
   const [activeTab, setActiveTab] = useState<TournamentWorkspaceTab>("overview");
+  const shouldLoadTeams = activeTab === "teams" || activeTab === "matches";
+  const shouldLoadEncounters = activeTab === "matches" || activeTab === "logs";
+  const shouldLoadStandings = activeTab === "overview" || activeTab === "matches";
 
   const tournamentQuery = useQuery({
     queryKey: ["admin", "tournament", tournamentId],
     queryFn: () => adminService.getTournament(tournamentId),
-    enabled: Number.isFinite(tournamentId) && tournamentId > 0,
+    enabled: isValidTournamentId
+  });
+
+  const teamsCountQuery = useQuery({
+    queryKey: ["admin", "tournament", tournamentId, "teams", "count"],
+    queryFn: () => teamService.getCount(tournamentId),
+    enabled: isValidTournamentId,
+    refetchInterval: TOURNAMENT_WORKSPACE_REFRESH_INTERVAL_MS,
+    refetchIntervalInBackground: true
+  });
+
+  const encountersCountQuery = useQuery({
+    queryKey: ["admin", "tournament", tournamentId, "encounters", "count"],
+    queryFn: () => encounterService.getCount(tournamentId),
+    enabled: isValidTournamentId,
+    refetchInterval: TOURNAMENT_WORKSPACE_REFRESH_INTERVAL_MS,
+    refetchIntervalInBackground: true
   });
 
   const teamsQuery = useQuery({
     queryKey: ["admin", "tournament", tournamentId, "teams"],
     queryFn: () => teamService.getAll(tournamentId),
-    enabled: Number.isFinite(tournamentId) && tournamentId > 0,
+    enabled: isValidTournamentId && shouldLoadTeams
   });
 
   const divisionGridsQuery = useQuery({
@@ -96,33 +118,40 @@ export default function AdminTournamentWorkspacePage() {
       if (!workspaceId) return [];
       return workspaceService.getDivisionGrids(workspaceId);
     },
-    enabled: Boolean(tournamentQuery.data?.workspace_id),
+    enabled: Boolean(tournamentQuery.data?.workspace_id)
   });
 
   const standingsQuery = useQuery({
     queryKey: ["admin", "tournament", tournamentId, "standings"],
-    queryFn: () => tournamentService.getStandings(tournamentId),
-    enabled: Number.isFinite(tournamentId) && tournamentId > 0,
+    queryFn: () =>
+      tournamentService.getStandings(tournamentId, {
+        includeMatchesHistory: false,
+        includeTeamGroup: false
+      }),
+    enabled: isValidTournamentId && shouldLoadStandings,
     refetchInterval: TOURNAMENT_WORKSPACE_REFRESH_INTERVAL_MS,
-    refetchIntervalInBackground: true,
+    refetchIntervalInBackground: true
   });
 
   const encountersQuery = useQuery({
     queryKey: ["admin", "tournament", tournamentId, "encounters"],
     queryFn: () => encounterService.getAll(1, "", tournamentId, -1),
-    enabled: Number.isFinite(tournamentId) && tournamentId > 0,
+    enabled: isValidTournamentId && shouldLoadEncounters,
     refetchInterval: TOURNAMENT_WORKSPACE_REFRESH_INTERVAL_MS,
-    refetchIntervalInBackground: true,
+    refetchIntervalInBackground: true
   });
 
   const discordChannelQuery = useQuery({
     queryKey: ["admin", "tournament", tournamentId, "discord-channel"],
     queryFn: () => adminService.getDiscordChannel(tournamentId),
-    enabled: Number.isFinite(tournamentId) && tournamentId > 0,
+    enabled: isValidTournamentId && activeTab === "setup"
   });
 
   const tournamentWorkspaceId = tournamentQuery.data?.workspace_id ?? null;
-  useTournamentRealtime({ tournamentId, workspaceId: tournamentWorkspaceId });
+  useTournamentRealtime({
+    tournamentId: isValidTournamentId ? tournamentId : null,
+    workspaceId: tournamentWorkspaceId
+  });
 
   const tournament = tournamentQuery.data;
   const canUpdateTournament = canAccessPermission("tournament.update", tournamentWorkspaceId);
@@ -141,28 +170,29 @@ export default function AdminTournamentWorkspacePage() {
   const canSyncEncounters = canAccessPermission("match.sync", tournamentWorkspaceId);
   const canUpdateStanding = canAccessPermission("standing.update", tournamentWorkspaceId);
   const canDeleteStanding = canAccessPermission("standing.delete", tournamentWorkspaceId);
-  const canRecalculateStandings = canAccessPermission("standing.recalculate", tournamentWorkspaceId);
+  const canRecalculateStandings = canAccessPermission(
+    "standing.recalculate",
+    tournamentWorkspaceId
+  );
   const teams = teamsQuery.data?.results ?? [];
+  const teamsCount = teamsQuery.data?.total ?? teamsCountQuery.data ?? null;
   const stages = tournament?.stages ?? [];
   const standings = standingsQuery.data ?? [];
+  const standingsCount = standingsQuery.data?.length ?? null;
   const encounters = encountersQuery.data?.results ?? [];
+  const encountersCount = encountersQuery.data?.total ?? encountersCountQuery.data ?? null;
   const divisionGridVersions: DivisionGridVersion[] = (divisionGridsQuery.data ?? [])
     .flatMap((grid) => grid.versions)
     .slice()
     .sort((left, right) => right.version - left.version);
-  const completedEncounterCount = encounters.filter(
-    (encounter) => encounter.status?.toUpperCase() === "COMPLETED"
-  ).length;
+  const completedEncounterCount = encountersQuery.data
+    ? encounters.filter((encounter) => encounter.status?.toUpperCase() === "COMPLETED").length
+    : null;
   const hasChallongeSource = Boolean(
     tournament?.challonge_slug || stages.some((stage) => Boolean(stage.challonge_slug))
   );
 
-  if (
-    tournamentQuery.isLoading ||
-    teamsQuery.isLoading ||
-    standingsQuery.isLoading ||
-    encountersQuery.isLoading
-  ) {
+  if (tournamentQuery.isLoading || !permissionsLoaded) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-28 w-full rounded-xl" />
@@ -207,7 +237,7 @@ export default function AdminTournamentWorkspacePage() {
       canSyncEncounters,
       canUpdateStanding,
       canDeleteStanding,
-      canRecalculateStandings,
+      canRecalculateStandings
     ].some(Boolean)
   ) {
     return <UnauthorizedTournamentWorkspaceState />;
@@ -218,9 +248,12 @@ export default function AdminTournamentWorkspacePage() {
       <TournamentWorkspaceHeader
         tournament={tournament}
         tournamentId={tournamentId}
-        teamsCount={teams.length}
-        encountersCount={encounters.length}
-        standingsCount={standings.length}
+        teamsCount={teamsCount}
+        teamsCountLoading={teamsCount == null && teamsCountQuery.isLoading}
+        encountersCount={encountersCount}
+        encountersCountLoading={encountersCount == null && encountersCountQuery.isLoading}
+        standingsCount={standingsCount}
+        standingsCountLoading={standingsCount == null && standingsQuery.isLoading}
         canReadAnalytics={canReadAnalytics}
         canUpdateTournament={canUpdateTournament}
         canDeleteTournament={canDeleteTournament}
@@ -245,9 +278,12 @@ export default function AdminTournamentWorkspacePage() {
         <TabsContent value="overview" className="space-y-4">
           <TournamentOverviewTab
             stagesCount={stages.length}
-            teamsCount={teams.length}
-            encountersCount={encounters.length}
-            standingsCount={standings.length}
+            teamsCount={teamsCount}
+            teamsCountLoading={teamsCount == null && teamsCountQuery.isLoading}
+            encountersCount={encountersCount}
+            encountersCountLoading={encountersCount == null && encountersCountQuery.isLoading}
+            standingsCount={standingsCount}
+            standingsCountLoading={standingsCount == null && standingsQuery.isLoading}
             completedEncounterCount={completedEncounterCount}
             hasChallongeSource={hasChallongeSource}
           />
@@ -268,7 +304,9 @@ export default function AdminTournamentWorkspacePage() {
         </TabsContent>
 
         <TabsContent value="teams" className="space-y-4">
-          {activeTab === "teams" ? (
+          {activeTab !== "teams" ? null : teamsQuery.isLoading ? (
+            tabFallback
+          ) : (
             <TournamentTeamsTab
               tournamentId={tournamentId}
               workspaceId={tournamentWorkspaceId}
@@ -283,11 +321,15 @@ export default function AdminTournamentWorkspacePage() {
               canUpdatePlayer={canUpdatePlayer}
               canDeletePlayer={canDeletePlayer}
             />
-          ) : null}
+          )}
         </TabsContent>
 
         <TabsContent value="matches" className="space-y-4">
-          {activeTab === "matches" ? (
+          {activeTab !== "matches" ? null : teamsQuery.isLoading ||
+            standingsQuery.isLoading ||
+            encountersQuery.isLoading ? (
+            tabFallback
+          ) : (
             <TournamentMatchesTab
               tournamentId={tournamentId}
               teams={teams}
@@ -303,18 +345,20 @@ export default function AdminTournamentWorkspacePage() {
               canDeleteStanding={canDeleteStanding}
               canRecalculateStandings={canRecalculateStandings}
             />
-          ) : null}
+          )}
         </TabsContent>
 
         <TabsContent value="logs" className="space-y-4">
-          {activeTab === "logs" ? (
+          {activeTab !== "logs" ? null : encountersQuery.isLoading ? (
+            tabFallback
+          ) : (
             <TournamentLogsTab
               tournamentId={tournamentId}
               encounters={encounters}
               canUploadLogs={canUpdateEncounter}
               enabled={activeTab === "logs"}
             />
-          ) : null}
+          )}
         </TabsContent>
       </Tabs>
     </div>

@@ -49,7 +49,7 @@ const emptyStandingForm: StandingUpdateInput = {
   points: 0,
   win: 0,
   draw: 0,
-  lose: 0,
+  lose: 0
 };
 
 function getStandingForm(standing: Standings | null): StandingUpdateInput {
@@ -62,7 +62,7 @@ function getStandingForm(standing: Standings | null): StandingUpdateInput {
     points: standing.points,
     win: standing.win,
     draw: standing.draw,
-    lose: standing.lose,
+    lose: standing.lose
   };
 }
 
@@ -98,14 +98,12 @@ export default function StandingsPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [recalculateDialogOpen, setRecalculateDialogOpen] = useState(false);
   const [selectedStanding, setSelectedStanding] = useState<Standings | null>(null);
-  const selectedTournamentId = parseTournamentQueryParam(
-    searchParams.get(TOURNAMENT_QUERY_PARAM)
-  );
+  const selectedTournamentId = parseTournamentQueryParam(searchParams.get(TOURNAMENT_QUERY_PARAM));
   const [selectedScopeFilter, setSelectedScopeFilter] = useState<string>("all");
 
   useTournamentRealtime({
     tournamentId: selectedTournamentId,
-    workspaceId,
+    workspaceId
   });
 
   // Fetch tournaments
@@ -117,7 +115,11 @@ export default function StandingsPage() {
   // Fetch standings to extract stage/item tabs
   const { data: allStandings } = useQuery({
     queryKey: ["standings", selectedTournamentId],
-    queryFn: () => tournamentService.getStandings(selectedTournamentId!),
+    queryFn: () =>
+      tournamentService.getStandings(selectedTournamentId!, {
+        includeMatchesHistory: false,
+        includeTeamGroup: false
+      }),
     enabled: !!selectedTournamentId
   });
 
@@ -239,7 +241,8 @@ export default function StandingsPage() {
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
   };
 
-  const isEditDirty = editDialogOpen && hasUnsavedChanges(formData, getStandingForm(selectedStanding));
+  const isEditDirty =
+    editDialogOpen && hasUnsavedChanges(formData, getStandingForm(selectedStanding));
 
   const columns: ColumnDef<Standings>[] = [
     {
@@ -312,7 +315,12 @@ export default function StandingsPage() {
         canUpdate || canDelete ? (
           <div className="flex items-center gap-2">
             {canUpdate ? (
-              <Button aria-label={`Edit standing for ${row.original.team?.name ?? "team"}`} variant="ghost" size="icon" onClick={() => handleEdit(row.original)}>
+              <Button
+                aria-label={`Edit standing for ${row.original.team?.name ?? "team"}`}
+                variant="ghost"
+                size="icon"
+                onClick={() => handleEdit(row.original)}
+              >
                 <Pencil className="h-4 w-4" />
               </Button>
             ) : null}
@@ -332,7 +340,9 @@ export default function StandingsPage() {
     }
   ];
 
-  const selectedTournament = tournamentsData?.results.find((tournament) => tournament.id === selectedTournamentId);
+  const selectedTournament = tournamentsData?.results.find(
+    (tournament) => tournament.id === selectedTournamentId
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -373,9 +383,7 @@ export default function StandingsPage() {
         <div className="rounded-md border p-4 bg-muted/50">
           <p className="text-sm text-muted-foreground">
             Showing standings for{" "}
-            <span className="font-semibold">
-              {selectedTournament?.name ?? "—"}
-            </span>
+            <span className="font-semibold">{selectedTournament?.name ?? "—"}</span>
           </p>
         </div>
       ) : null}
@@ -394,7 +402,17 @@ export default function StandingsPage() {
       ) : null}
 
       <AdminDataTable
-        queryKey={(page, search, pageSize, sortField, sortDir) => ["standings-table", selectedTournamentId, selectedScopeFilter, allStandings?.length ?? 0, page, search, pageSize, sortField, sortDir]}
+        queryKey={(page, search, pageSize, sortField, sortDir) => [
+          "standings-table",
+          selectedTournamentId,
+          selectedScopeFilter,
+          allStandings?.length ?? 0,
+          page,
+          search,
+          pageSize,
+          sortField,
+          sortDir
+        ]}
         queryFn={async (page, search, pageSize, sortField, sortDir) => {
           if (!selectedTournamentId || !allStandings) {
             return { results: [], total: 0, page: 1, per_page: pageSize };
@@ -423,7 +441,6 @@ export default function StandingsPage() {
             ? "No standings found. Click 'Recalculate Standings' to generate them."
             : "Select a tournament to view standings."
         }
-
         onRowDoubleClick={canUpdate ? (row) => handleEdit(row.original) : undefined}
       />
 

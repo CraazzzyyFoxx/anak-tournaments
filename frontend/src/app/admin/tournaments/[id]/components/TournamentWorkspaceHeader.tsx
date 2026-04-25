@@ -38,12 +38,17 @@ import {
 import { TournamentStatusControl } from "./TournamentStatusControl";
 import { invalidateTournamentWorkspace } from "./tournamentWorkspace.queryKeys";
 
+type MetricCount = number | null;
+
 interface TournamentWorkspaceHeaderProps {
   tournament: Tournament;
   tournamentId: number;
-  teamsCount: number;
-  encountersCount: number;
-  standingsCount: number;
+  teamsCount: MetricCount;
+  teamsCountLoading: boolean;
+  encountersCount: MetricCount;
+  encountersCountLoading: boolean;
+  standingsCount: MetricCount;
+  standingsCountLoading: boolean;
   canReadAnalytics: boolean;
   canUpdateTournament: boolean;
   canDeleteTournament: boolean;
@@ -52,12 +57,23 @@ interface TournamentWorkspaceHeaderProps {
   divisionGridLoading: boolean;
 }
 
+function formatMetricCount(value: MetricCount, isLoading: boolean) {
+  if (typeof value === "number") {
+    return value.toString();
+  }
+
+  return isLoading ? "..." : "-";
+}
+
 export function TournamentWorkspaceHeader({
   tournament,
   tournamentId,
   teamsCount,
+  teamsCountLoading,
   encountersCount,
+  encountersCountLoading,
   standingsCount,
+  standingsCountLoading,
   canReadAnalytics,
   canUpdateTournament,
   canDeleteTournament,
@@ -235,12 +251,15 @@ export function TournamentWorkspaceHeader({
               </span>
               <span className="flex items-center gap-1.5">
                 <Users className="size-3.5" />
-                {teamsCount} teams · {tournament.participants_count ?? teamsCount} participants
+                {formatMetricCount(teamsCount, teamsCountLoading)} teams /{" "}
+                {formatMetricCount(tournament.participants_count ?? teamsCount, teamsCountLoading)}{" "}
+                participants
               </span>
               <span className="flex items-center gap-1.5">
                 <Layers3 className="size-3.5" />
-                {tournament.stages.length} stages · {encountersCount} encounters · {standingsCount}{" "}
-                standings
+                {tournament.stages.length} stages /{" "}
+                {formatMetricCount(encountersCount, encountersCountLoading)} encounters /{" "}
+                {formatMetricCount(standingsCount, standingsCountLoading)} standings
               </span>
             </div>
           </div>

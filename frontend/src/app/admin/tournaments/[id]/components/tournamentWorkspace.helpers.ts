@@ -112,7 +112,7 @@ export function getTournamentForm(tournament: Tournament): TournamentFormState {
     registration_closes_at: toDateTimeInput(tournament.registration_closes_at),
     check_in_opens_at: toDateTimeInput(tournament.check_in_opens_at),
     check_in_closes_at: toDateTimeInput(tournament.check_in_closes_at),
-    division_grid_version_id: tournament.division_grid_version_id ?? null,
+    division_grid_version_id: tournament.division_grid_version_id ?? null
   };
 }
 
@@ -121,7 +121,7 @@ export function getEmptyTeamForm(): TeamFormState {
     name: "",
     captain_id: 0,
     avg_sr: 0,
-    total_sr: 0,
+    total_sr: 0
   };
 }
 
@@ -130,7 +130,7 @@ export function getTeamForm(team: Team): TeamFormState {
     name: team.name,
     captain_id: team.captain_id,
     avg_sr: team.avg_sr,
-    total_sr: team.total_sr,
+    total_sr: team.total_sr
   };
 }
 
@@ -147,7 +147,7 @@ export function getEmptyEncounterForm(
     round: 1,
     home_score: 0,
     away_score: 0,
-    status: "open",
+    status: "open"
   };
 }
 
@@ -161,7 +161,7 @@ export function getEncounterForm(encounter: Encounter): EncounterFormState {
     round: encounter.round,
     home_score: encounter.score.home,
     away_score: encounter.score.away,
-    status: encounter.status,
+    status: encounter.status
   };
 }
 
@@ -171,7 +171,7 @@ export function getStandingForm(standing: Standings): StandingFormState {
     points: standing.points,
     win: standing.win,
     draw: standing.draw,
-    lose: standing.lose,
+    lose: standing.lose
   };
 }
 
@@ -198,8 +198,8 @@ export function getEncounterGroups(encounters: Encounter[]): EncounterGroupOptio
           id: getEncounterScopeKey(encounter),
           name: getEncounterScopeLabel(encounter),
           stageOrder: encounter.stage?.order ?? Number.MAX_SAFE_INTEGER,
-          itemOrder: encounter.stage_item?.order ?? Number.MAX_SAFE_INTEGER,
-        },
+          itemOrder: encounter.stage_item?.order ?? Number.MAX_SAFE_INTEGER
+        }
       ])
     ).values()
   ).sort(
@@ -219,8 +219,8 @@ export function getStageScopeGroups(stages: Stage[]): EncounterGroupOption[] {
             id: `stage-${stage.id}`,
             name: stage.name,
             stageOrder: stage.order,
-            itemOrder: Number.MAX_SAFE_INTEGER,
-          },
+            itemOrder: Number.MAX_SAFE_INTEGER
+          }
         ];
       }
 
@@ -228,7 +228,7 @@ export function getStageScopeGroups(stages: Stage[]): EncounterGroupOption[] {
         id: `stage-item-${item.id}`,
         name: item.name,
         stageOrder: stage.order,
-        itemOrder: item.order,
+        itemOrder: item.order
       }));
     })
     .sort(
@@ -258,8 +258,8 @@ export function getStandingGroups(standings: Standings[]): StandingGroupOption[]
           id: getStandingScopeKey(standing),
           name: getStandingScopeLabel(standing),
           stageOrder: standing.stage?.order ?? Number.MAX_SAFE_INTEGER,
-          itemOrder: standing.stage_item?.order ?? Number.MAX_SAFE_INTEGER,
-        },
+          itemOrder: standing.stage_item?.order ?? Number.MAX_SAFE_INTEGER
+        }
       ])
     ).values()
   ).sort(
@@ -308,52 +308,85 @@ export function sortStandings(standings: Standings[], sort: StandingSortState): 
 
 export function getTournamentWorkspacePhases(params: {
   stagesCount: number;
-  teamsCount: number;
-  encountersCount: number;
-  standingsCount: number;
+  teamsCount: number | null;
+  encountersCount: number | null;
+  standingsCount: number | null;
 }): TournamentWorkspacePhase[] {
   const { stagesCount, teamsCount, encountersCount, standingsCount } = params;
+  const teamsKnown = typeof teamsCount === "number";
+  const encountersKnown = typeof encountersCount === "number";
+  const standingsKnown = typeof standingsCount === "number";
+  const teamsReady = teamsKnown && teamsCount > 0;
+  const encountersReady = encountersKnown && encountersCount > 0;
+  const standingsReady = standingsKnown && standingsCount > 0;
+  const formatReadyMetric = (value: number | null) => {
+    if (typeof value !== "number") {
+      return "Loading";
+    }
+
+    return value > 0 ? `${value} ready` : "Missing";
+  };
+  const structureDescription = (() => {
+    if (!teamsKnown) {
+      return "Loading roster metrics before marking this phase complete.";
+    }
+
+    if (stagesCount > 0 && teamsReady) {
+      return `${stagesCount} stages configured and ${teamsCount} teams loaded.`;
+    }
+
+    if (stagesCount === 0 && teamsCount === 0) {
+      return "Create the tournament structure and add teams before scheduling play.";
+    }
+
+    return stagesCount === 0
+      ? "Create at least one stage before continuing."
+      : "Add or sync teams to complete the roster.";
+  })();
+  const playDescription = (() => {
+    if (!encountersKnown || !standingsKnown) {
+      return "Loading play and standings metrics before marking this phase complete.";
+    }
+
+    if (encountersReady && standingsReady) {
+      return `${encountersCount} encounters tracked and standings available.`;
+    }
+
+    if (encountersCount === 0 && standingsCount === 0) {
+      return "Create encounters first, then calculate standings once results exist.";
+    }
+
+    return encountersCount === 0
+      ? "Schedule or sync encounters before calculating standings."
+      : "Calculate standings after encounters have been completed.";
+  })();
 
   return [
     {
       label: "Structure & roster",
       icon: Layers3,
-      done: stagesCount > 0 && teamsCount > 0,
-      description:
-        stagesCount > 0 && teamsCount > 0
-          ? `${stagesCount} stages configured and ${teamsCount} teams loaded.`
-          : stagesCount === 0 && teamsCount === 0
-            ? "Create the tournament structure and add teams before scheduling play."
-            : stagesCount === 0
-              ? "Create at least one stage before continuing."
-              : "Add or sync teams to complete the roster.",
+      done: stagesCount > 0 && teamsReady,
+      description: structureDescription,
       metrics: [
         { label: "Stages", value: stagesCount ? `${stagesCount} ready` : "Missing" },
-        { label: "Teams", value: teamsCount ? `${teamsCount} ready` : "Missing" },
-      ],
+        { label: "Teams", value: formatReadyMetric(teamsCount) }
+      ]
     },
     {
       label: "Play & results",
       icon: Trophy,
-      done: encountersCount > 0 && standingsCount > 0,
-      description:
-        encountersCount > 0 && standingsCount > 0
-          ? `${encountersCount} encounters tracked and standings available.`
-          : encountersCount === 0 && standingsCount === 0
-            ? "Create encounters first, then calculate standings once results exist."
-            : encountersCount === 0
-              ? "Schedule or sync encounters before calculating standings."
-              : "Calculate standings after encounters have been completed.",
+      done: encountersReady && standingsReady,
+      description: playDescription,
       metrics: [
         {
           label: "Encounters",
-          value: encountersCount ? `${encountersCount} ready` : "Missing",
+          value: formatReadyMetric(encountersCount)
         },
         {
           label: "Standings",
-          value: standingsCount ? `${standingsCount} ready` : "Missing",
-        },
-      ],
-    },
+          value: formatReadyMetric(standingsCount)
+        }
+      ]
+    }
   ];
 }

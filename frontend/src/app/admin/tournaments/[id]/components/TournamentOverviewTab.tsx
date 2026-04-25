@@ -1,34 +1,50 @@
 "use client";
 
-import { CircleAlert, Layers3, ListChecks, Trophy, Users } from "lucide-react";
+import { CircleAlert, Layers3, ListChecks, Trophy } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { getTournamentWorkspacePhases } from "./tournamentWorkspace.helpers";
 
+type MetricCount = number | null;
+
 interface TournamentOverviewTabProps {
   stagesCount: number;
-  teamsCount: number;
-  encountersCount: number;
-  standingsCount: number;
-  completedEncounterCount: number;
+  teamsCount: MetricCount;
+  teamsCountLoading: boolean;
+  encountersCount: MetricCount;
+  encountersCountLoading: boolean;
+  standingsCount: MetricCount;
+  standingsCountLoading: boolean;
+  completedEncounterCount: MetricCount;
   hasChallongeSource: boolean;
+}
+
+function formatMetricCount(value: MetricCount, isLoading: boolean) {
+  if (typeof value === "number") {
+    return value.toString();
+  }
+
+  return isLoading ? "..." : "-";
 }
 
 export function TournamentOverviewTab({
   stagesCount,
   teamsCount,
+  teamsCountLoading,
   encountersCount,
+  encountersCountLoading,
   standingsCount,
+  standingsCountLoading,
   completedEncounterCount,
-  hasChallongeSource,
+  hasChallongeSource
 }: TournamentOverviewTabProps) {
   const workspacePhases = getTournamentWorkspacePhases({
     stagesCount,
     teamsCount,
     encountersCount,
-    standingsCount,
+    standingsCount
   });
 
   return (
@@ -45,8 +61,16 @@ export function TournamentOverviewTab({
               label={hasChallongeSource ? "Challonge linked" : "No Challonge link"}
               variant={hasChallongeSource ? "success" : "muted"}
             />
-            <Badge variant={completedEncounterCount > 0 ? "secondary" : "outline"}>
-              {completedEncounterCount} completed encounters
+            <Badge
+              variant={
+                completedEncounterCount != null && completedEncounterCount > 0
+                  ? "secondary"
+                  : "outline"
+              }
+            >
+              {completedEncounterCount == null
+                ? `${formatMetricCount(encountersCount, encountersCountLoading)} encounters`
+                : `${completedEncounterCount} completed encounters`}
             </Badge>
           </div>
         </CardHeader>
@@ -116,19 +140,25 @@ export function TournamentOverviewTab({
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Teams</CardTitle>
           </CardHeader>
-          <CardContent className="text-2xl font-semibold">{teamsCount}</CardContent>
+          <CardContent className="text-2xl font-semibold">
+            {formatMetricCount(teamsCount, teamsCountLoading)}
+          </CardContent>
         </Card>
         <Card className="border-border/40">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Encounters</CardTitle>
           </CardHeader>
-          <CardContent className="text-2xl font-semibold">{encountersCount}</CardContent>
+          <CardContent className="text-2xl font-semibold">
+            {formatMetricCount(encountersCount, encountersCountLoading)}
+          </CardContent>
         </Card>
         <Card className="border-border/40">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Standings</CardTitle>
           </CardHeader>
-          <CardContent className="text-2xl font-semibold">{standingsCount}</CardContent>
+          <CardContent className="text-2xl font-semibold">
+            {formatMetricCount(standingsCount, standingsCountLoading)}
+          </CardContent>
         </Card>
       </div>
     </div>
