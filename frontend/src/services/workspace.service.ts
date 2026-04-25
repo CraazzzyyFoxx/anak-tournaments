@@ -1,6 +1,10 @@
 import { apiFetch } from "@/lib/api-fetch";
 import {
   DivisionGridEntity,
+  DivisionGridMarketplaceGrid,
+  DivisionGridMarketplaceImportRequest,
+  DivisionGridMarketplaceImportResult,
+  DivisionGridMarketplaceWorkspace,
   DivisionGridMappingRule,
   DivisionGridVersion,
   Workspace,
@@ -198,6 +202,33 @@ export default class workspaceService {
   }> {
     return apiFetch("app", `division-grid-mappings/${sourceVersionId}/${targetVersionId}`, {
       method: "PUT",
+      body: data
+    }).then((r) => r.json());
+  }
+
+  static async getDivisionGridMarketplaceWorkspaces(
+    workspaceId: number
+  ): Promise<DivisionGridMarketplaceWorkspace[]> {
+    return apiFetch("app", `workspaces/${workspaceId}/division-grid-marketplace/workspaces`).then(
+      (r) => r.json()
+    );
+  }
+
+  static async getDivisionGridMarketplace(
+    workspaceId: number,
+    sourceWorkspaceId: number
+  ): Promise<DivisionGridMarketplaceGrid[]> {
+    return apiFetch("app", `workspaces/${workspaceId}/division-grid-marketplace`, {
+      query: { source_workspace_id: sourceWorkspaceId }
+    }).then((r) => r.json());
+  }
+
+  static async importDivisionGridMarketplace(
+    workspaceId: number,
+    data: DivisionGridMarketplaceImportRequest
+  ): Promise<DivisionGridMarketplaceImportResult> {
+    return apiFetch("app", `workspaces/${workspaceId}/division-grid-marketplace/import`, {
+      method: "POST",
       body: data
     }).then((r) => r.json());
   }

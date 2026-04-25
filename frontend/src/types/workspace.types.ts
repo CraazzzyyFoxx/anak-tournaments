@@ -51,6 +51,64 @@ export interface DivisionGridMapping {
   rules: DivisionGridMappingRule[];
 }
 
+export interface DivisionGridMarketplaceWorkspace {
+  id: number;
+  slug: string;
+  name: string;
+  grids_count: number;
+  versions_count: number;
+}
+
+export interface DivisionGridMarketplaceVersion {
+  id: number;
+  version: number;
+  label: string;
+  status: string;
+  tiers_count: number;
+  preview_icon_urls: string[];
+}
+
+export interface DivisionGridMarketplaceGrid {
+  id: number;
+  slug: string;
+  name: string;
+  description: string | null;
+  versions_count: number;
+  tiers_count: number;
+  preview_icon_urls: string[];
+  versions: DivisionGridMarketplaceVersion[];
+}
+
+export interface DivisionGridMarketplaceImportRequest {
+  source_workspace_id: number;
+  source_grid_ids: number[];
+  set_default?: boolean;
+}
+
+export interface DivisionGridMarketplaceImportedGrid {
+  source_grid_id: number;
+  target_grid_id: number;
+  slug: string;
+  name: string;
+  versions_count: number;
+  tiers_count: number;
+}
+
+export interface DivisionGridMarketplaceImportWarning {
+  grid_slug?: string | null;
+  message: string;
+}
+
+export interface DivisionGridMarketplaceImportResult {
+  created_grids: number;
+  created_versions: number;
+  created_tiers: number;
+  copied_images: number;
+  copied_mappings: number;
+  imported_grids: DivisionGridMarketplaceImportedGrid[];
+  warnings: DivisionGridMarketplaceImportWarning[];
+}
+
 export interface Workspace {
   id: number;
   slug: string;

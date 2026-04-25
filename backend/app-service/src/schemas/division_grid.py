@@ -16,6 +16,13 @@ __all__ = (
     "DivisionGridMappingRuleWrite",
     "DivisionGridMappingRead",
     "DivisionGridMappingWrite",
+    "DivisionGridMarketplaceWorkspaceRead",
+    "DivisionGridMarketplaceVersionRead",
+    "DivisionGridMarketplaceGridRead",
+    "DivisionGridMarketplaceImportRequest",
+    "DivisionGridMarketplaceImportedGrid",
+    "DivisionGridMarketplaceImportWarning",
+    "DivisionGridMarketplaceImportResult",
 )
 
 
@@ -100,6 +107,64 @@ class DivisionGridMappingRead(BaseRead):
 class DivisionGridMappingWrite(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     rules: list[DivisionGridMappingRuleWrite] = Field(default_factory=list)
+
+
+class DivisionGridMarketplaceWorkspaceRead(BaseModel):
+    id: int
+    slug: str
+    name: str
+    grids_count: int
+    versions_count: int
+
+
+class DivisionGridMarketplaceVersionRead(BaseModel):
+    id: int
+    version: int
+    label: str
+    status: str
+    tiers_count: int
+    preview_icon_urls: list[str] = Field(default_factory=list)
+
+
+class DivisionGridMarketplaceGridRead(BaseModel):
+    id: int
+    slug: str
+    name: str
+    description: str | None
+    versions_count: int
+    tiers_count: int
+    preview_icon_urls: list[str] = Field(default_factory=list)
+    versions: list[DivisionGridMarketplaceVersionRead] = Field(default_factory=list)
+
+
+class DivisionGridMarketplaceImportRequest(BaseModel):
+    source_workspace_id: int
+    source_grid_ids: list[int] = Field(..., min_length=1)
+    set_default: bool = False
+
+
+class DivisionGridMarketplaceImportedGrid(BaseModel):
+    source_grid_id: int
+    target_grid_id: int
+    slug: str
+    name: str
+    versions_count: int
+    tiers_count: int
+
+
+class DivisionGridMarketplaceImportWarning(BaseModel):
+    grid_slug: str | None = None
+    message: str
+
+
+class DivisionGridMarketplaceImportResult(BaseModel):
+    created_grids: int
+    created_versions: int
+    created_tiers: int
+    copied_images: int
+    copied_mappings: int
+    imported_grids: list[DivisionGridMarketplaceImportedGrid] = Field(default_factory=list)
+    warnings: list[DivisionGridMarketplaceImportWarning] = Field(default_factory=list)
 
 
 DivisionGridVersionCreate.model_rebuild()

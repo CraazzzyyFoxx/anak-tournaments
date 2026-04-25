@@ -3,13 +3,14 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { DivisionGridMappingEditor } from "./MappingEditor";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, CopyPlus, Plus, Save, Star, Trash2, Upload } from "lucide-react";
+import { Check, CopyPlus, Download, Plus, Save, Star, Store, Trash2, Upload } from "lucide-react";
 import Image from "next/image";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -22,7 +23,11 @@ import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/usePermissions";
 import workspaceService from "@/services/workspace.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
-import type { DivisionGridVersion, DivisionTier } from "@/types/workspace.types";
+import type {
+  DivisionGridMarketplaceImportResult,
+  DivisionGridVersion,
+  DivisionTier
+} from "@/types/workspace.types";
 
 function buildDefaultTiers(): DivisionTier[] {
   return Array.from({ length: 20 }, (_, index) => {
@@ -328,11 +333,56 @@ export default function DivisionsAdminPage() {
     enabled: currentWorkspaceId !== null
   });
 
+  const marketplaceWorkspacesQuery = useQuery({
+    queryKey: ["division-grid-marketplace-workspaces", currentWorkspaceId],
+    queryFn: () => workspaceService.getDivisionGridMarketplaceWorkspaces(currentWorkspaceId!),
+    enabled: currentWorkspaceId !== null && canEdit
+  });
+
+  const marketplaceWorkspaces = useMemo(
+    () => marketplaceWorkspacesQuery.data ?? [],
+    [marketplaceWorkspacesQuery.data]
+  );
+
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
+  const [marketplaceSourceWorkspaceId, setMarketplaceSourceWorkspaceId] = useState<number | null>(
+    null
+  );
+  const [selectedMarketplaceGridIds, setSelectedMarketplaceGridIds] = useState<number[]>([]);
+  const [makeImportedDefault, setMakeImportedDefault] = useState(false);
+  const [marketplaceImportResult, setMarketplaceImportResult] =
+    useState<DivisionGridMarketplaceImportResult | null>(null);
 
   const grids = gridsQuery.data ?? [];
   const activeGrid = grids[0] ?? null;
   const versions = activeGrid?.versions ?? [];
+  const effectiveMarketplaceSourceWorkspaceId =
+    marketplaceSourceWorkspaceId !== null &&
+    marketplaceWorkspaces.some((sourceWorkspace) => sourceWorkspace.id === marketplaceSourceWorkspaceId)
+      ? marketplaceSourceWorkspaceId
+      : null;
+
+  const marketplaceGridsQuery = useQuery({
+    queryKey: ["division-grid-marketplace", currentWorkspaceId, effectiveMarketplaceSourceWorkspaceId],
+    queryFn: () =>
+      workspaceService.getDivisionGridMarketplace(
+        currentWorkspaceId!,
+        effectiveMarketplaceSourceWorkspaceId!
+      ),
+    enabled: currentWorkspaceId !== null && canEdit && effectiveMarketplaceSourceWorkspaceId !== null
+  });
+
+  const marketplaceGrids = marketplaceGridsQuery.data ?? [];
+  const selectedMarketplaceGridIdsSet = useMemo(
+    () => new Set(selectedMarketplaceGridIds),
+    [selectedMarketplaceGridIds]
+  );
+
+  const toggleMarketplaceGrid = useCallback((gridId: number, checked: boolean) => {
+    setSelectedMarketplaceGridIds((current) =>
+      checked ? Array.from(new Set([...current, gridId])) : current.filter((id) => id !== gridId)
+    );
+  }, []);
 
   const defaultVersionId = useMemo(() => {
     if (!workspace || versions.length === 0) return null;
@@ -415,6 +465,36 @@ export default function DivisionsAdminPage() {
     },
     onError: (error: Error) =>
       toast({ title: "Error", description: error.message, variant: "destructive" })
+  });
+
+  const importMarketplaceMutation = useMutation({
+    mutationFn: async () => {
+      if (!currentWorkspaceId || !effectiveMarketplaceSourceWorkspaceId) {
+        throw new Error("Select a source workspace");
+      }
+      if (selectedMarketplaceGridIds.length === 0) {
+        throw new Error("Select at least one grid");
+      }
+      return workspaceService.importDivisionGridMarketplace(currentWorkspaceId, {
+        source_workspace_id: effectiveMarketplaceSourceWorkspaceId,
+        source_grid_ids: selectedMarketplaceGridIds,
+        set_default: makeImportedDefault
+      });
+    },
+    onSuccess: async (result) => {
+      setMarketplaceImportResult(result);
+      setSelectedMarketplaceGridIds([]);
+      await queryClient.invalidateQueries({ queryKey: ["division-grids", currentWorkspaceId] });
+      if (makeImportedDefault) {
+        await fetchWorkspaces();
+      }
+      toast({
+        title: "Division grid imported",
+        description: `${result.created_grids} grid(s), ${result.created_versions} version(s), ${result.copied_images} image(s)`
+      });
+    },
+    onError: (error: Error) =>
+      toast({ title: "Import failed", description: error.message, variant: "destructive" })
   });
 
   if (!currentWorkspaceId) {
@@ -539,6 +619,161 @@ export default function DivisionsAdminPage() {
           )}
         </CardContent>
       </Card>
+
+      {canEdit && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Store className="h-4 w-4" />
+              Marketplace
+            </CardTitle>
+            <CardDescription>
+              Import full division grids from another workspace, including versions, mappings, and
+              tier icons.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {marketplaceWorkspaces.length === 0 ? (
+              <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                {marketplaceWorkspacesQuery.isLoading
+                  ? "Loading available workspaces..."
+                  : "No accessible workspace with division grids was found."}
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center gap-3">
+                  <Select
+                    value={effectiveMarketplaceSourceWorkspaceId?.toString() ?? ""}
+                    onValueChange={(value) => {
+                      setMarketplaceSourceWorkspaceId(Number(value));
+                      setSelectedMarketplaceGridIds([]);
+                      setMarketplaceImportResult(null);
+                    }}
+                  >
+                    <SelectTrigger className="w-80">
+                      <SelectValue placeholder="Source workspace" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {marketplaceWorkspaces.map((sourceWorkspace) => (
+                        <SelectItem key={sourceWorkspace.id} value={sourceWorkspace.id.toString()}>
+                          {sourceWorkspace.name} ({sourceWorkspace.grids_count} grid
+                          {sourceWorkspace.grids_count === 1 ? "" : "s"})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={makeImportedDefault}
+                      onCheckedChange={(checked) => setMakeImportedDefault(checked === true)}
+                    />
+                    Set imported grid as workspace default
+                  </label>
+                </div>
+
+                {marketplaceGridsQuery.isLoading ? (
+                  <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                    Loading grids...
+                  </div>
+                ) : marketplaceGrids.length === 0 ? (
+                  <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                    This source workspace does not have division grids.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {marketplaceGrids.map((grid) => {
+                      const checked = selectedMarketplaceGridIdsSet.has(grid.id);
+                      return (
+                        <div
+                          key={grid.id}
+                          className={`flex flex-wrap items-center gap-3 rounded-md border p-3 transition-colors ${
+                            checked ? "border-primary bg-primary/5" : "hover:bg-muted/40"
+                          }`}
+                        >
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={(value) => toggleMarketplaceGrid(grid.id, value === true)}
+                            aria-label={`Select ${grid.name}`}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-medium">{grid.name}</span>
+                              <Badge variant="outline">{grid.slug}</Badge>
+                            </div>
+                            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                              <span>{grid.versions_count} version(s)</span>
+                              <span>{grid.tiers_count} tier(s)</span>
+                              {grid.versions.slice(-2).map((version) => (
+                                <Badge key={version.id} variant="secondary" className="text-[10px]">
+                                  v{version.version} {version.status}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                          {grid.preview_icon_urls.length > 0 && (
+                            <div className="flex max-w-56 flex-wrap justify-end gap-1">
+                              {grid.preview_icon_urls.slice(0, 8).map((iconUrl, index) => (
+                                <span
+                                  key={`${grid.id}-${iconUrl}-${index}`}
+                                  className="flex h-8 w-8 items-center justify-center rounded border bg-background"
+                                >
+                                  <Image
+                                    src={iconUrl}
+                                    alt=""
+                                    width={24}
+                                    height={24}
+                                    className="h-6 w-6 object-contain"
+                                  />
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button
+                    onClick={() => importMarketplaceMutation.mutate()}
+                    disabled={
+                      importMarketplaceMutation.isPending ||
+                      selectedMarketplaceGridIds.length === 0 ||
+                      effectiveMarketplaceSourceWorkspaceId === null
+                    }
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    Import Selected
+                  </Button>
+                  {selectedMarketplaceGridIds.length > 0 && (
+                    <span className="text-sm text-muted-foreground">
+                      {selectedMarketplaceGridIds.length} selected
+                    </span>
+                  )}
+                </div>
+
+                {marketplaceImportResult && (
+                  <div className="rounded-md border bg-muted/30 p-3 text-sm">
+                    <div className="font-medium">
+                      Imported {marketplaceImportResult.created_grids} grid(s),{" "}
+                      {marketplaceImportResult.created_versions} version(s),{" "}
+                      {marketplaceImportResult.copied_images} image(s).
+                    </div>
+                    {marketplaceImportResult.warnings.length > 0 && (
+                      <div className="mt-2 space-y-1 text-muted-foreground">
+                        {marketplaceImportResult.warnings.map((warning, index) => (
+                          <div key={`${warning.message}-${index}`}>{warning.message}</div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {activeGrid && (
         <DivisionGridEditorCard
