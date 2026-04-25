@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, Form, Request, UploadFile
 from faststream.rabbit.fastapi import RabbitRouter
 from loguru import logger
 from shared.clients.s3 import S3Client
@@ -17,7 +17,7 @@ from sqlalchemy import select
 from src import models
 from src.core import auth, config, db, enums
 from src.services.match_logs import flows as logs_flows
-from src.services.match_logs import log_records as record_service
+from src.services.match_logs import uploads as upload_service
 from src.services.s3 import service as s3_service
 from src.services.tournament import flows as tournaments_flows
 from src.services.tournament import service as tournaments_service
@@ -32,11 +32,6 @@ router = APIRouter(
     dependencies=[Depends(auth.require_role_or_service_scope("admin", "parser:logs"))],
 )
 task_router = RabbitRouter(config.settings.broker_url, logger=logger)
-
-
-def decode_file_lines(uploaded_file: UploadFile) -> bytes:
-    file_lines = uploaded_file.file.readlines()
-    return "".join([line.decode() for line in file_lines]).encode("utf-8")
 
 
 @router.post("/")
@@ -73,14 +68,7 @@ async def process_logs_async(
     auth_user: models.AuthUser | None = Depends(auth.get_current_user_optional),
     s3: S3Client = Depends(get_s3),
 ):
-    if file.filename is None:
-        raise HTTPException(status_code=400, detail="No file name provided")
-
-    decoded_lines = decode_file_lines(file)
     tournament = await tournaments_flows.get(session, tournament_id, [])
-    state = await s3_service.upload_log(s3, tournament.id, file.filename, decoded_lines)
-    if not state:
-        raise HTTPException(status_code=400, detail="Failed to upload file")
 
     # Resolve uploader game User and source
     uploader_user_id: int | None = None
@@ -94,19 +82,15 @@ async def process_logs_async(
             uploader_user_id = discord_user.user_id
     elif auth_user:
         source = LogProcessingSource.upload
-        player_link = await session.execute(
-            select(models.AuthUserPlayer).where(models.AuthUserPlayer.auth_user_id == auth_user.id).limit(1)
-        )
-        auth_player = player_link.scalar_one_or_none()
-        if auth_player:
-            uploader_user_id = auth_player.player_id
+        uploader_user_id = await upload_service.resolve_auth_uploader_id(session, auth_user)
     else:
         source = LogProcessingSource.manual
 
-    await record_service.upsert_log_record(
+    await upload_service.store_uploaded_log(
         session,
+        s3=s3,
         tournament_id=tournament.id,
-        filename=file.filename,
+        uploaded_file=file,
         source=source,
         uploader_id=uploader_user_id,
     )

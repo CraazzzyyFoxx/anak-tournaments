@@ -126,6 +126,49 @@ export interface TeamUpdateInput {
   total_sr?: number;
 }
 
+export interface ChallongeTeamMapping {
+  participant_id: number;
+  group_id: number | null;
+  team_id: number;
+}
+
+export interface ChallongeTeamSyncRequest {
+  mappings: ChallongeTeamMapping[];
+}
+
+export interface ChallongeTeamPreviewTeam {
+  id: number;
+  name: string;
+  balancer_name: string;
+}
+
+export interface ChallongeTeamPreviewParticipant {
+  participant_id: number;
+  challonge_id: number;
+  group_id: number | null;
+  group_name: string | null;
+  challonge_tournament_id: number;
+  name: string;
+  active: boolean;
+  suggested_team_id: number | null;
+  mapped_team_id: number | null;
+}
+
+export interface ChallongeTeamSyncPreview {
+  teams: ChallongeTeamPreviewTeam[];
+  participants: ChallongeTeamPreviewParticipant[];
+}
+
+export interface ChallongeTeamSyncResult {
+  success: boolean;
+  count: number;
+  created: number;
+  updated: number;
+  unchanged: number;
+  skipped: number;
+  errors?: string[];
+}
+
 // ─── Player ──────────────────────────────────────────────────────────────────
 
 export interface PlayerCreateInput {
@@ -655,6 +698,8 @@ export interface LogProcessingRecord {
   id: number;
   tournament_id: number;
   tournament_name: string | null;
+  attached_encounter_id: number | null;
+  attached_encounter_name: string | null;
   filename: string;
   status: LogProcessingStatus;
   source: LogProcessingSource;
@@ -668,6 +713,22 @@ export interface LogProcessingRecord {
 export interface LogHistoryResponse {
   items: LogProcessingRecord[];
   total: number;
+}
+
+export interface LogUploadItem {
+  record_id: number;
+  filename: string;
+  attached_encounter_id: number | null;
+}
+
+export interface LogUploadError {
+  filename: string | null;
+  error: string;
+}
+
+export interface LogUploadResponse {
+  uploaded: LogUploadItem[];
+  errors: LogUploadError[];
 }
 
 export interface QueueDepth {

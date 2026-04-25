@@ -1,9 +1,21 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { DivisionGridMappingEditor } from "./MappingEditor";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, CopyPlus, Download, Plus, Save, Star, Store, Trash2, Upload } from "lucide-react";
+import {
+  Check,
+  CopyPlus,
+  Download,
+  Minus,
+  Plus,
+  Save,
+  Star,
+  Store,
+  Trash2,
+  Upload,
+  Wand2
+} from "lucide-react";
 import Image from "next/image";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
@@ -85,6 +97,160 @@ type DivisionGridEditorCardProps = {
 
 // Navigable column indices: 0=#, 1=name, 2=rank_min, 3=rank_max
 const NAV_COLS = 4;
+const DEFAULT_RANK_STEP = 100;
+
+function toSafeInteger(value: number, fallback = 0) {
+  return Number.isFinite(value) ? Math.trunc(value) : fallback;
+}
+
+function parseIntegerInput(value: string, fallback = 0) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function clampRank(value: number) {
+  return Math.max(0, toSafeInteger(value));
+}
+
+function shiftTierRankRange(tier: DivisionTier, delta: number): DivisionTier {
+  return {
+    ...tier,
+    rank_min: clampRank(tier.rank_min + delta),
+    rank_max: tier.rank_max === null ? null : clampRank(tier.rank_max + delta)
+  };
+}
+
+function getSelectedIndexes(selectedRows: Set<number>, length: number) {
+  return Array.from(selectedRows)
+    .filter((index) => index >= 0 && index < length)
+    .sort((a, b) => a - b);
+}
+
+type TierEditorRowProps = {
+  tier: DivisionTier;
+  rowIndex: number;
+  canEdit: boolean;
+  isSelected: boolean;
+  onDelete: (index: number) => void;
+  onKeyDown: (event: React.KeyboardEvent<HTMLInputElement>, row: number, col: number) => void;
+  onSelect: (index: number, checked: boolean) => void;
+  onSetInputRef: (row: number, col: number, element: HTMLInputElement | null) => void;
+  onUpdate: (index: number, field: keyof DivisionTier, value: string | number | null) => void;
+  onUpload: (index: number, tier: DivisionTier, file: File) => void;
+};
+
+const TierEditorRow = memo(function TierEditorRow({
+  tier,
+  rowIndex,
+  canEdit,
+  isSelected,
+  onDelete,
+  onKeyDown,
+  onSelect,
+  onSetInputRef,
+  onUpdate,
+  onUpload
+}: TierEditorRowProps) {
+  const setInputRef = useCallback(
+    (col: number) => (element: HTMLInputElement | null) => onSetInputRef(rowIndex, col, element),
+    [onSetInputRef, rowIndex]
+  );
+
+  return (
+    <div className="grid min-w-[820px] grid-cols-[40px_56px_48px_minmax(180px,1fr)_240px_40px_36px] gap-2 border-b px-4 py-1.5 last:border-b-0">
+      <div className="flex items-center justify-center">
+        <Checkbox
+          checked={isSelected}
+          onCheckedChange={(checked) => onSelect(rowIndex, checked === true)}
+          aria-label={`Select ${tier.name}`}
+          disabled={!canEdit}
+        />
+      </div>
+      <Input
+        ref={setInputRef(0)}
+        inputMode="numeric"
+        className="h-8 text-center tabular-nums"
+        value={tier.number}
+        onChange={(event) => onUpdate(rowIndex, "number", parseIntegerInput(event.target.value))}
+        onKeyDown={(event) => onKeyDown(event, rowIndex, 0)}
+        disabled={!canEdit}
+      />
+      <div className="flex items-center justify-center">
+        <Image
+          src={tier.icon_url}
+          alt={tier.name}
+          width={28}
+          height={28}
+          className="h-7 w-7 object-contain"
+        />
+      </div>
+      <Input
+        ref={setInputRef(1)}
+        className="h-8"
+        value={tier.name}
+        onChange={(event) => onUpdate(rowIndex, "name", event.target.value)}
+        onKeyDown={(event) => onKeyDown(event, rowIndex, 1)}
+        disabled={!canEdit}
+      />
+      <div className="flex items-center gap-1.5">
+        <Input
+          ref={setInputRef(2)}
+          inputMode="numeric"
+          className="h-8 w-24 tabular-nums"
+          value={tier.rank_min}
+          onChange={(event) =>
+            onUpdate(rowIndex, "rank_min", parseIntegerInput(event.target.value))
+          }
+          onKeyDown={(event) => onKeyDown(event, rowIndex, 2)}
+          disabled={!canEdit}
+        />
+        <span className="shrink-0 text-xs text-muted-foreground">-</span>
+        <Input
+          ref={setInputRef(3)}
+          inputMode="numeric"
+          className="h-8 w-24 tabular-nums"
+          placeholder="max"
+          value={tier.rank_max ?? ""}
+          onChange={(event) =>
+            onUpdate(
+              rowIndex,
+              "rank_max",
+              event.target.value === "" ? null : parseIntegerInput(event.target.value)
+            )
+          }
+          onKeyDown={(event) => onKeyDown(event, rowIndex, 3)}
+          disabled={!canEdit}
+        />
+      </div>
+      <label className="inline-flex cursor-pointer items-center justify-center">
+        <input
+          type="file"
+          className="hidden"
+          accept="image/png,image/webp,image/jpeg,image/gif"
+          disabled={!canEdit}
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) onUpload(rowIndex, tier, file);
+            event.currentTarget.value = "";
+          }}
+        />
+        <span className="inline-flex h-8 w-8 items-center justify-center rounded-md border hover:bg-muted">
+          <Upload className="h-3.5 w-3.5" />
+        </span>
+      </label>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+        onClick={() => onDelete(rowIndex)}
+        disabled={!canEdit}
+        aria-label={`Delete ${tier.name}`}
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </Button>
+    </div>
+  );
+});
 
 function DivisionGridEditorCard({
   workspaceId,
@@ -97,11 +263,16 @@ function DivisionGridEditorCard({
   const initialState = useMemo(() => buildEditorState(selectedVersion), [selectedVersion]);
   const [label, setLabel] = useState(initialState.label);
   const [tiers, setTiers] = useState<DivisionTier[]>(initialState.tiers);
+  const [selectedRows, setSelectedRows] = useState<Set<number>>(() => new Set());
+  const [rankDelta, setRankDelta] = useState(DEFAULT_RANK_STEP);
+  const [rangeStart, setRangeStart] = useState(0);
+  const [rangeStep, setRangeStep] = useState(DEFAULT_RANK_STEP);
+  const [tiersToAdd, setTiersToAdd] = useState(1);
 
   // Keyboard navigation refs: key = `${row}-${col}`
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
-  const setRef = useCallback(
-    (row: number, col: number) => (el: HTMLInputElement | null) => {
+  const setInputRef = useCallback(
+    (row: number, col: number, el: HTMLInputElement | null) => {
       const key = `${row}-${col}`;
       if (el) inputRefs.current.set(key, el);
       else inputRefs.current.delete(key);
@@ -162,14 +333,123 @@ function DivisionGridEditorCard({
       toast({ title: "Error", description: error.message, variant: "destructive" })
   });
 
-  const updateTier = (index: number, field: keyof DivisionTier, value: string | number | null) => {
-    setTiers((current) =>
-      current.map((tier, tierIndex) => (tierIndex === index ? { ...tier, [field]: value } : tier))
-    );
-  };
+  const updateTier = useCallback(
+    (index: number, field: keyof DivisionTier, value: string | number | null) => {
+      setTiers((current) =>
+        current.map((tier, tierIndex) => (tierIndex === index ? { ...tier, [field]: value } : tier))
+      );
+    },
+    []
+  );
 
-  const uploadIcon = async (index: number, file: File) => {
-    const tier = tiers[index];
+  const selectedRowIndexes = useMemo(
+    () => getSelectedIndexes(selectedRows, tiers.length),
+    [selectedRows, tiers.length]
+  );
+
+  const bulkTargetIndexes = useMemo(
+    () =>
+      selectedRowIndexes.length > 0
+        ? selectedRowIndexes
+        : Array.from({ length: tiers.length }, (_, index) => index),
+    [selectedRowIndexes, tiers.length]
+  );
+
+  const bulkTargetLabel =
+    selectedRowIndexes.length > 0
+      ? `${selectedRowIndexes.length} selected`
+      : `all ${tiers.length} tiers`;
+  const allRowsSelected = tiers.length > 0 && selectedRowIndexes.length === tiers.length;
+  const someRowsSelected = selectedRowIndexes.length > 0 && !allRowsSelected;
+
+  const toggleRowSelection = useCallback((index: number, checked: boolean) => {
+    setSelectedRows((current) => {
+      const next = new Set(current);
+      if (checked) next.add(index);
+      else next.delete(index);
+      return next;
+    });
+  }, []);
+
+  const toggleAllRows = useCallback(
+    (checked: boolean) => {
+      setSelectedRows(
+        checked ? new Set(Array.from({ length: tiers.length }, (_, index) => index)) : new Set()
+      );
+    },
+    [tiers.length]
+  );
+
+  const shiftBulkRanks = useCallback(
+    (direction: 1 | -1) => {
+      const delta = Math.abs(toSafeInteger(rankDelta, DEFAULT_RANK_STEP)) * direction;
+      const targetSet = new Set(bulkTargetIndexes);
+      setTiers((current) =>
+        current.map((tier, index) =>
+          targetSet.has(index) ? shiftTierRankRange(tier, delta) : tier
+        )
+      );
+    },
+    [bulkTargetIndexes, rankDelta]
+  );
+
+  const autoFillBulkRanges = useCallback(() => {
+    const start = clampRank(rangeStart);
+    const step = Math.max(1, Math.abs(toSafeInteger(rangeStep, DEFAULT_RANK_STEP)));
+    const targetSet = new Set(bulkTargetIndexes);
+
+    setTiers((current) => {
+      const orderedIndexes = bulkTargetIndexes
+        .slice()
+        .sort((a, b) => current[b].number - current[a].number || b - a);
+      const orderByIndex = new Map(orderedIndexes.map((index, order) => [index, order]));
+
+      return current.map((tier, index) => {
+        if (!targetSet.has(index)) return tier;
+
+        const order = orderByIndex.get(index) ?? 0;
+        const min = start + order * step;
+        const shouldStayOpenEnded = tier.rank_max === null;
+
+        return {
+          ...tier,
+          rank_min: min,
+          rank_max: shouldStayOpenEnded ? null : min + step - 1
+        };
+      });
+    });
+  }, [bulkTargetIndexes, rangeStart, rangeStep]);
+
+  const addTiers = useCallback(() => {
+    const count = Math.max(1, Math.min(100, Math.abs(toSafeInteger(tiersToAdd, 1))));
+    const step = Math.max(1, Math.abs(toSafeInteger(rangeStep, DEFAULT_RANK_STEP)));
+
+    setTiers((current) => {
+      const maxNumber = current.reduce((max, tier) => Math.max(max, tier.number), 0);
+      return [
+        ...current,
+        ...Array.from({ length: count }, (_, offset) => {
+          const number = maxNumber + offset + 1;
+          return {
+            ...emptyTier(number, current.length + offset),
+            rank_max: step - 1
+          };
+        })
+      ];
+    });
+  }, [rangeStep, tiersToAdd]);
+
+  const removeTier = useCallback((index: number) => {
+    setTiers((current) => current.filter((_, tierIndex) => tierIndex !== index));
+    setSelectedRows(new Set());
+  }, []);
+
+  const removeSelectedTiers = useCallback(() => {
+    setTiers((current) => current.filter((_, index) => !selectedRows.has(index)));
+    setSelectedRows(new Set());
+  }, [selectedRows]);
+
+  const uploadIcon = useCallback(async (index: number, tier: DivisionTier, file: File) => {
     const slugBase = tier.slug || `division-${tier.number}`;
     const randomHash = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
     const upload = await workspaceService.uploadDivisionIcon(
@@ -179,7 +459,7 @@ function DivisionGridEditorCard({
     );
     updateTier(index, "icon_url", upload.public_url);
     toast({ title: "Icon uploaded" });
-  };
+  }, [toast, updateTier, workspaceId]);
 
   return (
     <Card>
@@ -194,8 +474,133 @@ function DivisionGridEditorCard({
           placeholder="Version label"
         />
 
-        <div className="rounded-md border">
-          <div className="grid grid-cols-[56px_48px_200px_1fr_40px_36px] gap-2 border-b bg-muted/40 px-4 py-2 text-xs font-medium text-muted-foreground">
+        <div className="rounded-md border bg-muted/20 p-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1">
+              <div className="text-xs font-medium text-muted-foreground">Bulk target</div>
+              <Badge variant="outline" className="h-9 px-3">
+                {bulkTargetLabel}
+              </Badge>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground" htmlFor="rank-delta">
+                Rank delta
+              </label>
+              <Input
+                id="rank-delta"
+                type="number"
+                inputMode="numeric"
+                className="h-9 w-28 tabular-nums"
+                value={rankDelta}
+                onChange={(event) =>
+                  setRankDelta(Math.max(0, parseIntegerInput(event.target.value)))
+                }
+                disabled={!canEdit}
+              />
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => shiftBulkRanks(1)}
+              disabled={!canEdit || bulkTargetIndexes.length === 0}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Add
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => shiftBulkRanks(-1)}
+              disabled={!canEdit || bulkTargetIndexes.length === 0}
+            >
+              <Minus className="mr-2 h-4 w-4" />
+              Reduce
+            </Button>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground" htmlFor="range-start">
+                Range start
+              </label>
+              <Input
+                id="range-start"
+                type="number"
+                inputMode="numeric"
+                className="h-9 w-28 tabular-nums"
+                value={rangeStart}
+                onChange={(event) =>
+                  setRangeStart(Math.max(0, parseIntegerInput(event.target.value)))
+                }
+                disabled={!canEdit}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground" htmlFor="range-step">
+                Step
+              </label>
+              <Input
+                id="range-step"
+                type="number"
+                inputMode="numeric"
+                min={1}
+                className="h-9 w-24 tabular-nums"
+                value={rangeStep}
+                onChange={(event) =>
+                  setRangeStep(Math.max(1, parseIntegerInput(event.target.value, 1)))
+                }
+                disabled={!canEdit}
+              />
+            </div>
+            <Button
+              variant="outline"
+              onClick={autoFillBulkRanges}
+              disabled={!canEdit || bulkTargetIndexes.length === 0}
+            >
+              <Wand2 className="mr-2 h-4 w-4" />
+              Auto ranges
+            </Button>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground" htmlFor="tiers-to-add">
+                Tiers
+              </label>
+              <Input
+                id="tiers-to-add"
+                type="number"
+                inputMode="numeric"
+                min={1}
+                className="h-9 w-20 tabular-nums"
+                value={tiersToAdd}
+                onChange={(event) =>
+                  setTiersToAdd(Math.max(1, parseIntegerInput(event.target.value, 1)))
+                }
+                disabled={!canEdit}
+              />
+            </div>
+            <Button variant="outline" onClick={addTiers} disabled={!canEdit}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add tiers
+            </Button>
+            <Button
+              variant="outline"
+              onClick={removeSelectedTiers}
+              disabled={!canEdit || selectedRowIndexes.length === 0}
+              className="text-destructive hover:text-destructive"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete selected
+            </Button>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Without selected rows, bulk rank actions apply to every tier.
+          </p>
+        </div>
+
+        <div className="overflow-x-auto rounded-md border">
+          <div className="grid min-w-[820px] grid-cols-[40px_56px_48px_minmax(180px,1fr)_240px_40px_36px] gap-2 border-b bg-muted/40 px-4 py-2 text-xs font-medium text-muted-foreground">
+            <div className="flex items-center justify-center">
+              <Checkbox
+                checked={someRowsSelected ? "indeterminate" : allRowsSelected}
+                onCheckedChange={(checked) => toggleAllRows(checked === true)}
+                aria-label="Select all tiers"
+                disabled={!canEdit}
+              />
+            </div>
             <span>#</span>
             <span>Icon</span>
             <span>Name</span>
@@ -204,104 +609,23 @@ function DivisionGridEditorCard({
             <span />
           </div>
           {tiers.map((tier, rowIndex) => (
-            <div
-              key={`${tier.slug ?? tier.number}-${rowIndex}`}
-              className="grid grid-cols-[56px_48px_200px_1fr_40px_36px] gap-2 border-b px-4 py-1.5 last:border-b-0"
-            >
-              {/* # */}
-              <Input
-                ref={setRef(rowIndex, 0)}
-                inputMode="numeric"
-                className="h-8 text-center tabular-nums"
-                value={tier.number}
-                onChange={(e) =>
-                  updateTier(rowIndex, "number", Number.parseInt(e.target.value, 10) || 0)
-                }
-                onKeyDown={(e) => handleKeyDown(e, rowIndex, 0)}
-              />
-              {/* Icon */}
-              <div className="flex items-center justify-center">
-                <Image src={tier.icon_url} alt={tier.name} width={28} height={28} />
-              </div>
-              {/* Name */}
-              <Input
-                ref={setRef(rowIndex, 1)}
-                className="h-8"
-                value={tier.name}
-                onChange={(e) => updateTier(rowIndex, "name", e.target.value)}
-                onKeyDown={(e) => handleKeyDown(e, rowIndex, 1)}
-              />
-              {/* Rank range: min — max */}
-              <div className="flex items-center gap-1.5">
-                <Input
-                  ref={setRef(rowIndex, 2)}
-                  inputMode="numeric"
-                  className="h-8 w-24 tabular-nums"
-                  value={tier.rank_min}
-                  onChange={(e) =>
-                    updateTier(rowIndex, "rank_min", Number.parseInt(e.target.value, 10) || 0)
-                  }
-                  onKeyDown={(e) => handleKeyDown(e, rowIndex, 2)}
-                />
-                <span className="shrink-0 text-xs text-muted-foreground">—</span>
-                <Input
-                  ref={setRef(rowIndex, 3)}
-                  inputMode="numeric"
-                  className="h-8 w-24 tabular-nums"
-                  placeholder="∞"
-                  value={tier.rank_max ?? ""}
-                  onChange={(e) =>
-                    updateTier(
-                      rowIndex,
-                      "rank_max",
-                      e.target.value === "" ? null : Number.parseInt(e.target.value, 10) || 0
-                    )
-                  }
-                  onKeyDown={(e) => handleKeyDown(e, rowIndex, 3)}
-                />
-              </div>
-              {/* Upload */}
-              <label className="inline-flex cursor-pointer items-center justify-center">
-                <input
-                  type="file"
-                  className="hidden"
-                  accept="image/png,image/webp,image/jpeg,image/gif"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) void uploadIcon(rowIndex, file);
-                  }}
-                />
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-md border hover:bg-muted">
-                  <Upload className="h-3.5 w-3.5" />
-                </span>
-              </label>
-              {/* Delete */}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => setTiers((current) => current.filter((_, i) => i !== rowIndex))}
-              >
-                ×
-              </Button>
-            </div>
+            <TierEditorRow
+              key={`${tier.id ?? tier.slug ?? "tier"}-${rowIndex}`}
+              tier={tier}
+              rowIndex={rowIndex}
+              canEdit={canEdit}
+              isSelected={selectedRows.has(rowIndex)}
+              onDelete={removeTier}
+              onKeyDown={handleKeyDown}
+              onSelect={toggleRowSelection}
+              onSetInputRef={setInputRef}
+              onUpdate={updateTier}
+              onUpload={uploadIcon}
+            />
           ))}
         </div>
 
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() =>
-              setTiers((current) => [
-                ...current,
-                emptyTier((Math.max(...current.map((t) => t.number)) || 0) + 1, current.length)
-              ])
-            }
-            disabled={!canEdit}
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Add Tier
-          </Button>
+        <div className="flex flex-wrap gap-2">
           <Button
             onClick={() => saveVersionMutation.mutate()}
             disabled={!canEdit || saveVersionMutation.isPending}

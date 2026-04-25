@@ -31,5 +31,4 @@ async def create_from_folder(session: AsyncSession) -> None:
 
 
 async def bulk_create_from_challonge(session: AsyncSession) -> None:
-    for tournament_id in range(36, 38 + 1):
-        await flows.bulk_create_for_tournament_from_challonge(session, tournament_id, {})
+    raise RuntimeError("Challonge team sync requires explicit participant-to-team mappings.")

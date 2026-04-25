@@ -2,14 +2,15 @@ import enum
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String, Text, func
+from sqlalchemy import DateTime, Enum, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db
 
 if TYPE_CHECKING:
-    from shared.models.user import User
+    from shared.models.encounter import Encounter
     from shared.models.tournament import Tournament
+    from shared.models.user import User
 
 __all__ = ("LogProcessingRecord", "LogProcessingStatus", "LogProcessingSource")
 
@@ -53,6 +54,11 @@ class LogProcessingRecord(db.TimeStampIntegerMixin):
         ForeignKey("players.user.id", ondelete="SET NULL"),
         nullable=True,
     )
+    attached_encounter_id: Mapped[int | None] = mapped_column(
+        ForeignKey("tournament.encounter.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -61,6 +67,7 @@ class LogProcessingRecord(db.TimeStampIntegerMixin):
     # Relations
     tournament: Mapped["Tournament"] = relationship(lazy="selectin")
     uploader: Mapped["User | None"] = relationship(lazy="selectin", foreign_keys=[uploader_id])
+    attached_encounter: Mapped["Encounter | None"] = relationship(lazy="selectin", foreign_keys=[attached_encounter_id])
 
     def __repr__(self) -> str:
         return f"<LogProcessingRecord tournament_id={self.tournament_id} filename={self.filename} status={self.status}>"

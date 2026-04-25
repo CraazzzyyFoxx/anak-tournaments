@@ -25,6 +25,9 @@ import {
   StageItemInputCreateInput,
   StageItemInputUpdateInput,
   ChallongeSyncLogEntry,
+  ChallongeTeamSyncPreview,
+  ChallongeTeamSyncRequest,
+  ChallongeTeamSyncResult,
   TeamCreateInput,
   TeamUpdateInput,
   PlayerCreateInput,
@@ -73,6 +76,7 @@ import {
   DiscordChannelInput,
   LogHistoryResponse,
   LogProcessingRecord,
+  LogUploadResponse,
   QueueDepth,
   SeedResultRead,
   PlayerSubRole,
@@ -191,11 +195,21 @@ class AdminService {
     return response.json();
   }
 
-  async syncTeamsFromChallonge(tournamentId: number): Promise<BulkOperationResult> {
+  async getChallongeTeamSyncPreview(tournamentId: number): Promise<ChallongeTeamSyncPreview> {
+    const response = await apiFetch("parser", "teams/challonge/preview", {
+      query: { tournament_id: tournamentId }
+    });
+    return response.json();
+  }
+
+  async syncTeamsFromChallonge(
+    tournamentId: number,
+    data: ChallongeTeamSyncRequest
+  ): Promise<ChallongeTeamSyncResult> {
     const response = await apiFetch("parser", "teams/create/challonge", {
       method: "POST",
       query: { tournament_id: tournamentId },
-      body: {}
+      body: data
     });
     return response.json();
   }
@@ -1052,14 +1066,36 @@ class AdminService {
 
   async getLogHistory(
     tournamentId?: number,
-    params?: { limit?: number; offset?: number }
+    params?: { encounterId?: number; limit?: number; offset?: number }
   ): Promise<LogHistoryResponse> {
     const response = await apiFetch("parser", "admin/logs/history", {
       query: {
         ...(tournamentId != null && { tournament_id: tournamentId }),
+        ...(params?.encounterId != null && { encounter_id: params.encounterId }),
         limit: params?.limit ?? 50,
         offset: params?.offset ?? 0
       }
+    });
+    return response.json();
+  }
+
+  async uploadMatchLogs(params: {
+    tournamentId: number;
+    files: File[];
+    encounterId?: number | null;
+  }): Promise<LogUploadResponse> {
+    const formData = new FormData();
+    formData.append("tournament_id", params.tournamentId.toString());
+    if (params.encounterId != null) {
+      formData.append("encounter_id", params.encounterId.toString());
+    }
+    for (const file of params.files) {
+      formData.append("files[]", file);
+    }
+
+    const response = await apiFetch("parser", "admin/logs/upload", {
+      method: "POST",
+      body: formData
     });
     return response.json();
   }

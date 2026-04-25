@@ -308,7 +308,12 @@ export default function AdminTournamentWorkspacePage() {
 
         <TabsContent value="logs" className="space-y-4">
           {activeTab === "logs" ? (
-            <TournamentLogsTab tournamentId={tournamentId} enabled={activeTab === "logs"} />
+            <TournamentLogsTab
+              tournamentId={tournamentId}
+              encounters={encounters}
+              canUploadLogs={canUpdateEncounter}
+              enabled={activeTab === "logs"}
+            />
           ) : null}
         </TabsContent>
       </Tabs>

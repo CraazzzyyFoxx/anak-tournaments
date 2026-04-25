@@ -4,22 +4,24 @@ import asyncio
 from datetime import UTC, datetime
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import EventSourceResponse
 from fastapi.sse import ServerSentEvent
 from loguru import logger
 from pydantic import BaseModel
+from shared.clients.s3 import S3Client
 from shared.messaging.config import PROCESS_MATCH_LOG_QUEUE
-from shared.models.log_processing import LogProcessingStatus
+from shared.models.log_processing import LogProcessingSource, LogProcessingStatus
 from shared.observability import publish_message
 from shared.schemas.events import ProcessMatchLogEvent
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-import main
 from src import models
 from src.core import auth, config, db
-from src.routes.match_logs import task_router
+from src.routes.match_logs import get_s3, task_router
+from src.services.match_logs import uploads as upload_service
+from src.services.tournament import flows as tournament_flows
 
 router = APIRouter(
     prefix="/logs",
@@ -49,6 +51,8 @@ class LogRecordRead(BaseModel):
     id: int
     tournament_id: int
     tournament_name: str | None
+    attached_encounter_id: int | None
+    attached_encounter_name: str | None
     filename: str
     status: str
     source: str
@@ -64,6 +68,22 @@ class LogRecordRead(BaseModel):
 class LogHistoryResponse(BaseModel):
     items: list[LogRecordRead]
     total: int
+
+
+class LogUploadItem(BaseModel):
+    record_id: int
+    filename: str
+    attached_encounter_id: int | None
+
+
+class LogUploadError(BaseModel):
+    filename: str | None
+    error: str
+
+
+class LogUploadResponse(BaseModel):
+    uploaded: list[LogUploadItem]
+    errors: list[LogUploadError]
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -106,6 +126,8 @@ def _record_to_dict(record: models.LogProcessingRecord) -> dict:
         "id": record.id,
         "tournament_id": record.tournament_id,
         "tournament_name": record.tournament.name if record.tournament else None,
+        "attached_encounter_id": record.attached_encounter_id,
+        "attached_encounter_name": record.attached_encounter.name if record.attached_encounter else None,
         "filename": record.filename,
         "status": record.status.value if hasattr(record.status, "value") else record.status,
         "source": record.source.value if hasattr(record.source, "value") else record.source,
@@ -127,7 +149,97 @@ async def _fetch_recent_records(session: AsyncSession, limit: int = 20, workspac
     return [_record_to_dict(r) for r in result.scalars().all()]
 
 
+def _validate_upload_filenames(files: list[UploadFile]) -> list[str]:
+    if not files:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one log file is required")
+
+    filenames = [upload_service.validate_log_filename(file.filename) for file in files]
+    duplicate_names = sorted({name for name in filenames if filenames.count(name) > 1})
+    if duplicate_names:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Duplicate file names in upload: {', '.join(duplicate_names)}",
+        )
+    return filenames
+
+
+async def _validate_attached_encounter(
+    session: AsyncSession,
+    *,
+    tournament_id: int,
+    encounter_id: int | None,
+) -> models.Encounter | None:
+    if encounter_id is None:
+        return None
+
+    result = await session.execute(select(models.Encounter).where(models.Encounter.id == encounter_id).limit(1))
+    encounter = result.scalar_one_or_none()
+    if encounter is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Encounter not found")
+    if encounter.tournament_id != tournament_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Encounter does not belong to this tournament",
+        )
+    return encounter
+
+
 # ─── Routes ──────────────────────────────────────────────────────────────────
+
+
+@router.post(
+    "/upload",
+    response_model=LogUploadResponse,
+)
+async def upload_admin_logs(
+    tournament_id: int = Form(...),
+    files: list[UploadFile] = File(..., alias="files[]"),
+    encounter_id: int | None = Form(None),
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_permission("match", "update")),
+    s3: S3Client = Depends(get_s3),
+):
+    """Upload one or more match logs from the admin panel and queue each for processing."""
+    filenames = _validate_upload_filenames(files)
+    tournament = await tournament_flows.get(session, tournament_id, [])
+    attached_encounter = await _validate_attached_encounter(
+        session,
+        tournament_id=tournament.id,
+        encounter_id=encounter_id,
+    )
+    uploader_id = await upload_service.resolve_auth_uploader_id(session, user)
+
+    uploaded: list[LogUploadItem] = []
+    errors: list[LogUploadError] = []
+    attached_encounter_id = attached_encounter.id if attached_encounter else None
+
+    for file, filename in zip(files, filenames, strict=True):
+        try:
+            record = await upload_service.store_uploaded_log(
+                session,
+                s3=s3,
+                tournament_id=tournament.id,
+                uploaded_file=file,
+                source=LogProcessingSource.upload,
+                uploader_id=uploader_id,
+                attached_encounter_id=attached_encounter_id,
+            )
+            event = ProcessMatchLogEvent(tournament_id=tournament.id, filename=filename)
+            await publish_message(task_router.broker, event.model_dump(), PROCESS_MATCH_LOG_QUEUE, logger=logger)
+            uploaded.append(
+                LogUploadItem(
+                    record_id=record.id,
+                    filename=record.filename,
+                    attached_encounter_id=record.attached_encounter_id,
+                )
+            )
+        except HTTPException as exc:
+            errors.append(LogUploadError(filename=filename, error=str(exc.detail)))
+        except Exception as exc:
+            logger.exception(f"Failed to upload and queue admin log {filename}")
+            errors.append(LogUploadError(filename=filename, error=str(exc)))
+
+    return LogUploadResponse(uploaded=uploaded, errors=errors)
 
 
 @router.get(
@@ -146,6 +258,7 @@ async def get_queue_status():
 )
 async def get_log_history(
     tournament_id: int | None = Query(None),
+    encounter_id: int | None = Query(None),
     workspace_id: int | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -158,6 +271,9 @@ async def get_log_history(
     if tournament_id is not None:
         query = query.where(models.LogProcessingRecord.tournament_id == tournament_id)
         count_query = count_query.where(models.LogProcessingRecord.tournament_id == tournament_id)
+    if encounter_id is not None:
+        query = query.where(models.LogProcessingRecord.attached_encounter_id == encounter_id)
+        count_query = count_query.where(models.LogProcessingRecord.attached_encounter_id == encounter_id)
     if workspace_id is not None:
         query = query.join(
             models.Tournament, models.LogProcessingRecord.tournament_id == models.Tournament.id
@@ -206,6 +322,8 @@ async def retry_log_record(
 
 async def _require_sse_token(token: str = Query(..., description="JWT access token")) -> None:
     """Dependency that validates the SSE token query param (EventSource can't send headers)."""
+    import main
+
     payload = await main.auth_client.validate_token(token)
     if not payload:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")

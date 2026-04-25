@@ -1,12 +1,13 @@
 "use client";
 
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CircleAlert,
   Clock,
   FolderInput,
   Loader2,
   RefreshCw,
+  Upload,
   XCircle,
   CheckCircle,
   ChevronLeft,
@@ -31,17 +32,30 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import adminService from "@/services/admin.service";
-import { getTournamentWorkspaceQueryKeys } from "./tournamentWorkspace.queryKeys";
+import type { Encounter } from "@/types/encounter.types";
+import { TournamentLogUploadDialog } from "./TournamentLogUploadDialog";
+import {
+  getTournamentWorkspaceQueryKeys,
+  invalidateTournamentWorkspace
+} from "./tournamentWorkspace.queryKeys";
 
 const PAGE_SIZE = 20;
 
 interface TournamentLogsTabProps {
   tournamentId: number;
+  encounters: Encounter[];
+  canUploadLogs: boolean;
   enabled: boolean;
 }
 
-export function TournamentLogsTab({ tournamentId, enabled }: TournamentLogsTabProps) {
+export function TournamentLogsTab({
+  tournamentId,
+  encounters,
+  canUploadLogs,
+  enabled
+}: TournamentLogsTabProps) {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const tableStyles = getAdminDetailTableStyles("compact");
   const queryKeys = getTournamentWorkspaceQueryKeys(tournamentId);
   const [page, setPage] = useState(0);
@@ -79,6 +93,22 @@ export function TournamentLogsTab({ tournamentId, enabled }: TournamentLogsTabPr
           <CardTitle className="text-sm font-semibold">Log Processing History</CardTitle>
         </div>
         <div className="flex items-center gap-1">
+          {canUploadLogs ? (
+            <TournamentLogUploadDialog
+              tournamentId={tournamentId}
+              encounters={encounters}
+              onUploaded={() => {
+                invalidateTournamentWorkspace(queryClient, tournamentId);
+                logHistoryQuery.refetch();
+              }}
+              trigger={
+                <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
+                  <Upload className="size-3" />
+                  Upload Logs
+                </Button>
+              }
+            />
+          ) : null}
           <Button
             variant="outline"
             size="sm"
@@ -121,6 +151,7 @@ export function TournamentLogsTab({ tournamentId, enabled }: TournamentLogsTabPr
                   <TableRow className={tableStyles.headerRow}>
                     <TableHead className={tableStyles.head}>Filename</TableHead>
                     <TableHead className={tableStyles.head}>Status</TableHead>
+                    <TableHead className={tableStyles.head}>Attached encounter</TableHead>
                     <TableHead className={tableStyles.head}>Source</TableHead>
                     <TableHead className={tableStyles.head}>Uploader</TableHead>
                     <TableHead className={tableStyles.head}>Uploaded</TableHead>
@@ -166,6 +197,13 @@ export function TournamentLogsTab({ tournamentId, enabled }: TournamentLogsTabPr
                             label={record.status}
                             variant={statusInfo.variant}
                           />
+                        </TableCell>
+                        <TableCell className={tableStyles.cell}>
+                          {record.attached_encounter_name ? (
+                            <span className="text-sm">{record.attached_encounter_name}</span>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">â€”</span>
+                          )}
                         </TableCell>
                         <TableCell className={tableStyles.cell}>
                           <span className="text-sm capitalize text-muted-foreground">

@@ -40,20 +40,22 @@ async def bulk_create_from_balancer(
     return await team_flows.bulk_create_from_balancer(session, tournament_id, teams)
 
 
+@router.get(path="/challonge/preview")
+async def preview_challonge_sync(
+    tournament_id: int,
+    session=Depends(db.get_async_session),
+):
+    return await team_flows.preview_challonge_team_sync(session, tournament_id)
+
+
 @router.post(path="/create/challonge")
 async def create_from_challonge(
     tournament_id: int,
-    name_mapper: dict[str, str],
+    payload: schemas.ChallongeTeamSyncRequest,
     session=Depends(db.get_async_session),
 ):
-    await team_flows.bulk_create_for_tournament_from_challonge(session, tournament_id, name_mapper)
-    return {"message": "Teams created successfully"}
-
-
-@router.post(path="/create/challonge/bulk")
-async def bulk_create_from_challonge(
-    name_mapper: dict[str, str],
-    session=Depends(db.get_async_session),
-):
-    await team_flows.bulk_create_from_challonge(session, name_mapper)
-    return {"message": "Teams created successfully"}
+    return await team_flows.sync_challonge_team_mappings(
+        session,
+        tournament_id,
+        payload,
+    )

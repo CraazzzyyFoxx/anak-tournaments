@@ -38,6 +38,14 @@ import {
   CommandItem,
   CommandList
 } from "@/components/ui/command";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -62,6 +70,8 @@ import { useToast } from "@/hooks/use-toast";
 import adminService from "@/services/admin.service";
 import balancerAdminService from "@/services/balancer-admin.service";
 import type {
+  ChallongeTeamMapping,
+  ChallongeTeamPreviewParticipant,
   PlayerCreateInput,
   PlayerSubRole,
   PlayerUpdateInput,
@@ -130,6 +140,8 @@ interface SearchableSelectProps {
   disabled?: boolean;
 }
 
+const UNMAPPED_TEAM_VALUE = "unmapped";
+
 type PlayerEditorFormState = {
   name: string;
   user_id: number;
@@ -148,6 +160,24 @@ type PlayerDialogState = {
   parentDraftId?: string | null;
   initialState: PlayerEditorFormState;
 };
+
+function getChallongeParticipantKey(participant: ChallongeTeamPreviewParticipant) {
+  return `${participant.participant_id}:${participant.group_id ?? "none"}`;
+}
+
+function summarizeChallongeSyncResult(result: {
+  created: number;
+  updated: number;
+  unchanged: number;
+  skipped: number;
+}) {
+  return [
+    `${result.created} created`,
+    `${result.updated} updated`,
+    `${result.unchanged} unchanged`,
+    `${result.skipped} skipped`
+  ].join(", ");
+}
 
 function clampTeamNumber(value: number, min?: number, max?: number) {
   if (typeof min === "number" && value < min) {
@@ -468,6 +498,8 @@ export function TournamentTeamsTab({
     getPlayerEditorState(null)
   );
   const [playerFormError, setPlayerFormError] = useState<string | undefined>();
+  const [challongeSyncDialogOpen, setChallongeSyncDialogOpen] = useState(false);
+  const [challongeMappingDraft, setChallongeMappingDraft] = useState<Record<string, string>>({});
 
   const canManageRoster = canCreatePlayer || canUpdatePlayer || canDeletePlayer;
   const canManageTeams = canCreateTeam || canUpdateTeam || canDeleteTeam || canManageRoster;
@@ -477,6 +509,12 @@ export function TournamentTeamsTab({
     queryKey: ["admin", "player-sub-roles", workspaceId],
     queryFn: () => adminService.getPlayerSubRoles({ workspace_id: workspaceId! }),
     enabled: Boolean(workspaceId && teamDialogOpen)
+  });
+
+  const { data: challongePreview, isLoading: isChallongePreviewLoading } = useQuery({
+    queryKey: ["admin", "challonge-team-sync-preview", tournamentId],
+    queryFn: () => adminService.getChallongeTeamSyncPreview(tournamentId),
+    enabled: challongeSyncDialogOpen && hasChallongeSource
   });
 
   const rosterByDraftId = useMemo(
@@ -729,10 +767,15 @@ export function TournamentTeamsTab({
   });
 
   const syncTeamsMutation = useMutation({
-    mutationFn: () => adminService.syncTeamsFromChallonge(tournamentId),
-    onSuccess: () => {
+    mutationFn: (mappings: ChallongeTeamMapping[]) =>
+      adminService.syncTeamsFromChallonge(tournamentId, { mappings }),
+    onSuccess: (result) => {
       invalidateTournamentWorkspace(queryClient, tournamentId);
-      toast({ title: "Teams synced from Challonge" });
+      setChallongeSyncDialogOpen(false);
+      toast({
+        title: "Teams synced from Challonge",
+        description: summarizeChallongeSyncResult(result)
+      });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -888,6 +931,92 @@ export function TournamentTeamsTab({
       meta: subRole.slug
     }))
   ];
+  const challongeParticipants = useMemo(
+    () => challongePreview?.participants ?? [],
+    [challongePreview?.participants]
+  );
+  const challongeTeamOptions = useMemo(
+    () => challongePreview?.teams ?? [],
+    [challongePreview?.teams]
+  );
+  const challongeTeamsById = useMemo(
+    () => new Map(challongeTeamOptions.map((team) => [team.id, team])),
+    [challongeTeamOptions]
+  );
+  const getChallongeMappingValue = (participant: ChallongeTeamPreviewParticipant) =>
+    challongeMappingDraft[getChallongeParticipantKey(participant)] ??
+    (participant.mapped_team_id != null ? String(participant.mapped_team_id) : UNMAPPED_TEAM_VALUE);
+  const activeUnmappedParticipants = challongeParticipants.filter(
+    (participant) =>
+      participant.active &&
+      getChallongeMappingValue(participant) === UNMAPPED_TEAM_VALUE
+  );
+  const selectedChallongeMappings = challongeParticipants.flatMap((participant) => {
+    const value = getChallongeMappingValue(participant);
+    if (!value || value === UNMAPPED_TEAM_VALUE) {
+      return [];
+    }
+
+    const teamId = Number.parseInt(value, 10);
+    if (Number.isNaN(teamId)) {
+      return [];
+    }
+
+    return [
+      {
+        participant_id: participant.participant_id,
+        group_id: participant.group_id,
+        team_id: teamId
+      }
+    ];
+  });
+  const canSubmitChallongeMappings =
+    !isChallongePreviewLoading &&
+    challongeParticipants.length > 0 &&
+    selectedChallongeMappings.length > 0 &&
+    activeUnmappedParticipants.length === 0;
+
+  const openChallongeSyncDialog = () => {
+    syncTeamsMutation.reset();
+    setChallongeMappingDraft({});
+    setChallongeSyncDialogOpen(true);
+  };
+
+  const closeChallongeSyncDialog = () => {
+    if (syncTeamsMutation.isPending) {
+      return;
+    }
+
+    setChallongeSyncDialogOpen(false);
+    setChallongeMappingDraft({});
+  };
+
+  const applyChallongeSuggestions = () => {
+    setChallongeMappingDraft((current) => {
+      const next = { ...current };
+      for (const participant of challongeParticipants) {
+        if (participant.suggested_team_id != null) {
+          next[getChallongeParticipantKey(participant)] = String(participant.suggested_team_id);
+        }
+      }
+      return next;
+    });
+  };
+
+  const handleChallongeMappingSubmit = (event: FormEvent) => {
+    event.preventDefault();
+
+    if (!canSubmitChallongeMappings) {
+      toast({
+        title: "Mappings incomplete",
+        description: `${activeUnmappedParticipants.length} active Challonge participants are unmapped.`,
+        variant: "destructive"
+      });
+      return;
+    }
+
+    syncTeamsMutation.mutate(selectedChallongeMappings);
+  };
 
   const renderRosterNodes = (
     nodes: ReturnType<typeof buildRosterDraftTree>,
@@ -981,7 +1110,7 @@ export function TournamentTeamsTab({
             {canImportTeams ? (
               <Button
                 variant="outline"
-                onClick={() => syncTeamsMutation.mutate()}
+                onClick={openChallongeSyncDialog}
                 disabled={syncTeamsMutation.isPending || !hasChallongeSource}
               >
                 <RefreshCw className="mr-2 h-4 w-4" />
@@ -1071,7 +1200,7 @@ export function TournamentTeamsTab({
                           {canImportTeams ? (
                             <Button
                               variant="outline"
-                              onClick={() => syncTeamsMutation.mutate()}
+                              onClick={openChallongeSyncDialog}
                               disabled={syncTeamsMutation.isPending || !hasChallongeSource}
                             >
                               <RefreshCw className="mr-2 h-4 w-4" />
@@ -1107,6 +1236,192 @@ export function TournamentTeamsTab({
           ) : null}
         </CardContent>
       </Card>
+
+      <Dialog
+        open={challongeSyncDialogOpen}
+        onOpenChange={(open) => {
+          if (open) {
+            setChallongeSyncDialogOpen(true);
+          } else {
+            closeChallongeSyncDialog();
+          }
+        }}
+      >
+        <DialogContent className="flex max-h-[90vh] max-w-5xl flex-col overflow-hidden">
+          <DialogHeader className="border-b border-border/60 pb-4">
+            <DialogTitle>Sync Challonge Teams</DialogTitle>
+            <DialogDescription>
+              Match each Challonge participant to the internal team used by analytics and matches.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleChallongeMappingSubmit} className="flex min-h-0 flex-1 flex-col">
+            <div className="flex flex-wrap items-center justify-between gap-3 py-3">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <Badge variant="secondary">{challongeParticipants.length} participants</Badge>
+                <Badge variant={activeUnmappedParticipants.length ? "destructive" : "secondary"}>
+                  {activeUnmappedParticipants.length} unmapped
+                </Badge>
+                <Badge variant="secondary">{selectedChallongeMappings.length} selected</Badge>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={applyChallongeSuggestions}
+                disabled={
+                  isChallongePreviewLoading ||
+                  !challongeParticipants.some((participant) => participant.suggested_team_id != null)
+                }
+              >
+                <Sparkles className="mr-2 h-4 w-4" />
+                Apply Suggestions
+              </Button>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-auto rounded-md border border-border/60">
+              <Table>
+                <TableHeader>
+                  <TableRow className={tableStyles.headerRow}>
+                    <TableHead className={tableStyles.head}>Challonge Participant</TableHead>
+                    <TableHead className={tableStyles.head}>Group</TableHead>
+                    <TableHead className={tableStyles.head}>Current</TableHead>
+                    <TableHead className={tableStyles.head}>Suggestion</TableHead>
+                    <TableHead className={tableStyles.head}>Internal Team</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {isChallongePreviewLoading ? (
+                    <TableRow className={tableStyles.row}>
+                      <TableCell className={tableStyles.cell} colSpan={5}>
+                        <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Loading Challonge participants...
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ) : challongeParticipants.length ? (
+                    challongeParticipants.map((participant) => {
+                      const participantKey = getChallongeParticipantKey(participant);
+                      const currentTeam =
+                        participant.mapped_team_id != null
+                          ? challongeTeamsById.get(participant.mapped_team_id)
+                          : undefined;
+                      const suggestedTeam =
+                        participant.suggested_team_id != null
+                          ? challongeTeamsById.get(participant.suggested_team_id)
+                          : undefined;
+
+                      return (
+                        <TableRow key={participantKey} className={tableStyles.row}>
+                          <TableCell className={tableStyles.cell}>
+                            <div className="min-w-0">
+                              <div className="truncate font-medium" title={participant.name}>
+                                {participant.name}
+                              </div>
+                              <div className="mt-0.5 text-xs text-muted-foreground">
+                                #{participant.participant_id} / Challonge #{participant.challonge_id}
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell className={tableStyles.cell}>
+                            {participant.group_name ?? "Main"}
+                          </TableCell>
+                          <TableCell className={tableStyles.cell}>
+                            {currentTeam ? (
+                              <span className="truncate" title={currentTeam.name}>
+                                {currentTeam.name}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">Unmapped</span>
+                            )}
+                          </TableCell>
+                          <TableCell className={tableStyles.cell}>
+                            {suggestedTeam ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 max-w-[180px] justify-start px-2"
+                                onClick={() =>
+                                  setChallongeMappingDraft((current) => ({
+                                    ...current,
+                                    [participantKey]: String(suggestedTeam.id)
+                                  }))
+                                }
+                              >
+                                <Sparkles className="mr-2 h-3.5 w-3.5 shrink-0" />
+                                <span className="truncate">{suggestedTeam.name}</span>
+                              </Button>
+                            ) : (
+                              <span className="text-muted-foreground">None</span>
+                            )}
+                          </TableCell>
+                          <TableCell className={tableStyles.cell}>
+                            <Select
+                              value={getChallongeMappingValue(participant)}
+                              onValueChange={(value) =>
+                                setChallongeMappingDraft((current) => ({
+                                  ...current,
+                                  [participantKey]: value
+                                }))
+                              }
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select team" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={UNMAPPED_TEAM_VALUE}>Unmapped</SelectItem>
+                                {challongeTeamOptions.map((team) => (
+                                  <SelectItem key={team.id} value={String(team.id)}>
+                                    {team.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  ) : (
+                    <TableRow className={tableStyles.row}>
+                      <TableCell className={tableStyles.cell} colSpan={5}>
+                        <div className="py-4 text-sm text-muted-foreground">
+                          No Challonge participants found.
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+
+            <DialogFooter className="mt-4 border-t border-border/60 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={closeChallongeSyncDialog}
+                disabled={syncTeamsMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={!canSubmitChallongeMappings || syncTeamsMutation.isPending}
+              >
+                {syncTeamsMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Syncing...
+                  </>
+                ) : (
+                  "Sync Mappings"
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <EntityFormDialog
         open={teamDialogOpen}

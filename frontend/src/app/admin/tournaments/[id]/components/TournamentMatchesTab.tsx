@@ -18,7 +18,8 @@ import {
   Pencil,
   Plus,
   RefreshCw,
-  Trash2
+  Trash2,
+  Upload
 } from "lucide-react";
 import {
   AdminDetailTableShell,
@@ -76,6 +77,7 @@ import {
   type StandingSortKey,
   type StandingSortState
 } from "./tournamentWorkspace.helpers";
+import { TournamentLogUploadDialog } from "./TournamentLogUploadDialog";
 import { invalidateTournamentWorkspace } from "./tournamentWorkspace.queryKeys";
 
 const ENCOUNTERS_SCOPE_QUERY_PARAM = "encountersScope";
@@ -602,6 +604,25 @@ export function TournamentMatchesTab({
                         </TableCell>
                         <TableCell className={tableStyles.cell}>
                           <div className="flex items-center justify-end gap-2">
+                            {canUpdateEncounter ? (
+                              <TournamentLogUploadDialog
+                                tournamentId={tournamentId}
+                                encounters={encounters}
+                                initialEncounterId={encounter.id}
+                                onUploaded={() =>
+                                  invalidateTournamentWorkspace(queryClient, tournamentId)
+                                }
+                                trigger={
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    aria-label={`Upload logs for ${encounter.name}`}
+                                  >
+                                    <Upload className="h-4 w-4" />
+                                  </Button>
+                                }
+                              />
+                            ) : null}
                             {canUpdateEncounter ? (
                               <Button
                                 variant="ghost"

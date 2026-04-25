@@ -13,6 +13,12 @@ __all__ = (
     "InternalBalancerPlayer",
     "InternalBalancerTeam",
     "InternalBalancerTeamsPayload",
+    "ChallongeTeamMapping",
+    "ChallongeTeamSyncRequest",
+    "ChallongeTeamPreviewTeam",
+    "ChallongeTeamPreviewParticipant",
+    "ChallongeTeamSyncPreview",
+    "ChallongeTeamSyncResult",
     "TeamRead",
     "PlayerRead",
     "DashaTeamMember",
@@ -129,6 +135,49 @@ class InternalBalancerTeamsPayload(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     teams: list[InternalBalancerTeam]
+
+
+class ChallongeTeamMapping(BaseModel):
+    participant_id: int = Field(gt=0)
+    group_id: int | None = None
+    team_id: int = Field(gt=0)
+
+
+class ChallongeTeamSyncRequest(BaseModel):
+    mappings: list[ChallongeTeamMapping]
+
+
+class ChallongeTeamPreviewTeam(BaseModel):
+    id: int
+    name: str
+    balancer_name: str
+
+
+class ChallongeTeamPreviewParticipant(BaseModel):
+    participant_id: int
+    challonge_id: int
+    group_id: int | None
+    group_name: str | None
+    challonge_tournament_id: int
+    name: str
+    active: bool
+    suggested_team_id: int | None
+    mapped_team_id: int | None
+
+
+class ChallongeTeamSyncPreview(BaseModel):
+    teams: list[ChallongeTeamPreviewTeam]
+    participants: list[ChallongeTeamPreviewParticipant]
+
+
+class ChallongeTeamSyncResult(BaseModel):
+    success: bool
+    count: int
+    created: int
+    updated: int
+    unchanged: int
+    skipped: int
+    errors: list[str] = Field(default_factory=list)
 
 
 class PlayerRead(BaseRead):

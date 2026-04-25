@@ -52,6 +52,7 @@ async def upsert_log_record(
     filename: str,
     source: LogProcessingSource,
     uploader_id: int | None = None,
+    attached_encounter_id: int | None = None,
 ) -> LogProcessingRecord:
     """Create or refresh a log processing record. If a pending/failed record
     already exists for the same (tournament_id, filename), reuse it. Otherwise
@@ -74,11 +75,13 @@ async def upsert_log_record(
             source=source,
             status=LogProcessingStatus.pending,
             uploader_id=uploader_id,
+            attached_encounter_id=attached_encounter_id,
         )
         session.add(record)
     else:
         record.source = source
         record.status = LogProcessingStatus.pending
+        record.attached_encounter_id = attached_encounter_id
         record.error_message = None
         record.started_at = None
         record.finished_at = None
