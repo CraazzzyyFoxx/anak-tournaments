@@ -53,7 +53,13 @@ def _challonge_match(
     player2_id: int | None = 102,
     state: str = "complete",
     scores_csv: str = "2-1",
+    round: int = 1,
+    identifier: str = "A",
     group_id: int | None = None,
+    player1_prereq_match_id: int | None = None,
+    player2_prereq_match_id: int | None = None,
+    player1_is_prereq_match_loser: bool = False,
+    player2_is_prereq_match_loser: bool = False,
 ) -> schemas.ChallongeMatch:
     now = datetime.now(UTC)
     return schemas.ChallongeMatch(
@@ -63,8 +69,12 @@ def _challonge_match(
         updated_at=now,
         player1_id=player1_id,
         player2_id=player2_id,
-        round=1,
-        identifier="A",
+        player1_prereq_match_id=player1_prereq_match_id,
+        player2_prereq_match_id=player2_prereq_match_id,
+        player1_is_prereq_match_loser=player1_is_prereq_match_loser,
+        player2_is_prereq_match_loser=player2_is_prereq_match_loser,
+        round=round,
+        identifier=identifier,
         state=state,
         scores_csv=scores_csv,
         tournament_id=700,

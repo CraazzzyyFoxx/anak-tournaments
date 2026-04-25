@@ -63,6 +63,11 @@ class ChallongeMatch(BaseModel):
     updated_at: datetime | None
     player1_id: int | None
     player2_id: int | None
+    player1_prereq_match_id: int | None = None
+    player2_prereq_match_id: int | None = None
+    player1_is_prereq_match_loser: bool = False
+    player2_is_prereq_match_loser: bool = False
+    prerequisite_match_ids_csv: str | None = None
     round: int
 
     identifier: str
