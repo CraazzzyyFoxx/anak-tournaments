@@ -7,6 +7,7 @@ Auto-push: triggered when encounter result_status becomes 'confirmed'
 
 import asyncio
 import re
+import traceback
 from dataclasses import dataclass
 
 from loguru import logger
@@ -107,8 +108,21 @@ def _default_stage_item_id(
     stage: models.Stage | None,
     match: schemas.ChallongeMatch,
 ) -> int | None:
+    """Return a stage_item_id hint from already-loaded items.
+
+    Returns None (safely) if items are not loaded — the async fallback in
+    resolve_stage_refs_from_group will pick the item via a DB query instead.
+    """
     if stage is None:
         return None
+
+    from sqlalchemy import inspect as sa_inspect  # noqa: PLC0415
+
+    try:
+        if "items" in sa_inspect(stage).unloaded:
+            return None
+    except Exception:
+        pass
 
     items = sorted(stage.items or [], key=lambda item: (item.order, item.id))
     if not items:
@@ -201,7 +215,27 @@ async def _ensure_stage_item(
     name: str,
     item_type: enums.StageItemType,
 ) -> models.StageItem:
-    items = list(stage.items or [])
+    from sqlalchemy import inspect as sa_inspect  # noqa: PLC0415
+
+    # If items are not loaded in this session state, query them async to avoid
+    # triggering a synchronous lazy-load (MissingGreenlet) in an async context.
+    try:
+        items_unloaded = "items" in sa_inspect(stage).unloaded
+    except Exception:
+        items_unloaded = False
+
+    if items_unloaded:
+        from sqlalchemy import select as sa_select  # noqa: PLC0415
+        result = await session.execute(
+            sa_select(models.StageItem)
+            .where(models.StageItem.stage_id == stage.id)
+            .order_by(models.StageItem.order.asc(), models.StageItem.id.asc())
+        )
+        existing = result.scalars().all()
+    else:
+        existing = list(stage.items or [])
+
+    items = existing
     if items:
         return sorted(items, key=lambda item: (item.order, item.id))[0]
 
@@ -213,7 +247,8 @@ async def _ensure_stage_item(
     )
     session.add(item)
     await session.flush()
-    stage.items.append(item)
+    if not items_unloaded:
+        stage.items.append(item)
     return item
 
 
@@ -580,6 +615,15 @@ async def _auto_map_participants(
     }
     created: list[tuple[models.ChallongeTeam, str]] = []
 
+    total_participants = sum(len(f.participants) for _, f in fetches)
+    logger.info(
+        "Auto-mapping participants",
+        tournament_id=tournament.id,
+        total_participants=total_participants,
+        name_index_size=len(name_index),
+        existing_rows=len(existing_rows),
+    )
+
     for source, fetch in fetches:
         source_group_id = source.group.id if source.group is not None else None
 
@@ -648,6 +692,11 @@ async def _auto_map_participants(
                 },
             )
 
+    logger.info(
+        "Auto-mapping complete",
+        tournament_id=tournament.id,
+        auto_mapped=len(created),
+    )
     return [row for row, _ in created]
 
 
@@ -679,6 +728,12 @@ async def _build_team_lookup(
         )
         teams_by_id = {team.id: team for team in team_result.scalars().all()}
 
+    logger.info(
+        "Team lookup built",
+        tournament_id=tournament.id,
+        mapping_count=len(by_key),
+        team_count=len(teams_by_id),
+    )
     return _TeamLookup(by_key=by_key, teams_by_id=teams_by_id)
 
 
@@ -951,12 +1006,17 @@ async def import_tournament(
             stats["groups_created"] += structure_stats["groups_created"]
             stats["stages_created"] += structure_stats["stages_created"]
             fetches.append((source, fetch_result))
-        except Exception as e:
+        except Exception:
             stats["errors"] += 1
+            tb = traceback.format_exc()
+            logger.exception(
+                "Stage structure failed for challonge_id=%s tournament=%s",
+                source.challonge_id, tournament_id,
+            )
             await _log_sync(
                 session, tournament_id, "import", "tournament",
                 tournament_id, source.challonge_id,
-                "failed", error_message=str(e),
+                "failed", error_message=tb,
             )
 
     enc_result = await session.execute(
@@ -1008,11 +1068,16 @@ async def import_tournament(
                         "challonge_tournament_id": source.challonge_id,
                     },
                 )
-            except Exception as e:
+            except Exception:
                 stats["errors"] += 1
+                tb = traceback.format_exc()
+                logger.exception(
+                    "Match upsert failed challonge_match_id=%s tournament=%s",
+                    cm.id, tournament_id,
+                )
                 await _log_sync(
                     session, tournament_id, "import", "match",
-                    None, cm.id, "failed", error_message=str(e),
+                    None, cm.id, "failed", error_message=tb,
                 )
 
     link_stats = await _sync_challonge_advancement_links(
