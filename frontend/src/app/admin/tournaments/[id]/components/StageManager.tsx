@@ -1,9 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  AlertTriangle,
   CheckCircle2,
+  ChevronDown,
+  GitBranch,
   Link2,
   Loader2,
   Pencil,
@@ -11,13 +14,19 @@ import {
   Plus,
   Shield,
   Shuffle,
-  Users,
+  Trash2,
   Wand2,
   Zap
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import {
   Select,
   SelectContent,
@@ -25,12 +34,17 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import { usePermissions } from "@/hooks/usePermissions";
 import adminService from "@/services/admin.service";
 import teamService from "@/services/team.service";
-import type { Stage, StageItem, StageItemType, StageType } from "@/types/tournament.types";
+import type {
+  Stage,
+  StageItem,
+  StageItemInput,
+  StageItemType,
+  StageType
+} from "@/types/tournament.types";
 import type { Team } from "@/types/team.types";
 import { invalidateTournamentWorkspace } from "./tournamentWorkspace.queryKeys";
 
@@ -60,8 +74,22 @@ interface StageItemDraft {
   type: StageItemType;
 }
 
+type WireDraft = {
+  sourceStageId?: number;
+  top: number;
+  top_lb: number;
+  mode: "cross" | "snake";
+};
+
 function getStageTeamSlots(stage: Stage) {
   return stage.items.reduce((acc, item) => acc + item.inputs.length, 0);
+}
+
+function getStageAssignedTeams(stage: Stage) {
+  return stage.items.reduce(
+    (acc, item) => acc + item.inputs.filter((input) => input.team_id != null).length,
+    0
+  );
 }
 
 function getDefaultStageItemType(stageType: StageType): StageItemType {
@@ -93,9 +121,54 @@ function normalizeMaxRounds(value: string | number, fallback = 5) {
   return Math.max(1, Math.floor(parsed));
 }
 
+function getProgressPercent(completed: number, total: number) {
+  if (total <= 0) return 0;
+  return Math.round((completed / total) * 100);
+}
+
+function getStageStatus(stage: Stage) {
+  if (stage.is_completed) return "Completed";
+  if (stage.is_active) return "Active";
+  return "Draft";
+}
+
+function getStageStatusClass(stage: Stage) {
+  if (stage.is_completed) return "border-emerald-700/60 bg-emerald-950/20 text-emerald-300";
+  if (stage.is_active) return "border-primary/50 bg-primary/15 text-primary";
+  return "border-border/70 bg-muted/30 text-muted-foreground";
+}
+
+function getInputDisplayLabel(
+  input: StageItemInput,
+  stages: Stage[],
+  teamById: Map<number, Team>
+) {
+  if (input.team_id != null) {
+    return getTeamName(teamById, input.team_id);
+  }
+
+  if (
+    input.input_type === "tentative" &&
+    input.source_stage_item_id != null &&
+    input.source_position != null
+  ) {
+    const sourceItem = stages
+      .flatMap((stage) => stage.items)
+      .find((item) => item.id === input.source_stage_item_id);
+    const groupName = sourceItem?.name ?? `Item ${input.source_stage_item_id}`;
+    return `Winner of ${groupName} #${input.source_position}`;
+  }
+
+  return "Empty slot";
+}
+
 export function StageManager({ tournamentId }: StageManagerProps) {
   const queryClient = useQueryClient();
   const { isSuperuser } = usePermissions();
+  const [selectedStageId, setSelectedStageId] = useState<number | null>(null);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [stageToDelete, setStageToDelete] = useState<Stage | null>(null);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [newStageName, setNewStageName] = useState("");
   const [newStageType, setNewStageType] = useState<StageType>("round_robin");
   const [newStageMaxRounds, setNewStageMaxRounds] = useState("5");
@@ -111,7 +184,8 @@ export function StageManager({ tournamentId }: StageManagerProps) {
   const [teamDrafts, setTeamDrafts] = useState<Record<number, string>>({});
   const [editingItemTypeId, setEditingItemTypeId] = useState<number | null>(null);
   const [editingInputId, setEditingInputId] = useState<number | null>(null);
-  const [editingInputTeamDraft, setEditingInputTeamDraft] = useState<string>("");
+  const [editingInputTeamDraft, setEditingInputTeamDraft] = useState("");
+  const [wireDrafts, setWireDrafts] = useState<Record<number, WireDraft>>({});
 
   const { data: stages = [], isLoading } = useQuery({
     queryKey: ["admin", "stages", tournamentId],
@@ -123,31 +197,42 @@ export function StageManager({ tournamentId }: StageManagerProps) {
     queryFn: () => teamService.getAll(tournamentId, "name", "asc")
   });
 
-  // Progress (completed/total encounter counts per stage and stage_item).
-  // Drives the "Group A — 8/10 done" badges and the activate-and-generate
-  // safety check on the frontend (P0.4).
   const { data: stageProgress = [] } = useQuery({
     queryKey: ["admin", "stages", tournamentId, "progress"],
     queryFn: () => adminService.getStagesProgress(tournamentId),
     enabled: stages.length > 0
   });
 
-  const progressByStageId = new Map(stageProgress.map((sp) => [sp.stage_id, sp]));
-
+  const orderedStages = useMemo(
+    () => [...stages].sort((left, right) => left.order - right.order),
+    [stages]
+  );
   const teams = teamsData?.results ?? [];
   const teamById = new Map(teams.map((team) => [team.id, team]));
+  const progressByStageId = new Map(stageProgress.map((progress) => [progress.stage_id, progress]));
+  const preferredStageId =
+    orderedStages.find((stage) => stage.is_active)?.id ?? orderedStages[0]?.id ?? null;
+  const effectiveSelectedStageId = orderedStages.some((stage) => stage.id === selectedStageId)
+    ? selectedStageId
+    : preferredStageId;
+  const selectedStage =
+    orderedStages.find((stage) => stage.id === effectiveSelectedStageId) ?? null;
 
   const invalidateStageData = () => {
-    // Single source of truth for tournament workspace cache invalidation.
-    // Keeps admin StageManager, public bracket view and all dependent queries
-    // aligned (Phase F).
     void invalidateTournamentWorkspace(queryClient, tournamentId);
+  };
+
+  const resetCreateStageForm = () => {
+    setNewStageName("");
+    setNewStageType("round_robin");
+    setNewStageMaxRounds("5");
+    setNewStageDeGrandFinalType("no_reset");
   };
 
   const createMutation = useMutation({
     mutationFn: () =>
       adminService.createStage(tournamentId, {
-        name: newStageName,
+        name: newStageName.trim(),
         stage_type: newStageType,
         max_rounds: normalizeMaxRounds(newStageMaxRounds),
         order: stages.length,
@@ -156,11 +241,11 @@ export function StageManager({ tournamentId }: StageManagerProps) {
             ? { de_grand_final_type: newStageDeGrandFinalType }
             : null
       }),
-    onSuccess: () => {
+    onSuccess: (stage) => {
       invalidateStageData();
-      setNewStageName("");
-      setNewStageMaxRounds("5");
-      setNewStageDeGrandFinalType("no_reset");
+      setSelectedStageId(stage.id);
+      setCreateDialogOpen(false);
+      resetCreateStageForm();
     }
   });
 
@@ -213,6 +298,8 @@ export function StageManager({ tournamentId }: StageManagerProps) {
   const deleteMutation = useMutation({
     mutationFn: (stageId: number) => adminService.deleteStage(stageId),
     onSuccess: () => {
+      setStageToDelete(null);
+      setSelectedStageId(null);
       invalidateStageData();
     }
   });
@@ -242,7 +329,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
   const updateItemTypeMutation = useMutation({
     mutationFn: ({ stageItemId, type }: { stageItemId: number; type: StageItemType }) =>
       adminService.updateStageItem(stageItemId, { type }),
-    onSuccess: (_item, variables) => {
+    onSuccess: () => {
       setEditingItemTypeId(null);
       invalidateStageData();
     }
@@ -283,7 +370,6 @@ export function StageManager({ tournamentId }: StageManagerProps) {
     }
   });
 
-  // Phase F2: auto-wire TENTATIVE inputs from group stage into playoffs.
   const wireFromGroupsMutation = useMutation({
     mutationFn: ({
       targetStageId,
@@ -309,8 +395,6 @@ export function StageManager({ tournamentId }: StageManagerProps) {
     }
   });
 
-  // Phase F2: one-click activate + generate. On 409 (upstream not completed)
-  // prompt the admin and retry with force=true on confirm.
   const activateAndGenerateMutation = useMutation({
     mutationFn: async (stageId: number) => {
       try {
@@ -340,7 +424,6 @@ export function StageManager({ tournamentId }: StageManagerProps) {
     }
   });
 
-  // P0.2: seed teams into group stage automatically by avg_sr snake-draft.
   const seedTeamsMutation = useMutation({
     mutationFn: ({
       stageId,
@@ -349,7 +432,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
       stageId: number;
       mode: "snake_sr" | "by_total_sr" | "random";
     }) => {
-      const teamIds = (teamsData?.results ?? []).map((t) => t.id);
+      const teamIds = (teamsData?.results ?? []).map((team) => team.id);
       return adminService.seedTeams(stageId, { team_ids: teamIds, mode });
     },
     onSuccess: () => {
@@ -357,15 +440,76 @@ export function StageManager({ tournamentId }: StageManagerProps) {
     }
   });
 
-  // Local UI state for the wire-from-groups form (keyed per bracket stage).
-  const [wireDrafts, setWireDrafts] = useState<
-    Record<number, { sourceStageId?: number; top: number; top_lb: number; mode: "cross" | "snake" }>
-  >({});
+  const handleCreateStageSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    if (!newStageName.trim()) return;
+    createMutation.mutate();
+  };
+
+  const selectedStageProgress = selectedStage ? progressByStageId.get(selectedStage.id) : null;
+  const selectedStageSlots = selectedStage ? getStageTeamSlots(selectedStage) : 0;
+  const selectedStageAssignedTeams = selectedStage ? getStageAssignedTeams(selectedStage) : 0;
+  const selectedStageAssignedTeamIds = selectedStage ? getAssignedTeamIds(selectedStage) : new Set<number>();
+  const selectedStageProgressPercent = selectedStageProgress
+    ? getProgressPercent(selectedStageProgress.completed, selectedStageProgress.total)
+    : 0;
+  const selectedStageTypeDraft = selectedStage
+    ? stageTypeDrafts[selectedStage.id] ?? selectedStage.stage_type
+    : "round_robin";
+  const selectedStageMaxRoundDraft = selectedStage
+    ? stageMaxRoundDrafts[selectedStage.id] ?? String(selectedStage.max_rounds ?? 5)
+    : "5";
+  const currentDeGfType =
+    selectedStage && selectedStage.settings_json
+      ? ((selectedStage.settings_json.de_grand_final_type as "no_reset" | "with_reset" | undefined) ??
+        "no_reset")
+      : "no_reset";
+  const selectedStageDeGfTypeDraft = selectedStage
+    ? stageDeGfTypeDrafts[selectedStage.id] ?? currentDeGfType
+    : "no_reset";
+  const maxRoundsDraftValue = selectedStage
+    ? normalizeMaxRounds(selectedStageMaxRoundDraft, selectedStage.max_rounds ?? 5)
+    : 5;
+  const isStageDirty =
+    Boolean(selectedStage) &&
+    (selectedStageTypeDraft !== selectedStage?.stage_type ||
+      maxRoundsDraftValue !== (selectedStage?.max_rounds ?? 5) ||
+      (selectedStageTypeDraft === "double_elimination" &&
+        selectedStageDeGfTypeDraft !== currentDeGfType));
+  const selectedItemDraft = selectedStage
+    ? stageItemDrafts[selectedStage.id] ?? {
+        name: "",
+        type: getDefaultStageItemType(selectedStage.stage_type)
+      }
+    : { name: "", type: "group" as StageItemType };
+  const nextItemName =
+    selectedItemDraft.type === "group"
+      ? `Group ${(selectedStage?.items.length ?? 0) + 1}`
+      : "Bracket";
+  const groupStages = selectedStage
+    ? orderedStages.filter(
+        (stage) => GROUP_STAGE_TYPES.includes(stage.stage_type) && stage.id !== selectedStage.id
+      )
+    : [];
+  const selectedWireDraft =
+    selectedStage && BRACKET_STAGE_TYPES.includes(selectedStage.stage_type) && groupStages.length > 0
+      ? wireDrafts[selectedStage.id] ?? {
+          sourceStageId: groupStages[0]?.id,
+          top: 2,
+          top_lb: 0,
+          mode: "cross" as const
+        }
+      : null;
+  const createStageDirty =
+    newStageName.trim().length > 0 ||
+    newStageType !== "round_robin" ||
+    newStageMaxRounds !== "5" ||
+    newStageDeGrandFinalType !== "no_reset";
 
   if (isLoading) {
     return (
       <Card className="border-dashed">
-        <CardContent className="flex items-center gap-3 pt-6 text-sm text-muted-foreground">
+        <CardContent className="flex items-center gap-3 py-6 text-sm text-muted-foreground">
           <Loader2 className="size-4 animate-spin" />
           Loading stages...
         </CardContent>
@@ -374,691 +518,691 @@ export function StageManager({ tournamentId }: StageManagerProps) {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="space-y-1">
-        <h3 className="text-lg font-semibold">Stages</h3>
-        <p className="text-sm text-muted-foreground">
-          Configure tournament phases, see their structure at a glance, and run stage actions
-          without scanning through dense rows.
-        </p>
-      </div>
-
-      <Card className="border-dashed">
-        <CardHeader className="gap-1 pb-3">
-          <CardTitle className="text-base">Add Stage</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Create the next tournament phase and choose its initial format before generating a
-            bracket.
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-4 pt-0">
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_150px_auto] lg:items-end">
-            <div className="space-y-2">
-              <Label htmlFor="new-stage-name">Stage name</Label>
-              <Input
-                id="new-stage-name"
-                placeholder="Playoffs, Group A, Finals..."
-                value={newStageName}
-                onChange={(e) => setNewStageName(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="new-stage-type">Stage type</Label>
-              <Select value={newStageType} onValueChange={(v) => setNewStageType(v as StageType)}>
-                <SelectTrigger id="new-stage-type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(STAGE_TYPE_LABELS).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>
-                      {label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {newStageType === "swiss" && (
-              <div className="space-y-2">
-                <Label htmlFor="new-stage-max-rounds">Swiss max rounds</Label>
-                <Input
-                  id="new-stage-max-rounds"
-                  min={1}
-                  step={1}
-                  type="number"
-                  value={newStageMaxRounds}
-                  onChange={(e) => setNewStageMaxRounds(e.target.value)}
-                />
+    <>
+      <Card className="overflow-hidden border-border/40">
+        <CardHeader className="gap-3 pb-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <GitBranch className="size-4 text-primary" />
+                <CardTitle className="text-base">Tournament Flow</CardTitle>
               </div>
-            )}
-
-            <Button
-              className="w-full lg:w-auto"
-              disabled={!newStageName || createMutation.isPending}
-              onClick={() => createMutation.mutate()}
-            >
-              {createMutation.isPending ? (
-                <Loader2 className="mr-2 size-4 animate-spin" />
-              ) : (
-                <Plus className="mr-2 size-4" />
-              )}
-              {createMutation.isPending ? "Adding..." : "Add Stage"}
+              <CardDescription className="mt-1">
+                Build the bracket path one stage at a time, then use focused actions on the
+                selected stage.
+              </CardDescription>
+            </div>
+            <Button onClick={() => setCreateDialogOpen(true)}>
+              <Plus className="size-4" />
+              Add Stage
             </Button>
           </div>
+        </CardHeader>
 
-          {newStageType === "double_elimination" && (
-            <div className="space-y-2">
-              <Label>Grand Final format</Label>
-              <Select
-                value={newStageDeGrandFinalType}
-                onValueChange={(v) => setNewStageDeGrandFinalType(v as "no_reset" | "with_reset")}
-              >
-                <SelectTrigger className="w-[260px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="no_reset">
-                    No Reset — UB winner wins after one GF win
-                  </SelectItem>
-                  <SelectItem value="with_reset">
-                    With Reset — LB champion can force a rematch
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+        <CardContent className="pt-0">
+          {orderedStages.length === 0 ? (
+            <div className="flex min-h-[320px] flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-border/70 bg-muted/10 p-6 text-center">
+              <div className="rounded-full border border-border/70 bg-background p-3">
+                <GitBranch className="size-6 text-primary" />
+              </div>
+              <div className="max-w-md">
+                <p className="text-sm font-semibold">No stages configured</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Start by adding the first tournament phase. Groups, playoffs, and finals will
+                  appear here as a readable flow.
+                </p>
+              </div>
+              <Button onClick={() => setCreateDialogOpen(true)}>
+                <Plus className="size-4" />
+                Add First Stage
+              </Button>
             </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {stages.length === 0 ? (
-        <Card className="border-dashed">
-          <CardContent className="space-y-1 pt-6">
-            <p className="text-sm font-medium">No stages yet</p>
-            <p className="text-sm text-muted-foreground">
-              Create the first stage below to define how this tournament starts.
-            </p>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {stages.map((stage: Stage) => {
-        const stageTypeDraft = stageTypeDrafts[stage.id] ?? stage.stage_type;
-        const stageMaxRoundDraft = stageMaxRoundDrafts[stage.id] ?? String(stage.max_rounds ?? 5);
-        const currentDeGfType =
-          (stage.settings_json?.de_grand_final_type as "no_reset" | "with_reset" | undefined) ??
-          "no_reset";
-        const stageDeGfTypeDraft = stageDeGfTypeDrafts[stage.id] ?? currentDeGfType;
-        const itemDraft = stageItemDrafts[stage.id] ?? {
-          name: "",
-          type: getDefaultStageItemType(stage.stage_type)
-        };
-        const isTypeDirty = stageTypeDraft !== stage.stage_type;
-        const maxRoundsDraftValue = normalizeMaxRounds(stageMaxRoundDraft, stage.max_rounds ?? 5);
-        const isMaxRoundsDirty = maxRoundsDraftValue !== (stage.max_rounds ?? 5);
-        const isDeGfTypeDirty =
-          stageTypeDraft === "double_elimination" && stageDeGfTypeDraft !== currentDeGfType;
-        const isStageDirty = isTypeDirty || isMaxRoundsDirty || isDeGfTypeDirty;
-        const isUpdatingType =
-          updateStageMutation.isPending && updateStageMutation.variables?.stageId === stage.id;
-        const isActivating = activateMutation.isPending && activateMutation.variables === stage.id;
-        const isGenerating = generateMutation.isPending && generateMutation.variables === stage.id;
-        const isDeleting = deleteMutation.isPending && deleteMutation.variables === stage.id;
-        const isCreatingItem =
-          createItemMutation.isPending && createItemMutation.variables?.stageId === stage.id;
-        const teamSlots = getStageTeamSlots(stage);
-        const assignedTeamIds = getAssignedTeamIds(stage);
-        const nextItemName =
-          itemDraft.type === "group" ? `Group ${stage.items.length + 1}` : "Bracket";
-
-        return (
-          <Card key={stage.id} className="overflow-hidden">
-            <CardHeader className="gap-2 pb-2">
-              <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
-                <div className="min-w-0 space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <CardTitle className="text-base">{stage.name}</CardTitle>
-                    <Badge variant="outline">{STAGE_TYPE_LABELS[stage.stage_type]}</Badge>
-                    {stage.is_active ? (
-                      <Badge className="bg-emerald-600 text-white hover:bg-emerald-600">
-                        Active
-                      </Badge>
-                    ) : null}
-                    {stage.is_completed ? (
-                      <Badge className="bg-slate-600 text-white hover:bg-slate-600">
-                        Completed
-                      </Badge>
-                    ) : null}
+          ) : (
+            <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
+              <div className="rounded-xl border border-border/60 bg-background/40">
+                <div className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
+                  <div>
+                    <p className="text-sm font-semibold">Flow Timeline</p>
+                    <p className="text-xs text-muted-foreground">
+                      {orderedStages.length} stage{orderedStages.length === 1 ? "" : "s"}
+                    </p>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    <span className="rounded-full border border-border/60 bg-muted/20 px-2.5 py-1">
-                      {STAGE_TYPE_LABELS[stage.stage_type]}
-                    </span>
-                    <span className="rounded-full border border-border/60 bg-muted/20 px-2.5 py-1">
-                      {stage.items.length} item(s)
-                    </span>
-                    {stage.stage_type === "swiss" ? (
-                      <span className="rounded-full border border-border/60 bg-muted/20 px-2.5 py-1">
-                        {stage.max_rounds ?? 5} max round(s)
-                      </span>
-                    ) : null}
-                    {stage.stage_type === "double_elimination" ? (
-                      <span className="rounded-full border border-border/60 bg-muted/20 px-2.5 py-1">
-                        GF: {currentDeGfType === "with_reset" ? "With Reset" : "No Reset"}
-                      </span>
-                    ) : null}
-                    <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/20 px-2.5 py-1">
-                      <Users className="size-3" />
-                      {teamSlots} slot(s)
-                    </span>
-                    {(() => {
-                      const prog = progressByStageId.get(stage.id);
-                      if (!prog || prog.total === 0) return null;
-                      const fullyDone = prog.is_completed;
-                      return (
-                        <span
-                          className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 ${
-                            fullyDone
-                              ? "border-emerald-700/60 bg-emerald-950/20 text-emerald-300"
-                              : "border-amber-700/50 bg-amber-950/10 text-amber-200"
-                          }`}
-                          title={
-                            fullyDone
-                              ? "All encounters in this stage are completed"
-                              : `${prog.total - prog.completed} encounters still pending`
-                          }
-                        >
-                          {fullyDone ? <CheckCircle2 className="size-3" /> : null}
-                          {prog.completed}/{prog.total} matches
-                        </span>
-                      );
-                    })()}
-                  </div>
-                  {(() => {
-                    const prog = progressByStageId.get(stage.id);
-                    if (!prog || prog.items.length <= 1) return null;
-                    return (
-                      <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
-                        {prog.items.map((it) => (
-                          <span
-                            key={it.stage_item_id}
-                            className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 ${
-                              it.is_completed
-                                ? "border-emerald-800/50 bg-emerald-950/20 text-emerald-300"
-                                : "border-border/60 bg-background/50"
-                            }`}
-                          >
-                            {it.name}: {it.completed}/{it.total}
-                          </span>
-                        ))}
-                      </div>
-                    );
-                  })()}
+                  <Badge variant="outline">{teams.length} teams</Badge>
                 </div>
 
-                <div className="flex flex-wrap gap-2 xl:justify-end">
-                  {GROUP_STAGE_TYPES.includes(stage.stage_type) &&
-                  (teamsData?.results.length ?? 0) > 0 &&
-                  stage.items.length > 0 ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={
-                        seedTeamsMutation.isPending &&
-                        seedTeamsMutation.variables?.stageId === stage.id
-                      }
-                      onClick={() => {
-                        const teamCount = teamsData?.results.length ?? 0;
-                        const confirmed = window.confirm(
-                          `Distribute ${teamCount} teams into ${stage.items.length} group(s) using snake-SR draft?\n\n` +
-                            "Existing manual team assignments in this stage will be cleared."
-                        );
-                        if (!confirmed) return;
-                        seedTeamsMutation.mutate({
-                          stageId: stage.id,
-                          mode: "snake_sr"
-                        });
-                      }}
-                      title="Auto-distribute teams into groups balanced by avg_sr"
-                    >
-                      {seedTeamsMutation.isPending &&
-                      seedTeamsMutation.variables?.stageId === stage.id ? (
-                        <Loader2 className="mr-2 size-4 animate-spin" />
-                      ) : (
-                        <Shuffle className="mr-2 size-4" />
-                      )}
-                      Seed by SR
-                    </Button>
-                  ) : null}
-                  {!stage.is_active ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={activateMutation.isPending}
-                      onClick={() => activateMutation.mutate(stage.id)}
-                    >
-                      {isActivating ? (
-                        <Loader2 className="mr-2 size-4 animate-spin" />
-                      ) : (
-                        <PlayCircle className="mr-2 size-4" />
-                      )}
-                      {isActivating ? "Activating..." : "Activate"}
-                    </Button>
-                  ) : null}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={generateMutation.isPending}
-                    onClick={() => generateMutation.mutate(stage.id)}
-                  >
-                    {isGenerating ? (
-                      <Loader2 className="mr-2 size-4 animate-spin" />
-                    ) : (
-                      <Wand2 className="mr-2 size-4" />
-                    )}
-                    {isGenerating ? "Generating..." : "Generate Bracket"}
-                  </Button>
-                  {BRACKET_STAGE_TYPES.includes(stage.stage_type) ? (
-                    <Button
-                      size="sm"
-                      variant="default"
-                      disabled={
-                        activateAndGenerateMutation.isPending &&
-                        activateAndGenerateMutation.variables === stage.id
-                      }
-                      onClick={() => activateAndGenerateMutation.mutate(stage.id)}
-                      title="Resolve tentative inputs from prior stage standings, then generate the bracket"
-                    >
-                      {activateAndGenerateMutation.isPending &&
-                      activateAndGenerateMutation.variables === stage.id ? (
-                        <Loader2 className="mr-2 size-4 animate-spin" />
-                      ) : (
-                        <Zap className="mr-2 size-4" />
-                      )}
-                      Activate & Generate
-                    </Button>
-                  ) : null}
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    disabled={deleteMutation.isPending}
-                    onClick={() => deleteMutation.mutate(stage.id)}
-                  >
-                    {isDeleting ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
-                    {isDeleting ? "Deleting..." : "Delete"}
-                  </Button>
+                <div className="flex flex-col gap-2 p-2">
+                  {orderedStages.map((stage, index) => {
+                    const progress = progressByStageId.get(stage.id);
+                    const stageSlots = getStageTeamSlots(stage);
+                    const assignedTeams = getStageAssignedTeams(stage);
+                    const progressPercent = progress
+                      ? getProgressPercent(progress.completed, progress.total)
+                      : 0;
+                    const isSelected = effectiveSelectedStageId === stage.id;
+
+                    return (
+                      <button
+                        key={stage.id}
+                        type="button"
+                        className={cn(
+                          "group w-full rounded-lg border border-transparent p-3 text-left transition-colors hover:border-border/70 hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                          isSelected && "border-primary/50 bg-primary/10"
+                        )}
+                        onClick={() => setSelectedStageId(stage.id)}
+                      >
+                        <div className="flex items-start gap-3">
+                          <span
+                            className={cn(
+                              "mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border text-xs font-semibold",
+                              isSelected
+                                ? "border-primary/60 bg-primary/15 text-primary"
+                                : "border-border/70 bg-background text-muted-foreground"
+                            )}
+                          >
+                            {index + 1}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="truncate text-sm font-semibold">{stage.name}</p>
+                              <Badge variant="outline" className={cn("shrink-0", getStageStatusClass(stage))}>
+                                {getStageStatus(stage)}
+                              </Badge>
+                            </div>
+                            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                              <span>{STAGE_TYPE_LABELS[stage.stage_type]}</span>
+                              <span>|</span>
+                              <span>{stage.items.length} item(s)</span>
+                              <span>|</span>
+                              <span>
+                                {assignedTeams}/{stageSlots} slots
+                              </span>
+                            </div>
+                            {progress && progress.total > 0 ? (
+                              <div className="mt-3">
+                                <div className="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
+                                  <span>Matches</span>
+                                  <span>
+                                    {progress.completed}/{progress.total}
+                                  </span>
+                                </div>
+                                <Progress value={progressPercent} className="h-1.5" />
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
-            </CardHeader>
 
-            <CardContent className="space-y-2 pt-0">
-              <div className="rounded-lg border border-border/60 bg-background/50 px-3 py-2.5">
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                    Structure
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {stage.items.length} item(s), {teamSlots} slot(s)
-                  </p>
-                </div>
-                {stage.items.length > 0 ? (
-                  <div className="grid gap-3 xl:grid-cols-2">
-                    {stage.items.map((item) => (
-                      <div
-                        key={item.id}
-                        className="space-y-3 rounded-md border border-border/60 bg-muted/20 px-3 py-3"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium">{item.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {item.inputs.length} slot(s)
-                            </p>
-                          </div>
-                          {editingItemTypeId === item.id ? (
-                            <div className="flex shrink-0 items-center gap-1">
-                              <Select
-                                defaultValue={item.type}
-                                onValueChange={(value) => {
-                                  updateItemTypeMutation.mutate({
-                                    stageItemId: item.id,
-                                    type: value as StageItemType
-                                  });
-                                }}
-                              >
-                                <SelectTrigger className="h-7 w-36 text-[11px]">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {Object.entries(STAGE_ITEM_TYPE_LABELS).map(([value, label]) => (
-                                    <SelectItem key={value} value={value} className="text-[11px]">
-                                      {label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="size-6"
-                                onClick={() => setEditingItemTypeId(null)}
-                              >
-                                ×
-                              </Button>
-                            </div>
-                          ) : (
-                            <button
-                              className="flex shrink-0 items-center gap-1 rounded-md border border-transparent px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:border-border hover:text-foreground"
-                              onClick={() => setEditingItemTypeId(item.id)}
-                              title="Click to change type"
-                            >
-                              {STAGE_ITEM_TYPE_LABELS[item.type]}
-                              <Pencil className="size-2.5" />
-                            </button>
-                          )}
-                        </div>
-
-                        {item.inputs.length > 0 ? (
-                          <div className="space-y-1">
-                            {[...item.inputs]
-                              .sort((left, right) => left.slot - right.slot)
-                              .map((input) => {
-                                // For TENTATIVE inputs show the human-readable
-                                // source — "Winner of Group A #1" — instead of
-                                // "Empty slot" which misleads the admin.
-                                let label: string;
-                                if (input.team_id != null) {
-                                  label = getTeamName(teamById, input.team_id);
-                                } else if (
-                                  input.input_type === "tentative" &&
-                                  input.source_stage_item_id != null &&
-                                  input.source_position != null
-                                ) {
-                                  const sourceItem = stages
-                                    .flatMap((s) => s.items)
-                                    .find((it) => it.id === input.source_stage_item_id);
-                                  const groupName =
-                                    sourceItem?.name ?? `Item ${input.source_stage_item_id}`;
-                                  label = `Winner of ${groupName} #${input.source_position}`;
-                                } else {
-                                  label = "Empty slot";
-                                }
-                                const isEditingThisInput = editingInputId === input.id;
-                                const canSwapAssignedTeams = input.team_id != null;
-                                return (
-                                  <div
-                                    key={input.id}
-                                    className="flex items-center gap-2 rounded-md border border-border/50 bg-background/50 px-2.5 py-1.5 text-xs"
-                                  >
-                                    <span className="min-w-0 flex-1 truncate">
-                                      #{input.slot} {label}
-                                    </span>
-                                    {isEditingThisInput ? (
-                                      <>
-                                        <Select
-                                          value={editingInputTeamDraft}
-                                          onValueChange={setEditingInputTeamDraft}
-                                        >
-                                          <SelectTrigger className="h-6 w-36 text-[11px]">
-                                            <SelectValue placeholder="Pick team" />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            {teams.map((team) => (
-                                              <SelectItem
-                                                key={team.id}
-                                                value={team.id.toString()}
-                                                disabled={
-                                                  assignedTeamIds.has(team.id) &&
-                                                  team.id !== input.team_id &&
-                                                  !canSwapAssignedTeams
-                                                }
-                                                className="text-[11px]"
-                                              >
-                                                {team.name}
-                                              </SelectItem>
-                                            ))}
-                                          </SelectContent>
-                                        </Select>
-                                        <Button
-                                          size="icon"
-                                          variant="ghost"
-                                          className="size-6 shrink-0"
-                                          disabled={
-                                            !editingInputTeamDraft ||
-                                            (updateInputMutation.isPending &&
-                                              updateInputMutation.variables?.inputId === input.id)
-                                          }
-                                          onClick={() =>
-                                            updateInputMutation.mutate({
-                                              inputId: input.id,
-                                              teamId: Number(editingInputTeamDraft)
-                                            })
-                                          }
-                                        >
-                                          {updateInputMutation.isPending &&
-                                          updateInputMutation.variables?.inputId === input.id ? (
-                                            <Loader2 className="size-3 animate-spin" />
-                                          ) : (
-                                            <CheckCircle2 className="size-3" />
-                                          )}
-                                        </Button>
-                                        <Button
-                                          size="icon"
-                                          variant="ghost"
-                                          className="size-6 shrink-0"
-                                          onClick={() => {
-                                            setEditingInputId(null);
-                                            setEditingInputTeamDraft("");
-                                          }}
-                                        >
-                                          ×
-                                        </Button>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Badge
-                                          variant="outline"
-                                          className={`shrink-0 text-[10px] ${
-                                            input.input_type === "tentative"
-                                              ? "border-amber-700/50 text-amber-300"
-                                              : ""
-                                          }`}
-                                        >
-                                          {input.input_type}
-                                        </Badge>
-                                        {input.input_type !== "empty" && (
-                                          <button
-                                            className="shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground"
-                                            title={
-                                              input.input_type === "tentative"
-                                                ? "Override team"
-                                                : "Change team"
-                                            }
-                                            onClick={() => {
-                                              setEditingInputId(input.id);
-                                              setEditingInputTeamDraft(
-                                                input.team_id?.toString() ?? ""
-                                              );
-                                            }}
-                                          >
-                                            <Pencil className="size-2.5" />
-                                          </button>
-                                        )}
-                                      </>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                          </div>
-                        ) : (
-                          <p className="text-xs text-muted-foreground">No teams assigned yet.</p>
-                        )}
-
-                        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-                          <Select
-                            value={teamDrafts[item.id]}
-                            onValueChange={(value) =>
-                              setTeamDrafts((current) => ({ ...current, [item.id]: value }))
-                            }
-                            disabled={isTeamsLoading || teams.length === 0}
+              {selectedStage ? (
+                <div className="min-w-0 rounded-xl border border-border/60 bg-background/40">
+                  <div className="flex flex-col gap-3 border-b border-border/60 px-4 py-4 2xl:flex-row 2xl:items-start 2xl:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="truncate text-lg font-semibold">{selectedStage.name}</h3>
+                        <Badge variant="outline">{STAGE_TYPE_LABELS[selectedStage.stage_type]}</Badge>
+                        <Badge variant="outline" className={getStageStatusClass(selectedStage)}>
+                          {getStageStatus(selectedStage)}
+                        </Badge>
+                        {selectedStage.challonge_slug ? (
+                          <a
+                            className="inline-flex items-center gap-1 rounded-full border border-primary/30 px-2 py-0.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
+                            href={`https://challonge.com/${selectedStage.challonge_slug}`}
+                            target="_blank"
+                            rel="noreferrer"
                           >
-                            <SelectTrigger className="h-9">
-                              <SelectValue
-                                placeholder={isTeamsLoading ? "Loading teams..." : "Select team"}
-                              />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {teams.map((team) => (
-                                <SelectItem
-                                  key={team.id}
-                                  value={team.id.toString()}
-                                  disabled={assignedTeamIds.has(team.id)}
-                                >
-                                  {team.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                            <Link2 className="size-3" />
+                            Challonge
+                          </a>
+                        ) : null}
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <span>{selectedStage.items.length} structure item(s)</span>
+                        <span>|</span>
+                        <span>
+                          {selectedStageAssignedTeams}/{selectedStageSlots} team slots filled
+                        </span>
+                        {selectedStage.stage_type === "swiss" ? (
+                          <>
+                            <span>|</span>
+                            <span>{selectedStage.max_rounds ?? 5} max round(s)</span>
+                          </>
+                        ) : null}
+                        {selectedStage.stage_type === "double_elimination" ? (
+                          <>
+                            <span>|</span>
+                            <span>
+                              GF: {currentDeGfType === "with_reset" ? "With Reset" : "No Reset"}
+                            </span>
+                          </>
+                        ) : null}
+                      </div>
+                      {selectedStageProgress && selectedStageProgress.total > 0 ? (
+                        <div className="mt-3 max-w-md">
+                          <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
+                            <span>Match completion</span>
+                            <span>
+                              {selectedStageProgress.completed}/{selectedStageProgress.total}
+                            </span>
+                          </div>
+                          <Progress value={selectedStageProgressPercent} />
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => setStageToDelete(selectedStage)}
+                    >
+                      <Trash2 className="size-4" />
+                      Delete Stage
+                    </Button>
+                  </div>
+
+                  <div className="flex flex-col gap-4 p-4">
+                    <section className="rounded-lg border border-border/60 bg-muted/10 p-3">
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <div>
+                          <h4 className="text-sm font-semibold">Primary Actions</h4>
+                          <p className="text-xs text-muted-foreground">
+                            Use these when progressing the tournament flow.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-4">
+                        {GROUP_STAGE_TYPES.includes(selectedStage.stage_type) &&
+                        teams.length > 0 &&
+                        selectedStage.items.length > 0 ? (
                           <Button
                             size="sm"
                             variant="outline"
                             disabled={
-                              createInputMutation.isPending ||
-                              !teamDrafts[item.id] ||
-                              assignedTeamIds.has(Number(teamDrafts[item.id]))
+                              seedTeamsMutation.isPending &&
+                              seedTeamsMutation.variables?.stageId === selectedStage.id
                             }
-                            onClick={() =>
-                              createInputMutation.mutate({
-                                stageItemId: item.id,
-                                slot: getNextInputSlot(item),
-                                teamId: Number(teamDrafts[item.id])
-                              })
+                            onClick={() => {
+                              const confirmed = window.confirm(
+                                `Distribute ${teams.length} teams into ${selectedStage.items.length} group(s) using snake-SR draft?\n\n` +
+                                  "Existing manual team assignments in this stage will be cleared."
+                              );
+                              if (!confirmed) return;
+                              seedTeamsMutation.mutate({
+                                stageId: selectedStage.id,
+                                mode: "snake_sr"
+                              });
+                            }}
+                            title="Auto-distribute teams into groups balanced by avg_sr"
+                          >
+                            {seedTeamsMutation.isPending &&
+                            seedTeamsMutation.variables?.stageId === selectedStage.id ? (
+                              <Loader2 className="size-4 animate-spin" />
+                            ) : (
+                              <Shuffle className="size-4" />
+                            )}
+                            Seed by SR
+                          </Button>
+                        ) : null}
+
+                        {!selectedStage.is_active ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={activateMutation.isPending}
+                            onClick={() => activateMutation.mutate(selectedStage.id)}
+                          >
+                            {activateMutation.isPending &&
+                            activateMutation.variables === selectedStage.id ? (
+                              <Loader2 className="size-4 animate-spin" />
+                            ) : (
+                              <PlayCircle className="size-4" />
+                            )}
+                            {activateMutation.isPending &&
+                            activateMutation.variables === selectedStage.id
+                              ? "Activating..."
+                              : "Activate"}
+                          </Button>
+                        ) : null}
+
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={generateMutation.isPending}
+                          onClick={() => generateMutation.mutate(selectedStage.id)}
+                        >
+                          {generateMutation.isPending &&
+                          generateMutation.variables === selectedStage.id ? (
+                            <Loader2 className="size-4 animate-spin" />
+                          ) : (
+                            <Wand2 className="size-4" />
+                          )}
+                          {generateMutation.isPending &&
+                          generateMutation.variables === selectedStage.id
+                            ? "Generating..."
+                            : "Generate Bracket"}
+                        </Button>
+
+                        {BRACKET_STAGE_TYPES.includes(selectedStage.stage_type) ? (
+                          <Button
+                            size="sm"
+                            disabled={
+                              activateAndGenerateMutation.isPending &&
+                              activateAndGenerateMutation.variables === selectedStage.id
+                            }
+                            onClick={() => activateAndGenerateMutation.mutate(selectedStage.id)}
+                            title="Resolve tentative inputs from prior stage standings, then generate the bracket"
+                          >
+                            {activateAndGenerateMutation.isPending &&
+                            activateAndGenerateMutation.variables === selectedStage.id ? (
+                              <Loader2 className="size-4 animate-spin" />
+                            ) : (
+                              <Zap className="size-4" />
+                            )}
+                            {activateAndGenerateMutation.isPending &&
+                            activateAndGenerateMutation.variables === selectedStage.id
+                              ? "Working..."
+                              : "Activate & Generate"}
+                          </Button>
+                        ) : null}
+                      </div>
+                    </section>
+
+                    <section className="rounded-lg border border-border/60 bg-muted/10 p-3">
+                      <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <h4 className="text-sm font-semibold">Structure</h4>
+                          <p className="text-xs text-muted-foreground">
+                            Manage groups, bracket lanes, and assigned teams for this stage.
+                          </p>
+                        </div>
+                        <Badge variant="outline" className="w-fit">
+                          {selectedStage.items.length} item(s), {selectedStageSlots} slot(s)
+                        </Badge>
+                      </div>
+
+                      {selectedStageProgress && selectedStageProgress.items.length > 1 ? (
+                        <div className="mb-3 flex flex-wrap gap-1.5">
+                          {selectedStageProgress.items.map((itemProgress) => (
+                            <Badge
+                              key={itemProgress.stage_item_id}
+                              variant="outline"
+                              className={cn(
+                                "text-[11px]",
+                                itemProgress.is_completed &&
+                                  "border-emerald-700/60 bg-emerald-950/20 text-emerald-300"
+                              )}
+                            >
+                              {itemProgress.name}: {itemProgress.completed}/{itemProgress.total}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : null}
+
+                      {selectedStage.items.length > 0 ? (
+                        <div className="grid gap-3 2xl:grid-cols-2">
+                          {selectedStage.items.map((item) => (
+                            <div
+                              key={item.id}
+                              className="flex flex-col gap-3 rounded-lg border border-border/60 bg-background/50 p-3"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-medium">{item.name}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {item.inputs.length} slot(s)
+                                  </p>
+                                </div>
+                                {editingItemTypeId === item.id ? (
+                                  <div className="flex shrink-0 items-center gap-1">
+                                    <Select
+                                      defaultValue={item.type}
+                                      onValueChange={(value) => {
+                                        updateItemTypeMutation.mutate({
+                                          stageItemId: item.id,
+                                          type: value as StageItemType
+                                        });
+                                      }}
+                                    >
+                                      <SelectTrigger className="h-8 w-36 text-[11px]">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {Object.entries(STAGE_ITEM_TYPE_LABELS).map(
+                                          ([value, label]) => (
+                                            <SelectItem
+                                              key={value}
+                                              value={value}
+                                              className="text-[11px]"
+                                            >
+                                              {label}
+                                            </SelectItem>
+                                          )
+                                        )}
+                                      </SelectContent>
+                                    </Select>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className="size-8"
+                                      aria-label="Cancel item type edit"
+                                      onClick={() => setEditingItemTypeId(null)}
+                                    >
+                                      <span aria-hidden>×</span>
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="flex shrink-0 items-center gap-1 rounded-md border border-transparent px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:border-border hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                    onClick={() => setEditingItemTypeId(item.id)}
+                                    title="Click to change type"
+                                  >
+                                    {STAGE_ITEM_TYPE_LABELS[item.type]}
+                                    <Pencil className="size-2.5" />
+                                  </button>
+                                )}
+                              </div>
+
+                              {item.inputs.length > 0 ? (
+                                <div className="flex flex-col gap-1">
+                                  {[...item.inputs]
+                                    .sort((left, right) => left.slot - right.slot)
+                                    .map((input) => {
+                                      const label = getInputDisplayLabel(input, stages, teamById);
+                                      const isEditingThisInput = editingInputId === input.id;
+                                      const canSwapAssignedTeams = input.team_id != null;
+
+                                      return (
+                                        <div
+                                          key={input.id}
+                                          className="flex items-center gap-2 rounded-md border border-border/50 bg-background/70 px-2.5 py-1.5 text-xs"
+                                        >
+                                          <span className="min-w-0 flex-1 truncate">
+                                            #{input.slot} {label}
+                                          </span>
+
+                                          {isEditingThisInput ? (
+                                            <>
+                                              <Select
+                                                value={editingInputTeamDraft}
+                                                onValueChange={setEditingInputTeamDraft}
+                                              >
+                                                <SelectTrigger className="h-7 w-40 text-[11px]">
+                                                  <SelectValue placeholder="Pick team" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                  {teams.map((team) => (
+                                                    <SelectItem
+                                                      key={team.id}
+                                                      value={team.id.toString()}
+                                                      disabled={
+                                                        selectedStageAssignedTeamIds.has(team.id) &&
+                                                        team.id !== input.team_id &&
+                                                        !canSwapAssignedTeams
+                                                      }
+                                                      className="text-[11px]"
+                                                    >
+                                                      {team.name}
+                                                    </SelectItem>
+                                                  ))}
+                                                </SelectContent>
+                                              </Select>
+                                              <Button
+                                                size="icon"
+                                                variant="ghost"
+                                                className="size-8 shrink-0"
+                                                aria-label="Save team assignment"
+                                                disabled={
+                                                  !editingInputTeamDraft ||
+                                                  (updateInputMutation.isPending &&
+                                                    updateInputMutation.variables?.inputId === input.id)
+                                                }
+                                                onClick={() =>
+                                                  updateInputMutation.mutate({
+                                                    inputId: input.id,
+                                                    teamId: Number(editingInputTeamDraft)
+                                                  })
+                                                }
+                                              >
+                                                {updateInputMutation.isPending &&
+                                                updateInputMutation.variables?.inputId === input.id ? (
+                                                  <Loader2 className="size-3 animate-spin" />
+                                                ) : (
+                                                  <CheckCircle2 className="size-3" />
+                                                )}
+                                              </Button>
+                                              <Button
+                                                size="icon"
+                                                variant="ghost"
+                                                className="size-8 shrink-0"
+                                                aria-label="Cancel team assignment edit"
+                                                onClick={() => {
+                                                  setEditingInputId(null);
+                                                  setEditingInputTeamDraft("");
+                                                }}
+                                              >
+                                                <span aria-hidden>×</span>
+                                              </Button>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <Badge
+                                                variant="outline"
+                                                className={cn(
+                                                  "shrink-0 text-[10px]",
+                                                  input.input_type === "tentative" &&
+                                                    "border-amber-700/50 text-amber-300"
+                                                )}
+                                              >
+                                                {input.input_type}
+                                              </Badge>
+                                              {input.input_type !== "empty" ? (
+                                                <button
+                                                  type="button"
+                                                  className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                                  title={
+                                                    input.input_type === "tentative"
+                                                      ? "Override team"
+                                                      : "Change team"
+                                                  }
+                                                  onClick={() => {
+                                                    setEditingInputId(input.id);
+                                                    setEditingInputTeamDraft(
+                                                      input.team_id?.toString() ?? ""
+                                                    );
+                                                  }}
+                                                >
+                                                  <Pencil className="size-3" />
+                                                </button>
+                                              ) : null}
+                                            </>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                </div>
+                              ) : (
+                                <p className="rounded-md border border-dashed border-border/60 bg-background/40 px-3 py-2 text-xs text-muted-foreground">
+                                  No teams assigned yet.
+                                </p>
+                              )}
+
+                              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                                <Select
+                                  value={teamDrafts[item.id]}
+                                  onValueChange={(value) =>
+                                    setTeamDrafts((current) => ({ ...current, [item.id]: value }))
+                                  }
+                                  disabled={isTeamsLoading || teams.length === 0}
+                                >
+                                  <SelectTrigger className="h-9">
+                                    <SelectValue
+                                      placeholder={
+                                        isTeamsLoading ? "Loading teams..." : "Select team"
+                                      }
+                                    />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {teams.map((team) => (
+                                      <SelectItem
+                                        key={team.id}
+                                        value={team.id.toString()}
+                                        disabled={selectedStageAssignedTeamIds.has(team.id)}
+                                      >
+                                        {team.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={
+                                    createInputMutation.isPending ||
+                                    !teamDrafts[item.id] ||
+                                    selectedStageAssignedTeamIds.has(Number(teamDrafts[item.id]))
+                                  }
+                                  onClick={() =>
+                                    createInputMutation.mutate({
+                                      stageItemId: item.id,
+                                      slot: getNextInputSlot(item),
+                                      teamId: Number(teamDrafts[item.id])
+                                    })
+                                  }
+                                >
+                                  {createInputMutation.isPending &&
+                                  createInputMutation.variables?.stageItemId === item.id ? (
+                                    <Loader2 className="size-4 animate-spin" />
+                                  ) : (
+                                    <Plus className="size-4" />
+                                  )}
+                                  Add Team
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="rounded-lg border border-dashed border-border/70 bg-background/40 p-4 text-sm text-muted-foreground">
+                          This stage has no structure items yet. Add a group or bracket lane below.
+                        </div>
+                      )}
+
+                      <div className="mt-3 grid gap-2 border-t border-border/60 pt-3 lg:grid-cols-[minmax(0,1fr)_200px_auto] lg:items-end">
+                        <div className="flex flex-col gap-1.5">
+                          <Label htmlFor={`stage-item-name-${selectedStage.id}`} className="text-xs">
+                            Structure item name
+                          </Label>
+                          <Input
+                            id={`stage-item-name-${selectedStage.id}`}
+                            className="h-9"
+                            placeholder={nextItemName}
+                            value={selectedItemDraft.name}
+                            onChange={(event) =>
+                              setStageItemDrafts((current) => ({
+                                ...current,
+                                [selectedStage.id]: {
+                                  ...selectedItemDraft,
+                                  name: event.target.value
+                                }
+                              }))
+                            }
+                          />
+                        </div>
+
+                        <div className="flex flex-col gap-1.5">
+                          <Label htmlFor={`stage-item-type-${selectedStage.id}`} className="text-xs">
+                            Type
+                          </Label>
+                          <Select
+                            value={selectedItemDraft.type}
+                            onValueChange={(value) =>
+                              setStageItemDrafts((current) => ({
+                                ...current,
+                                [selectedStage.id]: {
+                                  ...selectedItemDraft,
+                                  type: value as StageItemType
+                                }
+                              }))
                             }
                           >
-                            {createInputMutation.isPending &&
-                            createInputMutation.variables?.stageItemId === item.id ? (
-                              <Loader2 className="mr-2 size-4 animate-spin" />
-                            ) : (
-                              <Plus className="mr-2 size-4" />
-                            )}
-                            Add Team
-                          </Button>
+                            <SelectTrigger id={`stage-item-type-${selectedStage.id}`} className="h-9">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Object.entries(STAGE_ITEM_TYPE_LABELS).map(([value, label]) => (
+                                <SelectItem key={value} value={value}>
+                                  {label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
+
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={
+                            createItemMutation.isPending &&
+                            createItemMutation.variables?.stageId === selectedStage.id
+                          }
+                          onClick={() =>
+                            createItemMutation.mutate({
+                              stageId: selectedStage.id,
+                              name: selectedItemDraft.name.trim() || nextItemName,
+                              type: selectedItemDraft.type,
+                              order: selectedStage.items.length
+                            })
+                          }
+                        >
+                          {createItemMutation.isPending &&
+                          createItemMutation.variables?.stageId === selectedStage.id ? (
+                            <Loader2 className="size-4 animate-spin" />
+                          ) : (
+                            <Plus className="size-4" />
+                          )}
+                          {createItemMutation.isPending &&
+                          createItemMutation.variables?.stageId === selectedStage.id
+                            ? "Adding..."
+                            : "Add Structure"}
+                        </Button>
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    This stage has no structure items yet.
-                  </p>
-                )}
+                    </section>
 
-                <div className="mt-3 grid gap-2 border-t border-border/60 pt-3 lg:grid-cols-[minmax(0,1fr)_200px_auto] lg:items-end">
-                  <div className="space-y-1.5">
-                    <Label htmlFor={`stage-item-name-${stage.id}`} className="text-xs">
-                      Structure item name
-                    </Label>
-                    <Input
-                      id={`stage-item-name-${stage.id}`}
-                      className="h-9"
-                      placeholder={nextItemName}
-                      value={itemDraft.name}
-                      onChange={(event) =>
-                        setStageItemDrafts((current) => ({
-                          ...current,
-                          [stage.id]: { ...itemDraft, name: event.target.value }
-                        }))
-                      }
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor={`stage-item-type-${stage.id}`} className="text-xs">
-                      Type
-                    </Label>
-                    <Select
-                      value={itemDraft.type}
-                      onValueChange={(value) =>
-                        setStageItemDrafts((current) => ({
-                          ...current,
-                          [stage.id]: { ...itemDraft, type: value as StageItemType }
-                        }))
-                      }
-                    >
-                      <SelectTrigger id={`stage-item-type-${stage.id}`} className="h-9">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Object.entries(STAGE_ITEM_TYPE_LABELS).map(([value, label]) => (
-                          <SelectItem key={value} value={value}>
-                            {label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    disabled={isCreatingItem}
-                    onClick={() =>
-                      createItemMutation.mutate({
-                        stageId: stage.id,
-                        name: itemDraft.name.trim() || nextItemName,
-                        type: itemDraft.type,
-                        order: stage.items.length
-                      })
-                    }
-                  >
-                    {isCreatingItem ? (
-                      <Loader2 className="mr-2 size-4 animate-spin" />
-                    ) : (
-                      <Plus className="mr-2 size-4" />
-                    )}
-                    {isCreatingItem ? "Adding..." : "Add Structure"}
-                  </Button>
-                </div>
-              </div>
-
-              {BRACKET_STAGE_TYPES.includes(stage.stage_type)
-                ? (() => {
-                    const groupStages = stages.filter(
-                      (other) =>
-                        GROUP_STAGE_TYPES.includes(other.stage_type) && other.id !== stage.id
-                    );
-                    if (groupStages.length === 0) {
-                      return null;
-                    }
-                    const isDE = stage.stage_type === "double_elimination";
-                    const draft = wireDrafts[stage.id] ?? {
-                      sourceStageId: groupStages[0]?.id,
-                      top: 2,
-                      top_lb: 0,
-                      mode: "cross" as const
-                    };
-                    const isWiring =
-                      wireFromGroupsMutation.isPending &&
-                      wireFromGroupsMutation.variables?.targetStageId === stage.id;
-                    return (
-                      <div className="rounded-lg border border-dashed border-emerald-900/40 bg-emerald-950/10 px-3 py-2.5">
-                        <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
-                          <Link2 className="size-3.5" />
-                          <span className="font-medium text-foreground">Wire from groups</span>
-                          <span className="hidden sm:inline">
-                            Auto-populate tentative slots from a preceding group stage.
-                          </span>
+                    {BRACKET_STAGE_TYPES.includes(selectedStage.stage_type) &&
+                    selectedWireDraft &&
+                    groupStages.length > 0 ? (
+                      <section className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+                        <div className="mb-3 flex items-start gap-2">
+                          <Link2 className="mt-0.5 size-4 text-primary" />
+                          <div>
+                            <h4 className="text-sm font-semibold">Automation</h4>
+                            <p className="text-xs text-muted-foreground">
+                              Auto-populate tentative bracket slots from a preceding group stage.
+                            </p>
+                          </div>
                         </div>
 
                         <div
-                          className={`grid gap-2 ${isDE ? "sm:grid-cols-[minmax(0,1fr)_80px_80px_120px_auto]" : "sm:grid-cols-[minmax(0,1fr)_100px_120px_auto]"}`}
+                          className={cn(
+                            "grid gap-2",
+                            selectedStage.stage_type === "double_elimination"
+                              ? "sm:grid-cols-[minmax(0,1fr)_80px_80px_120px_auto]"
+                              : "sm:grid-cols-[minmax(0,1fr)_100px_120px_auto]"
+                          )}
                         >
                           <Select
-                            value={draft.sourceStageId?.toString() ?? ""}
+                            value={selectedWireDraft.sourceStageId?.toString() ?? ""}
                             onValueChange={(value) =>
                               setWireDrafts((current) => ({
                                 ...current,
-                                [stage.id]: { ...draft, sourceStageId: Number(value) }
+                                [selectedStage.id]: {
+                                  ...selectedWireDraft,
+                                  sourceStageId: Number(value)
+                                }
                               }))
                             }
                           >
@@ -1066,9 +1210,9 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                               <SelectValue placeholder="Source group stage" />
                             </SelectTrigger>
                             <SelectContent>
-                              {groupStages.map((src) => (
-                                <SelectItem key={src.id} value={src.id.toString()}>
-                                  {src.name} ({STAGE_TYPE_LABELS[src.stage_type]})
+                              {groupStages.map((stage) => (
+                                <SelectItem key={stage.id} value={stage.id.toString()}>
+                                  {stage.name} ({STAGE_TYPE_LABELS[stage.stage_type]})
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -1079,46 +1223,46 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                             min={1}
                             max={16}
                             className="h-9"
-                            value={draft.top}
+                            value={selectedWireDraft.top}
                             onChange={(event) =>
                               setWireDrafts((current) => ({
                                 ...current,
-                                [stage.id]: {
-                                  ...draft,
+                                [selectedStage.id]: {
+                                  ...selectedWireDraft,
                                   top: Math.max(1, Number(event.target.value) || 1)
                                 }
                               }))
                             }
-                            title="Teams from each group → Upper Bracket"
+                            title="Teams from each group to Upper Bracket"
                           />
 
-                          {isDE && (
+                          {selectedStage.stage_type === "double_elimination" ? (
                             <Input
                               type="number"
                               min={0}
                               max={16}
                               className="h-9"
-                              value={draft.top_lb}
+                              value={selectedWireDraft.top_lb}
                               onChange={(event) =>
                                 setWireDrafts((current) => ({
                                   ...current,
-                                  [stage.id]: {
-                                    ...draft,
+                                  [selectedStage.id]: {
+                                    ...selectedWireDraft,
                                     top_lb: Math.max(0, Number(event.target.value) || 0)
                                   }
                                 }))
                               }
-                              title="Teams from each group → Lower Bracket (0 = none)"
+                              title="Teams from each group to Lower Bracket (0 = none)"
                             />
-                          )}
+                          ) : null}
 
                           <Select
-                            value={draft.mode}
+                            value={selectedWireDraft.mode}
                             onValueChange={(value) =>
                               setWireDrafts((current) => ({
                                 ...current,
-                                [stage.id]: {
-                                  ...draft,
+                                [selectedStage.id]: {
+                                  ...selectedWireDraft,
                                   mode: value as "cross" | "snake"
                                 }
                               }))
@@ -1128,135 +1272,279 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="cross">Cross (avoid rematch)</SelectItem>
-                              <SelectItem value="snake">Snake (top-down)</SelectItem>
+                              <SelectItem value="cross">Cross</SelectItem>
+                              <SelectItem value="snake">Snake</SelectItem>
                             </SelectContent>
                           </Select>
 
                           <Button
                             size="sm"
                             variant="secondary"
-                            disabled={isWiring || !draft.sourceStageId}
+                            disabled={
+                              (wireFromGroupsMutation.isPending &&
+                                wireFromGroupsMutation.variables?.targetStageId ===
+                                  selectedStage.id) ||
+                              !selectedWireDraft.sourceStageId
+                            }
                             onClick={() =>
-                              draft.sourceStageId &&
+                              selectedWireDraft.sourceStageId &&
                               wireFromGroupsMutation.mutate({
-                                targetStageId: stage.id,
-                                sourceStageId: draft.sourceStageId,
-                                top: draft.top,
-                                top_lb: draft.top_lb,
-                                mode: draft.mode
+                                targetStageId: selectedStage.id,
+                                sourceStageId: selectedWireDraft.sourceStageId,
+                                top: selectedWireDraft.top,
+                                top_lb: selectedWireDraft.top_lb,
+                                mode: selectedWireDraft.mode
                               })
                             }
                           >
-                            {isWiring ? (
-                              <Loader2 className="mr-2 size-4 animate-spin" />
+                            {wireFromGroupsMutation.isPending &&
+                            wireFromGroupsMutation.variables?.targetStageId === selectedStage.id ? (
+                              <Loader2 className="size-4 animate-spin" />
                             ) : (
-                              <Link2 className="mr-2 size-4" />
+                              <Link2 className="size-4" />
                             )}
-                            {isWiring ? "Wiring..." : "Wire"}
+                            {wireFromGroupsMutation.isPending &&
+                            wireFromGroupsMutation.variables?.targetStageId === selectedStage.id
+                              ? "Wiring..."
+                              : "Wire"}
                           </Button>
                         </div>
-                      </div>
-                    );
-                  })()
-                : null}
+                      </section>
+                    ) : null}
 
-              {isSuperuser ? (
-                <div className="rounded-lg border border-dashed border-border/70 bg-muted/10 px-3 py-2.5">
-                  <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Shield className="size-3.5" />
-                      <span className="font-medium text-foreground">
-                        Bracket generation override
-                      </span>
-                      <span className="hidden sm:inline">Superuser only.</span>
-                    </div>
+                    {isSuperuser ? (
+                      <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+                        <section className="rounded-lg border border-dashed border-border/70 bg-muted/5">
+                          <CollapsibleTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              className="flex h-auto w-full justify-between rounded-lg px-3 py-2.5"
+                            >
+                              <span className="flex items-center gap-2 text-sm font-semibold">
+                                <Shield className="size-4" />
+                                Advanced
+                              </span>
+                              <ChevronDown
+                                className={cn(
+                                  "size-4 transition-transform",
+                                  advancedOpen && "rotate-180"
+                                )}
+                              />
+                            </Button>
+                          </CollapsibleTrigger>
+                          <CollapsibleContent>
+                            <div className="border-t border-border/60 p-3">
+                              <div className="mb-3 flex items-start gap-2 text-xs text-muted-foreground">
+                                <AlertTriangle className="mt-0.5 size-3.5 text-amber-300" />
+                                <span>
+                                  Bracket generation override is superuser-only and changes how
+                                  future bracket generation interprets this stage.
+                                </span>
+                              </div>
 
-                    <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
-                      <Select
-                        value={stageTypeDraft}
-                        onValueChange={(value) =>
-                          setStageTypeDrafts((current) => ({
-                            ...current,
-                            [stage.id]: value as StageType
-                          }))
-                        }
-                      >
-                        <SelectTrigger className="h-9 w-full sm:w-[220px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Object.entries(STAGE_TYPE_LABELS).map(([value, label]) => (
-                            <SelectItem key={value} value={value}>
-                              {label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {stageTypeDraft === "swiss" && (
-                        <Input
-                          aria-label="Swiss max rounds"
-                          className="h-9 w-full sm:w-[120px]"
-                          min={1}
-                          step={1}
-                          type="number"
-                          value={stageMaxRoundDraft}
-                          onChange={(event) =>
-                            setStageMaxRoundDrafts((current) => ({
-                              ...current,
-                              [stage.id]: event.target.value
-                            }))
-                          }
-                        />
-                      )}
-                      {stageTypeDraft === "double_elimination" && (
-                        <Select
-                          value={stageDeGfTypeDraft}
-                          onValueChange={(value) =>
-                            setStageDeGfTypeDrafts((current) => ({
-                              ...current,
-                              [stage.id]: value as "no_reset" | "with_reset"
-                            }))
-                          }
-                        >
-                          <SelectTrigger className="h-9 w-full sm:w-[160px]">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="no_reset">No Reset</SelectItem>
-                            <SelectItem value="with_reset">With Reset</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      )}
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        disabled={updateStageMutation.isPending || !isStageDirty}
-                        onClick={() =>
-                          updateStageMutation.mutate({
-                            stageId: stage.id,
-                            data: {
-                              stage_type: stageTypeDraft,
-                              max_rounds: maxRoundsDraftValue,
-                              settings_json:
-                                stageTypeDraft === "double_elimination"
-                                  ? { de_grand_final_type: stageDeGfTypeDraft }
-                                  : undefined
-                            }
-                          })
-                        }
-                      >
-                        {isUpdatingType ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
-                        {isUpdatingType ? "Saving..." : "Save Override"}
-                      </Button>
-                    </div>
+                              <div className="flex flex-col gap-2 sm:flex-row">
+                                <Select
+                                  value={selectedStageTypeDraft}
+                                  onValueChange={(value) =>
+                                    setStageTypeDrafts((current) => ({
+                                      ...current,
+                                      [selectedStage.id]: value as StageType
+                                    }))
+                                  }
+                                >
+                                  <SelectTrigger className="h-9 w-full sm:w-[220px]">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {Object.entries(STAGE_TYPE_LABELS).map(([value, label]) => (
+                                      <SelectItem key={value} value={value}>
+                                        {label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                {selectedStageTypeDraft === "swiss" ? (
+                                  <Input
+                                    aria-label="Swiss max rounds"
+                                    className="h-9 w-full sm:w-[120px]"
+                                    min={1}
+                                    step={1}
+                                    type="number"
+                                    value={selectedStageMaxRoundDraft}
+                                    onChange={(event) =>
+                                      setStageMaxRoundDrafts((current) => ({
+                                        ...current,
+                                        [selectedStage.id]: event.target.value
+                                      }))
+                                    }
+                                  />
+                                ) : null}
+                                {selectedStageTypeDraft === "double_elimination" ? (
+                                  <Select
+                                    value={selectedStageDeGfTypeDraft}
+                                    onValueChange={(value) =>
+                                      setStageDeGfTypeDrafts((current) => ({
+                                        ...current,
+                                        [selectedStage.id]: value as "no_reset" | "with_reset"
+                                      }))
+                                    }
+                                  >
+                                    <SelectTrigger className="h-9 w-full sm:w-[160px]">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="no_reset">No Reset</SelectItem>
+                                      <SelectItem value="with_reset">With Reset</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                ) : null}
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  disabled={
+                                    updateStageMutation.isPending ||
+                                    !isStageDirty ||
+                                    !selectedStage
+                                  }
+                                  onClick={() =>
+                                    updateStageMutation.mutate({
+                                      stageId: selectedStage.id,
+                                      data: {
+                                        stage_type: selectedStageTypeDraft,
+                                        max_rounds: maxRoundsDraftValue,
+                                        settings_json:
+                                          selectedStageTypeDraft === "double_elimination"
+                                            ? { de_grand_final_type: selectedStageDeGfTypeDraft }
+                                            : undefined
+                                      }
+                                    })
+                                  }
+                                >
+                                  {updateStageMutation.isPending &&
+                                  updateStageMutation.variables?.stageId === selectedStage.id ? (
+                                    <Loader2 className="size-4 animate-spin" />
+                                  ) : null}
+                                  {updateStageMutation.isPending &&
+                                  updateStageMutation.variables?.stageId === selectedStage.id
+                                    ? "Saving..."
+                                    : "Save Override"}
+                                </Button>
+                              </div>
+                            </div>
+                          </CollapsibleContent>
+                        </section>
+                      </Collapsible>
+                    ) : null}
                   </div>
                 </div>
               ) : null}
-            </CardContent>
-          </Card>
-        );
-      })}
-    </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <EntityFormDialog
+        open={createDialogOpen}
+        onOpenChange={(open) => {
+          setCreateDialogOpen(open);
+          if (!open) {
+            createMutation.reset();
+            resetCreateStageForm();
+          }
+        }}
+        title="Add Stage"
+        description="Create the next tournament phase and choose its initial generation format."
+        submitLabel="Add Stage"
+        submittingLabel="Adding..."
+        onSubmit={handleCreateStageSubmit}
+        isSubmitting={createMutation.isPending}
+        errorMessage={createMutation.isError ? createMutation.error.message : undefined}
+        isDirty={createStageDirty}
+      >
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="new-stage-name">Stage name</Label>
+            <Input
+              id="new-stage-name"
+              placeholder="Playoffs, Group A, Finals..."
+              value={newStageName}
+              onChange={(event) => setNewStageName(event.target.value)}
+            />
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="new-stage-type">Stage type</Label>
+            <Select value={newStageType} onValueChange={(value) => setNewStageType(value as StageType)}>
+              <SelectTrigger id="new-stage-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(STAGE_TYPE_LABELS).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {newStageType === "swiss" ? (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="new-stage-max-rounds">Swiss max rounds</Label>
+              <Input
+                id="new-stage-max-rounds"
+                min={1}
+                step={1}
+                type="number"
+                value={newStageMaxRounds}
+                onChange={(event) => setNewStageMaxRounds(event.target.value)}
+              />
+            </div>
+          ) : null}
+
+          {newStageType === "double_elimination" ? (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="new-stage-grand-final">Grand Final format</Label>
+              <Select
+                value={newStageDeGrandFinalType}
+                onValueChange={(value) =>
+                  setNewStageDeGrandFinalType(value as "no_reset" | "with_reset")
+                }
+              >
+                <SelectTrigger id="new-stage-grand-final">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="no_reset">No Reset - UB winner wins after one GF win</SelectItem>
+                  <SelectItem value="with_reset">
+                    With Reset - LB champion can force a rematch
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
+        </div>
+      </EntityFormDialog>
+
+      <DeleteConfirmDialog
+        open={Boolean(stageToDelete)}
+        onOpenChange={(open) => {
+          if (!open) setStageToDelete(null);
+        }}
+        onConfirm={() => {
+          if (stageToDelete) {
+            deleteMutation.mutate(stageToDelete.id);
+          }
+        }}
+        title="Delete Stage"
+        description={
+          stageToDelete
+            ? `Delete "${stageToDelete.name}"? This removes its structure and generated bracket data.`
+            : undefined
+        }
+        cascadeInfo={["Stage structure items", "Team input slots", "Generated stage matches"]}
+        isDeleting={deleteMutation.isPending}
+      />
+    </>
   );
 }

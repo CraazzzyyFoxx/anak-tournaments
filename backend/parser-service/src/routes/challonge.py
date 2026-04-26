@@ -1,8 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core import enums, auth, db
-
+from src.core import auth, db, enums
 from src.services.challonge import service as challonge_service
 from src.services.challonge import sync as challonge_sync
 
@@ -34,10 +33,11 @@ async def get_matches_from_challonge(tournament_id: int):
 @router.post(path="/sync/import/{tournament_id}")
 async def import_from_challonge(
     tournament_id: int,
+    dry_run: bool = False,
     session: AsyncSession = Depends(db.get_async_session),
 ):
     """Full import: pull matches from Challonge and update local encounters."""
-    return await challonge_sync.import_tournament(session, tournament_id)
+    return await challonge_sync.import_tournament(session, tournament_id, dry_run=dry_run)
 
 
 @router.post(path="/sync/export/{tournament_id}")
@@ -71,11 +71,16 @@ async def get_sync_log(
         {
             "id": log.id,
             "created_at": log.created_at,
+            "source_id": log.source_id,
             "direction": log.direction,
+            "operation": log.operation,
             "entity_type": log.entity_type,
             "entity_id": log.entity_id,
             "challonge_id": log.challonge_id,
             "status": log.status,
+            "conflict_type": log.conflict_type,
+            "before_json": log.before_json,
+            "after_json": log.after_json,
             "error_message": log.error_message,
         }
         for log in logs

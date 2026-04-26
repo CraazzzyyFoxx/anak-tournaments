@@ -19,6 +19,7 @@ import balancerService from "@/services/balancer.service";
 import type {
   BalancerApplication,
   AdminRegistrationUpdateInput,
+  BalanceExportResponse,
   BalancerPlayerRecord,
   BalancerPlayerUpdateInput,
   BalancerRoleCode,
@@ -34,6 +35,7 @@ import type { useToast } from "@/hooks/use-toast";
 
 type UseBalancerMutationsOptions = {
   tournamentId: number | null;
+  workspaceId: number | null;
   toast: ReturnType<typeof useToast>["toast"];
   queryClient: QueryClient;
   dispatchJob: React.Dispatch<JobAction>;
@@ -52,11 +54,44 @@ type UseBalancerMutationsOptions = {
   isConfigDirty: boolean;
   onTournamentConfigSaved: (config: BalancerConfig) => void;
   activeVariant: BalanceVariant | null;
-  savedBalanceData: SavedBalance | null | undefined;
 };
+
+type FlowStepStatus = "pending" | "running" | "succeeded" | "failed";
+type FlowStageReporter = (stepId: string, status: FlowStepStatus) => void;
+
+type ExportToTournamentVariables = {
+  onStageChange?: FlowStageReporter;
+};
+
+type ImportTeamsVariables = {
+  file: File;
+  onStageChange?: FlowStageReporter;
+};
+
+type ExportToTournamentResult = {
+  savedBalance: SavedBalance;
+  exportResult: BalanceExportResponse;
+};
+
+async function runReportedStage<T>(
+  stepId: string,
+  onStageChange: FlowStageReporter | undefined,
+  action: () => Promise<T>
+): Promise<T> {
+  onStageChange?.(stepId, "running");
+  try {
+    const result = await action();
+    onStageChange?.(stepId, "succeeded");
+    return result;
+  } catch (error) {
+    onStageChange?.(stepId, "failed");
+    throw error;
+  }
+}
 
 export function useBalancerMutations({
   tournamentId,
+  workspaceId,
   toast,
   queryClient,
   dispatchJob,
@@ -74,8 +109,7 @@ export function useBalancerMutations({
   draftConfig,
   isConfigDirty,
   onTournamentConfigSaved,
-  activeVariant,
-  savedBalanceData
+  activeVariant
 }: UseBalancerMutationsOptions) {
   const addPlayerMutation = useMutation({
     mutationFn: async (application: BalancerApplication) => {
@@ -285,6 +319,75 @@ export function useBalancerMutations({
     }
   });
 
+  const invalidateTournamentExportQueries = async () => {
+    if (!tournamentId) {
+      return;
+    }
+
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["balancer-public", "balance", tournamentId] }),
+      queryClient.invalidateQueries({ queryKey: ["admin", "tournament", tournamentId] }),
+      queryClient.invalidateQueries({ queryKey: ["admin", "tournament", tournamentId, "teams"] }),
+      queryClient.invalidateQueries({
+        queryKey: ["admin", "tournament", tournamentId, "standings"]
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["admin", "tournament", tournamentId, "encounters"]
+      }),
+      queryClient.invalidateQueries({ queryKey: ["tournaments"] }),
+      queryClient.invalidateQueries({ queryKey: ["teams"] }),
+      queryClient.invalidateQueries({ queryKey: ["standings"] }),
+      queryClient.invalidateQueries({ queryKey: ["encounters"] }),
+      queryClient.invalidateQueries({ queryKey: ["standings", tournamentId] }),
+      queryClient.invalidateQueries({ queryKey: ["encounters", "tournament", tournamentId] }),
+      ...(workspaceId != null
+        ? [
+            queryClient.invalidateQueries({ queryKey: ["standings", tournamentId, workspaceId] }),
+            queryClient.invalidateQueries({
+              queryKey: ["encounters", "tournament", tournamentId, workspaceId]
+            })
+          ]
+        : [])
+    ]);
+  };
+
+  const buildActiveBalanceSaveInput = (): BalanceSaveInput => {
+    if (!tournamentId || !activeVariant) {
+      throw new Error("No balance selected");
+    }
+
+    if (activeVariant.payload.teams.length === 0) {
+      throw new Error("Selected balance does not contain teams");
+    }
+
+    const sanitizedDraftConfig = sanitizeBalancerConfig(draftConfig);
+    const config =
+      activeVariant.config ??
+      (Object.keys(sanitizedDraftConfig).length > 0
+        ? sanitizedDraftConfig
+        : (balancerConfigData?.presets[selectedPreset] ?? balancerConfigData?.defaults)) ??
+      null;
+
+    return {
+      config_json: config as Record<string, unknown> | null,
+      result_json: activeVariant.payload
+    };
+  };
+
+  const saveActiveBalance = async (): Promise<SavedBalance> => {
+    if (!tournamentId) {
+      throw new Error("Select a tournament first");
+    }
+
+    return balancerAdminService.saveBalance(tournamentId, buildActiveBalanceSaveInput());
+  };
+
+  const applySavedBalanceVariant = (savedBalance: SavedBalance) => {
+    const savedVariant = buildVariantFromSavedBalance(savedBalance);
+    setVariants((current) => [savedVariant, ...current.filter((v) => v.source !== "saved")]);
+    setActiveVariantId(savedVariant.id);
+  };
+
   const runBalanceMutation = useMutation({
     mutationFn: async () => {
       if (!tournamentId) throw new Error("Select a tournament first");
@@ -388,27 +491,13 @@ export function useBalancerMutations({
 
   const saveBalanceMutation = useMutation({
     mutationFn: async () => {
-      if (!tournamentId || !activeVariant) throw new Error("No balance selected");
-      const sanitizedDraftConfig = sanitizeBalancerConfig(draftConfig);
-      const config =
-        activeVariant.config ??
-        (Object.keys(sanitizedDraftConfig).length > 0
-          ? sanitizedDraftConfig
-          : (balancerConfigData?.presets[selectedPreset] ?? balancerConfigData?.defaults)) ??
-        null;
-      const payload: BalanceSaveInput = {
-        config_json: config as Record<string, unknown> | null,
-        result_json: activeVariant.payload
-      };
-      return balancerAdminService.saveBalance(tournamentId, payload);
+      return saveActiveBalance();
     },
     onSuccess: async (savedBalance) => {
       await queryClient.invalidateQueries({
         queryKey: ["balancer-public", "balance", tournamentId]
       });
-      const savedVariant = buildVariantFromSavedBalance(savedBalance);
-      setVariants((current) => [savedVariant, ...current.filter((v) => v.source !== "saved")]);
-      setActiveVariantId(savedVariant.id);
+      applySavedBalanceVariant(savedBalance);
       toast({ title: "Final balance saved" });
     },
     onError: (error: Error) => {
@@ -420,23 +509,33 @@ export function useBalancerMutations({
     }
   });
 
-  const exportBalanceMutation = useMutation({
-    mutationFn: async () => {
-      if (!savedBalanceData) throw new Error("Save a balance before exporting");
-      return balancerAdminService.exportBalance(savedBalanceData.id);
-    },
-    onSuccess: async (result) => {
-      await queryClient.invalidateQueries({
-        queryKey: ["balancer-public", "balance", tournamentId]
+  const exportToTournamentMutation = useMutation({
+    mutationFn: async ({
+      onStageChange
+    }: ExportToTournamentVariables = {}): Promise<ExportToTournamentResult> => {
+      await runReportedStage("validate", onStageChange, async () => {
+        buildActiveBalanceSaveInput();
       });
+
+      const savedBalance = await runReportedStage("save", onStageChange, saveActiveBalance);
+      const exportResult = await runReportedStage("export", onStageChange, () =>
+        balancerAdminService.exportBalance(savedBalance.id)
+      );
+
+      await runReportedStage("refresh", onStageChange, invalidateTournamentExportQueries);
+
+      return { savedBalance, exportResult };
+    },
+    onSuccess: ({ savedBalance, exportResult }) => {
+      applySavedBalanceVariant(savedBalance);
       toast({
-        title: "Teams exported",
-        description: `${result.imported_teams} teams exported to analytics.`
+        title: "Teams exported to tournament",
+        description: `${exportResult.imported_teams} teams created.`
       });
     },
     onError: (error: Error) => {
       toast({
-        title: "Failed to export balance",
+        title: "Failed to export to tournament",
         description: error.message,
         variant: "destructive"
       });
@@ -444,14 +543,22 @@ export function useBalancerMutations({
   });
 
   const importTeamsMutation = useMutation({
-    mutationFn: async (file: File) => {
+    mutationFn: async ({ file, onStageChange }: ImportTeamsVariables) => {
       if (!tournamentId) throw new Error("Select a tournament first");
-      return balancerAdminService.importTeamsFromJson(tournamentId, file);
-    },
-    onSuccess: async (result) => {
-      await queryClient.invalidateQueries({
-        queryKey: ["balancer-public", "balance", tournamentId]
+
+      await runReportedStage("read", onStageChange, async () => {
+        JSON.parse(await file.text());
       });
+
+      const result = await runReportedStage("import", onStageChange, () =>
+        balancerAdminService.importTeamsFromJson(tournamentId, file)
+      );
+
+      await runReportedStage("refresh", onStageChange, invalidateTournamentExportQueries);
+
+      return result;
+    },
+    onSuccess: (result) => {
       toast({ title: "Teams imported", description: `${result.imported_teams} teams created.` });
     },
     onError: (error: Error) => {
@@ -473,7 +580,7 @@ export function useBalancerMutations({
     bulkBalancerStatusMutation,
     runBalanceMutation,
     saveBalanceMutation,
-    exportBalanceMutation,
+    exportToTournamentMutation,
     importTeamsMutation
   };
 }

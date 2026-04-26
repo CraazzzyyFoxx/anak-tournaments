@@ -1,4 +1,3 @@
-import { useRef } from "react";
 import {
   AlertCircle,
   BarChart2,
@@ -6,7 +5,6 @@ import {
   Check,
   Copy,
   Download,
-  FolderInput,
   Loader2,
   Shuffle,
   Sparkles,
@@ -34,40 +32,30 @@ type VariantStats = {
 type BalanceActionsBarProps = {
   activeVariantStats: VariantStats;
   activeVariant: { payload: InternalBalancePayload } | null;
-  hasSavedBalance: boolean;
   canRunBalance: boolean;
-  isRunPending: boolean;
   isSavePending: boolean;
   isExportPending: boolean;
-  isImportPending: boolean;
   onRunBalance: () => void;
   onSaveBalance: () => void;
   onExportBalance: () => void;
   onDownloadJson: () => void;
   onCopyNames: () => void;
-  onImportTeams: (file: File) => void;
   onScreenshot: () => void;
 };
 
 export function BalanceActionsBar({
   activeVariantStats,
   activeVariant,
-  hasSavedBalance,
   canRunBalance,
-  isRunPending,
   isSavePending,
   isExportPending,
-  isImportPending,
   onRunBalance,
   onSaveBalance,
   onExportBalance,
   onDownloadJson,
   onCopyNames,
-  onImportTeams,
   onScreenshot
 }: BalanceActionsBarProps) {
-  const importFileRef = useRef<HTMLInputElement>(null);
-
   return (
     <div className="flex flex-col gap-3 p-3 lg:flex-row lg:items-center lg:justify-between">
       <div className="flex flex-wrap gap-2">
@@ -112,7 +100,7 @@ export function BalanceActionsBar({
           variant="outline"
           className={cn("rounded-xl", MUTED_BUTTON_CLASS)}
           onClick={onRunBalance}
-          disabled={!canRunBalance}
+          disabled={!canRunBalance || isExportPending}
         >
           <Sparkles className="mr-2 h-4 w-4" />
           Regenerate
@@ -121,7 +109,7 @@ export function BalanceActionsBar({
           type="button"
           className="rounded-xl bg-violet-500 text-white hover:bg-violet-400"
           onClick={onSaveBalance}
-          disabled={!activeVariant || isSavePending}
+          disabled={!activeVariant || isSavePending || isExportPending}
         >
           {isSavePending ? (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -135,14 +123,14 @@ export function BalanceActionsBar({
           variant="outline"
           className={cn("rounded-xl", MUTED_BUTTON_CLASS)}
           onClick={onExportBalance}
-          disabled={!hasSavedBalance || isExportPending}
+          disabled={!activeVariant || isExportPending || isSavePending}
         >
           {isExportPending ? (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           ) : (
             <Upload className="mr-2 h-4 w-4" />
           )}
-          Export
+          Export to Tournament
         </Button>
         <Button
           type="button"
@@ -152,7 +140,7 @@ export function BalanceActionsBar({
           disabled={!activeVariant}
         >
           <Download className="mr-2 h-4 w-4" />
-          JSON
+          Download JSON
         </Button>
         <Button
           type="button"
@@ -163,31 +151,6 @@ export function BalanceActionsBar({
         >
           <Copy className="mr-2 h-4 w-4" />
           Copy
-        </Button>
-        <input
-          ref={importFileRef}
-          type="file"
-          accept="application/json"
-          className="hidden"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) onImportTeams(file);
-            event.target.value = "";
-          }}
-        />
-        <Button
-          type="button"
-          variant="outline"
-          className={cn("rounded-xl", MUTED_BUTTON_CLASS)}
-          onClick={() => importFileRef.current?.click()}
-          disabled={isImportPending}
-        >
-          {isImportPending ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <FolderInput className="mr-2 h-4 w-4" />
-          )}
-          Import
         </Button>
         <Button
           type="button"

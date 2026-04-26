@@ -1312,9 +1312,10 @@ class AdminService {
 
   // ─── Challonge Sync ─────────────────────────────────────────────────────────
 
-  async challongeImport(tournamentId: number): Promise<Record<string, unknown>> {
+  async challongeImport(tournamentId: number, dryRun = false): Promise<Record<string, unknown>> {
     const response = await apiFetch("parser", `challonge/sync/import/${tournamentId}`, {
-      method: "POST"
+      method: "POST",
+      query: dryRun ? { dry_run: true } : undefined
     });
     return response.json();
   }

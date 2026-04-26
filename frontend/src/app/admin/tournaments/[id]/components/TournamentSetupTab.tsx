@@ -1,27 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ElementType } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { LayoutGrid, MessageSquare, Pencil, RefreshCw, Trash2, Trophy, Wifi, WifiOff } from "lucide-react";
-import { AdminDetailTableShell, getAdminDetailTableStyles } from "@/components/admin/AdminDetailTable";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  GitBranch,
+  Link2,
+  MessageSquare,
+  Pencil,
+  RefreshCw,
+  Trash2,
+  Wifi,
+  WifiOff,
+  XCircle
+} from "lucide-react";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import adminService from "@/services/admin.service";
 import type { DiscordChannelInput, DiscordChannelRead } from "@/types/admin.types";
@@ -40,6 +44,60 @@ interface TournamentSetupTabProps {
   discordChannelLoading: boolean;
 }
 
+type StatusTone = "ready" | "warning" | "muted";
+
+interface SetupStatusTileProps {
+  title: string;
+  value: string;
+  detail: string;
+  tone: StatusTone;
+  icon: ElementType;
+}
+
+function getStatusToneClass(tone: StatusTone) {
+  if (tone === "ready") return "border-primary/40 bg-primary/10 text-primary";
+  if (tone === "warning") return "border-amber-700/50 bg-amber-950/20 text-amber-200";
+  return "border-border/60 bg-muted/10 text-muted-foreground";
+}
+
+function SetupStatusTile({ title, value, detail, tone, icon: Icon }: SetupStatusTileProps) {
+  return (
+    <div className="rounded-xl border border-border/60 bg-card/70 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            {title}
+          </p>
+          <p className="mt-2 truncate text-lg font-semibold">{value}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
+        </div>
+        <span className={cn("rounded-lg border p-2", getStatusToneClass(tone))}>
+          <Icon className="size-4" />
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function HealthRow({
+  label,
+  value,
+  tone
+}: {
+  label: string;
+  value: string;
+  tone: StatusTone;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-border/50 py-2 last:border-b-0">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <Badge variant="outline" className={cn("shrink-0", getStatusToneClass(tone))}>
+        {value}
+      </Badge>
+    </div>
+  );
+}
+
 export function TournamentSetupTab({
   tournamentId,
   tournament,
@@ -47,11 +105,10 @@ export function TournamentSetupTab({
   hasChallongeSource,
   canUpdateTournament,
   discordChannel,
-  discordChannelLoading,
+  discordChannelLoading
 }: TournamentSetupTabProps) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const tableStyles = getAdminDetailTableStyles("compact");
   const queryKeys = getTournamentWorkspaceQueryKeys(tournamentId);
 
   const [discordChannelDialogOpen, setDiscordChannelDialogOpen] = useState(false);
@@ -60,7 +117,7 @@ export function TournamentSetupTab({
     guild_id: "",
     channel_id: "",
     channel_name: "",
-    is_active: true,
+    is_active: true
   });
 
   const saveDiscordChannelMutation = useMutation({
@@ -72,7 +129,7 @@ export function TournamentSetupTab({
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
-    },
+    }
   });
 
   const deleteDiscordChannelMutation = useMutation({
@@ -84,7 +141,7 @@ export function TournamentSetupTab({
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
-    },
+    }
   });
 
   const openDiscordDialog = () => {
@@ -92,171 +149,224 @@ export function TournamentSetupTab({
       guild_id: discordChannel?.guild_id ?? "",
       channel_id: discordChannel?.channel_id ?? "",
       channel_name: discordChannel?.channel_name ?? "",
-      is_active: discordChannel?.is_active ?? true,
+      is_active: discordChannel?.is_active ?? true
     });
     saveDiscordChannelMutation.reset();
     setDiscordChannelDialogOpen(true);
   };
 
+  const linkedStagesCount = stages.filter((stage) => Boolean(stage.challonge_slug)).length;
+  const activeStagesCount = stages.filter((stage) => stage.is_active).length;
+  const completedStagesCount = stages.filter((stage) => stage.is_completed).length;
+  const structuredStagesCount = stages.filter((stage) => stage.items.length > 0).length;
+  const setupWarnings = [
+    stages.length === 0 ? "No stages configured" : null,
+    hasChallongeSource ? null : "No Challonge link",
+    discordChannel ? null : "No Discord channel",
+    stages.length > 0 && structuredStagesCount < stages.length ? "Some stages have no structure" : null
+  ].filter((warning): warning is string => Boolean(warning));
+
   return (
     <>
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-        <Card className="border-border/40">
-          <CardContent className="pt-4">
-            <StageManager tournamentId={tournamentId} />
-          </CardContent>
-        </Card>
+      <div className="flex flex-col gap-4">
+        <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-4">
+          <SetupStatusTile
+            title="Stages"
+            value={stages.length === 0 ? "Not started" : `${stages.length} configured`}
+            detail={`${activeStagesCount} active, ${completedStagesCount} completed`}
+            tone={stages.length > 0 ? "ready" : "warning"}
+            icon={GitBranch}
+          />
+          <SetupStatusTile
+            title="Challonge"
+            value={hasChallongeSource ? "Connected" : "Not linked"}
+            detail={`${linkedStagesCount} linked stage${linkedStagesCount === 1 ? "" : "s"}`}
+            tone={hasChallongeSource ? "ready" : "warning"}
+            icon={Link2}
+          />
+          <SetupStatusTile
+            title="Discord"
+            value={
+              discordChannelLoading
+                ? "Checking"
+                : discordChannel
+                  ? discordChannel.is_active
+                    ? "Monitoring"
+                    : "Paused"
+                  : "Not configured"
+            }
+            detail={discordChannel?.channel_name ?? "Match log channel"}
+            tone={discordChannel?.is_active ? "ready" : discordChannel ? "muted" : "warning"}
+            icon={MessageSquare}
+          />
+          <SetupStatusTile
+            title="Setup Health"
+            value={setupWarnings.length === 0 ? "Ready" : `${setupWarnings.length} warning(s)`}
+            detail={setupWarnings[0] ?? "Core setup is configured"}
+            tone={setupWarnings.length === 0 ? "ready" : "warning"}
+            icon={setupWarnings.length === 0 ? CheckCircle2 : AlertTriangle}
+          />
+        </div>
 
-        <div className="flex flex-col gap-4">
-          <Card className="border-border/40">
-            <CardContent className="pt-4">
-              <ChallongeSyncPanel
-                tournamentId={tournamentId}
-                hasChallongeSource={hasChallongeSource}
-              />
-            </CardContent>
-          </Card>
+        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)]">
+          <StageManager tournamentId={tournamentId} />
 
-          <Card className="border-border/40">
-            <CardHeader className="flex flex-row items-center justify-between gap-3 px-4 py-3">
-              <div className="flex min-w-0 items-center gap-2">
-                <MessageSquare className="size-4 shrink-0 text-muted-foreground" />
-                <CardTitle className="text-sm font-semibold">Discord Sync</CardTitle>
-              </div>
-              {canUpdateTournament ? (
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={openDiscordDialog}>
-                    <Pencil className="size-3.5" />
-                    {discordChannel ? "Edit" : "Configure"}
-                  </Button>
-                  {discordChannel ? (
-                    <Button variant="destructive" size="sm" onClick={() => setDiscordChannelDeleteOpen(true)}>
-                      <Trash2 className="size-3.5" />
-                      Remove
+          <div className="flex min-w-0 flex-col gap-4">
+            <ChallongeSyncPanel
+              tournamentId={tournamentId}
+              hasChallongeSource={hasChallongeSource}
+            />
+
+            <Card className="border-border/40">
+              <CardHeader className="gap-3 pb-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      {discordChannel?.is_active ? (
+                        <Wifi className="size-4 text-primary" />
+                      ) : discordChannel ? (
+                        <WifiOff className="size-4 text-muted-foreground" />
+                      ) : (
+                        <XCircle className="size-4 text-muted-foreground" />
+                      )}
+                      <CardTitle className="text-sm font-semibold">Discord Sync</CardTitle>
+                    </div>
+                    <CardDescription className="mt-1 text-xs">
+                      Route Discord match logs into this tournament workspace.
+                    </CardDescription>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      discordChannel?.is_active
+                        ? "border-primary/40 bg-primary/10 text-primary"
+                        : "border-border/70 text-muted-foreground"
+                    )}
+                  >
+                    {discordChannel?.is_active ? "Active" : discordChannel ? "Inactive" : "Not configured"}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                {discordChannelLoading ? (
+                  <Skeleton className="h-24 w-full" />
+                ) : discordChannel ? (
+                  <div className="grid gap-3 rounded-lg border border-border/60 bg-muted/10 p-3 text-[13px] sm:grid-cols-2">
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+                        Guild
+                      </p>
+                      <p className="mt-1 truncate font-mono text-[12px]">{discordChannel.guild_id}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+                        Channel
+                      </p>
+                      <p className="mt-1 truncate font-mono text-[12px]">
+                        {discordChannel.channel_id}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+                        Name
+                      </p>
+                      <p className="mt-1 truncate">{discordChannel.channel_name ?? "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+                        Status
+                      </p>
+                      <div className="mt-1">
+                        {discordChannel.is_active ? (
+                          <StatusIcon icon={Wifi} label="Active" variant="success" />
+                        ) : (
+                          <StatusIcon icon={WifiOff} label="Inactive" variant="muted" />
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-border/70 bg-muted/10 p-3 text-sm text-muted-foreground">
+                    No Discord channel configured. Set a guild and channel to enable automatic log
+                    intake.
+                  </div>
+                )}
+
+                {canUpdateTournament ? (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Button variant="outline" size="sm" onClick={openDiscordDialog}>
+                      <Pencil className="size-4" />
+                      {discordChannel ? "Edit Channel" : "Configure"}
                     </Button>
-                  ) : null}
-                </div>
-              ) : null}
-            </CardHeader>
-            <CardContent>
-              {discordChannelLoading ? (
-                <Skeleton className="h-10 w-full" />
-              ) : discordChannel ? (
-                <div className="grid grid-cols-2 gap-3 text-[13px]">
-                  <div>
-                    <p className="text-[11px] text-muted-foreground/50">Guild</p>
-                    <p className="font-mono text-[12px]">{discordChannel.guild_id}</p>
+                    {discordChannel ? (
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => setDiscordChannelDeleteOpen(true)}
+                      >
+                        <Trash2 className="size-4" />
+                        Remove
+                      </Button>
+                    ) : null}
                   </div>
-                  <div>
-                    <p className="text-[11px] text-muted-foreground/50">Channel</p>
-                    <p className="font-mono text-[12px]">{discordChannel.channel_id}</p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] text-muted-foreground/50">Name</p>
-                    <p>{discordChannel.channel_name ?? "-"}</p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] text-muted-foreground/50">Status</p>
-                    {discordChannel.is_active ? (
-                      <StatusIcon icon={Wifi} label="Active" variant="success" />
-                    ) : (
-                      <StatusIcon icon={WifiOff} label="Inactive" variant="muted" />
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <p className="text-[13px] text-muted-foreground">No Discord channel configured.</p>
-              )}
-            </CardContent>
-          </Card>
+                ) : null}
+              </CardContent>
+            </Card>
 
-          <Card className="border-border/40">
-            <CardHeader className="flex flex-row items-center justify-between gap-3 px-4 py-3">
-              <div className="flex min-w-0 items-center gap-3">
-                <CardTitle className="text-sm font-semibold">Stages</CardTitle>
-                <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground/50">
-                  <span>{stages.length} total</span>
-                  <span>|</span>
-                  <span>{stages.filter((stage) => Boolean(stage.challonge_slug)).length} linked</span>
+            <Card className="border-border/40">
+              <CardHeader className="gap-1 pb-3">
+                <div className="flex items-center gap-2">
+                  <RefreshCw className="size-4 text-primary" />
+                  <CardTitle className="text-sm font-semibold">Setup Health</CardTitle>
                 </div>
-              </div>
-              {!hasChallongeSource ? (
-                <Badge variant="outline">No Challonge link</Badge>
-              ) : (
-                <Button variant="outline" size="sm" className="pointer-events-none opacity-80">
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Sync enabled
-                </Button>
-              )}
-            </CardHeader>
-            <CardContent>
-              <AdminDetailTableShell variant="compact">
-                <Table>
-                  <TableHeader>
-                    <TableRow className={tableStyles.headerRow}>
-                      <TableHead className={tableStyles.head}>Stage</TableHead>
-                      <TableHead className={tableStyles.head}>Type</TableHead>
-                      <TableHead className={tableStyles.head}>Challonge</TableHead>
-                      <TableHead className={tableStyles.head}>Items</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {stages.length ? (
-                      stages.map((stage) => (
-                        <TableRow key={stage.id} className={tableStyles.row}>
-                          <TableCell className={`${tableStyles.cell} font-medium`}>
-                            {stage.name}
-                          </TableCell>
-                          <TableCell className={tableStyles.cell}>
-                            <StatusIcon
-                              icon={
-                                stage.stage_type === "round_robin" || stage.stage_type === "swiss"
-                                  ? LayoutGrid
-                                  : Trophy
-                              }
-                              label={stage.stage_type.replaceAll("_", " ")}
-                              variant={
-                                stage.stage_type === "round_robin" || stage.stage_type === "swiss"
-                                  ? "info"
-                                  : "warning"
-                              }
-                            />
-                          </TableCell>
-                          <TableCell className={tableStyles.cell}>
-                            {stage.challonge_slug ? (
-                              <a
-                                className="text-sm font-medium text-primary hover:underline"
-                                href={`https://challonge.com/${stage.challonge_slug}`}
-                                target="_blank"
-                                rel="noreferrer"
-                              >
-                                {stage.challonge_slug}
-                              </a>
-                            ) : (
-                              <span className="text-sm text-muted-foreground">Manual only</span>
-                            )}
-                          </TableCell>
-                          <TableCell className={tableStyles.cell}>
-                            <span className="text-sm text-muted-foreground">{stage.items.length}</span>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow className={tableStyles.row}>
-                        <TableCell className={tableStyles.cell} colSpan={4}>
-                          <div className="flex flex-col gap-3 rounded-xl border border-dashed border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
-                            <span>
-                              No stages configured yet. Use the stage manager on the left to set up the tournament flow.
-                            </span>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </AdminDetailTableShell>
-            </CardContent>
-          </Card>
+                <CardDescription className="text-xs">
+                  Fast scan of what still needs attention before match operations.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="rounded-lg border border-border/60 bg-muted/10 px-3">
+                  <HealthRow
+                    label="Stage flow"
+                    value={stages.length > 0 ? `${stages.length} total` : "Missing"}
+                    tone={stages.length > 0 ? "ready" : "warning"}
+                  />
+                  <HealthRow
+                    label="Stage structure"
+                    value={
+                      stages.length === 0
+                        ? "No stages"
+                        : `${structuredStagesCount}/${stages.length} ready`
+                    }
+                    tone={structuredStagesCount === stages.length && stages.length > 0 ? "ready" : "warning"}
+                  />
+                  <HealthRow
+                    label="Challonge source"
+                    value={hasChallongeSource ? "Linked" : "Manual only"}
+                    tone={hasChallongeSource ? "ready" : "warning"}
+                  />
+                  <HealthRow
+                    label="Discord logs"
+                    value={discordChannel?.is_active ? "Monitoring" : discordChannel ? "Paused" : "Off"}
+                    tone={discordChannel?.is_active ? "ready" : discordChannel ? "muted" : "warning"}
+                  />
+                </div>
+
+                {setupWarnings.length > 0 ? (
+                  <div className="mt-3 rounded-lg border border-amber-700/40 bg-amber-950/10 p-3">
+                    <div className="mb-2 flex items-center gap-2 text-sm font-medium text-amber-200">
+                      <AlertTriangle className="size-4" />
+                      Needs attention
+                    </div>
+                    <ul className="flex list-disc flex-col gap-1 pl-5 text-xs text-muted-foreground">
+                      {setupWarnings.map((warning) => (
+                        <li key={warning}>{warning}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
 
@@ -267,7 +377,7 @@ export function TournamentSetupTab({
           if (!open) saveDiscordChannelMutation.reset();
         }}
         title="Configure Discord Sync Channel"
-        description="Set the Discord guild and channel from which match logs are automatically imported."
+        description={`Set the Discord guild and channel for ${tournament.name}.`}
         onSubmit={(event) => {
           event.preventDefault();
           saveDiscordChannelMutation.mutate(discordChannelForm);
@@ -279,8 +389,8 @@ export function TournamentSetupTab({
         }
         isDirty
       >
-        <div className="space-y-4">
-          <div>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
             <Label htmlFor="discord-guild-id">Guild ID</Label>
             <Input
               id="discord-guild-id"
@@ -290,13 +400,13 @@ export function TournamentSetupTab({
               onChange={(event) =>
                 setDiscordChannelForm((current) => ({
                   ...current,
-                  guild_id: event.target.value.replace(/\D/g, ""),
+                  guild_id: event.target.value.replace(/\D/g, "")
                 }))
               }
               placeholder="e.g. 123456789012345678"
             />
           </div>
-          <div>
+          <div className="flex flex-col gap-2">
             <Label htmlFor="discord-channel-id">Channel ID</Label>
             <Input
               id="discord-channel-id"
@@ -306,13 +416,13 @@ export function TournamentSetupTab({
               onChange={(event) =>
                 setDiscordChannelForm((current) => ({
                   ...current,
-                  channel_id: event.target.value.replace(/\D/g, ""),
+                  channel_id: event.target.value.replace(/\D/g, "")
                 }))
               }
               placeholder="e.g. 987654321098765432"
             />
           </div>
-          <div>
+          <div className="flex flex-col gap-2">
             <Label htmlFor="discord-channel-name">Channel Name (optional)</Label>
             <Input
               id="discord-channel-name"
@@ -320,7 +430,7 @@ export function TournamentSetupTab({
               onChange={(event) =>
                 setDiscordChannelForm((current) => ({
                   ...current,
-                  channel_name: event.target.value || null,
+                  channel_name: event.target.value || null
                 }))
               }
               placeholder="e.g. #match-logs"

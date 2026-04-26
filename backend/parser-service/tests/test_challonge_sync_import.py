@@ -25,6 +25,7 @@ os.environ.setdefault("CHALLONGE_USERNAME", "test")
 os.environ.setdefault("CHALLONGE_API_KEY", "test")
 
 sync = importlib.import_module("src.services.challonge.sync")
+challonge_routes = importlib.import_module("src.routes.challonge")
 encounter_flows = importlib.import_module("src.services.encounter.flows")
 schemas = importlib.import_module("src.schemas")
 enums = importlib.import_module("shared.core.enums")
@@ -44,6 +45,9 @@ class _Result:
 
     def all(self):
         return self._all_values
+
+    def first(self):
+        return self._all_values[0] if self._all_values else self._one
 
 
 def _challonge_match(
@@ -100,37 +104,104 @@ def _challonge_participant(
     )
 
 
+def _source(
+    *,
+    challonge_id: int = 700,
+    group=None,
+    stage=None,
+    source_id: int | None = None,
+) -> sync._ImportSource:
+    return sync._ImportSource(
+        challonge_id=challonge_id,
+        source_id=source_id,
+        group=group,
+        stage=stage,
+    )
+
+
+def _team_lookup(
+    mappings: list,
+    teams: list,
+) -> sync._TeamLookup:
+    return sync._TeamLookup(
+        by_source_key={},
+        by_key={(row.group_id, row.challonge_id): row.team_id for row in mappings},
+        teams_by_id={team.id: team for team in teams},
+    )
+
+
 class ChallongeSyncImportTests(IsolatedAsyncioTestCase):
-    async def test_import_creates_missing_encounter_from_challonge_match(self) -> None:
+    async def test_discover_sources_backfills_legacy_tournament_source(self) -> None:
         tournament = SimpleNamespace(
             id=7,
             challonge_id=700,
             challonge_slug="sample",
             stages=[],
-            groups=[SimpleNamespace(id=10, is_groups=False, challonge_id=None, stage=None)],
+            groups=[],
         )
+        session = SimpleNamespace(
+            execute=AsyncMock(return_value=_Result(all_values=[])),
+            add=Mock(),
+            flush=AsyncMock(),
+        )
+
+        def add_side_effect(obj):
+            if isinstance(obj, sync.models.ChallongeSource):
+                obj.id = 100
+
+        session.add.side_effect = add_side_effect
+
+        sources = await sync.discover_sources(session, tournament)
+
+        self.assertEqual(1, len(sources))
+        self.assertEqual(100, sources[0].source_id)
+        self.assertEqual(700, sources[0].challonge_id)
+        added_source = session.add.call_args.args[0]
+        self.assertEqual(7, added_source.tournament_id)
+        self.assertEqual("sample", added_source.slug)
+
+    async def test_import_creates_missing_encounter_from_challonge_match(self) -> None:
+        stage_item = SimpleNamespace(id=30, order=0, inputs=[])
+        stage = SimpleNamespace(
+            id=20,
+            name="Playoffs",
+            stage_type=enums.StageType.SINGLE_ELIMINATION,
+            items=[stage_item],
+        )
+        group = SimpleNamespace(
+            id=10,
+            is_groups=False,
+            challonge_id=None,
+            stage=stage,
+            stage_id=stage.id,
+        )
+        tournament = SimpleNamespace(
+            id=7,
+            challonge_id=700,
+            challonge_slug="sample",
+            stages=[stage],
+            groups=[group],
+        )
+        source = _source(group=group, stage=stage)
         home_team = SimpleNamespace(id=1, name="Alpha")
         away_team = SimpleNamespace(id=2, name="Beta")
+        mappings = [
+            SimpleNamespace(
+                group_id=10,
+                challonge_id=101,
+                team_id=home_team.id,
+            ),
+            SimpleNamespace(
+                group_id=10,
+                challonge_id=102,
+                team_id=away_team.id,
+            ),
+        ]
         session = SimpleNamespace(
             execute=AsyncMock(
                 side_effect=[
                     _Result(one=tournament),
                     _Result(all_values=[]),
-                    _Result(
-                        all_values=[
-                            SimpleNamespace(
-                                group_id=10,
-                                challonge_id=101,
-                                team_id=home_team.id,
-                            ),
-                            SimpleNamespace(
-                                group_id=10,
-                                challonge_id=102,
-                                team_id=away_team.id,
-                            ),
-                        ]
-                    ),
-                    _Result(all_values=[home_team, away_team]),
                 ]
             ),
             add=Mock(),
@@ -145,8 +216,11 @@ class ChallongeSyncImportTests(IsolatedAsyncioTestCase):
         session.add.side_effect = add_side_effect
 
         with (
+            patch.object(sync, "discover_sources", AsyncMock(return_value=[source])),
             patch.object(sync.challonge_service, "fetch_matches", AsyncMock(return_value=[_challonge_match()])),
             patch.object(sync.challonge_service, "fetch_participants", AsyncMock(return_value=[])),
+            patch.object(sync, "_build_team_lookup", AsyncMock(return_value=_team_lookup(mappings, [home_team, away_team]))),
+            patch.object(sync, "_build_match_lookup", AsyncMock(return_value=sync._MatchLookup({}, {}, set()))),
             patch.object(
                 sync,
                 "resolve_stage_refs_from_group",
@@ -179,6 +253,15 @@ class ChallongeSyncImportTests(IsolatedAsyncioTestCase):
         self.assertEqual((2, 1), (created.home_score, created.away_score))
         self.assertEqual(enums.EncounterStatus.COMPLETED, created.status)
         self.assertEqual((20, 30, 10), (created.stage_id, created.stage_item_id, created.tournament_group_id))
+        created_inputs = [
+            obj for call in session.add.call_args_list
+            for obj in call.args
+            if isinstance(obj, sync.models.StageItemInput)
+        ]
+        self.assertEqual([home_team.id, away_team.id], [inp.team_id for inp in created_inputs])
+        self.assertEqual([1, 2], [inp.slot for inp in created_inputs])
+        self.assertEqual([30, 30], [inp.stage_item_id for inp in created_inputs])
+        self.assertEqual(2, result["stage_inputs_created"])
         session.commit.assert_awaited_once_with()
         enqueue_recalculation.assert_awaited_once_with(tournament.id)
 
@@ -190,6 +273,7 @@ class ChallongeSyncImportTests(IsolatedAsyncioTestCase):
             stages=[],
             groups=[],
         )
+        source = _source()
         teams = [
             SimpleNamespace(id=1, name="Alpha"),
             SimpleNamespace(id=2, name="Beta"),
@@ -238,8 +322,6 @@ class ChallongeSyncImportTests(IsolatedAsyncioTestCase):
                 side_effect=[
                     _Result(one=tournament),
                     _Result(all_values=[]),
-                    _Result(all_values=mappings),
-                    _Result(all_values=teams),
                     _Result(all_values=[]),
                 ]
             ),
@@ -267,8 +349,11 @@ class ChallongeSyncImportTests(IsolatedAsyncioTestCase):
         session.add.side_effect = add_side_effect
 
         with (
+            patch.object(sync, "discover_sources", AsyncMock(return_value=[source])),
             patch.object(sync.challonge_service, "fetch_matches", AsyncMock(return_value=challonge_matches)),
             patch.object(sync.challonge_service, "fetch_participants", AsyncMock(return_value=[])),
+            patch.object(sync, "_build_team_lookup", AsyncMock(return_value=_team_lookup(mappings, teams))),
+            patch.object(sync, "_build_match_lookup", AsyncMock(return_value=sync._MatchLookup({}, {}, set()))),
             patch.object(
                 sync,
                 "resolve_stage_refs_from_group",
@@ -338,11 +423,11 @@ class ChallongeSyncImportTests(IsolatedAsyncioTestCase):
             stages=[],
             groups=[],
         )
+        source = _source()
         session = SimpleNamespace(
             execute=AsyncMock(
                 side_effect=[
                     _Result(one=tournament),
-                    _Result(all_values=[]),
                     _Result(all_values=[]),
                 ]
             ),
@@ -352,8 +437,12 @@ class ChallongeSyncImportTests(IsolatedAsyncioTestCase):
         )
 
         with (
+            patch.object(sync, "discover_sources", AsyncMock(return_value=[source])),
             patch.object(sync.challonge_service, "fetch_matches", AsyncMock(return_value=[_challonge_match()])),
             patch.object(sync.challonge_service, "fetch_participants", AsyncMock(return_value=[])),
+            patch.object(sync, "_ensure_stage_structure_for_matches", AsyncMock(return_value={"groups_created": 0, "stages_created": 0})),
+            patch.object(sync, "_build_team_lookup", AsyncMock(return_value=_team_lookup([], []))),
+            patch.object(sync, "_build_match_lookup", AsyncMock(return_value=sync._MatchLookup({}, {}, set()))),
             patch.object(
                 sync.standings_recalculation,
                 "enqueue_tournament_recalculation",
@@ -382,6 +471,7 @@ class ChallongeSyncImportTests(IsolatedAsyncioTestCase):
             stages=[],
             groups=[],
         )
+        source = _source()
         existing = SimpleNamespace(
             id=501,
             challonge_id=900,
@@ -400,7 +490,6 @@ class ChallongeSyncImportTests(IsolatedAsyncioTestCase):
             execute=AsyncMock(
                 side_effect=[
                     _Result(one=tournament),
-                    _Result(all_values=[existing]),
                     _Result(all_values=[]),
                 ]
             ),
@@ -410,6 +499,7 @@ class ChallongeSyncImportTests(IsolatedAsyncioTestCase):
         )
 
         with (
+            patch.object(sync, "discover_sources", AsyncMock(return_value=[source])),
             patch.object(
                 sync.challonge_service,
                 "fetch_matches",
@@ -420,6 +510,9 @@ class ChallongeSyncImportTests(IsolatedAsyncioTestCase):
                 ),
             ),
             patch.object(sync.challonge_service, "fetch_participants", AsyncMock(return_value=[])),
+            patch.object(sync, "_ensure_stage_structure_for_matches", AsyncMock(return_value={"groups_created": 0, "stages_created": 0})),
+            patch.object(sync, "_build_team_lookup", AsyncMock(return_value=_team_lookup([], []))),
+            patch.object(sync, "_build_match_lookup", AsyncMock(return_value=sync._MatchLookup({}, {900: existing}, set()))),
             patch.object(
                 sync,
                 "resolve_stage_refs_from_group",
@@ -455,6 +548,153 @@ class ChallongeSyncImportTests(IsolatedAsyncioTestCase):
         )
         enqueue_recalculation.assert_awaited_once_with(tournament.id)
 
+    async def test_import_does_not_overwrite_completed_local_result(self) -> None:
+        tournament = SimpleNamespace(
+            id=7,
+            challonge_id=700,
+            challonge_slug="sample",
+            stages=[],
+            groups=[],
+        )
+        source = _source()
+        existing = SimpleNamespace(
+            id=501,
+            challonge_id=900,
+            name="Alpha vs Beta",
+            home_team_id=1,
+            away_team_id=2,
+            home_score=2,
+            away_score=0,
+            round=1,
+            tournament_id=7,
+            tournament_group_id=None,
+            stage_id=20,
+            stage_item_id=30,
+            status=enums.EncounterStatus.COMPLETED,
+        )
+        session = SimpleNamespace(
+            execute=AsyncMock(side_effect=[_Result(one=tournament)]),
+            add=Mock(),
+            flush=AsyncMock(),
+            commit=AsyncMock(),
+        )
+
+        with (
+            patch.object(sync, "discover_sources", AsyncMock(return_value=[source])),
+            patch.object(
+                sync.challonge_service,
+                "fetch_matches",
+                AsyncMock(return_value=[_challonge_match(state="complete", scores_csv="0-2")]),
+            ),
+            patch.object(sync.challonge_service, "fetch_participants", AsyncMock(return_value=[])),
+            patch.object(sync, "_ensure_stage_structure_for_matches", AsyncMock(return_value={"groups_created": 0, "stages_created": 0})),
+            patch.object(sync, "_build_team_lookup", AsyncMock(return_value=_team_lookup([], []))),
+            patch.object(sync, "_build_match_lookup", AsyncMock(return_value=sync._MatchLookup({}, {900: existing}, set()))),
+            patch.object(
+                sync,
+                "resolve_stage_refs_from_group",
+                AsyncMock(
+                    return_value=stage_refs.StageRefs(
+                        stage_id=20,
+                        stage_item_id=30,
+                        tournament_group_id=None,
+                    )
+                ),
+            ),
+            patch.object(
+                sync.standings_recalculation,
+                "enqueue_tournament_recalculation",
+                AsyncMock(),
+            ) as enqueue_recalculation,
+        ):
+            result = await sync.import_tournament(session, tournament.id)
+
+        self.assertEqual(1, result["conflicts"])
+        self.assertEqual((2, 0), (existing.home_score, existing.away_score))
+        self.assertEqual(enums.EncounterStatus.COMPLETED, existing.status)
+        enqueue_recalculation.assert_not_awaited()
+
+    async def test_export_uses_source_specific_match_and_participant_mapping(self) -> None:
+        source_row = SimpleNamespace(
+            id=55,
+            challonge_tournament_id=9001,
+            source_type="stage",
+            stage_item_id=30,
+        )
+        encounter = SimpleNamespace(
+            id=501,
+            challonge_id=777,
+            tournament_id=7,
+            tournament_group_id=None,
+            stage_id=20,
+            stage_item_id=30,
+            home_team_id=1,
+            away_team_id=2,
+            home_score=2,
+            away_score=1,
+            home_team=SimpleNamespace(id=1, challonge=[]),
+            away_team=SimpleNamespace(id=2, challonge=[]),
+        )
+        tournament = SimpleNamespace(id=7)
+        session = SimpleNamespace(
+            execute=AsyncMock(
+                side_effect=[
+                    _Result(
+                        all_values=[
+                            SimpleNamespace(
+                                source=source_row,
+                                challonge_match_id=888,
+                            )
+                        ]
+                    ),
+                    _Result(
+                        all_values=[
+                            SimpleNamespace(
+                                source_id=55,
+                                challonge_participant_id=123,
+                                team_id=1,
+                            )
+                        ]
+                    ),
+                ]
+            ),
+            add=Mock(),
+            flush=AsyncMock(),
+        )
+
+        with patch.object(sync.challonge_service, "update_match", AsyncMock()) as update_match:
+            pushed = await sync.push_single_result(session, tournament, encounter)
+
+        self.assertTrue(pushed)
+        update_match.assert_awaited_once_with(
+            9001,
+            888,
+            scores_csv="2-1",
+            winner_id=123,
+        )
+
+    async def test_auto_push_does_not_require_root_tournament_challonge_id(self) -> None:
+        tournament = SimpleNamespace(id=7, challonge_id=None)
+        encounter = SimpleNamespace(
+            id=501,
+            challonge_id=777,
+            tournament=tournament,
+        )
+        session = SimpleNamespace(
+            execute=AsyncMock(return_value=_Result(one=encounter)),
+            commit=AsyncMock(),
+        )
+
+        with patch.object(
+            sync,
+            "push_single_result",
+            AsyncMock(return_value=True),
+        ) as push_single_result:
+            await sync.auto_push_on_confirm(session, encounter.id)
+
+        push_single_result.assert_awaited_once_with(session, tournament, encounter)
+        session.commit.assert_awaited_once()
+
     async def test_import_resolves_match_group_player_ids_from_participant_mapping(self) -> None:
         tournament = SimpleNamespace(
             id=7,
@@ -470,28 +710,31 @@ class ChallongeSyncImportTests(IsolatedAsyncioTestCase):
                 )
             ],
         )
+        source = _source(group=tournament.groups[0])
         home_team = SimpleNamespace(id=1, name="Alpha")
         away_team = SimpleNamespace(id=2, name="Beta")
+        mappings = [
+            SimpleNamespace(
+                group_id=10,
+                challonge_id=101,
+                team_id=home_team.id,
+            ),
+            SimpleNamespace(
+                group_id=10,
+                challonge_id=102,
+                team_id=away_team.id,
+            ),
+        ]
+        source_key = sync._source_lookup_key(source)
+        source_lookup = {
+            (source_key, 44066538): home_team.id,
+            (source_key, 44066539): away_team.id,
+        }
         session = SimpleNamespace(
             execute=AsyncMock(
                 side_effect=[
                     _Result(one=tournament),
                     _Result(all_values=[]),
-                    _Result(
-                        all_values=[
-                            SimpleNamespace(
-                                group_id=10,
-                                challonge_id=101,
-                                team_id=home_team.id,
-                            ),
-                            SimpleNamespace(
-                                group_id=10,
-                                challonge_id=102,
-                                team_id=away_team.id,
-                            ),
-                        ]
-                    ),
-                    _Result(all_values=[home_team, away_team]),
                 ]
             ),
             add=Mock(),
@@ -506,6 +749,7 @@ class ChallongeSyncImportTests(IsolatedAsyncioTestCase):
         session.add.side_effect = add_side_effect
 
         with (
+            patch.object(sync, "discover_sources", AsyncMock(return_value=[source])),
             patch.object(
                 sync.challonge_service,
                 "fetch_participants",
@@ -537,6 +781,18 @@ class ChallongeSyncImportTests(IsolatedAsyncioTestCase):
                     ]
                 ),
             ),
+            patch.object(
+                sync,
+                "_build_team_lookup",
+                AsyncMock(
+                    return_value=sync._TeamLookup(
+                        by_source_key=source_lookup,
+                        by_key={(row.group_id, row.challonge_id): row.team_id for row in mappings},
+                        teams_by_id={home_team.id: home_team, away_team.id: away_team},
+                    )
+                ),
+            ),
+            patch.object(sync, "_build_match_lookup", AsyncMock(return_value=sync._MatchLookup({}, {}, set()))),
             patch.object(
                 sync,
                 "resolve_stage_refs_from_group",
@@ -629,3 +885,97 @@ class ChallongeSyncImportTests(IsolatedAsyncioTestCase):
             },
             result,
         )
+
+
+class ChallongeRouteSmokeTests(IsolatedAsyncioTestCase):
+    async def test_import_route_passes_dry_run_to_sync_use_case(self) -> None:
+        session = SimpleNamespace()
+        expected = {
+            "job_id": "job-1",
+            "created": 0,
+            "updated": 0,
+            "skipped": 0,
+            "conflicts": 0,
+            "errors": 0,
+        }
+
+        with patch.object(
+            challonge_routes.challonge_sync,
+            "import_tournament",
+            AsyncMock(return_value=expected),
+        ) as import_tournament:
+            result = await challonge_routes.import_from_challonge(
+                7,
+                dry_run=True,
+                session=session,
+            )
+
+        self.assertEqual(expected, result)
+        import_tournament.assert_awaited_once_with(session, 7, dry_run=True)
+
+    async def test_export_route_delegates_to_sync_use_case(self) -> None:
+        session = SimpleNamespace()
+        expected = {
+            "job_id": "job-2",
+            "matches_pushed": 1,
+            "errors": 0,
+            "skipped": 0,
+        }
+
+        with patch.object(
+            challonge_routes.challonge_sync,
+            "export_tournament",
+            AsyncMock(return_value=expected),
+        ) as export_tournament:
+            result = await challonge_routes.export_to_challonge(7, session=session)
+
+        self.assertEqual(expected, result)
+        export_tournament.assert_awaited_once_with(session, 7)
+
+    async def test_log_route_returns_extended_sync_log_fields(self) -> None:
+        session = SimpleNamespace()
+        created_at = datetime.now(UTC)
+        log = SimpleNamespace(
+            id=1,
+            created_at=created_at,
+            source_id=12,
+            direction="import",
+            operation="match_import",
+            entity_type="encounter",
+            entity_id=55,
+            challonge_id=900,
+            status="conflict",
+            conflict_type="local_completed_remote_diverged",
+            before_json={"local": "2-1"},
+            after_json={"remote": "0-2"},
+            error_message=None,
+        )
+
+        with patch.object(
+            challonge_routes.challonge_sync,
+            "get_sync_log",
+            AsyncMock(return_value=[log]),
+        ) as get_sync_log:
+            result = await challonge_routes.get_sync_log(7, limit=10, session=session)
+
+        self.assertEqual(
+            [
+                {
+                    "id": 1,
+                    "created_at": created_at,
+                    "source_id": 12,
+                    "direction": "import",
+                    "operation": "match_import",
+                    "entity_type": "encounter",
+                    "entity_id": 55,
+                    "challonge_id": 900,
+                    "status": "conflict",
+                    "conflict_type": "local_completed_remote_diverged",
+                    "before_json": {"local": "2-1"},
+                    "after_json": {"remote": "0-2"},
+                    "error_message": None,
+                }
+            ],
+            result,
+        )
+        get_sync_log.assert_awaited_once_with(session, 7, 10)

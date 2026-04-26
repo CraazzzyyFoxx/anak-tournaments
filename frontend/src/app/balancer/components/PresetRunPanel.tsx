@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Loader2, SlidersHorizontal, Sparkles, type LucideIcon } from "lucide-react";
+import { FolderInput, Loader2, SlidersHorizontal, Sparkles, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,6 +37,8 @@ type PresetRunPanelProps = {
   canRunBalance: boolean;
   onRunBalance: () => void;
   isRunPending: boolean;
+  onImportTeams: (file: File) => void;
+  isImportPending: boolean;
   jobStatus: string | null;
   jobMessage: string | null;
   jobProgress: number | null;
@@ -55,11 +57,14 @@ export function PresetRunPanel({
   canRunBalance,
   onRunBalance,
   isRunPending,
+  onImportTeams,
+  isImportPending,
   jobStatus,
   jobMessage,
   jobProgress
 }: PresetRunPanelProps) {
   const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
+  const importFileRef = useRef<HTMLInputElement>(null);
 
   /* eslint-disable react-hooks/set-state-in-effect -- The portal target is outside this client component and is only available after hydration. */
   useEffect(() => {
@@ -113,6 +118,31 @@ export function PresetRunPanel({
           <Sparkles className="mr-1.5 h-3.5 w-3.5" />
         )}
         Run balance
+      </Button>
+      <input
+        ref={importFileRef}
+        type="file"
+        accept="application/json"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) onImportTeams(file);
+          event.target.value = "";
+        }}
+      />
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() => importFileRef.current?.click()}
+        disabled={isImportPending}
+        className="h-8 rounded-lg border-white/10 bg-black/15 px-3 text-sm text-white/72 hover:bg-white/[0.05] hover:text-white"
+      >
+        {isImportPending ? (
+          <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <FolderInput className="mr-1.5 h-3.5 w-3.5" />
+        )}
+        Import JSON
       </Button>
     </>
   );

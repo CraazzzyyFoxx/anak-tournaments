@@ -32,6 +32,14 @@ import { BalancerActionsPanel } from "./BalancerActionsPanel";
 import { BalancerEditorPanel } from "./BalancerEditorPanel";
 import { BalanceImageExportDialog } from "./BalanceImageExportDialog";
 import {
+  BalancerOperationDialog,
+  createOperationSteps,
+  updateOperationStepStatus,
+  type BalancerOperationStep,
+  type BalancerOperationStepDefinition,
+  type BalancerOperationStepStatus
+} from "./BalancerOperationDialog";
+import {
   CUSTOM_PRESET,
   areBalancerConfigsEqual,
   findMatchingPreset,
@@ -53,6 +61,51 @@ import {
   buildVariantFromSavedBalance,
   type BalanceVariant
 } from "./workspace-helpers";
+
+const EXPORT_TO_TOURNAMENT_STEPS: BalancerOperationStepDefinition[] = [
+  {
+    id: "validate",
+    label: "Validate selected balance",
+    description: "Check that the selected result can be exported."
+  },
+  {
+    id: "save",
+    label: "Save selected balance",
+    description: "Persist the current teams before exporting them."
+  },
+  {
+    id: "export",
+    label: "Create tournament teams",
+    description: "Replace previously exported teams and create tournament rosters."
+  },
+  {
+    id: "refresh",
+    label: "Refresh tournament data",
+    description: "Update cached balance, team, standings, and public tournament views."
+  }
+];
+
+const IMPORT_JSON_STEPS: BalancerOperationStepDefinition[] = [
+  {
+    id: "read",
+    label: "Read JSON file",
+    description: "Validate that the selected file contains JSON."
+  },
+  {
+    id: "import",
+    label: "Import teams",
+    description: "Create tournament teams from the JSON payload."
+  },
+  {
+    id: "refresh",
+    label: "Refresh tournament data",
+    description: "Update cached tournament teams and public views."
+  }
+];
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
 
 export function BalancerMainPageClient() {
   const tournamentId = useBalancerTournamentId();
@@ -78,6 +131,19 @@ export function BalancerMainPageClient() {
   const [isPoolSidebarCollapsed, setIsPoolSidebarCollapsed] = useState(false);
   const [isConfigDrawerOpen, setIsConfigDrawerOpen] = useState(false);
   const [isImageExportOpen, setIsImageExportOpen] = useState(false);
+  const [isTournamentExportOpen, setIsTournamentExportOpen] = useState(false);
+  const [tournamentExportSteps, setTournamentExportSteps] = useState<BalancerOperationStep[]>(() =>
+    createOperationSteps(EXPORT_TO_TOURNAMENT_STEPS)
+  );
+  const [tournamentExportSummary, setTournamentExportSummary] = useState<string | null>(null);
+  const [tournamentExportError, setTournamentExportError] = useState<string | null>(null);
+  const [isJsonImportOpen, setIsJsonImportOpen] = useState(false);
+  const [jsonImportSteps, setJsonImportSteps] = useState<BalancerOperationStep[]>(() =>
+    createOperationSteps(IMPORT_JSON_STEPS)
+  );
+  const [jsonImportSummary, setJsonImportSummary] = useState<string | null>(null);
+  const [jsonImportError, setJsonImportError] = useState<string | null>(null);
+  const [lastJsonImportFile, setLastJsonImportFile] = useState<File | null>(null);
   const [draftConfig, setDraftConfig] = useState<BalancerConfig>({});
   const [savedTournamentConfig, setSavedTournamentConfig] = useState<BalancerConfig>({});
 
@@ -129,6 +195,15 @@ export function BalancerMainPageClient() {
     setIsPoolSidebarCollapsed(false);
     setIsConfigDrawerOpen(false);
     setIsImageExportOpen(false);
+    setIsTournamentExportOpen(false);
+    setIsJsonImportOpen(false);
+    setTournamentExportSteps(createOperationSteps(EXPORT_TO_TOURNAMENT_STEPS));
+    setJsonImportSteps(createOperationSteps(IMPORT_JSON_STEPS));
+    setTournamentExportSummary(null);
+    setTournamentExportError(null);
+    setJsonImportSummary(null);
+    setJsonImportError(null);
+    setLastJsonImportFile(null);
     setDraftConfig({});
     setSavedTournamentConfig({});
   }, [tournamentId]);
@@ -306,10 +381,11 @@ export function BalancerMainPageClient() {
     bulkBalancerStatusMutation,
     runBalanceMutation,
     saveBalanceMutation,
-    exportBalanceMutation,
+    exportToTournamentMutation,
     importTeamsMutation
   } = useBalancerMutations({
     tournamentId,
+    workspaceId,
     toast,
     queryClient,
     dispatchJob,
@@ -327,8 +403,7 @@ export function BalancerMainPageClient() {
     draftConfig,
     isConfigDirty,
     onTournamentConfigSaved: handleConfigSavedFromRun,
-    activeVariant,
-    savedBalanceData: savedBalanceQuery.data
+    activeVariant
   });
 
   const canRunBalance = useMemo(
@@ -415,6 +490,64 @@ export function BalancerMainPageClient() {
     }
   }, [activeVariant, toast]);
 
+  const handleTournamentExportStageChange = useCallback(
+    (stepId: string, status: BalancerOperationStepStatus) => {
+      setTournamentExportSteps((current) => updateOperationStepStatus(current, stepId, status));
+    },
+    []
+  );
+
+  const handleJsonImportStageChange = useCallback(
+    (stepId: string, status: BalancerOperationStepStatus) => {
+      setJsonImportSteps((current) => updateOperationStepStatus(current, stepId, status));
+    },
+    []
+  );
+
+  const startTournamentExport = useCallback(() => {
+    setTournamentExportSteps(createOperationSteps(EXPORT_TO_TOURNAMENT_STEPS));
+    setTournamentExportSummary(null);
+    setTournamentExportError(null);
+    setIsTournamentExportOpen(true);
+    exportToTournamentMutation.mutate(
+      { onStageChange: handleTournamentExportStageChange },
+      {
+        onSuccess: ({ exportResult }) => {
+          setTournamentExportSummary(
+            `${exportResult.imported_teams} teams exported to the tournament. ${exportResult.removed_teams} previously exported teams removed.`
+          );
+        },
+        onError: (error) => {
+          setTournamentExportError(
+            getErrorMessage(error, "Failed to export teams to the tournament")
+          );
+        }
+      }
+    );
+  }, [exportToTournamentMutation, handleTournamentExportStageChange]);
+
+  const startJsonImport = useCallback(
+    (file: File) => {
+      setLastJsonImportFile(file);
+      setJsonImportSteps(createOperationSteps(IMPORT_JSON_STEPS));
+      setJsonImportSummary(null);
+      setJsonImportError(null);
+      setIsJsonImportOpen(true);
+      importTeamsMutation.mutate(
+        { file, onStageChange: handleJsonImportStageChange },
+        {
+          onSuccess: (result) => {
+            setJsonImportSummary(`${result.imported_teams} teams imported from ${file.name}.`);
+          },
+          onError: (error) => {
+            setJsonImportError(getErrorMessage(error, "Failed to import teams from JSON"));
+          }
+        }
+      );
+    },
+    [handleJsonImportStageChange, importTeamsMutation]
+  );
+
   const quickPoolActionsPending =
     setPlayerPoolMembershipMutation.isPending ||
     setBalancerStatusMutation.isPending ||
@@ -497,6 +630,32 @@ export function BalancerMainPageClient() {
         toast={toast}
       />
 
+      <BalancerOperationDialog
+        open={isTournamentExportOpen}
+        onOpenChange={setIsTournamentExportOpen}
+        title="Export to Tournament"
+        description="Save the selected balance and create tournament teams from it."
+        steps={tournamentExportSteps}
+        isRunning={exportToTournamentMutation.isPending}
+        summary={tournamentExportSummary}
+        error={tournamentExportError}
+        retryLabel="Retry export"
+        onRetry={startTournamentExport}
+      />
+
+      <BalancerOperationDialog
+        open={isJsonImportOpen}
+        onOpenChange={setIsJsonImportOpen}
+        title="Import JSON"
+        description="Import a previously downloaded balance JSON into the selected tournament."
+        steps={jsonImportSteps}
+        isRunning={importTeamsMutation.isPending}
+        summary={jsonImportSummary}
+        error={jsonImportError}
+        retryLabel="Retry import"
+        onRetry={lastJsonImportFile ? () => startJsonImport(lastJsonImportFile) : undefined}
+      />
+
       <div className="flex min-h-0 w-full flex-1 flex-col gap-3 pb-4">
         <div
           className={cn(
@@ -547,6 +706,8 @@ export function BalancerMainPageClient() {
               canRunBalance={canRunBalance}
               onRunBalance={() => runBalanceMutation.mutate()}
               isRunPending={runBalanceMutation.isPending}
+              onImportTeams={startJsonImport}
+              isImportPending={importTeamsMutation.isPending}
               jobStatus={jobState.status}
               jobMessage={jobState.message}
               jobProgress={jobState.progress}
@@ -576,18 +737,14 @@ export function BalancerMainPageClient() {
 
             <BalancerActionsPanel
               activeVariant={activeVariant}
-              hasSavedBalance={!!savedBalanceQuery.data}
               canRunBalance={canRunBalance}
-              isRunPending={runBalanceMutation.isPending}
               isSavePending={saveBalanceMutation.isPending}
-              isExportPending={exportBalanceMutation.isPending}
-              isImportPending={importTeamsMutation.isPending}
+              isExportPending={exportToTournamentMutation.isPending}
               tournamentId={tournamentId}
               onRunBalance={() => runBalanceMutation.mutate()}
               onSaveBalance={() => saveBalanceMutation.mutate()}
-              onExportBalance={() => exportBalanceMutation.mutate()}
+              onExportBalance={startTournamentExport}
               onCopyNames={handleCopyNames}
-              onImportTeams={(file) => importTeamsMutation.mutate(file)}
               onScreenshot={handleScreenshot}
             />
           </div>

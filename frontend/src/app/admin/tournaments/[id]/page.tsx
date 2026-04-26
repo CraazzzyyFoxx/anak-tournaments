@@ -15,10 +15,9 @@ import teamService from "@/services/team.service";
 import tournamentService from "@/services/tournament.service";
 import workspaceService from "@/services/workspace.service";
 import type { DivisionGridVersion } from "@/types/workspace.types";
-import { TournamentOverviewTab } from "./components/TournamentOverviewTab";
 import { TournamentWorkspaceHeader } from "./components/TournamentWorkspaceHeader";
 
-type TournamentWorkspaceTab = "overview" | "setup" | "teams" | "matches" | "logs";
+type TournamentWorkspaceTab = "overview" | "teams" | "matches" | "logs";
 const TOURNAMENT_WORKSPACE_REFRESH_INTERVAL_MS = 60_000;
 
 const tabFallback = (
@@ -144,7 +143,7 @@ export default function AdminTournamentWorkspacePage() {
   const discordChannelQuery = useQuery({
     queryKey: ["admin", "tournament", tournamentId, "discord-channel"],
     queryFn: () => adminService.getDiscordChannel(tournamentId),
-    enabled: isValidTournamentId && activeTab === "setup"
+    enabled: isValidTournamentId && activeTab === "overview"
   });
 
   const tournamentWorkspaceId = tournamentQuery.data?.workspace_id ?? null;
@@ -185,9 +184,6 @@ export default function AdminTournamentWorkspacePage() {
     .flatMap((grid) => grid.versions)
     .slice()
     .sort((left, right) => right.version - left.version);
-  const completedEncounterCount = encountersQuery.data
-    ? encounters.filter((encounter) => encounter.status?.toUpperCase() === "COMPLETED").length
-    : null;
   const hasChallongeSource = Boolean(
     tournament?.challonge_slug || stages.some((stage) => Boolean(stage.challonge_slug))
   );
@@ -269,28 +265,13 @@ export default function AdminTournamentWorkspacePage() {
       >
         <TabsList className="h-auto flex-wrap justify-start">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="setup">Setup</TabsTrigger>
           <TabsTrigger value="teams">Teams</TabsTrigger>
           <TabsTrigger value="matches">Play & Results</TabsTrigger>
           <TabsTrigger value="logs">Logs</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
-          <TournamentOverviewTab
-            stagesCount={stages.length}
-            teamsCount={teamsCount}
-            teamsCountLoading={teamsCount == null && teamsCountQuery.isLoading}
-            encountersCount={encountersCount}
-            encountersCountLoading={encountersCount == null && encountersCountQuery.isLoading}
-            standingsCount={standingsCount}
-            standingsCountLoading={standingsCount == null && standingsQuery.isLoading}
-            completedEncounterCount={completedEncounterCount}
-            hasChallongeSource={hasChallongeSource}
-          />
-        </TabsContent>
-
-        <TabsContent value="setup" className="space-y-4">
-          {activeTab === "setup" ? (
+          {activeTab === "overview" ? (
             <TournamentSetupTab
               tournamentId={tournamentId}
               tournament={tournament}

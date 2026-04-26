@@ -338,6 +338,7 @@ _WHITESPACE_RE = re.compile(r"\s+")
 class _ChallongeParticipantRow:
     participant_id: int
     challonge_id: int
+    source_id: int | None
     group_id: int | None
     group_name: str | None
     challonge_tournament_id: int
@@ -389,13 +390,78 @@ def _suggest_team_id(
     return team_suggestion_index.get(normalize_challonge_team_name(participant_name))
 
 
-async def _fetch_challonge_participant_rows(
+async def _get_or_create_challonge_source_id(
+    session: AsyncSession,
     tournament: models.Tournament,
+    *,
+    challonge_tournament_id: int,
+    slug: str | None,
+    group: models.TournamentGroup | None = None,
+    create: bool = False,
+) -> int | None:
+    result = await session.execute(
+        sa.select(models.ChallongeSource).where(
+            models.ChallongeSource.tournament_id == tournament.id,
+            models.ChallongeSource.challonge_tournament_id == challonge_tournament_id,
+        )
+    )
+    source = result.scalar_one_or_none()
+    if source is not None or not create:
+        return getattr(source, "id", None)
+
+    stage = getattr(group, "stage", None)
+    stage_item_id = None
+    if stage is not None and getattr(stage, "items", None):
+        stage_item_id = sorted(stage.items, key=lambda item: (item.order, item.id))[0].id
+
+    if stage is None and group is None:
+        stage = next(
+            (
+                candidate
+                for candidate in getattr(tournament, "stages", []) or []
+                if candidate.challonge_id == challonge_tournament_id
+            ),
+            None,
+        )
+        if stage is not None and getattr(stage, "items", None):
+            stage_item_id = sorted(stage.items, key=lambda item: (item.order, item.id))[0].id
+
+    source = models.ChallongeSource(
+        tournament_id=tournament.id,
+        stage_id=stage.id if stage is not None else None,
+        stage_item_id=stage_item_id,
+        challonge_tournament_id=challonge_tournament_id,
+        slug=slug,
+        source_type=(
+            "group"
+            if group is not None and group.is_groups
+            else "playoff"
+            if group is not None
+            else "tournament"
+        ),
+    )
+    session.add(source)
+    await session.flush()
+    return source.id
+
+
+async def _fetch_challonge_participant_rows(
+    session: AsyncSession,
+    tournament: models.Tournament,
+    *,
+    create_sources: bool = False,
 ) -> list[_ChallongeParticipantRow]:
     rows: list[_ChallongeParticipantRow] = []
     groups = list(tournament.groups or [])
 
     if tournament.challonge_id:
+        source_id = await _get_or_create_challonge_source_id(
+            session,
+            tournament,
+            challonge_tournament_id=tournament.challonge_id,
+            slug=tournament.challonge_slug,
+            create=create_sources,
+        )
         participants = await challonge_service.fetch_participants(tournament.challonge_id)
         if not groups:
             groups = [None]
@@ -410,6 +476,7 @@ async def _fetch_challonge_participant_rows(
                             participant,
                             is_playoff=is_playoff,
                         ),
+                        source_id=source_id,
                         group_id=getattr(group, "id", None),
                         group_name=getattr(group, "name", None),
                         challonge_tournament_id=tournament.challonge_id,
@@ -423,6 +490,14 @@ async def _fetch_challonge_participant_rows(
         if group.challonge_id is None:
             continue
 
+        source_id = await _get_or_create_challonge_source_id(
+            session,
+            tournament,
+            challonge_tournament_id=group.challonge_id,
+            slug=group.challonge_slug,
+            group=group,
+            create=create_sources,
+        )
         participants = await challonge_service.fetch_participants(group.challonge_id)
         is_playoff = not group.is_groups
         for participant in participants:
@@ -433,6 +508,7 @@ async def _fetch_challonge_participant_rows(
                         participant,
                         is_playoff=is_playoff,
                     ),
+                    source_id=source_id,
                     group_id=group.id,
                     group_name=group.name,
                     challonge_tournament_id=group.challonge_id,
@@ -459,13 +535,30 @@ async def _get_existing_challonge_mappings(
     return mappings
 
 
+async def _get_existing_challonge_participant_mappings(
+    session: AsyncSession,
+    source_ids: set[int],
+) -> dict[tuple[int, int], models.ChallongeParticipantMapping]:
+    if not source_ids:
+        return {}
+    result = await session.execute(
+        sa.select(models.ChallongeParticipantMapping).where(
+            models.ChallongeParticipantMapping.source_id.in_(source_ids)
+        )
+    )
+    mappings: dict[tuple[int, int], models.ChallongeParticipantMapping] = {}
+    for mapping in result.scalars().all():
+        mappings.setdefault((mapping.source_id, mapping.challonge_participant_id), mapping)
+    return mappings
+
+
 async def preview_challonge_team_sync(
     session: AsyncSession,
     tournament_id: int,
 ) -> schemas.ChallongeTeamSyncPreview:
     tournament = await tournament_flows.get(session, tournament_id, ["groups"])
     teams = list(await service.get_by_tournament(session, tournament.id, []))
-    participant_rows = await _fetch_challonge_participant_rows(tournament)
+    participant_rows = await _fetch_challonge_participant_rows(session, tournament)
     existing_mappings = await _get_existing_challonge_mappings(session, tournament.id)
     team_suggestion_index = _build_team_suggestion_index(teams)
 
@@ -540,7 +633,11 @@ async def sync_challonge_team_mappings(
 
     teams = list(await service.get_by_tournament(session, tournament.id, []))
     team_ids = {team.id for team in teams}
-    participant_rows = await _fetch_challonge_participant_rows(tournament)
+    participant_rows = await _fetch_challonge_participant_rows(
+        session,
+        tournament,
+        create_sources=True,
+    )
     rows_by_request_key = {
         (row.participant_id, row.group_id): row
         for row in participant_rows
@@ -561,6 +658,10 @@ async def sync_challonge_team_mappings(
         )
 
     existing_mappings = await _get_existing_challonge_mappings(session, tournament.id)
+    existing_source_mappings = await _get_existing_challonge_participant_mappings(
+        session,
+        {row.source_id for row in participant_rows if row.source_id is not None},
+    )
     created = 0
     updated = 0
     unchanged = 0
@@ -569,8 +670,23 @@ async def sync_challonge_team_mappings(
         participant_row = rows_by_request_key[(mapping.participant_id, mapping.group_id)]
         existing_key = (participant_row.group_id, participant_row.challonge_id)
         existing_mapping = existing_mappings.get(existing_key)
+        source_mapping = None
+        if participant_row.source_id is not None:
+            source_mapping = existing_source_mappings.get(
+                (participant_row.source_id, participant_row.challonge_id)
+            )
 
         if existing_mapping is None:
+            if participant_row.source_id is not None and source_mapping is None:
+                source_mapping = models.ChallongeParticipantMapping(
+                    source_id=participant_row.source_id,
+                    challonge_participant_id=participant_row.challonge_id,
+                    team_id=mapping.team_id,
+                )
+                session.add(source_mapping)
+                existing_source_mappings[
+                    (participant_row.source_id, participant_row.challonge_id)
+                ] = source_mapping
             challonge_team = models.ChallongeTeam(
                 challonge_id=participant_row.challonge_id,
                 team_id=mapping.team_id,
@@ -583,10 +699,38 @@ async def sync_challonge_team_mappings(
             continue
 
         if existing_mapping.team_id == mapping.team_id:
+            if source_mapping is not None and source_mapping.team_id != mapping.team_id:
+                source_mapping.team_id = mapping.team_id
+                updated += 1
+                continue
+            if participant_row.source_id is not None and source_mapping is None:
+                source_mapping = models.ChallongeParticipantMapping(
+                    source_id=participant_row.source_id,
+                    challonge_participant_id=participant_row.challonge_id,
+                    team_id=mapping.team_id,
+                )
+                session.add(source_mapping)
+                existing_source_mappings[
+                    (participant_row.source_id, participant_row.challonge_id)
+                ] = source_mapping
+                updated += 1
+                continue
             unchanged += 1
             continue
 
         existing_mapping.team_id = mapping.team_id
+        if source_mapping is not None:
+            source_mapping.team_id = mapping.team_id
+        elif participant_row.source_id is not None:
+            source_mapping = models.ChallongeParticipantMapping(
+                source_id=participant_row.source_id,
+                challonge_participant_id=participant_row.challonge_id,
+                team_id=mapping.team_id,
+            )
+            session.add(source_mapping)
+            existing_source_mappings[
+                (participant_row.source_id, participant_row.challonge_id)
+            ] = source_mapping
         updated += 1
 
     await session.commit()

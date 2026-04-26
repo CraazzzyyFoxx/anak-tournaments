@@ -663,11 +663,16 @@ export interface ConditionTypeInfo {
 export interface ChallongeSyncLogEntry {
   id: number;
   created_at: string;
+  source_id: number | null;
   direction: "import" | "export";
+  operation: string | null;
   entity_type: string;
   entity_id: number | null;
   challonge_id: number | null;
   status: "success" | "failed" | "conflict";
+  conflict_type: string | null;
+  before_json?: Record<string, unknown> | null;
+  after_json?: Record<string, unknown> | null;
   error_message: string | null;
 }
 

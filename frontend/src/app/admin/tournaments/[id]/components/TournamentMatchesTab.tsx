@@ -30,8 +30,9 @@ import { EncounterScoreControls } from "@/components/admin/EncounterScoreControl
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { isGroupStageScoreContext } from "@/components/admin/encounter-score";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -441,6 +442,11 @@ export function TournamentMatchesTab({
     ? sortedStandings
     : sortedStandings.slice(0, TOURNAMENT_DETAIL_PREVIEW_LIMIT);
   const hasMoreStandings = sortedStandings.length > TOURNAMENT_DETAIL_PREVIEW_LIMIT;
+  const completedEncounterCount = encounters.filter(
+    (encounter) => encounter.status?.toUpperCase() === "COMPLETED"
+  ).length;
+  const missingLogCount = encounters.filter((encounter) => !encounter.has_logs).length;
+  const standingsLeader = sortedStandings[0]?.team?.name ?? "No leader yet";
 
   useEffect(() => {
     if (
@@ -478,12 +484,72 @@ export function TournamentMatchesTab({
 
   return (
     <>
+      <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <Card className="border-border/40">
+          <CardContent className="p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Encounters
+            </p>
+            <p className="mt-2 text-2xl font-semibold tabular-nums">{encounters.length}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {completedEncounterCount} completed
+            </p>
+          </CardContent>
+        </Card>
+        <Card className="border-border/40">
+          <CardContent className="p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Log Coverage
+            </p>
+            <p className="mt-2 text-2xl font-semibold tabular-nums">
+              {encounters.length - missingLogCount}/{encounters.length || 0}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {missingLogCount} missing log{missingLogCount === 1 ? "" : "s"}
+            </p>
+          </CardContent>
+        </Card>
+        <Card className="border-border/40">
+          <CardContent className="p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Standings
+            </p>
+            <p className="mt-2 text-2xl font-semibold tabular-nums">{standings.length}</p>
+            <p className="mt-1 truncate text-xs text-muted-foreground" title={standingsLeader}>
+              Leader: {standingsLeader}
+            </p>
+          </CardContent>
+        </Card>
+        <Card className="border-border/40">
+          <CardContent className="p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Sync Source
+            </p>
+            <p className="mt-2 text-2xl font-semibold tabular-nums">
+              {hasChallongeSource ? "Linked" : "Manual"}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {hasChallongeSource ? "External match sync enabled" : "Use manual match control"}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
       <div className="grid items-start gap-4 xl:grid-cols-2">
         <Card className="border-border/40">
-          <CardHeader className="flex flex-row items-center justify-between gap-3 px-4 py-3">
-            <div className="flex min-w-0 items-center gap-3">
-              <CardTitle className="text-sm font-semibold">Encounters</CardTitle>
-              <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground/50">
+          <CardHeader className="gap-3 pb-3">
+            <div className="flex min-w-0 flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <CardTitle className="text-base font-semibold">Match Control</CardTitle>
+                <Badge variant="outline">{filteredEncounters.length} filtered</Badge>
+                <Badge variant={completedFilteredEncounterCount ? "secondary" : "outline"}>
+                  {completedFilteredEncounterCount} completed
+                </Badge>
+              </div>
+              <CardDescription>
+                Create, sync, score, and attach logs to tournament encounters.
+              </CardDescription>
+              <div className="hidden">
                 <span>{filteredEncounters.length} encounters</span>
                 <span>·</span>
                 <span>{completedFilteredEncounterCount} completed</span>
@@ -496,13 +562,13 @@ export function TournamentMatchesTab({
                   onClick={() => syncEncountersMutation.mutate()}
                   disabled={syncEncountersMutation.isPending || !hasChallongeSource}
                 >
-                  <RefreshCw className="mr-2 h-4 w-4" />
+                  <RefreshCw className="size-4" />
                   Sync Encounters
                 </Button>
               ) : null}
               {canCreateEncounter ? (
                 <Button onClick={openCreateEncounterDialog} disabled={!canCreateEncounterNow}>
-                  <Plus className="mr-2 h-4 w-4" />
+                  <Plus className="size-4" />
                   Create Encounter
                 </Button>
               ) : null}
@@ -699,12 +765,15 @@ export function TournamentMatchesTab({
         </Card>
 
         <Card className="border-border/40">
-          <CardHeader className="flex flex-row items-center justify-between gap-3 px-4 py-3">
-            <div className="flex min-w-0 items-center gap-3">
-              <CardTitle className="text-sm font-semibold">Standings</CardTitle>
-              <span className="text-[12px] text-muted-foreground/50">
-                {standings.length} standings
-              </span>
+          <CardHeader className="gap-3 pb-3">
+            <div className="flex min-w-0 flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <CardTitle className="text-base font-semibold">Standings Control</CardTitle>
+                <Badge variant="outline">{standings.length} rows</Badge>
+              </div>
+              <CardDescription>
+                Calculate, sort, and adjust the ranking table for the selected scope.
+              </CardDescription>
             </div>
             <div className="flex gap-2">
               {hasMoreStandings ? (

@@ -28,7 +28,7 @@ import { StatusIcon } from "@/components/admin/StatusIcon";
 import { UserSearchCombobox } from "@/components/admin/UserSearchCombobox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Command,
@@ -1094,12 +1094,77 @@ export function TournamentTeamsTab({
       );
     });
 
+  const rosterPlayersCount = teams.reduce((sum, team) => sum + team.players.length, 0);
+  const teamsWithRosterCount = teams.filter((team) => team.players.length > 0).length;
+  const emptyRosterTeamsCount = teams.length - teamsWithRosterCount;
+  const averageSr =
+    teams.length > 0
+      ? Math.round(teams.reduce((sum, team) => sum + team.avg_sr, 0) / teams.length)
+      : 0;
+
   return (
     <>
+      <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <Card className="border-border/40">
+          <CardContent className="p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Teams
+            </p>
+            <p className="mt-2 text-2xl font-semibold tabular-nums">{teams.length}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {stagesCount} stage{stagesCount === 1 ? "" : "s"} configured
+            </p>
+          </CardContent>
+        </Card>
+        <Card className="border-border/40">
+          <CardContent className="p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Roster Records
+            </p>
+            <p className="mt-2 text-2xl font-semibold tabular-nums">{rosterPlayersCount}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {teamsWithRosterCount}/{teams.length || 0} teams have players
+            </p>
+          </CardContent>
+        </Card>
+        <Card className="border-border/40">
+          <CardContent className="p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Average SR
+            </p>
+            <p className="mt-2 text-2xl font-semibold tabular-nums">
+              {teams.length ? averageSr : "-"}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">Across loaded teams</p>
+          </CardContent>
+        </Card>
+        <Card className="border-border/40">
+          <CardContent className="p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Import State
+            </p>
+            <p className="mt-2 text-2xl font-semibold tabular-nums">
+              {hasChallongeSource ? "Linked" : "Manual"}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {emptyRosterTeamsCount > 0
+                ? `${emptyRosterTeamsCount} empty roster(s)`
+                : "Roster coverage ready"}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
       <Card className="border-border/40">
-        <CardHeader className="flex flex-row items-center justify-between gap-3 px-4 py-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <CardTitle className="text-sm font-semibold">Teams</CardTitle>
+        <CardHeader className="gap-3 pb-3">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+            <div className="min-w-0">
+              <CardTitle className="text-base font-semibold">Team Operations</CardTitle>
+              <CardDescription className="mt-1">
+                Review tournament rosters, sync external mappings, or jump into the dedicated team
+                workspace for detailed edits.
+              </CardDescription>
+            </div>
             <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground/50">
               <span>{teams.length} teams</span>
               <span>·</span>

@@ -43,6 +43,7 @@ def _participant_row(
     return flows._ChallongeParticipantRow(
         participant_id=participant_id,
         challonge_id=challonge_id,
+        source_id=None,
         group_id=group_id,
         group_name="A" if group_id is not None else None,
         challonge_tournament_id=9001,
