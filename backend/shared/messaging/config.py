@@ -134,6 +134,76 @@ TOURNAMENT_CHANGED_DLQ = RabbitQueue(
     durable=True,
 )
 
+TOURNAMENT_EVENTS_EXCHANGE = RabbitExchange(
+    "tournament.events",
+    type=ExchangeType.TOPIC,
+    durable=True,
+)
+
+TOURNAMENT_ENCOUNTER_COMPLETED_QUEUE = RabbitQueue(
+    "tournament_encounter_completed",
+    durable=True,
+    routing_key="tournament.encounter.completed",
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "tournament_encounter_completed.dlq",
+        "x-message-ttl": 600000,  # 10 minutes
+    },
+)
+
+TOURNAMENT_ENCOUNTER_COMPLETED_DLQ = RabbitQueue(
+    "tournament_encounter_completed.dlq",
+    durable=True,
+)
+
+TOURNAMENT_REGISTRATION_APPROVED_QUEUE = RabbitQueue(
+    "tournament_registration_approved",
+    durable=True,
+    routing_key="tournament.registration.approved",
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "tournament_registration_approved.dlq",
+        "x-message-ttl": 600000,  # 10 minutes
+    },
+)
+
+TOURNAMENT_REGISTRATION_APPROVED_DLQ = RabbitQueue(
+    "tournament_registration_approved.dlq",
+    durable=True,
+)
+
+TOURNAMENT_REGISTRATION_REJECTED_QUEUE = RabbitQueue(
+    "tournament_registration_rejected",
+    durable=True,
+    routing_key="tournament.registration.rejected",
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "tournament_registration_rejected.dlq",
+        "x-message-ttl": 600000,  # 10 minutes
+    },
+)
+
+TOURNAMENT_REGISTRATION_REJECTED_DLQ = RabbitQueue(
+    "tournament_registration_rejected.dlq",
+    durable=True,
+)
+
+TOURNAMENT_STATE_CHANGED_QUEUE = RabbitQueue(
+    "tournament_state_changed",
+    durable=True,
+    routing_key="tournament.state.changed",
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "tournament_state_changed.dlq",
+        "x-message-ttl": 300000,  # 5 minutes
+    },
+)
+
+TOURNAMENT_STATE_CHANGED_DLQ = RabbitQueue(
+    "tournament_state_changed.dlq",
+    durable=True,
+)
+
 # ============================================================================
 # Swiss Next Round Queue
 # ============================================================================

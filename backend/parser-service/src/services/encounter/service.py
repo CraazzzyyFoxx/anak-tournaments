@@ -109,14 +109,8 @@ def match_entities(in_entities: list[str], child: typing.Any | None = None) -> l
     return entities
 
 
-async def get_encounter(
-    session: AsyncSession, id: int, entities: list[str]
-) -> models.Encounter | None:
-    query = (
-        sa.select(models.Encounter)
-        .options(*encounter_entities(entities))
-        .where(sa.and_(models.Encounter.id == id))
-    )
+async def get_encounter(session: AsyncSession, id: int, entities: list[str]) -> models.Encounter | None:
+    query = sa.select(models.Encounter).options(*encounter_entities(entities)).where(sa.and_(models.Encounter.id == id))
     result = await session.execute(query)
     return result.unique().scalars().first()
 
@@ -394,7 +388,7 @@ async def update(
     group_id: int | None = None,
     challonge_id: int | None = None,
     status: enums.EncounterStatus | None = None,
-    has_logs: bool,
+    has_logs: bool | None = None,
 ) -> models.Encounter:
     encounter.name = name or encounter.name
     encounter.home_team_id = home_team_id or encounter.home_team_id
@@ -404,8 +398,9 @@ async def update(
     encounter.round = round or encounter.round
     encounter.tournament_id = tournament_id or encounter.tournament_id
     encounter.challonge_id = challonge_id or encounter.challonge_id
-    encounter.has_logs = has_logs or encounter.has_logs
     encounter.status = status or encounter.status
+    if has_logs is not None:
+        encounter.has_logs = has_logs
 
     if group_id is not None and group_id != encounter.tournament_group_id:
         encounter.tournament_group_id = group_id
@@ -435,6 +430,57 @@ async def update(
     return encounter
 
 
+async def update_encounter_logs(
+    session: AsyncSession,
+    encounter_id: int,
+    *,
+    has_logs: bool,
+    commit: bool = True,
+) -> models.Encounter:
+    result = await session.execute(
+        sa.select(models.Encounter).where(models.Encounter.id == encounter_id).with_for_update(nowait=False)
+    )
+    encounter = result.scalar_one_or_none()
+    if encounter is None:
+        raise ValueError(f"Encounter {encounter_id} not found")
+
+    encounter.has_logs = has_logs
+    if commit:
+        await session.commit()
+    else:
+        await session.flush()
+    return encounter
+
+
+async def update_encounter_result(
+    session: AsyncSession,
+    encounter_id: int,
+    *,
+    home_score: int | None = None,
+    away_score: int | None = None,
+    status: enums.EncounterStatus | None = None,
+    result_status: enums.EncounterResultStatus | None = None,
+) -> models.Encounter:
+    result = await session.execute(
+        sa.select(models.Encounter).where(models.Encounter.id == encounter_id).with_for_update(nowait=False)
+    )
+    encounter = result.scalar_one_or_none()
+    if encounter is None:
+        raise ValueError(f"Encounter {encounter_id} not found")
+
+    if home_score is not None:
+        encounter.home_score = home_score
+    if away_score is not None:
+        encounter.away_score = away_score
+    if status is not None:
+        encounter.status = status
+    if result_status is not None:
+        encounter.result_status = result_status
+
+    await session.commit()
+    return encounter
+
+
 async def create_match(
     session: AsyncSession,
     encounter: models.Encounter,
@@ -446,6 +492,7 @@ async def create_match(
     away_team_id: int,
     home_score: int,
     away_score: int,
+    commit: bool = True,
 ) -> models.Match:
     match = models.Match(
         time=time,
@@ -458,7 +505,9 @@ async def create_match(
         map_id=map.id,
     )
     session.add(match)
-    await session.commit()
+    await session.flush()
+    if commit:
+        await session.commit()
     logger.info(
         f"Match created [home_team_id={home_team_id}, away_team_id={away_team_id}] for encounter {encounter.id}"
     )

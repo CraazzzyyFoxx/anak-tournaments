@@ -193,6 +193,8 @@ services:
         condition: service_healthy
       parser:
         condition: service_healthy
+      tournament:
+        condition: service_healthy
       balancer:
         condition: service_healthy
       frontend:
@@ -309,6 +311,44 @@ services:
       - app-network
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: always
+
+  tournament:
+    image: registry.craazzzyyfoxx.me/aqt-tournament:latest
+    build:
+      context: ./backend
+      args:
+        APP_PATH: tournament
+    command: uvicorn main:app --host 0.0.0.0 --port 8004 --workers ${WORKERS_TOURNAMENT:-2} --loop uvloop
+    env_file:
+      - ./backend/env/common.env
+      - ./backend/env/tournament.env
+    environment:
+      - TRACING_ENABLED=true
+      - OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_TRACES_SAMPLER=parentbased_traceidratio
+      - OTEL_TRACES_SAMPLER_ARG=0.1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./logs/tournament:/logs
+    depends_on:
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+      auth:
+        condition: service_healthy
+      ss-local:
+        condition: service_healthy
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -456,6 +496,41 @@ services:
       start_period: 40s
     restart: always
 
+  tournament-worker:
+    image: registry.craazzzyyfoxx.me/aqt-tournament:latest
+    build:
+      context: ./backend
+      args:
+        APP_PATH: tournament
+    command: faststream run serve:app
+    env_file:
+      - ./backend/env/common.env
+      - ./backend/env/tournament.env
+    environment:
+      - TRACING_ENABLED=true
+      - OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_TRACES_SAMPLER=parentbased_traceidratio
+      - OTEL_TRACES_SAMPLER_ARG=0.1
+      - WORKER_METRICS_PORT=9103
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      tournament:
+        condition: service_healthy
+    volumes:
+      - ./logs/tournament-worker:/logs
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: always
+
   balancer-worker:
     image: registry.craazzzyyfoxx.me/aqt-balancer:latest
     build:
@@ -502,6 +577,7 @@ services:
         NEXT_API_URL: ${NEXT_API_URL}
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
         NEXT_PUBLIC_BALANCER_API_URL: ${NEXT_PUBLIC_BALANCER_API_URL}
+        NEXT_PUBLIC_TOURNAMENT_API_URL: ${NEXT_PUBLIC_TOURNAMENT_API_URL}
         NEXT_PUBLIC_AUTH_SERVICE_URL: ${NEXT_PUBLIC_AUTH_SERVICE_URL}
         NEXT_PUBLIC_CACHE_POLICY: ${NEXT_PUBLIC_CACHE_POLICY}
         NEXT_PUBLIC_SITE_NAME: ${NEXT_PUBLIC_SITE_NAME}
@@ -513,6 +589,7 @@ services:
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
       - NEXT_PUBLIC_AUTH_SERVICE_URL=${NEXT_PUBLIC_AUTH_SERVICE_URL}
       - NEXT_PUBLIC_BALANCER_API_URL=${NEXT_PUBLIC_BALANCER_API_URL}
+      - NEXT_PUBLIC_TOURNAMENT_API_URL=${NEXT_PUBLIC_TOURNAMENT_API_URL}
       - NEXT_PUBLIC_SITE_NAME=${NEXT_PUBLIC_SITE_NAME}
       - NEXT_PUBLIC_CACHE_POLICY=${NEXT_PUBLIC_CACHE_POLICY}
       - NEXT_API_URL=${NEXT_API_URL}
@@ -520,6 +597,8 @@ services:
       backend:
         condition: service_healthy
       auth:
+        condition: service_healthy
+      tournament:
         condition: service_healthy
     volumes:
       - ./logs/frontend:/logs

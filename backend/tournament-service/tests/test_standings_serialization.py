@@ -1,0 +1,163 @@
+from __future__ import annotations
+
+import os
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import cast
+from unittest import IsolatedAsyncioTestCase, TestCase
+
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import make_transient_to_detached
+
+backend_root = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(backend_root))
+sys.path.insert(0, str(backend_root / "tournament-service"))
+
+os.environ["DEBUG"] = "true"
+os.environ.setdefault("PROJECT_URL", "http://localhost")
+os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
+os.environ.setdefault("RABBITMQ_URL", "amqp://guest:guest@localhost:5672")
+os.environ.setdefault("POSTGRES_USER", "postgres")
+os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
+os.environ.setdefault("POSTGRES_DB", "postgres")
+os.environ.setdefault("POSTGRES_HOST", "localhost")
+os.environ.setdefault("POSTGRES_PORT", "5432")
+
+from src import models  # noqa: E402
+from src.core import enums  # noqa: E402
+from src.services.standings import flows, service  # noqa: E402
+
+
+def _standing() -> models.Standing:
+    return models.Standing(
+        id=1,
+        created_at=datetime.now(UTC),
+        updated_at=None,
+        tournament_id=64,
+        group_id=None,
+        team_id=2019,
+        stage_id=10,
+        stage_item_id=20,
+        position=1,
+        overall_position=1,
+        matches=0,
+        win=0,
+        draw=0,
+        lose=0,
+        points=0.0,
+        buchholz=None,
+        tb=None,
+    )
+
+
+def _encounter(
+    *,
+    id: int,
+    home_team_id: int,
+    away_team_id: int,
+    stage_id: int,
+    stage_item_id: int | None,
+    round: int,
+) -> models.Encounter:
+    return models.Encounter(
+        id=id,
+        created_at=datetime.now(UTC),
+        updated_at=None,
+        name=f"Match {id}",
+        home_team_id=home_team_id,
+        away_team_id=away_team_id,
+        home_score=2,
+        away_score=1,
+        round=round,
+        best_of=3,
+        tournament_id=64,
+        tournament_group_id=None,
+        stage_id=stage_id,
+        stage_item_id=stage_item_id,
+        challonge_id=None,
+        closeness=None,
+        has_logs=False,
+        status=enums.EncounterStatus.COMPLETED,
+        result_status=enums.EncounterResultStatus.NONE,
+        submitted_by_id=None,
+        confirmed_by_id=None,
+    )
+
+
+class StandingSerializationTests(IsolatedAsyncioTestCase):
+    async def test_to_pydantic_does_not_lazy_load_unloaded_relationships(self) -> None:
+        standing = _standing()
+        make_transient_to_detached(standing)
+
+        read = await flows.to_pydantic(cast(AsyncSession, object()), standing, [])
+
+        self.assertIsNone(read.team)
+        self.assertIsNone(read.stage)
+        self.assertIsNone(read.stage_item)
+        self.assertEqual(
+            {
+                "stage_type": None,
+                "stage_name": None,
+                "stage_item_name": None,
+            },
+            read.ranking_context,
+        )
+        self.assertIsNone(read.source_rule_profile)
+
+    async def test_to_pydantic_uses_preloaded_lightweight_match_history(self) -> None:
+        standing = _standing()
+        history = {
+            standing.team_id: [
+                _encounter(
+                    id=10,
+                    home_team_id=standing.team_id,
+                    away_team_id=2020,
+                    stage_id=standing.stage_id,
+                    stage_item_id=standing.stage_item_id,
+                    round=1,
+                ),
+                _encounter(
+                    id=11,
+                    home_team_id=standing.team_id,
+                    away_team_id=2021,
+                    stage_id=999,
+                    stage_item_id=standing.stage_item_id,
+                    round=1,
+                ),
+            ]
+        }
+
+        read = await flows.to_pydantic(
+            cast(AsyncSession, object()),
+            standing,
+            ["matches_history"],
+            histories_by_team=history,
+        )
+
+        self.assertEqual([10], [encounter.id for encounter in read.matches_history])
+        self.assertFalse(hasattr(read.matches_history[0], "matches"))
+
+
+class StandingLoadOptionTests(TestCase):
+    def test_load_options_include_serializer_relationship_dependencies(self) -> None:
+        paths = "\n".join(str(getattr(option, "path", "")) for option in service.standing_entities([]))
+
+        self.assertIn("Standing.stage", paths)
+        self.assertIn("Standing.stage_item", paths)
+
+    def test_load_options_include_nested_team_relationship_dependencies(self) -> None:
+        paths = "\n".join(
+            str(getattr(option, "path", "")) for option in service.standing_entities(["team.placement", "team.group"])
+        )
+
+        self.assertIn("Standing.team", paths)
+        self.assertIn("Team.standings", paths)
+        self.assertIn("Standing.group", paths)
+
+    def test_stage_load_options_stay_summary_only(self) -> None:
+        paths = "\n".join(str(getattr(option, "path", "")) for option in service.standing_entities(["stage"]))
+
+        self.assertIn("Standing.stage", paths)
+        self.assertNotIn("Stage.items", paths)
+        self.assertNotIn("StageItem.inputs", paths)

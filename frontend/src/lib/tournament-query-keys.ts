@@ -1,0 +1,27 @@
+export const tournamentQueryKeys = {
+  detail: (tournamentId: number) => ["tournament", tournamentId] as const,
+  stages: (tournamentId: number) => ["tournament", tournamentId, "stages"] as const,
+  teams: (tournamentId: number) => ["teams", tournamentId] as const,
+  heroPlaytime: (tournamentId: number) =>
+    ["hero-playtime", "tournament", tournamentId] as const,
+  standings: (tournamentId: number, workspaceId?: number | null) =>
+    workspaceId == null
+      ? (["standings", tournamentId] as const)
+      : (["standings", tournamentId, workspaceId] as const),
+  encounters: (tournamentId: number, workspaceId?: number | null) =>
+    workspaceId == null
+      ? (["encounters", "tournament", tournamentId] as const)
+      : (["encounters", "tournament", tournamentId, workspaceId] as const),
+  encountersPage: (
+    tournamentId: number,
+    workspaceId: number | null | undefined,
+    page: number,
+    search: string,
+  ) => [...tournamentQueryKeys.encounters(tournamentId, workspaceId), page, search] as const,
+  registration: (workspaceId: number, tournamentId: number) =>
+    ["registration", workspaceId, tournamentId] as const,
+  registrationsList: (workspaceId: number, tournamentId: number) =>
+    ["registrations-list", workspaceId, tournamentId] as const,
+  registrationForm: (workspaceId: number, tournamentId: number) =>
+    ["registration-form", workspaceId, tournamentId] as const,
+};

@@ -21,19 +21,19 @@ function buildWorkspaceOpts(opts?: StatsOpts) {
 
 export default class statisticsService {
   static async getTournaments(opts?: StatsOpts): Promise<TournamentStatistics[]> {
-    return apiFetch("app", "tournaments/statistics/history", buildWorkspaceOpts(opts)).then(
+    return apiFetch("tournament", "tournaments/statistics/history", buildWorkspaceOpts(opts)).then(
       (res) => res.json()
     );
   }
 
   static async getTournamentsDivision(opts?: StatsOpts): Promise<TournamentDivisionStatistics[]> {
-    return apiFetch("app", "tournaments/statistics/division", buildWorkspaceOpts(opts)).then(
+    return apiFetch("tournament", "tournaments/statistics/division", buildWorkspaceOpts(opts)).then(
       (res) => res.json()
     );
   }
 
   static async getOverallStatistics(opts?: StatsOpts): Promise<TournamentOverall> {
-    return apiFetch("app", "tournaments/statistics/overall", buildWorkspaceOpts(opts)).then(
+    return apiFetch("tournament", "tournaments/statistics/overall", buildWorkspaceOpts(opts)).then(
       (res) => res.json()
     );
   }

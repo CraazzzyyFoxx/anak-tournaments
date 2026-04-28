@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from src.routes.captain import router as captain_router
+from src.routes.analytics import router as analytics_router
 from src.routes.challonge import router as challonge_router
 from src.routes.encounter import router as encounter_router
 from src.routes.gamemode import router as gamemode_router
@@ -11,13 +11,12 @@ from src.routes.match_logs import task_router as logs_task_router
 from src.routes.standing import router as standings_router
 from src.routes.team import router as team_router
 from src.routes.tournament import router as tournament_router
-from src.routes.analytics import router as analytics_router
 from src.routes.user import router as user_router
+
 from .achievement import router as achievement_router
 from .admin import admin_router
 
 router = APIRouter()
-router.include_router(captain_router)
 router.include_router(tournament_router)
 router.include_router(team_router)
 router.include_router(encounter_router)

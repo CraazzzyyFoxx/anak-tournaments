@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 
 import { BracketView } from "@/components/BracketView";
@@ -11,7 +11,6 @@ import { EncounterEditDialog } from "@/components/tournaments/EncounterEditDialo
 import { MatchReportDialog } from "@/components/tournaments/MatchReportDialog";
 import { useToast } from "@/hooks/use-toast";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
-import { useTournamentRealtime } from "@/hooks/useTournamentRealtime";
 import captainService from "@/services/captain.service";
 import encounterService from "@/services/encounter.service";
 import tournamentService from "@/services/tournament.service";
@@ -115,16 +114,9 @@ export default function TournamentBracketPage({
   tournament,
   stages,
 }: TournamentBracketPageProps) {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const selectedStageParam = searchParams.get("stage");
   const viewParam = searchParams.get("view");
-
-  useTournamentRealtime({
-    tournamentId: tournament.id,
-    workspaceId: tournament.workspace_id,
-    onStructureChanged: () => router.refresh(),
-  });
 
   const { status: authStatus, user: authUser } = useAuthProfile();
   const { toast } = useToast();
@@ -279,21 +271,6 @@ export default function TournamentBracketPage({
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-bold">Bracket</h2>
-          {shouldShowGroupStage && groupStages.length > 0 ? (
-            <p className="mt-1 text-sm text-white/45">
-              Group Stage ({getGroupScopeCount(activeGroupStages)} groups)
-            </p>
-          ) : activeStages[0] && (
-            <p className="mt-1 text-sm text-white/45">
-              {activeStages[0].name} ({activeStages[0].stage_type.replace(/_/g, " ")})
-            </p>
-          )}
-        </div>
-      </div>
-
       {activeStages.length > 0 ? (
         <div className="space-y-6">
           {shouldShowGroupStage

@@ -5,6 +5,9 @@ import sqlalchemy as sa
 from loguru import logger
 from pydantic import ValidationError
 from shared.clients.s3 import S3Client
+from shared.messaging.config import TOURNAMENT_EVENTS_EXCHANGE, TOURNAMENT_RECALC_EXCHANGE
+from shared.messaging.outbox import enqueue_outbox_event
+from shared.schemas.events import EncounterCompletedEvent, TournamentRecalcEvent
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models
@@ -20,6 +23,53 @@ from src.services.tournament import flows as tournament_flows
 from src.services.user import service as user_service
 
 from . import service
+
+
+def _winner_team_id(encounter: models.Encounter) -> int | None:
+    if encounter.home_score > encounter.away_score:
+        return encounter.home_team_id
+    if encounter.away_score > encounter.home_score:
+        return encounter.away_team_id
+    return None
+
+
+def _encounter_is_completed(encounter: models.Encounter) -> bool:
+    return (
+        encounter.status == enums.EncounterStatus.COMPLETED
+        or encounter.result_status == enums.EncounterResultStatus.CONFIRMED
+    )
+
+
+async def _enqueue_match_log_tournament_events(
+    session: AsyncSession,
+    encounter: models.Encounter,
+) -> None:
+    await enqueue_outbox_event(
+        session,
+        TournamentRecalcEvent(
+            tournament_id=encounter.tournament_id,
+            source_service="parser-service",
+        ),
+        exchange=TOURNAMENT_RECALC_EXCHANGE,
+        routing_key=f"tournament.recalc.{encounter.tournament_id}",
+    )
+
+    if not _encounter_is_completed(encounter):
+        return
+
+    await enqueue_outbox_event(
+        session,
+        EncounterCompletedEvent(
+            tournament_id=encounter.tournament_id,
+            encounter_id=encounter.id,
+            home_team_id=encounter.home_team_id,
+            away_team_id=encounter.away_team_id,
+            winner_team_id=_winner_team_id(encounter),
+            source_service="parser-service",
+        ),
+        exchange=TOURNAMENT_EVENTS_EXCHANGE,
+        routing_key="tournament.encounter.completed",
+    )
 
 
 class MatchLogProcessor:
@@ -396,7 +446,9 @@ class MatchLogProcessor:
             try:
                 hero_id = self.get_hero(evt.hero).id
             except errors.ApiHTTPException:
-                logger.warning(f"Unknown hero '{evt.hero}' for {event_name_enum.value} at t={row['time']}, hero_id set to None.")
+                logger.warning(
+                    f"Unknown hero '{evt.hero}' for {event_name_enum.value} at t={row['time']}, hero_id set to None."
+                )
 
         related_player_id: int | None = None
         related_team_id: int | None = None
@@ -406,7 +458,9 @@ class MatchLogProcessor:
             try:
                 related_hero_id = self.get_hero(evt.related_hero).id
             except errors.ApiHTTPException:
-                logger.warning(f"Unknown related_hero '{evt.related_hero}' for {event_name_enum.value} at t={row['time']}.")
+                logger.warning(
+                    f"Unknown related_hero '{evt.related_hero}' for {event_name_enum.value} at t={row['time']}."
+                )
 
         if evt.related_player:
             if evt.related_player not in players_map:
@@ -451,9 +505,7 @@ class MatchLogProcessor:
             event_df = self._get_rows(log_event_type)
             for _, row_series in event_df.iterrows():
                 try:
-                    match_event_obj = self._format_match_event_generic(
-                        match, players_map, row_series, match_event_enum
-                    )
+                    match_event_obj = self._format_match_event_generic(match, players_map, row_series, match_event_enum)
                     all_match_event_objects.append(match_event_obj)
                 except ValueError as e:
                     logger.error(f"Skipping event creation due to error: {e}")
@@ -633,17 +685,23 @@ class MatchLogProcessor:
         all_stat_objects: list[models.MatchStatistics] = []
 
         discrete_per_hero_df = cumulative_stats_df[cumulative_stats_df["round"] > 0].copy()
-        records_per_hero = discrete_per_hero_df[["stat_name", "player_model", "round", "hero_id", "discrete_value"]].to_dict(orient="records")
+        records_per_hero = discrete_per_hero_df[
+            ["stat_name", "player_model", "round", "hero_id", "discrete_value"]
+        ].to_dict(orient="records")
         for r in records_per_hero:
             all_stat_objects.append(
-                self._create_stat_object(match, r["stat_name"], r["player_model"], r["round"], r["hero_id"], r["discrete_value"])
+                self._create_stat_object(
+                    match, r["stat_name"], r["player_model"], r["round"], r["hero_id"], r["discrete_value"]
+                )
             )
 
         discrete_all_heroes_per_round_df = discrete_per_hero_df.groupby(
             ["player_id", "round", "stat_name"], as_index=False
         )["discrete_value"].sum()
 
-        records_all_heroes = discrete_all_heroes_per_round_df[["player_id", "stat_name", "round", "discrete_value"]].to_dict(orient="records")
+        records_all_heroes = discrete_all_heroes_per_round_df[
+            ["player_id", "stat_name", "round", "discrete_value"]
+        ].to_dict(orient="records")
         for r in records_all_heroes:
             player_model = player_id_to_model_map[r["player_id"]]
             all_stat_objects.append(
@@ -653,7 +711,9 @@ class MatchLogProcessor:
         max_round = cumulative_stats_df["round"].max()
         final_cumulative_df = cumulative_stats_df[cumulative_stats_df["round"] == max_round].copy()
 
-        records_final_cumulative = final_cumulative_df[["stat_name", "player_model", "hero_id", "value"]].to_dict(orient="records")
+        records_final_cumulative = final_cumulative_df[["stat_name", "player_model", "hero_id", "value"]].to_dict(
+            orient="records"
+        )
         for r in records_final_cumulative:
             all_stat_objects.append(
                 self._create_stat_object(match, r["stat_name"], r["player_model"], 0, r["hero_id"], r["value"])
@@ -664,9 +724,7 @@ class MatchLogProcessor:
         records_final_all_heroes = final_all_heroes_df[["player_id", "stat_name", "value"]].to_dict(orient="records")
         for r in records_final_all_heroes:
             player_model = player_id_to_model_map[r["player_id"]]
-            all_stat_objects.append(
-                self._create_stat_object(match, r["stat_name"], player_model, 0, None, r["value"])
-            )
+            all_stat_objects.append(self._create_stat_object(match, r["stat_name"], player_model, 0, None, r["value"]))
 
         hero_derived_df = discrete_per_hero_df.pivot_table(
             index=["player_id", "round", "hero_id"], columns="stat_name", values="discrete_value", fill_value=0
@@ -741,8 +799,14 @@ class MatchLogProcessor:
                 away_team_id=away_team_db.id,
                 home_score=home_score,
                 away_score=away_score,
+                commit=False,
             )
-            await encounter_service.update(session, encounter, has_logs=True)
+            encounter = await encounter_service.update_encounter_logs(
+                session,
+                encounter.id,
+                has_logs=True,
+                commit=False,
+            )
             logger.info(
                 f"Match created [id={match_model.id}] in match log {self.filename} in tournament {self.tournament.name}"
             )
@@ -755,7 +819,7 @@ class MatchLogProcessor:
             match_model.away_team_id = away_team_db.id
             match_model.log_name = self.filename
             session.add(match_model)
-            await session.commit()
+            await session.flush()
             logger.info(f"Match updated [id={match_model.id}] for log {self.filename}")
 
         logger.info(f"Clearing existing stats/events/kills for match {match_model.id}")
@@ -764,7 +828,6 @@ class MatchLogProcessor:
         )
         await session.execute(sa.delete(models.MatchEvent).where(models.MatchEvent.match_id == match_model.id))
         await session.execute(sa.delete(models.MatchKillFeed).where(models.MatchKillFeed.match_id == match_model.id))
-        await session.commit()
 
         logger.info(f"Processing kills for match {match_model.id}")
         kill_feed_db_objects = await self.process_kills(match_model, players_map)
@@ -776,13 +839,14 @@ class MatchLogProcessor:
         stats = await self.create_stats(session, match_model, players_map)
 
         all_objects = kill_feed_db_objects + events + stats
-        if all_objects:
-            try:
+        try:
+            if all_objects:
                 session.add_all(all_objects)
-                await session.commit()
-            except Exception:
-                await session.rollback()
-                raise
+            await _enqueue_match_log_tournament_events(session, encounter)
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
 
         logger.info(f"Match log {self.filename} (match_id={match_model.id}) processed successfully")
         return match_model

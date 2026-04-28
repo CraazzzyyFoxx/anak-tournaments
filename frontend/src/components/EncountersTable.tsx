@@ -20,6 +20,7 @@ import { Tournament } from "@/types/tournament.types";
 import { ScrollArea, ScrollBar } from "./ui/scroll-area";
 import { useQuery } from "@tanstack/react-query";
 import encounterService from "@/services/encounter.service";
+import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
 
 const getStageLabel = (encounter: Encounter) =>
   encounter.stage_item?.name ?? encounter.stage?.name ?? "Unassigned";
@@ -28,12 +29,16 @@ const EncountersTable = ({
   data,
   InitialPage,
   search,
-  hideTournament
+  hideTournament,
+  tournamentId = null,
+  workspaceId = null,
 }: {
-  data: PaginatedResponse<Encounter>;
+  data?: PaginatedResponse<Encounter>;
   InitialPage: number;
   search: string;
   hideTournament?: boolean;
+  tournamentId?: number | null;
+  workspaceId?: number | null;
 }) => {
   const router = useRouter();
   const pathname = usePathname();
@@ -132,16 +137,38 @@ const EncountersTable = ({
   }, [debouncedSearchValue]);
 
   const encountersQuery = useQuery({
-    queryKey: ["encounters", currentPage, debouncedSearchValue],
-    queryFn: () => encounterService.getAll(currentPage, debouncedSearchValue),
+    queryKey:
+      tournamentId != null
+        ? tournamentQueryKeys.encountersPage(
+            tournamentId,
+            workspaceId,
+            currentPage,
+            debouncedSearchValue,
+          )
+        : (["encounters", currentPage, debouncedSearchValue] as const),
+    queryFn: () =>
+      encounterService.getAll(
+        currentPage,
+        debouncedSearchValue,
+        tournamentId,
+        15,
+        undefined,
+        undefined,
+        workspaceId,
+      ),
     placeholderData: (previousData) => previousData,
     initialData:
-      currentPage === InitialPage && debouncedSearchValue === search
+      data && currentPage === InitialPage && debouncedSearchValue === search
         ? data
         : undefined
   });
 
-  const encounters = encountersQuery.data ?? data;
+  const encounters = encountersQuery.data ?? data ?? {
+    page: currentPage,
+    per_page: 15,
+    total: 0,
+    results: [],
+  };
 
   useEffect(() => {
     const handlePopState = () => {
@@ -250,7 +277,13 @@ const EncountersTable = ({
               ))}
             </TableHeader>
             <TableBody>
-              {table.getRowModel().rows?.length ? (
+              {encountersQuery.isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={columns.length} className="h-32 text-center">
+                    <p className="text-sm text-white/35">Loading encounters...</p>
+                  </TableCell>
+                </TableRow>
+              ) : table.getRowModel().rows?.length ? (
                 table.getRowModel().rows.map((row) => (
                   <TableRow
                     key={row.id}

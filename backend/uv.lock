@@ -11,6 +11,7 @@ members = [
     "mixtura-balancer-tournament",
     "parser-service",
     "shared",
+    "tournament-service",
     "twitch-service",
 ]
 
@@ -1350,6 +1351,11 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b1/df/48c586a5fe32a0f01324ee087459e112ebb7224f646c0b5023f5e79e9956/httpx-0.28.1.tar.gz", hash = "sha256:75e98c5f16b0f35b567856f597f06ff2270a374470a5c2392242528e3e3e42fc", size = 141406, upload-time = "2024-12-06T15:37:23.222Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2a/39/e50c7c3a983047577ee07d2a9e53faf5a69493943ec3f6a384bdc792deb2/httpx-0.28.1-py3-none-any.whl", hash = "sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad", size = 73517, upload-time = "2024-12-06T15:37:21.509Z" },
+]
+
+[package.optional-dependencies]
+socks = [
+    { name = "socksio" },
 ]
 
 [[package]]
@@ -3027,6 +3033,73 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/47/c6/ee486fd809e357697ee8a44d3d69222b344920433d3b6666ccd9b374630c/tenacity-9.1.4.tar.gz", hash = "sha256:adb31d4c263f2bd041081ab33b498309a57c77f9acf2db65aadf0898179cf93a", size = 49413, upload-time = "2026-02-07T10:45:33.841Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d7/c1/eb8f9debc45d3b7918a32ab756658a0904732f75e555402972246b0b8e71/tenacity-9.1.4-py3-none-any.whl", hash = "sha256:6095a360c919085f28c6527de529e76a06ad89b23659fa881ae0649b867a9d55", size = 28926, upload-time = "2026-02-07T10:45:32.24Z" },
+]
+
+[[package]]
+name = "tournament-service"
+version = "0.1.0"
+source = { virtual = "tournament-service" }
+dependencies = [
+    { name = "aiobotocore" },
+    { name = "alembic" },
+    { name = "apscheduler" },
+    { name = "asyncpg" },
+    { name = "cashews" },
+    { name = "fastapi", extra = ["standard"] },
+    { name = "faststream", extra = ["rabbit"] },
+    { name = "httpx", extra = ["socks"] },
+    { name = "loguru" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-exporter-otlp" },
+    { name = "opentelemetry-instrumentation-fastapi" },
+    { name = "opentelemetry-instrumentation-httpx" },
+    { name = "opentelemetry-instrumentation-sqlalchemy" },
+    { name = "opentelemetry-sdk" },
+    { name = "prometheus-fastapi-instrumentator" },
+    { name = "psycopg", extra = ["binary"] },
+    { name = "pydantic", extra = ["email"] },
+    { name = "pydantic-settings" },
+    { name = "redis" },
+    { name = "sentry-sdk" },
+    { name = "setuptools" },
+    { name = "shared" },
+    { name = "sqlalchemy" },
+    { name = "sqlalchemy-utils" },
+    { name = "tenacity" },
+    { name = "uvicorn" },
+    { name = "uvloop", marker = "sys_platform == 'linux'" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiobotocore", specifier = ">=3.0.0" },
+    { name = "alembic", specifier = ">=1.14.0" },
+    { name = "apscheduler", specifier = ">=3.10.4" },
+    { name = "asyncpg", specifier = ">=0.30.0" },
+    { name = "cashews", specifier = ">=7.4.0" },
+    { name = "fastapi", extras = ["standard"], specifier = ">=0.127.0" },
+    { name = "faststream", extras = ["rabbit"], specifier = ">=0.6.7" },
+    { name = "httpx", extras = ["socks"], specifier = ">=0.28.1" },
+    { name = "loguru", specifier = ">=0.7.3" },
+    { name = "opentelemetry-api", specifier = ">=1.27.0" },
+    { name = "opentelemetry-exporter-otlp", specifier = ">=1.27.0" },
+    { name = "opentelemetry-instrumentation-fastapi", specifier = ">=0.48b0" },
+    { name = "opentelemetry-instrumentation-httpx", specifier = ">=0.48b0" },
+    { name = "opentelemetry-instrumentation-sqlalchemy", specifier = ">=0.48b0" },
+    { name = "opentelemetry-sdk", specifier = ">=1.27.0" },
+    { name = "prometheus-fastapi-instrumentator", specifier = ">=7.0" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.2.3" },
+    { name = "pydantic", extras = ["email"], specifier = ">=2.10.5" },
+    { name = "pydantic-settings", specifier = ">=2.7.1" },
+    { name = "redis", specifier = ">=5.2.1" },
+    { name = "sentry-sdk", specifier = ">=2.20.0" },
+    { name = "setuptools", specifier = ">=75.8.0" },
+    { name = "shared", editable = "shared" },
+    { name = "sqlalchemy", specifier = ">=2.0.37" },
+    { name = "sqlalchemy-utils", specifier = ">=0.41.2" },
+    { name = "tenacity", specifier = ">=9.0.0" },
+    { name = "uvicorn", specifier = ">=0.34.0" },
+    { name = "uvloop", marker = "sys_platform == 'linux'" },
 ]
 
 [[package]]

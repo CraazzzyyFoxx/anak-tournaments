@@ -26,6 +26,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { useColumnVisibility } from "@/hooks/useColumnVisibility";
+import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
 import registrationService from "@/services/registration.service";
 import type { Tournament } from "@/types/tournament.types";
 import type { Registration, RegistrationStatus } from "@/types/registration.types";
@@ -185,7 +186,7 @@ export default function TournamentParticipantsPage({
   const isAuthenticated = authStatus === "authenticated" && user !== null;
 
   const myRegQuery = useQuery({
-    queryKey: ["registration", tournament.workspace_id, tournament.id],
+    queryKey: tournamentQueryKeys.registration(tournament.workspace_id, tournament.id),
     queryFn: () =>
       registrationService.getMyRegistration(
         tournament.workspace_id,
@@ -195,7 +196,7 @@ export default function TournamentParticipantsPage({
   });
 
   const listQuery = useQuery({
-    queryKey: ["registrations-list", tournament.workspace_id, tournament.id],
+    queryKey: tournamentQueryKeys.registrationsList(tournament.workspace_id, tournament.id),
     queryFn: () =>
       registrationService.listRegistrations(
         tournament.workspace_id,
@@ -204,11 +205,7 @@ export default function TournamentParticipantsPage({
   });
 
   const formQuery = useQuery({
-    queryKey: [
-      "registration-form",
-      tournament.workspace_id,
-      tournament.id,
-    ],
+    queryKey: tournamentQueryKeys.registrationForm(tournament.workspace_id, tournament.id),
     queryFn: () =>
       registrationService.getForm(tournament.workspace_id, tournament.id),
   });
@@ -223,25 +220,13 @@ export default function TournamentParticipantsPage({
       setIsWithdrawDialogOpen(false);
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: [
-            "registration",
-            tournament.workspace_id,
-            tournament.id,
-          ],
+          queryKey: tournamentQueryKeys.registration(tournament.workspace_id, tournament.id),
         }),
         queryClient.invalidateQueries({
-          queryKey: [
-            "registrations-list",
-            tournament.workspace_id,
-            tournament.id,
-          ],
+          queryKey: tournamentQueryKeys.registrationsList(tournament.workspace_id, tournament.id),
         }),
         queryClient.invalidateQueries({
-          queryKey: [
-            "registration-form",
-            tournament.workspace_id,
-            tournament.id,
-          ],
+          queryKey: tournamentQueryKeys.registrationForm(tournament.workspace_id, tournament.id),
         }),
       ]);
     },
@@ -257,18 +242,10 @@ export default function TournamentParticipantsPage({
       setIsCheckInDialogOpen(false);
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: [
-            "registration",
-            tournament.workspace_id,
-            tournament.id,
-          ],
+          queryKey: tournamentQueryKeys.registration(tournament.workspace_id, tournament.id),
         }),
         queryClient.invalidateQueries({
-          queryKey: [
-            "registrations-list",
-            tournament.workspace_id,
-            tournament.id,
-          ],
+          queryKey: tournamentQueryKeys.registrationsList(tournament.workspace_id, tournament.id),
         }),
       ]);
     },

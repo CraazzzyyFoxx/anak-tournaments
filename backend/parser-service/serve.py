@@ -1,4 +1,4 @@
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
+import sqlalchemy as sa
 from faststream import FastStream
 from faststream.rabbit import RabbitBroker
 from faststream.rabbit.annotations import RabbitMessage
@@ -7,9 +7,8 @@ from shared.messaging.config import (
     ACHIEVEMENT_EVALUATE_QUEUE,
     PROCESS_MATCH_LOG_QUEUE,
     PROCESS_TOURNAMENT_LOGS_QUEUE,
-    SWISS_NEXT_ROUND_QUEUE,
-    TOURNAMENT_RECALC_EXCHANGE,
-    TOURNAMENT_RECALC_QUEUE,
+    TOURNAMENT_ENCOUNTER_COMPLETED_QUEUE,
+    TOURNAMENT_EVENTS_EXCHANGE,
 )
 from shared.observability import (
     observe_message_processing,
@@ -20,19 +19,16 @@ from shared.observability import (
 )
 from shared.schemas.events import (
     AchievementEvaluateEvent,
+    EncounterCompletedEvent,
     ProcessMatchLogEvent,
     ProcessTournamentLogsEvent,
 )
 
+from src import models
 from src.core import config, db
 from src.services.achievement.engine.consumer import handle_achievement_evaluate
 from src.services.match_logs import flows as logs_flows
-from src.services.admin.swiss_rounds import process_swiss_next_round_event
 from src.services.s3 import service as s3_service
-from src.services.standings import recalculation as standings_recalculation
-from src.services.tournament import flows as tournaments_flows
-from src.worker.tasks import encounter as encounter_tasks
-from src.worker.tasks import standings as standings_tasks
 
 logger = setup_logging(
     service_name="parser-worker",
@@ -44,8 +40,6 @@ logger = setup_logging(
 broker = RabbitBroker(config.settings.rabbitmq_url, logger=logger)
 app = FastStream(broker)
 
-scheduler = AsyncIOScheduler()
-
 s3_client = S3Client(
     access_key=config.settings.s3_access_key,
     secret_key=config.settings.s3_secret_key,
@@ -54,8 +48,9 @@ s3_client = S3Client(
     public_url=config.settings.s3_public_url,
 )
 
+
 @app.on_startup
-async def start_scheduler() -> None:
+async def start_worker() -> None:
     setup_tracing(
         service_name="parser-worker",
         otlp_endpoint=config.settings.otlp_endpoint,
@@ -65,15 +60,11 @@ async def start_scheduler() -> None:
     )
     start_worker_metrics_server(config.settings.worker_metrics_port)
     await s3_client.start()
-    scheduler.add_job(encounter_tasks.bulk_create, "interval", minutes=2, id="encounter_sync")
-    scheduler.add_job(standings_tasks.bulk_create_all, "interval", minutes=3, id="standings_sync")
-    scheduler.start()
-    logger.info("Scheduler started: encounter sync every 2m, standings sync every 3m")
+    logger.info("Parser worker started")
 
 
 @app.on_shutdown
-async def stop_scheduler() -> None:
-    scheduler.shutdown(wait=False)
+async def stop_worker() -> None:
     await s3_client.close()
 
 
@@ -92,9 +83,13 @@ async def process_match_log_async(data: dict, msg: RabbitMessage) -> None:
                 await logs_flows.process_match_log(
                     session, event.tournament_id, event.filename, s3_client, is_raise=True
                 )
-                tournament = await tournaments_flows.get(session, event.tournament_id, [])
+                workspace_id = await session.scalar(
+                    sa.select(models.Tournament.workspace_id).where(models.Tournament.id == event.tournament_id)
+                )
+                if workspace_id is None:
+                    raise RuntimeError(f"Tournament {event.tournament_id} not found")
                 achievement_event = AchievementEvaluateEvent(
-                    workspace_id=tournament.workspace_id,
+                    workspace_id=workspace_id,
                     tournament_id=event.tournament_id,
                     changed_tables=["matches.statistics", "matches.match", "tournament.encounter"],
                 )
@@ -103,14 +98,13 @@ async def process_match_log_async(data: dict, msg: RabbitMessage) -> None:
                     achievement_event.model_dump(),
                     ACHIEVEMENT_EVALUATE_QUEUE,
                     logger=logger.bind(
-                        workspace_id=tournament.workspace_id,
+                        workspace_id=workspace_id,
                         tournament_id=event.tournament_id,
                     ),
                 )
         except Exception:
             logger.exception(
-                f"Failed to process match log "
-                f"tournament_id={event.tournament_id} filename={event.filename}"
+                f"Failed to process match log tournament_id={event.tournament_id} filename={event.filename}"
             )
             raise
 
@@ -127,11 +121,13 @@ async def process_tournament_log(data: dict, msg: RabbitMessage) -> None:
         logger.bind(tournament_id=event.tournament_id).info("Processing tournament logs from queue")
         try:
             async with db.async_session_maker() as session:
-                tournament = await tournaments_flows.get(session, event.tournament_id, [])
-                for log in await s3_service.get_logs_by_tournament(s3_client, tournament.id):
-                    await logs_flows.process_match_log(
-                        session, tournament.id, log, s3_client, is_raise=False
-                    )
+                tournament_exists = await session.scalar(
+                    sa.select(models.Tournament.id).where(models.Tournament.id == event.tournament_id)
+                )
+                if tournament_exists is None:
+                    raise RuntimeError(f"Tournament {event.tournament_id} not found")
+                for log in await s3_service.get_logs_by_tournament(s3_client, event.tournament_id):
+                    await logs_flows.process_match_log(session, event.tournament_id, log, s3_client, is_raise=False)
             logger.info(f"All logs for tournament {event.tournament_id} are queued for processing.")
         except Exception:
             logger.exception(f"Failed to process tournament logs tournament_id={event.tournament_id}")
@@ -149,23 +145,34 @@ async def process_achievement_evaluate(data: dict, msg: RabbitMessage) -> None:
         await handle_achievement_evaluate(data)
 
 
-@broker.subscriber(TOURNAMENT_RECALC_QUEUE, exchange=TOURNAMENT_RECALC_EXCHANGE)
-async def process_tournament_recalculation(data: dict, msg: RabbitMessage) -> None:
+@broker.subscriber(TOURNAMENT_ENCOUNTER_COMPLETED_QUEUE, exchange=TOURNAMENT_EVENTS_EXCHANGE)
+async def process_tournament_encounter_completed(data: dict, msg: RabbitMessage) -> None:
     async with observe_message_processing(
-        queue=TOURNAMENT_RECALC_QUEUE,
-        handler="process_tournament_recalculation",
+        queue=TOURNAMENT_ENCOUNTER_COMPLETED_QUEUE,
+        handler="process_tournament_encounter_completed",
         message=msg,
         logger=logger,
     ):
-        await standings_recalculation.process_tournament_recalculation_event(data, broker=broker)
+        event = EncounterCompletedEvent.model_validate(data)
+        async with db.async_session_maker() as session:
+            workspace_id = await session.scalar(
+                sa.select(models.Tournament.workspace_id).where(models.Tournament.id == event.tournament_id)
+            )
+            if workspace_id is None:
+                raise RuntimeError(f"Tournament {event.tournament_id} not found")
 
-
-@broker.subscriber(SWISS_NEXT_ROUND_QUEUE)
-async def process_swiss_next_round(data: dict, msg: RabbitMessage) -> None:
-    async with observe_message_processing(
-        queue=SWISS_NEXT_ROUND_QUEUE,
-        handler="process_swiss_next_round",
-        message=msg,
-        logger=logger,
-    ):
-        await process_swiss_next_round_event(data)
+        achievement_event = AchievementEvaluateEvent(
+            workspace_id=workspace_id,
+            tournament_id=event.tournament_id,
+            changed_tables=["tournament.encounter"],
+        )
+        await publish_message(
+            broker,
+            achievement_event.model_dump(),
+            ACHIEVEMENT_EVALUATE_QUEUE,
+            logger=logger.bind(
+                workspace_id=workspace_id,
+                tournament_id=event.tournament_id,
+                encounter_id=event.encounter_id,
+            ),
+        )

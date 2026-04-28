@@ -4,7 +4,7 @@ import { apiFetch } from "@/lib/api-fetch";
 
 export default class encounterService {
   static async getEncounter(id: number): Promise<Encounter> {
-    return apiFetch("app", `encounters/${id}`, {
+    return apiFetch("tournament", `encounters/${id}`, {
       query: {
         entities: [
           "matches",
@@ -14,6 +14,7 @@ export default class encounterService {
           "teams.placement",
           "teams.players.user",
           "tournament",
+          "tournament.division_grid_version",
           "stage",
           "stage_item"
         ]
@@ -46,7 +47,7 @@ export default class encounterService {
     order: "asc" | "desc" = "desc",
     workspaceId?: number | null
   ): Promise<PaginatedResponse<Encounter>> {
-    return apiFetch("app", `encounters`, {
+    return apiFetch("tournament", `encounters`, {
       query: {
         workspace_id: workspaceId,
         per_page: perPage,
@@ -65,7 +66,7 @@ export default class encounterService {
     tournamentId: number | null = null,
     workspaceId?: number | null
   ): Promise<number> {
-    return apiFetch("app", `encounters`, {
+    return apiFetch("tournament", `encounters`, {
       query: {
         workspace_id: workspaceId,
         per_page: 1,

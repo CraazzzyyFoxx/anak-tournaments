@@ -8,13 +8,13 @@ Auto-push: triggered when encounter result_status becomes 'confirmed'
 import asyncio
 import re
 import traceback
-import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
 
 from loguru import logger
 from shared.core import enums
+from shared.services.distributed_lock import distributed_lock
 from shared.services.encounter_naming import build_encounter_name
 from shared.services.stage_refs import StageRefs, resolve_stage_refs_from_group
 from sqlalchemy import inspect as sa_inspect
@@ -24,6 +24,7 @@ from sqlalchemy.orm import selectinload
 
 from src import models, schemas
 from src.services.challonge import service as challonge_service
+from src.services.encounter.finalize import finalize_encounter_score
 from src.services.standings import recalculation as standings_recalculation
 
 _AMBIGUOUS = -1
@@ -110,7 +111,7 @@ class _ChallongeLinkSpec:
     target_slot: enums.EncounterLinkSlot
 
 
-_SYNC_LOCKS: dict[tuple[int, str], asyncio.Lock] = {}
+SYNC_LOCK_TTL_SECONDS = 5 * 60
 
 
 def _source_lookup_key(source: _ImportSource) -> int:
@@ -119,10 +120,10 @@ def _source_lookup_key(source: _ImportSource) -> int:
 
 @asynccontextmanager
 async def _sync_job_lock(tournament_id: int, direction: str) -> AsyncIterator[str]:
-    key = (tournament_id, direction)
-    lock = _SYNC_LOCKS.setdefault(key, asyncio.Lock())
-    async with lock:
-        yield str(uuid.uuid4())
+    redis = await standings_recalculation.get_redis()
+    key = f"challonge:sync:{tournament_id}:{direction}"
+    async with distributed_lock(redis, key, ttl_seconds=SYNC_LOCK_TTL_SECONDS) as token:
+        yield token.value
 
 
 async def _log_sync(
@@ -1318,9 +1319,14 @@ async def _upsert_encounter_from_challonge(
     await _ensure_match_mapping(session, source, match.id, encounter, match_lookup)
 
     if not was_completed and status == enums.EncounterStatus.COMPLETED:
-        from shared.services.bracket.advancement import advance_winner  # noqa: PLC0415
-
-        await advance_winner(session, encounter)
+        await finalize_encounter_score(
+            session,
+            encounter.id,
+            encounter=encounter,
+            home_score=encounter.home_score,
+            away_score=encounter.away_score,
+            source="challonge",
+        )
 
     return _UpsertResult(action="updated", encounter=encounter, before=before, after=after)
 
@@ -1450,14 +1456,19 @@ async def _advance_completed_challonge_matches(
     *,
     match_lookup: _MatchLookup,
 ) -> None:
-    from shared.services.bracket.advancement import advance_winner  # noqa: PLC0415
-
     for source, match in matches:
         if match.state != "complete":
             continue
         encounter = match_lookup.get(source, match.id)
         if encounter is not None:
-            await advance_winner(session, encounter)
+            await finalize_encounter_score(
+                session,
+                encounter.id,
+                encounter=encounter,
+                home_score=encounter.home_score,
+                away_score=encounter.away_score,
+                source="challonge",
+            )
 
 
 async def _build_match_lookup(

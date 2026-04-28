@@ -6,19 +6,23 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   applyTournamentRealtimeUpdate,
   parseTournamentRealtimeMessage,
+  type TournamentChangedReason,
 } from "@/hooks/tournamentRealtime.helpers";
 
 type UseTournamentRealtimeOptions = {
   tournamentId: number | null | undefined;
   workspaceId?: number | null;
+  onUpdate?: (reason: TournamentChangedReason) => void;
   onStructureChanged?: () => void;
 };
 
-function buildTournamentWebSocketUrl(tournamentId: number): string {
-  const appBase = process.env.NEXT_PUBLIC_API_URL;
-
-  if (appBase) {
-    const url = new URL(appBase);
+export function buildTournamentWebSocketUrl(
+  tournamentId: number,
+  tournamentBase = process.env.NEXT_PUBLIC_TOURNAMENT_API_URL,
+  origin = typeof window !== "undefined" ? window.location.origin : "http://localhost"
+): string {
+  if (tournamentBase) {
+    const url = new URL(tournamentBase, origin);
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
     url.pathname = `${url.pathname.replace(/\/$/, "")}/tournaments/${tournamentId}/ws`;
     url.search = "";
@@ -26,17 +30,21 @@ function buildTournamentWebSocketUrl(tournamentId: number): string {
   }
 
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.host}/api/v1/tournaments/${tournamentId}/ws`;
+  return `${protocol}//${window.location.host}/api/tournament/tournaments/${tournamentId}/ws`;
 }
 
 export function useTournamentRealtime({
   tournamentId,
   workspaceId,
+  onUpdate,
   onStructureChanged,
 }: UseTournamentRealtimeOptions): void {
   const queryClient = useQueryClient();
-  const handleStructureChanged = useEffectEvent(() => {
-    onStructureChanged?.();
+  const handleRealtimeUpdate = useEffectEvent((reason: TournamentChangedReason) => {
+    onUpdate?.(reason);
+    if (reason === "structure_changed") {
+      onStructureChanged?.();
+    }
   });
 
   useEffect(() => {
@@ -62,9 +70,9 @@ export function useTournamentRealtime({
           queryClient,
           tournamentId,
           workspaceId,
-          message.reason,
-          handleStructureChanged
+          message.reason
         );
+        handleRealtimeUpdate(message.reason);
       };
 
       socket.onclose = () => {

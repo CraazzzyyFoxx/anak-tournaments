@@ -32,6 +32,15 @@ services:
         strip_path: false
         preserve_host: true
 
+  - name: tournament
+    url: http://tournament:8004
+    routes:
+      - name: tournament-api
+        paths:
+          - /api/tournament
+        strip_path: false
+        preserve_host: true
+
   - name: backend
     url: http://backend:8000
     routes:

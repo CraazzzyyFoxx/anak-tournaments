@@ -15,11 +15,12 @@ export interface CaptainMatchReportInput {
 
 class CaptainService {
   async buildMapVetoWebSocketUrl(encounterId: number): Promise<string> {
-    const parserBase = process.env.NEXT_PUBLIC_PARSER_API_URL;
+    const tournamentBase = process.env.NEXT_PUBLIC_TOURNAMENT_API_URL;
     const token = await getTokenFromCookies("aqt_access_token");
 
-    if (parserBase) {
-      const url = new URL(parserBase);
+    if (tournamentBase) {
+      const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost";
+      const url = new URL(tournamentBase, origin);
       url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
       url.pathname = `${url.pathname.replace(/\/$/, "")}/encounters/${encounterId}/map-pool/ws`;
       url.search = "";
@@ -31,7 +32,7 @@ class CaptainService {
 
     if (typeof window === "undefined") {
       const fallbackUrl = new URL(
-        `/api/parser/encounters/${encounterId}/map-pool/ws`,
+        `/api/tournament/encounters/${encounterId}/map-pool/ws`,
         "http://localhost",
       );
       if (token) {
@@ -42,7 +43,7 @@ class CaptainService {
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const url = new URL(
-      `${protocol}//${window.location.host}/api/parser/encounters/${encounterId}/map-pool/ws`,
+      `${protocol}//${window.location.host}/api/tournament/encounters/${encounterId}/map-pool/ws`,
     );
     if (token) {
       url.searchParams.set("token", token);
@@ -54,7 +55,7 @@ class CaptainService {
     encounterId: number,
     data: ResultSubmissionInput
   ): Promise<{ id: number; result_status: string; home_score: number; away_score: number }> {
-    const response = await apiFetch("parser", `encounters/${encounterId}/submit-result`, {
+    const response = await apiFetch("tournament", `encounters/${encounterId}/submit-result`, {
       method: "POST",
       body: data,
     });
@@ -72,7 +73,7 @@ class CaptainService {
     closeness: number | null;
   }> {
     const response = await apiFetch(
-      "parser",
+      "tournament",
       `encounters/${encounterId}/submit-match-report`,
       { method: "POST", body: data }
     );
@@ -82,7 +83,7 @@ class CaptainService {
   async confirmResult(
     encounterId: number
   ): Promise<{ id: number; result_status: string; status: string }> {
-    const response = await apiFetch("parser", `encounters/${encounterId}/confirm-result`, {
+    const response = await apiFetch("tournament", `encounters/${encounterId}/confirm-result`, {
       method: "POST",
     });
     return response.json();
@@ -92,7 +93,7 @@ class CaptainService {
     encounterId: number,
     data?: DisputeInput
   ): Promise<{ id: number; result_status: string }> {
-    const response = await apiFetch("parser", `encounters/${encounterId}/dispute-result`, {
+    const response = await apiFetch("tournament", `encounters/${encounterId}/dispute-result`, {
       method: "POST",
       body: data ?? {},
     });
@@ -102,12 +103,12 @@ class CaptainService {
   async getMyRole(
     encounterId: number
   ): Promise<{ side: "home" | "away" | null }> {
-    const response = await apiFetch("parser", `encounters/${encounterId}/my-role`);
+    const response = await apiFetch("tournament", `encounters/${encounterId}/my-role`);
     return response.json();
   }
 
   async getMapPool(encounterId: number): Promise<EncounterMapPoolEntry[]> {
-    const response = await apiFetch("parser", `encounters/${encounterId}/map-pool`);
+    const response = await apiFetch("tournament", `encounters/${encounterId}/map-pool`);
     return response.json();
   }
 
@@ -115,7 +116,7 @@ class CaptainService {
     encounterId: number,
     data: VetoActionInput
   ): Promise<{ id: number; map_id: number; status: string; picked_by: string | null }> {
-    const response = await apiFetch("parser", `encounters/${encounterId}/map-pool/veto`, {
+    const response = await apiFetch("tournament", `encounters/${encounterId}/map-pool/veto`, {
       method: "POST",
       body: data,
     });

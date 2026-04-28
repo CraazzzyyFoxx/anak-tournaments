@@ -12,7 +12,7 @@ const registrationService = {
     tournamentId: number,
   ): Promise<RegistrationForm | null> {
     const response = await apiFetch(
-      "app",
+      "tournament",
       `workspaces/${workspaceId}/tournaments/${tournamentId}/registration/form`,
     );
     return response.json();
@@ -24,7 +24,7 @@ const registrationService = {
     input: RegistrationCreateInput,
   ): Promise<Registration> {
     const response = await apiFetch(
-      "app",
+      "tournament",
       `workspaces/${workspaceId}/tournaments/${tournamentId}/registration`,
       { method: "POST", body: input },
     );
@@ -36,7 +36,7 @@ const registrationService = {
     tournamentId: number,
   ): Promise<Registration | null> {
     const response = await apiFetch(
-      "app",
+      "tournament",
       `workspaces/${workspaceId}/tournaments/${tournamentId}/registration/me`,
     );
     return response.json();
@@ -48,7 +48,7 @@ const registrationService = {
     input: RegistrationUpdateInput,
   ): Promise<Registration> {
     const response = await apiFetch(
-      "app",
+      "tournament",
       `workspaces/${workspaceId}/tournaments/${tournamentId}/registration/me`,
       { method: "PATCH", body: input },
     );
@@ -60,7 +60,7 @@ const registrationService = {
     tournamentId: number,
   ): Promise<void> {
     await apiFetch(
-      "app",
+      "tournament",
       `workspaces/${workspaceId}/tournaments/${tournamentId}/registration/me`,
       { method: "DELETE" },
     );
@@ -71,7 +71,7 @@ const registrationService = {
     tournamentId: number,
   ): Promise<Registration> {
     const response = await apiFetch(
-      "app",
+      "tournament",
       `workspaces/${workspaceId}/tournaments/${tournamentId}/registration/me/check-in`,
       { method: "POST" },
     );
@@ -83,7 +83,7 @@ const registrationService = {
     tournamentId: number,
   ): Promise<Registration[]> {
     const response = await apiFetch(
-      "app",
+      "tournament",
       `workspaces/${workspaceId}/tournaments/${tournamentId}/registration/list`,
     );
     return response.json();

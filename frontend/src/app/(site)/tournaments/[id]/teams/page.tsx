@@ -1,24 +1,29 @@
-import React, { Suspense } from "react";
+"use client";
+
+import { useParams } from "next/navigation";
 
 import TournamentTeamsPage, {
   TournamentTeamsPageSkeleton,
 } from "@/app/(site)/tournaments/[id]/pages/TournamentTeamsPage";
 
-import { getTournament } from "../_data";
+import { useTournamentQuery } from "../_hooks/useTournamentClientData";
 
-type TournamentTeamsRoutePageProps = {
-  params: Promise<{ id: string }>;
-};
+export default function TournamentTeamsRoutePage() {
+  const params = useParams<{ id: string }>();
+  const tournamentId = Number(params.id);
+  const tournamentQuery = useTournamentQuery(tournamentId);
 
-export default async function TournamentTeamsRoutePage({
-  params,
-}: TournamentTeamsRoutePageProps) {
-  const resolvedParams = await params;
-  const tournament = await getTournament(Number(resolvedParams.id));
+  if (tournamentQuery.isLoading) {
+    return <TournamentTeamsPageSkeleton />;
+  }
 
-  return (
-    <Suspense fallback={<TournamentTeamsPageSkeleton />}>
-      <TournamentTeamsPage tournament={tournament} />
-    </Suspense>
-  );
+  if (!tournamentQuery.data) {
+    return (
+      <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-8 text-center text-muted-foreground">
+        Tournament not found.
+      </div>
+    );
+  }
+
+  return <TournamentTeamsPage tournament={tournamentQuery.data} />;
 }

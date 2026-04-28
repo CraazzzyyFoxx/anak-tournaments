@@ -88,7 +88,7 @@ class AdminService {
   // ─── Tournament CRUD ───────────────────────────────────────────────────────
 
   async createTournament(data: TournamentCreateInput): Promise<Tournament> {
-    const response = await apiFetch("parser", "admin/tournaments", {
+    const response = await apiFetch("tournament", "admin/tournaments", {
       method: "POST",
       body: data
     });
@@ -96,12 +96,12 @@ class AdminService {
   }
 
   async getTournament(id: number): Promise<Tournament> {
-    const response = await apiFetch("parser", `admin/tournaments/${id}`);
+    const response = await apiFetch("tournament", `admin/tournaments/${id}`);
     return response.json();
   }
 
   async updateTournament(id: number, data: TournamentUpdateInput): Promise<Tournament> {
-    const response = await apiFetch("parser", `admin/tournaments/${id}`, {
+    const response = await apiFetch("tournament", `admin/tournaments/${id}`, {
       method: "PATCH",
       body: data
     });
@@ -109,7 +109,7 @@ class AdminService {
   }
 
   async deleteTournament(id: number): Promise<void> {
-    await apiFetch("parser", `admin/tournaments/${id}`, {
+    await apiFetch("tournament", `admin/tournaments/${id}`, {
       method: "DELETE"
     });
   }
@@ -131,7 +131,7 @@ class AdminService {
   }
 
   async toggleTournamentFinished(tournamentId: number): Promise<Tournament> {
-    const response = await apiFetch("parser", `admin/tournaments/${tournamentId}/finish`, {
+    const response = await apiFetch("tournament", `admin/tournaments/${tournamentId}/finish`, {
       method: "POST"
     });
     return response.json();
@@ -140,7 +140,7 @@ class AdminService {
   // ─── Team CRUD ─────────────────────────────────────────────────────────────
 
   async createTeam(data: TeamCreateInput): Promise<Team> {
-    const response = await apiFetch("parser", "admin/teams", {
+    const response = await apiFetch("tournament", "admin/teams", {
       method: "POST",
       body: data
     });
@@ -148,12 +148,12 @@ class AdminService {
   }
 
   async getTeam(id: number): Promise<Team> {
-    const response = await apiFetch("parser", `admin/teams/${id}`);
+    const response = await apiFetch("tournament", `admin/teams/${id}`);
     return response.json();
   }
 
   async updateTeam(id: number, data: TeamUpdateInput): Promise<Team> {
-    const response = await apiFetch("parser", `admin/teams/${id}`, {
+    const response = await apiFetch("tournament", `admin/teams/${id}`, {
       method: "PATCH",
       body: data
     });
@@ -161,13 +161,13 @@ class AdminService {
   }
 
   async deleteTeam(id: number): Promise<void> {
-    await apiFetch("parser", `admin/teams/${id}`, {
+    await apiFetch("tournament", `admin/teams/${id}`, {
       method: "DELETE"
     });
   }
 
   async addPlayerToTeam(teamId: number, data: PlayerCreateInput): Promise<Player> {
-    const response = await apiFetch("parser", `admin/teams/${teamId}/players`, {
+    const response = await apiFetch("tournament", `admin/teams/${teamId}/players`, {
       method: "POST",
       body: data
     });
@@ -175,7 +175,7 @@ class AdminService {
   }
 
   async removePlayerFromTeam(teamId: number, playerId: number): Promise<void> {
-    await apiFetch("parser", `admin/teams/${teamId}/players/${playerId}`, {
+    await apiFetch("tournament", `admin/teams/${teamId}/players/${playerId}`, {
       method: "DELETE"
     });
   }
@@ -243,14 +243,14 @@ class AdminService {
     role?: string;
     include_inactive?: boolean;
   }): Promise<PlayerSubRole[]> {
-    const response = await apiFetch("parser", "admin/player-sub-roles", {
+    const response = await apiFetch("tournament", "admin/player-sub-roles", {
       query: params
     });
     return response.json();
   }
 
   async createPlayerSubRole(data: PlayerSubRoleCreateInput): Promise<PlayerSubRole> {
-    const response = await apiFetch("parser", "admin/player-sub-roles", {
+    const response = await apiFetch("tournament", "admin/player-sub-roles", {
       method: "POST",
       body: data
     });
@@ -258,7 +258,7 @@ class AdminService {
   }
 
   async updatePlayerSubRole(id: number, data: PlayerSubRoleUpdateInput): Promise<PlayerSubRole> {
-    const response = await apiFetch("parser", `admin/player-sub-roles/${id}`, {
+    const response = await apiFetch("tournament", `admin/player-sub-roles/${id}`, {
       method: "PATCH",
       body: data
     });
@@ -266,7 +266,7 @@ class AdminService {
   }
 
   async deletePlayerSubRole(id: number): Promise<void> {
-    await apiFetch("parser", `admin/player-sub-roles/${id}`, {
+    await apiFetch("tournament", `admin/player-sub-roles/${id}`, {
       method: "DELETE"
     });
   }
@@ -274,7 +274,7 @@ class AdminService {
   // ─── Encounter CRUD ────────────────────────────────────────────────────────
 
   async createEncounter(data: EncounterCreateInput): Promise<Encounter> {
-    const response = await apiFetch("parser", "admin/encounters", {
+    const response = await apiFetch("tournament", "admin/encounters", {
       method: "POST",
       body: data
     });
@@ -282,7 +282,7 @@ class AdminService {
   }
 
   async updateEncounter(id: number, data: EncounterUpdateInput): Promise<Encounter> {
-    const response = await apiFetch("parser", `admin/encounters/${id}`, {
+    const response = await apiFetch("tournament", `admin/encounters/${id}`, {
       method: "PATCH",
       body: data
     });
@@ -290,7 +290,7 @@ class AdminService {
   }
 
   async deleteEncounter(id: number): Promise<void> {
-    await apiFetch("parser", `admin/encounters/${id}`, {
+    await apiFetch("tournament", `admin/encounters/${id}`, {
       method: "DELETE"
     });
   }
@@ -298,7 +298,7 @@ class AdminService {
   async confirmEncounterResult(
     id: number
   ): Promise<{ id: number; result_status: string; status: string }> {
-    const response = await apiFetch("parser", `admin/encounters/${id}/confirm-result`, {
+    const response = await apiFetch("tournament", `admin/encounters/${id}/confirm-result`, {
       method: "POST"
     });
     return response.json();
@@ -319,7 +319,7 @@ class AdminService {
     time: number;
     log_name: string;
   }> {
-    const response = await apiFetch("parser", `admin/encounters/matches/${matchId}`, {
+    const response = await apiFetch("tournament", `admin/encounters/matches/${matchId}`, {
       method: "PATCH",
       body: data
     });
@@ -337,7 +337,7 @@ class AdminService {
   // ─── Standing Management ───────────────────────────────────────────────────
 
   async updateStanding(id: number, data: StandingUpdateInput): Promise<Standings> {
-    const response = await apiFetch("parser", `admin/standings/${id}`, {
+    const response = await apiFetch("tournament", `admin/standings/${id}`, {
       method: "PATCH",
       body: data
     });
@@ -345,7 +345,7 @@ class AdminService {
   }
 
   async deleteStanding(id: number): Promise<void> {
-    await apiFetch("parser", `admin/standings/${id}`, {
+    await apiFetch("tournament", `admin/standings/${id}`, {
       method: "DELETE"
     });
   }
@@ -359,7 +359,7 @@ class AdminService {
   }
 
   async recalculateStandings(tournamentId: number): Promise<BulkOperationResult> {
-    const response = await apiFetch("parser", `admin/standings/recalculate/${tournamentId}`, {
+    const response = await apiFetch("tournament", `admin/standings/recalculate/${tournamentId}`, {
       method: "POST"
     });
     return response.json();
@@ -1121,7 +1121,7 @@ class AdminService {
     id: number,
     data: TournamentStatusTransitionInput
   ): Promise<Tournament> {
-    const response = await apiFetch("parser", `admin/tournaments/${id}/status`, {
+    const response = await apiFetch("tournament", `admin/tournaments/${id}/status`, {
       method: "PATCH",
       body: data
     });
@@ -1131,17 +1131,17 @@ class AdminService {
   // ─── Stage Management ───────────────────────────────────────────────────────
 
   async getStages(tournamentId: number): Promise<Stage[]> {
-    const response = await apiFetch("parser", `admin/stages/tournament/${tournamentId}`);
+    const response = await apiFetch("tournament", `admin/stages/tournament/${tournamentId}`);
     return response.json();
   }
 
   async getStage(stageId: number): Promise<Stage> {
-    const response = await apiFetch("parser", `admin/stages/${stageId}`);
+    const response = await apiFetch("tournament", `admin/stages/${stageId}`);
     return response.json();
   }
 
   async createStage(tournamentId: number, data: StageCreateInput): Promise<Stage> {
-    const response = await apiFetch("parser", `admin/stages/tournament/${tournamentId}`, {
+    const response = await apiFetch("tournament", `admin/stages/tournament/${tournamentId}`, {
       method: "POST",
       body: data
     });
@@ -1149,7 +1149,7 @@ class AdminService {
   }
 
   async updateStage(stageId: number, data: StageUpdateInput): Promise<Stage> {
-    const response = await apiFetch("parser", `admin/stages/${stageId}`, {
+    const response = await apiFetch("tournament", `admin/stages/${stageId}`, {
       method: "PATCH",
       body: data
     });
@@ -1157,11 +1157,11 @@ class AdminService {
   }
 
   async deleteStage(stageId: number): Promise<void> {
-    await apiFetch("parser", `admin/stages/${stageId}`, { method: "DELETE" });
+    await apiFetch("tournament", `admin/stages/${stageId}`, { method: "DELETE" });
   }
 
   async createStageItem(stageId: number, data: StageItemCreateInput): Promise<StageItem> {
-    const response = await apiFetch("parser", `admin/stages/${stageId}/items`, {
+    const response = await apiFetch("tournament", `admin/stages/${stageId}/items`, {
       method: "POST",
       body: data
     });
@@ -1172,7 +1172,7 @@ class AdminService {
     stageItemId: number,
     data: { name?: string; type?: StageItemType; order?: number }
   ): Promise<StageItem> {
-    const response = await apiFetch("parser", `admin/stages/items/${stageItemId}`, {
+    const response = await apiFetch("tournament", `admin/stages/items/${stageItemId}`, {
       method: "PATCH",
       body: data
     });
@@ -1183,7 +1183,7 @@ class AdminService {
     stageItemId: number,
     data: StageItemInputCreateInput
   ): Promise<StageItemInput> {
-    const response = await apiFetch("parser", `admin/stages/items/${stageItemId}/inputs`, {
+    const response = await apiFetch("tournament", `admin/stages/items/${stageItemId}/inputs`, {
       method: "POST",
       body: data
     });
@@ -1194,7 +1194,7 @@ class AdminService {
     inputId: number,
     data: StageItemInputUpdateInput
   ): Promise<StageItemInput> {
-    const response = await apiFetch("parser", `admin/stages/items/inputs/${inputId}`, {
+    const response = await apiFetch("tournament", `admin/stages/items/inputs/${inputId}`, {
       method: "PATCH",
       body: data
     });
@@ -1202,14 +1202,14 @@ class AdminService {
   }
 
   async activateStage(stageId: number): Promise<Stage> {
-    const response = await apiFetch("parser", `admin/stages/${stageId}/activate`, {
+    const response = await apiFetch("tournament", `admin/stages/${stageId}/activate`, {
       method: "POST"
     });
     return response.json();
   }
 
   async generateBracket(stageId: number): Promise<{ generated: number }> {
-    const response = await apiFetch("parser", `admin/stages/${stageId}/generate`, {
+    const response = await apiFetch("tournament", `admin/stages/${stageId}/generate`, {
       method: "POST"
     });
     return response.json();
@@ -1224,7 +1224,7 @@ class AdminService {
       mode?: "cross" | "snake";
     }
   ): Promise<Stage> {
-    const response = await apiFetch("parser", `admin/stages/${stageId}/wire-from-groups`, {
+    const response = await apiFetch("tournament", `admin/stages/${stageId}/wire-from-groups`, {
       method: "POST",
       body: data
     });
@@ -1237,7 +1237,7 @@ class AdminService {
   ): Promise<{ stage: Stage; generated: number }> {
     const qs = opts?.force ? "?force=true" : "";
     const response = await apiFetch(
-      "parser",
+      "tournament",
       `admin/stages/${stageId}/activate-and-generate${qs}`,
       { method: "POST" }
     );
@@ -1251,7 +1251,7 @@ class AdminService {
       mode?: "snake_sr" | "by_total_sr" | "random";
     }
   ): Promise<Stage> {
-    const response = await apiFetch("parser", `admin/stages/${stageId}/seed-teams`, {
+    const response = await apiFetch("tournament", `admin/stages/${stageId}/seed-teams`, {
       method: "POST",
       body: data
     });
@@ -1269,7 +1269,7 @@ class AdminService {
     newly_completed: number;
     tournaments_recalculated: number[];
   }> {
-    const response = await apiFetch("parser", "admin/encounters/bulk", {
+    const response = await apiFetch("tournament", "admin/encounters/bulk", {
       method: "PATCH",
       body: data
     });
@@ -1294,7 +1294,7 @@ class AdminService {
       }[];
     }[]
   > {
-    const response = await apiFetch("parser", `admin/stages/tournament/${tournamentId}/progress`, {
+    const response = await apiFetch("tournament", `admin/stages/tournament/${tournamentId}/progress`, {
       method: "GET"
     });
     return response.json();
@@ -1303,7 +1303,7 @@ class AdminService {
   // ─── Admin Map Pool ─────────────────────────────────────────────────────────
 
   async assignMapPool(encounterId: number, mapIds: number[]): Promise<{ assigned: number }> {
-    const response = await apiFetch("parser", `admin/encounters/${encounterId}/map-pool`, {
+    const response = await apiFetch("tournament", `admin/encounters/${encounterId}/map-pool`, {
       method: "POST",
       body: { map_ids: mapIds }
     });
@@ -1313,7 +1313,7 @@ class AdminService {
   // ─── Challonge Sync ─────────────────────────────────────────────────────────
 
   async challongeImport(tournamentId: number, dryRun = false): Promise<Record<string, unknown>> {
-    const response = await apiFetch("parser", `challonge/sync/import/${tournamentId}`, {
+    const response = await apiFetch("tournament", `admin/challonge/sync/import/${tournamentId}`, {
       method: "POST",
       query: dryRun ? { dry_run: true } : undefined
     });
@@ -1321,21 +1321,21 @@ class AdminService {
   }
 
   async challongeExport(tournamentId: number): Promise<Record<string, unknown>> {
-    const response = await apiFetch("parser", `challonge/sync/export/${tournamentId}`, {
+    const response = await apiFetch("tournament", `admin/challonge/sync/export/${tournamentId}`, {
       method: "POST"
     });
     return response.json();
   }
 
   async challongePushResult(encounterId: number): Promise<{ status: string }> {
-    const response = await apiFetch("parser", `challonge/sync/push-result/${encounterId}`, {
+    const response = await apiFetch("tournament", `admin/challonge/sync/push-result/${encounterId}`, {
       method: "POST"
     });
     return response.json();
   }
 
   async challongeSyncLog(tournamentId: number, limit = 50): Promise<ChallongeSyncLogEntry[]> {
-    const response = await apiFetch("parser", `challonge/sync/log/${tournamentId}`, {
+    const response = await apiFetch("tournament", `admin/challonge/sync/log/${tournamentId}`, {
       query: { limit }
     });
     return response.json();

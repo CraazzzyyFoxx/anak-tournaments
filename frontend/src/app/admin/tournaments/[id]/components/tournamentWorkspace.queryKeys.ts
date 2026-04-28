@@ -1,5 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 
+import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
+
 export function getTournamentWorkspaceQueryKeys(tournamentId: number) {
   return {
     tournament: ["admin", "tournament", tournamentId] as const,
@@ -16,6 +18,10 @@ export function getTournamentWorkspaceQueryKeys(tournamentId: number) {
     teamsCollection: ["teams"] as const,
     encountersCollection: ["encounters"] as const,
     standingsCollection: ["standings"] as const,
+    publicTournament: tournamentQueryKeys.detail(tournamentId),
+    publicStages: tournamentQueryKeys.stages(tournamentId),
+    publicTeams: tournamentQueryKeys.teams(tournamentId),
+    publicHeroPlaytime: tournamentQueryKeys.heroPlaytime(tournamentId),
     publicStandings: ["standings", tournamentId] as const,
     publicEncounters: ["encounters", "tournament", tournamentId] as const
   };
@@ -44,6 +50,10 @@ export function invalidateTournamentWorkspace(
     queryClient.invalidateQueries({ queryKey: keys.teamsCollection }),
     queryClient.invalidateQueries({ queryKey: keys.encountersCollection }),
     queryClient.invalidateQueries({ queryKey: keys.standingsCollection }),
+    queryClient.invalidateQueries({ queryKey: keys.publicTournament }),
+    queryClient.invalidateQueries({ queryKey: keys.publicStages }),
+    queryClient.invalidateQueries({ queryKey: keys.publicTeams }),
+    queryClient.invalidateQueries({ queryKey: keys.publicHeroPlaytime }),
     queryClient.invalidateQueries({ queryKey: keys.publicStandings }),
     queryClient.invalidateQueries({ queryKey: keys.publicEncounters })
   ];
@@ -53,6 +63,15 @@ export function invalidateTournamentWorkspace(
       queryClient.invalidateQueries({ queryKey: ["standings", tournamentId, workspaceId] }),
       queryClient.invalidateQueries({
         queryKey: ["encounters", "tournament", tournamentId, workspaceId],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: tournamentQueryKeys.registration(workspaceId, tournamentId),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: tournamentQueryKeys.registrationsList(workspaceId, tournamentId),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: tournamentQueryKeys.registrationForm(workspaceId, tournamentId),
       })
     );
   }

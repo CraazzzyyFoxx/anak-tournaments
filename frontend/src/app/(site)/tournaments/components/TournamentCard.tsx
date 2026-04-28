@@ -8,10 +8,17 @@ import { Calendar, Users, ExternalLink } from "lucide-react";
 import { cn, formatDateRange } from "@/lib/utils";
 import { getTournamentStatusMeta } from "@/lib/tournament-status";
 
-export const TournamentChallongeLink = ({ tournament }: { tournament: Tournament }) => {
+export const TournamentChallongeLink = ({
+  tournament,
+  stages,
+}: {
+  tournament: Tournament;
+  stages?: Tournament["stages"];
+}) => {
+  const tournamentStages = stages ?? tournament.stages ?? [];
   const slug =
     tournament.challonge_slug ??
-    tournament.stages
+    tournamentStages
       .slice()
       .sort((a, b) => a.order - b.order)
       .find((stage) => stage.challonge_slug)?.challonge_slug;
@@ -33,10 +40,17 @@ export const TournamentChallongeLink = ({ tournament }: { tournament: Tournament
   );
 };
 
-export const TournamentChallongeLinkInline = ({ tournament }: { tournament: Tournament }) => {
+export const TournamentChallongeLinkInline = ({
+  tournament,
+  stages,
+}: {
+  tournament: Tournament;
+  stages?: Tournament["stages"];
+}) => {
+  const tournamentStages = stages ?? tournament.stages ?? [];
   const slug =
     tournament.challonge_slug ??
-    tournament.stages
+    tournamentStages
       .slice()
       .sort((a, b) => a.order - b.order)
       .find((stage) => stage.challonge_slug)?.challonge_slug;

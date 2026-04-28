@@ -108,8 +108,8 @@ export default function TournamentSectionNav({
         groupStages.length === 1
           ? `/tournaments/${tournamentId}/bracket?stage=${groupStages[0].id}`
           : `/tournaments/${tournamentId}/bracket?view=groups`,
-      label: "Group Stage",
-      subtitle: `${groupScopeCount} groups`,
+      label: "Groups",
+      subtitle: `${groupScopeCount} groups | ${groupStages[0].stage_type.replace(/_/g, " ")}`,
       icon: GitBranch,
       isActive: isGroupViewActive,
     });

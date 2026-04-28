@@ -1,7 +1,6 @@
 import json
 from typing import Any
 
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from faststream import FastStream
 from faststream.rabbit import RabbitBroker
 from faststream.rabbit.annotations import RabbitMessage
@@ -14,11 +13,7 @@ from shared.observability import (
     start_worker_metrics_server,
 )
 from shared.schemas.events import BalancerJobEvent
-from src.composition import (
-    build_due_registration_sheet_sync_use_case,
-    build_execute_balance_job_use_case,
-)
-from src.core import db
+from src.composition import build_execute_balance_job_use_case
 from src.core.config import config
 
 logger = setup_logging(
@@ -30,9 +25,7 @@ logger = setup_logging(
 
 broker = RabbitBroker(config.rabbitmq_url, logger=logger)
 app = FastStream(broker)
-scheduler = AsyncIOScheduler()
 execute_balance_job = build_execute_balance_job_use_case(broker=broker)
-sync_due_registration_sheets = build_due_registration_sheet_sync_use_case()
 
 
 def _decode_balancer_message(message: Any) -> Any:
@@ -47,13 +40,6 @@ def _decode_balancer_message(message: Any) -> Any:
     return body
 
 
-async def sync_registration_google_sheet_feeds() -> None:
-    results = await sync_due_registration_sheets.execute(session_factory=db.async_session_maker)
-    if not results:
-        return
-    logger.info("Registration Google Sheets sync completed", results=results)
-
-
 @app.on_startup
 async def setup_worker_observability() -> None:
     setup_tracing(
@@ -64,19 +50,7 @@ async def setup_worker_observability() -> None:
         sampler_arg=config.otel_traces_sampler_arg,
     )
     start_worker_metrics_server(config.worker_metrics_port)
-    scheduler.add_job(
-        sync_registration_google_sheet_feeds,
-        "interval",
-        minutes=5,
-        id="registration_google_sheet_sync",
-    )
-    scheduler.start()
-    logger.info("Scheduler started: registration sheet sync every 5m")
-
-
-@app.on_shutdown
-async def stop_scheduler() -> None:
-    scheduler.shutdown(wait=False)
+    logger.info("Balancer worker started")
 
 
 @broker.subscriber(BALANCER_JOBS_QUEUE, decoder=_decode_balancer_message)

@@ -1,6 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 
 import { invalidateTournamentWorkspace } from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.queryKeys";
+import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
 
 export type TournamentChangedReason = "results_changed" | "structure_changed";
 
@@ -56,6 +57,10 @@ export function getTournamentRealtimeUpdatePlan(
   reason: TournamentChangedReason
 ): TournamentRealtimeUpdatePlan {
   const queryKeys: (readonly unknown[])[] = [
+    tournamentQueryKeys.detail(tournamentId),
+    tournamentQueryKeys.stages(tournamentId),
+    tournamentQueryKeys.teams(tournamentId),
+    tournamentQueryKeys.heroPlaytime(tournamentId),
     ["standings", tournamentId],
     ["standings-table", tournamentId],
     ["encounters", "tournament", tournamentId],
@@ -64,7 +69,10 @@ export function getTournamentRealtimeUpdatePlan(
   if (workspaceId != null) {
     queryKeys.push(
       ["standings", tournamentId, workspaceId],
-      ["encounters", "tournament", tournamentId, workspaceId]
+      ["encounters", "tournament", tournamentId, workspaceId],
+      tournamentQueryKeys.registration(workspaceId, tournamentId),
+      tournamentQueryKeys.registrationsList(workspaceId, tournamentId),
+      tournamentQueryKeys.registrationForm(workspaceId, tournamentId)
     );
   }
 

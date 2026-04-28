@@ -50,6 +50,25 @@ class _Result:
         return self._all_values[0] if self._all_values else self._one
 
 
+class _FakeRedis:
+    def __init__(self) -> None:
+        self.values: dict[str, str] = {}
+
+    async def set(self, key: str, value: str, *, nx: bool = False, ex: int | None = None) -> bool:
+        del ex
+        if nx and key in self.values:
+            return False
+        self.values[key] = value
+        return True
+
+    async def eval(self, script: str, numkeys: int, key: str, token: str) -> int:
+        del script, numkeys
+        if self.values.get(key) != token:
+            return 0
+        del self.values[key]
+        return 1
+
+
 def _challonge_match(
     *,
     match_id: int = 900,
@@ -131,6 +150,15 @@ def _team_lookup(
 
 
 class ChallongeSyncImportTests(IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        self.get_redis_patcher = patch.object(
+            sync.standings_recalculation,
+            "get_redis",
+            AsyncMock(return_value=_FakeRedis()),
+        )
+        self.get_redis_patcher.start()
+        self.addCleanup(self.get_redis_patcher.stop)
+
     async def test_discover_sources_backfills_legacy_tournament_source(self) -> None:
         tournament = SimpleNamespace(
             id=7,

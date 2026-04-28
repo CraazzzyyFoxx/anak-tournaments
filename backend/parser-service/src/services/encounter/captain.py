@@ -3,15 +3,15 @@
 from datetime import UTC, datetime
 
 from fastapi import HTTPException, status
+from shared.core.enums import EncounterResultStatus
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from shared.core.enums import EncounterResultStatus, EncounterStatus
 from src import models
 from src.services.challonge import sync as challonge_sync
+from src.services.encounter.finalize import finalize_encounter_score
 from src.services.standings import recalculation as standings_recalculation
-from shared.services.bracket.advancement import advance_winner
 
 
 async def _resolve_captain_identity(
@@ -70,6 +70,7 @@ async def _load_encounter(
             selectinload(models.Encounter.away_team),
             selectinload(models.Encounter.stage),
         )
+        .with_for_update(nowait=False)
     )
     encounter = result.scalar_one_or_none()
     if not encounter:
@@ -143,13 +144,18 @@ async def confirm_result(
             detail="Cannot confirm your own submission - the other captain must confirm",
         )
 
-    encounter.result_status = EncounterResultStatus.CONFIRMED
-    encounter.confirmed_by_id = captain_player_id
-    encounter.confirmed_at = datetime.now(UTC)
-    encounter.status = EncounterStatus.COMPLETED
-
     tournament_id = encounter.tournament_id
-    await advance_winner(session, encounter)
+    await finalize_encounter_score(
+        session,
+        encounter.id,
+        encounter=encounter,
+        home_score=encounter.home_score,
+        away_score=encounter.away_score,
+        source="captain",
+        result_status=EncounterResultStatus.CONFIRMED,
+        confirmed_by_id=captain_player_id,
+        confirmed_at=datetime.now(UTC),
+    )
     await session.commit()
 
     # Auto-push to Challonge if linked
@@ -228,13 +234,17 @@ async def admin_confirm_result(
             detail="No pending result to confirm",
         )
 
-    encounter.result_status = EncounterResultStatus.CONFIRMED
-    encounter.confirmed_by_id = None
-    encounter.confirmed_at = datetime.now(UTC)
-    encounter.status = EncounterStatus.COMPLETED
-
     tournament_id = encounter.tournament_id
-    await advance_winner(session, encounter)
+    await finalize_encounter_score(
+        session,
+        encounter.id,
+        encounter=encounter,
+        home_score=encounter.home_score,
+        away_score=encounter.away_score,
+        source="admin",
+        result_status=EncounterResultStatus.CONFIRMED,
+        confirmed_at=datetime.now(UTC),
+    )
     await session.commit()
 
     if encounter.challonge_id:

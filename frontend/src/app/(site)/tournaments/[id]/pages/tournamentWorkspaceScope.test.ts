@@ -16,9 +16,11 @@ describe("tournament workspace scoped pages", () => {
 
   it("uses the tournament workspace when loading public encounters", () => {
     const source = readTournamentPageSource("TournamentEncountersPage.tsx");
+    const tableSource = readFileSync(join(import.meta.dir, "../../../../../components/EncountersTable.tsx"), "utf8");
 
-    expect(source).toContain("encounterService.getAll(");
     expect(source).toContain("tournament.workspace_id");
+    expect(tableSource).toContain("encounterService.getAll(");
+    expect(tableSource).toContain("workspaceId");
   });
 
   it("uses the tournament workspace when loading public standings", () => {

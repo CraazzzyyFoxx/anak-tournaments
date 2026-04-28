@@ -8,6 +8,11 @@ const nextConfig = {
   async rewrites() {
     const apiUrl = process.env.NEXT_API_URL ?? process.env.NEXT_PUBLIC_API_URL;
     const parserUrl = process.env.NEXT_PARSER_URL ?? process.env.NEXT_PUBLIC_PARSER_API_URL;
+    const tournamentUrl =
+      (process.env.NEXT_TOURNAMENT_URL ?? process.env.NEXT_PUBLIC_TOURNAMENT_API_URL)?.replace(
+        /\/$/,
+        "",
+      );
     return [
       {
         source: "/api/v1/:path*",
@@ -18,6 +23,14 @@ const nextConfig = {
             {
               source: "/api/parser/:path*",
               destination: `${parserUrl}/:path*`,
+            },
+          ]
+        : []),
+      ...(tournamentUrl
+        ? [
+            {
+              source: "/api/tournament/:path*",
+              destination: `${tournamentUrl}/:path*`,
             },
           ]
         : []),

@@ -1,17 +1,37 @@
-import React from "react";
+"use client";
+
+import { useParams } from "next/navigation";
+import { Skeleton } from "@/components/ui/skeleton";
 
 import TournamentParticipantsPage from "@/app/(site)/tournaments/[id]/pages/TournamentParticipantsPage";
 
-import { getTournament } from "../_data";
+import { useTournamentQuery } from "../_hooks/useTournamentClientData";
 
-type Props = {
-  params: Promise<{ id: string }>;
-};
+function ParticipantsPageSkeleton() {
+  return (
+    <div className="space-y-4">
+      <Skeleton className="h-10 w-full rounded-lg" />
+      <Skeleton className="h-80 w-full rounded-xl" />
+    </div>
+  );
+}
 
-export default async function TournamentParticipantsRoutePage({ params }: Props) {
-  const resolvedParams = await params;
-  const tournamentId = Number(resolvedParams.id);
-  const tournament = await getTournament(tournamentId);
+export default function TournamentParticipantsRoutePage() {
+  const params = useParams<{ id: string }>();
+  const tournamentId = Number(params.id);
+  const tournamentQuery = useTournamentQuery(tournamentId);
 
-  return <TournamentParticipantsPage tournament={tournament} />;
+  if (tournamentQuery.isLoading) {
+    return <ParticipantsPageSkeleton />;
+  }
+
+  if (!tournamentQuery.data) {
+    return (
+      <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-8 text-center text-muted-foreground">
+        Tournament not found.
+      </div>
+    );
+  }
+
+  return <TournamentParticipantsPage tournament={tournamentQuery.data} />;
 }

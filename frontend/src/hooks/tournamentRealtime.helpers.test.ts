@@ -4,6 +4,7 @@ import {
   getTournamentRealtimeUpdatePlan,
   parseTournamentRealtimeMessage,
 } from "@/hooks/tournamentRealtime.helpers";
+import { buildTournamentWebSocketUrl } from "@/hooks/useTournamentRealtime";
 
 describe("tournament realtime helpers", () => {
   it("parses tournament update websocket messages for the active tournament", () => {
@@ -29,16 +30,29 @@ describe("tournament realtime helpers", () => {
 
     expect(plan.invalidateAdminWorkspace).toBe(true);
     expect(plan.shouldRefreshRoute).toBe(false);
+    expect(plan.queryKeys).toContainEqual(["tournament", 42]);
+    expect(plan.queryKeys).toContainEqual(["tournament", 42, "stages"]);
+    expect(plan.queryKeys).toContainEqual(["teams", 42]);
+    expect(plan.queryKeys).toContainEqual(["hero-playtime", "tournament", 42]);
     expect(plan.queryKeys).toContainEqual(["standings", 42]);
     expect(plan.queryKeys).toContainEqual(["standings-table", 42]);
     expect(plan.queryKeys).toContainEqual(["encounters", "tournament", 42]);
     expect(plan.queryKeys).toContainEqual(["standings", 42, 7]);
     expect(plan.queryKeys).toContainEqual(["encounters", "tournament", 42, 7]);
+    expect(plan.queryKeys).toContainEqual(["registration", 7, 42]);
+    expect(plan.queryKeys).toContainEqual(["registrations-list", 7, 42]);
+    expect(plan.queryKeys).toContainEqual(["registration-form", 7, 42]);
   });
 
   it("marks structure updates as requiring a route refresh", () => {
     const plan = getTournamentRealtimeUpdatePlan(42, 7, "structure_changed");
 
     expect(plan.shouldRefreshRoute).toBe(true);
+  });
+
+  it("builds websocket URLs from relative tournament API bases", () => {
+    expect(
+      buildTournamentWebSocketUrl(42, "/api/tournament", "https://example.test")
+    ).toBe("wss://example.test/api/tournament/tournaments/42/ws");
   });
 });

@@ -5,6 +5,7 @@ replacing untyped dict objects with validated Pydantic models.
 """
 
 import time
+import uuid
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -14,6 +15,9 @@ class BaseEvent(BaseModel):
     """Base class for all event messages."""
 
     event_type: str
+    event_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Idempotency key for this event")
+    source_service: str | None = Field(default=None, description="Service that produced this event")
+    schema_version: int = Field(default=1, description="Event schema version")
     timestamp: float = Field(default_factory=lambda: time.time(), description="UTC epoch timestamp")
     correlation_id: str | None = Field(default=None, description="Request correlation ID for tracing")
 
@@ -99,6 +103,51 @@ class TournamentChangedEvent(BaseEvent):
         ...,
         description="Why bracket-related tournament views should refresh",
     )
+
+
+class EncounterCompletedEvent(BaseEvent):
+    """Domain event emitted after an encounter result is finalized."""
+
+    event_type: str = Field(default="encounter_completed", frozen=True)
+    tournament_id: int = Field(..., description="Tournament ID")
+    encounter_id: int = Field(..., description="Encounter ID")
+    home_team_id: int | None = Field(default=None, description="Home team ID")
+    away_team_id: int | None = Field(default=None, description="Away team ID")
+    winner_team_id: int | None = Field(default=None, description="Winner team ID if determinable")
+
+
+class RegistrationApprovedEvent(BaseEvent):
+    """Domain event emitted when a tournament registration is approved."""
+
+    event_type: str = Field(default="registration_approved", frozen=True)
+    tournament_id: int = Field(..., description="Tournament ID")
+    workspace_id: int = Field(..., description="Workspace ID")
+    registration_id: int = Field(..., description="Registration ID")
+    auth_user_id: int | None = Field(default=None, description="Auth user ID when linked")
+    user_id: int | None = Field(default=None, description="Player user ID when linked")
+    battle_tag: str | None = Field(default=None, description="Approved registration battle tag")
+
+
+class RegistrationRejectedEvent(BaseEvent):
+    """Domain event emitted when a tournament registration is rejected."""
+
+    event_type: str = Field(default="registration_rejected", frozen=True)
+    tournament_id: int = Field(..., description="Tournament ID")
+    workspace_id: int = Field(..., description="Workspace ID")
+    registration_id: int = Field(..., description="Registration ID")
+    auth_user_id: int | None = Field(default=None, description="Auth user ID when linked")
+    user_id: int | None = Field(default=None, description="Player user ID when linked")
+    battle_tag: str | None = Field(default=None, description="Rejected registration battle tag")
+
+
+class TournamentStateChangedEvent(BaseEvent):
+    """Domain event emitted when tournament lifecycle state changes."""
+
+    event_type: str = Field(default="tournament_state_changed", frozen=True)
+    tournament_id: int = Field(..., description="Tournament ID")
+    workspace_id: int | None = Field(default=None, description="Workspace ID")
+    old_status: str | None = Field(default=None, description="Previous tournament status")
+    new_status: str = Field(..., description="New tournament status")
 
 
 class SwissNextRoundEvent(BaseEvent):

@@ -1,6 +1,6 @@
-import React, { Suspense } from "react";
+"use client";
+
 import { Tournament } from "@/types/tournament.types";
-import encounterService from "@/services/encounter.service";
 import EncountersTable from "@/components/EncountersTable";
 
 export interface TournamentEncounterPageProps {
@@ -9,25 +9,19 @@ export interface TournamentEncounterPageProps {
   search: string;
 }
 
-const TournamentEncountersPage = async ({
+const TournamentEncountersPage = ({
   tournament,
   page,
   search
 }: TournamentEncounterPageProps) => {
-  const encounters = await encounterService.getAll(
-    page,
-    search,
-    tournament.id,
-    undefined,
-    undefined,
-    undefined,
-    tournament.workspace_id
-  );
-
   return (
-    <Suspense>
-      <EncountersTable data={encounters} InitialPage={page} search={search} hideTournament={true} />
-    </Suspense>
+    <EncountersTable
+      InitialPage={page}
+      search={search}
+      hideTournament={true}
+      tournamentId={tournament.id}
+      workspaceId={tournament.workspace_id}
+    />
   );
 };
 

@@ -6,7 +6,7 @@ import { useWorkspaceStore } from "@/stores/workspace.store";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-type ServiceName = "app" | "parser" | "balancer" | "auth";
+type ServiceName = "app" | "parser" | "balancer" | "tournament" | "auth";
 
 interface ApiFetchOptions {
   query?: Record<string, unknown>;
@@ -46,13 +46,23 @@ function resolveAppCache(): RequestCache {
 const SERVICE_CONFIG: Record<ServiceName, ServiceConfig> = {
   app: {
     clientBase: "/api/v1",
-    serverBase: process.env.NEXT_PUBLIC_API_URL,
+    serverBase: process.env.NEXT_API_URL ?? process.env.NEXT_PUBLIC_API_URL,
     injectWorkspace: true,
     defaultCache: resolveAppCache(),
   },
   parser: {
     clientBase: "/api/parser",
-    serverBase: process.env.NEXT_PUBLIC_PARSER_API_URL,
+    serverBase: process.env.NEXT_PARSER_URL ?? process.env.NEXT_PUBLIC_PARSER_API_URL,
+    injectWorkspace: true,
+    defaultCache: "no-store",
+  },
+  tournament: {
+    clientBase: "/api/tournament",
+    serverBase: (
+      process.env.NEXT_TOURNAMENT_URL ??
+      process.env.NEXT_PUBLIC_TOURNAMENT_API_URL ??
+      ""
+    ).replace(/\/$/, "") || undefined,
     injectWorkspace: true,
     defaultCache: "no-store",
   },
@@ -82,6 +92,30 @@ const getServerWorkspaceId = cache(async (): Promise<string | undefined> => {
   }
 });
 
+const getServerRequestOrigin = cache(async (): Promise<string | undefined> => {
+  const configuredOrigin = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
+
+  try {
+    const { headers } = await import("next/headers");
+    const headersList = await headers();
+    const forwardedHost = headersList.get("x-forwarded-host") ?? headersList.get("host");
+    const host = forwardedHost?.split(",")[0]?.trim();
+
+    if (!host) {
+      return configuredOrigin;
+    }
+
+    const forwardedProto = headersList.get("x-forwarded-proto")?.split(",")[0]?.trim();
+    const protocol =
+      forwardedProto ||
+      (host.startsWith("localhost") || host.startsWith("127.0.0.1") ? "http" : "https");
+
+    return `${protocol}://${host}`;
+  } catch {
+    return configuredOrigin;
+  }
+});
+
 // ─── Query Param Serialization ──────────────────────────────────────────────
 
 function appendParams(params: URLSearchParams, key: string, value: unknown): void {
@@ -98,6 +132,29 @@ function appendParams(params: URLSearchParams, key: string, value: unknown): voi
   } else {
     params.append(key, String(value));
   }
+}
+
+function isAbsoluteUrl(value: string): boolean {
+  return /^[a-z][a-z\d+\-.]*:\/\//i.test(value);
+}
+
+async function resolveBaseUrl(config: ServiceConfig): Promise<string> {
+  if (typeof window !== "undefined") {
+    return config.clientBase.replace(/\/$/, "");
+  }
+
+  const baseUrl = (config.serverBase ?? config.clientBase).replace(/\/$/, "");
+  if (isAbsoluteUrl(baseUrl)) {
+    return baseUrl;
+  }
+
+  const origin = await getServerRequestOrigin();
+  if (!origin) {
+    throw new Error(`Cannot resolve relative API URL "${baseUrl}" on the server`);
+  }
+
+  const sep = baseUrl.startsWith("/") ? "" : "/";
+  return `${origin}${sep}${baseUrl}`;
 }
 
 // ─── Main Function ──────────────────────────────────────────────────────────
@@ -145,10 +202,7 @@ export async function apiFetch(
   }
 
   // Build URL
-  const baseUrl =
-    typeof window !== "undefined"
-      ? config.clientBase
-      : (config.serverBase ?? config.clientBase);
+  const baseUrl = await resolveBaseUrl(config);
 
   const sep = cleanPath.startsWith("/") ? "" : "/";
   const qs = params.toString();

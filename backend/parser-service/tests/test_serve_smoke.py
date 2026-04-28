@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from faststream import FastStream
+from fastapi.routing import APIRoute
 
 
 def _import_serve():
@@ -38,9 +39,42 @@ def test_serve_module_exposes_faststream_app() -> None:
     assert isinstance(serve.app, FastStream)
 
 
-def test_serve_module_subscribes_to_swiss_next_round_queue() -> None:
+def test_serve_module_leaves_tournament_worker_queues_to_tournament_service() -> None:
     serve = _import_serve()
 
     queue_names = {subscriber.queue.name for subscriber in serve.broker.subscribers}
 
-    assert "swiss_next_round" in queue_names
+    assert "tournament_encounter_completed" in queue_names
+    assert "swiss_next_round" not in queue_names
+    assert "tournament_recalc" not in queue_names
+    assert not hasattr(serve, "scheduler")
+
+
+def _route_paths(router) -> set[str]:
+    return {route.path for route in router.routes if isinstance(route, APIRoute)}
+
+
+def test_parser_api_unmounts_cutover_tournament_routes() -> None:
+    _import_serve()
+    routes = importlib.import_module("src.routes")
+    admin_routes = importlib.import_module("src.routes.admin")
+
+    public_paths = _route_paths(routes.router)
+    admin_paths = _route_paths(admin_routes.admin_router)
+
+    assert "/encounters/{encounter_id}/submit-result" not in public_paths
+    assert "/encounters/{encounter_id}/map-pool" not in public_paths
+    assert "/tournament/create/with_groups" in public_paths
+    assert "/teams/create/balancer" in public_paths
+    assert "/encounter/challonge" in public_paths
+
+    removed_admin_prefixes = (
+        "/admin/tournaments",
+        "/admin/stages",
+        "/admin/teams",
+        "/admin/encounters",
+        "/admin/standings",
+        "/admin/player-sub-roles",
+    )
+    assert not any(path.startswith(removed_admin_prefixes) for path in admin_paths)
+    assert "/admin/players" in admin_paths

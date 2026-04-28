@@ -2,7 +2,6 @@
 
 from fastapi import HTTPException, status
 from loguru import logger
-from shared.services.bracket.advancement import advance_winner
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -10,6 +9,7 @@ from sqlalchemy.orm import selectinload
 from src import models
 from src.core import enums
 from src.schemas.admin import encounter as admin_schemas
+from src.services.encounter.finalize import finalize_encounter_score
 from src.services.standings import recalculation as standings_recalculation
 
 
@@ -245,9 +245,15 @@ async def update_encounter(
     for field, value in update_data.items():
         setattr(encounter, field, value)
 
-    # Propagate result to linked encounters (advancement graph) BEFORE commit so
-    # both the source and target updates land in a single transaction.
-    await advance_winner(session, encounter)
+    if encounter.status == enums.EncounterStatus.COMPLETED:
+        await finalize_encounter_score(
+            session,
+            encounter.id,
+            encounter=encounter,
+            home_score=encounter.home_score,
+            away_score=encounter.away_score,
+            source="admin",
+        )
 
     await session.commit()
     await session.refresh(encounter)
@@ -339,7 +345,7 @@ async def bulk_update_encounters(
     encounter — the critical optimisation for 40+ team tournaments where
     admins frequently mark 20-50 matches at a time.
 
-    Also triggers ``advance_winner`` for each encounter that transitioned
+    Also triggers bracket advancement for each encounter that transitioned
     into COMPLETED so bracket progression stays consistent.
     """
     if not data.encounter_ids:
@@ -395,12 +401,15 @@ async def bulk_update_encounters(
         if now_completed and not was_completed:
             newly_completed.append(encounter)
 
-    # Propagate advancement for encounters that just transitioned into COMPLETED.
-    # Import here to avoid a circular import at module load.
-    from shared.services.bracket.advancement import advance_winner
-
     for encounter in newly_completed:
-        await advance_winner(session, encounter)
+        await finalize_encounter_score(
+            session,
+            encounter.id,
+            encounter=encounter,
+            home_score=encounter.home_score,
+            away_score=encounter.away_score,
+            source="admin",
+        )
 
     await session.commit()
 
