@@ -110,6 +110,12 @@ export default function AdminTournamentWorkspacePage() {
     enabled: isValidTournamentId && shouldLoadTeams
   });
 
+  const stagesQuery = useQuery({
+    queryKey: ["admin", "stages", tournamentId],
+    queryFn: () => adminService.getStages(tournamentId),
+    enabled: isValidTournamentId
+  });
+
   const divisionGridsQuery = useQuery({
     queryKey: ["admin", "tournament", tournamentId, "division-grids"],
     queryFn: async () => {
@@ -175,7 +181,7 @@ export default function AdminTournamentWorkspacePage() {
   );
   const teams = teamsQuery.data?.results ?? [];
   const teamsCount = teamsQuery.data?.total ?? teamsCountQuery.data ?? null;
-  const stages = tournament?.stages ?? [];
+  const stages = stagesQuery.data ?? [];
   const standings = standingsQuery.data ?? [];
   const standingsCount = standingsQuery.data?.length ?? null;
   const encounters = encountersQuery.data?.results ?? [];
@@ -188,7 +194,7 @@ export default function AdminTournamentWorkspacePage() {
     tournament?.challonge_slug || stages.some((stage) => Boolean(stage.challonge_slug))
   );
 
-  if (tournamentQuery.isLoading || !permissionsLoaded) {
+  if (tournamentQuery.isLoading || stagesQuery.isLoading || !permissionsLoaded) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-28 w-full rounded-xl" />
