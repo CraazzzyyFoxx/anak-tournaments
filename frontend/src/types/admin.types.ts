@@ -93,6 +93,11 @@ export interface StageItemInputUpdateInput {
   source_position?: number | null;
 }
 
+export interface StageMergeGroupStagesInput {
+  source_stage_ids: number[];
+  target_name?: string | null;
+}
+
 // ─── Captain Submission ─────────────────────────────────────────────────────
 
 export interface ResultSubmissionInput {

@@ -10,6 +10,7 @@ __all__ = (
     "StageItemUpdate",
     "StageItemInputCreate",
     "StageItemInputUpdate",
+    "MergeGroupStagesRequest",
     "WireFromGroupsRequest",
     "SeedTeamsRequest",
 )
@@ -77,6 +78,17 @@ class StageItemInputUpdate(BaseModel):
     team_id: int | None = None
     source_stage_item_id: int | None = None
     source_position: int | None = Field(default=None, ge=1)
+
+
+class MergeGroupStagesRequest(BaseModel):
+    """Merge legacy one-group stages into one grouped stage.
+
+    ``source_stage_ids`` are removed after their stage_items and stage-scoped
+    references are moved under the target stage from the route path.
+    """
+
+    source_stage_ids: list[int] = Field(min_length=1)
+    target_name: str | None = None
 
 
 class WireFromGroupsRequest(BaseModel):

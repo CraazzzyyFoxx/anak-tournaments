@@ -128,6 +128,16 @@ async def _resolve_user_from_token(
         workspaces=workspaces,
         workspace_rbac=workspace_rbac,
     )
+    credential_type = _safe_str(payload.get("credential_type")) or "access_token"
+    object.__setattr__(user, "_credential_type", credential_type)
+    api_key_payload = payload.get("api_key")
+    if isinstance(api_key_payload, dict):
+        object.__setattr__(user, "_api_key_id", api_key_payload.get("id"))
+        object.__setattr__(user, "_api_key_public_id", _safe_str(api_key_payload.get("public_id")))
+        object.__setattr__(user, "_api_key_workspace_id", api_key_payload.get("workspace_id"))
+        object.__setattr__(user, "_api_key_scopes", api_key_payload.get("scopes") or [])
+        object.__setattr__(user, "_api_key_limits", api_key_payload.get("limits") or {})
+        object.__setattr__(user, "_api_key_config_policy", api_key_payload.get("config_policy") or {})
     return user
 
 
@@ -150,6 +160,12 @@ async def _require_workspace_permission(
     resource: str,
     action: str,
 ) -> AuthUser:
+    if getattr(current_user, "_credential_type", "access_token") == "api_key":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="API keys cannot access balancer admin endpoints",
+        )
+
     if current_user.has_role("tournament_organizer"):
         return current_user
 

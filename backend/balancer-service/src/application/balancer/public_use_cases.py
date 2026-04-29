@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -15,6 +16,12 @@ from src.core.metrics import (
     BALANCER_SOLVER_SECONDS,
 )
 from src.domain.balancer.public_contract import normalize_balance_job_result_payload
+from src.infrastructure.security.api_key_limiter import (
+    get_api_key_id,
+    get_api_key_limits,
+    is_api_key_principal,
+)
+from src.infrastructure.security.api_key_policy import validate_api_key_config_policy
 from src.schemas.balancer import BalanceJobResult, CreateJobResponse, JobStatusResponse
 
 TERMINAL_STATUSES = {"succeeded", "failed"}
@@ -53,6 +60,49 @@ def _count_variant_players(variant: dict[str, Any]) -> int:
     benched_players = variant.get("benched_players", [])
     benched_count = len(benched_players) if isinstance(benched_players, list) else 0
     return team_players + benched_count
+
+
+def _count_input_players(player_data: dict[str, Any]) -> int:
+    players = player_data.get("players")
+    if isinstance(players, (dict, list)):
+        return len(players)
+    return 0
+
+
+def _enforce_api_key_upload_limit(user, uploaded_file) -> None:
+    if not is_api_key_principal(user):
+        return
+    upload_size = getattr(uploaded_file, "size", None)
+    if upload_size is None:
+        return
+    max_upload_bytes = get_api_key_limits(user)["max_upload_bytes"]
+    try:
+        upload_size_int = int(upload_size)
+    except (TypeError, ValueError):
+        return
+    if upload_size_int > max_upload_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail={
+                "code": "api_key_upload_too_large",
+                "max_upload_bytes": max_upload_bytes,
+            },
+        )
+
+
+def _enforce_api_key_player_limit(user, player_data: dict[str, Any]) -> None:
+    if not is_api_key_principal(user):
+        return
+    player_count = _count_input_players(player_data)
+    max_players = get_api_key_limits(user)["max_players"]
+    if player_count > max_players:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "api_key_player_limit_exceeded",
+                "max_players": max_players,
+            },
+        )
 
 
 class ProgressEventThrottler:
@@ -146,11 +196,13 @@ class CreateBalanceJob:
         payload_parser,
         job_repository,
         publisher,
+        api_key_limiter=None,
     ) -> None:
         self._access_policy = access_policy
         self._payload_parser = payload_parser
         self._job_repository = job_repository
         self._publisher = publisher
+        self._api_key_limiter = api_key_limiter
 
     @staticmethod
     def _build_job_urls(job_id: str) -> dict[str, str]:
@@ -168,16 +220,35 @@ class CreateBalanceJob:
         workspace_id: int,
         user,
     ) -> CreateJobResponse:
+        if self._api_key_limiter is not None:
+            await self._api_key_limiter.check_request(user)
         self._access_policy.ensure_workspace_access(user, workspace_id)
+        _enforce_api_key_upload_limit(user, uploaded_file)
 
         player_data = await self._payload_parser.parse_player_data(uploaded_file)
         config_overrides = self._payload_parser.parse_config_overrides(raw_config)
-        job_id = await self._job_repository.create_job(
-            player_data,
-            config_overrides,
-            workspace_id=workspace_id,
-            created_by=user.id,
-        )
+        validate_api_key_config_policy(user, config_overrides)
+        _enforce_api_key_player_limit(user, player_data)
+
+        job_id = uuid.uuid4().hex
+        api_key_id = get_api_key_id(user) if is_api_key_principal(user) else None
+        if self._api_key_limiter is not None:
+            await self._api_key_limiter.reserve_job(user, job_id)
+
+        try:
+            job_id = await self._job_repository.create_job(
+                player_data,
+                config_overrides,
+                job_id=job_id,
+                workspace_id=workspace_id,
+                created_by=user.id,
+                credential_type=getattr(user, "_credential_type", "access_token"),
+                api_key_id=api_key_id,
+            )
+        except Exception:
+            if self._api_key_limiter is not None and api_key_id is not None:
+                await self._api_key_limiter.release_job(api_key_id, job_id)
+            raise
 
         try:
             await self._publisher.publish_job_requested(job_id)
@@ -193,28 +264,44 @@ class CreateBalanceJob:
 
 
 class GetBalanceJobStatus:
-    def __init__(self, *, job_repository, access_policy) -> None:
+    def __init__(self, *, job_repository, access_policy, api_key_limiter=None) -> None:
         self._job_repository = job_repository
         self._access_policy = access_policy
+        self._api_key_limiter = api_key_limiter
 
     async def execute(self, *, job_id: str, user) -> JobStatusResponse:
+        if self._api_key_limiter is not None:
+            await self._api_key_limiter.check_request(user)
         meta = await self._job_repository.get_job_meta(job_id)
         if meta is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Balancer job not found")
-        self._access_policy.ensure_workspace_access(user, meta.get("workspace_id"))
+        self._access_policy.ensure_workspace_access(
+            user,
+            meta.get("workspace_id"),
+            api_key_id=meta.get("api_key_id"),
+            require_api_key_job_match=True,
+        )
         return JobStatusResponse.model_validate(meta)
 
 
 class GetBalanceJobResult:
-    def __init__(self, *, job_repository, access_policy) -> None:
+    def __init__(self, *, job_repository, access_policy, api_key_limiter=None) -> None:
         self._job_repository = job_repository
         self._access_policy = access_policy
+        self._api_key_limiter = api_key_limiter
 
     async def execute(self, *, job_id: str, user) -> BalanceJobResult:
+        if self._api_key_limiter is not None:
+            await self._api_key_limiter.check_request(user)
         meta = await self._job_repository.get_job_meta(job_id)
         if meta is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Balancer job not found")
-        self._access_policy.ensure_workspace_access(user, meta.get("workspace_id"))
+        self._access_policy.ensure_workspace_access(
+            user,
+            meta.get("workspace_id"),
+            api_key_id=meta.get("api_key_id"),
+            require_api_key_job_match=True,
+        )
 
         status_value = meta.get("status")
         if status_value == "failed":
@@ -235,9 +322,10 @@ class GetBalanceJobResult:
 
 
 class StreamBalanceJobEvents:
-    def __init__(self, *, job_repository, access_policy) -> None:
+    def __init__(self, *, job_repository, access_policy, api_key_limiter=None) -> None:
         self._job_repository = job_repository
         self._access_policy = access_policy
+        self._api_key_limiter = api_key_limiter
 
     async def execute(
         self,
@@ -248,10 +336,17 @@ class StreamBalanceJobEvents:
         last_event_id: str | None,
         user,
     ) -> AsyncIterator[str]:
+        if self._api_key_limiter is not None:
+            await self._api_key_limiter.check_request(user)
         meta = await self._job_repository.get_job_meta(job_id)
         if meta is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Balancer job not found")
-        self._access_policy.ensure_workspace_access(user, meta.get("workspace_id"))
+        self._access_policy.ensure_workspace_access(
+            user,
+            meta.get("workspace_id"),
+            api_key_id=meta.get("api_key_id"),
+            require_api_key_job_match=True,
+        )
 
         cursor = after_event_id
         if last_event_id and last_event_id.isdigit():

@@ -11,7 +11,8 @@ import {
   computeMatchNumbers as computeBracketMatchNumbers,
   computeSlotHints as computeBracketSlotHints,
   getDoubleEliminationFinalRounds as getBracketFinalRounds,
-  getGrandFinalLabel as getBracketGrandFinalLabel
+  getGrandFinalLabel as getBracketGrandFinalLabel,
+  getRoundSectionMatchCapacity
 } from "@/components/bracket-view.helpers";
 
 interface BracketViewProps {
@@ -243,13 +244,15 @@ function buildLayout(encounters: Encounter[], type: StageType): BracketLayout {
     hasBracketConnections
   );
 
-  const upperBaseMatches =
-    upperRounds[0]?.matches.length ??
-    Math.max(1, ...upperRounds.map((group) => group.matches.length));
+  const upperBaseMatches = getRoundSectionMatchCapacity(upperRounds);
   const upperBasePitch = CARD_HEIGHT + MATCH_GAP_Y;
   const upperSectionHeight = Math.max(
     upperBaseMatches * CARD_HEIGHT + Math.max(upperBaseMatches - 1, 0) * MATCH_GAP_Y,
     CARD_HEIGHT
+  );
+  const widestUpperRoundIndex = Math.max(
+    0,
+    upperRounds.findIndex((group) => group.matches.length === upperBaseMatches)
   );
   const upperStartX = PADDING_X;
   const upperHeaderY = PADDING_Y;
@@ -259,7 +262,13 @@ function buildLayout(encounters: Encounter[], type: StageType): BracketLayout {
     const x = upperStartX + columnIndex * (CARD_WIDTH + ROUND_GAP_X);
     const totalHeight =
       group.matches.length * CARD_HEIGHT + Math.max(group.matches.length - 1, 0) * MATCH_GAP_Y;
-    const startY = upperTop + Math.max(0, (upperSectionHeight - totalHeight) / 2);
+    const isSparsePlayInRound =
+      columnIndex < widestUpperRoundIndex && group.matches.length < upperBaseMatches;
+    const startY =
+      upperTop +
+      (isSparsePlayInRound
+        ? upperBasePitch / 2
+        : Math.max(0, (upperSectionHeight - totalHeight) / 2));
 
     headers.push({
       id: `upper-header-${group.round}`,

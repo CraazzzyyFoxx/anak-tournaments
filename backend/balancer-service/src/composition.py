@@ -72,6 +72,7 @@ from src.infrastructure.gateways.service_gateways import (
 from src.infrastructure.parsers.balancer_request_parser import BalancerRequestParser
 from src.infrastructure.publishers.balancer_job_publisher import BalancerJobPublisher
 from src.infrastructure.repositories.job_store_repository import JobStoreRepository
+from src.infrastructure.security.api_key_limiter import get_api_key_limiter
 from src.infrastructure.security.workspace_access_policy import WorkspaceAccessPolicy
 from src.infrastructure.solvers.cpsat_balance_solver import CpsatBalanceSolver
 from src.infrastructure.solvers.moo_balance_solver import MooBalanceSolver
@@ -92,6 +93,7 @@ def build_solver_factory(*, broker) -> BalanceSolverFactory:
 def build_public_http_use_cases(*, broker, logger):
     job_repository = JobStoreRepository()
     access_policy = WorkspaceAccessPolicy()
+    api_key_limiter = get_api_key_limiter()
 
     return SimpleNamespace(
         get_config=GetBalancerConfig(config_provider=BalancerConfigService()),
@@ -100,18 +102,22 @@ def build_public_http_use_cases(*, broker, logger):
             payload_parser=BalancerRequestParser(),
             job_repository=job_repository,
             publisher=BalancerJobPublisher(broker, logger),
+            api_key_limiter=api_key_limiter,
         ),
         get_job_status=GetBalanceJobStatus(
             job_repository=job_repository,
             access_policy=access_policy,
+            api_key_limiter=api_key_limiter,
         ),
         get_job_result=GetBalanceJobResult(
             job_repository=job_repository,
             access_policy=access_policy,
+            api_key_limiter=api_key_limiter,
         ),
         stream_job_events=StreamBalanceJobEvents(
             job_repository=job_repository,
             access_policy=access_policy,
+            api_key_limiter=api_key_limiter,
         ),
     )
 

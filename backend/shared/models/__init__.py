@@ -16,6 +16,7 @@ from .standings import *
 from .achievement import *
 from .analytics import *
 from .auth_user import *
+from .api_key import *
 from .challonge_sync import *
 from .discord_channel import *
 from .rbac import *

@@ -40,6 +40,10 @@ class BalancerJobStore:
     def _event_sequence_key(job_id: str) -> str:
         return f"balancer:job:{job_id}:event_seq"
 
+    @staticmethod
+    def _api_key_active_jobs_key(api_key_id: int) -> str:
+        return f"balancer:api_key:{api_key_id}:active_jobs"
+
     async def _refresh_ttl(self, job_id: str) -> None:
         pipe = self._redis.pipeline()
         for key in (
@@ -95,10 +99,13 @@ class BalancerJobStore:
         input_data: dict[str, Any],
         config_overrides: dict[str, Any] | None,
         *,
+        job_id: str | None = None,
         workspace_id: int | None = None,
         created_by: int | None = None,
+        credential_type: str = "access_token",
+        api_key_id: int | None = None,
     ) -> str:
-        job_id = uuid.uuid4().hex
+        job_id = job_id or uuid.uuid4().hex
         now = time.time()
 
         meta = {
@@ -112,6 +119,8 @@ class BalancerJobStore:
             "error": None,
             "workspace_id": workspace_id,
             "created_by": created_by,
+            "credential_type": credential_type,
+            "api_key_id": api_key_id,
             "events_count": 0,
         }
         payload = {
@@ -280,6 +289,7 @@ class BalancerJobStore:
             meta=meta_snapshot,
             result=result,
         )
+        await self._release_api_key_active_job(job_id, meta_snapshot)
         return meta_snapshot
 
     async def mark_failed(
@@ -317,7 +327,19 @@ class BalancerJobStore:
             event=event,
             meta=meta_snapshot,
         )
+        await self._release_api_key_active_job(job_id, meta_snapshot)
         return meta_snapshot
+
+    async def _release_api_key_active_job(self, job_id: str, meta: dict[str, Any]) -> None:
+        if meta.get("credential_type") != "api_key":
+            return
+        api_key_id = meta.get("api_key_id")
+        try:
+            api_key_id_int = int(api_key_id)
+        except (TypeError, ValueError):
+            return
+        await self._redis.srem(self._api_key_active_jobs_key(api_key_id_int), job_id)
+        record_balancer_redis_writes("release_api_key_active_job", 1)
 
     async def get_events_since(self, job_id: str, after_event_id: int = 0) -> list[dict[str, Any]]:
         start_index = max(after_event_id, 0)

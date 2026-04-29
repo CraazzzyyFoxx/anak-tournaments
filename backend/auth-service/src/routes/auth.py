@@ -7,6 +7,7 @@ from uuid import UUID
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from loguru import logger
 from shared.clients.s3 import S3Client
 from shared.clients.s3.upload import upload_avatar
@@ -15,16 +16,17 @@ from starlette.requests import Request
 
 from src import models, schemas
 from src.core import db
-from src.services import auth_service
+from src.services import api_key_service, auth_service
 from src.services.oauth_service import OAuthService
-from src.services.session_service import SessionService
 from src.services.session_cache import get_rbac, get_refresh_idem, set_rbac, set_refresh_idem
+from src.services.session_service import SessionService
 
 
 def get_s3(request: Request) -> S3Client:
     return request.app.state.s3
 
 router = APIRouter(tags=["Authentication"])
+validate_security = HTTPBearer()
 
 
 def _linked_players_payload(user: models.AuthUser) -> list[schemas.AuthLinkedPlayer]:
@@ -422,15 +424,10 @@ async def set_password(
     logger.bind(user_id=str(current_user.id)).success("Password updated")
 
 
-@router.post("/validate", response_model=schemas.TokenPayload)
-async def validate_token(
-    session: Annotated[AsyncSession, Depends(db.get_async_session)],
-    current_user: Annotated[models.AuthUser, Depends(auth_service.get_current_active_user)],
-):
-    """
-    Validate JWT token and return payload with RBAC data.
-    Uses Redis cache (60s TTL) with DB fallback for instant propagation.
-    """
+async def _build_access_token_payload(
+    session: AsyncSession,
+    current_user: models.AuthUser,
+) -> schemas.TokenPayload:
     cached = await get_rbac(current_user.id)
     if cached is not None:
         roles = cached["roles"]
@@ -499,3 +496,52 @@ async def validate_token(
         permissions=permissions,
         workspaces=workspaces,
     )
+
+
+async def _resolve_access_token_user(
+    session: AsyncSession,
+    raw_token: str,
+) -> models.AuthUser:
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = auth_service.AuthService.decode_token(raw_token)
+        user_id_str = payload.get("sub")
+        token_type = payload.get("type")
+        if not user_id_str or token_type != "access":
+            raise credentials_exception
+        user_id = int(user_id_str)
+    except (HTTPException, ValueError):
+        raise credentials_exception
+
+    user = await auth_service.AuthService.get_user_with_rbac(session, user_id)
+    if user is None or not user.is_active:
+        raise credentials_exception
+    return user
+
+
+@router.post("/validate", response_model=schemas.TokenPayload)
+async def validate_token(
+    session: Annotated[AsyncSession, Depends(db.get_async_session)],
+    token: Annotated[HTTPAuthorizationCredentials, Depends(validate_security)],
+):
+    """
+    Validate a JWT access token or workspace-scoped API key and return RBAC data.
+    JWT validation uses Redis cache (60s TTL) with DB fallback for instant propagation.
+    """
+    raw_token = token.credentials
+    if raw_token.startswith(f"{api_key_service.API_KEY_PREFIX}_"):
+        api_key_payload = await api_key_service.validate_api_key(session, raw_token)
+        if api_key_payload is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not validate credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return api_key_payload
+
+    current_user = await _resolve_access_token_user(session, raw_token)
+    return await _build_access_token_payload(session, current_user)

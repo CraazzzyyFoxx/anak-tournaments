@@ -32,14 +32,18 @@ export function buildRoundGroups(matches: Encounter[]): RoundGroup[] {
     .sort((left, right) => Math.abs(left[0]) - Math.abs(right[0]))
     .map(([round, roundMatches]) => ({
       round,
-      matches: sortMatches(roundMatches),
+      matches: sortMatches(roundMatches)
     }));
+}
+
+export function getRoundSectionMatchCapacity(rounds: RoundGroup[]): number {
+  return Math.max(1, ...rounds.map((group) => group.matches.length));
 }
 
 export function computeMatchNumbers(
   upperRounds: RoundGroup[],
   lowerRounds: RoundGroup[],
-  finalRounds: RoundGroup[],
+  finalRounds: RoundGroup[]
 ): Map<number, number> {
   const numbers = new Map<number, number>();
   let counter = 1;
@@ -62,9 +66,7 @@ export function computeMatchNumbers(
 }
 
 export function getDoubleEliminationFinalRounds(encounters: Encounter[]): Set<number> {
-  const positiveRoundGroups = buildRoundGroups(
-    encounters.filter((match) => match.round > 0),
-  );
+  const positiveRoundGroups = buildRoundGroups(encounters.filter((match) => match.round > 0));
 
   if (positiveRoundGroups.length === 0) {
     return new Set();
@@ -79,9 +81,7 @@ export function getDoubleEliminationFinalRounds(encounters: Encounter[]): Set<nu
   }
 
   const finalRoundCount = Math.max(1, trailingSingleMatchRounds - 1);
-  return new Set(
-    positiveRoundGroups.slice(-finalRoundCount).map((group) => group.round),
-  );
+  return new Set(positiveRoundGroups.slice(-finalRoundCount).map((group) => group.round));
 }
 
 export function getGrandFinalLabel(round: number, groups: RoundGroup[]): string {
@@ -104,11 +104,15 @@ export function computeSlotHints(
   finalRounds: RoundGroup[],
   matchNumbers: Map<number, number>,
   isDE: boolean,
-  hasBracketConnections: boolean,
+  hasBracketConnections: boolean
 ): Map<number, SlotHint> {
   const hints = new Map<number, SlotHint>();
 
-  function label(match: Encounter, prefix: "W" | "L") {
+  function label(match: Encounter | undefined, prefix: "W" | "L") {
+    if (!match) {
+      return null;
+    }
+
     const matchNumber = matchNumbers.get(match.id);
     return matchNumber != null ? `${prefix} M${matchNumber}` : null;
   }
@@ -121,14 +125,14 @@ export function computeSlotHints(
     const existing = hints.get(target.id) ?? { home: null, away: null };
     hints.set(target.id, {
       ...existing,
-      [slot]: value,
+      [slot]: value
     });
   }
 
   function trackEdges(
     groups: RoundGroup[],
     prefix: "W" | "L",
-    mapper: (matchIndex: number, targetCount: number) => number,
+    mapper: (matchIndex: number, targetCount: number) => number
   ) {
     for (let groupIndex = 0; groupIndex < groups.length - 1; groupIndex += 1) {
       const current = groups[groupIndex].matches;

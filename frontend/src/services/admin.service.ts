@@ -24,6 +24,7 @@ import {
   StageItemCreateInput,
   StageItemInputCreateInput,
   StageItemInputUpdateInput,
+  StageMergeGroupStagesInput,
   ChallongeSyncLogEntry,
   ChallongeTeamSyncPreview,
   ChallongeTeamSyncRequest,
@@ -1158,6 +1159,14 @@ class AdminService {
 
   async deleteStage(stageId: number): Promise<void> {
     await apiFetch("tournament", `admin/stages/${stageId}`, { method: "DELETE" });
+  }
+
+  async mergeGroupStages(stageId: number, data: StageMergeGroupStagesInput): Promise<Stage> {
+    const response = await apiFetch("tournament", `admin/stages/${stageId}/merge-group-stages`, {
+      method: "POST",
+      body: data
+    });
+    return response.json();
   }
 
   async createStageItem(stageId: number, data: StageItemCreateInput): Promise<StageItem> {

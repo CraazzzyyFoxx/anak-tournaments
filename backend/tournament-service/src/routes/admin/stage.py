@@ -114,6 +114,23 @@ async def delete_stage(
     await stage_service.delete_stage(session, stage_id)
 
 
+@router.post("/{stage_id}/merge-group-stages", response_model=schemas.StageRead)
+async def merge_group_stages(
+    stage_id: int,
+    data: admin_schemas.MergeGroupStagesRequest,
+    session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_permission("tournament", "update")),
+):
+    """Merge legacy one-group stages into the selected grouped stage."""
+    stage = await stage_service.merge_group_stages(
+        session,
+        target_stage_id=stage_id,
+        source_stage_ids=data.source_stage_ids,
+        target_name=data.target_name,
+    )
+    return schemas.StageRead.model_validate(stage, from_attributes=True)
+
+
 @router.post(
     "/{stage_id}/items",
     response_model=schemas.StageItemRead,

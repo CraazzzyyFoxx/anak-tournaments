@@ -189,6 +189,251 @@ async def delete_stage(session: AsyncSession, stage_id: int) -> None:
     await _publish_tournament_changed(tournament_id, "structure_changed")
 
 
+def _map_veto_signature(config: models.MapVetoConfig) -> tuple[tuple, tuple]:
+    return (
+        tuple(config.veto_sequence_json or []),
+        tuple(config.map_pool_ids or []),
+    )
+
+
+async def _merge_map_veto_configs(
+    session: AsyncSession,
+    *,
+    target_stage: models.Stage,
+    source_stage_ids: list[int],
+) -> None:
+    target_result = await session.execute(
+        select(models.MapVetoConfig).where(
+            models.MapVetoConfig.tournament_id == target_stage.tournament_id,
+            models.MapVetoConfig.stage_id == target_stage.id,
+        )
+    )
+    target_configs = list(target_result.scalars().all())
+    if len(target_configs) > 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Target stage has multiple map veto configs; resolve them before merging",
+        )
+
+    source_result = await session.execute(
+        select(models.MapVetoConfig).where(
+            models.MapVetoConfig.tournament_id == target_stage.tournament_id,
+            models.MapVetoConfig.stage_id.in_(source_stage_ids),
+        )
+    )
+    source_configs = list(source_result.scalars().all())
+    if not source_configs:
+        return
+
+    if target_configs:
+        for config in source_configs:
+            await session.delete(config)
+        return
+
+    signatures = {_map_veto_signature(config) for config in source_configs}
+    if len(signatures) > 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Source stages have different map veto configs; keep one "
+                "target config before merging"
+            ),
+        )
+
+    keeper = source_configs[0]
+    keeper.stage_id = target_stage.id
+    for config in source_configs[1:]:
+        await session.delete(config)
+
+
+async def _retarget_stage_rows(
+    session: AsyncSession,
+    model,
+    *,
+    source_stage_ids: list[int],
+    target_stage_id: int,
+) -> None:
+    result = await session.execute(
+        select(model).where(model.stage_id.in_(source_stage_ids))
+    )
+    for row in result.scalars().all():
+        row.stage_id = target_stage_id
+
+
+async def _reindex_tournament_stages(
+    session: AsyncSession,
+    *,
+    tournament_id: int,
+    removed_stage_ids: set[int],
+) -> None:
+    result = await session.execute(
+        select(models.Stage)
+        .where(
+            models.Stage.tournament_id == tournament_id,
+            ~models.Stage.id.in_(removed_stage_ids),
+        )
+        .order_by(models.Stage.order.asc(), models.Stage.id.asc())
+    )
+    for index, stage in enumerate(result.scalars().all()):
+        stage.order = index
+
+
+async def merge_group_stages(
+    session: AsyncSession,
+    *,
+    target_stage_id: int,
+    source_stage_ids: list[int],
+    target_name: str | None = None,
+) -> models.Stage:
+    """Merge old one-group stages into one grouped stage.
+
+    Old tournaments were migrated as A/B/C/D separate Stage rows. The modern
+    shape is one grouped Stage with A/B/C/D as StageItem rows, so this moves
+    source items and all stage-scoped references to the selected target stage.
+    """
+    target_stage = await get_stage(session, target_stage_id)
+    if target_stage.stage_type not in GROUPED_GENERATION_STAGE_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Target stage must be ROUND_ROBIN or SWISS",
+        )
+
+    unique_source_stage_ids = list(dict.fromkeys(source_stage_ids))
+    if len(unique_source_stage_ids) != len(source_stage_ids):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="source_stage_ids must not contain duplicates",
+        )
+    if target_stage_id in unique_source_stage_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Target stage cannot be included in source_stage_ids",
+        )
+
+    stages_result = await session.execute(
+        select(models.Stage).where(models.Stage.id.in_(unique_source_stage_ids))
+    )
+    source_by_id = {stage.id: stage for stage in stages_result.scalars().all()}
+    missing = [stage_id for stage_id in unique_source_stage_ids if stage_id not in source_by_id]
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Source stages not found: {missing}",
+        )
+
+    source_stages = [source_by_id[stage_id] for stage_id in unique_source_stage_ids]
+    for source_stage in source_stages:
+        if source_stage.tournament_id != target_stage.tournament_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="All source stages must belong to the target tournament",
+            )
+        if source_stage.stage_type != target_stage.stage_type:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="All merged group stages must have the same stage type",
+            )
+
+    items_result = await session.execute(
+        select(models.StageItem)
+        .join(models.Stage, models.StageItem.stage_id == models.Stage.id)
+        .where(models.StageItem.stage_id.in_(unique_source_stage_ids))
+        .order_by(
+            models.Stage.order.asc(),
+            models.Stage.id.asc(),
+            models.StageItem.order.asc(),
+            models.StageItem.id.asc(),
+        )
+    )
+    source_items = list(items_result.scalars().all())
+    if not source_items:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Source stages have no stage items to merge",
+        )
+
+    all_items = [
+        *sorted(target_stage.items, key=lambda item: (item.order, item.id)),
+        *source_items,
+    ]
+    if any(item.type != enums.StageItemType.GROUP for item in all_items):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only group stage items can be merged",
+        )
+
+    seen_names: set[str] = set()
+    for item in all_items:
+        normalized_name = item.name.strip().lower()
+        if normalized_name in seen_names:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f'Duplicate group name "{item.name}" would be created',
+            )
+        seen_names.add(normalized_name)
+
+    await _merge_map_veto_configs(
+        session,
+        target_stage=target_stage,
+        source_stage_ids=unique_source_stage_ids,
+    )
+
+    for model in (
+        models.TournamentGroup,
+        models.Encounter,
+        models.Standing,
+        models.ChallongeSource,
+    ):
+        await _retarget_stage_rows(
+            session,
+            model,
+            source_stage_ids=unique_source_stage_ids,
+            target_stage_id=target_stage.id,
+        )
+
+    target_items = sorted(target_stage.items, key=lambda item: (item.order, item.id))
+    stage_order_by_id = {
+        target_stage.id: target_stage.order,
+        **{stage.id: stage.order for stage in source_stages},
+    }
+    ordered_items = sorted(
+        [*target_items, *source_items],
+        key=lambda item: (stage_order_by_id.get(item.stage_id, 0), item.order, item.id),
+    )
+    for order, item in enumerate(ordered_items):
+        item.stage_id = target_stage.id
+        item.order = order
+
+    next_target_name = target_name.strip() if target_name else ""
+    if next_target_name:
+        target_stage.name = next_target_name
+    target_stage.is_active = target_stage.is_active or any(stage.is_active for stage in source_stages)
+    target_stage.is_completed = target_stage.is_completed and all(
+        stage.is_completed for stage in source_stages
+    )
+
+    await session.flush()
+    for source_stage in source_stages:
+        await session.delete(source_stage)
+
+    await _reindex_tournament_stages(
+        session,
+        tournament_id=target_stage.tournament_id,
+        removed_stage_ids=set(unique_source_stage_ids),
+    )
+    await session.commit()
+    await standings_service.recalculate_for_tournament(session, target_stage.tournament_id)
+    await _publish_tournament_changed(target_stage.tournament_id, "structure_changed")
+
+    logger.info(
+        "Merged %d source group stages into stage %s for tournament %s",
+        len(source_stage_ids),
+        target_stage.id,
+        target_stage.tournament_id,
+    )
+    return await get_stage(session, target_stage.id)
+
+
 async def _ensure_stage_item_compat_group(
     session: AsyncSession,
     stage: models.Stage,

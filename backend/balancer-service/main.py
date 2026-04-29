@@ -23,6 +23,7 @@ from shared.observability import (
 from shared.schemas import HealthCheckResponse
 from src.core.config import config
 from src.core.job_store import close_job_store
+from src.infrastructure.security.api_key_limiter import close_api_key_limiter
 from src.presentation.http.public_router import router, task_router
 from src.routes.admin import router as organizer_router
 
@@ -73,6 +74,7 @@ async def lifespan(app: FastAPI):
 
     await auth_client.close()  # Close connection pool
     await close_job_store()
+    await close_api_key_limiter()
     logger.info("Shutting down Balancer Service...")
 
 

@@ -52,6 +52,7 @@ class TournamentServiceSmokeTests(IsolatedAsyncioTestCase):
         )
         self.assertIn("/admin/tournaments", paths)
         self.assertIn("/admin/stages/tournament/{tournament_id}", paths)
+        self.assertIn("/admin/stages/{stage_id}/merge-group-stages", paths)
         self.assertIn("/admin/teams", paths)
         self.assertIn("/admin/encounters/bulk", paths)
         self.assertIn("/admin/standings/recalculate/{tournament_id}", paths)

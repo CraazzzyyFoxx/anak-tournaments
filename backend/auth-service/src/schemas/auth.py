@@ -1,5 +1,6 @@
 import re
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
@@ -14,6 +15,7 @@ __all__ = (
     "ServiceTokenRequest",
     "ServiceToken",
     "ServiceTokenPayload",
+    "TokenApiKeyInfo",
     "AuthLinkedPlayer",
     "AuthUser",
     "UserUpdate",
@@ -97,6 +99,17 @@ class WorkspaceMembership(BaseModel):
     rbac_permissions: list[dict[str, str]] = Field(default_factory=list)
 
 
+class TokenApiKeyInfo(BaseModel):
+    """API key metadata returned by token validation for downstream services."""
+
+    id: int
+    public_id: str
+    workspace_id: int
+    scopes: list[str] = Field(default_factory=list)
+    limits: dict = Field(default_factory=dict)
+    config_policy: dict = Field(default_factory=dict)
+
+
 class TokenPayload(BaseModel):
     """Schema for JWT token payload"""
 
@@ -107,6 +120,8 @@ class TokenPayload(BaseModel):
     roles: list[str] = Field(default_factory=list)  # List of role names
     permissions: list[dict[str, str]] = Field(default_factory=list)  # List of {resource, action} dicts
     workspaces: list[WorkspaceMembership] = Field(default_factory=list)
+    credential_type: Literal["access_token", "api_key"] = "access_token"
+    api_key: TokenApiKeyInfo | None = None
     exp: int | None = None
 
 

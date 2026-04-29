@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   ChevronDown,
   GitBranch,
+  GitMerge,
   Link2,
   Loader2,
   Pencil,
@@ -162,6 +163,23 @@ function getInputDisplayLabel(
   return "Empty slot";
 }
 
+function isMergeableGroupStage(stage: Stage) {
+  return (
+    GROUP_STAGE_TYPES.includes(stage.stage_type) &&
+    stage.items.length > 0 &&
+    stage.items.every((item) => item.type === "group")
+  );
+}
+
+function getDefaultMergedStageName(stage: Stage) {
+  const stageName = stage.name.trim();
+  const itemNames = new Set(stage.items.map((item) => item.name.trim().toLowerCase()));
+  if (!stageName || itemNames.has(stageName.toLowerCase()) || /^[a-z]$/i.test(stageName)) {
+    return "Groups";
+  }
+  return stageName;
+}
+
 export function StageManager({ tournamentId }: StageManagerProps) {
   const queryClient = useQueryClient();
   const { isSuperuser } = usePermissions();
@@ -300,6 +318,26 @@ export function StageManager({ tournamentId }: StageManagerProps) {
     onSuccess: () => {
       setStageToDelete(null);
       setSelectedStageId(null);
+      invalidateStageData();
+    }
+  });
+
+  const mergeGroupStagesMutation = useMutation({
+    mutationFn: ({
+      targetStageId,
+      sourceStageIds,
+      targetName
+    }: {
+      targetStageId: number;
+      sourceStageIds: number[];
+      targetName: string;
+    }) =>
+      adminService.mergeGroupStages(targetStageId, {
+        source_stage_ids: sourceStageIds,
+        target_name: targetName
+      }),
+    onSuccess: (stage) => {
+      setSelectedStageId(stage.id);
       invalidateStageData();
     }
   });
@@ -486,6 +524,16 @@ export function StageManager({ tournamentId }: StageManagerProps) {
     selectedItemDraft.type === "group"
       ? `Group ${(selectedStage?.items.length ?? 0) + 1}`
       : "Bracket";
+  const mergeableGroupStageCandidates =
+    selectedStage && isMergeableGroupStage(selectedStage)
+      ? orderedStages.filter(
+          (stage) =>
+            stage.id !== selectedStage.id &&
+            stage.stage_type === selectedStage.stage_type &&
+            isMergeableGroupStage(stage)
+        )
+      : [];
+  const mergedStageName = selectedStage ? getDefaultMergedStageName(selectedStage) : "Groups";
   const groupStages = selectedStage
     ? orderedStages.filter(
         (stage) => GROUP_STAGE_TYPES.includes(stage.stage_type) && stage.id !== selectedStage.id
@@ -744,6 +792,45 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                               <Shuffle className="size-4" />
                             )}
                             Seed by SR
+                          </Button>
+                        ) : null}
+
+                        {mergeableGroupStageCandidates.length > 0 ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={
+                              mergeGroupStagesMutation.isPending &&
+                              mergeGroupStagesMutation.variables?.targetStageId ===
+                                selectedStage.id
+                            }
+                            onClick={() => {
+                              const sourceNames = mergeableGroupStageCandidates
+                                .map((stage) => stage.name)
+                                .join(", ");
+                              const confirmed = window.confirm(
+                                `Merge ${mergeableGroupStageCandidates.length + 1} ${STAGE_TYPE_LABELS[selectedStage.stage_type]} stages into "${mergedStageName}"?\n\n` +
+                                  `${sourceNames} will be removed from the timeline after their groups, matches, and standings move into this stage.`
+                              );
+                              if (!confirmed) return;
+                              mergeGroupStagesMutation.mutate({
+                                targetStageId: selectedStage.id,
+                                sourceStageIds: mergeableGroupStageCandidates.map((stage) => stage.id),
+                                targetName: mergedStageName
+                              });
+                            }}
+                            title="Merge legacy one-group stages into this grouped stage"
+                          >
+                            {mergeGroupStagesMutation.isPending &&
+                            mergeGroupStagesMutation.variables?.targetStageId === selectedStage.id ? (
+                              <Loader2 className="size-4 animate-spin" />
+                            ) : (
+                              <GitMerge className="size-4" />
+                            )}
+                            {mergeGroupStagesMutation.isPending &&
+                            mergeGroupStagesMutation.variables?.targetStageId === selectedStage.id
+                              ? "Merging..."
+                              : "Merge Groups"}
                           </Button>
                         ) : null}
 

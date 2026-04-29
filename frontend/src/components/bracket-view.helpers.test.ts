@@ -6,6 +6,7 @@ import {
   computeMatchNumbers,
   computeSlotHints,
   getDoubleEliminationFinalRounds,
+  getRoundSectionMatchCapacity
 } from "@/components/bracket-view.helpers";
 
 function createEncounter(id: number, round: number): Encounter {
@@ -39,11 +40,27 @@ function createEncounter(id: number, round: number): Encounter {
     tournament: null as never,
     stage: null,
     stage_item: null,
-    tournament_group: null,
+    tournament_group: null
   };
 }
 
 describe("bracket view helpers", () => {
+  it("uses the widest upper round to reserve section height for bye brackets", () => {
+    const rounds = buildRoundGroups([
+      createEncounter(1, 1),
+      createEncounter(2, 2),
+      createEncounter(3, 2),
+      createEncounter(4, 2),
+      createEncounter(5, 2),
+      createEncounter(6, 3),
+      createEncounter(7, 3),
+      createEncounter(8, 4)
+    ]);
+
+    expect(rounds.map((round) => round.matches.length)).toEqual([1, 4, 2, 1]);
+    expect(getRoundSectionMatchCapacity(rounds)).toBe(4);
+  });
+
   it("shows loser source hints for lower bracket slots in double elimination", () => {
     const encounters = [
       createEncounter(1, 1),
@@ -59,42 +76,61 @@ describe("bracket view helpers", () => {
       createEncounter(11, -2),
       createEncounter(12, -2),
       createEncounter(13, -3),
-      createEncounter(14, -4),
+      createEncounter(14, -4)
     ];
 
     const finalRoundNumbers = getDoubleEliminationFinalRounds(encounters);
     const upperRounds = buildRoundGroups(
-      encounters.filter((match) => match.round > 0 && !finalRoundNumbers.has(match.round)),
+      encounters.filter((match) => match.round > 0 && !finalRoundNumbers.has(match.round))
     );
     const lowerRounds = buildRoundGroups(encounters.filter((match) => match.round < 0));
     const finalRounds = buildRoundGroups(
-      encounters.filter((match) => match.round > 0 && finalRoundNumbers.has(match.round)),
+      encounters.filter((match) => match.round > 0 && finalRoundNumbers.has(match.round))
     );
     const matchNumbers = computeMatchNumbers(upperRounds, lowerRounds, finalRounds);
-    const hints = computeSlotHints(
-      upperRounds,
-      lowerRounds,
-      finalRounds,
-      matchNumbers,
-      true,
-      true,
-    );
+    const hints = computeSlotHints(upperRounds, lowerRounds, finalRounds, matchNumbers, true, true);
 
     expect(hints.get(9)).toEqual({
       home: `L M${matchNumbers.get(1)}`,
-      away: `L M${matchNumbers.get(2)}`,
+      away: `L M${matchNumbers.get(2)}`
     });
     expect(hints.get(10)).toEqual({
       home: `L M${matchNumbers.get(3)}`,
-      away: `L M${matchNumbers.get(4)}`,
+      away: `L M${matchNumbers.get(4)}`
     });
     expect(hints.get(11)).toEqual({
       home: `W M${matchNumbers.get(9)}`,
-      away: `L M${matchNumbers.get(5)}`,
+      away: `L M${matchNumbers.get(5)}`
     });
     expect(hints.get(12)).toEqual({
       home: `W M${matchNumbers.get(10)}`,
-      away: `L M${matchNumbers.get(6)}`,
+      away: `L M${matchNumbers.get(6)}`
+    });
+  });
+
+  it("skips missing source hints for uneven double elimination rounds", () => {
+    const encounters = [
+      createEncounter(1, 1),
+      createEncounter(2, 2),
+      createEncounter(3, 3),
+      createEncounter(4, -1)
+    ];
+
+    const finalRoundNumbers = getDoubleEliminationFinalRounds(encounters);
+    const upperRounds = buildRoundGroups(
+      encounters.filter((match) => match.round > 0 && !finalRoundNumbers.has(match.round))
+    );
+    const lowerRounds = buildRoundGroups(encounters.filter((match) => match.round < 0));
+    const finalRounds = buildRoundGroups(
+      encounters.filter((match) => match.round > 0 && finalRoundNumbers.has(match.round))
+    );
+    const matchNumbers = computeMatchNumbers(upperRounds, lowerRounds, finalRounds);
+
+    const hints = computeSlotHints(upperRounds, lowerRounds, finalRounds, matchNumbers, true, true);
+
+    expect(hints.get(4)).toEqual({
+      home: `L M${matchNumbers.get(1)}`,
+      away: null
     });
   });
 });

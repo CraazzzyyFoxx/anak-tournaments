@@ -82,10 +82,23 @@ class CreateBalanceJobTests(IsolatedAsyncioTestCase):
                 return {"algorithm": "moo"}
 
         class FakeJobRepository:
-            async def create_job(self, input_data, config_overrides, *, workspace_id, created_by):
+            async def create_job(
+                self,
+                input_data,
+                config_overrides,
+                *,
+                workspace_id,
+                created_by,
+                job_id=None,
+                credential_type="access_token",
+                api_key_id=None,
+            ):
                 created["input_data"] = input_data
                 created["config_overrides"] = config_overrides
                 created["created_by"] = created_by
+                created["job_id"] = job_id
+                created["credential_type"] = credential_type
+                created["api_key_id"] = api_key_id
                 return "job-123"
 
         class FakePublisher:
@@ -112,6 +125,98 @@ class CreateBalanceJobTests(IsolatedAsyncioTestCase):
         self.assertEqual(created["created_by"], 9)
         self.assertEqual(created["published_job_id"], "job-123")
         self.assertEqual(created["config_overrides"], {"algorithm": "moo"})
+        self.assertEqual(created["credential_type"], "access_token")
+        self.assertIsNone(created["api_key_id"])
+
+    async def test_api_key_create_job_reserves_limit_and_stores_key_metadata(self) -> None:
+        created = {}
+
+        class FakeAccessPolicy:
+            def ensure_workspace_access(self, user, workspace_id: int) -> None:
+                created["workspace_user"] = user.id
+                created["workspace_id"] = workspace_id
+
+        class FakePayloadParser:
+            async def parse_player_data(self, uploaded_file) -> dict:
+                return {"players": {"1": {"name": "Player One"}}}
+
+            def parse_config_overrides(self, raw_config: str | None) -> dict | None:
+                return {"algorithm": "moo", "population_size": 150}
+
+        class FakeJobRepository:
+            async def create_job(
+                self,
+                input_data,
+                config_overrides,
+                *,
+                job_id,
+                workspace_id,
+                created_by,
+                credential_type,
+                api_key_id,
+            ):
+                created["job_id"] = job_id
+                created["input_data"] = input_data
+                created["config_overrides"] = config_overrides
+                created["created_by"] = created_by
+                created["credential_type"] = credential_type
+                created["api_key_id"] = api_key_id
+                created["repository_workspace_id"] = workspace_id
+                return job_id
+
+        class FakePublisher:
+            async def publish_job_requested(self, job_id: str) -> None:
+                created["published_job_id"] = job_id
+
+        class FakeLimiter:
+            async def check_request(self, user) -> None:
+                created["checked_api_key_id"] = user._api_key_id
+
+            async def reserve_job(self, user, job_id: str) -> None:
+                created["reserved_api_key_id"] = user._api_key_id
+                created["reserved_job_id"] = job_id
+
+            async def release_job(self, api_key_id: int, job_id: str) -> None:
+                created["released"] = (api_key_id, job_id)
+
+        user = SimpleNamespace(
+            id=9,
+            _credential_type="api_key",
+            _api_key_id=42,
+            _api_key_limits={
+                "requests_per_minute": 60,
+                "jobs_per_day": 100,
+                "concurrent_jobs": 2,
+                "max_upload_bytes": 10 * 1024 * 1024,
+                "max_players": 500,
+            },
+            _api_key_config_policy={},
+        )
+
+        use_case = CreateBalanceJob(
+            access_policy=FakeAccessPolicy(),
+            payload_parser=FakePayloadParser(),
+            job_repository=FakeJobRepository(),
+            publisher=FakePublisher(),
+            api_key_limiter=FakeLimiter(),
+        )
+
+        response = await use_case.execute(
+            uploaded_file=SimpleNamespace(filename="players.json", size=1024),
+            raw_config='{"algorithm": "moo", "population_size": 150}',
+            workspace_id=77,
+            user=user,
+        )
+
+        self.assertEqual(response.job_id, created["job_id"])
+        self.assertEqual(created["reserved_job_id"], created["job_id"])
+        self.assertEqual(created["published_job_id"], created["job_id"])
+        self.assertEqual(created["checked_api_key_id"], 42)
+        self.assertEqual(created["reserved_api_key_id"], 42)
+        self.assertEqual(created["credential_type"], "api_key")
+        self.assertEqual(created["api_key_id"], 42)
+        self.assertEqual(created["repository_workspace_id"], 77)
+        self.assertNotIn("released", created)
 
 
 class ExecuteBalanceJobTests(IsolatedAsyncioTestCase):

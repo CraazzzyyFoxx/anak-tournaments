@@ -14,14 +14,20 @@ class JobStoreRepository:
         input_data: dict[str, Any],
         config_overrides: dict[str, Any] | None,
         *,
+        job_id: str | None = None,
         workspace_id: int | None = None,
         created_by: int | None = None,
+        credential_type: str = "access_token",
+        api_key_id: int | None = None,
     ) -> str:
         return await self._store.create_job(
             input_data,
             config_overrides,
+            job_id=job_id,
             workspace_id=workspace_id,
             created_by=created_by,
+            credential_type=credential_type,
+            api_key_id=api_key_id,
         )
 
     async def get_job_meta(self, job_id: str) -> dict[str, Any] | None:

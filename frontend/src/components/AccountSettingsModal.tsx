@@ -4,7 +4,8 @@ import type { CSSProperties, ReactNode } from "react";
 import { useEffect } from "react";
 import { type SettingsTab, useAccountSettingsModalStore } from "@/stores/account-settings-modal.store";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { Link2, User as UserIcon, X, MonitorCog, Shield } from "lucide-react";
+import { KeyRound, Link2, User as UserIcon, X, MonitorCog, Shield } from "lucide-react";
+import AccountApiKeysSection from "./account-settings/AccountApiKeysSection";
 import AccountConnectionsSection from "./account-settings/AccountConnectionsSection";
 import AccountSessionsSection from "./account-settings/AccountSessionsSection";
 import { useSearchParams } from "next/navigation";
@@ -13,6 +14,7 @@ const TAB_CONFIG: { id: SettingsTab; label: string; icon: ReactNode }[] = [
   { id: "profile", label: "My Account", icon: <UserIcon className="w-4 h-4" /> },
   { id: "preferences", label: "Preferences", icon: <MonitorCog className="w-4 h-4" /> },
   { id: "connections", label: "Connections", icon: <Link2 className="w-4 h-4" /> },
+  { id: "api-keys", label: "API Keys", icon: <KeyRound className="w-4 h-4" /> },
   { id: "sessions", label: "Sessions", icon: <Shield className="w-4 h-4" /> },
 ];
 
@@ -133,6 +135,18 @@ const AccountSettingsModal = () => {
                     </p>
                   </div>
                   <AccountSessionsSection />
+                </div>
+              )}
+
+              {activeTab === "api-keys" && (
+                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  <div>
+                    <h3 className="text-xl font-semibold tracking-tight text-white">API Keys</h3>
+                    <p className="text-sm text-slate-400 mt-1">
+                      Manage workspace-scoped credentials for the balancer public API.
+                    </p>
+                  </div>
+                  <AccountApiKeysSection />
                 </div>
               )}
             </div>
