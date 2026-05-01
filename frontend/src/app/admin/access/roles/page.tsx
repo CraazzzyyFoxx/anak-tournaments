@@ -2,7 +2,19 @@
 
 import { useMemo, useState } from "react";
 import { ColumnDef } from "@tanstack/react-table";
-import { Building2, Globe, Lock, MoreHorizontal, Pencil, Plus, ShieldAlert, Trash2, Wrench } from "lucide-react";
+import {
+  Building2,
+  CheckSquare,
+  Globe,
+  Lock,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  ShieldAlert,
+  Trash2,
+  Wrench,
+  XSquare,
+} from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
@@ -23,7 +35,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -31,21 +42,60 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useToast } from "@/hooks/use-toast";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import { paginateResults, sortArray } from "@/lib/paginate-results";
 import { rbacService } from "@/services/rbac.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
-import type { RbacRole, RbacRoleDetail, UpsertRolePayload } from "@/types/rbac.types";
+import type { RbacPermission, RbacRole, RbacRoleDetail, UpsertRolePayload } from "@/types/rbac.types";
 
 const PAGE_SIZE = 15;
+const ACTION_ORDER = [
+  "*",
+  "read",
+  "create",
+  "update",
+  "delete",
+  "assign",
+  "import",
+  "export",
+  "sync",
+  "recalculate",
+  "calculate",
+  "publish",
+  "generate",
+  "approve",
+  "reject",
+  "check_in",
+  "upload",
+  "stream",
+  "reprocess",
+  "revoke",
+];
 
 /** "global" = global roles (workspace_id IS NULL), number = workspace-scoped */
 type RoleScope = "global" | number;
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Something went wrong";
+}
+
+function formatPermissionLabel(value: string): string {
+  if (value === "*") {
+    return "All";
+  }
+  return value.replaceAll("_", " ");
+}
+
+function sortActions(left: string, right: string): number {
+  const leftIndex = ACTION_ORDER.indexOf(left);
+  const rightIndex = ACTION_ORDER.indexOf(right);
+  if (leftIndex !== -1 || rightIndex !== -1) {
+    return (leftIndex === -1 ? ACTION_ORDER.length : leftIndex) - (rightIndex === -1 ? ACTION_ORDER.length : rightIndex);
+  }
+  return left.localeCompare(right);
 }
 
 const emptyRoleForm: UpsertRolePayload = {
@@ -61,6 +111,12 @@ function roleToForm(role: RbacRoleDetail): UpsertRolePayload {
     permission_ids: role.permissions.map((permission) => permission.id),
   };
 }
+
+type PermissionMatrixRow = {
+  resource: string;
+  permissions: RbacPermission[];
+  byAction: Map<string, RbacPermission>;
+};
 
 export default function AccessAdminRolesPage() {
   const queryClient = useQueryClient();
@@ -261,14 +317,30 @@ export default function AccessAdminRolesPage() {
     },
   ];
 
-  const groupedPermissions = useMemo(() => {
-    const groups = new Map<string, NonNullable<typeof permissionsQuery.data>>();
+  const permissionMatrix = useMemo(() => {
+    const groups = new Map<string, RbacPermission[]>();
+    const actions = new Set<string>();
+
     for (const permission of permissionsQuery.data ?? []) {
+      actions.add(permission.action);
       const current = groups.get(permission.resource) ?? [];
       current.push(permission);
       groups.set(permission.resource, current);
     }
-    return Array.from(groups.entries()).sort(([left], [right]) => left.localeCompare(right));
+
+    const rows: PermissionMatrixRow[] = Array.from(groups.entries())
+      .map(([resource, permissions]) => ({
+        resource,
+        permissions: [...permissions].sort((left, right) => sortActions(left.action, right.action)),
+        byAction: new Map(permissions.map((permission) => [permission.action, permission])),
+      }))
+      .sort((left, right) => left.resource.localeCompare(right.resource));
+
+    return {
+      actions: Array.from(actions).sort(sortActions),
+      rows,
+      allPermissionIds: rows.flatMap((row) => row.permissions.map((permission) => permission.id)),
+    };
   }, [permissionsQuery.data]);
 
   const isSubmitting = createRoleMutation.isPending || updateRoleMutation.isPending;
@@ -276,6 +348,7 @@ export default function AccessAdminRolesPage() {
   const roleDetail = roleDetailQuery.data?.id === editingRoleId ? roleDetailQuery.data : undefined;
   const currentBaseline = isEditing && roleDetail ? roleToForm(roleDetail) : emptyRoleForm;
   const formData = formOverride ?? currentBaseline;
+  const selectedPermissionIds = useMemo(() => new Set(formData.permission_ids), [formData.permission_ids]);
   const isFormDirty = (createDialogOpen || isEditing) && hasUnsavedChanges(formData, currentBaseline);
 
   const updateFormData = (
@@ -294,6 +367,30 @@ export default function AccessAdminRolesPage() {
         ? [...current.permission_ids, permissionId]
         : current.permission_ids.filter((id) => id !== permissionId),
     }));
+  };
+
+  const setPermissions = (permissionIds: number[]) => {
+    updateFormData((current) => ({
+      ...current,
+      permission_ids: Array.from(new Set(permissionIds)),
+    }));
+  };
+
+  const togglePermissionGroup = (permissionIds: number[], checked: boolean) => {
+    updateFormData((current) => {
+      const next = new Set(current.permission_ids);
+      for (const permissionId of permissionIds) {
+        if (checked) {
+          next.add(permissionId);
+        } else {
+          next.delete(permissionId);
+        }
+      }
+      return {
+        ...current,
+        permission_ids: Array.from(next),
+      };
+    });
   };
 
   const handleSubmit = (event: React.FormEvent) => {
@@ -429,6 +526,7 @@ export default function AccessAdminRolesPage() {
             : undefined
         }
         isDirty={isFormDirty}
+        contentClassName="max-w-5xl"
       >
         <div className="space-y-5">
           {roleDetail?.is_system ? (
@@ -460,45 +558,123 @@ export default function AccessAdminRolesPage() {
           </div>
 
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label>Permission Matrix</Label>
-              <Badge variant="outline">{formData.permission_ids.length} selected</Badge>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2">
+                <Label>Permission Matrix</Label>
+                <Badge variant="outline">
+                  {formData.permission_ids.length}/{permissionMatrix.allPermissionIds.length} selected
+                </Badge>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPermissions(permissionMatrix.allPermissionIds)}
+                  disabled={permissionMatrix.allPermissionIds.length === 0}
+                >
+                  <CheckSquare className="h-4 w-4" />
+                  Grant all
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPermissions([])}
+                  disabled={formData.permission_ids.length === 0}
+                >
+                  <XSquare className="h-4 w-4" />
+                  Revoke all
+                </Button>
+              </div>
             </div>
-            <ScrollArea className="h-80 rounded-md border border-border/60 p-4">
-              <div className="space-y-5">
-                {groupedPermissions.map(([resource, permissions]) => (
-                  <div key={resource} className="space-y-3">
-                    <div>
-                      <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                        {resource}
-                      </p>
-                    </div>
-                    <div className="space-y-3">
-                      {permissions?.map((permission) => {
-                        const checked = formData.permission_ids.includes(permission.id);
-                        return (
-                          <label
-                            key={permission.id}
-                            className="flex cursor-pointer items-start gap-3 rounded-md border border-border/50 p-3"
-                          >
+
+            <div className="max-h-[430px] overflow-auto rounded-md border border-border/60">
+              <Table wrapperClassName="min-w-[760px] overflow-visible">
+                <TableHeader className="sticky top-0 z-10 bg-background">
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="w-[220px] bg-background">Resource</TableHead>
+                    {permissionMatrix.actions.map((action) => {
+                      const actionPermissionIds = permissionMatrix.rows
+                        .map((row) => row.byAction.get(action)?.id)
+                        .filter((permissionId): permissionId is number => permissionId !== undefined);
+                      const checked =
+                        actionPermissionIds.length > 0 &&
+                        actionPermissionIds.every((permissionId) => selectedPermissionIds.has(permissionId));
+
+                      return (
+                        <TableHead key={action} className="min-w-[92px] bg-background text-center">
+                          <div className="flex flex-col items-center gap-1.5">
                             <Checkbox
                               checked={checked}
-                              onCheckedChange={(value) => togglePermission(permission.id, value === true)}
+                              aria-label={`Toggle all ${action} permissions`}
+                              disabled={actionPermissionIds.length === 0}
+                              onCheckedChange={(value) => togglePermissionGroup(actionPermissionIds, value === true)}
                             />
-                            <div className="space-y-1">
-                              <p className="text-sm font-medium">{permission.name}</p>
-                              <p className="text-sm text-muted-foreground">
-                                {permission.description || `${permission.resource}.${permission.action}`}
+                            <span className="text-xs capitalize">{formatPermissionLabel(action)}</span>
+                          </div>
+                        </TableHead>
+                      );
+                    })}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {permissionMatrix.rows.map((row) => {
+                    const rowPermissionIds = row.permissions.map((permission) => permission.id);
+                    const rowChecked =
+                      rowPermissionIds.length > 0 &&
+                      rowPermissionIds.every((permissionId) => selectedPermissionIds.has(permissionId));
+                    const rowSelectedCount = rowPermissionIds.filter((permissionId) =>
+                      selectedPermissionIds.has(permissionId),
+                    ).length;
+
+                    return (
+                      <TableRow key={row.resource}>
+                        <TableCell className="sticky left-0 z-[1] bg-background">
+                          <div className="flex items-center gap-3">
+                            <Checkbox
+                              checked={rowChecked}
+                              aria-label={`Toggle all ${row.resource} permissions`}
+                              onCheckedChange={(value) => togglePermissionGroup(rowPermissionIds, value === true)}
+                            />
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium">
+                                {formatPermissionLabel(row.resource)}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {rowSelectedCount}/{rowPermissionIds.length}
                               </p>
                             </div>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </ScrollArea>
+                          </div>
+                        </TableCell>
+                        {permissionMatrix.actions.map((action) => {
+                          const permission = row.byAction.get(action);
+                          if (!permission) {
+                            return (
+                              <TableCell key={action} className="text-center text-muted-foreground/40">
+                                -
+                              </TableCell>
+                            );
+                          }
+
+                          return (
+                            <TableCell key={action} className="text-center">
+                              <div className="flex justify-center">
+                                <Checkbox
+                                  checked={selectedPermissionIds.has(permission.id)}
+                                  aria-label={`Toggle ${permission.name}`}
+                                  onCheckedChange={(value) => togglePermission(permission.id, value === true)}
+                                />
+                              </div>
+                            </TableCell>
+                          );
+                        })}
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
           </div>
         </div>
       </EntityFormDialog>

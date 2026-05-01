@@ -3,7 +3,6 @@ from fastapi import APIRouter
 from .achievement_rule import library_router as achievement_library_router
 from .achievement_rule import override_router as achievement_override_router
 from .achievement_rule import router as achievement_rule_router
-from .discord_channel import router as discord_channel_router
 from .gamemode import router as gamemode_router
 from .hero import router as hero_router
 from .logs import router as logs_router
@@ -20,7 +19,6 @@ admin_router.include_router(user_router)
 admin_router.include_router(hero_router)
 admin_router.include_router(gamemode_router)
 admin_router.include_router(map_router)
-admin_router.include_router(discord_channel_router)
 admin_router.include_router(logs_router)
 admin_router.include_router(achievement_rule_router)
 admin_router.include_router(achievement_library_router)

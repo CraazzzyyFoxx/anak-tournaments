@@ -25,7 +25,13 @@ def _seed_permissions(connection) -> None:
             sa.text(
                 """
                 INSERT INTO auth.permissions (name, resource, action, description, created_at)
-                VALUES (:name, :resource, :action, :description, now())
+                VALUES (
+                    CAST(:name AS varchar),
+                    CAST(:resource AS varchar),
+                    CAST(:action AS varchar),
+                    CAST(:description AS varchar),
+                    now()
+                )
                 ON CONFLICT (name) DO UPDATE
                 SET resource = EXCLUDED.resource,
                     action = EXCLUDED.action,
@@ -46,11 +52,16 @@ def _ensure_workspace_role(connection, workspace_id: int, role_name: str) -> int
         sa.text(
             """
             INSERT INTO auth.roles (name, description, is_system, workspace_id, created_at)
-            SELECT :name, :description, true, :workspace_id, now()
+            SELECT CAST(:name AS varchar),
+                   CAST(:description AS varchar),
+                   true,
+                   CAST(:workspace_id AS integer),
+                   now()
             WHERE NOT EXISTS (
                 SELECT 1
                 FROM auth.roles
-                WHERE name = :name AND workspace_id = :workspace_id
+                WHERE name = CAST(:name AS varchar)
+                  AND workspace_id = CAST(:workspace_id AS integer)
             )
             """
         ),
@@ -65,8 +76,9 @@ def _ensure_workspace_role(connection, workspace_id: int, role_name: str) -> int
             """
             UPDATE auth.roles
             SET is_system = true,
-                description = COALESCE(description, :description)
-            WHERE name = :name AND workspace_id = :workspace_id
+                description = COALESCE(description, CAST(:description AS varchar))
+            WHERE name = CAST(:name AS varchar)
+              AND workspace_id = CAST(:workspace_id AS integer)
             """
         ),
         {
@@ -76,7 +88,14 @@ def _ensure_workspace_role(connection, workspace_id: int, role_name: str) -> int
         },
     )
     role_id = connection.scalar(
-        sa.text("SELECT id FROM auth.roles WHERE name = :name AND workspace_id = :workspace_id"),
+        sa.text(
+            """
+            SELECT id
+            FROM auth.roles
+            WHERE name = CAST(:name AS varchar)
+              AND workspace_id = CAST(:workspace_id AS integer)
+            """
+        ),
         {"name": role_name, "workspace_id": workspace_id},
     )
     return int(role_id)
@@ -93,9 +112,9 @@ def _replace_role_permissions(connection, role_id: int, permission_names: tuple[
         sa.text(
             """
             INSERT INTO auth.role_permissions (role_id, permission_id, created_at)
-            SELECT :role_id, id, now()
+            SELECT CAST(:role_id AS integer), id, now()
             FROM auth.permissions
-            WHERE name = ANY(:permission_names)
+            WHERE name = ANY(CAST(:permission_names AS varchar[]))
             """
         ),
         {"role_id": role_id, "permission_names": list(permission_names)},
