@@ -59,6 +59,7 @@ import { PRESET_LABELS } from "./balancer-page-helpers";
 import {
   buildTeamNamesText,
   buildVariantFromSavedBalance,
+  downloadPlayersExport,
   type BalanceVariant
 } from "./workspace-helpers";
 
@@ -321,6 +322,30 @@ export function BalancerMainPageClient() {
     onError: (error: Error) => {
       toast({
         title: "Failed to save balancer settings",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  });
+
+  const exportPlayersMutation = useMutation({
+    mutationFn: async () => {
+      const selectedTournamentId = tournamentId;
+      if (!selectedTournamentId) throw new Error("Select a tournament first");
+      const payload = await balancerAdminService.exportPlayers(selectedTournamentId);
+      return { payload, tournamentId: selectedTournamentId };
+    },
+    onSuccess: ({ payload, tournamentId: exportedTournamentId }) => {
+      const playerCount = Object.keys(payload.players).length;
+      downloadPlayersExport(payload, exportedTournamentId);
+      toast({
+        title: "Players exported",
+        description: `${playerCount} player${playerCount === 1 ? "" : "s"} downloaded.`
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to export players",
         description: error.message,
         variant: "destructive"
       });
@@ -708,6 +733,8 @@ export function BalancerMainPageClient() {
               isRunPending={runBalanceMutation.isPending}
               onImportTeams={startJsonImport}
               isImportPending={importTeamsMutation.isPending}
+              onExportPlayers={() => exportPlayersMutation.mutate()}
+              isExportPlayersPending={exportPlayersMutation.isPending}
               jobStatus={jobState.status}
               jobMessage={jobState.message}
               jobProgress={jobState.progress}

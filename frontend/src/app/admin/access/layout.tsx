@@ -3,27 +3,46 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  accessApiKeysPermissions,
   accessPermissionsPermissions,
   accessRolesPermissions,
   accessUsersPermissions,
 } from "@/components/admin/admin-navigation";
 import { cn } from "@/lib/utils";
-import { usePermissions } from "@/hooks/usePermissions";
+import { type AppPermission, usePermissions } from "@/hooks/usePermissions";
 
-const accessNavItems = [
+type AccessNavItem = {
+  href: string;
+  label: string;
+  permissions: AppPermission[];
+  superuserOnly?: boolean;
+  workspaceAdminVisible?: boolean;
+};
+
+const accessNavItems: AccessNavItem[] = [
   { href: "/admin/access/users", label: "Users", permissions: accessUsersPermissions },
   { href: "/admin/access/roles", label: "Roles", permissions: accessRolesPermissions },
   { href: "/admin/access/permissions", label: "Permissions", permissions: accessPermissionsPermissions },
   { href: "/admin/access/oauth", label: "OAuth Connections", permissions: accessUsersPermissions },
+  {
+    href: "/admin/access/api-keys",
+    label: "API Keys",
+    permissions: accessApiKeysPermissions,
+    workspaceAdminVisible: true,
+  },
   { href: "/admin/access/sessions", label: "Sessions", permissions: [], superuserOnly: true },
 ];
 
 export default function AccessAdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { isSuperuser, hasAnyPermission } = usePermissions();
+  const { isSuperuser, hasAnyPermission, hasAnyWorkspacePermission, canManageAnyWorkspace } = usePermissions();
   const visibleNavItems = accessNavItems.filter((item) => {
     if (item.superuserOnly) {
       return isSuperuser;
+    }
+
+    if (item.workspaceAdminVisible) {
+      return isSuperuser || hasAnyWorkspacePermission(item.permissions) || canManageAnyWorkspace();
     }
 
     return isSuperuser || hasAnyPermission(item.permissions);

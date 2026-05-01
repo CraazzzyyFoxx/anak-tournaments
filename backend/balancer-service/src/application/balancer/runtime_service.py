@@ -13,6 +13,7 @@ from src.domain.balancer.config_provider import normalize_config_overrides
 from src.domain.balancer.determinism import build_balancer_seed, derive_balancer_seed
 from src.domain.balancer.moo_backend import run_moo_optimizer
 from src.domain.balancer.progress import ProgressCallback, emit_progress
+from src.domain.balancer.rating_normalizer import RatingNormalizer
 from src.domain.balancer.role_assignment_service import find_feasible_role_assignment
 
 
@@ -191,6 +192,15 @@ def balance_teams_moo(
     )
     mask = config.role_mask
 
+    normalizer = RatingNormalizer(target_max=config.rating_scale_ceiling)
+    normalizer.fit(valid_players)
+    if not normalizer.is_identity:
+        logger.info(
+            f"Normalizing input ratings to canonical ceiling "
+            f"{config.rating_scale_ceiling} (scale factor {normalizer.scale:.4f})"
+        )
+        normalizer.apply(valid_players)
+
     emit_progress(
         progress_callback,
         status="running",
@@ -198,16 +208,24 @@ def balance_teams_moo(
         message="Running moo optimizer",
     )
 
-    pareto_solutions = run_moo_optimizer(
-        valid_players,
-        num_teams,
-        config,
-        progress_callback,
-        role_assignment=role_assignment,
-        seed=optimizer_seed,
-    )
+    try:
+        pareto_solutions = run_moo_optimizer(
+            valid_players,
+            num_teams,
+            config,
+            progress_callback,
+            role_assignment=role_assignment,
+            seed=optimizer_seed,
+        )
+    finally:
+        normalizer.restore_players(valid_players)
+
     if not pareto_solutions:
         raise ValueError("MOO optimizer returned no Pareto solutions.")
+
+    if not normalizer.is_identity:
+        for result_teams, _ in pareto_solutions:
+            normalizer.refresh_team_stats(result_teams)
 
     payloads = [
         _build_response_payload(result, valid_players, mask, config, has_applied_overrides, metrics)

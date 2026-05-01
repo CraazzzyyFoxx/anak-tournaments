@@ -106,11 +106,12 @@ class AuthService:
     @staticmethod
     def get_user_roles_and_permissions(user: models.AuthUser) -> tuple[list[str], list[dict[str, str]]]:
         """Extract roles and permissions from user"""
-        roles = [role.name for role in user.roles]
+        global_roles = [role for role in user.roles if role.workspace_id is None]
+        roles = [role.name for role in global_roles]
         permissions = []
         seen = set()
 
-        for role in user.roles:
+        for role in global_roles:
             for perm in role.permissions:
                 key = f"{perm.resource}:{perm.action}"
                 if key not in seen:

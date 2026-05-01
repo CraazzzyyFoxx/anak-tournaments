@@ -5,64 +5,85 @@ import { useAuthProfileStore } from "@/stores/auth-profile.store";
 
 export type AppRole = "admin" | "tournament_organizer" | "moderator" | "user";
 
-export type AppPermission =
-  | "achievement.calculate"
-  | "achievement.create"
-  | "achievement.delete"
-  | "achievement.read"
-  | "achievement.update"
-  | "user.read"
-  | "user.create"
-  | "user.update"
-  | "user.delete"
-  | "auth_user.read"
-  | "auth_user.update"
-  | "tournament.read"
-  | "tournament.create"
-  | "tournament.update"
-  | "tournament.delete"
-  | "team.read"
-  | "team.create"
-  | "team.import"
-  | "team.update"
-  | "team.delete"
-  | "player.read"
-  | "player.create"
-  | "player.update"
-  | "player.delete"
-  | "match.read"
-  | "match.create"
-  | "match.update"
-  | "match.delete"
-  | "match.sync"
-  | "standing.read"
-  | "standing.update"
-  | "standing.delete"
-  | "standing.recalculate"
-  | "hero.read"
-  | "hero.create"
-  | "hero.update"
-  | "hero.delete"
-  | "hero.sync"
-  | "gamemode.read"
-  | "gamemode.create"
-  | "gamemode.update"
-  | "gamemode.delete"
-  | "gamemode.sync"
-  | "map.read"
-  | "map.create"
-  | "map.update"
-  | "map.delete"
-  | "map.sync"
+const resourcesWithCrud = [
+  "workspace",
+  "workspace_member",
+  "api_key",
+  "user",
+  "tournament",
+  "stage",
+  "team",
+  "player",
+  "match",
+  "standing",
+  "registration_form",
+  "registration",
+  "registration_status",
+  "balancer",
+  "analytics",
+  "achievement",
+  "hero",
+  "gamemode",
+  "map",
+  "division_grid",
+  "log",
+  "discord_channel",
+  "challonge",
+  "asset",
+] as const;
+
+type CrudResource = (typeof resourcesWithCrud)[number];
+type CrudAction = "read" | "create" | "update" | "delete";
+type CrudPermission = `${CrudResource}.${CrudAction}`;
+
+type SpecialPermission =
+  | "admin.*"
   | "role.read"
   | "role.create"
   | "role.update"
   | "role.delete"
   | "role.assign"
   | "permission.read"
-  | "analytics.read"
-  | "analytics.update"
-  | "admin.*";
+  | "auth_user.read"
+  | "auth_user.update"
+  | "oauth_connection.read"
+  | "oauth_connection.delete"
+  | "auth_session.read"
+  | "auth_session.revoke"
+  | "team.import"
+  | "team.export"
+  | "player.import"
+  | "player.export"
+  | "match.sync"
+  | "standing.recalculate"
+  | "registration.approve"
+  | "registration.reject"
+  | "registration.check_in"
+  | "registration_status.check_in"
+  | "balancer.calculate"
+  | "balancer.generate"
+  | "balancer.publish"
+  | "balancer.export"
+  | "analytics.export"
+  | "analytics.recalculate"
+  | "achievement.calculate"
+  | "achievement.import"
+  | "achievement.export"
+  | "hero.sync"
+  | "gamemode.sync"
+  | "map.sync"
+  | "division_grid.import"
+  | "division_grid.export"
+  | "division_grid.publish"
+  | "division_grid.sync"
+  | "log.upload"
+  | "log.stream"
+  | "log.reprocess"
+  | "discord_channel.sync"
+  | "challonge.sync"
+  | "asset.upload";
+
+export type AppPermission = CrudPermission | SpecialPermission;
 
 type AdminRouteAccessOptions = {
   permissions?: AppPermission[];
@@ -88,7 +109,26 @@ export function isAdminPanelRole(role: string): boolean {
 }
 
 export function isWorkspaceAdminRole(role: string | undefined): boolean {
-  return role === "admin" || role === "owner";
+  return role === "owner";
+}
+
+function workspaceHasPermission(
+  workspace: PermissionProfile["workspaces"][number] | undefined,
+  permission: AppPermission,
+): boolean {
+  return workspace?.permissions.includes("admin.*") || workspace?.permissions.includes(permission) || false;
+}
+
+function workspaceHasAnyManagementPermission(
+  workspace: PermissionProfile["workspaces"][number] | undefined,
+): boolean {
+  if (!workspace) return false;
+  return (
+    workspace.permissions.includes("admin.*") ||
+    workspace.permissions.includes("workspace.update") ||
+    workspace.permissions.includes("workspace_member.read") ||
+    workspace.permissions.includes("role.read")
+  );
 }
 
 export function hasWorkspacePermissionForProfile(
@@ -104,10 +144,7 @@ export function hasWorkspacePermissionForProfile(
     return true;
   }
   const workspace = profile.workspaces.find((candidate) => candidate.workspace_id === workspaceId);
-  if (isWorkspaceAdminRole(workspace?.memberRole)) {
-    return true;
-  }
-  return workspace?.permissions.includes(permission) ?? false;
+  return workspaceHasPermission(workspace, permission);
 }
 
 export function canAccessAnyPermissionForProfile(
@@ -122,9 +159,9 @@ export function canAccessAnyPermissionForProfile(
   if (workspaceId == null) {
     return (
       permissions.some((permission) => profile.permissions.includes(permission)) ||
-      profile.workspaces.some((workspace) => isWorkspaceAdminRole(workspace.memberRole)) ||
+      profile.workspaces.some((workspace) => workspace.permissions.includes("admin.*")) ||
       profile.workspaces.some((workspace) =>
-        permissions.some((permission) => workspace.permissions.includes(permission)),
+        permissions.some((permission) => workspaceHasPermission(workspace, permission)),
       )
     );
   }
@@ -178,7 +215,7 @@ export function usePermissions() {
     if (hasWildcard) return true;
     return (
       user.workspaces?.some((workspace) =>
-        permissions.some((permission) => workspace.permissions.includes(permission)),
+        permissions.some((permission) => workspaceHasPermission(workspace, permission)),
       ) ?? false
     );
   };
@@ -187,22 +224,20 @@ export function usePermissions() {
     if (!isAuthenticated || !user) return false;
     if (user.isSuperuser) return true;
     const workspace = user.workspaces?.find((candidate) => candidate.workspace_id === workspaceId);
-    return isWorkspaceAdminRole(workspace?.memberRole);
+    return workspaceHasAnyManagementPermission(workspace);
   };
 
   const canManageAnyWorkspace = (): boolean => {
     if (!isAuthenticated || !user) return false;
     if (user.isSuperuser) return true;
-    return (
-      user.workspaces?.some((workspace) => isWorkspaceAdminRole(workspace.memberRole)) ?? false
-    );
+    return user.workspaces?.some(workspaceHasAnyManagementPermission) ?? false;
   };
 
   const getAdminWorkspaceIds = (): number[] => {
     if (!isAuthenticated || !user) return [];
     return (
       user.workspaces
-        ?.filter((workspace) => isWorkspaceAdminRole(workspace.memberRole))
+        ?.filter(workspaceHasAnyManagementPermission)
         .map((workspace) => workspace.workspace_id) ?? []
     );
   };

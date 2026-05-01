@@ -9,6 +9,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 
 from shared.clients import AuthClient
 from shared.core.middleware import ExceptionMiddleware, RequestSizeLimitMiddleware
+from shared.core.scalar import register_scalar_docs
 from shared.observability import (
     CorrelationIdMiddleware,
     TimeMiddleware,
@@ -88,6 +89,7 @@ app = FastAPI(
     root_path="/api/balancer",
     default_response_class=JSONResponse,
 )
+register_scalar_docs(app)
 
 # Store auth_client on app state for dependency injection
 app.state.auth_client = auth_client

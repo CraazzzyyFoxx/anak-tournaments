@@ -9,6 +9,7 @@ from loguru import logger
 from shared.models.oauth import OAuthConnection
 from shared.models.rbac import Permission, Role, role_permissions, user_roles
 from shared.models.workspace import WorkspaceMember
+from shared.rbac import user_has_only_workspace_owner_role
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -17,8 +18,8 @@ from src import models, schemas
 from src.core import db
 from src.services import auth_service
 from src.services.player_link_service import PlayerLinkService
-from src.services.session_service import SessionService
 from src.services.session_cache import invalidate_rbac
+from src.services.session_service import SessionService
 
 router = APIRouter(prefix="/rbac", tags=["RBAC"])
 
@@ -31,10 +32,19 @@ def _permission_key(resource: str, action: str) -> str:
     return f"{resource}.{action}"
 
 
+def _has_global_permission(user: models.AuthUser, resource: str, action: str) -> bool:
+    return bool(getattr(user, "is_superuser", False)) or user.has_permission(resource, action)
+
+
+def _has_workspace_permission(user: models.AuthUser, workspace_id: int, resource: str, action: str) -> bool:
+    return bool(getattr(user, "is_superuser", False)) or user.has_workspace_permission(workspace_id, resource, action)
+
+
 def _effective_permissions(user: models.AuthUser) -> list[str]:
     keys = {
         _permission_key(permission.resource, permission.action)
         for role in user.roles
+        if role.workspace_id is None
         for permission in role.permissions
     }
     return sorted(keys)
@@ -61,6 +71,17 @@ def _linked_players_payload(user: models.AuthUser) -> list[schemas.AuthUserLinke
     ]
 
 
+def _global_roles(user: models.AuthUser) -> list[Role]:
+    return [role for role in user.roles if role.workspace_id is None]
+
+
+def _auth_user_list_payload(user: models.AuthUser) -> dict:
+    payload = schemas.AuthUserListRead.model_validate(user, from_attributes=True).model_dump()
+    payload["roles"] = _global_roles(user)
+    payload["linked_players"] = _linked_players_payload(user)
+    return payload
+
+
 async def _count_users_with_role(session: AsyncSession, role_id: int) -> int:
     result = await session.execute(select(user_roles.c.user_id).where(user_roles.c.role_id == role_id))
     return len(result.scalars().all())
@@ -73,21 +94,16 @@ async def _invalidate_users_with_role(session: AsyncSession, role_id: int) -> No
         await invalidate_rbac(uid)
 
 
-def _check_workspace_admin(user: models.AuthUser, workspace_id: int) -> None:
-    """Raise 403 if user is not admin/owner of the given workspace."""
-    if not user.is_workspace_admin(workspace_id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Workspace admin or owner role required",
-        )
-
-
 def _check_role_access(user: models.AuthUser, role: Role, required_action: str) -> None:
     """Check access control for a role based on its scope (global vs workspace)."""
     if role.workspace_id is not None:
-        _check_workspace_admin(user, role.workspace_id)
+        if not _has_workspace_permission(user, role.workspace_id, "role", required_action):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Permission denied: role.{required_action} required",
+            )
     else:
-        if not user.has_permission("role", required_action):
+        if not _has_global_permission(user, "role", required_action):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Permission denied: role.{required_action} required",
@@ -98,9 +114,21 @@ def _check_role_access(user: models.AuthUser, role: Role, required_action: str) 
 @router.get("/permissions", response_model=list[schemas.PermissionRead])
 async def list_permissions(
     session: Annotated[AsyncSession, Depends(db.get_async_session)],
-    current_user: Annotated[models.AuthUser, Depends(auth_service.require_permission("permission", "read"))],
+    current_user: Annotated[models.AuthUser, Depends(auth_service.get_current_active_user)],
+    workspace_id: Annotated[int | None, Query(description="Workspace scope for role managers.")] = None,
 ):
     """List all permissions visible to RBAC operators."""
+    if workspace_id is None:
+        if not _has_global_permission(current_user, "permission", "read"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permission denied: permission.read required",
+            )
+    elif not _has_workspace_permission(current_user, workspace_id, "permission", "read"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permission denied: permission.read required",
+        )
     result = await session.execute(select(Permission))
     permissions = result.scalars().all()
     return permissions
@@ -168,13 +196,13 @@ async def list_roles(
     query = select(Role)
 
     if workspace_id is not None:
-        # Workspace-scoped roles: user must be workspace admin/owner or have global role.read
-        if not current_user.is_workspace_admin(workspace_id) and not current_user.has_permission("role", "read"):
+        # Workspace-scoped roles: user must have workspace role.read or global role.read.
+        if not _has_workspace_permission(current_user, workspace_id, "role", "read") and not _has_global_permission(current_user, "role", "read"):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
         query = query.where(Role.workspace_id == workspace_id)
     else:
         # Global roles only: require role.read permission
-        if not current_user.has_permission("role", "read"):
+        if not _has_global_permission(current_user, "role", "read"):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied: role.read required")
         query = query.where(Role.workspace_id.is_(None))
 
@@ -198,10 +226,10 @@ async def get_role(
 
     # Access control based on scope
     if role.workspace_id is not None:
-        if not current_user.is_workspace_admin(role.workspace_id) and not current_user.has_permission("role", "read"):
+        if not _has_workspace_permission(current_user, role.workspace_id, "role", "read") and not _has_global_permission(current_user, "role", "read"):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     else:
-        if not current_user.has_permission("role", "read"):
+        if not _has_global_permission(current_user, "role", "read"):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied: role.read required")
 
     return role
@@ -216,7 +244,11 @@ async def create_role(
     """Create a new role (global or workspace-scoped)."""
     # Access control
     if role_data.workspace_id is not None:
-        _check_workspace_admin(current_user, role_data.workspace_id)
+        if not _has_workspace_permission(current_user, role_data.workspace_id, "role", "create"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permission denied: role.create required",
+            )
         # Verify workspace exists
         ws_result = await session.execute(
             select(models.Workspace.id).where(models.Workspace.id == role_data.workspace_id)
@@ -224,7 +256,7 @@ async def create_role(
         if not ws_result.scalar_one_or_none():
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
     else:
-        if not current_user.has_permission("role", "create"):
+        if not _has_global_permission(current_user, "role", "create"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Permission denied: role.create required",
@@ -343,13 +375,25 @@ async def delete_role(
 @router.get("/users", response_model=list[schemas.AuthUserListRead])
 async def list_auth_users(
     session: Annotated[AsyncSession, Depends(db.get_async_session)],
-    current_user: Annotated[models.AuthUser, Depends(auth_service.require_permission("auth_user", "read"))],
+    current_user: Annotated[models.AuthUser, Depends(auth_service.get_current_active_user)],
     search: str | None = None,
     role_id: int | None = None,
     is_active: bool | None = None,
     is_superuser: bool | None = None,
+    workspace_id: int | None = None,
 ):
     """List auth users with assigned roles."""
+    if workspace_id is None:
+        if not _has_global_permission(current_user, "auth_user", "read"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permission denied: auth_user.read required",
+            )
+    elif not _has_workspace_permission(current_user, workspace_id, "auth_user", "read"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permission denied: auth_user.read required",
+        )
 
     users = await auth_service.AuthService.list_users_with_rbac(
         session,
@@ -359,15 +403,7 @@ async def list_auth_users(
         is_superuser=is_superuser,
         include_player_links=True,
     )
-    return [
-        schemas.AuthUserListRead.model_validate(
-            {
-                **schemas.AuthUserListRead.model_validate(user, from_attributes=True).model_dump(),
-                "linked_players": _linked_players_payload(user),
-            }
-        )
-        for user in users
-    ]
+    return [schemas.AuthUserListRead.model_validate(_auth_user_list_payload(user)) for user in users]
 
 
 @router.get("/users/{user_id}", response_model=schemas.AuthUserDetailRead)
@@ -385,8 +421,7 @@ async def get_auth_user(
             detail="User not found",
         )
 
-    payload = schemas.AuthUserListRead.model_validate(user, from_attributes=True).model_dump()
-    payload["linked_players"] = _linked_players_payload(user)
+    payload = _auth_user_list_payload(user)
     payload["effective_permissions"] = _effective_permissions(user)
     return schemas.AuthUserDetailRead.model_validate(payload)
 
@@ -447,7 +482,11 @@ async def assign_role_to_user(
 
     # Access control based on role's scope
     if role.workspace_id is not None:
-        _check_workspace_admin(current_user, role.workspace_id)
+        if not _has_workspace_permission(current_user, role.workspace_id, "role", "assign"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permission denied: role.assign required",
+            )
         # Target user must be a workspace member
         member_result = await session.execute(
             select(WorkspaceMember).where(
@@ -461,7 +500,7 @@ async def assign_role_to_user(
                 detail="Target user must be a member of the workspace",
             )
     else:
-        if not current_user.has_permission("role", "assign"):
+        if not _has_global_permission(current_user, "role", "assign"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Permission denied: role.assign required",
@@ -500,9 +539,13 @@ async def remove_role_from_user(
 
     # Access control based on role's scope
     if role.workspace_id is not None:
-        _check_workspace_admin(current_user, role.workspace_id)
+        if not _has_workspace_permission(current_user, role.workspace_id, "role", "assign"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permission denied: role.assign required",
+            )
     else:
-        if not current_user.has_permission("role", "assign"):
+        if not _has_global_permission(current_user, "role", "assign"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Permission denied: role.assign required",
@@ -512,7 +555,14 @@ async def remove_role_from_user(
     if role not in user.roles:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User does not have this role")
 
-    if role.name in ADMIN_EQUIVALENT_ROLE_NAMES:
+    if role.workspace_id is not None and role.name == "owner":
+        if await user_has_only_workspace_owner_role(session, user_id=data.user_id, workspace_id=role.workspace_id):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot remove the last workspace owner role assignment",
+            )
+
+    if role.workspace_id is None and role.name in ADMIN_EQUIVALENT_ROLE_NAMES:
         role_assignment_count = await _count_users_with_role(session, role.id)
         if role_assignment_count <= 1:
             raise HTTPException(
@@ -541,7 +591,7 @@ async def get_user_roles(
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    return user.roles
+    return _global_roles(user)
 
 
 @router.get("/oauth-connections", response_model=list[schemas.OAuthConnectionAdminRead])

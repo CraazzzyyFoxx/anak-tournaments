@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 from shared.clients import AuthClient, S3Client
 from shared.core.middleware import ExceptionMiddleware, RequestSizeLimitMiddleware
+from shared.core.scalar import register_scalar_docs
 from shared.observability import (
     CorrelationIdMiddleware,
     TimeMiddleware,
@@ -102,6 +103,7 @@ app = FastAPI(
     root_path=config.settings.api_v1_str,
     default_response_class=JSONResponse,
 )
+register_scalar_docs(app)
 
 # Store clients on app state for dependency injection
 app.state.auth_client = auth_client

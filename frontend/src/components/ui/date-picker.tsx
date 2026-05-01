@@ -1,10 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { CalendarIcon } from "lucide-react";
+import { CalendarIcon, ChevronDownIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 interface DatePickerProps {
@@ -14,7 +16,29 @@ interface DatePickerProps {
   id?: string;
 }
 
+interface DateTimePickerProps {
+  clearLabel?: string;
+  dateLabel?: string;
+  disabled?: boolean;
+  id?: string;
+  minDate?: Date;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  timeLabel?: string;
+  timeId?: string;
+  value?: string | null;
+}
+
 function formatDisplay(date: Date | undefined): string {
+  if (!date) return "";
+  return date.toLocaleDateString("en-US", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function formatDateTimeDisplay(date: Date | undefined): string {
   if (!date) return "";
   return date.toLocaleDateString("en-US", {
     day: "2-digit",
@@ -29,11 +53,47 @@ function parseDateValue(value?: string): Date | undefined {
   return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
+function parseDateTimeValue(value?: string | null): Date | undefined {
+  if (!value) return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
 function toIsoDate(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function toLocalDateTime(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function getTimeValue(date: Date | undefined): string {
+  if (!date) return "";
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+function withTime(date: Date, timeValue: string): Date {
+  const [hours = "12", minutes = "00", seconds = "00"] = timeValue.split(":");
+  const next = new Date(date);
+  next.setHours(Number(hours), Number(minutes), Number(seconds), 0);
+  return next;
+}
+
+function isBeforeMinDate(date: Date, minDate: Date | undefined): boolean {
+  if (!minDate) return false;
+  const target = new Date(date);
+  target.setHours(0, 0, 0, 0);
+  const min = new Date(minDate);
+  min.setHours(0, 0, 0, 0);
+  return target < min;
 }
 
 export function DatePicker({ value, onChange, placeholder = "Pick a date", id }: DatePickerProps) {
@@ -77,5 +137,96 @@ export function DatePicker({ value, onChange, placeholder = "Pick a date", id }:
         />
       </PopoverContent>
     </Popover>
+  );
+}
+
+export function DateTimePicker({
+  clearLabel = "Clear",
+  dateLabel = "Date",
+  disabled = false,
+  id,
+  minDate,
+  onChange,
+  placeholder = "Select date",
+  timeLabel = "Time",
+  timeId,
+  value,
+}: DateTimePickerProps) {
+  const [open, setOpen] = React.useState(false);
+  const selected = React.useMemo(() => parseDateTimeValue(value), [value]);
+  const timeValue = getTimeValue(selected);
+
+  return (
+    <FieldGroup className="gap-2">
+      <FieldGroup className="flex-col gap-2 sm:flex-row">
+        <Field className="min-w-0 flex-1 gap-1.5" data-disabled={disabled}>
+          <FieldLabel htmlFor={id}>{dateLabel}</FieldLabel>
+          <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                id={id}
+                type="button"
+                variant="outline"
+                data-empty={!selected}
+                disabled={disabled}
+                className={cn(
+                  "w-full justify-between font-normal",
+                  "data-[empty=true]:text-muted-foreground"
+                )}
+              >
+                <span className="truncate">
+                  {selected ? formatDateTimeDisplay(selected) : placeholder}
+                </span>
+                <ChevronDownIcon data-icon="inline-end" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto overflow-hidden p-0" align="start">
+              <Calendar
+                mode="single"
+                selected={selected}
+                defaultMonth={selected}
+                disabled={(date) => isBeforeMinDate(date, minDate)}
+                onSelect={(date) => {
+                  if (!date) {
+                    onChange("");
+                    setOpen(false);
+                    return;
+                  }
+                  onChange(toLocalDateTime(withTime(date, timeValue || "12:00")));
+                  setOpen(false);
+                }}
+              />
+            </PopoverContent>
+          </Popover>
+        </Field>
+        <Field className="gap-1.5 sm:w-32 sm:shrink-0" data-disabled={disabled}>
+          <FieldLabel htmlFor={timeId}>{timeLabel}</FieldLabel>
+          <Input
+            id={timeId}
+            type="time"
+            step="1"
+            value={timeValue}
+            disabled={disabled}
+            className="appearance-none bg-background [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
+            onChange={(event) => {
+              const baseDate = selected ?? new Date();
+              onChange(toLocalDateTime(withTime(baseDate, event.target.value || "12:00")));
+            }}
+          />
+        </Field>
+      </FieldGroup>
+      {selected ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 w-fit px-2 text-muted-foreground"
+          disabled={disabled}
+          onClick={() => onChange("")}
+        >
+          {clearLabel}
+        </Button>
+      ) : null}
+    </FieldGroup>
   );
 }

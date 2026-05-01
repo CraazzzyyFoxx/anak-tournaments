@@ -55,8 +55,6 @@ class WorkspaceAccessPolicy:
                 detail=f"Permission denied for workspace {workspace_id}: {resource}.{action} required",
             )
 
-        if user.has_role("tournament_organizer"):
-            return
         if user.has_workspace_permission(workspace_id, resource, action):
             return
         raise HTTPException(

@@ -6,7 +6,6 @@ import { Globe, MonitorSmartphone, Shield } from "lucide-react";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -23,21 +22,25 @@ const PAGE_SIZE = 20;
 const STATUS_META: Record<
   AdminSessionStatus,
   {
+    dotClassName: string;
     label: string;
-    className: string;
+    textClassName: string;
   }
 > = {
   active: {
+    dotClassName: "bg-emerald-500",
     label: "Active",
-    className: "border-emerald-500/30 text-emerald-500",
+    textClassName: "text-emerald-500",
   },
   revoked: {
+    dotClassName: "bg-amber-500",
     label: "Revoked",
-    className: "border-amber-500/30 text-amber-500",
+    textClassName: "text-amber-500",
   },
   expired: {
+    dotClassName: "bg-slate-500",
     label: "Expired",
-    className: "border-slate-500/30 text-slate-400",
+    textClassName: "text-slate-400",
   },
 };
 
@@ -81,13 +84,14 @@ function formatDeviceLabel(userAgent: string | null | undefined): string {
   return userAgent.length > 64 ? `${userAgent.slice(0, 64)}...` : userAgent;
 }
 
-function StatusBadge({ status }: { status: AdminSessionStatus }) {
+function StatusCell({ status }: { status: AdminSessionStatus }) {
   const meta = STATUS_META[status];
 
   return (
-    <Badge variant="outline" className={meta.className}>
+    <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${meta.textClassName}`}>
+      <span className={`size-1.5 rounded-full ${meta.dotClassName}`} />
       {meta.label}
-    </Badge>
+    </span>
   );
 }
 
@@ -127,7 +131,7 @@ export default function AccessAdminSessionsPage() {
     {
       accessorKey: "status",
       header: "Status",
-      cell: ({ row }) => <StatusBadge status={row.original.status} />,
+      cell: ({ row }) => <StatusCell status={row.original.status} />,
     },
     {
       accessorKey: "login_at",
@@ -171,7 +175,12 @@ export default function AccessAdminSessionsPage() {
       <AdminPageHeader
         title="Auth Sessions"
         description="Superuser view across all user sessions. Read-only inventory for investigation and support."
-        meta={<Badge variant="secondary"><Shield className="mr-1 h-3.5 w-3.5" />Superuser</Badge>}
+        meta={
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <Shield className="size-3.5" />
+            Superuser
+          </span>
+        }
       />
 
       <AdminDataTable

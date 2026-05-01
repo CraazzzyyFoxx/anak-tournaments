@@ -45,12 +45,14 @@ export const rbacService = {
     role_id?: number;
     is_active?: boolean;
     is_superuser?: boolean;
+    workspace_id?: number;
   }) {
     const searchParams = new URLSearchParams();
     if (params?.search) searchParams.set("search", params.search);
     if (params?.role_id !== undefined) searchParams.set("role_id", String(params.role_id));
     if (params?.is_active !== undefined) searchParams.set("is_active", String(params.is_active));
     if (params?.is_superuser !== undefined) searchParams.set("is_superuser", String(params.is_superuser));
+    if (params?.workspace_id !== undefined) searchParams.set("workspace_id", String(params.workspace_id));
 
     const suffix = searchParams.toString() ? `?${searchParams.toString()}` : "";
     return rbacFetch<AuthAdminUser[]>(`/rbac/users${suffix}`).then((users) => users.map(normalizeAuthAdminUser));
@@ -93,8 +95,13 @@ export const rbacService = {
     });
   },
 
-  listPermissions() {
-    return rbacFetch<RbacPermission[]>("/rbac/permissions");
+  listPermissions(params?: { workspace_id?: number | null }) {
+    const searchParams = new URLSearchParams();
+    if (params?.workspace_id !== undefined && params.workspace_id !== null) {
+      searchParams.set("workspace_id", String(params.workspace_id));
+    }
+    const suffix = searchParams.toString() ? `?${searchParams.toString()}` : "";
+    return rbacFetch<RbacPermission[]>(`/rbac/permissions${suffix}`);
   },
 
   assignRole(payload: AssignRolePayload) {

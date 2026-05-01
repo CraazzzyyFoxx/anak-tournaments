@@ -54,7 +54,7 @@ async def get_rbac(user_id: int) -> dict | None:
 async def set_rbac(
     user_id: int,
     roles: list[str],
-    permissions: list[str],
+    permissions: list[dict[str, str]],
     workspace_roles: dict | None = None,
 ) -> None:
     """Store RBAC data with TTL."""

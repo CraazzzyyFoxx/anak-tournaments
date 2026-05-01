@@ -2,6 +2,7 @@
 
 import type { DivisionGridVersion } from "@/types/workspace.types";
 import { Checkbox } from "@/components/ui/checkbox";
+import { DateTimePicker } from "@/components/ui/date-picker";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -260,55 +261,45 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
         <>
           <div className="mt-4 border-t border-border/40 pt-4">
             <p className="mb-3 text-sm font-medium">Registration Period</p>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label htmlFor={`${idPrefix}-registration-opens`}>Opens at</Label>
-                <Input
-                  id={`${idPrefix}-registration-opens`}
-                  type="datetime-local"
-                  value={value.registration_opens_at ?? ""}
-                  onChange={(event) =>
-                    onChange({ ...value, registration_opens_at: event.target.value })
-                  }
-                />
-              </div>
-              <div>
-                <Label htmlFor={`${idPrefix}-registration-closes`}>Closes at</Label>
-                <Input
-                  id={`${idPrefix}-registration-closes`}
-                  type="datetime-local"
-                  value={value.registration_closes_at ?? ""}
-                  onChange={(event) =>
-                    onChange({ ...value, registration_closes_at: event.target.value })
-                  }
-                />
-              </div>
+            <div className="grid gap-3 xl:grid-cols-2">
+              <DateTimePicker
+                id={`${idPrefix}-registration-opens`}
+                timeId={`${idPrefix}-registration-opens-time`}
+                dateLabel="Opens at"
+                timeLabel="Time"
+                value={value.registration_opens_at ?? ""}
+                onChange={(nextValue) => onChange({ ...value, registration_opens_at: nextValue })}
+              />
+              <DateTimePicker
+                id={`${idPrefix}-registration-closes`}
+                timeId={`${idPrefix}-registration-closes-time`}
+                dateLabel="Closes at"
+                timeLabel="Time"
+                value={value.registration_closes_at ?? ""}
+                onChange={(nextValue) => onChange({ ...value, registration_closes_at: nextValue })}
+              />
             </div>
           </div>
 
           <div className="mt-4 border-t border-border/40 pt-4">
             <p className="mb-3 text-sm font-medium">Check-in Period</p>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label htmlFor={`${idPrefix}-check-in-opens`}>Opens at</Label>
-                <Input
-                  id={`${idPrefix}-check-in-opens`}
-                  type="datetime-local"
-                  value={value.check_in_opens_at ?? ""}
-                  onChange={(event) => onChange({ ...value, check_in_opens_at: event.target.value })}
-                />
-              </div>
-              <div>
-                <Label htmlFor={`${idPrefix}-check-in-closes`}>Closes at</Label>
-                <Input
-                  id={`${idPrefix}-check-in-closes`}
-                  type="datetime-local"
-                  value={value.check_in_closes_at ?? ""}
-                  onChange={(event) =>
-                    onChange({ ...value, check_in_closes_at: event.target.value })
-                  }
-                />
-              </div>
+            <div className="grid gap-3 xl:grid-cols-2">
+              <DateTimePicker
+                id={`${idPrefix}-check-in-opens`}
+                timeId={`${idPrefix}-check-in-opens-time`}
+                dateLabel="Opens at"
+                timeLabel="Time"
+                value={value.check_in_opens_at ?? ""}
+                onChange={(nextValue) => onChange({ ...value, check_in_opens_at: nextValue })}
+              />
+              <DateTimePicker
+                id={`${idPrefix}-check-in-closes`}
+                timeId={`${idPrefix}-check-in-closes-time`}
+                dateLabel="Closes at"
+                timeLabel="Time"
+                value={value.check_in_closes_at ?? ""}
+                onChange={(nextValue) => onChange({ ...value, check_in_closes_at: nextValue })}
+              />
             </div>
           </div>
         </>

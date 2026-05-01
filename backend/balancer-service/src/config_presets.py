@@ -1,4 +1,10 @@
-"""Canonical balancer configuration presets."""
+"""Canonical balancer configuration presets.
+
+All weights are calibrated for the canonical 0-3500 rating scale enforced by
+``RatingNormalizer``. Each preset stores only the delta from ``DEFAULT`` so
+overrides remain readable; missing fields fall back to ``AlgorithmConfig``
+defaults at runtime.
+"""
 
 from __future__ import annotations
 
@@ -8,11 +14,13 @@ from typing import Any
 class ConfigPresets:
     """Pre-configured settings for common balancing scenarios."""
 
+    # Balanced default — fits the majority of tournaments. Compute budget tuned
+    # for sub-second runs on Rust MOO with 4 islands in parallel.
     DEFAULT: dict[str, Any] = {
         "algorithm": "moo",
         "role_mask": {"Tank": 1, "Damage": 2, "Support": 2},
-        "population_size": 100,
-        "generation_count": 200,
+        "population_size": 60,
+        "generation_count": 120,
         "mutation_rate": 0.35,
         "mutation_strength": 2,
         "average_mmr_balance_weight": 0.8,
@@ -26,129 +34,105 @@ class ConfigPresets:
         "intra_team_std_weight": 0.7,
         "internal_role_spread_weight": 0.3,
         "sub_role_collision_weight": 1.5,
+        "tank_impact_weight": 1.4,
+        "dps_impact_weight": 1.0,
+        "support_impact_weight": 1.1,
+        "tank_gap_weight": 2.0,
+        "tank_std_weight": 1.5,
+        "effective_total_std_weight": 1.2,
         "use_captains": True,
+        "convergence_patience": 0,
+        "convergence_epsilon": 0.005,
+        "mutation_rate_min": 0.15,
+        "mutation_rate_max": 0.65,
+        "island_count": 4,
+        "polish_max_passes": 50,
+        "greedy_seed_count": 3,
+        "stagnation_kick_patience": 15,
+        "crossover_rate": 0.85,
         "max_result_variants": 10,
+        "rating_scale_ceiling": 3500,
     }
 
-    COMPETITIVE: dict[str, Any] = {
-        "population_size": 150,
-        "generation_count": 1000,
-        "mutation_rate": 0.5,
-        "mutation_strength": 4,
-        "average_mmr_balance_weight": 5.0,
-        "role_discomfort_weight": 0.2,
-        "intra_team_variance_weight": 1.0,
-        "max_role_discomfort_weight": 1.5,
-        "team_total_balance_weight": 1.0,
-        "max_team_gap_weight": 1.0,
-        "role_line_balance_weight": 1.0,
-        "role_spread_weight": 1.0,
-        "intra_team_std_weight": 1.0,
-        "internal_role_spread_weight": 0.5,
-        "sub_role_collision_weight": 10.0,
-        "use_captains": True,
-    }
-
-    CASUAL: dict[str, Any] = {
-        "population_size": 150,
-        "generation_count": 400,
-        "mutation_rate": 0.35,
-        "mutation_strength": 3,
-        "average_mmr_balance_weight": 2.0,
-        "role_discomfort_weight": 0.5,
-        "intra_team_variance_weight": 0.5,
-        "max_role_discomfort_weight": 0.8,
-        "team_total_balance_weight": 1.0,
-        "max_team_gap_weight": 1.0,
-        "role_line_balance_weight": 1.0,
-        "role_spread_weight": 1.0,
-        "intra_team_std_weight": 1.0,
-        "internal_role_spread_weight": 0.5,
-        "sub_role_collision_weight": 0.0,
-        "use_captains": False,
-    }
-
+    # Sub-second preview / debugging — weaker but meaningful balance.
     QUICK: dict[str, Any] = {
-        "population_size": 50,
+        "population_size": 30,
+        "generation_count": 50,
+        "polish_max_passes": 10,
+        "island_count": 2,
+        "greedy_seed_count": 1,
+        "max_result_variants": 5,
+    }
+
+    # Official tournament play — balance dominates over comfort. Spends more
+    # compute, applies aggressive polishing, emphasises tank-line parity.
+    COMPETITIVE: dict[str, Any] = {
+        "population_size": 100,
         "generation_count": 200,
-        "mutation_rate": 0.3,
-        "mutation_strength": 2,
-        "average_mmr_balance_weight": 3.0,
-        "role_discomfort_weight": 0.25,
-        "intra_team_variance_weight": 0.8,
+        "average_mmr_balance_weight": 2.0,
+        "team_total_balance_weight": 2.0,
+        "max_team_gap_weight": 3.0,
+        "tank_gap_weight": 3.5,
+        "tank_std_weight": 2.0,
+        "effective_total_std_weight": 2.0,
+        "role_discomfort_weight": 0.5,
         "max_role_discomfort_weight": 1.0,
-        "team_total_balance_weight": 1.0,
-        "max_team_gap_weight": 1.0,
-        "role_line_balance_weight": 1.0,
-        "role_spread_weight": 1.0,
-        "intra_team_std_weight": 1.0,
-        "internal_role_spread_weight": 0.5,
-        "sub_role_collision_weight": 0.0,
+        "sub_role_collision_weight": 2.5,
+        "polish_max_passes": 80,
+        "island_count": 6,
+        "stagnation_kick_patience": 20,
+    }
+
+    # Pickup / casual play — comfort dominates over balance.
+    CASUAL: dict[str, Any] = {
+        "population_size": 60,
+        "generation_count": 100,
+        "average_mmr_balance_weight": 0.4,
+        "team_total_balance_weight": 0.6,
+        "max_team_gap_weight": 0.8,
+        "tank_gap_weight": 1.0,
+        "role_discomfort_weight": 2.0,
+        "max_role_discomfort_weight": 4.0,
+        "sub_role_collision_weight": 3.0,
         "use_captains": False,
     }
 
+    # Minimise off-role assignments at almost any cost.
     PREFERENCE_FOCUSED: dict[str, Any] = {
-        "population_size": 200,
-        "generation_count": 750,
-        "mutation_rate": 0.4,
-        "mutation_strength": 3,
-        "average_mmr_balance_weight": 2.0,
-        "role_discomfort_weight": 1.0,
-        "intra_team_variance_weight": 0.5,
-        "max_role_discomfort_weight": 2.0,
-        "team_total_balance_weight": 1.0,
+        "population_size": 80,
+        "generation_count": 150,
+        "role_discomfort_weight": 3.0,
+        "max_role_discomfort_weight": 6.0,
+        "sub_role_collision_weight": 4.0,
+        "average_mmr_balance_weight": 0.5,
         "max_team_gap_weight": 1.0,
-        "role_line_balance_weight": 1.0,
-        "role_spread_weight": 1.0,
-        "intra_team_std_weight": 1.0,
-        "internal_role_spread_weight": 0.5,
-        "sub_role_collision_weight": 5.0,
-        "use_captains": True,
     }
 
+    # Long, deep search — best quality, highest runtime.
+    HIGH_QUALITY: dict[str, Any] = {
+        "population_size": 200,
+        "generation_count": 400,
+        "mutation_rate": 0.45,
+        "mutation_strength": 3,
+        "mutation_rate_min": 0.2,
+        "mutation_rate_max": 0.75,
+        "polish_max_passes": 150,
+        "island_count": 8,
+        "stagnation_kick_patience": 25,
+        "convergence_patience": 60,
+    }
+
+    # Backwards-compatible alias for persisted tournament configs that still
+    # reference "MOO" as a preset key.
     MOO: dict[str, Any] = {
         "algorithm": "moo",
-        "population_size": 100,
-        "generation_count": 200,
-        "mutation_rate": 0.35,
-        "mutation_strength": 2,
-        "max_result_variants": 10,
-        "average_mmr_balance_weight": 0.8,
-        "role_discomfort_weight": 1.0,
-        "intra_team_variance_weight": 0.8,
-        "max_role_discomfort_weight": 2.0,
-        "team_total_balance_weight": 1.0,
-        "max_team_gap_weight": 1.5,
-        "role_line_balance_weight": 1.0,
-        "role_spread_weight": 1.0,
-        "intra_team_std_weight": 0.7,
-        "internal_role_spread_weight": 0.3,
-        "sub_role_collision_weight": 1.5,
-        "use_captains": True,
     }
 
+    # Switch the solver backend. CP-SAT runs in exact mode and returns fewer
+    # variants by design.
     CPSAT: dict[str, Any] = {
         "algorithm": "cpsat",
         "max_result_variants": 3,
-    }
-
-    HIGH_QUALITY: dict[str, Any] = {
-        "population_size": 300,
-        "generation_count": 1000,
-        "mutation_rate": 0.85,
-        "mutation_strength": 4,
-        "max_team_gap_weight": 60.0,
-        "team_total_balance_weight": 40.0,
-        "average_mmr_balance_weight": 30.0,
-        "max_role_discomfort_weight": 150.0,
-        "role_discomfort_weight": 80.0,
-        "intra_team_variance_weight": 0.0,
-        "role_spread_weight": 0.0,
-        "intra_team_std_weight": 1.0,
-        "internal_role_spread_weight": 0.5,
-        "role_line_balance_weight": 5.0,
-        "sub_role_collision_weight": 10.0,
-        "use_captains": True,
     }
 
 

@@ -2,7 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { FolderInput, Loader2, SlidersHorizontal, Sparkles, type LucideIcon } from "lucide-react";
+import {
+  Download,
+  FolderInput,
+  Loader2,
+  SlidersHorizontal,
+  Sparkles,
+  type LucideIcon
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -39,6 +46,8 @@ type PresetRunPanelProps = {
   isRunPending: boolean;
   onImportTeams: (file: File) => void;
   isImportPending: boolean;
+  onExportPlayers: () => void;
+  isExportPlayersPending: boolean;
   jobStatus: string | null;
   jobMessage: string | null;
   jobProgress: number | null;
@@ -59,6 +68,8 @@ export function PresetRunPanel({
   isRunPending,
   onImportTeams,
   isImportPending,
+  onExportPlayers,
+  isExportPlayersPending,
   jobStatus,
   jobMessage,
   jobProgress
@@ -143,6 +154,22 @@ export function PresetRunPanel({
           <FolderInput className="mr-1.5 h-3.5 w-3.5" />
         )}
         Import JSON
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        onClick={onExportPlayers}
+        disabled={isExportPlayersPending}
+        className="h-8 shrink-0 rounded-lg border-white/10 bg-black/15 px-2 text-sm text-white/72 hover:bg-white/[0.05] hover:text-white sm:px-3"
+        aria-label="Export players"
+        title="Export players"
+      >
+        {isExportPlayersPending ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin sm:mr-1.5" />
+        ) : (
+          <Download className="h-3.5 w-3.5 sm:mr-1.5" />
+        )}
+        <span className="hidden sm:inline">Export players</span>
       </Button>
     </>
   );

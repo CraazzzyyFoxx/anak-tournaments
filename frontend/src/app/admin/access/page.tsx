@@ -4,21 +4,29 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import {
+  accessApiKeysPermissions,
   accessPermissionsPermissions,
   accessRolesPermissions,
   accessUsersPermissions,
 } from "@/components/admin/admin-navigation";
-import { usePermissions } from "@/hooks/usePermissions";
+import { type AppPermission, usePermissions } from "@/hooks/usePermissions";
 
-const accessRoutes = [
+type AccessRoute = {
+  href: string;
+  permissions: AppPermission[];
+  workspaceAdminVisible?: boolean;
+};
+
+const accessRoutes: AccessRoute[] = [
   { href: "/admin/access/users", permissions: accessUsersPermissions },
   { href: "/admin/access/roles", permissions: accessRolesPermissions },
   { href: "/admin/access/permissions", permissions: accessPermissionsPermissions },
+  { href: "/admin/access/api-keys", permissions: accessApiKeysPermissions, workspaceAdminVisible: true },
 ];
 
 export default function AccessAdminIndexPage() {
   const router = useRouter();
-  const { isLoaded, isSuperuser, hasAnyPermission } = usePermissions();
+  const { isLoaded, isSuperuser, hasAnyPermission, hasAnyWorkspacePermission, canManageAnyWorkspace } = usePermissions();
 
   useEffect(() => {
     if (!isLoaded) {
@@ -26,13 +34,16 @@ export default function AccessAdminIndexPage() {
     }
 
     const firstAccessibleRoute = accessRoutes.find(
-      (route) => isSuperuser || hasAnyPermission(route.permissions),
+      (route) =>
+        isSuperuser ||
+        hasAnyPermission(route.permissions) ||
+        (route.workspaceAdminVisible && (hasAnyWorkspacePermission(route.permissions) || canManageAnyWorkspace())),
     );
 
     if (firstAccessibleRoute) {
       router.replace(firstAccessibleRoute.href);
     }
-  }, [hasAnyPermission, isLoaded, isSuperuser, router]);
+  }, [canManageAnyWorkspace, hasAnyPermission, hasAnyWorkspacePermission, isLoaded, isSuperuser, router]);
 
   return null;
 }

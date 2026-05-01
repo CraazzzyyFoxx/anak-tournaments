@@ -245,7 +245,7 @@ async def upload_admin_logs(
 @router.get(
     "/queue-status",
     response_model=list[QueueDepth],
-    dependencies=[Depends(auth.require_any_role("admin", "tournament_organizer"))],
+    dependencies=[Depends(auth.require_permission("log", "read"))],
 )
 async def get_queue_status():
     """Get current RabbitMQ queue depths for all monitored queues."""
@@ -254,7 +254,7 @@ async def get_queue_status():
 
 @router.get(
     "/history",
-    dependencies=[Depends(auth.require_any_role("admin", "tournament_organizer"))],
+    dependencies=[Depends(auth.require_permission("log", "read"))],
 )
 async def get_log_history(
     tournament_id: int | None = Query(None),
@@ -293,7 +293,7 @@ async def get_log_history(
 @router.post(
     "/{record_id}/retry",
     response_model=LogRecordRead,
-    dependencies=[Depends(auth.require_any_role("admin", "tournament_organizer"))],
+    dependencies=[Depends(auth.require_permission("log", "reprocess"))],
 )
 async def retry_log_record(
     record_id: int,

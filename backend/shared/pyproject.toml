@@ -20,6 +20,7 @@ dependencies = [
     "faststream[rabbit]>=0.6.4",
     "opentelemetry-api>=1.27.0",
     "opentelemetry-sdk>=1.27.0",
+    "scalar-fastapi>=1.8.2",
 ]
 
 [build-system]

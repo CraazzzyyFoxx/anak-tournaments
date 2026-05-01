@@ -107,7 +107,7 @@ async def _get_source_workspace_or_404(
 
 @router.get("/condition-types", response_model=list[ConditionTypeInfo])
 async def get_condition_types(
-    _user: models.AuthUser = Depends(auth.require_permission("achievement", "read")),
+    _user: models.AuthUser = Depends(auth.require_workspace_permission("achievement", "read")),
 ):
     """List all available leaf condition types with param schemas."""
 
@@ -131,7 +131,7 @@ async def get_condition_types(
 @router.post("/validate", response_model=ConditionTreeValidateResponse)
 async def validate_condition_tree_endpoint(
     body: ConditionTreeValidateRequest,
-    _user: models.AuthUser = Depends(auth.require_permission("achievement", "read")),
+    _user: models.AuthUser = Depends(auth.require_workspace_permission("achievement", "read")),
 ):
     errors = validate_condition_tree(body.condition_tree)
     grain = infer_grain(body.condition_tree) if not errors else None
@@ -149,7 +149,7 @@ async def validate_condition_tree_endpoint(
 async def seed_default_rules(
     workspace_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    _user: models.AuthUser = Depends(auth.require_permission("achievement", "write")),
+    _user: models.AuthUser = Depends(auth.require_workspace_permission("achievement", "create")),
 ):
     """Seed the default achievement catalog for a workspace."""
     seeded, removed = await seed_workspace(session, workspace_id)
@@ -161,7 +161,7 @@ async def seed_default_rules(
 async def hard_reset_rules(
     workspace_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    _user: models.AuthUser = Depends(auth.require_permission("achievement", "write")),
+    _user: models.AuthUser = Depends(auth.require_workspace_permission("achievement", "update")),
 ):
     """Replace the catalog, clear effective results, and re-run a full evaluation."""
     seeded, removed, cleared_results, run = await hard_reset_workspace(session, workspace_id)
@@ -183,7 +183,7 @@ async def list_rules(
     category: str | None = None,
     enabled: bool | None = None,
     session: AsyncSession = Depends(db.get_async_session),
-    _user: models.AuthUser = Depends(auth.require_permission("achievement", "read")),
+    _user: models.AuthUser = Depends(auth.require_workspace_permission("achievement", "read")),
 ):
     query = sa.select(AchievementRule).where(
         AchievementRule.workspace_id == workspace_id
@@ -202,7 +202,7 @@ async def list_rules(
 async def export_rules(
     workspace_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    _user: models.AuthUser = Depends(auth.require_permission("achievement", "read")),
+    _user: models.AuthUser = Depends(auth.require_workspace_permission("achievement", "export")),
 ):
     workspace = await _get_workspace_or_404(session, workspace_id)
     rules = await load_rules_for_workspace(session, workspace_id)
@@ -219,7 +219,7 @@ async def import_rules(
     workspace_id: int,
     body: AchievementRuleExportEnvelope,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("achievement", "write")),
+    user: models.AuthUser = Depends(auth.require_workspace_permission("achievement", "import")),
     s3: S3Client = Depends(get_s3),
 ):
     target_workspace = await _get_workspace_or_404(session, workspace_id)
@@ -253,7 +253,7 @@ async def get_rule(
     workspace_id: int,
     rule_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    _user: models.AuthUser = Depends(auth.require_permission("achievement", "read")),
+    _user: models.AuthUser = Depends(auth.require_workspace_permission("achievement", "read")),
 ):
     rule = await session.get(AchievementRule, rule_id)
     if not rule or rule.workspace_id != workspace_id:
@@ -266,7 +266,7 @@ async def create_rule(
     workspace_id: int,
     body: AchievementRuleCreate,
     session: AsyncSession = Depends(db.get_async_session),
-    _user: models.AuthUser = Depends(auth.require_permission("achievement", "write")),
+    _user: models.AuthUser = Depends(auth.require_workspace_permission("achievement", "create")),
 ):
     errors, _inferred_grain = validate_rule_definition(body.condition_tree, body.grain)
     if errors:
@@ -298,7 +298,7 @@ async def update_rule(
     rule_id: int,
     body: AchievementRuleUpdate,
     session: AsyncSession = Depends(db.get_async_session),
-    _user: models.AuthUser = Depends(auth.require_permission("achievement", "write")),
+    _user: models.AuthUser = Depends(auth.require_workspace_permission("achievement", "update")),
 ):
     rule = await session.get(AchievementRule, rule_id)
     if not rule or rule.workspace_id != workspace_id:
@@ -342,7 +342,7 @@ async def delete_rule(
     workspace_id: int,
     rule_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    _user: models.AuthUser = Depends(auth.require_permission("achievement", "write")),
+    _user: models.AuthUser = Depends(auth.require_workspace_permission("achievement", "delete")),
 ):
     rule = await session.get(AchievementRule, rule_id)
     if not rule or rule.workspace_id != workspace_id:
@@ -360,7 +360,7 @@ async def trigger_evaluation(
     workspace_id: int,
     body: EvaluateRequest,
     session: AsyncSession = Depends(db.get_async_session),
-    _user: models.AuthUser = Depends(auth.require_permission("achievement", "write")),
+    _user: models.AuthUser = Depends(auth.require_workspace_permission("achievement", "calculate")),
 ):
     """Trigger a manual achievement evaluation."""
     run = await run_evaluation(
@@ -377,7 +377,7 @@ async def trigger_evaluation(
 async def list_runs(
     workspace_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    _user: models.AuthUser = Depends(auth.require_permission("achievement", "read")),
+    _user: models.AuthUser = Depends(auth.require_workspace_permission("achievement", "read")),
 ):
     query = (
         sa.select(EvaluationRun)
@@ -402,7 +402,7 @@ async def get_rule_users(
     sort: str = "count",
     order: str = "desc",
     session: AsyncSession = Depends(db.get_async_session),
-    _user: models.AuthUser = Depends(auth.require_permission("achievement", "read")),
+    _user: models.AuthUser = Depends(auth.require_workspace_permission("achievement", "read")),
 ):
     """Get users who earned a specific achievement (paginated, filterable, sortable)."""
     rule = await session.get(AchievementRule, rule_id)
@@ -486,7 +486,7 @@ async def debug_mvp_for_match(
     stat: str = "Performance",
     top_n: int = 3,
     session: AsyncSession = Depends(db.get_async_session),
-    _user: models.AuthUser = Depends(auth.require_permission("achievement", "read")),
+    _user: models.AuthUser = Depends(auth.require_workspace_permission("achievement", "read")),
 ):
     """Debug endpoint: show per-player stats and ranking for a specific match."""
     # Raw stats for this match
@@ -571,7 +571,7 @@ async def test_rule(
     rule_id: int,
     tournament_id: int | None = None,
     session: AsyncSession = Depends(db.get_async_session),
-    _user: models.AuthUser = Depends(auth.require_permission("achievement", "write")),
+    _user: models.AuthUser = Depends(auth.require_workspace_permission("achievement", "calculate")),
 ):
     """Dry-run: evaluate a rule without writing results."""
     from src.core.workspace import get_division_grid
@@ -605,7 +605,7 @@ async def test_rule(
 async def list_library_workspaces(
     workspace_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("achievement", "read")),
+    user: models.AuthUser = Depends(auth.require_workspace_permission("achievement", "read")),
 ):
     visible_workspace_ids = _get_visible_workspace_ids(user, workspace_id)
     query = (
@@ -643,7 +643,7 @@ async def list_library_rules(
     workspace_id: int,
     source_workspace_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("achievement", "read")),
+    user: models.AuthUser = Depends(auth.require_workspace_permission("achievement", "read")),
 ):
     source_workspace = await _get_source_workspace_or_404(
         session,
@@ -669,7 +669,7 @@ async def import_library_rules(
     workspace_id: int,
     body: AchievementLibraryImportRequest,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("achievement", "write")),
+    user: models.AuthUser = Depends(auth.require_workspace_permission("achievement", "import")),
     s3: S3Client = Depends(get_s3),
 ):
     target_workspace = await _get_workspace_or_404(session, workspace_id)
@@ -717,7 +717,7 @@ override_router = APIRouter(
 async def list_overrides(
     workspace_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    _user: models.AuthUser = Depends(auth.require_permission("achievement", "read")),
+    _user: models.AuthUser = Depends(auth.require_workspace_permission("achievement", "read")),
 ):
     query = (
         sa.select(AchievementOverride)
@@ -734,7 +734,7 @@ async def create_override(
     workspace_id: int,
     body: OverrideCreate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("achievement", "write")),
+    user: models.AuthUser = Depends(auth.require_workspace_permission("achievement", "update")),
 ):
     rule = await session.get(AchievementRule, body.achievement_rule_id)
     if not rule or rule.workspace_id != workspace_id:
@@ -760,7 +760,7 @@ async def delete_override(
     workspace_id: int,
     override_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    _user: models.AuthUser = Depends(auth.require_permission("achievement", "write")),
+    _user: models.AuthUser = Depends(auth.require_workspace_permission("achievement", "update")),
 ):
     override = await session.get(AchievementOverride, override_id)
     if not override:

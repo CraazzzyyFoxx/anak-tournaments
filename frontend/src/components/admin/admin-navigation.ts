@@ -52,10 +52,12 @@ export const overviewPermissions: AppPermission[] = [
 export const accessUsersPermissions: AppPermission[] = ["auth_user.read"];
 export const accessRolesPermissions: AppPermission[] = ["role.read"];
 export const accessPermissionsPermissions: AppPermission[] = ["permission.read"];
+export const accessApiKeysPermissions: AppPermission[] = ["team.import"];
 export const accessAdminPermissions: AppPermission[] = [
   ...accessUsersPermissions,
   ...accessRolesPermissions,
   ...accessPermissionsPermissions,
+  ...accessApiKeysPermissions,
 ];
 
 export const adminEntryPermissions: AppPermission[] = [
@@ -201,6 +203,14 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         globalOnly: true,
       },
       {
+        title: "API Keys",
+        href: "/admin/access/api-keys",
+        icon: KeyRound,
+        description: "Manage workspace-scoped public API credentials.",
+        permissions: accessApiKeysPermissions,
+        workspaceAdminVisible: true,
+      },
+      {
         title: "Sessions",
         href: "/admin/access/sessions",
         icon: Shield,
@@ -242,9 +252,10 @@ export const adminRoutePermissions: Array<{
   { prefix: "/admin/access/users", permissions: accessUsersPermissions, globalOnly: true },
   { prefix: "/admin/access/roles", permissions: accessRolesPermissions, workspaceAdminVisible: true },
   { prefix: "/admin/access/oauth", permissions: accessUsersPermissions, globalOnly: true },
+  { prefix: "/admin/access/api-keys", permissions: accessApiKeysPermissions, workspaceAdminVisible: true },
   { prefix: "/admin/access/sessions", permissions: [], superuserOnly: true },
   { prefix: "/admin/access/permissions", permissions: accessPermissionsPermissions, globalOnly: true },
-  { prefix: "/admin/access", permissions: accessAdminPermissions, globalOnly: true },
+  { prefix: "/admin/access", permissions: accessAdminPermissions, workspaceAdminVisible: true },
   { prefix: "/admin/workspaces/members", permissions: [], workspaceAdminVisible: true },
   { prefix: "/admin/workspaces", permissions: [], workspaceAdminVisible: true },
   { prefix: "/admin/settings", permissions: [], superuserOnly: true },

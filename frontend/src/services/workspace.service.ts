@@ -55,22 +55,22 @@ export default class workspaceService {
   static async addMember(
     workspaceId: number,
     authUserId: number,
-    role: string = "member"
+    roleIds?: number[]
   ): Promise<WorkspaceMember> {
     return apiFetch("app", `workspaces/${workspaceId}/members`, {
       method: "POST",
-      body: { auth_user_id: authUserId, role }
+      body: { auth_user_id: authUserId, role_ids: roleIds }
     }).then((r) => r.json());
   }
 
   static async updateMemberRole(
     workspaceId: number,
     authUserId: number,
-    role: string
+    roleIds: number[]
   ): Promise<WorkspaceMember> {
     return apiFetch("app", `workspaces/${workspaceId}/members/${authUserId}`, {
       method: "PATCH",
-      body: { role }
+      body: { role_ids: roleIds }
     }).then((r) => r.json());
   }
 

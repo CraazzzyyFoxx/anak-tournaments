@@ -1,6 +1,5 @@
 "use client";
 
-import type { CSSProperties } from "react";
 import { AlertCircle, Clock3, LaptopMinimal, MapPin, RefreshCw, Shield, ShieldOff } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -12,21 +11,25 @@ import type { AccountSession, AccountSessionStatus } from "@/types/auth.types";
 const STATUS_META: Record<
   AccountSessionStatus,
   {
+    dotClassName: string;
     label: string;
-    badgeClassName: string;
+    textClassName: string;
   }
 > = {
   active: {
+    dotClassName: "bg-emerald-400",
     label: "Active",
-    badgeClassName: "border-emerald-400/30 bg-emerald-500/10 text-emerald-200",
+    textClassName: "text-emerald-200",
   },
   revoked: {
+    dotClassName: "bg-amber-300",
     label: "Revoked",
-    badgeClassName: "border-amber-400/30 bg-amber-500/10 text-amber-100",
+    textClassName: "text-amber-100",
   },
   expired: {
+    dotClassName: "bg-slate-400",
     label: "Expired",
-    badgeClassName: "border-slate-400/20 bg-slate-500/10 text-slate-300",
+    textClassName: "text-slate-300",
   },
 };
 
@@ -74,19 +77,36 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Failed to load sessions";
 }
 
-function SessionStatusBadge({ status }: { status: AccountSessionStatus }) {
+function StatusText({ status }: { status: AccountSessionStatus }) {
   const meta = STATUS_META[status];
 
   return (
-    <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${meta.badgeClassName}`}
-    >
+    <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${meta.textClassName}`}>
+      <span className={`size-1.5 rounded-full ${meta.dotClassName}`} />
       {meta.label}
     </span>
   );
 }
 
-function SessionCard({
+function DetailCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded-lg border border-white/5 bg-black/10 px-3 py-2">
+      <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="mt-0.5 truncate text-xs text-slate-300">{value}</p>
+    </div>
+  );
+}
+
+function SummaryCell({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+      <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="mt-1 text-lg font-semibold text-white">{value}</p>
+    </div>
+  );
+}
+
+function SessionRow({
   session,
   isRevoking,
   onRevoke,
@@ -98,87 +118,59 @@ function SessionCard({
   const canRevoke = !session.is_current && session.status === "active";
 
   return (
-    <div
-      className="liquid-glass rounded-2xl border border-white/10 p-5"
-      style={
-        {
-          "--lg-a": "15 23 42",
-          "--lg-b": "30 41 59",
-          "--lg-c": session.status === "active" ? "14 165 233" : "100 116 139",
-        } as CSSProperties
-      }
-    >
-      <div className="flex flex-col gap-4">
+    <li className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+      <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-200">
-                <LaptopMinimal className="h-4 w-4" />
-              </div>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-white">{formatDeviceLabel(session.user_agent)}</p>
-                <p className="mt-0.5 text-xs text-slate-400">
-                  {session.is_current ? "Current session" : "Saved session record"}
-                </p>
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-slate-200">
+              <LaptopMinimal className="size-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-white">{formatDeviceLabel(session.user_agent)}</p>
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                <StatusText status={session.status} />
+                {session.is_current ? (
+                  <span className="inline-flex items-center gap-1 text-sky-200">
+                    <Shield className="size-3.5" />
+                    Current session
+                  </span>
+                ) : null}
+                {session.ip_address ? (
+                  <span className="inline-flex min-w-0 items-center gap-1">
+                    <MapPin className="size-3.5 shrink-0" />
+                    <span className="truncate">{session.ip_address}</span>
+                  </span>
+                ) : null}
               </div>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {session.is_current ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-sky-400/30 bg-sky-500/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-sky-100">
-                <Shield className="h-3.5 w-3.5" />
-                Current
-              </span>
-            ) : null}
-            <SessionStatusBadge status={session.status} />
-            {canRevoke ? (
-              <Button variant="outline" size="sm" disabled={isRevoking} onClick={() => onRevoke(session.session_id)}>
-                <ShieldOff className="h-4 w-4" />
-                Revoke
-              </Button>
-            ) : null}
-          </div>
+          {canRevoke ? (
+            <Button variant="outline" size="sm" disabled={isRevoking} onClick={() => onRevoke(session.session_id)}>
+              <ShieldOff className="size-4" />
+              Revoke
+            </Button>
+          ) : null}
         </div>
 
-        <div className="grid gap-3 text-sm text-slate-300 md:grid-cols-2">
-          <div className="rounded-xl border border-white/5 bg-black/10 p-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Signed In</p>
-            <p className="mt-1">{formatTimestamp(session.login_at)}</p>
-          </div>
-          <div className="rounded-xl border border-white/5 bg-black/10 p-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Last Seen</p>
-            <p className="mt-1">{formatTimestamp(session.last_seen_at)}</p>
-          </div>
-          <div className="rounded-xl border border-white/5 bg-black/10 p-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Expires</p>
-            <p className="mt-1">{formatTimestamp(session.expires_at)}</p>
-          </div>
-          <div className="rounded-xl border border-white/5 bg-black/10 p-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              {session.status === "revoked" ? "Revoked" : "IP Address"}
-            </p>
-            <p className="mt-1">
-              {session.status === "revoked" ? formatTimestamp(session.revoked_at) : session.ip_address || "Unavailable"}
-            </p>
-          </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <DetailCell label="Signed in" value={formatTimestamp(session.login_at)} />
+          <DetailCell label="Last seen" value={formatTimestamp(session.last_seen_at)} />
+          <DetailCell label="Expires" value={formatTimestamp(session.expires_at)} />
+          <DetailCell
+            label={session.status === "revoked" ? "Revoked" : "Session"}
+            value={session.status === "revoked" ? formatTimestamp(session.revoked_at) : session.session_id}
+          />
         </div>
 
         {session.user_agent ? (
-          <div className="flex items-start gap-2 rounded-xl border border-white/5 bg-black/10 px-3 py-2 text-xs text-slate-400">
-            <Clock3 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <div className="flex items-start gap-2 text-xs text-slate-500">
+            <Clock3 className="mt-0.5 size-3.5 shrink-0" />
             <span className="break-all">{session.user_agent}</span>
           </div>
         ) : null}
-
-        {session.ip_address ? (
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <MapPin className="h-3.5 w-3.5" />
-            <span>{session.ip_address}</span>
-          </div>
-        ) : null}
       </div>
-    </div>
+    </li>
   );
 }
 
@@ -212,15 +204,9 @@ export default function AccountSessionsSection() {
 
   if (isLoading) {
     return (
-      <div className="grid gap-4">
+      <div className="flex flex-col gap-3">
         {Array.from({ length: 3 }).map((_, index) => (
-          <div
-            key={index}
-            className="liquid-glass rounded-2xl h-[220px] relative overflow-hidden"
-            style={{ "--lg-a": "30 41 59", "--lg-b": "15 23 42", "--lg-c": "51 65 85" } as CSSProperties}
-          >
-            <Skeleton className="absolute inset-0 bg-transparent rounded-2xl" />
-          </div>
+          <Skeleton key={index} className="h-24 rounded-lg bg-white/5" />
         ))}
       </div>
     );
@@ -228,9 +214,9 @@ export default function AccountSessionsSection() {
 
   if (isError) {
     return (
-      <div className="liquid-glass rounded-xl border border-red-500/30 p-4 text-sm bg-red-500/10 text-red-200">
+      <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
         <p className="flex items-center gap-2">
-          <AlertCircle className="h-4 w-4" />
+          <AlertCircle className="size-4" />
           {getErrorMessage(error)}
         </p>
         <Button
@@ -241,7 +227,7 @@ export default function AccountSessionsSection() {
             void refetch();
           }}
         >
-          <RefreshCw className="h-4 w-4" />
+          <RefreshCw className="size-4" />
           Retry
         </Button>
       </div>
@@ -249,77 +235,52 @@ export default function AccountSessionsSection() {
   }
 
   return (
-    <div className="space-y-8">
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Current</p>
-          <p className="mt-2 text-2xl font-semibold text-white">{currentSession ? 1 : 0}</p>
-          <p className="mt-1 text-sm text-slate-400">Session visible but not revocable from this list.</p>
-        </div>
-        <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Other Active</p>
-          <p className="mt-2 text-2xl font-semibold text-white">{otherActiveSessions.length}</p>
-          <p className="mt-1 text-sm text-slate-400">Other browsers and devices still signed in.</p>
-        </div>
-        <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">History</p>
-          <p className="mt-2 text-2xl font-semibold text-white">{sessionHistory.length}</p>
-          <p className="mt-1 text-sm text-slate-400">Expired and revoked sessions retained for history.</p>
-        </div>
+    <div className="flex flex-col gap-5">
+      <div className="grid gap-2 sm:grid-cols-3">
+        <SummaryCell label="Current" value={currentSession ? 1 : 0} />
+        <SummaryCell label="Other active" value={otherActiveSessions.length} />
+        <SummaryCell label="History" value={sessionHistory.length} />
       </div>
 
       {currentSession ? (
-        <section className="space-y-3">
-          <div>
-            <h4 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Current Session</h4>
-            <p className="mt-1 text-sm text-slate-400">This browser stays protected from accidental self-revocation.</p>
-          </div>
-          <SessionCard
-            session={currentSession}
-            isRevoking={false}
-            onRevoke={handleRevoke}
-          />
+        <section className="flex flex-col gap-2">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Current Session</h4>
+          <ul className="flex flex-col gap-2">
+            <SessionRow session={currentSession} isRevoking={false} onRevoke={handleRevoke} />
+          </ul>
         </section>
       ) : null}
 
-      <section className="space-y-3">
-        <div>
-          <h4 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Other Active Sessions</h4>
-          <p className="mt-1 text-sm text-slate-400">Revoke any session you no longer recognize or trust.</p>
-        </div>
+      <section className="flex flex-col gap-2">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Other Active Sessions</h4>
         {otherActiveSessions.length > 0 ? (
-          <div className="grid gap-4">
+          <ul className="flex flex-col gap-2">
             {otherActiveSessions.map((session) => (
-              <SessionCard
+              <SessionRow
                 key={session.session_id}
                 session={session}
-                isRevoking={
-                  revokeSessionMutation.isPending && revokeSessionMutation.variables === session.session_id
-                }
+                isRevoking={revokeSessionMutation.isPending && revokeSessionMutation.variables === session.session_id}
                 onRevoke={handleRevoke}
               />
             ))}
-          </div>
+          </ul>
         ) : (
-          <div className="rounded-xl border border-dashed border-white/10 px-4 py-6 text-sm text-slate-400">
+          <div className="rounded-lg border border-dashed border-white/10 px-4 py-5 text-sm text-slate-400">
             No other active sessions.
           </div>
         )}
       </section>
 
-      <section className="space-y-3">
-        <div>
-          <h4 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Session History</h4>
-          <p className="mt-1 text-sm text-slate-400">Historical session records grouped by login session.</p>
-        </div>
+      <section className="flex flex-col gap-2">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Session History</h4>
         {sessionHistory.length > 0 ? (
-          <div className="grid gap-4">
+          <ul className="flex flex-col gap-2">
             {sessionHistory.map((session) => (
-              <SessionCard key={session.session_id} session={session} isRevoking={false} onRevoke={handleRevoke} />
+              <SessionRow key={session.session_id} session={session} isRevoking={false} onRevoke={handleRevoke} />
             ))}
-          </div>
+          </ul>
         ) : (
-          <div className="rounded-xl border border-dashed border-white/10 px-4 py-6 text-sm text-slate-400">
+          <div className="rounded-lg border border-dashed border-white/10 px-4 py-5 text-sm text-slate-400">
             No historical sessions yet.
           </div>
         )}

@@ -265,15 +265,16 @@ class ImportDivisionGridsTests(IsolatedAsyncioTestCase):
 
 
 class DivisionGridMarketplaceRouteHelperTests(IsolatedAsyncioTestCase):
-    async def test_target_workspace_requires_admin_role(self) -> None:
+    async def test_target_workspace_requires_division_grid_permission(self) -> None:
         user = models.AuthUser(id=1, email="u@example.com", username="u", is_superuser=False)
         user.set_rbac_cache(role_names=[], permissions=[], workspaces=[{"workspace_id": 7, "role": "member"}])
 
         with self.assertRaises(HTTPException) as ctx:
-            await division_grid_routes._require_workspace_admin(
+            await division_grid_routes._require_workspace_permission(
                 7,
                 session=object(),
                 user=user,
+                action="import",
             )
 
         self.assertEqual(403, ctx.exception.status_code)

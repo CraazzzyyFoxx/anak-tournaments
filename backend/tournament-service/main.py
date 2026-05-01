@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 from shared.clients import AuthClient
 from shared.core.middleware import ExceptionMiddleware, RequestSizeLimitMiddleware
+from shared.core.scalar import register_scalar_docs
 from shared.observability import (
     CorrelationIdMiddleware,
     TimeMiddleware,
@@ -88,6 +89,7 @@ app = FastAPI(
     root_path=config.settings.api_root_path,
     default_response_class=JSONResponse,
 )
+register_scalar_docs(app)
 
 Instrumentator().instrument(app).expose(app)
 

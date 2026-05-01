@@ -6,6 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from shared.core import db
 
 if TYPE_CHECKING:
+    from shared.models.auth_user import AuthUser
     from shared.models.division_grid import DivisionGridVersion
 
 __all__ = (
@@ -51,3 +52,4 @@ class WorkspaceMember(db.TimeStampIntegerMixin):
     role: Mapped[str] = mapped_column(String(), server_default="member")
 
     workspace: Mapped["Workspace"] = relationship(back_populates="members")
+    auth_user: Mapped["AuthUser"] = relationship()

@@ -1,6 +1,7 @@
 import {
   AdminRegistration,
   BalancerApplication,
+  BalancerPlayerExportResponse,
   BalancerPlayerRecord,
   BalancerPlayerRoleEntry,
   BalancerRoleCode,
@@ -447,6 +448,19 @@ export function downloadPayload(payload: InternalBalancePayload, tournamentId: n
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = `balancer-${tournamentId ?? "draft"}.json`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+export function downloadPlayersExport(
+  payload: BalancerPlayerExportResponse,
+  tournamentId: number | null
+) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `balancer-players-${tournamentId ?? "export"}.json`;
   anchor.click();
   URL.revokeObjectURL(url);
 }

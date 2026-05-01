@@ -3,14 +3,15 @@
 from collections.abc import Callable
 from typing import Annotated, Any
 
+import sqlalchemy as sa
 from fastapi import Depends, HTTPException, Request, WebSocket, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from shared.core.auth import create_auth_dependencies
+from shared.models.auth_user import AuthUser
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.core.auth import create_auth_dependencies
-from shared.models.auth_user import AuthUser
-
+from src import models
 from src.core import db
 
 # Re-use the shared security scheme
@@ -69,6 +70,22 @@ require_permission = _auth.require_permission
 require_role = _auth.require_role
 require_any_role = _auth.require_any_role
 require_workspace_member = _auth.require_workspace_member
+require_workspace_admin = _auth.require_workspace_admin
+
+
+def require_workspace_permission(resource: str, action: str) -> Callable:
+    async def permission_checker(
+        workspace_id: int,
+        current_user: Annotated[AuthUser, Depends(get_current_active_user)],
+    ) -> AuthUser:
+        if not current_user.has_workspace_permission(workspace_id, resource, action):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Permission denied for workspace {workspace_id}: {resource}.{action} required",
+            )
+        return current_user
+
+    return permission_checker
 
 
 # ── Parser-specific: service token scopes ─────────────────────────────

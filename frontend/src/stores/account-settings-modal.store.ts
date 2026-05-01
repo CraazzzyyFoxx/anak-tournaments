@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type SettingsTab = "api-keys" | "connections" | "profile" | "preferences" | "sessions";
+export type SettingsTab = "connections" | "profile" | "preferences" | "sessions";
 
 type AccountSettingsModalStore = {
   isOpen: boolean;

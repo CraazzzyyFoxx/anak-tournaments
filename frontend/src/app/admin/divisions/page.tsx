@@ -642,14 +642,19 @@ function DivisionGridEditorCard({
 export default function DivisionsAdminPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { isSuperuser, isWorkspaceAdmin } = usePermissions();
+  const { isSuperuser, canAccessAnyPermission } = usePermissions();
   const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const getCurrentWorkspace = useWorkspaceStore((s) => s.getCurrentWorkspace);
   const fetchWorkspaces = useWorkspaceStore((s) => s.fetchWorkspaces);
   const workspace = getCurrentWorkspace();
 
   const canEdit =
-    isSuperuser || (currentWorkspaceId !== null && isWorkspaceAdmin(currentWorkspaceId));
+    isSuperuser ||
+    (currentWorkspaceId !== null &&
+      canAccessAnyPermission(
+        ["division_grid.create", "division_grid.update", "division_grid.delete", "division_grid.import"],
+        currentWorkspaceId,
+      ));
 
   const gridsQuery = useQuery({
     queryKey: ["division-grids", currentWorkspaceId],

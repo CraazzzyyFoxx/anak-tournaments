@@ -11,8 +11,7 @@ from .map import router as map_router
 from .team import player_router
 from .user import router as user_router
 
-# Admin router - aggregates all admin CRUD endpoints
-# All endpoints require admin or tournament_organizer role
+# Admin router - aggregates admin CRUD endpoints.
 
 admin_router = APIRouter(prefix="/admin", tags=["admin"])
 

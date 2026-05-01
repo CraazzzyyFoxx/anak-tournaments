@@ -88,7 +88,7 @@ class WorkspaceAuthDependencyTests(IsolatedAsyncioTestCase):
 
         self.assertIs(result, user)
 
-    async def test_tournament_permission_keeps_legacy_organizer_access(self) -> None:
+    async def test_tournament_permission_rejects_legacy_organizer_without_permission(self) -> None:
         user = _make_user()
         user.set_rbac_cache(
             role_names=["tournament_organizer"],
@@ -100,17 +100,19 @@ class WorkspaceAuthDependencyTests(IsolatedAsyncioTestCase):
         session.scalar = AsyncMock(return_value=9)
 
         checker = auth.require_tournament_permission("team", "read")
-        result = await checker(tournament_id=55, session=session, current_user=user)
 
-        self.assertIs(result, user)
+        with self.assertRaises(HTTPException) as ctx:
+            await checker(tournament_id=55, session=session, current_user=user)
 
-    async def test_tournament_permission_allows_workspace_admin_membership(self) -> None:
+        self.assertEqual(ctx.exception.status_code, 403)
+
+    async def test_tournament_permission_allows_workspace_wildcard(self) -> None:
         user = _make_user()
         user.set_rbac_cache(
             role_names=[],
             permissions=[],
             workspaces=[{"workspace_id": 9, "role": "admin"}],
-            workspace_rbac={9: {"roles": [], "permissions": []}},
+            workspace_rbac={9: {"roles": ["owner"], "permissions": [{"resource": "*", "action": "*"}]}},
         )
         session = AsyncMock()
         session.scalar = AsyncMock(return_value=9)

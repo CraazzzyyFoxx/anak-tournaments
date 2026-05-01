@@ -33,7 +33,11 @@ async function fetchApiKeys(workspaceId: number): Promise<AccountApiKey[]> {
   return response.json();
 }
 
-async function createApiKey(input: { name: string; workspace_id: number }): Promise<AccountApiKeyCreateResponse> {
+async function createApiKey(input: {
+  expires_at?: string | null;
+  name: string;
+  workspace_id: number;
+}): Promise<AccountApiKeyCreateResponse> {
   const response = await fetch("/api/account/api-keys", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

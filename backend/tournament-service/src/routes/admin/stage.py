@@ -21,7 +21,7 @@ router = APIRouter(
 async def get_stages(
     tournament_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("tournament", "read")),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("stage", "read")),
 ):
     """Get all stages for a tournament."""
     stages = await stage_service.get_stages_by_tournament(session, tournament_id)
@@ -32,7 +32,7 @@ async def get_stages(
 async def get_stages_progress(
     tournament_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("tournament", "read")),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("stage", "read")),
 ):
     """Return completion progress per stage and per stage_item.
 
@@ -64,7 +64,7 @@ async def get_stages_progress(
 async def get_stage(
     stage_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("tournament", "read")),
+    user: models.AuthUser = Depends(auth.require_stage_permission("stage", "read")),
 ):
     """Get a single stage with items and inputs."""
     stage = await stage_service.get_stage(session, stage_id)
@@ -79,7 +79,7 @@ async def create_stage(
     tournament_id: int,
     data: admin_schemas.StageCreate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("tournament", "update")),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("stage", "create")),
 ):
     """Create a new stage for a tournament."""
     stage = await stage_service.create_stage(session, tournament_id, data)
@@ -91,7 +91,7 @@ async def update_stage(
     stage_id: int,
     data: admin_schemas.StageUpdate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("tournament", "update")),
+    user: models.AuthUser = Depends(auth.require_stage_permission("stage", "update")),
 ):
     """Update stage metadata."""
     if data.stage_type is not None and not user.is_superuser:
@@ -108,7 +108,7 @@ async def update_stage(
 async def delete_stage(
     stage_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("tournament", "delete")),
+    user: models.AuthUser = Depends(auth.require_stage_permission("stage", "delete")),
 ):
     """Delete a stage and all its items/inputs."""
     await stage_service.delete_stage(session, stage_id)
@@ -119,7 +119,7 @@ async def merge_group_stages(
     stage_id: int,
     data: admin_schemas.MergeGroupStagesRequest,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("tournament", "update")),
+    user: models.AuthUser = Depends(auth.require_stage_permission("stage", "update")),
 ):
     """Merge legacy one-group stages into the selected grouped stage."""
     stage = await stage_service.merge_group_stages(
@@ -139,7 +139,7 @@ async def create_stage_item(
     stage_id: int,
     data: admin_schemas.StageItemCreate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("tournament", "update")),
+    user: models.AuthUser = Depends(auth.require_stage_permission("stage", "update")),
 ):
     """Create a stage item (group, bracket) within a stage."""
     item = await stage_service.create_stage_item(session, stage_id, data)
@@ -154,7 +154,7 @@ async def update_stage_item(
     stage_item_id: int,
     data: admin_schemas.StageItemUpdate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("tournament", "update")),
+    user: models.AuthUser = Depends(auth.require_stage_item_permission("stage", "update")),
 ):
     """Update a stage item's name, type, or order."""
     item = await stage_service.update_stage_item(session, stage_item_id, data)
@@ -169,7 +169,7 @@ async def create_stage_item_input(
     stage_item_id: int,
     data: admin_schemas.StageItemInputCreate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("tournament", "update")),
+    user: models.AuthUser = Depends(auth.require_stage_item_permission("stage", "update")),
 ):
     """Create a stage item input (team slot)."""
     inp = await stage_service.create_stage_item_input(session, stage_item_id, data)
@@ -184,7 +184,7 @@ async def update_stage_item_input(
     input_id: int,
     data: admin_schemas.StageItemInputUpdate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("tournament", "update")),
+    user: models.AuthUser = Depends(auth.require_stage_item_input_permission("stage", "update")),
 ):
     """Update a stage item input (e.g. swap the assigned team)."""
     inp = await stage_service.update_stage_item_input(session, input_id, data)
@@ -195,7 +195,7 @@ async def update_stage_item_input(
 async def activate_stage(
     stage_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("tournament", "update")),
+    user: models.AuthUser = Depends(auth.require_stage_permission("stage", "update")),
 ):
     """Activate a stage, resolving tentative inputs from previous stage standings."""
     stage = await stage_service.activate_stage(session, stage_id)
@@ -206,7 +206,7 @@ async def activate_stage(
 async def generate_encounters(
     stage_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("tournament", "update")),
+    user: models.AuthUser = Depends(auth.require_stage_permission("stage", "update")),
 ):
     """Generate bracket encounters for a stage based on its type and assigned teams."""
     encounters = await stage_service.generate_encounters(session, stage_id)
@@ -218,7 +218,7 @@ async def wire_from_groups(
     stage_id: int,
     data: admin_schemas.WireFromGroupsRequest,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("tournament", "update")),
+    user: models.AuthUser = Depends(auth.require_stage_permission("stage", "update")),
 ):
     """Auto-wire TENTATIVE inputs in a playoff stage from a preceding group
     stage. Creates (num_groups × top) inputs with cross-group seeding so that
@@ -243,7 +243,7 @@ async def activate_and_generate(
     stage_id: int,
     force: bool = False,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("tournament", "update")),
+    user: models.AuthUser = Depends(auth.require_stage_permission("stage", "update")),
 ):
     """One-click: resolve TENTATIVE inputs from prior-stage standings, then
     generate the bracket. Equivalent to calling /activate then /generate.
@@ -268,7 +268,7 @@ async def seed_teams(
     stage_id: int,
     data: admin_schemas.SeedTeamsRequest,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("tournament", "update")),
+    user: models.AuthUser = Depends(auth.require_stage_permission("stage", "update")),
 ):
     """Auto-distribute teams into the stage's stage_items using snake-SR
     (default) or another seeding mode. Replaces all existing FINAL inputs;

@@ -7,6 +7,7 @@ __all__ = (
     "WorkspaceRead",
     "WorkspaceCreate",
     "WorkspaceUpdate",
+    "WorkspaceMemberRoleRead",
     "WorkspaceMemberRead",
     "WorkspaceMemberCreate",
     "WorkspaceMemberUpdate",
@@ -39,17 +40,35 @@ class WorkspaceUpdate(BaseModel):
     default_division_grid_version_id: int | None = None
 
 
+class WorkspaceMemberRoleRead(BaseModel):
+    id: int
+    name: str
+    description: str | None = None
+    is_system: bool
+    workspace_id: int | None = None
+
+    class Config:
+        from_attributes = True
+
+
 class WorkspaceMemberRead(BaseRead):
     workspace_id: int
     auth_user_id: int
     role: str
     username: str | None = None
+    email: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+    avatar_url: str | None = None
+    rbac_roles: list[WorkspaceMemberRoleRead] = Field(default_factory=list)
 
 
 class WorkspaceMemberCreate(BaseModel):
     auth_user_id: int
-    role: str = Field(default="member", pattern=r"^(owner|admin|member)$")
+    role: str | None = Field(default=None, pattern=r"^(owner|admin|member)$")
+    role_ids: list[int] | None = None
 
 
 class WorkspaceMemberUpdate(BaseModel):
-    role: str = Field(..., pattern=r"^(owner|admin|member)$")
+    role: str | None = Field(default=None, pattern=r"^(owner|admin|member)$")
+    role_ids: list[int] | None = None

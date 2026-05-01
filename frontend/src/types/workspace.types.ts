@@ -125,7 +125,18 @@ export interface WorkspaceMember {
   workspace_id: number;
   auth_user_id: number;
   role: "owner" | "admin" | "member";
-  username?: string;
+  username?: string | null;
+  email?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  avatar_url?: string | null;
+  rbac_roles: Array<{
+    id: number;
+    name: string;
+    description?: string | null;
+    is_system: boolean;
+    workspace_id?: number | null;
+  }>;
 }
 
 export interface WorkspaceMembership {

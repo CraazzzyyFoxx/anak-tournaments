@@ -15,14 +15,15 @@ def get_s3(request: Request) -> S3Client:
     return request.app.state.s3
 
 
-async def _require_workspace_admin(
+async def _require_workspace_permission(
     workspace_id: int,
     *,
     session: AsyncSession,
     user: models.AuthUser,
+    action: str,
 ) -> models.Workspace:
-    if not user.is_workspace_admin(workspace_id):
-        raise HTTPException(status_code=403, detail="Workspace admin or owner role required")
+    if not user.has_workspace_permission(workspace_id, "division_grid", action):
+        raise HTTPException(status_code=403, detail=f"Permission denied: division_grid.{action} required")
     workspace = await workspace_service.get_by_id(session, workspace_id)
     if workspace is None:
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -53,7 +54,7 @@ async def get_workspace_division_grids(
     session: AsyncSession = Depends(db.get_async_session),
     user: models.AuthUser = Depends(auth.get_current_active_user),
 ):
-    await _require_workspace_admin(workspace_id, session=session, user=user)
+    await _require_workspace_permission(workspace_id, session=session, user=user, action="read")
     grids = await division_grid_service.get_workspace_grids(session, workspace_id)
     return [schemas.DivisionGridRead.model_validate(grid, from_attributes=True) for grid in grids]
 
@@ -65,7 +66,7 @@ async def create_workspace_division_grid(
     session: AsyncSession = Depends(db.get_async_session),
     user: models.AuthUser = Depends(auth.get_current_active_user),
 ):
-    await _require_workspace_admin(workspace_id, session=session, user=user)
+    await _require_workspace_permission(workspace_id, session=session, user=user, action="create")
     grid = await division_grid_service.create_grid(session, workspace_id, data)
     await session.commit()
     return schemas.DivisionGridRead.model_validate(grid, from_attributes=True)
@@ -80,7 +81,7 @@ async def get_division_grid_marketplace_workspaces(
     session: AsyncSession = Depends(db.get_async_session),
     user: models.AuthUser = Depends(auth.get_current_active_user),
 ):
-    await _require_workspace_admin(workspace_id, session=session, user=user)
+    await _require_workspace_permission(workspace_id, session=session, user=user, action="read")
     return await division_grid_marketplace.list_marketplace_workspaces(
         session,
         target_workspace_id=workspace_id,
@@ -98,7 +99,7 @@ async def get_division_grid_marketplace(
     session: AsyncSession = Depends(db.get_async_session),
     user: models.AuthUser = Depends(auth.get_current_active_user),
 ):
-    await _require_workspace_admin(workspace_id, session=session, user=user)
+    await _require_workspace_permission(workspace_id, session=session, user=user, action="read")
     source_workspace = await _get_source_workspace_or_404(
         session,
         target_workspace_id=workspace_id,
@@ -123,7 +124,7 @@ async def import_division_grid_marketplace(
     user: models.AuthUser = Depends(auth.get_current_active_user),
     s3: S3Client = Depends(get_s3),
 ):
-    target_workspace = await _require_workspace_admin(workspace_id, session=session, user=user)
+    target_workspace = await _require_workspace_permission(workspace_id, session=session, user=user, action="import")
     source_workspace = await _get_source_workspace_or_404(
         session,
         target_workspace_id=workspace_id,
@@ -157,7 +158,7 @@ async def get_workspace_division_grid_versions(
     session: AsyncSession = Depends(db.get_async_session),
     user: models.AuthUser = Depends(auth.get_current_active_user),
 ):
-    await _require_workspace_admin(workspace_id, session=session, user=user)
+    await _require_workspace_permission(workspace_id, session=session, user=user, action="read")
     versions = await division_grid_service.get_versions(session, workspace_id, grid_id)
     return [schemas.DivisionGridVersionRead.model_validate(version, from_attributes=True) for version in versions]
 
@@ -174,7 +175,7 @@ async def create_workspace_division_grid_version(
     session: AsyncSession = Depends(db.get_async_session),
     user: models.AuthUser = Depends(auth.get_current_active_user),
 ):
-    await _require_workspace_admin(workspace_id, session=session, user=user)
+    await _require_workspace_permission(workspace_id, session=session, user=user, action="create")
     version = await division_grid_service.create_version(session, workspace_id, grid_id, data)
     await session.commit()
     return schemas.DivisionGridVersionRead.model_validate(version, from_attributes=True)
@@ -197,7 +198,7 @@ async def delete_division_grid_version(
     user: models.AuthUser = Depends(auth.get_current_active_user),
 ):
     version = await division_grid_service.get_version(session, version_id)
-    await _require_workspace_admin(version.grid.workspace_id, session=session, user=user)
+    await _require_workspace_permission(version.grid.workspace_id, session=session, user=user, action="delete")
     await division_grid_service.delete_version(session, version_id)
     await session.commit()
 
@@ -209,7 +210,7 @@ async def publish_division_grid_version(
     user: models.AuthUser = Depends(auth.get_current_active_user),
 ):
     version = await division_grid_service.get_version(session, version_id)
-    await _require_workspace_admin(version.grid.workspace_id, session=session, user=user)
+    await _require_workspace_permission(version.grid.workspace_id, session=session, user=user, action="publish")
     version = await division_grid_service.publish_version(session, version_id)
     await session.commit()
     return schemas.DivisionGridVersionRead.model_validate(version, from_attributes=True)
@@ -222,7 +223,7 @@ async def clone_division_grid_version(
     user: models.AuthUser = Depends(auth.get_current_active_user),
 ):
     version = await division_grid_service.get_version(session, version_id)
-    await _require_workspace_admin(version.grid.workspace_id, session=session, user=user)
+    await _require_workspace_permission(version.grid.workspace_id, session=session, user=user, action="create")
     cloned = await division_grid_service.clone_version(session, version_id)
     await session.commit()
     return schemas.DivisionGridVersionRead.model_validate(cloned, from_attributes=True)
@@ -256,7 +257,7 @@ async def put_division_grid_mapping(
     user: models.AuthUser = Depends(auth.get_current_active_user),
 ):
     source_version = await division_grid_service.get_version(session, source_version_id)
-    await _require_workspace_admin(source_version.grid.workspace_id, session=session, user=user)
+    await _require_workspace_permission(source_version.grid.workspace_id, session=session, user=user, action="update")
     mapping = await division_grid_service.upsert_mapping(session, source_version_id, target_version_id, data)
     await session.commit()
     return schemas.DivisionGridMappingRead.model_validate(mapping, from_attributes=True)

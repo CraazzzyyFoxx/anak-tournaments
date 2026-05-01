@@ -166,12 +166,6 @@ async def _require_workspace_permission(
             detail="API keys cannot access balancer admin endpoints",
         )
 
-    if current_user.has_role("tournament_organizer"):
-        return current_user
-
-    if current_user.is_workspace_admin(workspace_id):
-        return current_user
-
     if not current_user.has_workspace_permission(workspace_id, resource, action):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

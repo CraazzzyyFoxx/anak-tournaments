@@ -25,8 +25,8 @@ class AlgorithmConfig(BaseSettings):
     )
 
     # Shared optimizer parameters
-    population_size: int = Field(default=100, ge=10, le=1000)
-    generation_count: int = Field(default=200, ge=10, le=5000)
+    population_size: int = Field(default=60, ge=10, le=1000)
+    generation_count: int = Field(default=120, ge=10, le=5000)
     mutation_rate: float = Field(default=0.35, ge=0.0, le=1.0)
     mutation_strength: int = Field(default=2, ge=1, le=10)
 
@@ -77,6 +77,18 @@ class AlgorithmConfig(BaseSettings):
         ge=1,
         le=200,
         description="Maximum number of solution variants returned by the selected solver.",
+    )
+
+    # Rating normalization
+    rating_scale_ceiling: int = Field(
+        default=3500,
+        ge=100,
+        le=10000,
+        description=(
+            "Canonical max rating. Input ratings are linearly scaled so the "
+            "observed maximum maps to this value before optimization. Keeps "
+            "gap-penalty thresholds and weight calibration dataset-independent."
+        ),
     )
 
 

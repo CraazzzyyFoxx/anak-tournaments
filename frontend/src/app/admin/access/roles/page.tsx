@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ColumnDef } from "@tanstack/react-table";
 import { Building2, Globe, Lock, MoreHorizontal, Pencil, Plus, ShieldAlert, Trash2, Wrench } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -54,43 +54,65 @@ const emptyRoleForm: UpsertRolePayload = {
   permission_ids: [],
 };
 
+function roleToForm(role: RbacRole): UpsertRolePayload {
+  return {
+    name: role.name,
+    description: role.description || "",
+    permission_ids: role.permissions.map((permission) => permission.id),
+  };
+}
+
 export default function AccessAdminRolesPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { hasPermission, isSuperuser, isWorkspaceAdmin, getAdminWorkspaceIds } = usePermissions();
+  const { hasPermission, isSuperuser, canAccessPermission, canAccessAnyPermission } = usePermissions();
 
   const { workspaces } = useWorkspaceStore();
-  const adminWorkspaceIds = getAdminWorkspaceIds();
   const adminWorkspaces = workspaces.filter(
-    (ws) => isSuperuser || adminWorkspaceIds.includes(ws.id),
+    (ws) =>
+      isSuperuser ||
+      canAccessAnyPermission(["role.read", "role.create", "role.update", "role.delete", "role.assign"], ws.id),
   );
 
   // Scope selector: "global" or a workspace id
   const [selectedScope, setSelectedScope] = useState<RoleScope>("global");
+  const canReadGlobalRoles = isSuperuser || hasPermission("role.read");
+  const effectiveScope =
+    selectedScope === "global" && !canReadGlobalRoles && adminWorkspaces[0]
+      ? adminWorkspaces[0].id
+      : selectedScope;
 
   // For global scope: use global RBAC permissions
   // For workspace scope: user just needs to be workspace admin
-  const canReadPermissions = hasPermission("permission.read");
+  const canReadPermissions =
+    effectiveScope === "global"
+      ? hasPermission("permission.read")
+      : typeof effectiveScope === "number" && canAccessPermission("permission.read", effectiveScope);
   const canManageInScope =
-    selectedScope === "global"
+    effectiveScope === "global"
       ? hasPermission("role.create") && canReadPermissions
-      : typeof selectedScope === "number" && isWorkspaceAdmin(selectedScope);
-  const canCreateRole = canManageInScope;
+      : typeof effectiveScope === "number" && canAccessPermission("role.create", effectiveScope);
+  const canCreateRole = canManageInScope && canReadPermissions;
   const canUpdateRole =
-    selectedScope === "global"
+    effectiveScope === "global"
       ? hasPermission("role.update") && canReadPermissions
-      : canManageInScope;
+      : typeof effectiveScope === "number" && canAccessPermission("role.update", effectiveScope) && canReadPermissions;
   const canDeleteRole =
-    selectedScope === "global" ? hasPermission("role.delete") : canManageInScope;
+    effectiveScope === "global"
+      ? hasPermission("role.delete")
+      : typeof effectiveScope === "number" && canAccessPermission("role.delete", effectiveScope);
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingRoleId, setEditingRoleId] = useState<number | null>(null);
   const [deletingRole, setDeletingRole] = useState<RbacRole | null>(null);
-  const [formData, setFormData] = useState<UpsertRolePayload>(emptyRoleForm);
+  const [formOverride, setFormOverride] = useState<UpsertRolePayload | null>(emptyRoleForm);
 
   const permissionsQuery = useQuery({
-    queryKey: ["access-admin", "permissions", "all"],
-    queryFn: () => rbacService.listPermissions(),
+    queryKey: ["access-admin", "permissions", effectiveScope],
+    queryFn: () =>
+      rbacService.listPermissions(
+        effectiveScope === "global" ? undefined : { workspace_id: effectiveScope },
+      ),
     enabled: canReadPermissions && (createDialogOpen || editingRoleId !== null),
   });
 
@@ -100,23 +122,6 @@ export default function AccessAdminRolesPage() {
     enabled: editingRoleId !== null,
   });
 
-  useEffect(() => {
-    if (editingRoleId === null) {
-      setFormData(emptyRoleForm);
-      return;
-    }
-
-    if (!roleDetailQuery.data) {
-      return;
-    }
-
-    setFormData({
-      name: roleDetailQuery.data.name,
-      description: roleDetailQuery.data.description || "",
-      permission_ids: roleDetailQuery.data.permissions.map((permission) => permission.id),
-    });
-  }, [editingRoleId, roleDetailQuery.data]);
-
   const createRoleMutation = useMutation({
     mutationFn: (payload: UpsertRolePayload) => rbacService.createRole(payload),
     onSuccess: async () => {
@@ -125,7 +130,7 @@ export default function AccessAdminRolesPage() {
         queryClient.invalidateQueries({ queryKey: ["access-admin", "permissions"] }),
       ]);
       setCreateDialogOpen(false);
-      setFormData(emptyRoleForm);
+      setFormOverride(emptyRoleForm);
       toast({ title: "Role created" });
     },
     onError: (error) => {
@@ -142,7 +147,7 @@ export default function AccessAdminRolesPage() {
         queryClient.invalidateQueries({ queryKey: ["access-admin", "users"] }),
       ]);
       setEditingRoleId(null);
-      setFormData(emptyRoleForm);
+      setFormOverride(emptyRoleForm);
       toast({ title: "Role updated" });
     },
     onError: (error) => {
@@ -227,8 +232,10 @@ export default function AccessAdminRolesPage() {
               <DropdownMenuLabel>Actions</DropdownMenuLabel>
               {canUpdateRole ? (
                 <DropdownMenuItem
+                  disabled={role.is_system}
                   onClick={() => {
                     updateRoleMutation.reset();
+                    setFormOverride(null);
                     setEditingRoleId(role.id);
                   }}
                 >
@@ -266,17 +273,22 @@ export default function AccessAdminRolesPage() {
 
   const isSubmitting = createRoleMutation.isPending || updateRoleMutation.isPending;
   const isEditing = editingRoleId !== null;
-  const currentBaseline = isEditing && roleDetailQuery.data
-    ? {
-        name: roleDetailQuery.data.name,
-        description: roleDetailQuery.data.description || "",
-        permission_ids: roleDetailQuery.data.permissions.map((permission) => permission.id),
-      }
-    : emptyRoleForm;
+  const roleDetail = roleDetailQuery.data?.id === editingRoleId ? roleDetailQuery.data : undefined;
+  const currentBaseline = isEditing && roleDetail ? roleToForm(roleDetail) : emptyRoleForm;
+  const formData = formOverride ?? currentBaseline;
   const isFormDirty = (createDialogOpen || isEditing) && hasUnsavedChanges(formData, currentBaseline);
 
+  const updateFormData = (
+    updater: UpsertRolePayload | ((current: UpsertRolePayload) => UpsertRolePayload),
+  ) => {
+    setFormOverride((current) => {
+      const value = current ?? currentBaseline;
+      return typeof updater === "function" ? updater(value) : updater;
+    });
+  };
+
   const togglePermission = (permissionId: number, checked: boolean) => {
-    setFormData((current) => ({
+    updateFormData((current) => ({
       ...current,
       permission_ids: checked
         ? [...current.permission_ids, permissionId]
@@ -293,15 +305,15 @@ export default function AccessAdminRolesPage() {
     // Include workspace_id when creating in workspace scope
     const payload: UpsertRolePayload = {
       ...formData,
-      workspace_id: selectedScope === "global" ? null : selectedScope,
+      workspace_id: effectiveScope === "global" ? null : effectiveScope,
     };
     createRoleMutation.mutate(payload);
   };
 
   const scopeLabel =
-    selectedScope === "global"
+    effectiveScope === "global"
       ? "Global"
-      : workspaces.find((w) => w.id === selectedScope)?.name ?? "Workspace";
+      : workspaces.find((w) => w.id === effectiveScope)?.name ?? "Workspace";
 
   return (
     <div className="space-y-6">
@@ -315,7 +327,7 @@ export default function AccessAdminRolesPage() {
               onClick={() => {
                 createRoleMutation.reset();
                 updateRoleMutation.reset();
-                setFormData(emptyRoleForm);
+                setFormOverride(emptyRoleForm);
                 setCreateDialogOpen(true);
               }}
             >
@@ -330,7 +342,7 @@ export default function AccessAdminRolesPage() {
       <div className="flex items-center gap-3">
         <Label className="text-sm text-muted-foreground">Scope:</Label>
         <Select
-          value={String(selectedScope)}
+          value={String(effectiveScope)}
           onValueChange={(value) =>
             setSelectedScope(value === "global" ? "global" : Number(value))
           }
@@ -339,7 +351,7 @@ export default function AccessAdminRolesPage() {
             <SelectValue placeholder="Select scope" />
           </SelectTrigger>
           <SelectContent>
-            {(isSuperuser || hasPermission("role.read")) && (
+            {canReadGlobalRoles && (
               <SelectItem value="global">
                 <div className="flex items-center gap-2">
                   <Globe className="h-3.5 w-3.5" />
@@ -363,10 +375,10 @@ export default function AccessAdminRolesPage() {
         initialPageSize={PAGE_SIZE}
         pageSizeOptions={[10, 20, 50, 100]}
         queryKey={(page, search, pageSize, sortField, sortDir) => [
-          "access-admin", "roles", selectedScope, page, search, pageSize, sortField, sortDir,
+          "access-admin", "roles", effectiveScope, page, search, pageSize, sortField, sortDir,
         ]}
         queryFn={async (page, search, pageSize, sortField, sortDir) => {
-          const workspaceId = selectedScope === "global" ? undefined : selectedScope;
+          const workspaceId = effectiveScope === "global" ? undefined : effectiveScope;
           const roles = await rbacService.listRoles(
             workspaceId !== undefined ? { workspace_id: workspaceId } : undefined,
           );
@@ -384,7 +396,9 @@ export default function AccessAdminRolesPage() {
         onRowDoubleClick={
           canUpdateRole
             ? (row) => {
+                if (row.original.is_system) return;
                 updateRoleMutation.reset();
+                setFormOverride(null);
                 setEditingRoleId(row.original.id);
               }
             : undefined
@@ -397,7 +411,7 @@ export default function AccessAdminRolesPage() {
           if (!open) {
             setCreateDialogOpen(false);
             setEditingRoleId(null);
-            setFormData(emptyRoleForm);
+            setFormOverride(emptyRoleForm);
           }
         }}
         title={isEditing ? "Edit Role" : `Create Role (${scopeLabel})`}
@@ -417,7 +431,7 @@ export default function AccessAdminRolesPage() {
         isDirty={isFormDirty}
       >
         <div className="space-y-5">
-          {roleDetailQuery.data?.is_system ? (
+          {roleDetail?.is_system ? (
             <div className="flex items-start gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-100">
               <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
               <span>System roles are protected. Some edits may be rejected by the API.</span>
@@ -429,7 +443,7 @@ export default function AccessAdminRolesPage() {
             <Input
               id="role-name"
               value={formData.name}
-              onChange={(event) => setFormData((current) => ({ ...current, name: event.target.value }))}
+              onChange={(event) => updateFormData((current) => ({ ...current, name: event.target.value }))}
               placeholder="support_admin"
               required
             />
@@ -440,7 +454,7 @@ export default function AccessAdminRolesPage() {
             <Input
               id="role-description"
               value={formData.description || ""}
-              onChange={(event) => setFormData((current) => ({ ...current, description: event.target.value }))}
+              onChange={(event) => updateFormData((current) => ({ ...current, description: event.target.value }))}
               placeholder="Describe what this role is allowed to do"
             />
           </div>

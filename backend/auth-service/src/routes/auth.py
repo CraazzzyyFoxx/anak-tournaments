@@ -287,6 +287,9 @@ async def get_current_user_info(
 
     # Build base response from ORM
     data = schemas.AuthUser.model_validate(user, from_attributes=True).model_dump()
+    global_roles, global_permissions = auth_service.AuthService.get_user_roles_and_permissions(user)
+    data["roles"] = global_roles
+    data["permissions"] = global_permissions
 
     # Fetch workspace memberships with RBAC data
     workspace_rows = await session.execute(

@@ -54,13 +54,13 @@ describe("usePermissions helpers", () => {
     expect(canAccessAnyPermissionForProfile(profile, ["match.read"])).toBe(true);
   });
 
-  it("treats workspace admin membership as workspace permission wildcard", () => {
+  it("treats workspace admin wildcard as scoped to that workspace", () => {
     const profile = createProfile({
       workspaces: [
         {
           workspace_id: 11,
           memberRole: "admin",
-          permissions: [],
+          permissions: ["admin.*"],
         },
       ],
     });
@@ -69,5 +69,19 @@ describe("usePermissions helpers", () => {
     expect(hasWorkspacePermissionForProfile(profile, 11, "team.import")).toBe(true);
     expect(hasWorkspacePermissionForProfile(profile, 12, "tournament.read")).toBe(false);
     expect(canAccessAnyPermissionForProfile(profile, ["map.read"])).toBe(true);
+  });
+
+  it("does not trust legacy workspace memberRole as a permission wildcard", () => {
+    const profile = createProfile({
+      workspaces: [
+        {
+          workspace_id: 13,
+          memberRole: "admin",
+          permissions: [],
+        },
+      ],
+    });
+
+    expect(hasWorkspacePermissionForProfile(profile, 13, "team.import")).toBe(false);
   });
 });

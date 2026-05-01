@@ -89,22 +89,18 @@ class AuthUser(db.TimeStampIntegerMixin):
         return None
 
     def is_workspace_admin(self, workspace_id: int) -> bool:
-        """Check if user is admin or owner of a workspace."""
+        """Check if user has workspace-scoped wildcard access."""
         if self.is_superuser:
             return True
-        role = self.get_workspace_role(workspace_id)
-        return role in ("admin", "owner")
+        return self.has_workspace_permission(workspace_id, "*", "*")
 
     def has_workspace_permission(self, workspace_id: int, resource: str, action: str) -> bool:
         """Check permission within a specific workspace context.
 
-        Checks: superuser -> global admin role -> workspace admin role
-        -> global permissions -> workspace-scoped permissions.
+        Checks: superuser -> global admin role -> global permissions
+        -> workspace-scoped permissions.
         """
         if self.is_superuser or self._has_admin_equivalent_role():
-            return True
-
-        if self.is_workspace_admin(workspace_id):
             return True
 
         # Check global permissions first
@@ -120,6 +116,15 @@ class AuthUser(db.TimeStampIntegerMixin):
                 if (pr == resource or pr == "*") and (pa == action or pa == "*"):
                     return True
 
+        for role in self.roles:
+            if role.workspace_id != workspace_id:
+                continue
+            for permission in role.permissions:
+                if (permission.resource == resource or permission.resource == "*") and (
+                    permission.action == action or permission.action == "*"
+                ):
+                    return True
+
         return False
 
     def __repr__(self):
@@ -130,7 +135,10 @@ class AuthUser(db.TimeStampIntegerMixin):
         if cached_roles is not None:
             return any(role_name in ADMIN_EQUIVALENT_ROLE_NAMES for role_name in cached_roles)
 
-        return any(role.name in ADMIN_EQUIVALENT_ROLE_NAMES for role in self.roles)
+        return any(
+            role.name in ADMIN_EQUIVALENT_ROLE_NAMES and role.workspace_id is None
+            for role in self.roles
+        )
 
     def has_permission(self, resource: str, action: str) -> bool:
         """Check if user has a specific permission"""
@@ -146,6 +154,8 @@ class AuthUser(db.TimeStampIntegerMixin):
             return False
 
         for role in self.roles:
+            if role.workspace_id is not None:
+                continue
             for permission in role.permissions:
                 if permission.resource == resource and permission.action == action:
                     return True
@@ -165,7 +175,7 @@ class AuthUser(db.TimeStampIntegerMixin):
         cached_roles = getattr(self, "_cached_role_names", None)
         if cached_roles is not None:
             return role_name in cached_roles
-        return any(role.name == role_name for role in self.roles)
+        return any(role.name == role_name and role.workspace_id is None for role in self.roles)
 
 
 class RefreshToken(db.TimeStampIntegerMixin):
