@@ -37,7 +37,7 @@ import { hasUnsavedChanges } from "@/lib/form-change";
 import { paginateResults, sortArray } from "@/lib/paginate-results";
 import { rbacService } from "@/services/rbac.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
-import type { RbacRole, UpsertRolePayload } from "@/types/rbac.types";
+import type { RbacRole, RbacRoleDetail, UpsertRolePayload } from "@/types/rbac.types";
 
 const PAGE_SIZE = 15;
 
@@ -54,7 +54,7 @@ const emptyRoleForm: UpsertRolePayload = {
   permission_ids: [],
 };
 
-function roleToForm(role: RbacRole): UpsertRolePayload {
+function roleToForm(role: RbacRoleDetail): UpsertRolePayload {
   return {
     name: role.name,
     description: role.description || "",

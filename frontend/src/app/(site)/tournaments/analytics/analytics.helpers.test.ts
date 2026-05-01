@@ -24,11 +24,11 @@ describe("analytics helpers", () => {
   });
 
   it("returns the analytics queries that must be invalidated after recalculate", () => {
-    expect(getAnalyticsRefreshKeys(42, 7)).toEqual([
-      ["analytics", 42],
-      ["analytics", 42, 7],
+    expect(getAnalyticsRefreshKeys(11, 42, 7)).toEqual([
+      ["analytics", 11, 42],
+      ["analytics", 11, 42, 7],
     ]);
 
-    expect(getAnalyticsRefreshKeys(42, null)).toEqual([["analytics", 42]]);
+    expect(getAnalyticsRefreshKeys(null, 42, null)).toEqual([["analytics", "global", 42]]);
   });
 });

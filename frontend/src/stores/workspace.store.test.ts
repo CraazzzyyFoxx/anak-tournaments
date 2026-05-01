@@ -27,6 +27,7 @@ function createProfile(workspaceIds: number[]): AuthProfile {
     roles: [],
     permissions: [],
     isSuperuser: false,
+    linkedPlayers: [],
     workspaces: workspaceIds.map((workspaceId) => ({
       workspace_id: workspaceId,
       slug: `workspace-${workspaceId}`,

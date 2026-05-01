@@ -6,12 +6,11 @@ import type { DivisionGridVersion } from "@/types/workspace.types";
 function createDivisionGridVersion(id: number): DivisionGridVersion {
   return {
     id,
-    workspace_id: 7,
-    name: `Grid ${id}`,
+    grid_id: 7,
     version: 1,
+    label: `Grid ${id}`,
     status: "published",
-    created_at: "2026-04-20T00:00:00Z",
-    updated_at: "2026-04-20T00:00:00Z",
+    created_from_version_id: null,
     published_at: "2026-04-20T00:00:00Z",
     tiers: [
       {
