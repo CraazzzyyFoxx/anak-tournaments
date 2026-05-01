@@ -24,7 +24,6 @@ import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -45,7 +44,6 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useToast } from "@/hooks/use-toast";
-import { hasUnsavedChanges } from "@/lib/form-change";
 import { paginateResults, sortArray } from "@/lib/paginate-results";
 import { rbacService } from "@/services/rbac.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
@@ -98,6 +96,22 @@ function sortActions(left: string, right: string): number {
   return left.localeCompare(right);
 }
 
+function samePermissionIds(left: number[], right: number[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  const rightIds = new Set(right);
+  return left.every((permissionId) => rightIds.has(permissionId));
+}
+
+function hasRoleFormChanges(current: UpsertRolePayload, initial: UpsertRolePayload): boolean {
+  return (
+    current.name !== initial.name ||
+    (current.description || "") !== (initial.description || "") ||
+    !samePermissionIds(current.permission_ids, initial.permission_ids)
+  );
+}
+
 const emptyRoleForm: UpsertRolePayload = {
   name: "",
   description: "",
@@ -115,8 +129,37 @@ function roleToForm(role: RbacRoleDetail): UpsertRolePayload {
 type PermissionMatrixRow = {
   resource: string;
   permissions: RbacPermission[];
+  permissionIds: number[];
   byAction: Map<string, RbacPermission>;
 };
+
+type PermissionMatrixColumn = {
+  action: string;
+  permissionIds: number[];
+};
+
+function MatrixCheckbox({
+  checked,
+  disabled,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  disabled?: boolean;
+  label: string;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <input
+      type="checkbox"
+      className="h-4 w-4 shrink-0 cursor-pointer rounded border border-primary bg-background accent-primary disabled:cursor-not-allowed disabled:opacity-40"
+      checked={checked}
+      disabled={disabled}
+      aria-label={label}
+      onChange={(event) => onChange(event.currentTarget.checked)}
+    />
+  );
+}
 
 export default function AccessAdminRolesPage() {
   const queryClient = useQueryClient();
@@ -329,27 +372,66 @@ export default function AccessAdminRolesPage() {
     }
 
     const rows: PermissionMatrixRow[] = Array.from(groups.entries())
-      .map(([resource, permissions]) => ({
-        resource,
-        permissions: [...permissions].sort((left, right) => sortActions(left.action, right.action)),
-        byAction: new Map(permissions.map((permission) => [permission.action, permission])),
-      }))
+      .map(([resource, permissions]) => {
+        const sortedPermissions = [...permissions].sort((left, right) => sortActions(left.action, right.action));
+        return {
+          resource,
+          permissions: sortedPermissions,
+          permissionIds: sortedPermissions.map((permission) => permission.id),
+          byAction: new Map(sortedPermissions.map((permission) => [permission.action, permission])),
+        };
+      })
       .sort((left, right) => left.resource.localeCompare(right.resource));
 
+    const sortedActions = Array.from(actions).sort(sortActions);
+    const columns: PermissionMatrixColumn[] = sortedActions.map((action) => ({
+      action,
+      permissionIds: rows
+        .map((row) => row.byAction.get(action)?.id)
+        .filter((permissionId): permissionId is number => permissionId !== undefined),
+    }));
+
     return {
-      actions: Array.from(actions).sort(sortActions),
+      columns,
       rows,
-      allPermissionIds: rows.flatMap((row) => row.permissions.map((permission) => permission.id)),
+      allPermissionIds: rows.flatMap((row) => row.permissionIds),
     };
   }, [permissionsQuery.data]);
 
   const isSubmitting = createRoleMutation.isPending || updateRoleMutation.isPending;
   const isEditing = editingRoleId !== null;
   const roleDetail = roleDetailQuery.data?.id === editingRoleId ? roleDetailQuery.data : undefined;
-  const currentBaseline = isEditing && roleDetail ? roleToForm(roleDetail) : emptyRoleForm;
+  const currentBaseline = useMemo(
+    () => (isEditing && roleDetail ? roleToForm(roleDetail) : emptyRoleForm),
+    [isEditing, roleDetail],
+  );
   const formData = formOverride ?? currentBaseline;
   const selectedPermissionIds = useMemo(() => new Set(formData.permission_ids), [formData.permission_ids]);
-  const isFormDirty = (createDialogOpen || isEditing) && hasUnsavedChanges(formData, currentBaseline);
+  const permissionSelectionStats = useMemo(() => {
+    const selectedIds = selectedPermissionIds;
+    const rowSelectedCounts = new Map<string, number>();
+    const rowChecked = new Map<string, boolean>();
+    const columnChecked = new Map<string, boolean>();
+
+    for (const row of permissionMatrix.rows) {
+      const selectedCount = row.permissionIds.filter((permissionId) => selectedIds.has(permissionId)).length;
+      rowSelectedCounts.set(row.resource, selectedCount);
+      rowChecked.set(row.resource, row.permissionIds.length > 0 && selectedCount === row.permissionIds.length);
+    }
+
+    for (const column of permissionMatrix.columns) {
+      columnChecked.set(
+        column.action,
+        column.permissionIds.length > 0 && column.permissionIds.every((permissionId) => selectedIds.has(permissionId)),
+      );
+    }
+
+    return { columnChecked, rowChecked, rowSelectedCounts };
+  }, [permissionMatrix.columns, permissionMatrix.rows, selectedPermissionIds]);
+  const isFormDirty = useMemo(
+    () => (createDialogOpen || isEditing) && hasRoleFormChanges(formData, currentBaseline),
+    [createDialogOpen, currentBaseline, formData, isEditing],
+  );
 
   const updateFormData = (
     updater: UpsertRolePayload | ((current: UpsertRolePayload) => UpsertRolePayload),
@@ -526,7 +608,7 @@ export default function AccessAdminRolesPage() {
             : undefined
         }
         isDirty={isFormDirty}
-        contentClassName="max-w-5xl"
+        contentClassName="!max-w-[min(96vw,1440px)] sm:!max-h-[94dvh]"
       >
         <div className="space-y-5">
           {roleDetail?.is_system ? (
@@ -589,29 +671,22 @@ export default function AccessAdminRolesPage() {
               </div>
             </div>
 
-            <div className="max-h-[430px] overflow-auto rounded-md border border-border/60">
-              <Table wrapperClassName="min-w-[760px] overflow-visible">
+            <div className="max-h-[62dvh] overflow-auto rounded-md border border-border/60">
+              <Table wrapperClassName="min-w-[900px] overflow-visible">
                 <TableHeader className="sticky top-0 z-10 bg-background">
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="w-[220px] bg-background">Resource</TableHead>
-                    {permissionMatrix.actions.map((action) => {
-                      const actionPermissionIds = permissionMatrix.rows
-                        .map((row) => row.byAction.get(action)?.id)
-                        .filter((permissionId): permissionId is number => permissionId !== undefined);
-                      const checked =
-                        actionPermissionIds.length > 0 &&
-                        actionPermissionIds.every((permissionId) => selectedPermissionIds.has(permissionId));
-
+                    <TableHead className="sticky left-0 z-20 w-[240px] bg-background">Resource</TableHead>
+                    {permissionMatrix.columns.map((column) => {
                       return (
-                        <TableHead key={action} className="min-w-[92px] bg-background text-center">
+                        <TableHead key={column.action} className="min-w-[96px] bg-background text-center">
                           <div className="flex flex-col items-center gap-1.5">
-                            <Checkbox
-                              checked={checked}
-                              aria-label={`Toggle all ${action} permissions`}
-                              disabled={actionPermissionIds.length === 0}
-                              onCheckedChange={(value) => togglePermissionGroup(actionPermissionIds, value === true)}
+                            <MatrixCheckbox
+                              checked={permissionSelectionStats.columnChecked.get(column.action) ?? false}
+                              label={`Toggle all ${column.action} permissions`}
+                              disabled={column.permissionIds.length === 0}
+                              onChange={(checked) => togglePermissionGroup(column.permissionIds, checked)}
                             />
-                            <span className="text-xs capitalize">{formatPermissionLabel(action)}</span>
+                            <span className="text-xs capitalize">{formatPermissionLabel(column.action)}</span>
                           </div>
                         </TableHead>
                       );
@@ -620,50 +695,45 @@ export default function AccessAdminRolesPage() {
                 </TableHeader>
                 <TableBody>
                   {permissionMatrix.rows.map((row) => {
-                    const rowPermissionIds = row.permissions.map((permission) => permission.id);
-                    const rowChecked =
-                      rowPermissionIds.length > 0 &&
-                      rowPermissionIds.every((permissionId) => selectedPermissionIds.has(permissionId));
-                    const rowSelectedCount = rowPermissionIds.filter((permissionId) =>
-                      selectedPermissionIds.has(permissionId),
-                    ).length;
+                    const rowChecked = permissionSelectionStats.rowChecked.get(row.resource) ?? false;
+                    const rowSelectedCount = permissionSelectionStats.rowSelectedCounts.get(row.resource) ?? 0;
 
                     return (
                       <TableRow key={row.resource}>
                         <TableCell className="sticky left-0 z-[1] bg-background">
                           <div className="flex items-center gap-3">
-                            <Checkbox
+                            <MatrixCheckbox
                               checked={rowChecked}
-                              aria-label={`Toggle all ${row.resource} permissions`}
-                              onCheckedChange={(value) => togglePermissionGroup(rowPermissionIds, value === true)}
+                              label={`Toggle all ${row.resource} permissions`}
+                              onChange={(checked) => togglePermissionGroup(row.permissionIds, checked)}
                             />
                             <div className="min-w-0">
                               <p className="truncate text-sm font-medium">
                                 {formatPermissionLabel(row.resource)}
                               </p>
                               <p className="text-xs text-muted-foreground">
-                                {rowSelectedCount}/{rowPermissionIds.length}
+                                {rowSelectedCount}/{row.permissionIds.length}
                               </p>
                             </div>
                           </div>
                         </TableCell>
-                        {permissionMatrix.actions.map((action) => {
-                          const permission = row.byAction.get(action);
+                        {permissionMatrix.columns.map((column) => {
+                          const permission = row.byAction.get(column.action);
                           if (!permission) {
                             return (
-                              <TableCell key={action} className="text-center text-muted-foreground/40">
+                              <TableCell key={column.action} className="text-center text-muted-foreground/40">
                                 -
                               </TableCell>
                             );
                           }
 
                           return (
-                            <TableCell key={action} className="text-center">
+                            <TableCell key={column.action} className="text-center">
                               <div className="flex justify-center">
-                                <Checkbox
+                                <MatrixCheckbox
                                   checked={selectedPermissionIds.has(permission.id)}
-                                  aria-label={`Toggle ${permission.name}`}
-                                  onCheckedChange={(value) => togglePermission(permission.id, value === true)}
+                                  label={`Toggle ${permission.name}`}
+                                  onChange={(checked) => togglePermission(permission.id, checked)}
                                 />
                               </div>
                             </TableCell>
