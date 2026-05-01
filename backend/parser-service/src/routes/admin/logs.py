@@ -196,10 +196,17 @@ async def upload_admin_logs(
     files: list[UploadFile] = File(..., alias="files[]"),
     encounter_id: int | None = Form(None),
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("match", "update")),
+    user: models.AuthUser = Depends(auth.get_current_active_user),
     s3: S3Client = Depends(get_s3),
 ):
     """Upload one or more match logs from the admin panel and queue each for processing."""
+    await auth.require_tournament_id_permission(
+        session,
+        user,
+        tournament_id=tournament_id,
+        resource="log",
+        action="upload",
+    )
     filenames = _validate_upload_filenames(files)
     tournament = await tournament_flows.get(session, tournament_id, [])
     attached_encounter = await _validate_attached_encounter(
@@ -254,7 +261,6 @@ async def get_queue_status():
 
 @router.get(
     "/history",
-    dependencies=[Depends(auth.require_permission("log", "read"))],
 )
 async def get_log_history(
     tournament_id: int | None = Query(None),
@@ -263,8 +269,25 @@ async def get_log_history(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.get_current_active_user),
 ):
     """Get paginated log processing history, optionally filtered by tournament or workspace."""
+    if workspace_id is not None:
+        await auth._require_workspace_permission(user, workspace_id=workspace_id, resource="log", action="read")
+    elif tournament_id is not None:
+        await auth.require_tournament_id_permission(
+            session,
+            user,
+            tournament_id=tournament_id,
+            resource="log",
+            action="read",
+        )
+    elif encounter_id is not None:
+        workspace_id = await auth._get_encounter_workspace_id(session, encounter_id)
+        await auth._require_workspace_permission(user, workspace_id=workspace_id, resource="log", action="read")
+    elif not user.has_permission("log", "read"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied: log.read required")
+
     query = select(models.LogProcessingRecord).order_by(desc(models.LogProcessingRecord.created_at))
     count_query = select(models.LogProcessingRecord.id)
 
@@ -293,11 +316,11 @@ async def get_log_history(
 @router.post(
     "/{record_id}/retry",
     response_model=LogRecordRead,
-    dependencies=[Depends(auth.require_permission("log", "reprocess"))],
 )
 async def retry_log_record(
     record_id: int,
     session: AsyncSession = Depends(db.get_async_session),
+    user: models.AuthUser = Depends(auth.require_log_record_permission("log", "reprocess")),
 ):
     """Reset a failed/pending log record to pending and re-queue it for processing."""
     result = await session.execute(

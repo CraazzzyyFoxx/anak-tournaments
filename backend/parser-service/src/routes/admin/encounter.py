@@ -22,9 +22,16 @@ router = APIRouter(
 async def create_encounter(
     data: admin_schemas.EncounterCreate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("match", "create")),
+    user: models.AuthUser = Depends(auth.get_current_active_user),
 ):
     """Create a new encounter (admin/organizer only)"""
+    await auth.require_tournament_id_permission(
+        session,
+        user,
+        tournament_id=data.tournament_id,
+        resource="match",
+        action="create",
+    )
     encounter = await admin_service.create_encounter(session, data)
     return await encounter_flows.get_encounter(
         session,
@@ -38,7 +45,7 @@ async def update_encounter(
     encounter_id: int,
     data: admin_schemas.EncounterUpdate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("match", "update")),
+    user: models.AuthUser = Depends(auth.require_encounter_permission("match", "update")),
 ):
     """Update encounter fields (admin/organizer only)"""
     encounter = await admin_service.update_encounter(session, encounter_id, data)
@@ -53,7 +60,7 @@ async def update_encounter(
 async def delete_encounter(
     encounter_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("match", "delete")),
+    user: models.AuthUser = Depends(auth.require_encounter_permission("match", "delete")),
 ):
     """Delete encounter and all matches (admin/organizer only)"""
     await admin_service.delete_encounter(session, encounter_id)
@@ -63,13 +70,20 @@ async def delete_encounter(
 async def bulk_update_encounters(
     data: admin_schemas.BulkEncounterUpdate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("match", "update")),
+    user: models.AuthUser = Depends(auth.get_current_active_user),
 ):
     """Bulk-update encounters — mass-set status, scores, or reset.
 
     Critical for 40+ team tournaments: one transaction, one standings
     recalc per affected tournament (instead of N separate recalcs).
     """
+    await auth.require_encounter_ids_permission(
+        session,
+        user,
+        encounter_ids=data.encounter_ids,
+        resource="match",
+        action="update",
+    )
     return await admin_service.bulk_update_encounters(session, data)
 
 
@@ -81,7 +95,7 @@ async def update_match(
     match_id: int,
     data: admin_schemas.MatchUpdate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("match", "update")),
+    user: models.AuthUser = Depends(auth.require_match_permission("match", "update")),
 ):
     """Update a single match (map) within an encounter."""
     match = await admin_service.update_match(session, match_id, data)
@@ -106,7 +120,7 @@ async def update_match(
 async def admin_confirm_result(
     encounter_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("match", "update")),
+    user: models.AuthUser = Depends(auth.require_encounter_permission("match", "update")),
 ):
     """Admin force-confirms a pending result without requiring the other captain."""
     encounter = await captain_service.admin_confirm_result(session, encounter_id)
@@ -129,7 +143,7 @@ async def admin_assign_map_pool(
     encounter_id: int,
     data: AdminMapPoolAssign,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("match", "update")),
+    user: models.AuthUser = Depends(auth.require_encounter_permission("match", "update")),
 ):
     """Admin directly assigns maps to an encounter (bypasses veto)."""
     entries = await map_veto_service.initialize_map_pool(

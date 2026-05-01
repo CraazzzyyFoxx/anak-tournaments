@@ -9,7 +9,6 @@ from src.services.tournament import flows as tournament_flows
 router = APIRouter(
     prefix="/tournament",
     tags=[enums.RouteTag.TOURNAMENT],
-    dependencies=[Depends(auth.require_role("admin"))],
 )
 
 
@@ -22,6 +21,7 @@ async def create(
     playoffs_challonge_slug: str,
     groups_challonge_slugs: list[str] = Query([]),
     session=Depends(db.get_async_session),
+    _user: models.AuthUser = Depends(auth.require_permission("tournament", "create")),
 ):
     tournament = await tournament_flows.create(
         session, number, is_league, start_date, end_date, groups_challonge_slugs, playoffs_challonge_slug
@@ -39,12 +39,12 @@ async def create_with_groups(
     end_date: date,
     division_grid_version_id: int | None = None,
     session=Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("tournament", "create")),
+    user: models.AuthUser = Depends(auth.get_current_active_user),
 ):
-    if not user.is_workspace_member(workspace_id):
+    if not user.has_workspace_permission(workspace_id, "tournament", "create"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not a member of this workspace",
+            detail="Permission denied: tournament.create required",
         )
     tournament = await tournament_flows.create_with_groups(
         session,

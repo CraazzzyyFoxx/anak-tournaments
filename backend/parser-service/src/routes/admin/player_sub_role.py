@@ -18,7 +18,7 @@ async def list_player_sub_roles(
     role: str | None = None,
     include_inactive: bool = False,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("player", "read")),
+    user: models.AuthUser = Depends(auth.require_workspace_permission("player", "read")),
 ):
     return await service.list_sub_roles(
         session,
@@ -32,8 +32,14 @@ async def list_player_sub_roles(
 async def create_player_sub_role(
     data: schemas.PlayerSubRoleCreate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("player", "create")),
+    user: models.AuthUser = Depends(auth.get_current_active_user),
 ):
+    await auth._require_workspace_permission(
+        user,
+        workspace_id=data.workspace_id,
+        resource="player",
+        action="create",
+    )
     return await service.create_sub_role(session, data)
 
 
@@ -42,7 +48,7 @@ async def update_player_sub_role(
     sub_role_id: int,
     data: schemas.PlayerSubRoleUpdate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("player", "update")),
+    user: models.AuthUser = Depends(auth.require_player_sub_role_permission("player", "update")),
 ):
     return await service.update_sub_role(session, sub_role_id, data)
 
@@ -51,6 +57,6 @@ async def update_player_sub_role(
 async def delete_player_sub_role(
     sub_role_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("player", "delete")),
+    user: models.AuthUser = Depends(auth.require_player_sub_role_permission("player", "delete")),
 ):
     await service.deactivate_sub_role(session, sub_role_id)

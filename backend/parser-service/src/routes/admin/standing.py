@@ -20,7 +20,7 @@ async def update_standing(
     standing_id: int,
     data: admin_schemas.StandingUpdate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("standing", "update")),
+    user: models.AuthUser = Depends(auth.require_standing_permission("standing", "update")),
 ):
     """Update standing fields (admin/organizer only)"""
     standing = await admin_service.update_standing(session, standing_id, data)
@@ -33,7 +33,7 @@ async def update_standing(
 async def delete_standing(
     standing_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("standing", "delete")),
+    user: models.AuthUser = Depends(auth.require_standing_permission("standing", "delete")),
 ):
     """Delete standing (admin/organizer only)"""
     await admin_service.delete_standing(session, standing_id)
@@ -43,7 +43,7 @@ async def delete_standing(
 async def recalculate_standings(
     tournament_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("standing", "recalculate")),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("standing", "recalculate")),
 ):
     """Clear standings for recalculation (admin/organizer only)"""
     return await admin_service.recalculate_standings(session, tournament_id)

@@ -19,13 +19,13 @@ router = APIRouter(
 async def create_tournament(
     data: admin_schemas.TournamentCreate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("tournament", "create")),
+    user: models.AuthUser = Depends(auth.get_current_active_user),
 ):
     """Create a new tournament (admin/organizer only)."""
-    if not user.is_workspace_member(data.workspace_id):
+    if not user.has_workspace_permission(data.workspace_id, "tournament", "create"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not a member of this workspace",
+            detail="Permission denied: tournament.create required",
         )
     tournament = await admin_service.create_tournament(session, data)
     return await tournament_flows.to_pydantic(session, tournament, ["stages"])
@@ -35,7 +35,7 @@ async def create_tournament(
 async def get_tournament(
     tournament_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("tournament", "read")),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("tournament", "read")),
 ):
     """Get one tournament for admin workspace pages."""
     tournament = await admin_service.get_tournament(session, tournament_id)
@@ -47,7 +47,7 @@ async def update_tournament(
     tournament_id: int,
     data: admin_schemas.TournamentUpdate,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("tournament", "update")),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("tournament", "update")),
 ):
     """Update tournament fields (admin/organizer only)."""
     tournament = await admin_service.update_tournament(session, tournament_id, data)
@@ -58,7 +58,7 @@ async def update_tournament(
 async def delete_tournament(
     tournament_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("tournament", "delete")),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("tournament", "delete")),
 ):
     """Delete tournament and all related data (admin/organizer only)."""
     await admin_service.delete_tournament(session, tournament_id)
@@ -80,7 +80,7 @@ async def transition_tournament_status(
     tournament_id: int,
     data: admin_schemas.TournamentStatusTransition,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("tournament", "update")),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("tournament", "update")),
 ):
     """Transition tournament to a new status (admin/organizer only)."""
     if data.force and not user.is_superuser:

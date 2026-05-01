@@ -21,7 +21,7 @@ router = APIRouter(
 async def get_discord_channel(
     tournament_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("tournament", "read")),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("discord_channel", "read")),
 ):
     """Get the Discord sync channel configured for this tournament, or null."""
     result = await session.execute(
@@ -40,7 +40,7 @@ async def upsert_discord_channel(
     tournament_id: int,
     data: DiscordChannelUpsert,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("tournament", "update")),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("discord_channel", "update")),
 ):
     """Create or update the Discord sync channel for a tournament."""
     # Verify tournament exists
@@ -76,7 +76,7 @@ async def upsert_discord_channel(
 async def delete_discord_channel(
     tournament_id: int,
     session: AsyncSession = Depends(db.get_async_session),
-    user: models.AuthUser = Depends(auth.require_permission("tournament", "update")),
+    user: models.AuthUser = Depends(auth.require_tournament_permission("discord_channel", "delete")),
 ):
     """Remove the Discord sync channel configuration for a tournament."""
     result = await session.execute(
