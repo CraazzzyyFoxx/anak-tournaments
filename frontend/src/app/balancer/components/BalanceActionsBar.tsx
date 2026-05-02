@@ -35,23 +35,6 @@ type VariantStats = {
   feasibility?: FeasibilityReport | null;
 } | null;
 
-function formatFeasibilityTooltip(report: FeasibilityReport): string {
-  const lines: string[] = [
-    `Total slots: ${report.total_slots}`,
-    `Structural min off-role: ${report.structural_min_off_role}`,
-    `Flex players: ${report.flex_player_count}`,
-    "",
-    "Per-role supply / demand:"
-  ];
-  for (const role of report.roles) {
-    const delta = role.supply - role.demand;
-    const deltaLabel = delta === 0 ? "= demand" : delta > 0 ? `+${delta}` : `${delta}`;
-    const flexHint = role.flex_supply > 0 ? ` (+${role.flex_supply} flex)` : "";
-    lines.push(`  ${role.role}: ${role.supply} / ${role.demand} (${deltaLabel})${flexHint}`);
-  }
-  return lines.join("\n");
-}
-
 type BalanceActionsBarProps = {
   activeVariantStats: VariantStats;
   activeVariant: { payload: InternalBalancePayload } | null;
@@ -129,13 +112,45 @@ export function BalanceActionsBar({
               );
             })()
           : null}
-        {activeVariantStats?.feasibility ? (
+        {activeVariantStats?.feasibility?.roles?.map((role) => {
+          const delta = role.supply - role.demand;
+          const undersupply = delta < 0;
+          const tooltip = `${role.role}: ${role.supply} supply / ${role.demand} demand${
+            role.flex_supply > 0 ? ` (+${role.flex_supply} flex)` : ""
+          }${undersupply ? ` — short by ${-delta}` : delta > 0 ? ` — surplus ${delta}` : ""}`;
+          return (
+            <Badge
+              key={role.role}
+              title={tooltip}
+              className={cn(
+                "rounded-full",
+                undersupply
+                  ? "border-rose-400/25 bg-rose-500/10 text-rose-200 hover:bg-rose-500/10"
+                  : "border-sky-400/20 bg-sky-500/10 text-sky-200 hover:bg-sky-500/10"
+              )}
+            >
+              {role.role} {role.supply}/{role.demand}
+              {role.flex_supply > 0 ? ` +${role.flex_supply}f` : ""}
+            </Badge>
+          );
+        }) ?? null}
+        {activeVariantStats?.feasibility &&
+        activeVariantStats.feasibility.structural_min_off_role > 0 ? (
           <Badge
-            title={formatFeasibilityTooltip(activeVariantStats.feasibility)}
-            className="rounded-full border-sky-400/20 bg-sky-500/10 text-sky-200 hover:bg-sky-500/10"
+            title={`At least ${activeVariantStats.feasibility.structural_min_off_role} off-role assignments are forced by the player pool — no balancer can do better.`}
+            className="rounded-full border-amber-400/25 bg-amber-500/10 text-amber-200 hover:bg-amber-500/10"
           >
             <Info className="mr-1.5 h-3.5 w-3.5" />
-            Feasibility
+            Min off-role {activeVariantStats.feasibility.structural_min_off_role}
+          </Badge>
+        ) : null}
+        {activeVariantStats?.feasibility &&
+        activeVariantStats.feasibility.flex_player_count > 0 ? (
+          <Badge
+            title={`${activeVariantStats.feasibility.flex_player_count} flex players in the pool — they can fill any role they can play without counting as off-role.`}
+            className="rounded-full border-violet-400/20 bg-violet-500/10 text-violet-200 hover:bg-violet-500/10"
+          >
+            Flex {activeVariantStats.feasibility.flex_player_count}
           </Badge>
         ) : null}
         {activeVariantStats?.sub_role_collision_count != null ? (
