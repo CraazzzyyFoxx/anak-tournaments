@@ -12,10 +12,6 @@ class ConfigOverrides(BaseModel):
         None,
         description="Role mask defining required players per role (e.g., {'Tank': 1, 'Damage': 2, 'Support': 2})",
     )
-    algorithm: Literal["moo", "cpsat"] | None = Field(
-        None,
-        description="Balancing algorithm to use",
-    )
 
     population_size: int | None = Field(None, ge=10, le=1000, description="Population size for the moo solver")
     generation_count: int | None = Field(None, ge=10, le=5000, description="Number of generations")

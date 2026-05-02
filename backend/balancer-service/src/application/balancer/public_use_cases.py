@@ -376,9 +376,9 @@ class StreamBalanceJobEvents:
 
 
 class ExecuteBalanceJob:
-    def __init__(self, *, job_repository, solver_factory, progress_clock=None) -> None:
+    def __init__(self, *, job_repository, solver, progress_clock=None) -> None:
         self._job_repository = job_repository
-        self._solver_factory = solver_factory
+        self._solver = solver
         self._progress_clock = progress_clock
 
     @staticmethod
@@ -428,7 +428,7 @@ class ExecuteBalanceJob:
             if not isinstance(config_overrides, dict):
                 raise ValueError("Job payload does not contain valid config overrides")
 
-            algorithm = str(config_overrides.get("algorithm", "moo"))
+            algorithm = "moo"
             created_at = current_meta.get("created_at") if isinstance(current_meta, dict) else None
             if isinstance(created_at, (int, float)):
                 queue_wait_seconds = max(0.0, time.time() - float(created_at))
@@ -466,9 +466,8 @@ class ExecuteBalanceJob:
                 meta=current_meta,
             )
 
-            solver = self._solver_factory.get_solver(algorithm)
             solver_started_at = time.perf_counter()
-            result = await solver.solve(input_data, config_overrides, progress_callback)
+            result = await self._solver.solve(input_data, config_overrides, progress_callback)
             solver_seconds = time.perf_counter() - solver_started_at
             BALANCER_SOLVER_SECONDS.labels(algorithm=algorithm).observe(solver_seconds)
             result = normalize_balance_job_result_payload(result)

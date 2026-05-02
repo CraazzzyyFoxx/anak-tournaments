@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import typing
-
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -70,13 +68,11 @@ class AlgorithmConfig(BaseSettings):
     stagnation_kick_patience: int = Field(default=15, ge=0, le=5000)
     crossover_rate: float = Field(default=0.85, ge=0.0, le=1.0)
 
-    # Algorithm selection
-    algorithm: typing.Literal["moo", "cpsat"] = Field(default="moo")
     max_result_variants: int = Field(
         default=10,
         ge=1,
         le=200,
-        description="Maximum number of solution variants returned by the selected solver.",
+        description="Maximum number of solution variants returned by the solver.",
     )
 
     # Rating normalization

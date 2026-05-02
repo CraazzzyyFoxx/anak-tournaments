@@ -28,7 +28,8 @@ export interface ApiKeyLimits {
 
 export interface ApiKeyConfigPolicy {
   allowed_keys: string[];
-  allowed_algorithms: string[];
+  /** @deprecated Algorithm choice is no longer configurable; field kept for backward compat. */
+  allowed_algorithms?: string[];
   max_values: Record<string, number>;
 }
 

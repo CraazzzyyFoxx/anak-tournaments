@@ -59,12 +59,12 @@ def test_config_payload_exposes_complete_editable_field_metadata() -> None:
     assert fields_by_key["tank_impact_weight"]["limits"] == {"min": 0.0, "max": 10000.0}
     assert fields_by_key["mutation_rate_min"]["limits"] == {"min": 0.0, "max": 1.0}
     assert fields_by_key["island_count"]["limits"] == {"min": 1, "max": 64}
-    assert fields_by_key["algorithm"]["options"] == ["moo", "cpsat"]
     assert fields_by_key["role_mask"]["type"] == "role_mask"
     assert "input_role_mapping" not in field_keys
     assert "elitism_rate" not in field_keys
     assert "stagnation_threshold" not in field_keys
-    assert payload["defaults"]["algorithm"] == "moo"
+    assert "algorithm" not in field_keys
+    assert "algorithm" not in payload["defaults"]
     assert payload["defaults"]["intra_team_std_weight"] == 0.7
     assert payload["defaults"]["internal_role_spread_weight"] == 0.3
     assert payload["defaults"]["tank_impact_weight"] == 1.4
@@ -239,12 +239,12 @@ class TournamentConfigPersistenceTests(IsolatedAsyncioTestCase):
             result = await balancer_admin_service.upsert_tournament_config(
                 session,
                 77,
-                {"algorithm": "cpsat", "max_result_variants": 6},
+                {"max_result_variants": 6},
                 user,
             )
 
         self.assertIs(result, existing)
-        self.assertEqual(existing.config_json, {"algorithm": "cpsat", "max_result_variants": 6})
+        self.assertEqual(existing.config_json, {"max_result_variants": 6})
         self.assertEqual(existing.updated_by, 43)
         session.add.assert_not_called()
         session.commit.assert_awaited_once()

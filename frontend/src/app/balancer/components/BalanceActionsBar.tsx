@@ -144,8 +144,7 @@ export function BalanceActionsBar({
             Min off-role {activeVariantStats.feasibility.structural_min_off_role}
           </Badge>
         ) : null}
-        {activeVariantStats?.feasibility &&
-        activeVariantStats.feasibility.flex_player_count > 0 ? (
+        {activeVariantStats?.feasibility && activeVariantStats.feasibility.flex_player_count > 0 ? (
           <Badge
             title={`${activeVariantStats.feasibility.flex_player_count} flex players in the pool — they can fill any role they can play without counting as off-role.`}
             className="rounded-full border-violet-400/20 bg-violet-500/10 text-violet-200 hover:bg-violet-500/10"

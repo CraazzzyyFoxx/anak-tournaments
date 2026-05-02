@@ -39,16 +39,11 @@ from src.application.balancer.public_use_cases import (  # noqa: E402
 from src.application.balancer.runtime_service import balance_teams_moo  # noqa: E402
 from src.core.config import AlgorithmConfig  # noqa: E402
 from src.core.job_store import BalancerJobStore  # noqa: E402
-from src.domain.balancer.balance_solver_factory import BalanceSolverFactory  # noqa: E402
 from src.domain.balancer.captain_assignment_service import CaptainAssignmentService  # noqa: E402
 from src.domain.balancer.config_provider import get_balancer_config_payload  # noqa: E402
 from src.domain.balancer.entities import Player  # noqa: E402
 from src.domain.balancer.moo_backend import _serialize_native_request, run_moo_optimizer  # noqa: E402
-from src.domain.balancer.mutation_engine import MutationEngine  # noqa: E402
-from src.domain.balancer.pareto_evaluator import ParetoEvaluator, calculate_objectives  # noqa: E402
-from src.domain.balancer.population_seeder import PopulationSeeder, create_random_solution  # noqa: E402
 from src.domain.balancer.role_assignment_service import RoleAssignmentService  # noqa: E402
-from src.domain.balancer.team_cost_evaluator import TeamCostEvaluator, calculate_cost  # noqa: E402
 from src.infrastructure.parsers.balancer_request_parser import BalancerRequestParser  # noqa: E402
 from src.infrastructure.solvers.moo_balance_solver import MooBalanceSolver  # noqa: E402
 
@@ -141,7 +136,7 @@ class CreateBalanceJobTests(IsolatedAsyncioTestCase):
                 return {"players": {"1": {"name": "Player One"}}}
 
             def parse_config_overrides(self, raw_config: str | None) -> dict | None:
-                return {"algorithm": "moo", "population_size": 150}
+                return {"population_size": 150}
 
         class FakeJobRepository:
             async def create_job(
@@ -294,14 +289,9 @@ class ExecuteBalanceJobTests(IsolatedAsyncioTestCase):
                     ]
                 }
 
-        class FakeSolverFactory:
-            def get_solver(self, algorithm: str):
-                self.last_algorithm = algorithm
-                return FakeSolver()
-
         use_case = ExecuteBalanceJob(
             job_repository=FakeJobRepository(),
-            solver_factory=FakeSolverFactory(),
+            solver=FakeSolver(),
         )
 
         await use_case.execute("job-42")
@@ -399,7 +389,7 @@ class ExecuteBalanceJobTests(IsolatedAsyncioTestCase):
         clock_values = iter([1.0, 1.1, 1.2])
         await ExecuteBalanceJob(
             job_repository=FakeJobRepository(),
-            solver_factory=SimpleNamespace(get_solver=lambda algorithm: FakeSolver()),
+            solver=FakeSolver(),
             progress_clock=lambda: next(clock_values),
         ).execute("job-throttle")
 
@@ -411,7 +401,7 @@ class ExecuteBalanceJobTests(IsolatedAsyncioTestCase):
                 self.meta = {"status": "queued", "created_at": 0.0, "events_count": 0}
 
             async def get_job_payload(self, job_id: str) -> dict:
-                return {"player_data": {"players": {}}, "config": {"algorithm": "cpsat"}}
+                return {"player_data": {"players": {}}, "config": {"population_size": 50}}
 
             async def get_job_meta(self, job_id: str) -> dict:
                 return self.meta
@@ -464,25 +454,15 @@ class ExecuteBalanceJobTests(IsolatedAsyncioTestCase):
                     ]
                 }
 
-        class FakeSolverFactory:
-            def __init__(self) -> None:
-                self.solver = FakeSolver()
-                self.last_algorithm: str | None = None
-
-            def get_solver(self, algorithm: str):
-                self.last_algorithm = algorithm
-                return self.solver
-
-        solver_factory = FakeSolverFactory()
+        solver = FakeSolver()
         use_case = ExecuteBalanceJob(
             job_repository=FakeJobRepository(),
-            solver_factory=solver_factory,
+            solver=solver,
         )
 
         await use_case.execute("job-legacy")
 
-        self.assertEqual(solver_factory.last_algorithm, "moo")
-        self.assertEqual(solver_factory.solver.last_config_overrides, {})
+        self.assertEqual(solver.last_config_overrides, {})
 
 
 class SolverAdapterTests(IsolatedAsyncioTestCase):
@@ -664,10 +644,10 @@ class BalancerRequestParserTests(TestCase):
         parser = BalancerRequestParser()
 
         payload = parser.parse_config_overrides(
-            '{"algorithm": "moo", "input_role_mapping": {"tank": "Tank"}}'
+            '{"population_size": 50, "input_role_mapping": {"tank": "Tank"}}'
         )
 
-        self.assertEqual(payload, {"algorithm": "moo"})
+        self.assertEqual(payload, {"population_size": 50})
 
 
 class PlayerLoaderTests(TestCase):
@@ -929,103 +909,6 @@ class SolverDomainServiceTests(TestCase):
 
         self.assertEqual(role_assignment, {"tank-main": "tank", "flex-carry": "dps"})
 
-    def test_team_cost_evaluator_delegates_to_existing_formula(self) -> None:
-        solution = create_random_solution(
-            self.players,
-            num_teams=1,
-            mask=self.mask,
-            use_captains=False,
-            role_assignment={"tank-main": "tank", "flex-carry": "dps"},
-        )
-        evaluator = TeamCostEvaluator()
-        config = SimpleNamespace(
-            role_mask=self.mask,
-            team_total_balance_weight=1.0,
-            max_team_gap_weight=1.0,
-            average_mmr_balance_weight=1.0,
-            role_discomfort_weight=1.0,
-            intra_team_variance_weight=1.0,
-            max_role_discomfort_weight=1.0,
-            role_line_balance_weight=1.0,
-            role_spread_weight=1.0,
-            sub_role_collision_weight=1.0,
-        )
-
-        self.assertEqual(evaluator.calculate(solution, config), calculate_cost(solution, config))
-
-    def test_pareto_evaluator_delegates_to_existing_objective_formula(self) -> None:
-        solution = create_random_solution(
-            self.players,
-            num_teams=1,
-            mask=self.mask,
-            use_captains=False,
-            role_assignment={"tank-main": "tank", "flex-carry": "dps"},
-        )
-        evaluator = ParetoEvaluator()
-        config = SimpleNamespace(
-            role_mask=self.mask,
-            team_total_balance_weight=1.0,
-            max_team_gap_weight=1.0,
-            average_mmr_balance_weight=1.0,
-            role_discomfort_weight=1.0,
-            max_role_discomfort_weight=1.0,
-            role_line_balance_weight=1.0,
-            sub_role_collision_weight=1.0,
-        )
-
-        self.assertEqual(evaluator.calculate(solution, config), calculate_objectives(solution, config))
-
-    def test_population_seeder_creates_complete_solution(self) -> None:
-        seeder = PopulationSeeder()
-
-        solution = seeder.seed(
-            players=self.players,
-            num_teams=1,
-            mask=self.mask,
-            use_captains=False,
-            role_assignment={"tank-main": "tank", "flex-carry": "dps"},
-        )
-
-        self.assertTrue(all(team.is_full() for team in solution))
-
-    def test_mutation_engine_returns_team_list(self) -> None:
-        solution = create_random_solution(
-            self.players,
-            num_teams=1,
-            mask=self.mask,
-            use_captains=False,
-            role_assignment={"tank-main": "tank", "flex-carry": "dps"},
-        )
-        engine = MutationEngine()
-        config = SimpleNamespace(
-            role_mask=self.mask,
-            mutation_strength=1,
-            use_captains=False,
-        )
-
-        mutated = engine.mutate(
-            teams=solution,
-            mask=self.mask,
-            mutation_strength=1,
-            config=config,
-            use_captains=False,
-        )
-
-        self.assertEqual(len(mutated), len(solution))
-
-    def test_solver_factory_returns_requested_solver(self) -> None:
-        moo_solver = object()
-        cpsat_solver = object()
-        factory = BalanceSolverFactory(
-            moo_solver=moo_solver,
-            cpsat_solver=cpsat_solver,
-        )
-
-        self.assertIs(factory.get_solver("moo"), moo_solver)
-        self.assertIs(factory.get_solver("cpsat"), cpsat_solver)
-
-        with self.assertRaises(ValueError):
-            factory.get_solver("unknown")
 
 
 class MooDeterminismTests(TestCase):

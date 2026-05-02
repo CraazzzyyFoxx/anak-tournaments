@@ -82,9 +82,7 @@ export const PRESET_LABELS: Record<string, string> = {
   CASUAL: "Casual",
   QUICK: "Quick",
   PREFERENCE_FOCUSED: "Preference Focused",
-  HIGH_QUALITY: "High Quality",
-  CPSAT: "CP-SAT (Exact)",
-  MOO: "MOO"
+  HIGH_QUALITY: "High Quality"
 };
 
 export const ROLE_ACCENTS: Record<BalancerRoleCode, { text: string; card: string }> = {

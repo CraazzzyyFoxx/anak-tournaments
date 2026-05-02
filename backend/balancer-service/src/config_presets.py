@@ -4,6 +4,9 @@ All weights are calibrated for the canonical 0-3500 rating scale enforced by
 ``RatingNormalizer``. Each preset stores only the delta from ``DEFAULT`` so
 overrides remain readable; missing fields fall back to ``AlgorithmConfig``
 defaults at runtime.
+
+Only the Rust MOO solver is supported, so presets no longer carry an
+``algorithm`` key.
 """
 
 from __future__ import annotations
@@ -17,7 +20,6 @@ class ConfigPresets:
     # Balanced default — fits the majority of tournaments. Compute budget tuned
     # for sub-second runs on Rust MOO with 4 islands in parallel.
     DEFAULT: dict[str, Any] = {
-        "algorithm": "moo",
         "role_mask": {"Tank": 1, "Damage": 2, "Support": 2},
         "population_size": 60,
         "generation_count": 120,
@@ -120,19 +122,6 @@ class ConfigPresets:
         "island_count": 8,
         "stagnation_kick_patience": 25,
         "convergence_patience": 60,
-    }
-
-    # Backwards-compatible alias for persisted tournament configs that still
-    # reference "MOO" as a preset key.
-    MOO: dict[str, Any] = {
-        "algorithm": "moo",
-    }
-
-    # Switch the solver backend. CP-SAT runs in exact mode and returns fewer
-    # variants by design.
-    CPSAT: dict[str, Any] = {
-        "algorithm": "cpsat",
-        "max_result_variants": 3,
     }
 
 

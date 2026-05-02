@@ -49,7 +49,6 @@ CONFIG_LIMITS: dict[str, dict[str, int | float]] = {
 
 EDITABLE_CONFIG_FIELD_KEYS = {
     "role_mask",
-    "algorithm",
     "population_size",
     "generation_count",
     "mutation_rate",
@@ -98,16 +97,7 @@ CONFIG_FIELD_DEFINITIONS: list[dict[str, typing.Any]] = [
         "description": "Required player count per team role. Default Overwatch format is 1 Tank, 2 Damage, 2 Support.",
         "type": "role_mask",
         "group": "Roles",
-        "applies_to": ["moo", "cpsat"],
-    },
-    {
-        "key": "algorithm",
-        "label": "Algorithm",
-        "description": "Selects the solver used to produce teams.",
-        "type": "select",
-        "group": "Algorithm",
-        "options": ["moo", "cpsat"],
-        "applies_to": ["moo", "cpsat"],
+        "applies_to": ["moo"],
     },
     {
         "key": "population_size",
@@ -363,7 +353,7 @@ CONFIG_FIELD_DEFINITIONS: list[dict[str, typing.Any]] = [
         "description": "Maximum number of solution variants returned by the selected solver.",
         "type": "integer",
         "group": "Solver output",
-        "applies_to": ["moo", "cpsat"],
+        "applies_to": ["moo"],
     },
 ]
 

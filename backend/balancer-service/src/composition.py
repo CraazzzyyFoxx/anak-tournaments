@@ -61,7 +61,6 @@ from src.application.balancer.public_use_cases import (
     GetBalancerConfig,
     StreamBalanceJobEvents,
 )
-from src.domain.balancer.balance_solver_factory import BalanceSolverFactory
 from src.domain.balancer.config_provider import BalancerConfigService
 from src.infrastructure.gateways.service_gateways import (
     BalancerAdminGateway,
@@ -74,20 +73,12 @@ from src.infrastructure.publishers.balancer_job_publisher import BalancerJobPubl
 from src.infrastructure.repositories.job_store_repository import JobStoreRepository
 from src.infrastructure.security.api_key_limiter import get_api_key_limiter
 from src.infrastructure.security.workspace_access_policy import WorkspaceAccessPolicy
-from src.infrastructure.solvers.cpsat_balance_solver import CpsatBalanceSolver
 from src.infrastructure.solvers.moo_balance_solver import MooBalanceSolver
 
 registration_service = RegistrationAdminGateway()
 balancer_service = BalancerAdminGateway()
 status_service = RegistrationStatusGateway()
 team_gateway = TeamGateway()
-
-
-def build_solver_factory(*, broker) -> BalanceSolverFactory:
-    return BalanceSolverFactory(
-        moo_solver=MooBalanceSolver(),
-        cpsat_solver=CpsatBalanceSolver(),
-    )
 
 
 def build_public_http_use_cases(*, broker, logger):
@@ -125,7 +116,7 @@ def build_public_http_use_cases(*, broker, logger):
 def build_execute_balance_job_use_case(*, broker) -> ExecuteBalanceJob:
     return ExecuteBalanceJob(
         job_repository=JobStoreRepository(),
-        solver_factory=build_solver_factory(broker=broker),
+        solver=MooBalanceSolver(),
     )
 
 

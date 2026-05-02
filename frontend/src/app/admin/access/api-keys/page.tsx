@@ -60,8 +60,7 @@ const DEFAULT_LIMITS: ApiKeyLimits = {
 };
 
 const DEFAULT_POLICY: ApiKeyConfigPolicy = {
-  allowed_keys: ["algorithm", "role_mask", "population_size", "generation_count", "use_captains", "max_result_variants"],
-  allowed_algorithms: ["moo"],
+  allowed_keys: ["role_mask", "population_size", "generation_count", "use_captains", "max_result_variants"],
   max_values: {
     population_size: 150,
     generation_count: 500,
@@ -133,7 +132,6 @@ function mergeLimits(limits: Partial<ApiKeyLimits> | undefined): ApiKeyLimits {
 function mergePolicy(policy: Partial<ApiKeyConfigPolicy> | undefined): ApiKeyConfigPolicy {
   return {
     allowed_keys: policy?.allowed_keys ?? DEFAULT_POLICY.allowed_keys,
-    allowed_algorithms: policy?.allowed_algorithms ?? DEFAULT_POLICY.allowed_algorithms,
     max_values: policy?.max_values ?? DEFAULT_POLICY.max_values,
   };
 }
@@ -176,7 +174,7 @@ function PolicyText({ policy }: { policy: Partial<ApiKeyConfigPolicy> | undefine
 
   return (
     <div className="max-w-[280px] text-xs text-muted-foreground">
-      <p className="truncate">Algorithms: {merged.allowed_algorithms.join(", ") || "None"}</p>
+      <p className="truncate">Allowed: {merged.allowed_keys.join(", ") || "None"}</p>
       <p className="truncate">{capSummary}</p>
     </div>
   );
@@ -194,7 +192,7 @@ function DefaultPolicyPreview() {
       </div>
       <div className="rounded-md border border-border/60 bg-muted/20 p-2">
         <p className="font-medium text-foreground">Policy</p>
-        <p className="mt-1">Algorithm {DEFAULT_POLICY.allowed_algorithms.join(", ")}</p>
+        <p className="mt-1">Allowed keys: {DEFAULT_POLICY.allowed_keys.join(", ")}</p>
       </div>
     </div>
   );

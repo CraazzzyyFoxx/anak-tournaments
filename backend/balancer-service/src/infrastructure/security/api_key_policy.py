@@ -8,14 +8,12 @@ from src.infrastructure.security.api_key_limiter import is_api_key_principal
 
 DEFAULT_CONFIG_POLICY: dict[str, Any] = {
     "allowed_keys": [
-        "algorithm",
         "role_mask",
         "population_size",
         "generation_count",
         "use_captains",
         "max_result_variants",
     ],
-    "allowed_algorithms": ["moo"],
     "max_values": {
         "population_size": 150,
         "generation_count": 500,
@@ -39,7 +37,6 @@ def validate_api_key_config_policy(user: Any, config_overrides: dict[str, Any] |
 
     policy = _policy_for_user(user)
     allowed_keys = set(policy.get("allowed_keys") or [])
-    allowed_algorithms = set(policy.get("allowed_algorithms") or [])
     max_values = policy.get("max_values") if isinstance(policy.get("max_values"), dict) else {}
 
     for key, value in config_overrides.items():
@@ -50,15 +47,6 @@ def validate_api_key_config_policy(user: Any, config_overrides: dict[str, Any] |
                     "code": "api_key_config_field_not_allowed",
                     "field": key,
                     "allowed_fields": sorted(allowed_keys),
-                },
-            )
-        if key == "algorithm" and allowed_algorithms and value not in allowed_algorithms:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={
-                    "code": "api_key_config_algorithm_not_allowed",
-                    "field": key,
-                    "allowed_values": sorted(allowed_algorithms),
                 },
             )
         if key in max_values and value is not None:
