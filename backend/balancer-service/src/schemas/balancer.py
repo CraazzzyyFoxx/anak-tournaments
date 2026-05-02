@@ -181,6 +181,20 @@ class TeamData(BaseModel):
     roster: dict[str, list[PlayerData]]
 
 
+class RoleFeasibility(BaseModel):
+    role: str
+    supply: int
+    demand: int
+    flex_supply: int = 0
+
+
+class FeasibilityReport(BaseModel):
+    total_slots: int
+    structural_min_off_role: int
+    flex_player_count: int = 0
+    roles: list[RoleFeasibility] = Field(default_factory=list)
+
+
 class Statistics(BaseModel):
     average_mmr: float
     mmr_std_dev: float
@@ -197,6 +211,9 @@ class Statistics(BaseModel):
     balance_objective_norm: float | None = None
     comfort_objective_norm: float | None = None
     composite_score: float | None = None
+    off_role_rate: float | None = None
+    off_role_above_minimum: int | None = None
+    feasibility: FeasibilityReport | None = None
 
 
 class BalanceResponse(BaseModel):
