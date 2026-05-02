@@ -3,8 +3,10 @@ import {
   BarChart2,
   Camera,
   Check,
+  CheckCircle2,
   Copy,
   Download,
+  Info,
   Loader2,
   Shuffle,
   Sparkles,
@@ -15,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { InternalBalancePayload } from "@/types/balancer-admin.types";
+import type { FeasibilityReport } from "@/types/balancer.types";
 import { MUTED_BUTTON_CLASS } from "./balancer-page-helpers";
 
 type VariantStats = {
@@ -27,7 +30,27 @@ type VariantStats = {
   comfort_objective?: number | null;
   balance_objective_norm?: number | null;
   comfort_objective_norm?: number | null;
+  off_role_rate?: number | null;
+  off_role_above_minimum?: number | null;
+  feasibility?: FeasibilityReport | null;
 } | null;
+
+function formatFeasibilityTooltip(report: FeasibilityReport): string {
+  const lines: string[] = [
+    `Total slots: ${report.total_slots}`,
+    `Structural min off-role: ${report.structural_min_off_role}`,
+    `Flex players: ${report.flex_player_count}`,
+    "",
+    "Per-role supply / demand:"
+  ];
+  for (const role of report.roles) {
+    const delta = role.supply - role.demand;
+    const deltaLabel = delta === 0 ? "= demand" : delta > 0 ? `+${delta}` : `${delta}`;
+    const flexHint = role.flex_supply > 0 ? ` (+${role.flex_supply} flex)` : "";
+    lines.push(`  ${role.role}: ${role.supply} / ${role.demand} (${deltaLabel})${flexHint}`);
+  }
+  return lines.join("\n");
+}
 
 type BalanceActionsBarProps = {
   activeVariantStats: VariantStats;
@@ -65,10 +88,54 @@ export function BalanceActionsBar({
             StdDev {activeVariantStats.mmr_std_dev.toFixed(1)}
           </Badge>
         ) : null}
-        {activeVariantStats?.off_role_count != null ? (
-          <Badge className="rounded-full border-orange-400/20 bg-orange-500/10 text-orange-200 hover:bg-orange-500/10">
-            <AlertCircle className="mr-1.5 h-3.5 w-3.5" />
-            Off-role {activeVariantStats.off_role_count}
+        {activeVariantStats?.off_role_count != null
+          ? (() => {
+              const count = activeVariantStats.off_role_count ?? 0;
+              const aboveMin = activeVariantStats.off_role_above_minimum;
+              const rate = activeVariantStats.off_role_rate;
+              const structuralMin = activeVariantStats.feasibility?.structural_min_off_role;
+              const ratePart = rate != null ? ` (${(rate * 100).toFixed(1)}%)` : "";
+              const isOptimal = aboveMin === 0 && count > 0;
+              const isPerfect = count === 0;
+              const tooltip = (() => {
+                if (isPerfect) return "All players assigned to their first preference.";
+                if (isOptimal) {
+                  return structuralMin != null
+                    ? `${count} off-role assignments — structural minimum for this dataset (no balancer can do better).`
+                    : `${count} off-role assignments.`;
+                }
+                if (aboveMin != null && structuralMin != null) {
+                  return `${count} off-role assignments — ${aboveMin} above the structural minimum of ${structuralMin}.`;
+                }
+                return `${count} off-role assignments.`;
+              })();
+              const badgeClass =
+                isPerfect || isOptimal
+                  ? "rounded-full border-emerald-400/25 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/10"
+                  : "rounded-full border-orange-400/20 bg-orange-500/10 text-orange-200 hover:bg-orange-500/10";
+              const Icon = isPerfect || isOptimal ? CheckCircle2 : AlertCircle;
+              const suffix = isOptimal
+                ? " (optimal)"
+                : aboveMin != null && aboveMin > 0
+                  ? ` (+${aboveMin})`
+                  : "";
+              return (
+                <Badge title={tooltip} className={badgeClass}>
+                  <Icon className="mr-1.5 h-3.5 w-3.5" />
+                  Off-role {count}
+                  {ratePart}
+                  {suffix}
+                </Badge>
+              );
+            })()
+          : null}
+        {activeVariantStats?.feasibility ? (
+          <Badge
+            title={formatFeasibilityTooltip(activeVariantStats.feasibility)}
+            className="rounded-full border-sky-400/20 bg-sky-500/10 text-sky-200 hover:bg-sky-500/10"
+          >
+            <Info className="mr-1.5 h-3.5 w-3.5" />
+            Feasibility
           </Badge>
         ) : null}
         {activeVariantStats?.sub_role_collision_count != null ? (

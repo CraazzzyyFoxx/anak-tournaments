@@ -1,4 +1,12 @@
-import { AlertCircle, BarChart2, Shuffle, Sparkles, Trash2, UserX } from "lucide-react";
+import {
+  AlertCircle,
+  BarChart2,
+  CheckCircle2,
+  Shuffle,
+  Sparkles,
+  Trash2,
+  UserX
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BalanceVariant } from "./workspace-helpers";
 
@@ -23,6 +31,15 @@ export function VariantSelector({
         const isActive = variant.id === activeVariantId;
         const stats = variant.payload.statistics;
         const offRoles = stats?.off_role_count ?? 0;
+        const offRoleAboveMin = stats?.off_role_above_minimum ?? null;
+        const offRoleOptimal = offRoles === 0 || offRoleAboveMin === 0;
+        const offRoleTooltip = (() => {
+          if (offRoles === 0) return "All players on first preference";
+          if (offRoleAboveMin === 0) return `Off-role ${offRoles} (structural minimum)`;
+          if (offRoleAboveMin != null)
+            return `Off-role ${offRoles} (+${offRoleAboveMin} above min)`;
+          return `Off-role ${offRoles}`;
+        })();
         const collisions = stats?.sub_role_collision_count ?? 0;
         const unbalanced = variant.payload.benched_players?.length ?? stats?.unbalanced_count ?? 0;
         const stddev = stats?.mmr_std_dev;
@@ -66,13 +83,21 @@ export function VariantSelector({
             {stats != null ? (
               <div className="mt-1.5 flex items-center gap-2.5">
                 <span
-                  title="Off-roles"
+                  title={offRoleTooltip}
                   className={cn(
                     "flex items-center gap-1 text-[10px] font-semibold tabular-nums",
-                    offRoles > 0 ? "text-orange-300/90" : "text-white/30"
+                    offRoles === 0
+                      ? "text-white/30"
+                      : offRoleOptimal
+                        ? "text-emerald-300/90"
+                        : "text-orange-300/90"
                   )}
                 >
-                  <AlertCircle className="h-3 w-3" />
+                  {offRoleOptimal && offRoles > 0 ? (
+                    <CheckCircle2 className="h-3 w-3" />
+                  ) : (
+                    <AlertCircle className="h-3 w-3" />
+                  )}
                   {offRoles}
                 </span>
                 <span

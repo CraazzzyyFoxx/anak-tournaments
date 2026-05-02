@@ -5,8 +5,9 @@ import typing
 from collections import Counter
 
 from src.core.config import AlgorithmConfig
-from src.domain.balancer.public_contract import serialize_algorithm_config
 from src.domain.balancer.entities import Player, Team
+from src.domain.balancer.feasibility_analyzer import FeasibilityReport
+from src.domain.balancer.public_contract import serialize_algorithm_config
 
 
 def teams_to_json(
@@ -83,6 +84,9 @@ def teams_to_json(
             if count > 1:
                 sub_role_collision_count += count * (count - 1) // 2
 
+    total_placed_players = sum(len(players) for team in teams for players in team.roster.values())
+    off_role_rate = off_role_count / total_placed_players if total_placed_players else 0.0
+
     if len(all_totals) > 1:
         result["statistics"] = {
             "average_mmr": round(statistics.mean(all_mmrs), 2),
@@ -93,6 +97,7 @@ def teams_to_json(
             "total_teams": len(teams),
             "players_per_team": sum(mask.values()),
             "off_role_count": off_role_count,
+            "off_role_rate": round(off_role_rate, 4),
             "sub_role_collision_count": sub_role_collision_count,
         }
     else:
@@ -105,6 +110,7 @@ def teams_to_json(
             "total_teams": len(teams),
             "players_per_team": sum(mask.values()),
             "off_role_count": off_role_count,
+            "off_role_rate": round(off_role_rate, 4),
             "sub_role_collision_count": sub_role_collision_count,
         }
 
@@ -133,6 +139,7 @@ def _build_response_payload(
     config: AlgorithmConfig,
     has_applied_overrides: bool,
     metrics: dict[str, float] | None = None,
+    feasibility: FeasibilityReport | None = None,
 ) -> dict[str, typing.Any]:
     placed_uuids: set[str] = set()
     for team in result:
@@ -142,14 +149,18 @@ def _build_response_payload(
 
     benched = [player for player in valid_players if player.uuid not in placed_uuids]
     response_payload = teams_to_json(result, mask, benched_players=benched)
+    stats = response_payload.get("statistics") or {}
     if metrics:
-        stats = response_payload.get("statistics") or {}
         stats["balance_objective"] = round(float(metrics.get("balance_objective", 0.0)), 4)
         stats["comfort_objective"] = round(float(metrics.get("comfort_objective", 0.0)), 4)
         stats["balance_objective_norm"] = round(float(metrics.get("balance_objective_norm", 0.0)), 4)
         stats["comfort_objective_norm"] = round(float(metrics.get("comfort_objective_norm", 0.0)), 4)
         stats["composite_score"] = round(float(metrics.get("composite_score", 0.0)), 4)
-        response_payload["statistics"] = stats
+    if feasibility is not None:
+        actual_off_role = stats.get("off_role_count", 0)
+        stats["off_role_above_minimum"] = max(0, actual_off_role - feasibility.structural_min_off_role)
+        stats["feasibility"] = feasibility.to_dict()
+    response_payload["statistics"] = stats
     if has_applied_overrides:
         response_payload["applied_config"] = serialize_algorithm_config(config)
     return response_payload

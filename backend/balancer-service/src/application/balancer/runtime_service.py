@@ -11,6 +11,7 @@ from src.core.config import AlgorithmConfig
 from src.domain.balancer.captain_assignment_service import assign_captains
 from src.domain.balancer.config_provider import normalize_config_overrides
 from src.domain.balancer.determinism import build_balancer_seed, derive_balancer_seed
+from src.domain.balancer.feasibility_analyzer import analyze_feasibility
 from src.domain.balancer.moo_backend import run_moo_optimizer
 from src.domain.balancer.progress import ProgressCallback, emit_progress
 from src.domain.balancer.rating_normalizer import RatingNormalizer
@@ -192,6 +193,14 @@ def balance_teams_moo(
     )
     mask = config.role_mask
 
+    feasibility = analyze_feasibility(valid_players, mask, num_teams)
+    if feasibility.structural_min_off_role > 0:
+        logger.info(
+            f"Dataset has structural minimum {feasibility.structural_min_off_role} "
+            f"off-role assignments out of {feasibility.total_slots} slots — "
+            f"any balance solution must include at least this many."
+        )
+
     normalizer = RatingNormalizer(target_max=config.rating_scale_ceiling)
     normalizer.fit(valid_players)
     if not normalizer.is_identity:
@@ -228,7 +237,15 @@ def balance_teams_moo(
             normalizer.refresh_team_stats(result_teams)
 
     payloads = [
-        _build_response_payload(result, valid_players, mask, config, has_applied_overrides, metrics)
+        _build_response_payload(
+            result,
+            valid_players,
+            mask,
+            config,
+            has_applied_overrides,
+            metrics,
+            feasibility=feasibility,
+        )
         for result, metrics in pareto_solutions
     ]
 

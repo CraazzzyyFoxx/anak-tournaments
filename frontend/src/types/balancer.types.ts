@@ -63,6 +63,20 @@ export interface TeamData {
   roster: Record<string, PlayerData[]>;
 }
 
+export interface RoleFeasibility {
+  role: string;
+  supply: number;
+  demand: number;
+  flex_supply: number;
+}
+
+export interface FeasibilityReport {
+  total_slots: number;
+  structural_min_off_role: number;
+  flex_player_count: number;
+  roles: RoleFeasibility[];
+}
+
 export interface Statistics {
   average_mmr: number;
   mmr_std_dev: number;
@@ -79,6 +93,9 @@ export interface Statistics {
   balance_objective_norm?: number | null;
   comfort_objective_norm?: number | null;
   composite_score?: number | null;
+  off_role_rate?: number | null;
+  off_role_above_minimum?: number | null;
+  feasibility?: FeasibilityReport | null;
 }
 
 export interface BalanceResponse {
