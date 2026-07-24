@@ -443,13 +443,26 @@ async def admin_confirm_result(
     if closeness_values:
         encounter.closeness = (sum(closeness_values) / len(closeness_values)) / 10.0
 
+    # The per-captain report flow only writes the encounter score on an
+    # auto-confirm (two matching reports). A pending single-report encounter — or
+    # a dispute the admin has not yet edited — therefore still carries the 0-0
+    # default, which would finalize a bogus draw (and 400 on elimination stages
+    # where a winner is required). Adopt the reported score when the encounter
+    # has none of its own and the reports agree on one; otherwise keep the
+    # (admin-edited) encounter score, which is how a genuine dispute is resolved.
+    home_score, away_score = encounter.home_score, encounter.away_score
+    if home_score == 0 and away_score == 0 and encounter.captain_reports:
+        reported = {(r.home_score, r.away_score) for r in encounter.captain_reports}
+        if len(reported) == 1:
+            home_score, away_score = next(iter(reported))
+
     tournament_id = encounter.tournament_id
     await finalize_encounter_score(
         session,
         encounter.id,
         encounter=encounter,
-        home_score=encounter.home_score,
-        away_score=encounter.away_score,
+        home_score=home_score,
+        away_score=away_score,
         source="admin",
         result_status=EncounterResultStatus.CONFIRMED,
         confirmed_at=datetime.now(UTC),

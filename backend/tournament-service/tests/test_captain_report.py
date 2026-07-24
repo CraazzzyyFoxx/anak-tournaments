@@ -280,3 +280,60 @@ class CaptainReportFlow(IsolatedAsyncioTestCase):
         self.assertEqual(by_index[2].map_id, 66)
         self.assertIsNone(by_index[3].map_id)  # soft: index beyond picks
         self.assertEqual(by_index[1].code, "AAA")
+
+class AdminConfirm(IsolatedAsyncioTestCase):
+    async def _confirm(self, encounter):
+        """Run admin_confirm_result with finalize mocked to capture its score."""
+        session = _mk_session(encounter, [])
+        captured: dict = {}
+
+        async def fake_finalize(*_args, **kwargs):
+            captured.update(kwargs)
+            encounter.status = enums.EncounterStatus.COMPLETED
+            encounter.result_status = kwargs["result_status"]
+            encounter.home_score = kwargs["home_score"]
+            encounter.away_score = kwargs["away_score"]
+            return SimpleNamespace(encounter=encounter, advanced_encounters=[])
+
+        with (
+            patch.object(captain_service, "finalize_encounter_score", AsyncMock(side_effect=fake_finalize)),
+            patch.object(captain_service, "_enqueue_tournament_recalculation", AsyncMock()),
+            patch.object(captain_service, "_enqueue_encounter_completed", AsyncMock()),
+            patch.object(captain_service, "resolve_encounter_challonge", AsyncMock(return_value={})),
+        ):
+            await captain_service.admin_confirm_result(session, 10)
+        return captured
+
+    async def test_pending_single_report_adopts_reported_score(self) -> None:
+        # Regression: the encounter score stays 0-0 until an auto-confirm, so a
+        # pending single-report confirm must adopt the captain's reported score
+        # instead of finalizing a bogus 0-0 draw.
+        report = _mk_report(team_id=1, home=3, away=0, closeness=7)
+        encounter = _mk_encounter(
+            result_status=enums.EncounterResultStatus.PENDING_CONFIRMATION,
+            captain_reports=[report],
+        )
+        captured = await self._confirm(encounter)
+        self.assertEqual((captured["home_score"], captured["away_score"]), (3, 0))
+        self.assertEqual(encounter.result_status, enums.EncounterResultStatus.CONFIRMED)
+        self.assertAlmostEqual(encounter.closeness, 0.7)
+
+    async def test_disputed_keeps_admin_edited_score(self) -> None:
+        # Two differing reports -> the admin resolves by editing the encounter
+        # score; confirm must use that score, never a report's.
+        home = _mk_report(team_id=1, home=2, away=0, closeness=5, report_id=1)
+        away = _mk_report(team_id=2, home=0, away=3, closeness=9, report_id=2)
+        encounter = _mk_encounter(
+            result_status=enums.EncounterResultStatus.DISPUTED,
+            captain_reports=[home, away],
+        )
+        encounter.home_score = 2
+        encounter.away_score = 1
+        captured = await self._confirm(encounter)
+        self.assertEqual((captured["home_score"], captured["away_score"]), (2, 1))
+
+    async def test_rejects_confirm_when_not_pending_or_disputed(self) -> None:
+        encounter = _mk_encounter(result_status=enums.EncounterResultStatus.CONFIRMED)
+        session = _mk_session(encounter, [])
+        with assert_http_status(self, 400):
+            await captain_service.admin_confirm_result(session, 10)

@@ -125,6 +125,9 @@ function EncounterEditDialogBody({
       notify.success(t("matchEdit.resultConfirmed"));
       await refreshEncounterViews();
       onOpenChange(false);
+    },
+    onError: (error) => {
+      notify.apiError(error, { title: t("matchEdit.confirmErrorMessage") });
     }
   });
 
@@ -253,7 +256,8 @@ function EncounterEditDialogBody({
         >
           {t("matchEdit.cancel")}
         </Button>
-        {encounter.result_status === "pending_confirmation" && (
+        {(encounter.result_status === "pending_confirmation" ||
+          encounter.result_status === "disputed") && (
           <Button
             variant="secondary"
             onClick={() => confirmMutation.mutate()}
