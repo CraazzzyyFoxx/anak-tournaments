@@ -1666,6 +1666,7 @@
     "disputed": "Спор",
     "editMatch": "Редактировать матч",
     "reportMatch": "Репорт матча",
+    "bestOf": "До {count} побед",
     "doubleElimination": "Двойное выбывание",
     "singleElimination": "Одиночное выбывание"
   },
