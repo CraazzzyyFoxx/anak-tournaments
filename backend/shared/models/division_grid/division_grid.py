@@ -57,6 +57,7 @@ class DivisionGrid(db.TimeStampIntegerMixin):
 
     versions: Mapped[list[DivisionGridVersion]] = relationship(
         back_populates="grid",
+        cascade="all, delete-orphan",
         passive_deletes=True,
         order_by="DivisionGridVersion.version",
         lazy="selectin",
