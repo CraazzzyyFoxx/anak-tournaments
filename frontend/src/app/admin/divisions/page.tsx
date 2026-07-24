@@ -836,7 +836,7 @@ export default function DivisionsAdminPage() {
     grids[0] ??
     null;
   const editedGrid =
-    grids.find((grid) => grid.id === selectedGridId && grid.archived_at === null) ??
+    grids.find((grid) => grid.id === selectedGridId) ??
     activeGrid ??
     null;
   const activeVersion =

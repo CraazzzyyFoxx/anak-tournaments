@@ -86,8 +86,8 @@ export function DivisionGridLibrary({
     grids.find((grid) => grid.id === selectedGridId) ?? activeGrid ?? grids[0] ?? null;
   const activeVersion =
     activeGrid?.versions.find((version) => version.id === defaultVersionId) ?? null;
-  const visibleGrids = grids.filter(
-    (grid) => grid.archived_at === null || grid.id === selectedGrid?.id
+  const visibleGrids = [...grids].sort(
+    (left, right) => Number(left.archived_at !== null) - Number(right.archived_at !== null)
   );
 
   const createMutation = useMutation({
