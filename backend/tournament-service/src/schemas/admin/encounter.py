@@ -21,6 +21,7 @@ class EncounterCreate(BaseModel):
     home_team_id: int | None = None
     away_team_id: int | None = None
     round: int
+    best_of: int = Field(default=3, ge=1)
     home_score: int = 0
     away_score: int = 0
     status: str = "open"  # open, pending, completed
@@ -43,6 +44,7 @@ class EncounterUpdate(BaseModel):
     away_score: int | None = None
     status: str | None = None
     round: int | None = None
+    best_of: int | None = Field(default=None, ge=1)
     closeness: float | None = Field(default=None, ge=0.0, le=1.0)
     scheduled_at: datetime | None = None
     started_at: datetime | None = None

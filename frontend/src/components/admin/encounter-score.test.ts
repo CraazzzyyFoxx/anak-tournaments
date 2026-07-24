@@ -1,39 +1,60 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
-import {
-  GROUP_STAGE_SCORE_PRESETS,
-  clampScoreValue,
-  getMatchingScorePreset,
-  isGroupStageScoreContext,
-} from "@/components/admin/encounter-score";
+import { getScorePresetsForBestOf, validSeriesScores } from "./encounter-score";
 
-describe("encounter score helpers", () => {
-  it("exposes common group-stage result presets including draw", () => {
-    expect(GROUP_STAGE_SCORE_PRESETS.map((preset) => preset.label)).toEqual([
-      "2-0",
-      "2-1",
-      "1-1",
-      "1-2",
-      "0-2",
+function labels(scores: { label: string }[]): string[] {
+  return scores.map((score) => score.label);
+}
+
+describe("validSeriesScores", () => {
+  it("BO1 -> 1-0, 0-1", () => {
+    expect(labels(validSeriesScores(1))).toEqual(["1-0", "0-1"]);
+  });
+
+  it("BO2 -> 2-0, draw, 0-2 (even series allow a tie)", () => {
+    expect(labels(validSeriesScores(2))).toEqual(["2-0", "1-1", "0-2"]);
+  });
+
+  it("BO3 -> 2-0, 2-1, 1-2, 0-2 (no draw)", () => {
+    expect(labels(validSeriesScores(3))).toEqual(["2-0", "2-1", "1-2", "0-2"]);
+  });
+
+  it("BO5 -> 3-0..3-2 and mirror", () => {
+    expect(labels(validSeriesScores(5))).toEqual([
+      "3-0",
+      "3-1",
+      "3-2",
+      "2-3",
+      "1-3",
+      "0-3"
     ]);
   });
 
-  it("matches an existing score to a preset", () => {
-    expect(getMatchingScorePreset(2, 1)?.label).toBe("2-1");
-    expect(getMatchingScorePreset(3, 2)).toBeUndefined();
+  it("marks draws and sweeps via reused description keys", () => {
+    const bo2 = validSeriesScores(2);
+    expect(bo2.map((score) => score.description)).toEqual([
+      "Home sweep",
+      "Draw",
+      "Away sweep"
+    ]);
   });
 
-  it("clamps score input to a non-negative integer", () => {
-    expect(clampScoreValue("4")).toBe(4);
-    expect(clampScoreValue("-3")).toBe(0);
-    expect(clampScoreValue("")).toBe(0);
-    expect(clampScoreValue("2.9")).toBe(2);
+  it("returns nothing for invalid series lengths", () => {
+    expect(validSeriesScores(0)).toEqual([]);
+    expect(validSeriesScores(-3)).toEqual([]);
+    expect(validSeriesScores(2.5)).toEqual([]);
+  });
+});
+
+describe("getScorePresetsForBestOf", () => {
+  it("shows discrete presets for short series (BO1-BO3)", () => {
+    expect(labels(getScorePresetsForBestOf(1))).toEqual(["1-0", "0-1"]);
+    expect(labels(getScorePresetsForBestOf(2))).toEqual(["2-0", "1-1", "0-2"]);
+    expect(labels(getScorePresetsForBestOf(3))).toEqual(["2-0", "2-1", "1-2", "0-2"]);
   });
 
-  it("detects group-stage contexts from stage or stage item", () => {
-    expect(isGroupStageScoreContext({ stage_type: "round_robin" })).toBe(true);
-    expect(isGroupStageScoreContext({ stage_type: "swiss" })).toBe(true);
-    expect(isGroupStageScoreContext({ stage_type: "single_elimination" }, { type: "group" })).toBe(true);
-    expect(isGroupStageScoreContext({ stage_type: "single_elimination" })).toBe(false);
+  it("shows no presets for long series (manual entry only)", () => {
+    expect(getScorePresetsForBestOf(5)).toEqual([]);
+    expect(getScorePresetsForBestOf(7)).toEqual([]);
   });
 });

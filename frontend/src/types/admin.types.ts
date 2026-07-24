@@ -213,6 +213,12 @@ export interface StageUpdateInput {
   settings_json?: Record<string, unknown> | null;
 }
 
+export interface StageBestOfConfig {
+  default?: number;
+  by_round?: Record<string, number>;
+  final?: number | null;
+}
+
 export interface StageItemCreateInput {
   name: string;
   type: StageItemType;
@@ -383,6 +389,7 @@ export interface EncounterCreateInput {
   home_score?: number;
   away_score?: number;
   status?: string;
+  best_of?: number;
   name?: string;
 }
 
@@ -398,6 +405,7 @@ export interface EncounterUpdateInput {
   round?: number;
   name?: string;
   closeness?: number | null;
+  best_of?: number;
 }
 
 export interface MatchUpdateInput {

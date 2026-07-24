@@ -539,6 +539,7 @@
     "pendingConfirmation": "Ожидает подтверждения",
     "disputed": "Спор",
     "matchScore": "Счет матча",
+    "bestOf": "Формат серии",
     "manualEntry": "Ручной ввод результата",
     "resultPresets": "Быстрый выбор",
     "status": "Статус",

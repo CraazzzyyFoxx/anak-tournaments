@@ -50,6 +50,8 @@ import type {
 } from "@/types/tournament.types";
 import type { Team } from "@/types/team.types";
 import { invalidateTournamentWorkspace } from "./tournamentWorkspace.queryKeys";
+import { notify } from "@/lib/notify";
+import type { StageBestOfConfig } from "@/types/admin.types";
 
 const BRACKET_STAGE_TYPES: StageType[] = ["single_elimination", "double_elimination"];
 const GROUP_STAGE_TYPES: StageType[] = ["round_robin", "swiss"];
@@ -147,6 +149,39 @@ function normalizeMaxRounds(value: string | number, fallback = 5) {
   return Math.max(1, Math.floor(parsed));
 }
 
+const BEST_OF_OPTIONS = [1, 2, 3, 5, 7] as const;
+
+function readBestOfConfig(settings: Record<string, unknown>): StageBestOfConfig {
+  const raw = settings?.best_of;
+  if (!raw || typeof raw !== "object") return {};
+  const record = raw as Record<string, unknown>;
+  const byRoundRaw = record.by_round;
+  const by_round: Record<string, number> = {};
+  if (byRoundRaw && typeof byRoundRaw === "object") {
+    for (const [key, value] of Object.entries(byRoundRaw as Record<string, unknown>)) {
+      if (typeof value === "number") by_round[key] = value;
+    }
+  }
+  return {
+    default: typeof record.default === "number" ? record.default : undefined,
+    final: typeof record.final === "number" ? record.final : undefined,
+    by_round: Object.keys(by_round).length ? by_round : undefined
+  };
+}
+
+/** Strip empty fields; returns undefined when nothing is configured. */
+function buildBestOfSettings(draft: StageBestOfConfig): StageBestOfConfig | undefined {
+  const out: StageBestOfConfig = {};
+  if (typeof draft.default === "number") out.default = draft.default;
+  if (typeof draft.final === "number") out.final = draft.final;
+  const by_round: Record<string, number> = {};
+  for (const [key, value] of Object.entries(draft.by_round ?? {})) {
+    if (typeof value === "number") by_round[key] = value;
+  }
+  if (Object.keys(by_round).length) out.by_round = by_round;
+  return Object.keys(out).length ? out : undefined;
+}
+
 function getProgressPercent(completed: number, total: number) {
   if (total <= 0) return 0;
   return Math.round((completed / total) * 100);
@@ -236,6 +271,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
   const [editingInputId, setEditingInputId] = useState<number | null>(null);
   const [editingInputTeamDraft, setEditingInputTeamDraft] = useState("");
   const [stageSplitLbDrafts, setStageSplitLbDrafts] = useState<Record<number, boolean>>({});
+  const [stageBestOfDrafts, setStageBestOfDrafts] = useState<Record<number, StageBestOfConfig>>({});
 
   const { data: stages = [], isLoading } = useQuery({
     queryKey: ["admin", "stages", tournamentId],
@@ -344,6 +380,11 @@ export function StageManager({ tournamentId }: StageManagerProps) {
         delete next[variables.stageId];
         return next;
       });
+      setStageBestOfDrafts((current) => {
+        const next = { ...current };
+        delete next[variables.stageId];
+        return next;
+      });
       setStageRankingPresetDrafts((current) => {
         const next = { ...current };
         delete next[variables.stageId];
@@ -390,6 +431,15 @@ export function StageManager({ tournamentId }: StageManagerProps) {
     onSuccess: () => {
       invalidateStageData();
     }
+  });
+
+  const applyBestOfMutation = useMutation({
+    mutationFn: (stageId: number) => adminService.applyStageBestOf(stageId),
+    onSuccess: ({ updated }) => {
+      notify.success(`Updated best-of on ${updated} match${updated === 1 ? "" : "es"}`);
+      invalidateStageData();
+    },
+    onError: (error) => notify.apiError(error, { title: "Failed to apply best-of" })
   });
 
   const deleteMutation = useMutation({
@@ -620,6 +670,28 @@ export function StageManager({ tournamentId }: StageManagerProps) {
     ? stageSwissByePointsDrafts[selectedStage.id] ?? String(selectedStageSettings.swiss_bye_points ?? "")
     : "";
 
+  const currentBestOf = readBestOfConfig(selectedStageSettings);
+  const selectedBestOfDraft: StageBestOfConfig = selectedStage
+    ? stageBestOfDrafts[selectedStage.id] ?? currentBestOf
+    : {};
+  const updateBestOfDraft = (patch: Partial<StageBestOfConfig>) => {
+    if (!selectedStage) return;
+    setStageBestOfDrafts((current) => ({
+      ...current,
+      [selectedStage.id]: { ...selectedBestOfDraft, ...patch }
+    }));
+  };
+  const updateBestOfRound = (round: number, value: number | undefined) => {
+    if (!selectedStage) return;
+    const nextByRound = { ...(selectedBestOfDraft.by_round ?? {}) };
+    if (value == null) delete nextByRound[String(round)];
+    else nextByRound[String(round)] = value;
+    setStageBestOfDrafts((current) => ({
+      ...current,
+      [selectedStage.id]: { ...selectedBestOfDraft, by_round: nextByRound }
+    }));
+  };
+
   const isStageDirty =
     Boolean(selectedStage) &&
     (selectedStageTypeDraft !== selectedStage?.stage_type ||
@@ -634,7 +706,9 @@ export function StageManager({ tournamentId }: StageManagerProps) {
       selectedStageScoringWinDraft !== String(selectedStageSettings.scoring?.win ?? "") ||
       selectedStageScoringDrawDraft !== String(selectedStageSettings.scoring?.draw ?? "") ||
       selectedStageScoringLossDraft !== String(selectedStageSettings.scoring?.loss ?? "") ||
-      JSON.stringify(selectedStageTiebreakOrderDraft) !== JSON.stringify(selectedStageSettings.tiebreak_order || defaultTiebreakOrder)
+      JSON.stringify(selectedStageTiebreakOrderDraft) !== JSON.stringify(selectedStageSettings.tiebreak_order || defaultTiebreakOrder) ||
+      JSON.stringify(buildBestOfSettings(selectedBestOfDraft) ?? null) !==
+        JSON.stringify(buildBestOfSettings(currentBestOf) ?? null)
     );
   const selectedItemDraft = selectedStage
     ? stageItemDrafts[selectedStage.id] ?? {
@@ -1696,6 +1770,113 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                               </>
                             )}
 
+                            <div className="space-y-3 border-t border-border/40 pt-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <Label className="text-xs font-semibold">Best-of per round</Label>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  disabled={applyBestOfMutation.isPending}
+                                  onClick={() => applyBestOfMutation.mutate(selectedStage.id)}
+                                >
+                                  {applyBestOfMutation.isPending &&
+                                  applyBestOfMutation.variables === selectedStage.id ? (
+                                    <Loader2 className="size-4 animate-spin" />
+                                  ) : null}
+                                  Apply to existing matches
+                                </Button>
+                              </div>
+                              <p className="text-[11px] text-muted-foreground">
+                                Baked into matches on (re)generation. Use &quot;Apply to existing
+                                matches&quot; to backfill without regenerating.
+                              </p>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                  <Label className="text-[11px] text-muted-foreground">Default</Label>
+                                  <Select
+                                    value={
+                                      selectedBestOfDraft.default != null
+                                        ? String(selectedBestOfDraft.default)
+                                        : "inherit"
+                                    }
+                                    onValueChange={(value) =>
+                                      updateBestOfDraft({
+                                        default: value === "inherit" ? undefined : Number(value)
+                                      })
+                                    }
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="inherit">Default (Bo3)</SelectItem>
+                                      {BEST_OF_OPTIONS.map((n) => (
+                                        <SelectItem key={n} value={String(n)}>{`Bo${n}`}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-[11px] text-muted-foreground">Final</Label>
+                                  <Select
+                                    value={
+                                      selectedBestOfDraft.final != null
+                                        ? String(selectedBestOfDraft.final)
+                                        : "none"
+                                    }
+                                    onValueChange={(value) =>
+                                      updateBestOfDraft({
+                                        final: value === "none" ? undefined : Number(value)
+                                      })
+                                    }
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="none">Same as rounds</SelectItem>
+                                      {BEST_OF_OPTIONS.map((n) => (
+                                        <SelectItem key={n} value={String(n)}>{`Bo${n}`}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                                {Array.from({ length: maxRoundsDraftValue }, (_, index) => index + 1).map(
+                                  (round) => {
+                                    const value = selectedBestOfDraft.by_round?.[String(round)];
+                                    return (
+                                      <div key={round} className="space-y-1">
+                                        <Label className="text-[11px] text-muted-foreground">
+                                          Round {round}
+                                        </Label>
+                                        <Select
+                                          value={value != null ? String(value) : "inherit"}
+                                          onValueChange={(next) =>
+                                            updateBestOfRound(
+                                              round,
+                                              next === "inherit" ? undefined : Number(next)
+                                            )
+                                          }
+                                        >
+                                          <SelectTrigger>
+                                            <SelectValue />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            <SelectItem value="inherit">Default</SelectItem>
+                                            {BEST_OF_OPTIONS.map((n) => (
+                                              <SelectItem key={n} value={String(n)}>{`Bo${n}`}</SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                      </div>
+                                    );
+                                  }
+                                )}
+                              </div>
+                            </div>
+
                             <div className="border-t border-border/40 pt-3 flex justify-end">
                               <Button
                                 size="sm"
@@ -1727,6 +1908,13 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                     nextSettings.de_grand_final_type = selectedStageDeGfTypeDraft;
                                   } else {
                                     delete nextSettings.de_grand_final_type;
+                                  }
+
+                                  const bestOfSettings = buildBestOfSettings(selectedBestOfDraft);
+                                  if (bestOfSettings) {
+                                    nextSettings.best_of = bestOfSettings;
+                                  } else {
+                                    delete nextSettings.best_of;
                                   }
 
                                   updateStageMutation.mutate({

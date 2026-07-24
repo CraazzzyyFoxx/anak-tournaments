@@ -127,6 +127,23 @@ def register(broker: Any, logger: Any) -> None:
 
         return await _run(logger, op)
 
+    # ── apply best-of to existing encounters (backfill) ───────────────────
+
+    @broker.subscriber("rpc.tournament.stage_apply_best_of")
+    async def _stage_apply_best_of(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            stage_id = _path_int(data, "stage_id")
+            # Route: require_stage_permission("stage", "update").
+            ws_id = await auth.get_stage_workspace_id(session, stage_id)
+            ensure_workspace_permission(user, ws_id, "stage", "update")
+            # Rewrites best_of on the stage's encounters from settings_json;
+            # commits internally. Returns the number of rows changed.
+            updated = await stage_service.apply_best_of_to_existing(session, stage_id)
+            return {"updated": updated}
+
+        return await _run(logger, op)
+
     # ── activate-and-generate (202; force flag) ───────────────────────────
 
     @broker.subscriber("rpc.tournament.stage_activate_and_generate")

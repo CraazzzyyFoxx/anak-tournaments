@@ -7,8 +7,9 @@ import { useTranslations } from "next-intl";
 import {
   GROUP_STAGE_SCORE_PRESETS,
   clampScoreValue,
-  getMatchingScorePreset,
+  getScorePresetsForBestOf,
   type EncounterScore,
+  type EncounterScorePreset,
 } from "@/components/admin/encounter-score";
 
 type EncounterScoreControlsProps = EncounterScore & {
@@ -17,6 +18,8 @@ type EncounterScoreControlsProps = EncounterScore & {
   awayLabel?: string;
   presetLabel?: string;
   showGroupStageHint?: boolean;
+  /** When set, presets adapt to the series length; BO4+ shows no presets (manual only). */
+  bestOf?: number;
   onScoreChange: (score: EncounterScore) => void;
   onPresetSelect?: (score: EncounterScore) => void;
 };
@@ -29,11 +32,16 @@ export function EncounterScoreControls({
   awayLabel = "Away Score",
   presetLabel,
   showGroupStageHint = false,
+  bestOf,
   onScoreChange,
   onPresetSelect,
 }: EncounterScoreControlsProps) {
   const t = useTranslations();
-  const selectedPreset = getMatchingScorePreset(homeScore, awayScore);
+  const presets: EncounterScorePreset[] =
+    bestOf != null ? getScorePresetsForBestOf(bestOf) : GROUP_STAGE_SCORE_PRESETS;
+  const selectedPreset = presets.find(
+    (preset) => preset.homeScore === homeScore && preset.awayScore === awayScore
+  );
   const resolvedPresetLabel = presetLabel ?? t("matchEdit.resultPresets");
 
   const updateHomeScore = (value: string | number) => {
@@ -87,45 +95,47 @@ export function EncounterScoreControls({
         />
       </div>
 
-      <div className="space-y-2">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-xs font-semibold text-zinc-400">{resolvedPresetLabel}</p>
-          {selectedPreset ? (
-            <span className="text-xs font-semibold text-zinc-300">
-              {t(`matchEdit.presetDescriptions.${selectedPreset.description}` as Parameters<typeof t>[0])}
-            </span>
-          ) : null}
-        </div>
-        <div className="grid grid-cols-5 gap-2">
-          {GROUP_STAGE_SCORE_PRESETS.map((preset) => {
-            const isSelected = selectedPreset?.label === preset.label;
+      {presets.length > 0 ? (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold text-zinc-400">{resolvedPresetLabel}</p>
+            {selectedPreset ? (
+              <span className="text-xs font-semibold text-zinc-300">
+                {t(`matchEdit.presetDescriptions.${selectedPreset.description}` as Parameters<typeof t>[0])}
+              </span>
+            ) : null}
+          </div>
+          <div className="grid grid-cols-5 gap-2">
+            {presets.map((preset) => {
+              const isSelected = selectedPreset?.label === preset.label;
 
-            return (
-              <Button
-                key={preset.label}
-                type="button"
-                variant="ghost"
-                className={cn(
-                  "h-9 px-2 font-bold font-mono rounded-lg transition-all duration-150",
-                  isSelected
-                    ? "bg-white text-zinc-950 border border-white hover:bg-white hover:text-zinc-950"
-                    : "bg-zinc-900/40 border border-zinc-800/80 text-zinc-200 hover:bg-zinc-800 hover:text-white hover:border-zinc-700"
-                )}
-                aria-pressed={isSelected}
-                title={t(`matchEdit.presetDescriptions.${preset.description}` as Parameters<typeof t>[0])}
-                onClick={() =>
-                  applyPreset({
-                    homeScore: preset.homeScore,
-                    awayScore: preset.awayScore,
-                  })
-                }
-              >
-                {preset.label}
-              </Button>
-            );
-          })}
+              return (
+                <Button
+                  key={preset.label}
+                  type="button"
+                  variant="ghost"
+                  className={cn(
+                    "h-9 px-2 font-bold font-mono rounded-lg transition-all duration-150",
+                    isSelected
+                      ? "bg-white text-zinc-950 border border-white hover:bg-white hover:text-zinc-950"
+                      : "bg-zinc-900/40 border border-zinc-800/80 text-zinc-200 hover:bg-zinc-800 hover:text-white hover:border-zinc-700"
+                  )}
+                  aria-pressed={isSelected}
+                  title={t(`matchEdit.presetDescriptions.${preset.description}` as Parameters<typeof t>[0])}
+                  onClick={() =>
+                    applyPreset({
+                      homeScore: preset.homeScore,
+                      awayScore: preset.awayScore,
+                    })
+                  }
+                >
+                  {preset.label}
+                </Button>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }

@@ -1261,6 +1261,13 @@ class AdminService {
     return { generated: Number(completed.result_json?.generated ?? 0) };
   }
 
+  async applyStageBestOf(stageId: number): Promise<{ updated: number }> {
+    const response = await apiFetch(`/api/v1/admin/stages/${stageId}/apply-best-of`, {
+      method: "POST"
+    });
+    return response.json();
+  }
+
   async wireFromGroups(
     stageId: number,
     data: {

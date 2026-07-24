@@ -243,6 +243,7 @@ function MatchReportDialogBody({ encounter, onOpenChange }: Omit<MatchReportDial
           homeLabel={homeTeamLabel}
           awayLabel={awayTeamLabel}
           presetLabel={t("matchReport.quickResult")}
+          bestOf={encounter.best_of}
           onScoreChange={(score) => {
             setHomeScore(score.homeScore);
             setAwayScore(score.awayScore);

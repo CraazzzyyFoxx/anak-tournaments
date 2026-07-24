@@ -23,6 +23,7 @@ var StageSubtreeRoutes = []edge.RouteSpec{
 	{Method: "POST", Pattern: "/api/v1/admin/stages/{stage_id}/activate-and-generate", Queue: "rpc.tournament.stage_activate_and_generate", Path: []string{"stage_id"}, Query: []string{"force"}, Auth: edge.AuthRequired, Success: 202},
 	{Method: "POST", Pattern: "/api/v1/admin/stages/{stage_id}/activate", Queue: "rpc.tournament.stage_activate", Path: []string{"stage_id"}, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/admin/stages/{stage_id}/generate", Queue: "rpc.tournament.stage_generate", Path: []string{"stage_id"}, Auth: edge.AuthRequired, Success: 202},
+	{Method: "POST", Pattern: "/api/v1/admin/stages/{stage_id}/apply-best-of", Queue: "rpc.tournament.stage_apply_best_of", Path: []string{"stage_id"}, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/admin/stages/{stage_id}/wire-from-groups", Queue: "rpc.tournament.stage_wire", Path: []string{"stage_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/admin/stages/{stage_id}/seed-teams", Queue: "rpc.tournament.stage_seed", Path: []string{"stage_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/admin/stages/{stage_id}/items", Queue: "rpc.tournament.admin.create", Entity: "stage_item", Action: "create", Path: []string{"stage_id"}, Body: true, Auth: edge.AuthRequired, Success: 201},

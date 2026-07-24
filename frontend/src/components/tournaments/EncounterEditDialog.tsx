@@ -37,6 +37,7 @@ interface EncounterEditDialogProps {
 }
 
 const ENCOUNTER_STATUSES = ["open", "pending", "completed"] as const;
+const BEST_OF_OPTIONS = [1, 2, 3, 5, 7] as const;
 
 function closenessFloatToStars(closeness: number | null | undefined): number {
   if (closeness == null || closeness <= 0) return 0;
@@ -74,6 +75,7 @@ function EncounterEditDialogBody({
   const [awayScore, setAwayScore] = useState(() => encounter.score?.away ?? 0);
   const [status, setStatus] = useState<string>(() => encounter.status ?? "open");
   const [stars, setStars] = useState<number>(() => closenessFloatToStars(encounter.closeness));
+  const [bestOf, setBestOf] = useState<number>(() => encounter.best_of ?? 3);
 
   const refreshEncounterViews = async () => {
     await Promise.all([
@@ -98,7 +100,8 @@ function EncounterEditDialogBody({
         home_score: homeScore,
         away_score: awayScore,
         status,
-        closeness: stars > 0 ? stars / 10 : null
+        closeness: stars > 0 ? stars / 10 : null,
+        best_of: bestOf
       };
       await adminService.updateEncounter(encounter.id, encounterPayload);
     },
@@ -144,6 +147,7 @@ function EncounterEditDialogBody({
           awayScore={awayScore}
           homeLabel={homeTeamLabel}
           awayLabel={awayTeamLabel}
+          bestOf={bestOf}
           onScoreChange={(score) => {
             setHomeScore(score.homeScore);
             setAwayScore(score.awayScore);
@@ -154,6 +158,26 @@ function EncounterEditDialogBody({
             setStatus("completed");
           }}
         />
+
+        <div className="space-y-1.5">
+          <Label className="text-[13px] font-bold text-zinc-300">{t("matchEdit.bestOf")}</Label>
+          <Select value={String(bestOf)} onValueChange={(value) => setBestOf(Number(value))}>
+            <SelectTrigger className="w-full bg-zinc-950 border-zinc-800/85 text-white font-semibold rounded-lg focus:ring-0 focus:ring-offset-0 focus:border-zinc-300">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-[#0c0d0f] border-zinc-800 text-white">
+              {BEST_OF_OPTIONS.map((n) => (
+                <SelectItem
+                  key={n}
+                  value={String(n)}
+                  className="focus:bg-zinc-800 focus:text-white hover:bg-zinc-800 text-zinc-200 cursor-pointer"
+                >
+                  {`BO${n}`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
         <div className="space-y-1.5">
           <Label className="text-[13px] font-bold text-zinc-300">{t("matchEdit.status")}</Label>

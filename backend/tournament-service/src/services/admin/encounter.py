@@ -190,6 +190,7 @@ async def create_encounter(session: AsyncSession, data: admin_schemas.EncounterC
         home_team_id=data.home_team_id,
         away_team_id=data.away_team_id,
         round=data.round,
+        best_of=data.best_of,
         home_score=data.home_score,
         away_score=data.away_score,
         status=encounter_status,

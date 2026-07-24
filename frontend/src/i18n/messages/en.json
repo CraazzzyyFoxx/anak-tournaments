@@ -539,6 +539,7 @@
     "pendingConfirmation": "Pending Confirmation",
     "disputed": "Disputed",
     "matchScore": "Match score",
+    "bestOf": "Best of",
     "manualEntry": "Manual result entry",
     "resultPresets": "Result presets",
     "status": "Status",

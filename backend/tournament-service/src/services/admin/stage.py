@@ -25,6 +25,7 @@ from shared.services.bracket.types import BracketSkeleton
 from shared.services.encounter_naming import build_encounter_name_from_ids
 from src import models
 from src.schemas.admin import stage as admin_schemas
+from src.services.admin.best_of import parse_best_of_config, resolve_best_of
 from src.services.standings import swiss_auto_round
 from src.services.tournament.events import (
     enqueue_tournament_changed,
@@ -815,6 +816,12 @@ async def _create_encounters_from_skeleton(
     """
     encounters: list[models.Encounter] = []
     local_to_encounter: dict[int, models.Encounter] = {}
+    best_of_cfg = parse_best_of_config(stage.settings_json)
+    is_elimination = stage.stage_type in (
+        enums.StageType.SINGLE_ELIMINATION,
+        enums.StageType.DOUBLE_ELIMINATION,
+    )
+    max_round = max((pairing.round_number for pairing in skeleton.pairings), default=0)
     for pairing in skeleton.pairings:
         # LB rounds use negative round numbers; route to LB item when present.
         item_id = lb_stage_item_id if lb_stage_item_id is not None and pairing.round_number < 0 else stage_item_id
@@ -829,6 +836,11 @@ async def _create_encounters_from_skeleton(
             home_score=0,
             away_score=0,
             round=pairing.round_number,
+            best_of=resolve_best_of(
+                best_of_cfg,
+                pairing.round_number,
+                is_final=is_elimination and pairing.round_number == max_round,
+            ),
             tournament_id=stage.tournament_id,
             stage_id=stage.id,
             stage_item_id=item_id,
@@ -1410,3 +1422,42 @@ async def generate_encounters(
     else:
         await session.flush()
     return encounters
+
+
+async def apply_best_of_to_existing(session: AsyncSession, stage_id: int) -> int:
+    """Backfill ``best_of`` on a stage's existing encounters from its config.
+
+    Reads ``Stage.settings_json['best_of']`` and rewrites each encounter's
+    ``best_of`` in place (preserving scores/results). Applies the same
+    resolution the generator uses; ``final`` targets the max round among the
+    stage's encounters for elimination stages. Returns the number of rows
+    whose ``best_of`` actually changed.
+    """
+    stage = await get_stage(session, stage_id)
+    cfg = parse_best_of_config(stage.settings_json)
+    is_elimination = stage.stage_type in (
+        enums.StageType.SINGLE_ELIMINATION,
+        enums.StageType.DOUBLE_ELIMINATION,
+    )
+
+    result = await session.execute(
+        select(models.Encounter).where(models.Encounter.stage_id == stage_id)
+    )
+    encounters = list(result.scalars().all())
+    max_round = max((encounter.round for encounter in encounters), default=0)
+
+    changed = 0
+    for encounter in encounters:
+        target = resolve_best_of(
+            cfg,
+            encounter.round,
+            is_final=is_elimination and encounter.round == max_round,
+        )
+        if encounter.best_of != target:
+            encounter.best_of = target
+            changed += 1
+
+    if changed:
+        await _publish_tournament_changed(session, stage.tournament_id, "structure_changed")
+    await session.commit()
+    return changed
