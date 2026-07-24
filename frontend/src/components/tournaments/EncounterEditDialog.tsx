@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Star } from "lucide-react";
 
 import { EncounterScoreControls } from "@/components/admin/EncounterScoreControls";
@@ -26,6 +26,8 @@ import {
 import { notify } from "@/lib/notify";
 import { useTranslations } from "next-intl";
 import adminService from "@/services/admin.service";
+import captainService from "@/services/captain.service";
+import { CaptainReportsView } from "@/components/tournaments/CaptainReportsView";
 import type { EncounterUpdateInput } from "@/types/admin.types";
 import { Encounter } from "@/types/encounter.types";
 import { cn } from "@/lib/utils";
@@ -76,6 +78,11 @@ function EncounterEditDialogBody({
   const [status, setStatus] = useState<string>(() => encounter.status ?? "open");
   const [stars, setStars] = useState<number>(() => closenessFloatToStars(encounter.closeness));
   const [bestOf, setBestOf] = useState<number>(() => encounter.best_of ?? 3);
+
+  const reportsQuery = useQuery({
+    queryKey: ["encounter", encounter.id, "reports"],
+    queryFn: () => captainService.getReports(encounter.id)
+  });
 
   const refreshEncounterViews = async () => {
     await Promise.all([
@@ -140,7 +147,7 @@ function EncounterEditDialogBody({
         </DialogDescription>
       </DialogHeader>
 
-      <div className="space-y-4 mt-2">
+      <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1 mt-2">
         <EncounterScoreControls
           idPrefix={`encounter-edit-${encounter.id}`}
           homeScore={homeScore}
@@ -230,6 +237,10 @@ function EncounterEditDialogBody({
             {t("matchEdit.closenessHint")}
           </p>
         </div>
+
+        {(reportsQuery.data?.length ?? 0) > 0 && (
+          <CaptainReportsView encounter={encounter} reports={reportsQuery.data ?? []} />
+        )}
 
         {validationError && <p className="text-sm text-red-500 font-semibold">{validationError}</p>}
       </div>
