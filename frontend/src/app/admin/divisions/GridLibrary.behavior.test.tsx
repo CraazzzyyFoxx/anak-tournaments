@@ -63,6 +63,7 @@ function renderLibrary(permissions: {
   update: boolean;
   import: boolean;
   export: boolean;
+  delete: boolean;
 }) {
   const html = renderToStaticMarkup(
     <QueryClientProvider client={new QueryClient()}>
@@ -89,7 +90,8 @@ const deniedPermissions = {
   create: false,
   update: false,
   import: false,
-  export: false
+  export: false,
+  delete: false
 };
 
 describe("DivisionGridLibrary", () => {
@@ -123,7 +125,8 @@ describe("DivisionGridLibrary", () => {
       create: true,
       update: true,
       import: false,
-      export: true
+      export: true,
+      delete: true
     });
     const buttonLabels = Array.from(document.querySelectorAll("button"), (button) =>
       button.textContent?.trim()
@@ -133,6 +136,7 @@ describe("DivisionGridLibrary", () => {
     expect(buttonLabels).toContain("Rename");
     expect(buttonLabels).toContain("Export");
     expect(buttonLabels).toContain("Archive");
+    expect(buttonLabels).toContain("Delete");
     expect(buttonLabels).not.toContain("Import JSON");
   });
 });

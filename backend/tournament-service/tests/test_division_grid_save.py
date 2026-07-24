@@ -8,6 +8,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
+import pytest
+
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
@@ -180,5 +182,84 @@ def test_save_structural_with_conflicts_stays_pending() -> None:
             outcome = await division_service.save_workspace_grid(session, workspace=workspace, data=data)
         assert outcome.mode == "new_version_pending"
         activate.assert_not_called()
+
+    asyncio.run(run())
+
+# ── delete_grid ───────────────────────────────────────────────────────────────
+
+def _grid_for_delete(workspace_id=4, version_ids=(100,)):
+    versions = [SimpleNamespace(id=vid) for vid in version_ids]
+    return SimpleNamespace(id=7, workspace_id=workspace_id, versions=versions)
+
+
+def test_delete_grid_removes_unused_grid() -> None:
+    async def run():
+        grid = _grid_for_delete()
+        session = SimpleNamespace(
+            delete=AsyncMock(),
+            flush=AsyncMock(),
+            scalar=AsyncMock(side_effect=[999, 0]),  # default version id (not in grid), tournament count
+        )
+        with (
+            patch.object(division_service, "get_grid_by_id", AsyncMock(return_value=grid)),
+            patch.object(division_service.division_grid_cache, "invalidate_grid_version", AsyncMock()),
+        ):
+            await division_service.delete_grid(session, 7)
+        session.delete.assert_awaited_once_with(grid)
+
+    asyncio.run(run())
+
+
+def test_delete_grid_rejects_workspace_default() -> None:
+    async def run():
+        grid = _grid_for_delete(version_ids=(100, 101))
+        session = SimpleNamespace(
+            delete=AsyncMock(),
+            flush=AsyncMock(),
+            scalar=AsyncMock(side_effect=[100]),  # default points at a version in this grid
+        )
+        with (
+            patch.object(division_service, "get_grid_by_id", AsyncMock(return_value=grid)),
+            patch.object(division_service.division_grid_cache, "invalidate_grid_version", AsyncMock()),
+            pytest.raises(Exception) as caught,
+        ):
+            await division_service.delete_grid(session, 7)
+        assert getattr(caught.value, "status_code", None) == 409
+        session.delete.assert_not_called()
+
+    asyncio.run(run())
+
+
+def test_delete_grid_rejects_when_used_by_tournaments() -> None:
+    async def run():
+        grid = _grid_for_delete()
+        session = SimpleNamespace(
+            delete=AsyncMock(),
+            flush=AsyncMock(),
+            scalar=AsyncMock(side_effect=[None, 3]),  # no default, 3 tournaments use it
+        )
+        with (
+            patch.object(division_service, "get_grid_by_id", AsyncMock(return_value=grid)),
+            patch.object(division_service.division_grid_cache, "invalidate_grid_version", AsyncMock()),
+            pytest.raises(Exception) as caught,
+        ):
+            await division_service.delete_grid(session, 7)
+        assert getattr(caught.value, "status_code", None) == 409
+        session.delete.assert_not_called()
+
+    asyncio.run(run())
+
+
+def test_delete_grid_rejects_system_grid() -> None:
+    async def run():
+        grid = _grid_for_delete(workspace_id=None)
+        session = SimpleNamespace(delete=AsyncMock(), flush=AsyncMock(), scalar=AsyncMock())
+        with (
+            patch.object(division_service, "get_grid_by_id", AsyncMock(return_value=grid)),
+            pytest.raises(Exception) as caught,
+        ):
+            await division_service.delete_grid(session, 7)
+        assert getattr(caught.value, "status_code", None) == 409
+        session.delete.assert_not_called()
 
     asyncio.run(run())

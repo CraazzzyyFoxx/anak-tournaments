@@ -814,6 +814,9 @@ export default function DivisionsAdminPage() {
   const canExport =
     currentWorkspaceId !== null &&
     (isSuperuser || canAccessPermission("division_grid.export", currentWorkspaceId));
+  const canDelete =
+    currentWorkspaceId !== null &&
+    (isSuperuser || canAccessPermission("division_grid.delete", currentWorkspaceId));
 
   const gridsQuery = useQuery({
     queryKey: ["division-grids", currentWorkspaceId],
@@ -891,7 +894,8 @@ export default function DivisionsAdminPage() {
           create: canCreate,
           update: canUpdate,
           import: canImport,
-          export: canExport
+          export: canExport,
+          delete: canDelete
         }}
         loading={gridsQuery.isLoading}
         error={gridsQuery.error}

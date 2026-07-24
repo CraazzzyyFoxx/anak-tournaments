@@ -192,6 +192,10 @@ export default class workspaceService {
     }).then((r) => r.json());
   }
 
+  static async deleteDivisionGrid(gridId: number): Promise<void> {
+    await apiFetch(`/api/v1/division-grids/library/${gridId}`, { method: "DELETE" });
+  }
+
   static async saveWorkspaceGrid(
     workspaceId: number,
     data: {

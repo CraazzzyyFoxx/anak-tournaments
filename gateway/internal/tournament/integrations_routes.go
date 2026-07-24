@@ -55,6 +55,7 @@ var DivisionGridRoutes = []edge.RouteSpec{
 	{Method: "GET", Pattern: "/api/v1/division-grids/by-workspace/{workspace_id}", Queue: "rpc.tournament.grid_workspace_list", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/division-grids/by-workspace/{workspace_id}", Queue: "rpc.tournament.grid_workspace_create", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired, Success: 201},
 	{Method: "PATCH", Pattern: "/api/v1/division-grids/library/{grid_id}", Queue: "rpc.tournament.grid_update", IDParam: "grid_id", Body: true, Auth: edge.AuthRequired},
+	{Method: "DELETE", Pattern: "/api/v1/division-grids/library/{grid_id}", Queue: "rpc.tournament.grid_delete", IDParam: "grid_id", Auth: edge.AuthRequired, Success: 204},
 	{Method: "GET", Pattern: "/api/v1/division-grids/library/{grid_id}/export", Queue: "rpc.tournament.grid_portable_export", IDParam: "grid_id", Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/division-grids/versions/{version_id}/publish", Queue: "rpc.tournament.grid_version_publish", IDParam: "version_id", Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/division-grids/versions/{version_id}/clone", Queue: "rpc.tournament.grid_version_clone", IDParam: "version_id", Auth: edge.AuthRequired, Success: 201},

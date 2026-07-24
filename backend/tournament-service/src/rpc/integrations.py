@@ -453,6 +453,19 @@ def register(broker: Any, logger: Any) -> None:
 
         return await _run(logger, op)
 
+    @broker.subscriber("rpc.tournament.grid_delete")
+    async def _grid_delete(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            grid_id = _require_id(data)
+            grid = await division_grid_service.get_grid_by_id(session, grid_id)
+            await require_workspace_permission(grid.workspace_id, session=session, user=user, action="delete")
+            await division_grid_service.delete_grid(session, grid_id)
+            await session.commit()  # route commits explicitly (service does not).
+            return None  # route returns 204 (no body).
+
+        return await _run(logger, op)
+
     @broker.subscriber("rpc.tournament.grid_portable_export")
     async def _grid_portable_export(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:

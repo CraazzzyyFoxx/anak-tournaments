@@ -355,6 +355,10 @@ DOCS: dict[str, dict] = {
         "summary": "Delete grid version",
         "description": "Deletes a division grid version by id (204 no body); requires division_grid-delete permission on the grid's workspace.",
     },
+    "rpc.tournament.grid_delete": {
+        "summary": "Delete division grid",
+        "description": "Hard-deletes a division grid and its versions/tiers/mappings (204 no body); refuses the workspace default or grids whose versions are used by tournaments. Requires division_grid-delete permission.",
+    },
     "rpc.tournament.grid_version_publish": {
         "summary": "Publish grid version",
         "description": "Publishes a division grid version; requires division_grid-publish permission on the grid's workspace.",

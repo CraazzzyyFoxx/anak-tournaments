@@ -230,6 +230,45 @@ async def update_grid(
     return await get_grid_by_id(session, grid_id)
 
 
+async def delete_grid(session: AsyncSession, grid_id: int) -> None:
+    """Hard-delete a division grid and its versions/tiers/mappings (FK cascade).
+
+    Refuses system grids, the workspace default, and any grid whose versions are
+    still pinned by a tournament — so historical standings never lose their grid.
+    """
+    grid = await get_grid_by_id(session, grid_id)
+    if grid.workspace_id is None:
+        raise HTTPException(status_code=409, detail="System division grids cannot be deleted")
+
+    version_ids = [version.id for version in grid.versions]
+    if version_ids:
+        default_version_id = await session.scalar(
+            sa.select(models.Workspace.default_division_grid_version_id).where(
+                models.Workspace.id == grid.workspace_id
+            )
+        )
+        if default_version_id in version_ids:
+            raise HTTPException(
+                status_code=409,
+                detail="Cannot delete the workspace default division grid",
+            )
+        tournament_uses = await session.scalar(
+            sa.select(sa.func.count())
+            .select_from(models.Tournament)
+            .where(models.Tournament.division_grid_version_id.in_(version_ids))
+        )
+        if tournament_uses:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Cannot delete grid: {tournament_uses} tournament(s) use its versions",
+            )
+
+    for version_id in version_ids:
+        await division_grid_cache.invalidate_grid_version(version_id)
+    await session.delete(grid)
+    await session.flush()
+
+
 async def get_versions(session: AsyncSession, workspace_id: int, grid_id: int) -> list[models.DivisionGridVersion]:
     await get_grid(session, workspace_id, grid_id)
     result = await session.execute(

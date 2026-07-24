@@ -10,10 +10,22 @@ import {
   Plus,
   RotateCcw,
   Save,
+  Trash2,
   Upload,
   X
 } from "lucide-react";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger
+} from "@/components/ui/alert-dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,6 +47,7 @@ interface GridLibraryPermissions {
   update: boolean;
   import: boolean;
   export: boolean;
+  delete: boolean;
 }
 
 interface Props {
@@ -95,6 +108,17 @@ export function DivisionGridLibrary({
       await onChanged();
     },
     onError: showMutationError("Grid could not be updated")
+  });
+  const deleteMutation = useMutation({
+    mutationFn: () => {
+      if (!selectedGrid) throw new Error("Choose a division grid first.");
+      return workspaceService.deleteDivisionGrid(selectedGrid.id);
+    },
+    onSuccess: async () => {
+      await onChanged();
+      notify.success("Division grid deleted");
+    },
+    onError: showMutationError("Grid could not be deleted")
   });
   const portableImportMutation = useMutation({
     mutationFn: (document: DivisionGridPortableDocument) =>
@@ -290,6 +314,35 @@ export function DivisionGridLibrary({
                   )}
                   {selectedGrid.archived_at ? "Restore" : "Archive"}
                 </Button>
+              )}
+              {permissions.delete && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive hover:text-destructive"
+                      disabled={deleteMutation.isPending || activeGrid?.id === selectedGrid.id}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" /> Delete
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete “{selectedGrid.name}”?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This permanently removes the grid and all its versions, tiers, and mappings.
+                        Blocked if it is the workspace default or any version is used by a tournament.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => deleteMutation.mutate()}>
+                        Delete grid
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               )}
             </div>
           </div>
