@@ -299,3 +299,28 @@ def test_delete_grid_force_still_rejects_system_grid() -> None:
         session.delete.assert_not_called()
 
     asyncio.run(run())
+
+def test_save_uses_explicit_grid_id_over_workspace_resolution() -> None:
+    async def run():
+        active = SimpleNamespace(
+            id=100, version=1, label="v1", status="published",
+            tiers=[_active_tier(1, "bronze", 1000, 1099)],
+        )
+        grid = SimpleNamespace(id=7, name="Imported", workspace_id=4, versions=[active])
+        workspace = SimpleNamespace(id=4, default_division_grid_version_id=100)
+        session = SimpleNamespace(flush=AsyncMock())
+        data = schemas.DivisionGridSaveRequest(
+            grid_id=7, name="Imported", tiers=[_write_tier(1, "bronze", 1000, 1099, name="B!")]
+        )
+        with (
+            patch.object(division_service, "get_grid_by_id", AsyncMock(return_value=grid)),
+            patch.object(division_service, "_resolve_workspace_grid", AsyncMock()) as resolve,
+            patch.object(division_service, "_apply_cosmetic", AsyncMock()),
+            patch.object(division_service, "get_activation_readiness", AsyncMock(return_value=_readiness(True))),
+        ):
+            outcome = await division_service.save_workspace_grid(session, workspace=workspace, data=data)
+        resolve.assert_not_called()
+        assert outcome.mode == "in_place"
+        assert outcome.saved_version_id == 100
+
+    asyncio.run(run())

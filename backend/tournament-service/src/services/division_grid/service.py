@@ -850,7 +850,12 @@ async def save_workspace_grid(
     """Server-authoritative grid save: classify the edit, then either apply it
     in place (cosmetic) or spawn a new version, auto-generate mappings from every
     used source version, and auto-activate when the mappings are complete."""
-    grid = await _resolve_workspace_grid(session, workspace)
+    if data.grid_id is not None:
+        grid = await get_grid_by_id(session, data.grid_id)
+        if grid.workspace_id not in (None, workspace.id):
+            raise HTTPException(status_code=400, detail="Division grid does not belong to the workspace")
+    else:
+        grid = await _resolve_workspace_grid(session, workspace)
     active = _pick_active_version(grid, workspace)
     change = "structural" if active is None else _classify_tier_change(active.tiers, data.tiers)
 

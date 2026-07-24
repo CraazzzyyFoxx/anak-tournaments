@@ -267,6 +267,7 @@ class DivisionGridActivationReadiness(BaseModel):
 class DivisionGridSaveRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    grid_id: int | None = None
     name: str | None = Field(default=None, min_length=1, max_length=255)
     tiers: list[DivisionGridTierWrite] = Field(..., min_length=1)
 

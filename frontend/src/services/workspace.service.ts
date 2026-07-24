@@ -202,6 +202,7 @@ export default class workspaceService {
   static async saveWorkspaceGrid(
     workspaceId: number,
     data: {
+      grid_id?: number | null;
       name?: string | null;
       tiers: Array<{
         id?: number | null;

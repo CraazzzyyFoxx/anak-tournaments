@@ -801,6 +801,7 @@ export default function DivisionsAdminPage() {
     targetVersionId: number;
     readiness: DivisionGridActivationReadiness;
   } | null>(null);
+  const [selectedGridId, setSelectedGridId] = useState<number | null>(null);
 
   const canCreate =
     currentWorkspaceId !== null &&
@@ -830,9 +831,13 @@ export default function DivisionsAdminPage() {
     grids.find((grid) => !grid.archived_at) ??
     grids[0] ??
     null;
+  const editedGrid =
+    grids.find((grid) => grid.id === selectedGridId && grid.archived_at === null) ??
+    activeGrid ??
+    null;
   const activeVersion =
-    activeGrid?.versions.find((version) => version.id === defaultVersionId) ??
-    activeGrid?.versions.slice().sort((left, right) => right.version - left.version)[0] ??
+    editedGrid?.versions.find((version) => version.id === defaultVersionId) ??
+    editedGrid?.versions.slice().sort((left, right) => right.version - left.version)[0] ??
     null;
 
   const refreshGrids = useCallback(async () => {
@@ -843,13 +848,16 @@ export default function DivisionsAdminPage() {
   }, [currentWorkspaceId, queryClient, fetchWorkspaces]);
 
   const conflictTargetVersion = useMemo(() => {
-    if (!conflict || !activeGrid) return null;
-    return activeGrid.versions.find((version) => version.id === conflict.targetVersionId) ?? null;
-  }, [conflict, activeGrid]);
+    if (!conflict || !editedGrid) return null;
+    return editedGrid.versions.find((version) => version.id === conflict.targetVersionId) ?? null;
+  }, [conflict, editedGrid]);
 
   const saveMutation = useMutation({
     mutationFn: (payload: { name: string; tiers: SaveTierPayload[] }) =>
-      workspaceService.saveWorkspaceGrid(currentWorkspaceId!, payload),
+      workspaceService.saveWorkspaceGrid(currentWorkspaceId!, {
+        ...payload,
+        grid_id: editedGrid?.id ?? null
+      }),
     onSuccess: async (result) => {
       await refreshGrids();
       if (result.mode === "new_version_pending") {
@@ -889,7 +897,7 @@ export default function DivisionsAdminPage() {
         workspaceName={workspace?.name ?? "Workspace"}
         defaultVersionId={defaultVersionId}
         grids={grids}
-        selectedGridId={activeGrid?.id ?? null}
+        selectedGridId={editedGrid?.id ?? null}
         permissions={{
           create: canCreate,
           update: canUpdate,
@@ -899,14 +907,18 @@ export default function DivisionsAdminPage() {
         }}
         loading={gridsQuery.isLoading}
         error={gridsQuery.error}
-        onSelect={() => {}}
+        onSelect={(gridId) => setSelectedGridId(gridId)}
         onChanged={refreshGrids}
       />
 
       <DivisionGridImportWizard
         workspaceId={currentWorkspaceId}
         canImport={canImport}
-        onImported={refreshGrids}
+        onImported={async (job) => {
+          await refreshGrids();
+          const imported = job.result?.imported_grids[0];
+          if (imported) setSelectedGridId(imported.target_grid_id);
+        }}
       />
 
       {conflict && conflictTargetVersion && (
@@ -923,9 +935,9 @@ export default function DivisionsAdminPage() {
         />
       )}
 
-      {activeGrid && (
+      {editedGrid && (
         <DivisionGridEditorCard
-          key={activeVersion?.id ?? `${activeGrid.id}-new`}
+          key={activeVersion?.id ?? `${editedGrid.id}-new`}
           workspaceId={currentWorkspaceId}
           canEdit={activeVersion ? canUpdate : canCreate}
           activeVersion={activeVersion}
@@ -934,8 +946,8 @@ export default function DivisionsAdminPage() {
         />
       )}
 
-      {activeGrid && activeGrid.versions.length > 0 && (
-        <VersionHistoryCard versions={activeGrid.versions} activeVersionId={defaultVersionId} />
+      {editedGrid && editedGrid.versions.length > 0 && (
+        <VersionHistoryCard versions={editedGrid.versions} activeVersionId={defaultVersionId} />
       )}
     </div>
   );
