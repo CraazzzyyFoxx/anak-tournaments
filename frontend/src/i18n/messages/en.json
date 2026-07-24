@@ -1666,7 +1666,6 @@
     "disputed": "Disputed",
     "editMatch": "Edit match",
     "reportMatch": "Report match",
-    "bestOf": "Best of {count}",
     "doubleElimination": "Double Elimination",
     "singleElimination": "Single Elimination"
   },

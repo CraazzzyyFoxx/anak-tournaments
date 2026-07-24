@@ -453,15 +453,13 @@ function getMatchMeta(encounter: Encounter, t: Translate) {
   let timeLabel = "";
   if (isLive) {
     timeLabel = t("common.live");
-  } else if (!isCompleted) {
-    if (encounter.scheduled_at) {
-      timeLabel = new Date(encounter.scheduled_at).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric"
-      });
-    } else {
-      timeLabel = t("common.tbd");
-    }
+  } else if (!isCompleted && encounter.scheduled_at) {
+    timeLabel = new Date(encounter.scheduled_at).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric"
+    });
+  } else if (bestOf > 0) {
+    timeLabel = `Bo${bestOf}`;
   }
 
   return { isCompleted, isLive, played, bestOf, timeLabel };
@@ -586,14 +584,6 @@ function MatchCard({
           >
             <Search className="size-3.5" />
           </Link>
-          {meta.bestOf > 0 && (
-            <span
-              className="rounded border border-[var(--aqt-border-2)] bg-[hsl(0_0%_0%/0.35)] px-1 font-mono text-[9px] font-semibold uppercase tracking-wide text-[var(--aqt-fg-muted)]"
-              title={t("bracket.bestOf", { count: meta.bestOf })}
-            >
-              Bo{meta.bestOf}
-            </span>
-          )}
         </div>
         {meta.timeLabel && (
           <span
