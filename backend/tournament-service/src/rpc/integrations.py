@@ -534,7 +534,7 @@ def register(broker: Any, logger: Any) -> None:
             source_grids = await division_grid_marketplace.get_marketplace_grids_by_ids(
                 session,
                 source_workspace_id=source_workspace.id,
-                source_grid_ids=body.source_grid_ids,
+                source_grid_ids=[body.source_grid_id],
             )
             s3 = await _get_s3()
             return _dump(
@@ -544,6 +544,9 @@ def register(broker: Any, logger: Any) -> None:
                     target_workspace_id=workspace_id,
                     source_workspace=source_workspace,
                     source_grids=source_grids,
+                    source_version_id=body.source_version_id,
+                    include_icons=body.include_icons,
+                    include_ow_rank_mappings=body.include_ow_rank_mappings,
                 )
             )
 
@@ -566,7 +569,7 @@ def register(broker: Any, logger: Any) -> None:
             source_grids = await division_grid_marketplace.get_marketplace_grids_by_ids(
                 session,
                 source_workspace_id=source_workspace.id,
-                source_grid_ids=body.source_grid_ids,
+                source_grid_ids=[body.source_grid_id],
             )
             s3 = await _get_s3()
             preflight = await division_grid_marketplace.preflight_division_grid_import(
@@ -575,14 +578,19 @@ def register(broker: Any, logger: Any) -> None:
                 target_workspace_id=workspace_id,
                 source_workspace=source_workspace,
                 source_grids=source_grids,
+                source_version_id=body.source_version_id,
+                include_icons=body.include_icons,
+                include_ow_rank_mappings=body.include_ow_rank_mappings,
             )
             job = await division_grid_import_jobs.create_import_job(
                 session,
                 workspace_id=workspace_id,
                 source_workspace_id=source_workspace.id,
                 requested_by_user_id=user.id,
-                source_grid_ids=body.source_grid_ids,
-                mode=body.mode,
+                source_grid_id=body.source_grid_id,
+                source_version_id=body.source_version_id,
+                include_icons=body.include_icons,
+                include_ow_rank_mappings=body.include_ow_rank_mappings,
                 source_fingerprint=preflight.source_fingerprint,
             )
             await session.commit()

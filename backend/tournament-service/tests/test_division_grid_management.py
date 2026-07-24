@@ -63,14 +63,17 @@ def test_division_grid_import_job_has_durable_progress_contract() -> None:
     } <= set(columns.keys())
 
 
-def test_marketplace_import_defaults_to_library_without_activation() -> None:
+def test_marketplace_import_requires_one_explicit_grid_and_version() -> None:
     request = schemas.DivisionGridMarketplaceImportRequest(
         source_workspace_id=10,
-        source_grid_ids=[22],
+        source_grid_id=22,
+        source_version_id=33,
     )
 
-    assert request.mode == "library"
-    assert not hasattr(request, "set_default")
+    assert request.source_grid_id == 22
+    assert request.source_version_id == 33
+    assert request.include_icons is True
+    assert request.include_ow_rank_mappings is True
 
 
 def test_marketplace_import_rejects_legacy_set_default_switch() -> None:
@@ -78,7 +81,8 @@ def test_marketplace_import_rejects_legacy_set_default_switch() -> None:
         schemas.DivisionGridMarketplaceImportRequest.model_validate(
             {
                 "source_workspace_id": 10,
-                "source_grid_ids": [22],
+                "source_grid_id": 22,
+                "source_version_id": 33,
                 "set_default": True,
             }
         )
@@ -534,6 +538,97 @@ def test_marketplace_preflight_reports_conflicts_asset_policy_and_fingerprint() 
     asyncio.run(run())
 
 
+def test_single_version_import_preflight_honors_selected_version_and_options() -> None:
+    async def run() -> None:
+        first_tier = SimpleNamespace(
+            id=1,
+            slug="master-1",
+            number=1,
+            name="Master 1",
+            sort_order=0,
+            rank_min=4500,
+            rank_max=4899,
+            icon_url="https://minio.example/aqt/assets/divisions/master-1.png",
+            ow_rank_min=4500,
+            ow_rank_max=4899,
+        )
+        second_tier = SimpleNamespace(
+            id=2,
+            slug="champion-1",
+            number=1,
+            name="Champion 1",
+            sort_order=0,
+            rank_min=4900,
+            rank_max=None,
+            icon_url="https://minio.example/aqt/assets/divisions/champion-1.png",
+            ow_rank_min=4900,
+            ow_rank_max=5000,
+        )
+        grid = SimpleNamespace(
+            id=5,
+            slug="ow2",
+            name="OW2",
+            description=None,
+            versions=[
+                SimpleNamespace(id=10, version=1, label="Season 1", status="published", tiers=[first_tier]),
+                SimpleNamespace(id=20, version=2, label="Season 2", status="published", tiers=[second_tier]),
+            ],
+        )
+        session = SimpleNamespace(
+            scalars=AsyncMock(return_value=SimpleNamespace(all=Mock(return_value=[])))
+        )
+
+        with patch.object(marketplace, "load_mappings_for_versions", AsyncMock(return_value=[])):
+            result = await marketplace.preflight_division_grid_import(
+                session,
+                public_url="https://minio.example/aqt",
+                target_workspace_id=9,
+                source_workspace=SimpleNamespace(id=3, slug="source"),
+                source_grids=[grid],
+                source_version_id=20,
+                include_icons=False,
+                include_ow_rank_mappings=True,
+            )
+
+        assert result.grids_count == 1
+        assert result.versions_count == 1
+        assert result.tiers_count == 1
+        assert result.assets_to_copy == 0
+        assert result.assets_to_reuse == 0
+
+    asyncio.run(run())
+
+
+def test_single_version_import_request_has_only_explicit_options() -> None:
+    request = schemas.DivisionGridMarketplaceImportRequest(
+        source_workspace_id=3,
+        source_grid_id=5,
+        source_version_id=20,
+        include_icons=True,
+        include_ow_rank_mappings=False,
+    )
+
+    assert request.source_grid_id == 5
+    assert request.source_version_id == 20
+    assert request.include_icons is True
+    assert request.include_ow_rank_mappings is False
+
+
+def test_single_version_copy_import_creates_an_editable_draft() -> None:
+    published_at = object()
+
+    assert marketplace.target_imported_version_state(
+        mode="copy",
+        source_status="published",
+        source_published_at=published_at,
+    ) == ("draft", None)
+    assert marketplace.target_imported_version_state(
+        mode="sync",
+        source_status="published",
+        source_published_at=published_at,
+    ) == ("published", published_at)
+
+
 def test_library_import_reuses_unchanged_import_without_writes() -> None:
     async def run() -> None:
         tier = SimpleNamespace(
@@ -611,8 +706,10 @@ def test_import_job_creation_is_idempotent_and_durable() -> None:
                 workspace_id=9,
                 source_workspace_id=3,
                 requested_by_user_id=42,
-                source_grid_ids=[8, 5],
-                mode="library",
+                source_grid_id=5,
+                source_version_id=20,
+                include_icons=True,
+                include_ow_rank_mappings=False,
                 source_fingerprint="a" * 64,
             )
             reused = await import_jobs.create_import_job(
@@ -620,13 +717,21 @@ def test_import_job_creation_is_idempotent_and_durable() -> None:
                 workspace_id=9,
                 source_workspace_id=3,
                 requested_by_user_id=42,
-                source_grid_ids=[5, 8],
-                mode="library",
+                source_grid_id=5,
+                source_version_id=20,
+                include_icons=True,
+                include_ow_rank_mappings=False,
                 source_fingerprint="a" * 64,
             )
 
         assert created.status == "pending"
-        assert created.request_json["source_grid_ids"] == [5, 8]
+        assert created.request_json == {
+            "source_grid_id": 5,
+            "source_version_id": 20,
+            "include_icons": True,
+            "include_ow_rank_mappings": False,
+            "source_fingerprint": "a" * 64,
+        }
         assert created.requested_by_user_id == 42
         assert reused is existing
         session.add.assert_called_once_with(created)
@@ -653,8 +758,10 @@ def test_import_job_creation_requeues_a_failed_job() -> None:
                 workspace_id=9,
                 source_workspace_id=3,
                 requested_by_user_id=42,
-                source_grid_ids=[5, 8],
-                mode="library",
+                source_grid_id=5,
+                source_version_id=20,
+                include_icons=True,
+                include_ow_rank_mappings=True,
                 source_fingerprint="a" * 64,
             )
 

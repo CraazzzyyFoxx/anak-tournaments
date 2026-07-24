@@ -89,8 +89,10 @@ export interface DivisionGridMarketplaceGrid {
 
 export interface DivisionGridMarketplaceImportRequest {
   source_workspace_id: number;
-  source_grid_ids: number[];
-  mode?: "library" | "sync" | "copy";
+  source_grid_id: number;
+  source_version_id: number;
+  include_icons: boolean;
+  include_ow_rank_mappings: boolean;
 }
 
 export interface DivisionGridMarketplaceImportedGrid {

@@ -229,6 +229,10 @@ async def copy_division_icon_assets(
 def build_source_fingerprint(
     source_grids: Sequence[models.DivisionGrid],
     mappings: Sequence[models.DivisionGridMapping],
+    *,
+    source_version_id: int | None = None,
+    include_icons: bool = True,
+    include_ow_rank_mappings: bool = True,
 ) -> str:
     version_key_by_id: dict[int, tuple[str, int]] = {}
     tier_key_by_id: dict[int, tuple[str, int, str]] = {}
@@ -236,6 +240,8 @@ def build_source_fingerprint(
     for grid in sorted(source_grids, key=lambda item: (item.slug, getattr(item, "id", 0) or 0)):
         versions_payload = []
         for version in sorted(grid.versions, key=lambda item: item.version):
+            if source_version_id is not None and version.id != source_version_id:
+                continue
             version_id = getattr(version, "id", None)
             if version_id is not None:
                 version_key_by_id[version_id] = (grid.slug, version.version)
@@ -297,7 +303,12 @@ def build_source_fingerprint(
         )
     mappings_payload.sort(key=lambda item: (str(item["source"]), str(item["target"])))
     canonical = json.dumps(
-        {"grids": grids_payload, "mappings": mappings_payload},
+        {
+            "grids": grids_payload,
+            "mappings": mappings_payload,
+            "include_icons": include_icons,
+            "include_ow_rank_mappings": include_ow_rank_mappings,
+        },
         sort_keys=True,
         separators=(",", ":"),
     )
@@ -442,6 +453,32 @@ async def load_mappings_for_versions(
     return list(result.scalars().unique().all())
 
 
+def _selected_source_versions(
+    source_grids: Sequence[models.DivisionGrid],
+    source_version_id: int | None,
+) -> list[models.DivisionGridVersion]:
+    versions = [
+        version
+        for grid in source_grids
+        for version in grid.versions
+        if source_version_id is None or version.id == source_version_id
+    ]
+    if source_version_id is not None and (len(source_grids) != 1 or len(versions) != 1):
+        raise HTTPException(status_code=400, detail="Selected version does not belong to the selected grid")
+    return versions
+
+def target_imported_version_state(
+    *,
+    mode: str,
+    source_status: str,
+    source_published_at: datetime | None,
+) -> tuple[str, datetime | None]:
+    if mode == "copy":
+        return "draft", None
+    return source_status, source_published_at
+
+
+
 async def preflight_division_grid_import(
     session: AsyncSession,
     *,
@@ -449,13 +486,13 @@ async def preflight_division_grid_import(
     target_workspace_id: int,
     source_workspace: models.Workspace,
     source_grids: Sequence[models.DivisionGrid],
+    source_version_id: int | None = None,
+    include_icons: bool = True,
+    include_ow_rank_mappings: bool = True,
 ) -> schemas.DivisionGridMarketplacePreflightResult:
-    source_version_ids = {
-        version.id
-        for grid in source_grids
-        for version in grid.versions
-    }
-    mappings = await load_mappings_for_versions(session, source_version_ids)
+    selected_versions = _selected_source_versions(source_grids, source_version_id)
+    selected_version_ids = {version.id for version in selected_versions}
+    mappings = await load_mappings_for_versions(session, selected_version_ids)
     selected_slugs = [grid.slug for grid in source_grids]
     existing_slugs = set(
         (
@@ -469,16 +506,19 @@ async def preflight_division_grid_import(
         ).all()
     )
 
-    versions_count = 0
     tiers_count = 0
     assets_to_copy = 0
     assets_to_reuse = 0
     external_assets = 0
     warnings: list[schemas.DivisionGridMarketplaceImportWarning] = []
+    versions_count = len(selected_versions)
     for grid in source_grids:
-        versions_count += len(grid.versions)
         for version in grid.versions:
+            if version.id not in selected_version_ids:
+                continue
             tiers_count += len(version.tiers)
+            if not include_icons:
+                continue
             for tier in version.tiers:
                 policy = classify_division_icon_asset(
                     public_url=public_url,
@@ -497,7 +537,6 @@ async def preflight_division_grid_import(
                             message=f"{tier.slug}: {policy.warning}",
                         )
                     )
-
     return schemas.DivisionGridMarketplacePreflightResult(
         source_workspace_id=source_workspace.id,
         grids_count=len(source_grids),
@@ -509,7 +548,13 @@ async def preflight_division_grid_import(
         external_assets=external_assets,
         conflicts=sorted(existing_slugs),
         warnings=warnings,
-        source_fingerprint=build_source_fingerprint(source_grids, mappings),
+        source_fingerprint=build_source_fingerprint(
+            source_grids,
+            mappings,
+            source_version_id=source_version_id,
+            include_icons=include_icons,
+            include_ow_rank_mappings=include_ow_rank_mappings,
+        ),
     )
 
 
@@ -575,6 +620,9 @@ async def import_division_grids(
     source_grids: Sequence[models.DivisionGrid],
     mode: str = "library",
     expected_source_fingerprint: str | None = None,
+    source_version_id: int | None = None,
+    include_icons: bool = True,
+    include_ow_rank_mappings: bool = True,
 ) -> schemas.DivisionGridMarketplaceImportResult:
     copied_keys: list[str] = []
     version_id_map: dict[int, int] = {}
@@ -587,16 +635,23 @@ async def import_division_grids(
     created_versions = 0
     created_tiers = 0
     reused_source_version_ids: set[int] = set()
-    source_version_ids = {
-        version.id
-        for grid in source_grids
-        for version in grid.versions
-    }
+    selected_versions = _selected_source_versions(source_grids, source_version_id)
+    source_version_ids = {version.id for version in selected_versions}
     mappings = await load_mappings_for_versions(session, source_version_ids)
-    source_fingerprint = build_source_fingerprint(source_grids, mappings)
+    source_fingerprint = build_source_fingerprint(
+        source_grids,
+        mappings,
+        source_version_id=source_version_id,
+        include_icons=include_icons,
+        include_ow_rank_mappings=include_ow_rank_mappings,
+    )
     source_fingerprints: dict[int, str] = {}
     for source_grid in source_grids:
-        grid_version_ids = {version.id for version in source_grid.versions}
+        grid_version_ids = {
+            version.id
+            for version in source_grid.versions
+            if source_version_id is None or version.id == source_version_id
+        }
         grid_mappings = [
             mapping
             for mapping in mappings
@@ -606,6 +661,9 @@ async def import_division_grids(
         source_fingerprints[source_grid.id] = build_source_fingerprint(
             [source_grid],
             grid_mappings,
+            source_version_id=source_version_id,
+            include_icons=include_icons,
+            include_ow_rank_mappings=include_ow_rank_mappings,
         )
     if (
         expected_source_fingerprint is not None
@@ -677,6 +735,8 @@ async def import_division_grids(
                 reused = unchanged_imports[source_grid.id]
                 reused_versions = {version.version: version for version in reused.versions}
                 for source_version in source_grid.versions:
+                    if source_version_id is not None and source_version.id != source_version_id:
+                        continue
                     target_version = reused_versions.get(source_version.version)
                     if target_version is None:
                         raise RuntimeError("Imported grid provenance does not match its source versions")
@@ -728,17 +788,29 @@ async def import_division_grids(
 
             grid_versions_count = 0
             grid_tiers_count = 0
-            source_versions = sorted(source_grid.versions, key=lambda version: version.version)
+            source_versions = sorted(
+                (
+                    version
+                    for version in source_grid.versions
+                    if source_version_id is None or version.id == source_version_id
+                ),
+                key=lambda version: version.version,
+            )
             pending_created_from: list[tuple[models.DivisionGridVersion, int | None]] = []
 
             for source_version in source_versions:
+                target_status, target_published_at = target_imported_version_state(
+                    mode=mode,
+                    source_status=source_version.status,
+                    source_published_at=source_version.published_at,
+                )
                 target_version = models.DivisionGridVersion(
                     grid_id=target_grid.id,
                     version=source_version.version,
                     label=source_version.label,
-                    status=source_version.status,
+                    status=target_status,
                     created_from_version_id=None,
-                    published_at=source_version.published_at,
+                    published_at=target_published_at,
                 )
                 session.add(target_version)
                 await session.flush()
@@ -748,13 +820,20 @@ async def import_division_grids(
                 created_versions += 1
 
                 source_tiers = sorted(source_version.tiers, key=lambda tier: tier.sort_order)
-                copied_icons = await copy_division_icon_assets(
-                    s3,
-                    source_workspace=source_workspace,
-                    target_workspace=target_workspace,
-                    source_tiers=source_tiers,
-                    target_grid_slug=target_slug,
-                    target_version=source_version.version,
+                copied_icons = (
+                    await copy_division_icon_assets(
+                        s3,
+                        source_workspace=source_workspace,
+                        target_workspace=target_workspace,
+                        source_tiers=source_tiers,
+                        target_grid_slug=target_slug,
+                        target_version=source_version.version,
+                    )
+                    if include_icons
+                    else [
+                        DivisionImageCopy(public_url=source_tier.icon_url, key=None)
+                        for source_tier in source_tiers
+                    ]
                 )
                 for copied in copied_icons:
                     if isinstance(copied, DivisionImageCopy) and copied.key is not None:
@@ -787,8 +866,8 @@ async def import_division_grids(
                         rank_min=source_tier.rank_min,
                         rank_max=source_tier.rank_max,
                         icon_url=copied.public_url,
-                        ow_rank_min=source_tier.ow_rank_min,
-                        ow_rank_max=source_tier.ow_rank_max,
+                        ow_rank_min=source_tier.ow_rank_min if include_ow_rank_mappings else None,
+                        ow_rank_max=source_tier.ow_rank_max if include_ow_rank_mappings else None,
                     )
                     session.add(target_tier)
                     await session.flush()

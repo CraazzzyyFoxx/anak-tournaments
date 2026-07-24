@@ -23,16 +23,20 @@ def _idempotency_key(
     *,
     workspace_id: int,
     source_workspace_id: int,
-    source_grid_ids: list[int],
-    mode: str,
+    source_grid_id: int,
+    source_version_id: int,
+    include_icons: bool,
+    include_ow_rank_mappings: bool,
     source_fingerprint: str,
 ) -> str:
     raw = ":".join(
         (
             str(workspace_id),
             str(source_workspace_id),
-            ",".join(str(grid_id) for grid_id in sorted(source_grid_ids)),
-            mode,
+            str(source_grid_id),
+            str(source_version_id),
+            str(include_icons),
+            str(include_ow_rank_mappings),
             source_fingerprint,
         )
     )
@@ -56,16 +60,19 @@ async def create_import_job(
     workspace_id: int,
     source_workspace_id: int,
     requested_by_user_id: int | None,
-    source_grid_ids: list[int],
-    mode: str,
+    source_grid_id: int,
+    source_version_id: int,
+    include_icons: bool,
+    include_ow_rank_mappings: bool,
     source_fingerprint: str,
 ) -> models.DivisionGridImportJob:
-    ordered_grid_ids = sorted(set(source_grid_ids))
     idempotency_key = _idempotency_key(
         workspace_id=workspace_id,
         source_workspace_id=source_workspace_id,
-        source_grid_ids=ordered_grid_ids,
-        mode=mode,
+        source_grid_id=source_grid_id,
+        source_version_id=source_version_id,
+        include_icons=include_icons,
+        include_ow_rank_mappings=include_ow_rank_mappings,
         source_fingerprint=source_fingerprint,
     )
     existing = await session.scalar(
@@ -91,8 +98,10 @@ async def create_import_job(
         status="pending",
         progress=0,
         request_json={
-            "source_grid_ids": ordered_grid_ids,
-            "mode": mode,
+            "source_grid_id": source_grid_id,
+            "source_version_id": source_version_id,
+            "include_icons": include_icons,
+            "include_ow_rank_mappings": include_ow_rank_mappings,
             "source_fingerprint": source_fingerprint,
         },
         idempotency_key=idempotency_key,
@@ -225,7 +234,7 @@ async def process_import_job(job_id: int) -> None:
             source_grids = await marketplace.get_marketplace_grids_by_ids(
                 session,
                 source_workspace_id=source_workspace.id,
-                source_grid_ids=payload["source_grid_ids"],
+                source_grid_ids=[payload["source_grid_id"]],
             )
             job.progress = 35
             await session.flush()
@@ -235,8 +244,11 @@ async def process_import_job(job_id: int) -> None:
                 target_workspace=target_workspace,
                 source_workspace=source_workspace,
                 source_grids=source_grids,
-                mode=payload["mode"],
+                mode="copy",
                 expected_source_fingerprint=payload["source_fingerprint"],
+                source_version_id=payload["source_version_id"],
+                include_icons=payload["include_icons"],
+                include_ow_rank_mappings=payload["include_ow_rank_mappings"],
             )
             job.status = "completed"
             job.progress = 100

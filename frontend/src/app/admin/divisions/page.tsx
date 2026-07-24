@@ -7,7 +7,7 @@ import { DivisionGridImportWizard } from "./ImportWizard";
 import { DivisionGridLibrary } from "./GridLibrary";
 import { MappingReadinessMatrix } from "./MappingReadinessMatrix";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, CopyPlus, Minus, Plus, Save, Star, Trash2, Upload, Wand2, X } from "lucide-react";
+import { CopyPlus, Minus, Plus, Save, Star, Trash2, Upload, Wand2, X } from "lucide-react";
 import Image from "next/image";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
@@ -848,9 +848,6 @@ export default function DivisionsAdminPage() {
   const canUpdate =
     currentWorkspaceId !== null &&
     (isSuperuser || canAccessPermission("division_grid.update", currentWorkspaceId));
-  const canDelete =
-    currentWorkspaceId !== null &&
-    (isSuperuser || canAccessPermission("division_grid.delete", currentWorkspaceId));
   const canImport =
     currentWorkspaceId !== null &&
     (isSuperuser || canAccessPermission("division_grid.import", currentWorkspaceId));
@@ -871,15 +868,6 @@ export default function DivisionsAdminPage() {
     grids.find((grid) =>
       grid.versions.some((version) => version.id === workspace?.default_division_grid_version_id)
     ) ?? null;
-  const activeVersion =
-    activeGrid?.versions.find(
-      (version) => version.id === workspace?.default_division_grid_version_id
-    ) ?? null;
-  const publishedVersionsCount = grids.reduce(
-    (count, grid) =>
-      count + grid.versions.filter((version) => version.status === "published").length,
-    0
-  );
   const selectedGrid =
     grids.find((grid) => grid.id === selectedGridId) ??
     activeGrid ??
@@ -971,14 +959,6 @@ export default function DivisionsAdminPage() {
       notify.success("Workspace division grid activated");
     }
   });
-  const deleteVersionMutation = useMutation({
-    mutationFn: (versionId: number) => workspaceService.deleteDivisionGridVersion(versionId),
-    onSuccess: async (_, versionId) => {
-      if (selectedVersionId === versionId) setSelectedVersionId(null);
-      await refreshGrids();
-      notify.success("Version deleted");
-    }
-  });
 
   if (!currentWorkspaceId) {
     return (
@@ -993,7 +973,7 @@ export default function DivisionsAdminPage() {
     <div className="flex flex-col gap-6">
       <AdminPageHeader
         title="Divisions"
-        description="Manage the active interpretation, reusable grid library, version lifecycle, mappings, and imports."
+        description="Choose a grid, import one version when needed, and edit its tiers."
         actions={
           selectedVersion ? (
             <div className="flex flex-wrap gap-2">
@@ -1034,44 +1014,6 @@ export default function DivisionsAdminPage() {
           ) : null
         }
       />
-      <Card>
-        <CardHeader>
-          <CardTitle>Active network</CardTitle>
-          <CardDescription>
-            The version currently used for rank resolution and new tournament data.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-lg border p-3">
-            <div className="text-xs font-medium uppercase text-muted-foreground">Configuration</div>
-            <div className="mt-1 font-medium">
-              {activeGrid && activeVersion
-                ? `${activeGrid.name} · v${activeVersion.version}`
-                : `Version #${workspace?.default_division_grid_version_id ?? "not configured"}`}
-            </div>
-            {activeGrid && activeVersion && (
-              <Button
-                className="mt-3"
-                size="sm"
-                variant="outline"
-                onClick={() => selectGrid(activeGrid.id, activeVersion.id)}
-              >
-                Open active version
-              </Button>
-            )}
-          </div>
-          <div className="rounded-lg border p-3">
-            <div className="text-xs font-medium uppercase text-muted-foreground">Local library</div>
-            <div className="mt-1 text-2xl font-semibold">{grids.length}</div>
-            <div className="text-sm text-muted-foreground">division grids</div>
-          </div>
-          <div className="rounded-lg border p-3">
-            <div className="text-xs font-medium uppercase text-muted-foreground">Published</div>
-            <div className="mt-1 text-2xl font-semibold">{publishedVersionsCount}</div>
-            <div className="text-sm text-muted-foreground">immutable versions</div>
-          </div>
-        </CardContent>
-      </Card>
 
       <DivisionGridLibrary
         workspaceId={currentWorkspaceId}
@@ -1082,7 +1024,6 @@ export default function DivisionsAdminPage() {
         permissions={{
           create: canCreate,
           update: canUpdate,
-          delete: canDelete,
           import: canImport,
           export: canExport
         }}
@@ -1092,60 +1033,54 @@ export default function DivisionsAdminPage() {
         onChanged={refreshGrids}
       />
 
+      <DivisionGridImportWizard
+        workspaceId={currentWorkspaceId}
+        canImport={canImport}
+        onImported={async (job) => {
+          await refreshGrids();
+          const imported = job.result?.imported_grids[0];
+          if (imported) selectGrid(imported.target_grid_id);
+        }}
+      />
+
       {selectedGrid && (
         <Card id="editor">
           <CardHeader>
-            <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
-                <CardTitle>{selectedGrid.name}</CardTitle>
+                <CardTitle>Edit {selectedGrid.name}</CardTitle>
                 <CardDescription>
-                  Draft → review mappings → publish → activate. Published versions are immutable.
+                  Choose a draft to edit. Published versions remain read-only.
                 </CardDescription>
               </div>
-              <Select
-                value={effectiveVersionId?.toString() ?? ""}
-                onValueChange={(value) => selectGrid(selectedGrid.id, Number(value))}
-              >
-                <SelectTrigger className="w-80">
-                  <SelectValue placeholder="Select version" />
-                </SelectTrigger>
-                <SelectContent>
-                  {versions
-                    .slice()
-                    .sort((left, right) => right.version - left.version)
-                    .map((version) => (
-                      <SelectItem key={version.id} value={version.id.toString()}>
-                        v{version.version} · {version.label} · {version.status}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+              <label className="grid gap-2 text-sm font-medium">
+                Version
+                <Select
+                  value={effectiveVersionId?.toString() ?? ""}
+                  onValueChange={(value) => selectGrid(selectedGrid.id, Number(value))}
+                >
+                  <SelectTrigger className="w-80">
+                    <SelectValue placeholder="Select version" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {versions
+                      .slice()
+                      .sort((left, right) => right.version - left.version)
+                      .map((version) => (
+                        <SelectItem key={version.id} value={version.id.toString()}>
+                          v{version.version} · {version.label} · {version.status}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </label>
             </div>
           </CardHeader>
-          <CardContent>
-            <div className="grid gap-3 md:grid-cols-4">
-              {[
-                ["1", "Draft", selectedVersion?.status === "draft"],
-                ["2", "Mappings reviewed", readinessQuery.data?.is_ready === true],
-                ["3", "Published", selectedVersion?.status === "published"],
-                ["4", "Active", workspace?.default_division_grid_version_id === selectedVersion?.id]
-              ].map(([number, label, complete]) => (
-                <div
-                  key={String(label)}
-                  className={`rounded-lg border p-3 ${complete ? "border-emerald-500/40 bg-emerald-500/5" : "bg-muted/20"}`}
-                >
-                  <div className="text-xs text-muted-foreground">Step {String(number)}</div>
-                  <div className="mt-1 flex items-center gap-2 font-medium">
-                    {complete && <Check className="h-4 w-4 text-emerald-500" />}
-                    {String(label)}
-                  </div>
-                </div>
-              ))}
-            </div>
-            {selectedVersion?.status === "published" &&
-              readinessQuery.data &&
-              !readinessQuery.data.is_ready && (
-                <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
+          {selectedVersion?.status === "published" &&
+            readinessQuery.data &&
+            !readinessQuery.data.is_ready && (
+              <CardContent>
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
                   Activation is blocked until mappings from source version ID(s){" "}
                   {Array.from(
                     new Set([
@@ -1155,8 +1090,8 @@ export default function DivisionsAdminPage() {
                   ).join(", ")}{" "}
                   are complete.
                 </div>
-              )}
-          </CardContent>
+              </CardContent>
+            )}
         </Card>
       )}
 
@@ -1169,63 +1104,6 @@ export default function DivisionsAdminPage() {
           selectedVersion={selectedVersion}
           onSaved={refreshGrids}
         />
-      )}
-
-      {versions.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Version history</CardTitle>
-            <CardDescription>
-              Stable published versions preserve historical tournament interpretation.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {versions
-              .slice()
-              .sort((left, right) => right.version - left.version)
-              .map((version) => {
-                const isSelected = version.id === effectiveVersionId;
-                const isDefault = workspace?.default_division_grid_version_id === version.id;
-                return (
-                  <div
-                    key={version.id}
-                    className={`flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3 ${isSelected ? "border-primary bg-primary/5" : ""}`}
-                  >
-                    <button
-                      type="button"
-                      className="min-w-0 flex-1 text-left"
-                      onClick={() => selectGrid(selectedGrid!.id, version.id)}
-                    >
-                      <div className="flex items-center gap-2 font-medium">
-                        {version.label}
-                        {isSelected && <Check className="h-4 w-4 text-primary" />}
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        Version {version.version} · {version.tiers.length} tiers
-                      </div>
-                    </button>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={version.status === "published" ? "default" : "secondary"}>
-                        {version.status}
-                      </Badge>
-                      {isDefault && <Badge variant="outline">Active</Badge>}
-                      {canDelete && !isDefault && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label={`Delete ${version.label}`}
-                          onClick={() => deleteVersionMutation.mutate(version.id)}
-                          disabled={deleteVersionMutation.isPending}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-          </CardContent>
-        </Card>
       )}
 
       <MappingReadinessMatrix
@@ -1250,16 +1128,6 @@ export default function DivisionsAdminPage() {
           reviewTargetVersionId={reviewMappingPair.targetVersionId}
         />
       )}
-
-      <DivisionGridImportWizard
-        workspaceId={currentWorkspaceId}
-        canImport={canImport}
-        onImported={async (job) => {
-          await refreshGrids();
-          const imported = job.result?.imported_grids[0];
-          if (imported) selectGrid(imported.target_grid_id);
-        }}
-      />
     </div>
   );
 }

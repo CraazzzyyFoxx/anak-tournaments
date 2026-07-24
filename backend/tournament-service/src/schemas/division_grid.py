@@ -177,8 +177,10 @@ class DivisionGridMarketplaceImportRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     source_workspace_id: int
-    source_grid_ids: list[int] = Field(..., min_length=1)
-    mode: Literal["library", "sync", "copy"] = "library"
+    source_grid_id: int
+    source_version_id: int
+    include_icons: bool = True
+    include_ow_rank_mappings: bool = True
 
 
 class DivisionGridMarketplacePreflightResult(BaseModel):

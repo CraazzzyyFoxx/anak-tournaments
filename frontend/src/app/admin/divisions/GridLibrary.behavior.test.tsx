@@ -61,7 +61,6 @@ const grids: DivisionGridEntity[] = [
 function renderLibrary(permissions: {
   create: boolean;
   update: boolean;
-  delete: boolean;
   import: boolean;
   export: boolean;
 }) {
@@ -89,19 +88,20 @@ function renderLibrary(permissions: {
 const deniedPermissions = {
   create: false,
   update: false,
-  delete: false,
   import: false,
   export: false
 };
 
 describe("DivisionGridLibrary", () => {
-  it("derives the active grid from the workspace default version instead of array order", () => {
+  it("shows the active grid in one compact selector card", () => {
     const document = renderLibrary(deniedPermissions);
-    const activeCard = document.querySelector('[data-ui="card"]');
+    const card = document.querySelector('[data-ui="card"]');
 
-    expect(activeCard?.textContent).toContain("Current Grid");
-    expect(activeCard?.textContent).toContain("Season 2");
-    expect(activeCard?.textContent).not.toContain("Legacy Grid");
+    expect(card?.textContent).toContain("Current Grid");
+    expect(card?.textContent).toContain("Season 2");
+    expect(document.body.textContent).not.toContain("Grid library");
+    expect(document.body.textContent).not.toContain("Search library");
+    expect(document.body.textContent).not.toContain("Show archived");
   });
 
   it("hides every mutating control when its operation permission is absent", () => {
@@ -122,7 +122,6 @@ describe("DivisionGridLibrary", () => {
     const document = renderLibrary({
       create: true,
       update: true,
-      delete: false,
       import: false,
       export: true
     });
