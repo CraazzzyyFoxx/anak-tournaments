@@ -105,6 +105,24 @@ class S3Client:
             logger.exception(f"Error uploading object '{key}'")
             return False
 
+    async def copy_object(self, source_key: str, target_key: str, *, public: bool = False) -> bool:
+        """Copy an object inside the configured bucket without downloading it."""
+        try:
+            async with self._client() as client:
+                kwargs: dict[str, Any] = {
+                    "Bucket": self.bucket_name,
+                    "Key": target_key,
+                    "CopySource": {"Bucket": self.bucket_name, "Key": source_key},
+                }
+                if public:
+                    kwargs["ACL"] = "public-read"
+                await client.copy_object(**kwargs)
+                logger.info(f"Copied object '{source_key}' to '{target_key}'")
+                return True
+        except ClientError:
+            logger.exception(f"Error copying object '{source_key}' to '{target_key}'")
+            return False
+
     async def delete_object(self, key: str) -> bool:
         try:
             async with self._client() as client:

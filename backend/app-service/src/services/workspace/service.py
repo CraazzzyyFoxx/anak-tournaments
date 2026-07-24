@@ -23,7 +23,6 @@ from shared.repository import (
     WorkspaceRepository,
     get_or_create_workspace_member,
 )
-from shared.services import division_grid_cache
 from shared.services.division_grid_access import get_default_division_grid_version_id
 from shared.tenancy.hostnames import normalize_custom_domain
 from src import models
@@ -202,11 +201,41 @@ async def get_user_workspaces(
     ]
 
 
+async def validate_default_division_grid_version(
+    session: AsyncSession,
+    *,
+    workspace_id: int | None,
+    version_id: int,
+) -> None:
+    owner_id = await session.scalar(
+        sa.select(sa.func.coalesce(models.DivisionGrid.workspace_id, -1))
+        .join(
+            models.DivisionGridVersion,
+            models.DivisionGridVersion.grid_id == models.DivisionGrid.id,
+        )
+        .where(models.DivisionGridVersion.id == version_id)
+    )
+    if owner_id is None:
+        raise HTTPException(status_code=404, detail="Division grid version not found")
+    if owner_id != -1 and owner_id != workspace_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Default division grid version must belong to the workspace or be global",
+        )
+
+
 async def _resolve_default_division_grid_version_id(
     session: AsyncSession,
     version_id: int | None,
+    *,
+    workspace_id: int | None = None,
 ) -> int:
     if version_id is not None:
+        await validate_default_division_grid_version(
+            session,
+            workspace_id=workspace_id,
+            version_id=version_id,
+        )
         return version_id
 
     resolved_version_id = await get_default_division_grid_version_id(session)
@@ -227,20 +256,12 @@ async def create(session: AsyncSession, **kwargs) -> models.Workspace:
 
 
 async def update(session: AsyncSession, workspace: models.Workspace, data: dict) -> models.Workspace:
-    resolved_data = dict(data)
-    if "default_division_grid_version_id" in resolved_data:
-        resolved_data["default_division_grid_version_id"] = await _resolve_default_division_grid_version_id(
-            session,
-            resolved_data["default_division_grid_version_id"],
+    if "default_division_grid_version_id" in data:
+        raise HTTPException(
+            status_code=400,
+            detail="Activate division grid versions through the division-grid activation endpoint",
         )
-
-    should_invalidate_grid = (
-        "default_division_grid_version_id" in resolved_data
-        and resolved_data["default_division_grid_version_id"] != workspace.default_division_grid_version_id
-    )
-    await _workspace_repo.update_fields(session, workspace, resolved_data)
-    if should_invalidate_grid:
-        await division_grid_cache.invalidate_workspace(workspace.id)
+    await _workspace_repo.update_fields(session, workspace, dict(data))
     return workspace
 
 

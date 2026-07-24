@@ -49,7 +49,9 @@ from src.rpc._helpers import _bool, _dump, _identity, _path_int, _payload, _q1, 
 from src.schemas.admin import balancer as admin_schemas
 from src.services.challonge import service as challonge_service
 from src.services.challonge import sync as challonge_sync
+from src.services.division_grid import import_jobs as division_grid_import_jobs
 from src.services.division_grid import marketplace as division_grid_marketplace
+from src.services.division_grid import portable as division_grid_portable
 from src.services.division_grid import service as division_grid_service
 from src.services.registration import admin as registration_service
 from src.services.registration.serializers import serialize_feed
@@ -436,6 +438,51 @@ def register(broker: Any, logger: Any) -> None:
 
         return await _run(logger, op)
 
+    @broker.subscriber("rpc.tournament.grid_update")
+    async def _grid_update(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            grid_id = _require_id(data)
+            grid = await division_grid_service.get_grid_by_id(session, grid_id)
+            body = schemas.DivisionGridUpdate.model_validate(_payload(data))
+            action = "delete" if body.archived is True else "update"
+            await require_workspace_permission(grid.workspace_id, session=session, user=user, action=action)
+            updated = await division_grid_service.update_grid(session, grid_id=grid_id, data=body)
+            await session.commit()
+            return _dump(schemas.DivisionGridRead.model_validate(updated, from_attributes=True))
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.grid_portable_export")
+    async def _grid_portable_export(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            grid_id = _require_id(data)
+            grid = await division_grid_service.get_grid_by_id(session, grid_id)
+            await require_workspace_permission(grid.workspace_id, session=session, user=user, action="export")
+            return _dump(await division_grid_portable.export_portable_document(session, grid_id=grid_id))
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.grid_portable_import")
+    async def _grid_portable_import(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            workspace_id = _path_int(data, "workspace_id")
+            await require_workspace_permission(workspace_id, session=session, user=user, action="import")
+            body = schemas.DivisionGridPortableImportRequest.model_validate(_payload(data))
+            grid = await division_grid_portable.import_portable_document(
+                session,
+                workspace_id=workspace_id,
+                request=body,
+            )
+            await session.commit()
+            return _dump(schemas.DivisionGridRead.model_validate(grid, from_attributes=True))
+
+        return await _run(logger, op)
+
+
+
     @broker.subscriber("rpc.tournament.grid_marketplace_workspaces")
     async def _grid_marketplace_workspaces(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
@@ -471,14 +518,12 @@ def register(broker: Any, logger: Any) -> None:
 
         return await _run(logger, op)
 
-    @broker.subscriber("rpc.tournament.grid_marketplace_import")
-    async def _grid_marketplace_import(data: dict, msg: RabbitMessage) -> dict:
+    @broker.subscriber("rpc.tournament.grid_marketplace_preflight")
+    async def _grid_marketplace_preflight(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             user = _identity(data)
             workspace_id = _path_int(data, "workspace_id")
-            target_workspace = await require_workspace_permission(
-                workspace_id, session=session, user=user, action="import"
-            )
+            await require_workspace_permission(workspace_id, session=session, user=user, action="import")
             body = schemas.DivisionGridMarketplaceImportRequest.model_validate(_payload(data))
             source_workspace = await _get_source_workspace_or_404(
                 session,
@@ -492,16 +537,89 @@ def register(broker: Any, logger: Any) -> None:
                 source_grid_ids=body.source_grid_ids,
             )
             s3 = await _get_s3()
-            result = await division_grid_marketplace.import_division_grids(
+            return _dump(
+                await division_grid_marketplace.preflight_division_grid_import(
+                    session,
+                    public_url=getattr(s3, "_public_url", None),
+                    target_workspace_id=workspace_id,
+                    source_workspace=source_workspace,
+                    source_grids=source_grids,
+                )
+            )
+
+        return await _run(logger, op)
+
+
+    @broker.subscriber("rpc.tournament.grid_marketplace_import")
+    async def _grid_marketplace_import(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            workspace_id = _path_int(data, "workspace_id")
+            await require_workspace_permission(workspace_id, session=session, user=user, action="import")
+            body = schemas.DivisionGridMarketplaceImportRequest.model_validate(_payload(data))
+            source_workspace = await _get_source_workspace_or_404(
                 session,
-                s3,
-                target_workspace=target_workspace,
+                target_workspace_id=workspace_id,
+                source_workspace_id=body.source_workspace_id,
+                user=user,
+            )
+            source_grids = await division_grid_marketplace.get_marketplace_grids_by_ids(
+                session,
+                source_workspace_id=source_workspace.id,
+                source_grid_ids=body.source_grid_ids,
+            )
+            s3 = await _get_s3()
+            preflight = await division_grid_marketplace.preflight_division_grid_import(
+                session,
+                public_url=getattr(s3, "_public_url", None),
+                target_workspace_id=workspace_id,
                 source_workspace=source_workspace,
                 source_grids=source_grids,
-                set_default=body.set_default,
             )
-            await session.commit()  # route commits explicitly (service does not).
-            return _dump(result)
+            job = await division_grid_import_jobs.create_import_job(
+                session,
+                workspace_id=workspace_id,
+                source_workspace_id=source_workspace.id,
+                requested_by_user_id=user.id,
+                source_grid_ids=body.source_grid_ids,
+                mode=body.mode,
+                source_fingerprint=preflight.source_fingerprint,
+            )
+            await session.commit()
+            return _dump(division_grid_import_jobs.to_read(job))
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.grid_import_jobs_list")
+    async def _grid_import_jobs_list(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            workspace_id = _path_int(data, "workspace_id")
+            await require_workspace_permission(workspace_id, session=session, user=user, action="read")
+            jobs = await division_grid_import_jobs.list_import_jobs(
+                session,
+                workspace_id=workspace_id,
+                active_only=_q1(data, "active_only", _bool, False),
+                limit=_q1(data, "limit", int, 20),
+            )
+            return _dump([division_grid_import_jobs.to_read(job) for job in jobs])
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.grid_import_job_get")
+    async def _grid_import_job_get(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            workspace_id = _path_int(data, "workspace_id")
+            await require_workspace_permission(workspace_id, session=session, user=user, action="read")
+            job = await division_grid_import_jobs.get_import_job(
+                session,
+                workspace_id=workspace_id,
+                job_id=_path_int(data, "job_id"),
+            )
+            if job is None:
+                raise HTTPException(status_code=404, detail="Division grid import job not found")
+            return _dump(division_grid_import_jobs.to_read(job))
 
         return await _run(logger, op)
 
@@ -581,6 +699,45 @@ def register(broker: Any, logger: Any) -> None:
             await require_workspace_permission(version.grid.workspace_id, session=session, user=user, action="publish")
             version = await division_grid_service.publish_version(session, version_id)
             await session.commit()  # route commits explicitly (service does not).
+            return _dump(schemas.DivisionGridVersionRead.model_validate(version, from_attributes=True))
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.grid_version_readiness")
+    async def _grid_version_readiness(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            workspace_id = _path_int(data, "workspace_id")
+            version_id = _path_int(data, "version_id")
+            await require_workspace_permission(workspace_id, session=session, user=user, action="read")
+            return _dump(
+                await division_grid_service.get_activation_readiness(
+                    session,
+                    workspace_id=workspace_id,
+                    target_version_id=version_id,
+                )
+            )
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.grid_version_activate")
+    async def _grid_version_activate(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            workspace_id = _path_int(data, "workspace_id")
+            version_id = _path_int(data, "version_id")
+            workspace = await require_workspace_permission(
+                workspace_id,
+                session=session,
+                user=user,
+                action="publish",
+            )
+            version = await division_grid_service.activate_version(
+                session,
+                workspace=workspace,
+                version_id=version_id,
+            )
+            await session.commit()
             return _dump(schemas.DivisionGridVersionRead.model_validate(version, from_attributes=True))
 
         return await _run(logger, op)

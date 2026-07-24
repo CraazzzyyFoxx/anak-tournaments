@@ -3,21 +3,11 @@
 import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { DivisionGridMappingEditor } from "./MappingEditor";
 import { OwRankRangePicker } from "./OwRankRangePicker";
+import { DivisionGridImportWizard } from "./ImportWizard";
+import { DivisionGridLibrary } from "./GridLibrary";
+import { MappingReadinessMatrix } from "./MappingReadinessMatrix";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  Check,
-  CopyPlus,
-  Download,
-  Minus,
-  Plus,
-  Save,
-  Star,
-  Store,
-  Trash2,
-  Upload,
-  Wand2,
-  X
-} from "lucide-react";
+import { Check, CopyPlus, Minus, Plus, Save, Star, Trash2, Upload, Wand2, X } from "lucide-react";
 import Image from "next/image";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
@@ -49,11 +39,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { OW2_RANK_OPTIONS } from "@/lib/ow-rank-mapping";
 import workspaceService from "@/services/workspace.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
-import type {
-  DivisionGridMarketplaceImportResult,
-  DivisionGridVersion,
-  DivisionTier
-} from "@/types/workspace.types";
+import type { DivisionGridVersion, DivisionTier } from "@/types/workspace.types";
 
 function buildDefaultTiers(): DivisionTier[] {
   const divisions = [
@@ -385,6 +371,7 @@ function DivisionGridEditorCard({
   const tiersPayload = useMemo(
     () =>
       tiers.map((tier, index) => ({
+        id: tier.id,
         slug: tier.slug || `division-${tier.number}`,
         number: tier.number,
         name: tier.name,
@@ -834,186 +821,162 @@ function DivisionGridEditorCard({
 
 export default function DivisionsAdminPage() {
   const queryClient = useQueryClient();
-  const { isSuperuser, canAccessAnyPermission } = usePermissions();
-  const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
-  const getCurrentWorkspace = useWorkspaceStore((s) => s.getCurrentWorkspace);
-  const fetchWorkspaces = useWorkspaceStore((s) => s.fetchWorkspaces);
+  const { isSuperuser, canAccessPermission } = usePermissions();
+  const currentWorkspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
+  const getCurrentWorkspace = useWorkspaceStore((state) => state.getCurrentWorkspace);
+  const fetchWorkspaces = useWorkspaceStore((state) => state.fetchWorkspaces);
   const workspace = getCurrentWorkspace();
 
-  const canEdit =
-    isSuperuser ||
-    (currentWorkspaceId !== null &&
-      canAccessAnyPermission(
-        [
-          "division_grid.create",
-          "division_grid.update",
-          "division_grid.delete",
-          "division_grid.import"
-        ],
-        currentWorkspaceId
-      ));
+  const [selectedGridId, setSelectedGridId] = useState<number | null>(() => {
+    if (typeof window === "undefined") return null;
+    const value = new URLSearchParams(window.location.search).get("grid");
+    return value ? Number(value) : null;
+  });
+  const [selectedVersionId, setSelectedVersionId] = useState<number | null>(() => {
+    if (typeof window === "undefined") return null;
+    const value = new URLSearchParams(window.location.search).get("version");
+    return value ? Number(value) : null;
+  });
+  const [reviewMappingPair, setReviewMappingPair] = useState<{
+    sourceVersionId: number | null;
+    targetVersionId: number | null;
+  }>({ sourceVersionId: null, targetVersionId: null });
+
+  const canCreate =
+    currentWorkspaceId !== null &&
+    (isSuperuser || canAccessPermission("division_grid.create", currentWorkspaceId));
+  const canUpdate =
+    currentWorkspaceId !== null &&
+    (isSuperuser || canAccessPermission("division_grid.update", currentWorkspaceId));
+  const canDelete =
+    currentWorkspaceId !== null &&
+    (isSuperuser || canAccessPermission("division_grid.delete", currentWorkspaceId));
+  const canImport =
+    currentWorkspaceId !== null &&
+    (isSuperuser || canAccessPermission("division_grid.import", currentWorkspaceId));
+  const canExport =
+    currentWorkspaceId !== null &&
+    (isSuperuser || canAccessPermission("division_grid.export", currentWorkspaceId));
+  const canPublish =
+    currentWorkspaceId !== null &&
+    (isSuperuser || canAccessPermission("division_grid.publish", currentWorkspaceId));
 
   const gridsQuery = useQuery({
     queryKey: ["division-grids", currentWorkspaceId],
     queryFn: () => workspaceService.getDivisionGrids(currentWorkspaceId!),
     enabled: currentWorkspaceId !== null
   });
-
-  const marketplaceWorkspacesQuery = useQuery({
-    queryKey: ["division-grid-marketplace-workspaces", currentWorkspaceId],
-    queryFn: () => workspaceService.getDivisionGridMarketplaceWorkspaces(currentWorkspaceId!),
-    enabled: currentWorkspaceId !== null && canEdit
-  });
-
-  const marketplaceWorkspaces = useMemo(
-    () => marketplaceWorkspacesQuery.data ?? [],
-    [marketplaceWorkspacesQuery.data]
+  const grids = useMemo(() => gridsQuery.data ?? [], [gridsQuery.data]);
+  const activeGrid =
+    grids.find((grid) =>
+      grid.versions.some((version) => version.id === workspace?.default_division_grid_version_id)
+    ) ?? null;
+  const activeVersion =
+    activeGrid?.versions.find(
+      (version) => version.id === workspace?.default_division_grid_version_id
+    ) ?? null;
+  const publishedVersionsCount = grids.reduce(
+    (count, grid) =>
+      count + grid.versions.filter((version) => version.status === "published").length,
+    0
   );
-
-  const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
-  const [marketplaceSourceWorkspaceId, setMarketplaceSourceWorkspaceId] = useState<number | null>(
-    null
-  );
-  const [selectedMarketplaceGridIds, setSelectedMarketplaceGridIds] = useState<number[]>([]);
-  const [makeImportedDefault, setMakeImportedDefault] = useState(false);
-  const [marketplaceImportResult, setMarketplaceImportResult] =
-    useState<DivisionGridMarketplaceImportResult | null>(null);
-
-  const grids = gridsQuery.data ?? [];
-  const activeGrid = grids[0] ?? null;
-  const versions = activeGrid?.versions ?? [];
-  const effectiveMarketplaceSourceWorkspaceId =
-    marketplaceSourceWorkspaceId !== null &&
-    marketplaceWorkspaces.some(
-      (sourceWorkspace) => sourceWorkspace.id === marketplaceSourceWorkspaceId
-    )
-      ? marketplaceSourceWorkspaceId
-      : null;
-
-  const marketplaceGridsQuery = useQuery({
-    queryKey: [
-      "division-grid-marketplace",
-      currentWorkspaceId,
-      effectiveMarketplaceSourceWorkspaceId
-    ],
-    queryFn: () =>
-      workspaceService.getDivisionGridMarketplace(
-        currentWorkspaceId!,
-        effectiveMarketplaceSourceWorkspaceId!
-      ),
+  const selectedGrid =
+    grids.find((grid) => grid.id === selectedGridId) ??
+    activeGrid ??
+    grids.find((grid) => !grid.archived_at) ??
+    null;
+  const versions = selectedGrid?.versions ?? [];
+  const defaultSelectedVersion =
+    versions.find((version) => version.id === workspace?.default_division_grid_version_id) ??
+    versions.slice().sort((left, right) => right.version - left.version)[0] ??
+    null;
+  const selectedVersion =
+    versions.find((version) => version.id === selectedVersionId) ?? defaultSelectedVersion;
+  const effectiveVersionId = selectedVersion?.id ?? null;
+  const allVersions = useMemo(() => grids.flatMap((grid) => grid.versions), [grids]);
+  const reviewSourceVersionQuery = useQuery({
+    queryKey: ["division-grid-version", reviewMappingPair.sourceVersionId],
+    queryFn: () => workspaceService.getDivisionGridVersion(reviewMappingPair.sourceVersionId!),
     enabled:
-      currentWorkspaceId !== null && canEdit && effectiveMarketplaceSourceWorkspaceId !== null
+      reviewMappingPair.sourceVersionId !== null &&
+      !allVersions.some((version) => version.id === reviewMappingPair.sourceVersionId)
   });
-
-  const marketplaceGrids = marketplaceGridsQuery.data ?? [];
-  const selectedMarketplaceGridIdsSet = useMemo(
-    () => new Set(selectedMarketplaceGridIds),
-    [selectedMarketplaceGridIds]
+  const mappingVersions = useMemo(() => {
+    const byId = new Map(allVersions.map((version) => [version.id, version]));
+    if (reviewSourceVersionQuery.data) {
+      byId.set(reviewSourceVersionQuery.data.id, reviewSourceVersionQuery.data);
+    }
+    return [...byId.values()];
+  }, [allVersions, reviewSourceVersionQuery.data]);
+  const mappingGridNames = useMemo(
+    () => Object.fromEntries(grids.map((grid) => [grid.id, grid.name])),
+    [grids]
   );
 
-  const toggleMarketplaceGrid = useCallback((gridId: number, checked: boolean) => {
-    setSelectedMarketplaceGridIds((current) =>
-      checked ? Array.from(new Set([...current, gridId])) : current.filter((id) => id !== gridId)
-    );
+  const selectGrid = useCallback((gridId: number, versionId?: number) => {
+    setSelectedGridId(gridId);
+    setSelectedVersionId(versionId ?? null);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("grid", String(gridId));
+      if (versionId) url.searchParams.set("version", String(versionId));
+      else url.searchParams.delete("version");
+      url.searchParams.set("tab", "editor");
+      url.hash = "editor";
+      window.history.replaceState(null, "", url);
+    }
   }, []);
 
-  const defaultVersionId = useMemo(() => {
-    if (!workspace || versions.length === 0) return null;
-    return (
-      (
-        versions.find((v) => v.id === workspace.default_division_grid_version_id) ??
-        versions.find((v) => v.status === "published") ??
-        versions[versions.length - 1] ??
-        null
-      )?.id ?? null
-    );
-  }, [versions, workspace]);
-
-  const effectiveVersionId = selectedVersionId ?? defaultVersionId;
-  const selectedVersion = versions.find((v) => v.id === effectiveVersionId) ?? null;
-
-  const createGridMutation = useMutation({
-    mutationFn: async () => {
-      if (!currentWorkspaceId) return null;
-      return workspaceService.createDivisionGrid(currentWorkspaceId, {
-        slug: "default",
-        name: `${workspace?.name ?? "Workspace"} Division Grid`
-      });
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["division-grids", currentWorkspaceId] });
-      notify.success("Division grid created");
-    }
-  });
+  const refreshGrids = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: ["division-grids", currentWorkspaceId] });
+  }, [currentWorkspaceId, queryClient]);
 
   const cloneMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedVersion) return null;
+      if (!selectedVersion) throw new Error("Select a version first.");
       return workspaceService.cloneDivisionGridVersion(selectedVersion.id);
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["division-grids", currentWorkspaceId] });
-      notify.success("Version cloned");
+    onSuccess: async (version) => {
+      await refreshGrids();
+      if (selectedGrid) selectGrid(selectedGrid.id, version.id);
+      notify.success("Draft created from selected version");
     }
   });
-
   const publishMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedVersion) return null;
+      if (!selectedVersion) throw new Error("Select a draft first.");
       return workspaceService.publishDivisionGridVersion(selectedVersion.id);
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["division-grids", currentWorkspaceId] });
-      notify.success("Version published");
+    onSuccess: async (version) => {
+      await refreshGrids();
+      if (selectedGrid) selectGrid(selectedGrid.id, version.id);
+      notify.success("Version published", {
+        description: "Review activation readiness before making it the workspace default."
+      });
     }
   });
-
+  const readinessQuery = useQuery({
+    queryKey: ["division-grid-readiness", currentWorkspaceId, selectedVersion?.id],
+    queryFn: () =>
+      workspaceService.getDivisionGridVersionReadiness(currentWorkspaceId!, selectedVersion!.id),
+    enabled: currentWorkspaceId !== null && selectedVersion?.status === "published"
+  });
+  const activateMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedVersion || !currentWorkspaceId) throw new Error("Select a published version.");
+      return workspaceService.activateDivisionGridVersion(currentWorkspaceId, selectedVersion.id);
+    },
+    onSuccess: async () => {
+      await Promise.all([refreshGrids(), fetchWorkspaces()]);
+      notify.success("Workspace division grid activated");
+    }
+  });
   const deleteVersionMutation = useMutation({
     mutationFn: (versionId: number) => workspaceService.deleteDivisionGridVersion(versionId),
     onSuccess: async (_, versionId) => {
       if (selectedVersionId === versionId) setSelectedVersionId(null);
-      await queryClient.invalidateQueries({ queryKey: ["division-grids", currentWorkspaceId] });
+      await refreshGrids();
       notify.success("Version deleted");
-    }
-  });
-
-  const setDefaultMutation = useMutation({
-    mutationFn: async () => {
-      if (!workspace || !selectedVersion) return null;
-      return workspaceService.update(workspace.id, {
-        default_division_grid_version_id: selectedVersion.id
-      });
-    },
-    onSuccess: async () => {
-      await fetchWorkspaces();
-      notify.success("Workspace default updated");
-    }
-  });
-
-  const importMarketplaceMutation = useMutation({
-    mutationFn: async () => {
-      if (!currentWorkspaceId || !effectiveMarketplaceSourceWorkspaceId) {
-        throw new Error("Select a source workspace");
-      }
-      if (selectedMarketplaceGridIds.length === 0) {
-        throw new Error("Select at least one grid");
-      }
-      return workspaceService.importDivisionGridMarketplace(currentWorkspaceId, {
-        source_workspace_id: effectiveMarketplaceSourceWorkspaceId,
-        source_grid_ids: selectedMarketplaceGridIds,
-        set_default: makeImportedDefault
-      });
-    },
-    onSuccess: async (result) => {
-      setMarketplaceImportResult(result);
-      setSelectedMarketplaceGridIds([]);
-      await queryClient.invalidateQueries({ queryKey: ["division-grids", currentWorkspaceId] });
-      if (makeImportedDefault) {
-        await fetchWorkspaces();
-      }
-      notify.success("Division grid imported", {
-        description: `${result.created_grids} grid(s), ${result.created_versions} version(s), ${result.copied_images} image(s)`
-      });
     }
   });
 
@@ -1030,344 +993,229 @@ export default function DivisionsAdminPage() {
     <div className="flex flex-col gap-6">
       <AdminPageHeader
         title="Divisions"
-        description="Manage workspace division grids, versions, and tier icons."
+        description="Manage the active interpretation, reusable grid library, version lifecycle, mappings, and imports."
         actions={
-          canEdit ? (
-            <div className="flex gap-2">
-              {!activeGrid && (
+          selectedVersion ? (
+            <div className="flex flex-wrap gap-2">
+              {canCreate && (
                 <Button
-                  onClick={() => createGridMutation.mutate()}
-                  disabled={createGridMutation.isPending}
+                  variant="outline"
+                  onClick={() => cloneMutation.mutate()}
+                  disabled={cloneMutation.isPending}
                 >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create Grid
+                  <CopyPlus className="mr-2 h-4 w-4" />
+                  {selectedVersion.status === "published" ? "Fork draft" : "Clone draft"}
                 </Button>
               )}
-              {selectedVersion && (
-                <>
+              {canPublish && selectedVersion.status === "draft" && (
+                <Button
+                  onClick={() => publishMutation.mutate()}
+                  disabled={publishMutation.isPending}
+                >
+                  Publish version
+                </Button>
+              )}
+              {canPublish &&
+                selectedVersion.status === "published" &&
+                workspace?.default_division_grid_version_id !== selectedVersion.id && (
                   <Button
-                    variant="outline"
-                    onClick={() => cloneMutation.mutate()}
-                    disabled={cloneMutation.isPending}
-                  >
-                    <CopyPlus className="mr-2 h-4 w-4" />
-                    {selectedVersion?.status === "published"
-                      ? "Fork to New Draft"
-                      : "Clone Version"}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => publishMutation.mutate()}
-                    disabled={publishMutation.isPending}
-                  >
-                    Publish
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => setDefaultMutation.mutate()}
-                    disabled={setDefaultMutation.isPending}
+                    onClick={() => activateMutation.mutate()}
+                    disabled={
+                      activateMutation.isPending ||
+                      readinessQuery.isLoading ||
+                      readinessQuery.data?.is_ready !== true
+                    }
                   >
                     <Star className="mr-2 h-4 w-4" />
-                    Set Default
+                    Activate
                   </Button>
-                </>
-              )}
+                )}
             </div>
           ) : null
         }
       />
-
       <Card>
         <CardHeader>
-          <CardTitle>Grid Status</CardTitle>
+          <CardTitle>Active network</CardTitle>
           <CardDescription>
-            {activeGrid ? (
-              <>
-                Grid <span className="font-medium">{activeGrid.name}</span> with {versions.length}{" "}
-                version(s).
-              </>
-            ) : (
-              "No division grid created for this workspace yet."
-            )}
+            The version currently used for rank resolution and new tournament data.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-wrap items-center gap-4">
-          {versions.length > 0 ? (
-            <>
+        <CardContent className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-lg border p-3">
+            <div className="text-xs font-medium uppercase text-muted-foreground">Configuration</div>
+            <div className="mt-1 font-medium">
+              {activeGrid && activeVersion
+                ? `${activeGrid.name} · v${activeVersion.version}`
+                : `Version #${workspace?.default_division_grid_version_id ?? "not configured"}`}
+            </div>
+            {activeGrid && activeVersion && (
+              <Button
+                className="mt-3"
+                size="sm"
+                variant="outline"
+                onClick={() => selectGrid(activeGrid.id, activeVersion.id)}
+              >
+                Open active version
+              </Button>
+            )}
+          </div>
+          <div className="rounded-lg border p-3">
+            <div className="text-xs font-medium uppercase text-muted-foreground">Local library</div>
+            <div className="mt-1 text-2xl font-semibold">{grids.length}</div>
+            <div className="text-sm text-muted-foreground">division grids</div>
+          </div>
+          <div className="rounded-lg border p-3">
+            <div className="text-xs font-medium uppercase text-muted-foreground">Published</div>
+            <div className="mt-1 text-2xl font-semibold">{publishedVersionsCount}</div>
+            <div className="text-sm text-muted-foreground">immutable versions</div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <DivisionGridLibrary
+        workspaceId={currentWorkspaceId}
+        workspaceName={workspace?.name ?? "Workspace"}
+        defaultVersionId={workspace?.default_division_grid_version_id ?? null}
+        grids={grids}
+        selectedGridId={selectedGrid?.id ?? null}
+        permissions={{
+          create: canCreate,
+          update: canUpdate,
+          delete: canDelete,
+          import: canImport,
+          export: canExport
+        }}
+        loading={gridsQuery.isLoading}
+        error={gridsQuery.error}
+        onSelect={selectGrid}
+        onChanged={refreshGrids}
+      />
+
+      {selectedGrid && (
+        <Card id="editor">
+          <CardHeader>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <CardTitle>{selectedGrid.name}</CardTitle>
+                <CardDescription>
+                  Draft → review mappings → publish → activate. Published versions are immutable.
+                </CardDescription>
+              </div>
               <Select
                 value={effectiveVersionId?.toString() ?? ""}
-                onValueChange={(value) => setSelectedVersionId(Number(value))}
+                onValueChange={(value) => selectGrid(selectedGrid.id, Number(value))}
               >
-                <SelectTrigger className="w-90">
+                <SelectTrigger className="w-80">
                   <SelectValue placeholder="Select version" />
                 </SelectTrigger>
                 <SelectContent>
                   {versions
                     .slice()
-                    .sort((a, b) => b.version - a.version)
+                    .sort((left, right) => right.version - left.version)
                     .map((version) => (
                       <SelectItem key={version.id} value={version.id.toString()}>
-                        <span className="flex items-center gap-2">
-                          v{version.version} — {version.label}
-                          {version.status === "published" && (
-                            <Badge variant="default" className="ml-1 text-[10px] px-1.5 py-0">
-                              published
-                            </Badge>
-                          )}
-                          {workspace?.default_division_grid_version_id === version.id && (
-                            <Star className="h-3 w-3 text-yellow-500" />
-                          )}
-                        </span>
+                        v{version.version} · {version.label} · {version.status}
                       </SelectItem>
                     ))}
                 </SelectContent>
               </Select>
-              {selectedVersion && (
-                <div className="flex flex-wrap gap-2">
-                  <Badge variant="outline">Version {selectedVersion.version}</Badge>
-                  <Badge variant={selectedVersion.status === "published" ? "default" : "secondary"}>
-                    {selectedVersion.status}
-                  </Badge>
-                  {workspace?.default_division_grid_version_id === selectedVersion.id && (
-                    <Badge variant="secondary">Workspace Default</Badge>
-                  )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 md:grid-cols-4">
+              {[
+                ["1", "Draft", selectedVersion?.status === "draft"],
+                ["2", "Mappings reviewed", readinessQuery.data?.is_ready === true],
+                ["3", "Published", selectedVersion?.status === "published"],
+                ["4", "Active", workspace?.default_division_grid_version_id === selectedVersion?.id]
+              ].map(([number, label, complete]) => (
+                <div
+                  key={String(label)}
+                  className={`rounded-lg border p-3 ${complete ? "border-emerald-500/40 bg-emerald-500/5" : "bg-muted/20"}`}
+                >
+                  <div className="text-xs text-muted-foreground">Step {String(number)}</div>
+                  <div className="mt-1 flex items-center gap-2 font-medium">
+                    {complete && <Check className="h-4 w-4 text-emerald-500" />}
+                    {String(label)}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {selectedVersion?.status === "published" &&
+              readinessQuery.data &&
+              !readinessQuery.data.is_ready && (
+                <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
+                  Activation is blocked until mappings from source version ID(s){" "}
+                  {Array.from(
+                    new Set([
+                      ...readinessQuery.data.missing_mapping_version_ids,
+                      ...readinessQuery.data.incomplete_mapping_version_ids
+                    ])
+                  ).join(", ")}{" "}
+                  are complete.
                 </div>
               )}
-            </>
-          ) : (
-            <span className="text-sm text-muted-foreground">
-              Create a grid to start versioning.
-            </span>
-          )}
-        </CardContent>
-      </Card>
-
-      {canEdit && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Store className="h-4 w-4" />
-              Marketplace
-            </CardTitle>
-            <CardDescription>
-              Import full division grids from another workspace, including versions, mappings, and
-              tier icons.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {marketplaceWorkspaces.length === 0 ? (
-              <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                {marketplaceWorkspacesQuery.isLoading
-                  ? "Loading available workspaces..."
-                  : "No accessible workspace with division grids was found."}
-              </div>
-            ) : (
-              <>
-                <div className="flex flex-wrap items-center gap-3">
-                  <Select
-                    value={effectiveMarketplaceSourceWorkspaceId?.toString() ?? ""}
-                    onValueChange={(value) => {
-                      setMarketplaceSourceWorkspaceId(Number(value));
-                      setSelectedMarketplaceGridIds([]);
-                      setMarketplaceImportResult(null);
-                    }}
-                  >
-                    <SelectTrigger className="w-80">
-                      <SelectValue placeholder="Source workspace" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {marketplaceWorkspaces.map((sourceWorkspace) => (
-                        <SelectItem key={sourceWorkspace.id} value={sourceWorkspace.id.toString()}>
-                          {sourceWorkspace.name} ({sourceWorkspace.grids_count} grid
-                          {sourceWorkspace.grids_count === 1 ? "" : "s"})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <label className="flex items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={makeImportedDefault}
-                      onCheckedChange={(checked) => setMakeImportedDefault(checked === true)}
-                    />
-                    Set imported grid as workspace default
-                  </label>
-                </div>
-
-                {marketplaceGridsQuery.isLoading ? (
-                  <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                    Loading grids...
-                  </div>
-                ) : marketplaceGrids.length === 0 ? (
-                  <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                    This source workspace does not have division grids.
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {marketplaceGrids.map((grid) => {
-                      const checked = selectedMarketplaceGridIdsSet.has(grid.id);
-                      return (
-                        <div
-                          key={grid.id}
-                          className={`flex flex-wrap items-center gap-3 rounded-md border p-3 transition-colors ${
-                            checked ? "border-primary bg-primary/5" : "hover:bg-muted/40"
-                          }`}
-                        >
-                          <Checkbox
-                            checked={checked}
-                            onCheckedChange={(value) =>
-                              toggleMarketplaceGrid(grid.id, value === true)
-                            }
-                            aria-label={`Select ${grid.name}`}
-                          />
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-medium">{grid.name}</span>
-                              <Badge variant="outline">{grid.slug}</Badge>
-                            </div>
-                            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                              <span>{grid.versions_count} version(s)</span>
-                              <span>{grid.tiers_count} tier(s)</span>
-                              {grid.versions.slice(-2).map((version) => (
-                                <Badge key={version.id} variant="secondary" className="text-[10px]">
-                                  v{version.version} {version.status}
-                                </Badge>
-                              ))}
-                            </div>
-                          </div>
-                          {grid.preview_icon_urls.length > 0 && (
-                            <div className="flex max-w-56 flex-wrap justify-end gap-1">
-                              {grid.preview_icon_urls.slice(0, 8).map((iconUrl, index) => (
-                                <span
-                                  key={`${grid.id}-${iconUrl}-${index}`}
-                                  className="flex h-8 w-8 items-center justify-center rounded border bg-background"
-                                >
-                                  <Image
-                                    src={iconUrl}
-                                    alt=""
-                                    width={24}
-                                    height={24}
-                                    className="h-6 w-6 object-contain"
-                                  />
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                <div className="flex flex-wrap items-center gap-3">
-                  <Button
-                    onClick={() => importMarketplaceMutation.mutate()}
-                    disabled={
-                      importMarketplaceMutation.isPending ||
-                      selectedMarketplaceGridIds.length === 0 ||
-                      effectiveMarketplaceSourceWorkspaceId === null
-                    }
-                  >
-                    <Download className="mr-2 h-4 w-4" />
-                    Import Selected
-                  </Button>
-                  {selectedMarketplaceGridIds.length > 0 && (
-                    <span className="text-sm text-muted-foreground">
-                      {selectedMarketplaceGridIds.length} selected
-                    </span>
-                  )}
-                </div>
-
-                {marketplaceImportResult && (
-                  <div className="rounded-md border bg-muted/30 p-3 text-sm">
-                    <div className="font-medium">
-                      Imported {marketplaceImportResult.created_grids} grid(s),{" "}
-                      {marketplaceImportResult.created_versions} version(s),{" "}
-                      {marketplaceImportResult.copied_images} image(s).
-                    </div>
-                    {marketplaceImportResult.warnings.length > 0 && (
-                      <div className="mt-2 space-y-1 text-muted-foreground">
-                        {marketplaceImportResult.warnings.map((warning, index) => (
-                          <div key={`${warning.message}-${index}`}>{warning.message}</div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
           </CardContent>
         </Card>
       )}
 
-      {activeGrid && (
+      {selectedGrid && (
         <DivisionGridEditorCard
-          key={selectedVersion?.id ?? "default-grid-editor"}
+          key={selectedVersion?.id ?? `${selectedGrid.id}-new`}
           workspaceId={currentWorkspaceId}
-          gridId={activeGrid.id}
-          canEdit={canEdit}
+          gridId={selectedGrid.id}
+          canEdit={selectedVersion ? canUpdate && selectedVersion.status === "draft" : canCreate}
           selectedVersion={selectedVersion}
-          onSaved={async () => {
-            await queryClient.invalidateQueries({
-              queryKey: ["division-grids", currentWorkspaceId]
-            });
-          }}
+          onSaved={refreshGrids}
         />
       )}
 
       {versions.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Versions</CardTitle>
+            <CardTitle>Version history</CardTitle>
             <CardDescription>
-              Published and draft versions available in this workspace grid.
+              Stable published versions preserve historical tournament interpretation.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-2">
             {versions
               .slice()
-              .sort((a, b) => b.version - a.version)
+              .sort((left, right) => right.version - left.version)
               .map((version) => {
                 const isSelected = version.id === effectiveVersionId;
                 const isDefault = workspace?.default_division_grid_version_id === version.id;
-                const isDeleting =
-                  deleteVersionMutation.isPending && deleteVersionMutation.variables === version.id;
                 return (
                   <div
                     key={version.id}
-                    role="button"
-                    tabIndex={0}
-                    className={`flex w-full cursor-pointer items-center justify-between rounded-lg border p-3 text-left transition-colors ${
-                      isSelected
-                        ? "border-primary bg-primary/5 ring-1 ring-primary/20"
-                        : "hover:bg-muted/50"
-                    }`}
-                    onClick={() => setSelectedVersionId(version.id)}
-                    onKeyDown={(e) => e.key === "Enter" && setSelectedVersionId(version.id)}
+                    className={`flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3 ${isSelected ? "border-primary bg-primary/5" : ""}`}
                   >
-                    <div>
+                    <button
+                      type="button"
+                      className="min-w-0 flex-1 text-left"
+                      onClick={() => selectGrid(selectedGrid!.id, version.id)}
+                    >
                       <div className="flex items-center gap-2 font-medium">
                         {version.label}
                         {isSelected && <Check className="h-4 w-4 text-primary" />}
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        Version {version.version} • {version.tiers.length} tiers
+                        Version {version.version} · {version.tiers.length} tiers
                       </div>
-                    </div>
+                    </button>
                     <div className="flex items-center gap-2">
                       <Badge variant={version.status === "published" ? "default" : "secondary"}>
                         {version.status}
                       </Badge>
-                      {isDefault && <Badge variant="outline">Default</Badge>}
-                      {canEdit && (
+                      {isDefault && <Badge variant="outline">Active</Badge>}
+                      {canDelete && !isDefault && (
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                          disabled={isDeleting}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            deleteVersionMutation.mutate(version.id);
-                          }}
+                          aria-label={`Delete ${version.label}`}
+                          onClick={() => deleteVersionMutation.mutate(version.id)}
+                          disabled={deleteVersionMutation.isPending}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
@@ -1380,7 +1228,38 @@ export default function DivisionsAdminPage() {
         </Card>
       )}
 
-      {versions.length >= 2 && <DivisionGridMappingEditor versions={versions} canEdit={canEdit} />}
+      <MappingReadinessMatrix
+        workspaceId={currentWorkspaceId}
+        versions={allVersions}
+        onSelectVersion={(targetVersionId, sourceVersionId) => {
+          setReviewMappingPair({ sourceVersionId, targetVersionId });
+          const grid = grids.find((candidate) =>
+            candidate.versions.some((version) => version.id === targetVersionId)
+          );
+          if (grid) selectGrid(grid.id, targetVersionId);
+        }}
+      />
+
+      {mappingVersions.length >= 2 && (
+        <DivisionGridMappingEditor
+          key={`${reviewMappingPair.sourceVersionId ?? "source"}-${reviewMappingPair.targetVersionId ?? "target"}`}
+          versions={mappingVersions}
+          gridNames={mappingGridNames}
+          canEdit={canUpdate}
+          reviewSourceVersionId={reviewMappingPair.sourceVersionId}
+          reviewTargetVersionId={reviewMappingPair.targetVersionId}
+        />
+      )}
+
+      <DivisionGridImportWizard
+        workspaceId={currentWorkspaceId}
+        canImport={canImport}
+        onImported={async (job) => {
+          await refreshGrids();
+          const imported = job.result?.imported_grids[0];
+          if (imported) selectGrid(imported.target_grid_id);
+        }}
+      />
     </div>
   );
 }

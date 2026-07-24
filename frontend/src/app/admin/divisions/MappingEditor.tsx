@@ -100,14 +100,23 @@ function weightsOk(targets: TierTarget[]): boolean {
 
 type Props = {
   versions: DivisionGridVersion[];
+  gridNames?: Record<number, string>;
   canEdit: boolean;
+  reviewSourceVersionId?: number | null;
+  reviewTargetVersionId?: number | null;
 };
 
-export function DivisionGridMappingEditor({ versions, canEdit }: Props) {
+export function DivisionGridMappingEditor({
+  versions,
+  gridNames = {},
+  canEdit,
+  reviewSourceVersionId = null,
+  reviewTargetVersionId = null
+}: Props) {
   const queryClient = useQueryClient();
 
-  const [sourceVersionId, setSourceVersionId] = useState<number | null>(null);
-  const [targetVersionId, setTargetVersionId] = useState<number | null>(null);
+  const [sourceVersionId, setSourceVersionId] = useState<number | null>(reviewSourceVersionId);
+  const [targetVersionId, setTargetVersionId] = useState<number | null>(reviewTargetVersionId);
   const [mappingName, setMappingName] = useState("");
   const [rows, setRows] = useState<SourceRow[]>([]);
 
@@ -140,13 +149,14 @@ export function DivisionGridMappingEditor({ versions, canEdit }: Props) {
     if (!canLoad || mappingQuery.isPending) return;
     const mapping = mappingQuery.data ?? null;
     if (mapping === null) {
+      // Server state intentionally seeds an editable local draft.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMappingName(`${sourceVersion?.label ?? "Source"} → ${targetVersion?.label ?? "Target"}`);
       setRows(buildAutoRows(sourceTiers, targetTiers));
     } else {
       setMappingName(mapping.name);
       setRows(rulesToRows(mapping.rules, sourceTiers));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mappingQuery.data, mappingQuery.isPending, sourceVersionId, targetVersionId]);
 
   const saveMutation = useMutation({
@@ -246,7 +256,8 @@ export function DivisionGridMappingEditor({ versions, canEdit }: Props) {
                     value={v.id.toString()}
                     disabled={v.id === targetVersionId}
                   >
-                    v{v.version} — {v.label}
+                    {gridNames[v.grid_id] ? `${gridNames[v.grid_id]} · ` : ""}v{v.version} —{" "}
+                    {v.label}
                   </SelectItem>
                 ))}
             </SelectContent>
@@ -271,7 +282,8 @@ export function DivisionGridMappingEditor({ versions, canEdit }: Props) {
                     value={v.id.toString()}
                     disabled={v.id === sourceVersionId}
                   >
-                    v{v.version} — {v.label}
+                    {gridNames[v.grid_id] ? `${gridNames[v.grid_id]} · ` : ""}v{v.version} —{" "}
+                    {v.label}
                   </SelectItem>
                 ))}
             </SelectContent>

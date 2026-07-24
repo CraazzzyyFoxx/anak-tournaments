@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import UTC, datetime
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.services import division_grid_cache
+from shared.services.division_grid_access import get_workspace_source_version_ids
 from src import models, schemas
 
 
@@ -164,6 +166,39 @@ async def get_grid_by_id(session: AsyncSession, grid_id: int) -> models.Division
     return grid
 
 
+async def update_grid(
+    session: AsyncSession,
+    *,
+    grid_id: int,
+    data: schemas.DivisionGridUpdate,
+) -> models.DivisionGrid:
+    grid = await get_grid_by_id(session, grid_id)
+    if grid.workspace_id is None:
+        raise HTTPException(status_code=409, detail="System division grids cannot be modified")
+
+    changes = data.model_dump(exclude_unset=True)
+    archived = changes.pop("archived", None)
+    if archived is True:
+        active_version_id = await session.scalar(
+            sa.select(models.Workspace.default_division_grid_version_id).where(
+                models.Workspace.id == grid.workspace_id
+            )
+        )
+        if active_version_id in {version.id for version in grid.versions}:
+            raise HTTPException(
+                status_code=409,
+                detail="The workspace default division grid cannot be archived",
+            )
+        grid.archived_at = datetime.now(UTC)
+    elif archived is False:
+        grid.archived_at = None
+
+    for field, value in changes.items():
+        setattr(grid, field, value)
+    await session.flush()
+    return await get_grid_by_id(session, grid_id)
+
+
 async def get_versions(session: AsyncSession, workspace_id: int, grid_id: int) -> list[models.DivisionGridVersion]:
     await get_grid(session, workspace_id, grid_id)
     result = await session.execute(
@@ -279,28 +314,90 @@ async def update_version(
     data: schemas.DivisionGridVersionUpdate,
 ) -> models.DivisionGridVersion:
     version = await get_version(session, version_id)
+    if version.status == "published":
+        raise HTTPException(
+            status_code=409,
+            detail="Published division grid versions are immutable; create a draft instead",
+        )
+
     if data.label is not None:
         version.label = data.label
     if data.tiers is not None:
         _validate_version_payload(data.tiers)
-        await session.execute(
-            sa.delete(models.DivisionGridTier).where(models.DivisionGridTier.version_id == version_id)
-        )
-        for tier in data.tiers:
-            session.add(
-                models.DivisionGridTier(
-                    version_id=version_id,
-                    slug=tier.slug,
-                    number=tier.number,
-                    name=tier.name,
-                    sort_order=tier.sort_order,
-                    rank_min=tier.rank_min,
-                    rank_max=tier.rank_max,
-                    icon_url=tier.icon_url,
-                    ow_rank_min=tier.ow_rank_min,
-                    ow_rank_max=tier.ow_rank_max,
-                )
+        existing_by_id = {tier.id: tier for tier in version.tiers}
+        payload_ids = [tier.id for tier in data.tiers if tier.id is not None]
+        if len(payload_ids) != len(set(payload_ids)):
+            raise HTTPException(status_code=400, detail="Duplicate tier id in division grid payload")
+        unknown_ids = set(payload_ids) - set(existing_by_id)
+        if unknown_ids:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Tier ids do not belong to division grid version {version_id}: {sorted(unknown_ids)}",
             )
+
+        structural_fields = ("slug", "number", "rank_min", "rank_max")
+        structural_changed = False
+        removed_ids = set(existing_by_id) - set(payload_ids)
+        if removed_ids or len(payload_ids) != len(data.tiers):
+            structural_changed = True
+
+        reordered = any(
+            tier.id is not None
+            and existing_by_id[tier.id].sort_order != tier.sort_order
+            for tier in data.tiers
+        )
+        if reordered:
+            for existing in version.tiers:
+                existing.sort_order = -int(existing.id)
+            await session.flush()
+
+        for tier_data in data.tiers:
+            if tier_data.id is None:
+                session.add(
+                    models.DivisionGridTier(
+                        version_id=version_id,
+                        slug=tier_data.slug,
+                        number=tier_data.number,
+                        name=tier_data.name,
+                        sort_order=tier_data.sort_order,
+                        rank_min=tier_data.rank_min,
+                        rank_max=tier_data.rank_max,
+                        icon_url=tier_data.icon_url,
+                        ow_rank_min=tier_data.ow_rank_min,
+                        ow_rank_max=tier_data.ow_rank_max,
+                    )
+                )
+                continue
+
+            existing = existing_by_id[tier_data.id]
+            structural_changed = structural_changed or any(
+                getattr(existing, field) != getattr(tier_data, field) for field in structural_fields
+            )
+            existing.slug = tier_data.slug
+            existing.number = tier_data.number
+            existing.name = tier_data.name
+            existing.sort_order = tier_data.sort_order
+            existing.rank_min = tier_data.rank_min
+            existing.rank_max = tier_data.rank_max
+            existing.icon_url = tier_data.icon_url
+            existing.ow_rank_min = tier_data.ow_rank_min
+            existing.ow_rank_max = tier_data.ow_rank_max
+
+        for removed_id in removed_ids:
+            await session.delete(existing_by_id[removed_id])
+
+        if structural_changed:
+            await session.execute(
+                sa.update(models.DivisionGridMapping)
+                .where(
+                    sa.or_(
+                        models.DivisionGridMapping.source_version_id == version_id,
+                        models.DivisionGridMapping.target_version_id == version_id,
+                    )
+                )
+                .values(is_complete=False)
+            )
+
     await session.flush()
     updated = await get_version(session, version_id)
     await division_grid_cache.invalidate_grid_version(version_id)
@@ -378,6 +475,77 @@ async def get_mapping(
             models.DivisionGridMapping.target_version_id == target_version_id,
         )
     )
+
+
+async def get_activation_readiness(
+    session: AsyncSession,
+    *,
+    workspace_id: int,
+    target_version_id: int,
+) -> schemas.DivisionGridActivationReadiness:
+    target = await get_version(session, target_version_id)
+    if target.grid.workspace_id not in (None, workspace_id):
+        raise HTTPException(
+            status_code=400,
+            detail="Target division grid version does not belong to the workspace",
+        )
+
+    used_source_ids = await get_workspace_source_version_ids(session, workspace_id)
+    used_source_ids.add(target_version_id)
+    missing: list[int] = []
+    incomplete: list[int] = []
+    for source_version_id in sorted(used_source_ids):
+        if source_version_id == target_version_id:
+            continue
+        mapping = await get_mapping(session, source_version_id, target_version_id)
+        if mapping is None:
+            missing.append(source_version_id)
+        elif not mapping.is_complete:
+            incomplete.append(source_version_id)
+
+    return schemas.DivisionGridActivationReadiness(
+        target_version_id=target_version_id,
+        is_ready=not missing and not incomplete,
+        used_source_version_ids=sorted(used_source_ids),
+        missing_mapping_version_ids=missing,
+        incomplete_mapping_version_ids=incomplete,
+    )
+
+
+async def activate_version(
+    session: AsyncSession,
+    *,
+    workspace: models.Workspace,
+    version_id: int,
+) -> models.DivisionGridVersion:
+    version = await get_version(session, version_id)
+    if version.grid.workspace_id not in (None, workspace.id):
+        raise HTTPException(
+            status_code=400,
+            detail="Division grid version does not belong to the workspace",
+        )
+    if version.status != "published":
+        raise HTTPException(status_code=409, detail="Only published division grid versions can be activated")
+
+    readiness = await get_activation_readiness(
+        session,
+        workspace_id=workspace.id,
+        target_version_id=version_id,
+    )
+    if not readiness.is_ready:
+        blocked = sorted(
+            set(readiness.missing_mapping_version_ids)
+            | set(readiness.incomplete_mapping_version_ids)
+        )
+        raise HTTPException(
+            status_code=409,
+            detail=f"Division grid mappings are not ready for source versions: {blocked}",
+        )
+
+    workspace.default_division_grid_version_id = version_id
+    await session.flush()
+    await division_grid_cache.invalidate_workspace(workspace.id)
+    return version
 
 
 async def upsert_mapping(

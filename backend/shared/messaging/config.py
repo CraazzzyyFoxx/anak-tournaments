@@ -162,6 +162,21 @@ TOURNAMENT_STANDINGS_JOBS_DLQ = RabbitQueue(
     durable=True,
 )
 
+DIVISION_GRID_IMPORT_JOBS_QUEUE = RabbitQueue(
+    "division_grid_import_jobs",
+    durable=True,
+    routing_key="tournament.compute.division-grid-import",
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "division_grid_import_jobs.dlq",
+    },
+)
+
+DIVISION_GRID_IMPORT_JOBS_DLQ = RabbitQueue(
+    "division_grid_import_jobs.dlq",
+    durable=True,
+)
+
 TOURNAMENT_CHANGED_EXCHANGE = RabbitExchange(
     "tournament.changed",
     type=ExchangeType.TOPIC,

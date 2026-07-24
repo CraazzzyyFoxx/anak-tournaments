@@ -130,6 +130,11 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.stage_seed": Op(request=admin_stage.SeedTeamsRequest, response=schemas.StageRead),
     # ── integrations: division grids ───────────────────────────────────────
     "rpc.tournament.grid_workspace_create": Op(request=schemas.DivisionGridCreate, response=schemas.DivisionGridRead),
+    "rpc.tournament.grid_update": Op(request=schemas.DivisionGridUpdate, response=schemas.DivisionGridRead),
+    "rpc.tournament.grid_portable_export": Op(response=schemas.DivisionGridPortableDocument),
+    "rpc.tournament.grid_portable_import": Op(
+        request=schemas.DivisionGridPortableImportRequest, response=schemas.DivisionGridRead
+    ),
     "rpc.tournament.grid_version_get": Op(response=schemas.DivisionGridVersionRead),
     "rpc.tournament.grid_version_create": Op(
         request=schemas.DivisionGridVersionCreate, response=schemas.DivisionGridVersionRead
@@ -138,12 +143,24 @@ OPERATIONS: dict[str, Op] = {
         request=schemas.DivisionGridVersionUpdate, response=schemas.DivisionGridVersionRead
     ),
     "rpc.tournament.grid_version_publish": Op(response=schemas.DivisionGridVersionRead),
+    "rpc.tournament.grid_version_readiness": Op(response=schemas.DivisionGridActivationReadiness),
+    "rpc.tournament.grid_version_activate": Op(response=schemas.DivisionGridVersionRead),
     "rpc.tournament.grid_version_clone": Op(response=schemas.DivisionGridVersionRead),
     "rpc.tournament.grid_mapping_put": Op(
         request=schemas.DivisionGridMappingWrite, response=schemas.DivisionGridMappingRead
     ),
+    "rpc.tournament.grid_marketplace_preflight": Op(
+        request=schemas.DivisionGridMarketplaceImportRequest,
+        response=schemas.DivisionGridMarketplacePreflightResult,
+    ),
     "rpc.tournament.grid_marketplace_import": Op(
-        request=schemas.DivisionGridMarketplaceImportRequest, response=schemas.DivisionGridMarketplaceImportResult
+        request=schemas.DivisionGridMarketplaceImportRequest, response=schemas.DivisionGridImportJobRead
+    ),
+    "rpc.tournament.grid_import_job_get": Op(response=schemas.DivisionGridImportJobRead),
+    "rpc.tournament.grid_import_jobs_list": Op(
+        response=schemas.DivisionGridImportJobRead,
+        response_array=True,
+        query_params=(_WS, QueryParam("active_only", "boolean"), QueryParam("limit", "integer")),
     ),
     # ── integrations: Challonge fetch (reads) ──────────────────────────────
     "rpc.tournament.challonge_fetch_tournament": Op(response=schemas.ChallongeTournament),

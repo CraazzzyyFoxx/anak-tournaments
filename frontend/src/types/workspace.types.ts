@@ -33,6 +33,12 @@ export interface DivisionGridEntity {
   name: string;
   description: string | null;
   versions: DivisionGridVersion[];
+  source_workspace_id: number | null;
+  source_grid_id: number | null;
+  source_key: string | null;
+  source_fingerprint: string | null;
+  imported_at: string | null;
+  archived_at: string | null;
 }
 
 export interface DivisionGridMappingRule {
@@ -84,7 +90,7 @@ export interface DivisionGridMarketplaceGrid {
 export interface DivisionGridMarketplaceImportRequest {
   source_workspace_id: number;
   source_grid_ids: number[];
-  set_default?: boolean;
+  mode?: "library" | "sync" | "copy";
 }
 
 export interface DivisionGridMarketplaceImportedGrid {
@@ -109,6 +115,70 @@ export interface DivisionGridMarketplaceImportResult {
   copied_mappings: number;
   imported_grids: DivisionGridMarketplaceImportedGrid[];
   warnings: DivisionGridMarketplaceImportWarning[];
+}
+
+export interface DivisionGridMarketplacePreflightResult {
+  source_workspace_id: number;
+  grids_count: number;
+  versions_count: number;
+  tiers_count: number;
+  mappings_count: number;
+  assets_to_copy: number;
+  assets_to_reuse: number;
+  external_assets: number;
+  conflicts: string[];
+  warnings: DivisionGridMarketplaceImportWarning[];
+  source_fingerprint: string;
+}
+
+export interface DivisionGridImportJob {
+  id: number;
+  workspace_id: number;
+  requested_by_user_id: number | null;
+  source_workspace_id: number | null;
+  status: "pending" | "running" | "completed" | "failed";
+  progress: number;
+  result: DivisionGridMarketplaceImportResult | null;
+  error: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface DivisionGridActivationReadiness {
+  target_version_id: number;
+  is_ready: boolean;
+  used_source_version_ids: number[];
+  missing_mapping_version_ids: number[];
+  incomplete_mapping_version_ids: number[];
+}
+
+export interface DivisionGridPortableMappingRule {
+  source_tier_slug: string;
+  target_tier_slug: string;
+  weight: number;
+  is_primary: boolean;
+}
+
+export interface DivisionGridPortableMapping {
+  source_version: number;
+  target_version: number;
+  name: string;
+  rules: DivisionGridPortableMappingRule[];
+}
+
+export interface DivisionGridPortableDocument {
+  schema_version: "division-grid/v1";
+  slug: string;
+  name: string;
+  description: string | null;
+  versions: Array<{
+    version: number;
+    label: string;
+    status: "draft" | "published";
+    tiers: DivisionTier[];
+  }>;
+  mappings: DivisionGridPortableMapping[];
 }
 
 export interface Workspace {

@@ -295,6 +295,18 @@ DOCS: dict[str, dict] = {
         "summary": "Create division grid",
         "description": "Creates a division grid in a workspace; requires division_grid-create permission and an authenticated user.",
     },
+    "rpc.tournament.grid_update": {
+        "summary": "Update division grid metadata",
+        "description": "Renames, archives, or restores a workspace-owned division grid; requires division_grid-update permission.",
+    },
+    "rpc.tournament.grid_portable_export": {
+        "summary": "Export a portable division grid",
+        "description": "Exports every version and slug-based mapping as a portable division-grid/v1 document.",
+    },
+    "rpc.tournament.grid_portable_import": {
+        "summary": "Import a portable division grid",
+        "description": "Imports a validated division-grid/v1 document in library, sync, or copy mode.",
+    },
     "rpc.tournament.grid_marketplace_workspaces": {
         "summary": "List marketplace source workspaces",
         "description": "Lists workspaces whose division grids can be imported into the target workspace; requires division_grid-read permission.",
@@ -303,9 +315,21 @@ DOCS: dict[str, dict] = {
         "summary": "List marketplace grids",
         "description": "Lists importable division grids from a source workspace; requires division_grid-read on the target and access to the source workspace.",
     },
+    "rpc.tournament.grid_marketplace_preflight": {
+        "summary": "Preflight marketplace grid import",
+        "description": "Reports conflicts, asset policy, operation counts, and a stable source fingerprint without writing data.",
+    },
     "rpc.tournament.grid_marketplace_import": {
-        "summary": "Import marketplace grids",
-        "description": "Imports selected division grids from a source workspace (copying assets via S3, 201 Created); requires division_grid-import permission on the target workspace.",
+        "summary": "Queue marketplace grid import",
+        "description": "Creates or reuses an idempotent background import job (202 Accepted); requires division_grid-import permission.",
+    },
+    "rpc.tournament.grid_import_job_get": {
+        "summary": "Get division grid import job",
+        "description": "Returns durable progress, result, and failure details for one workspace import job.",
+    },
+    "rpc.tournament.grid_import_jobs_list": {
+        "summary": "List division grid import jobs",
+        "description": "Lists recent workspace import jobs, optionally restricted to pending and running jobs.",
     },
     "rpc.tournament.grid_versions_list": {
         "summary": "List grid versions",
@@ -330,6 +354,14 @@ DOCS: dict[str, dict] = {
     "rpc.tournament.grid_version_publish": {
         "summary": "Publish grid version",
         "description": "Publishes a division grid version; requires division_grid-publish permission on the grid's workspace.",
+    },
+    "rpc.tournament.grid_version_readiness": {
+        "summary": "Check grid activation readiness",
+        "description": "Checks that mappings from every version used by workspace tournaments to the target version are complete.",
+    },
+    "rpc.tournament.grid_version_activate": {
+        "summary": "Activate a published grid version",
+        "description": "Atomically checks mapping readiness and assigns the published version as the workspace default.",
     },
     "rpc.tournament.grid_version_clone": {
         "summary": "Clone grid version",

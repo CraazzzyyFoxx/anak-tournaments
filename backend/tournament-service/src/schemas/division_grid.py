@@ -1,6 +1,7 @@
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from src.schemas.base import BaseRead
 
@@ -11,6 +12,7 @@ __all__ = (
     "DivisionGridRead",
     "DivisionGridCreate",
     "DivisionGridVersionCreate",
+    "DivisionGridUpdate",
     "DivisionGridVersionUpdate",
     "DivisionGridMappingRuleRead",
     "DivisionGridMappingRuleWrite",
@@ -20,9 +22,17 @@ __all__ = (
     "DivisionGridMarketplaceVersionRead",
     "DivisionGridMarketplaceGridRead",
     "DivisionGridMarketplaceImportRequest",
+    "DivisionGridMarketplacePreflightResult",
     "DivisionGridMarketplaceImportedGrid",
     "DivisionGridMarketplaceImportWarning",
     "DivisionGridMarketplaceImportResult",
+    "DivisionGridImportJobRead",
+    "DivisionGridActivationReadiness",
+    "DivisionGridPortableVersion",
+    "DivisionGridPortableMappingRule",
+    "DivisionGridPortableMapping",
+    "DivisionGridPortableDocument",
+    "DivisionGridPortableImportRequest",
 )
 
 
@@ -54,6 +64,12 @@ class DivisionGridRead(BaseRead):
     slug: str
     name: str
     description: str | None
+    source_workspace_id: int | None = None
+    source_grid_id: int | None = None
+    source_key: str | None = None
+    source_fingerprint: str | None = None
+    imported_at: datetime | None = None
+    archived_at: datetime | None = None
     versions: list[DivisionGridVersionRead] = Field(default_factory=list)
 
 
@@ -61,6 +77,12 @@ class DivisionGridCreate(BaseModel):
     slug: str = Field(..., min_length=1, max_length=128)
     name: str = Field(..., min_length=1, max_length=255)
     description: str | None = None
+
+
+class DivisionGridUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = None
+    archived: bool | None = None
 
 
 class DivisionGridVersionCreate(BaseModel):
@@ -74,6 +96,7 @@ class DivisionGridVersionUpdate(BaseModel):
 
 
 class DivisionGridTierWrite(BaseModel):
+    id: int | None = None
     slug: str = Field(..., min_length=1, max_length=128)
     number: int
     name: str = Field(..., min_length=1, max_length=255)
@@ -151,9 +174,25 @@ class DivisionGridMarketplaceGridRead(BaseModel):
 
 
 class DivisionGridMarketplaceImportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     source_workspace_id: int
     source_grid_ids: list[int] = Field(..., min_length=1)
-    set_default: bool = False
+    mode: Literal["library", "sync", "copy"] = "library"
+
+
+class DivisionGridMarketplacePreflightResult(BaseModel):
+    source_workspace_id: int
+    grids_count: int
+    versions_count: int
+    tiers_count: int
+    mappings_count: int
+    assets_to_copy: int
+    assets_to_reuse: int
+    external_assets: int
+    conflicts: list[str] = Field(default_factory=list)
+    warnings: list["DivisionGridMarketplaceImportWarning"] = Field(default_factory=list)
+    source_fingerprint: str
 
 
 class DivisionGridMarketplaceImportedGrid(BaseModel):
@@ -180,5 +219,67 @@ class DivisionGridMarketplaceImportResult(BaseModel):
     warnings: list[DivisionGridMarketplaceImportWarning] = Field(default_factory=list)
 
 
+class DivisionGridImportJobRead(BaseModel):
+    id: int
+    workspace_id: int
+    source_workspace_id: int | None
+    requested_by_user_id: int | None = None
+    status: Literal["pending", "running", "completed", "failed"]
+    progress: int = Field(..., ge=0, le=100)
+    result: DivisionGridMarketplaceImportResult | None = None
+    error: str | None = None
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+
+
+class DivisionGridActivationReadiness(BaseModel):
+    target_version_id: int
+    is_ready: bool
+    used_source_version_ids: list[int] = Field(default_factory=list)
+    missing_mapping_version_ids: list[int] = Field(default_factory=list)
+    incomplete_mapping_version_ids: list[int] = Field(default_factory=list)
+
+
+class DivisionGridPortableVersion(BaseModel):
+    version: int
+    label: str
+    status: Literal["draft", "published"]
+    tiers: list[DivisionGridTierWrite] = Field(..., min_length=1)
+
+
+class DivisionGridPortableMappingRule(BaseModel):
+    source_tier_slug: str
+    target_tier_slug: str
+    weight: float = Field(..., gt=0)
+    is_primary: bool = False
+
+
+class DivisionGridPortableMapping(BaseModel):
+    source_version: int
+    target_version: int
+    name: str
+    rules: list[DivisionGridPortableMappingRule] = Field(default_factory=list)
+
+
+class DivisionGridPortableDocument(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["division-grid/v1"] = "division-grid/v1"
+    slug: str = Field(..., min_length=1, max_length=128)
+    name: str = Field(..., min_length=1, max_length=255)
+    description: str | None = None
+    versions: list[DivisionGridPortableVersion] = Field(..., min_length=1)
+    mappings: list[DivisionGridPortableMapping] = Field(default_factory=list)
+
+
+class DivisionGridPortableImportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document: DivisionGridPortableDocument
+    mode: Literal["library", "sync", "copy"] = "library"
+
+
 DivisionGridVersionCreate.model_rebuild()
 DivisionGridVersionUpdate.model_rebuild()
+DivisionGridMarketplacePreflightResult.model_rebuild()

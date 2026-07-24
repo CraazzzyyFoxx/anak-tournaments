@@ -40,39 +40,31 @@ class WorkspaceServiceTests(IsolatedAsyncioTestCase):
         session.add.assert_called_once_with(workspace)
         session.flush.assert_awaited_once()
 
-    async def test_update_uses_system_default_division_grid_version_when_none_is_provided(self) -> None:
+    async def test_update_rejects_default_version_changes_outside_activation_flow(self) -> None:
         session = SimpleNamespace(flush=AsyncMock())
-        workspace = SimpleNamespace(
-            id=4,
-            default_division_grid_version_id=12,
-            name="Homies Family",
-            description=None,
-            icon_url=None,
-        )
+        workspace = SimpleNamespace(id=4, default_division_grid_version_id=12)
 
-        with (
-            patch.object(
-                workspace_service,
-                "get_default_division_grid_version_id",
-                AsyncMock(return_value=77),
-            ) as get_default_version_id,
-            patch.object(
-                workspace_service.division_grid_cache,
-                "invalidate_workspace",
-                AsyncMock(),
-            ) as invalidate_workspace,
-        ):
-            result = await workspace_service.update(
+        with self.assertRaises(Exception) as caught:
+            await workspace_service.update(
                 session,
                 workspace,
-                {"default_division_grid_version_id": None},
+                {"default_division_grid_version_id": 77},
             )
 
-        self.assertIs(result, workspace)
-        self.assertEqual(77, workspace.default_division_grid_version_id)
-        get_default_version_id.assert_awaited_once_with(session)
-        invalidate_workspace.assert_awaited_once_with(4)
-        session.flush.assert_awaited_once()
+        self.assertEqual(400, getattr(caught.exception, "status_code", None))
+        session.flush.assert_not_awaited()
+
+    async def test_update_rejects_default_version_owned_by_another_workspace(self) -> None:
+        session = SimpleNamespace(scalar=AsyncMock(return_value=9))
+
+        with self.assertRaises(Exception) as caught:
+            await workspace_service.validate_default_division_grid_version(
+                session,
+                workspace_id=4,
+                version_id=55,
+            )
+
+        self.assertEqual(400, getattr(caught.exception, "status_code", None))
 
     async def test_update_member_roles_refreshes_member_after_flush(self) -> None:
         # Regression: ``updated_at`` (onupdate=func.now()) is server-computed and

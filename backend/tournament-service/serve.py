@@ -4,6 +4,8 @@ from faststream.rabbit import Channel
 from faststream.rabbit.annotations import RabbitMessage
 
 from shared.messaging.config import (
+    DIVISION_GRID_IMPORT_JOBS_DLQ,
+    DIVISION_GRID_IMPORT_JOBS_QUEUE,
     TOURNAMENT_BRACKET_JOBS_DLQ,
     TOURNAMENT_BRACKET_JOBS_QUEUE,
     TOURNAMENT_COMPUTE_EXCHANGE,
@@ -30,6 +32,7 @@ from src.services.admin import registry as admin_registry
 from src.services.challonge import sync as challonge_sync
 from src.services.computation.bracket_worker import process_bracket_job
 from src.services.computation.standings_worker import process_standings_job
+from src.services.division_grid.import_jobs import process_import_job, recover_stale_import_jobs
 
 # Import for side effects: registers the SQLAlchemy after-commit listeners that
 # publish encounter map-veto realtime signals (encounter:{id}:map-veto).
@@ -109,6 +112,7 @@ async def start_worker() -> None:
     await broker.connect()
     await declare_dead_letter_queue(broker, TOURNAMENT_BRACKET_JOBS_DLQ)
     await declare_dead_letter_queue(broker, TOURNAMENT_STANDINGS_JOBS_DLQ)
+    await declare_dead_letter_queue(broker, DIVISION_GRID_IMPORT_JOBS_DLQ)
     setup_sentry(
         dsn=config.settings.sentry_dsn,
         traces_sample_rate=config.settings.sentry_traces_sample_rate,
@@ -130,6 +134,13 @@ async def start_worker() -> None:
         sampler_arg=config.settings.otel_traces_sampler_arg,
     )
     start_worker_metrics_server(config.settings.worker_metrics_port)
+    await recover_stale_import_jobs()
+    scheduler.add_job(
+        recover_stale_import_jobs,
+        "interval",
+        minutes=5,
+        id="division_grid_import_recovery",
+    )
     scheduler.add_job(drain_outbox, "interval", seconds=1, id="event_outbox_drain")
     scheduler.add_job(
         sync_registration_google_sheet_feeds,
@@ -185,3 +196,18 @@ async def consume_standings_job(data: dict, msg: RabbitMessage) -> None:
     ):
         event = TournamentComputationJobEvent.model_validate(data)
         await process_standings_job(event.job_id)
+
+
+@broker.subscriber(
+    DIVISION_GRID_IMPORT_JOBS_QUEUE,
+    exchange=TOURNAMENT_COMPUTE_EXCHANGE,
+    channel=_JOBS_CHANNEL,
+)
+async def consume_division_grid_import_job(data: dict, msg: RabbitMessage) -> None:
+    async with observe_message_processing(
+        queue=DIVISION_GRID_IMPORT_JOBS_QUEUE,
+        handler="consume_division_grid_import_job",
+        message=msg,
+        logger=logger,
+    ):
+        await process_import_job(int(data["job_id"]))
