@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import sqlalchemy as sa
@@ -11,6 +12,7 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.services import division_grid_cache
 from shared.services.division_grid_access import get_workspace_source_version_ids
 from src import models, schemas
+from src.services.division_grid import automap
 
 
 def _validate_version_payload(tiers: list[schemas.DivisionGridTierWrite]) -> None:
@@ -34,6 +36,35 @@ def _validate_version_payload(tiers: list[schemas.DivisionGridTierWrite]) -> Non
 
     if open_ended_count > 1:
         raise HTTPException(status_code=400, detail="Only one tier may have an open-ended rank_max")
+
+
+# Fields that do NOT affect runtime normalization (which keys on tier id + rank
+# range). Editing only these on the active version is applied in place; anything
+# else is "structural" and spawns a new version + remapping.
+_STRUCTURAL_TIER_FIELDS = ("rank_min", "rank_max")
+
+
+def _classify_tier_change(
+    active_tiers: list,
+    payload_tiers: list[schemas.DivisionGridTierWrite],
+) -> str:
+    """Return "cosmetic" or "structural" for a desired tier set vs the active one."""
+    payload_ids = [tier.id for tier in payload_tiers]
+    if any(tier_id is None for tier_id in payload_ids):
+        return "structural"
+
+    active_by_id = {tier.id: tier for tier in active_tiers}
+    if set(payload_ids) != set(active_by_id):
+        return "structural"
+
+    for payload_tier in payload_tiers:
+        active_tier = active_by_id[payload_tier.id]
+        if any(
+            getattr(active_tier, field) != getattr(payload_tier, field)
+            for field in _STRUCTURAL_TIER_FIELDS
+        ):
+            return "structural"
+    return "cosmetic"
 
 
 async def get_workspace_grids(session: AsyncSession, workspace_id: int) -> list[models.DivisionGrid]:
@@ -434,18 +465,29 @@ async def clone_version(
     return cloned
 
 
-def _validate_mapping(source_tier_ids: set[int], rules: list[schemas.DivisionGridMappingRuleWrite]) -> bool:
+def _validate_mapping(
+    source_tier_ids: set[int],
+    rules: list[schemas.DivisionGridMappingRuleWrite],
+    *,
+    require_full_coverage: bool = True,
+) -> bool:
+    """Validate mapping rules; return whether the mapping is complete.
+
+    With ``require_full_coverage`` (the default, used by the public upsert), a
+    partial mapping raises 400. Auto-mapping passes ``False`` so it can persist
+    an incomplete mapping (``is_complete=False``) with the resolvable rules,
+    leaving the conflict tiers for the resolver.
+    """
     if not rules:
-        return False
+        return not source_tier_ids
 
     by_source: dict[int, list[schemas.DivisionGridMappingRuleWrite]] = defaultdict(list)
     for rule in rules:
         by_source[rule.source_tier_id].append(rule)
 
-    if set(by_source.keys()) != source_tier_ids:
-        missing = source_tier_ids - set(by_source.keys())
-        if missing:
-            raise HTTPException(status_code=400, detail=f"Missing mapping rules for source tiers: {sorted(missing)}")
+    missing = source_tier_ids - set(by_source.keys())
+    if missing and require_full_coverage:
+        raise HTTPException(status_code=400, detail=f"Missing mapping rules for source tiers: {sorted(missing)}")
 
     for source_tier_id, tier_rules in by_source.items():
         total_weight = round(sum(rule.weight for rule in tier_rules), 6)
@@ -459,7 +501,7 @@ def _validate_mapping(source_tier_ids: set[int], rules: list[schemas.DivisionGri
                 status_code=400,
                 detail=f"Multi-target mapping for source tier {source_tier_id} requires a primary rule",
             )
-    return True
+    return not missing
 
 
 async def get_mapping(
@@ -494,14 +536,59 @@ async def get_activation_readiness(
     used_source_ids.add(target_version_id)
     missing: list[int] = []
     incomplete: list[int] = []
+    sources: list[schemas.DivisionGridReadinessSource] = []
     for source_version_id in sorted(used_source_ids):
         if source_version_id == target_version_id:
             continue
+        source_version = await get_version(session, source_version_id)
         mapping = await get_mapping(session, source_version_id, target_version_id)
+        covered = {rule.source_tier_id for rule in mapping.rules} if mapping is not None else set()
         if mapping is None:
+            status = "missing"
             missing.append(source_version_id)
         elif not mapping.is_complete:
+            status = "incomplete"
             incomplete.append(source_version_id)
+        else:
+            status = "ok"
+        conflict_tiers = (
+            []
+            if status == "ok"
+            else [
+                schemas.DivisionGridReadinessConflictTier(
+                    source_tier_id=tier.id, slug=tier.slug, name=tier.name
+                )
+                for tier in source_version.tiers
+                if tier.id not in covered
+            ]
+        )
+        tournament_count = int(
+            await session.scalar(
+                sa.select(sa.func.count())
+                .select_from(models.Tournament)
+                .where(models.Tournament.division_grid_version_id == source_version_id)
+            )
+            or 0
+        )
+        tournament_names = list(
+            await session.scalars(
+                sa.select(models.Tournament.name)
+                .where(models.Tournament.division_grid_version_id == source_version_id)
+                .order_by(models.Tournament.id.desc())
+                .limit(5)
+            )
+        )
+        sources.append(
+            schemas.DivisionGridReadinessSource(
+                version_id=source_version_id,
+                version_label=source_version.label,
+                grid_name=source_version.grid.name,
+                tournament_count=tournament_count,
+                tournament_names=tournament_names,
+                status=status,
+                conflict_tiers=conflict_tiers,
+            )
+        )
 
     return schemas.DivisionGridActivationReadiness(
         target_version_id=target_version_id,
@@ -509,6 +596,7 @@ async def get_activation_readiness(
         used_source_version_ids=sorted(used_source_ids),
         missing_mapping_version_ids=missing,
         incomplete_mapping_version_ids=incomplete,
+        sources=sources,
     )
 
 
@@ -572,18 +660,40 @@ async def upsert_mapping(
         raise HTTPException(status_code=400, detail="Mapping contains target tiers outside the target version")
 
     is_complete = _validate_mapping(source_tier_ids, data.rules)
+    return await _persist_mapping(
+        session,
+        source_version_id=source_version_id,
+        target_version_id=target_version_id,
+        name=data.name,
+        rules=data.rules,
+        is_complete=is_complete,
+    )
+
+
+async def _persist_mapping(
+    session: AsyncSession,
+    *,
+    source_version_id: int,
+    target_version_id: int,
+    name: str,
+    rules: list[schemas.DivisionGridMappingRuleWrite],
+    is_complete: bool,
+) -> models.DivisionGridMapping:
+    """Write a mapping row + rules (replacing any existing rules), WITHOUT the
+    full-coverage check — callers decide ``is_complete``. Used by both the
+    validated public upsert and the auto-mapper (which may store partials)."""
     mapping = await get_mapping(session, source_version_id, target_version_id)
     if mapping is None:
         mapping = models.DivisionGridMapping(
             source_version_id=source_version_id,
             target_version_id=target_version_id,
-            name=data.name,
+            name=name,
             is_complete=is_complete,
         )
         session.add(mapping)
         await session.flush()
     else:
-        mapping.name = data.name
+        mapping.name = name
         mapping.is_complete = is_complete
         await session.execute(
             sa.delete(models.DivisionGridMappingRule).where(models.DivisionGridMappingRule.mapping_id == mapping.id)
@@ -599,7 +709,7 @@ async def upsert_mapping(
                 weight=rule.weight,
                 is_primary=rule.is_primary,
             )
-            for rule in data.rules
+            for rule in rules
         ]
     )
     await session.flush()
@@ -608,3 +718,139 @@ async def upsert_mapping(
         raise HTTPException(status_code=500, detail="Failed to persist division grid mapping")
     await division_grid_cache.invalidate_mapping(source_version_id, target_version_id)
     return refreshed
+
+@dataclass
+class SaveOutcome:
+    mode: str  # "in_place" | "new_version_activated" | "new_version_pending"
+    grid: models.DivisionGrid
+    active_version_id: int | None
+    saved_version_id: int
+    readiness: schemas.DivisionGridActivationReadiness
+
+
+async def _resolve_workspace_grid(
+    session: AsyncSession, workspace: models.Workspace
+) -> models.DivisionGrid:
+    """The single managed grid for a workspace: the one holding the active
+    version, else the newest non-archived, else a freshly seeded grid."""
+    grids = await get_workspace_grids(session, workspace.id)
+    default_id = workspace.default_division_grid_version_id
+    if default_id is not None:
+        for grid in grids:
+            if any(version.id == default_id for version in grid.versions):
+                return grid
+    live = [grid for grid in grids if grid.archived_at is None]
+    if live:
+        return max(live, key=lambda grid: grid.id)
+    if grids:
+        return max(grids, key=lambda grid: grid.id)
+    return await create_grid(
+        session, workspace.id, schemas.DivisionGridCreate(slug="default", name="Division Grid")
+    )
+
+
+def _pick_active_version(
+    grid: models.DivisionGrid, workspace: models.Workspace
+) -> models.DivisionGridVersion | None:
+    default_id = workspace.default_division_grid_version_id
+    versions = list(grid.versions)
+    for version in versions:
+        if version.id == default_id:
+            return version
+    return max(versions, key=lambda version: version.version, default=None)
+
+
+async def _apply_cosmetic(
+    session: AsyncSession,
+    version: models.DivisionGridVersion,
+    payload_tiers: list[schemas.DivisionGridTierWrite],
+) -> None:
+    """Apply cosmetic-only tier edits in place (no rank/count changes)."""
+    by_id = {tier.id: tier for tier in version.tiers}
+    if any(by_id[p.id].sort_order != p.sort_order for p in payload_tiers):
+        # Park sort_order in a non-colliding range before reassigning to avoid
+        # transient (version_id, sort_order) unique violations.
+        for tier in version.tiers:
+            tier.sort_order = -int(tier.id)
+        await session.flush()
+    for payload_tier in payload_tiers:
+        tier = by_id[payload_tier.id]
+        tier.slug = payload_tier.slug
+        tier.number = payload_tier.number
+        tier.name = payload_tier.name
+        tier.sort_order = payload_tier.sort_order
+        tier.icon_url = payload_tier.icon_url
+        tier.ow_rank_min = payload_tier.ow_rank_min
+        tier.ow_rank_max = payload_tier.ow_rank_max
+    await session.flush()
+    await division_grid_cache.invalidate_grid_version(version.id)
+
+
+async def save_workspace_grid(
+    session: AsyncSession,
+    *,
+    workspace: models.Workspace,
+    data: schemas.DivisionGridSaveRequest,
+) -> SaveOutcome:
+    """Server-authoritative grid save: classify the edit, then either apply it
+    in place (cosmetic) or spawn a new version, auto-generate mappings from every
+    used source version, and auto-activate when the mappings are complete."""
+    grid = await _resolve_workspace_grid(session, workspace)
+    active = _pick_active_version(grid, workspace)
+    change = "structural" if active is None else _classify_tier_change(active.tiers, data.tiers)
+
+    if change == "cosmetic" and active is not None:
+        await _apply_cosmetic(session, active, data.tiers)
+        saved_version_id = active.id
+        mode = "in_place"
+    else:
+        label = data.name or grid.name or f"Version {len(grid.versions) + 1}"
+        new_version = await create_version(
+            session,
+            workspace.id,
+            grid.id,
+            schemas.DivisionGridVersionCreate(label=label, tiers=data.tiers),
+        )
+        await publish_version(session, new_version.id)
+
+        source_ids = await get_workspace_source_version_ids(session, workspace.id)
+        if active is not None:
+            source_ids.add(active.id)
+        source_ids.discard(new_version.id)
+        for source_version_id in sorted(source_ids):
+            source_version = await get_version(session, source_version_id)
+            generation = automap.generate_mapping_rules(source_version.tiers, new_version.tiers)
+            await _persist_mapping(
+                session,
+                source_version_id=source_version_id,
+                target_version_id=new_version.id,
+                name=f"Auto: {source_version.label} \u2192 {new_version.label}",
+                rules=generation.rules,
+                is_complete=generation.is_complete,
+            )
+
+        readiness = await get_activation_readiness(
+            session, workspace_id=workspace.id, target_version_id=new_version.id
+        )
+        if readiness.is_ready:
+            await activate_version(session, workspace=workspace, version_id=new_version.id)
+            mode = "new_version_activated"
+        else:
+            mode = "new_version_pending"
+        saved_version_id = new_version.id
+
+    if data.name and grid.name != data.name:
+        grid.name = data.name
+    await session.flush()
+
+    grid = await get_grid_by_id(session, grid.id)
+    readiness = await get_activation_readiness(
+        session, workspace_id=workspace.id, target_version_id=saved_version_id
+    )
+    return SaveOutcome(
+        mode=mode,
+        grid=grid,
+        active_version_id=workspace.default_division_grid_version_id,
+        saved_version_id=saved_version_id,
+        readiness=readiness,
+    )

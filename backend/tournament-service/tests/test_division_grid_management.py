@@ -260,9 +260,25 @@ def test_activation_readiness_requires_complete_mappings_from_used_versions() ->
             status="published",
             grid=SimpleNamespace(workspace_id=4),
         )
-        incomplete = SimpleNamespace(is_complete=False)
+        src10 = SimpleNamespace(
+            id=10, label="v10", grid=SimpleNamespace(name="Ladder"),
+            tiers=[SimpleNamespace(id=101, slug="a", name="A")],
+        )
+        src20 = SimpleNamespace(
+            id=20, label="v20", grid=SimpleNamespace(name="Ladder"),
+            tiers=[SimpleNamespace(id=201, slug="b", name="B")],
+        )
+        incomplete = SimpleNamespace(is_complete=False, rules=[])
+        session = SimpleNamespace(
+            scalar=AsyncMock(return_value=0),
+            scalars=AsyncMock(return_value=[]),
+        )
         with (
-            patch.object(division_service, "get_version", AsyncMock(return_value=target)),
+            patch.object(
+                division_service,
+                "get_version",
+                AsyncMock(side_effect=[target, src10, src20]),
+            ),
             patch.object(
                 division_service,
                 "get_workspace_source_version_ids",
@@ -275,7 +291,7 @@ def test_activation_readiness_requires_complete_mappings_from_used_versions() ->
             ),
         ):
             readiness = await division_service.get_activation_readiness(
-                AsyncMock(),
+                session,
                 workspace_id=4,
                 target_version_id=30,
             )
@@ -283,6 +299,11 @@ def test_activation_readiness_requires_complete_mappings_from_used_versions() ->
         assert readiness.is_ready is False
         assert readiness.missing_mapping_version_ids == [10]
         assert readiness.incomplete_mapping_version_ids == [20]
+        sources = {source.version_id: source for source in readiness.sources}
+        assert sources[10].status == "missing"
+        assert [tier.source_tier_id for tier in sources[10].conflict_tiers] == [101]
+        assert sources[20].status == "incomplete"
+        assert [tier.source_tier_id for tier in sources[20].conflict_tiers] == [201]
 
     asyncio.run(run())
 

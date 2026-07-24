@@ -28,6 +28,10 @@ __all__ = (
     "DivisionGridMarketplaceImportResult",
     "DivisionGridImportJobRead",
     "DivisionGridActivationReadiness",
+    "DivisionGridReadinessConflictTier",
+    "DivisionGridReadinessSource",
+    "DivisionGridSaveRequest",
+    "DivisionGridSaveResult",
     "DivisionGridPortableVersion",
     "DivisionGridPortableMappingRule",
     "DivisionGridPortableMapping",
@@ -235,12 +239,44 @@ class DivisionGridImportJobRead(BaseModel):
     finished_at: datetime | None
 
 
+class DivisionGridReadinessConflictTier(BaseModel):
+    source_tier_id: int
+    slug: str
+    name: str
+
+
+class DivisionGridReadinessSource(BaseModel):
+    version_id: int
+    version_label: str
+    grid_name: str
+    tournament_count: int = 0
+    tournament_names: list[str] = Field(default_factory=list)
+    status: Literal["ok", "missing", "incomplete"]
+    conflict_tiers: list[DivisionGridReadinessConflictTier] = Field(default_factory=list)
+
+
 class DivisionGridActivationReadiness(BaseModel):
     target_version_id: int
     is_ready: bool
     used_source_version_ids: list[int] = Field(default_factory=list)
     missing_mapping_version_ids: list[int] = Field(default_factory=list)
     incomplete_mapping_version_ids: list[int] = Field(default_factory=list)
+    sources: list[DivisionGridReadinessSource] = Field(default_factory=list)
+
+
+class DivisionGridSaveRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    tiers: list[DivisionGridTierWrite] = Field(..., min_length=1)
+
+
+class DivisionGridSaveResult(BaseModel):
+    mode: Literal["in_place", "new_version_activated", "new_version_pending"]
+    grid: DivisionGridRead
+    active_version_id: int | None = None
+    saved_version_id: int
+    readiness: DivisionGridActivationReadiness
 
 
 class DivisionGridPortableVersion(BaseModel):
