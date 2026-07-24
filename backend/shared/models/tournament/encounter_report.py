@@ -59,11 +59,16 @@ class EncounterCaptainReport(db.TimeStampIntegerMixin):
     encounter: Mapped[Encounter] = relationship(back_populates="captain_reports")
     team: Mapped[Team] = relationship()
     reporter: Mapped["User | None"] = relationship()
+    # Eager (selectin) so a captain report never lazy-loads its codes on plain
+    # attribute access — that raises MissingGreenlet under async SQLAlchemy.
+    # Reports are only loaded in low-volume captain endpoints, never bulk on the
+    # hot encounter list, so always loading codes with a report is cheap.
     map_codes: Mapped[list["EncounterMapCode"]] = relationship(
         back_populates="report",
         cascade="all, delete-orphan",
         passive_deletes=True,
         order_by="EncounterMapCode.map_index",
+        lazy="selectin",
     )
 
 
