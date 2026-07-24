@@ -183,7 +183,11 @@ def serialize_map_code(code: models.EncounterMapCode) -> dict:
     }
 
 
-def serialize_captain_report(report: models.EncounterCaptainReport, encounter: models.Encounter) -> dict:
+def serialize_captain_report(
+    report: models.EncounterCaptainReport,
+    encounter: models.Encounter,
+    map_codes: Sequence[models.EncounterMapCode],
+) -> dict:
     side: str | None = None
     if report.team_id == encounter.home_team_id:
         side = "home"
@@ -198,27 +202,57 @@ def serialize_captain_report(report: models.EncounterCaptainReport, encounter: m
         "home_score": report.home_score,
         "away_score": report.away_score,
         "closeness": report.closeness,
-        "map_codes": [serialize_map_code(mc) for mc in sorted(report.map_codes, key=lambda c: c.map_index)],
+        "map_codes": [serialize_map_code(mc) for mc in sorted(map_codes, key=lambda c: c.map_index)],
         "created_at": report.created_at.isoformat() if report.created_at else None,
         "updated_at": report.updated_at.isoformat() if report.updated_at else None,
     }
 
 
 async def get_encounter_reports(session: AsyncSession, encounter_id: int) -> list[dict]:
-    """Read both captains' reports for an encounter (public/read-only)."""
-    result = await session.execute(
-        select(models.Encounter)
-        .where(models.Encounter.id == encounter_id)
-        .options(
-            selectinload(models.Encounter.captain_reports).selectinload(
-                models.EncounterCaptainReport.map_codes
-            ),
-        )
-    )
-    encounter = result.scalar_one_or_none()
+    """Read both captains' reports for an encounter (public/read-only).
+
+    Reports and their map codes are fetched with explicit awaited queries rather
+    than via relationship attribute access: touching a lazily-loaded collection
+    on a materialized ORM instance emits implicit IO, which raises
+    ``MissingGreenlet`` under async SQLAlchemy. Grouping codes in Python keeps
+    this a fixed two-query read regardless of ORM load state.
+    """
+    encounter = (
+        await session.execute(select(models.Encounter).where(models.Encounter.id == encounter_id))
+    ).scalar_one_or_none()
     if not encounter:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Encounter not found")
-    return [serialize_captain_report(r, encounter) for r in encounter.captain_reports]
+
+    reports = list(
+        (
+            await session.execute(
+                select(models.EncounterCaptainReport).where(
+                    models.EncounterCaptainReport.encounter_id == encounter_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not reports:
+        return []
+
+    codes = list(
+        (
+            await session.execute(
+                select(models.EncounterMapCode)
+                .where(models.EncounterMapCode.report_id.in_([r.id for r in reports]))
+                .order_by(models.EncounterMapCode.map_index)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    codes_by_report: dict[int, list[models.EncounterMapCode]] = {}
+    for code in codes:
+        codes_by_report.setdefault(code.report_id, []).append(code)
+
+    return [serialize_captain_report(r, encounter, codes_by_report.get(r.id, [])) for r in reports]
 
 
 async def _recompute_encounter_result(
