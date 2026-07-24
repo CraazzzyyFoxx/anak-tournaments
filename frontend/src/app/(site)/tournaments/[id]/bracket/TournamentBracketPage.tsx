@@ -176,40 +176,50 @@ export default function TournamentBracketPage({ tournament }: TournamentBracketP
   const standingsQuery = useQuery(queryPlan.standings);
   const stages = stagesQuery.data ?? [];
 
+  const captainPlayerIds = useMemo(
+    () => new Set((authUser?.linkedPlayers ?? []).map((p) => p.playerId)),
+    [authUser?.linkedPlayers]
+  );
+  const isEncounterCaptain = (enc: Encounter) => {
+    const homeCaptain = enc.home_team?.captain_id;
+    const awayCaptain = enc.away_team?.captain_id;
+    return (
+      (homeCaptain != null && captainPlayerIds.has(homeCaptain)) ||
+      (awayCaptain != null && captainPlayerIds.has(awayCaptain))
+    );
+  };
   const canEdit = isAdmin ? () => true : undefined;
-  const canReport =
-    isAuthenticated && !isAdmin
-      ? (enc: Encounter) => enc.result_status !== "confirmed"
-      : undefined;
+  const canReport = isAuthenticated
+    ? (enc: Encounter) => enc.result_status !== "confirmed" && isEncounterCaptain(enc)
+    : undefined;
   const handleEdit = isAdmin ? (enc: Encounter) => setEditEncounter(enc) : undefined;
-  const handleReport =
-    isAuthenticated && !isAdmin
-      ? async (enc: Encounter) => {
-          try {
-            const [fresh, role] = await Promise.all([
-              encounterService.getEncounter(enc.id),
-              captainService.getMyRole(enc.id)
-            ]);
-            if (fresh.result_status === "confirmed") {
-              // The result was confirmed after this bracket data was cached; the
-              // report action is no longer valid. Tell the captain why, then
-              // refresh so the stale report action disappears.
-              notify.error(t("matchReport.confirmedLockedTitle"), {
-                description: t("matchReport.confirmedLockedBody")
-              });
-              void encountersQuery.refetch();
-              return;
-            }
-            if (role.side === null) {
-              notify.error(t("common.noAccess"), { description: t("common.notCaptain") });
-              return;
-            }
-            setReportEncounter(fresh);
-          } catch {
-            notify.error(t("common.error"), { description: t("common.roleVerificationFailed") });
+  const handleReport = isAuthenticated
+    ? async (enc: Encounter) => {
+        try {
+          const [fresh, role] = await Promise.all([
+            encounterService.getEncounter(enc.id),
+            captainService.getMyRole(enc.id)
+          ]);
+          if (fresh.result_status === "confirmed") {
+            // The result was confirmed after this bracket data was cached; the
+            // report action is no longer valid. Tell the captain why, then
+            // refresh so the stale report action disappears.
+            notify.error(t("matchReport.confirmedLockedTitle"), {
+              description: t("matchReport.confirmedLockedBody")
+            });
+            void encountersQuery.refetch();
+            return;
           }
+          if (role.side === null) {
+            notify.error(t("common.noAccess"), { description: t("common.notCaptain") });
+            return;
+          }
+          setReportEncounter(fresh);
+        } catch {
+          notify.error(t("common.error"), { description: t("common.roleVerificationFailed") });
         }
-      : undefined;
+      }
+    : undefined;
 
   const groupStages = stages.filter(
     (stage) => stage.stage_type === "round_robin" || stage.stage_type === "swiss"
