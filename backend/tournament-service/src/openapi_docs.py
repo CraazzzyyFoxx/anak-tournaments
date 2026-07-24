@@ -274,6 +274,10 @@ DOCS: dict[str, dict] = {
         "summary": "Generate stage bracket",
         "description": "Enqueues a bracket-generation job (202 Accepted) for the stage; requires stage-update permission on its workspace.",
     },
+    "rpc.tournament.stage_apply_best_of": {
+        "summary": "Apply best-of to existing matches",
+        "description": "Rewrites best_of on the stage's existing encounters from its settings_json best-of config (in place, preserving scores); requires stage-update permission on its workspace.",
+    },
     "rpc.tournament.stage_activate_and_generate": {
         "summary": "Activate and generate stage",
         "description": "Enqueues a combined activate-and-generate bracket job (202 Accepted), honoring an optional force flag; requires stage-update permission on its workspace.",
@@ -362,6 +366,10 @@ DOCS: dict[str, dict] = {
     "rpc.tournament.grid_version_activate": {
         "summary": "Activate a published grid version",
         "description": "Atomically checks mapping readiness and assigns the published version as the workspace default.",
+    },
+    "rpc.tournament.grid_save": {
+        "summary": "Save the workspace division grid",
+        "description": "Server-authoritative save: applies cosmetic edits in place, or spawns a new version, auto-generates mappings from every used source version, and auto-activates when complete; requires division_grid-update permission.",
     },
     "rpc.tournament.grid_version_clone": {
         "summary": "Clone grid version",

@@ -146,6 +146,9 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.grid_version_readiness": Op(response=schemas.DivisionGridActivationReadiness),
     "rpc.tournament.grid_version_activate": Op(response=schemas.DivisionGridVersionRead),
     "rpc.tournament.grid_version_clone": Op(response=schemas.DivisionGridVersionRead),
+    "rpc.tournament.grid_save": Op(
+        request=schemas.DivisionGridSaveRequest, response=schemas.DivisionGridSaveResult
+    ),
     "rpc.tournament.grid_mapping_put": Op(
         request=schemas.DivisionGridMappingWrite, response=schemas.DivisionGridMappingRead
     ),

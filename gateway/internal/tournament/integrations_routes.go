@@ -51,6 +51,7 @@ var DivisionGridRoutes = []edge.RouteSpec{
 	{Method: "POST", Pattern: "/api/v1/division-grids/by-workspace/{workspace_id}/portable/import", Queue: "rpc.tournament.grid_portable_import", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired, Success: 201},
 	{Method: "GET", Pattern: "/api/v1/division-grids/by-workspace/{workspace_id}/versions/{version_id}/readiness", Queue: "rpc.tournament.grid_version_readiness", Path: []string{"workspace_id", "version_id"}, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/division-grids/by-workspace/{workspace_id}/versions/{version_id}/activate", Queue: "rpc.tournament.grid_version_activate", Path: []string{"workspace_id", "version_id"}, Auth: edge.AuthRequired},
+	{Method: "PUT", Pattern: "/api/v1/division-grids/by-workspace/{workspace_id}/grid", Queue: "rpc.tournament.grid_save", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "GET", Pattern: "/api/v1/division-grids/by-workspace/{workspace_id}", Queue: "rpc.tournament.grid_workspace_list", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/division-grids/by-workspace/{workspace_id}", Queue: "rpc.tournament.grid_workspace_create", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired, Success: 201},
 	{Method: "PATCH", Pattern: "/api/v1/division-grids/library/{grid_id}", Queue: "rpc.tournament.grid_update", IDParam: "grid_id", Body: true, Auth: edge.AuthRequired},
