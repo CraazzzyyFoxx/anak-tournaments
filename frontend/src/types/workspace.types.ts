@@ -147,12 +147,37 @@ export interface DivisionGridImportJob {
   finished_at: string | null;
 }
 
+export interface DivisionGridReadinessConflictTier {
+  source_tier_id: number;
+  slug: string;
+  name: string;
+}
+
+export interface DivisionGridReadinessSource {
+  version_id: number;
+  version_label: string;
+  grid_name: string;
+  tournament_count: number;
+  tournament_names: string[];
+  status: "ok" | "missing" | "incomplete";
+  conflict_tiers: DivisionGridReadinessConflictTier[];
+}
+
 export interface DivisionGridActivationReadiness {
   target_version_id: number;
   is_ready: boolean;
   used_source_version_ids: number[];
   missing_mapping_version_ids: number[];
   incomplete_mapping_version_ids: number[];
+  sources: DivisionGridReadinessSource[];
+}
+
+export interface DivisionGridSaveResult {
+  mode: "in_place" | "new_version_activated" | "new_version_pending";
+  grid: DivisionGridEntity;
+  active_version_id: number | null;
+  saved_version_id: number;
+  readiness: DivisionGridActivationReadiness;
 }
 
 export interface DivisionGridPortableMappingRule {

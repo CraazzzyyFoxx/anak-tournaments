@@ -1,45 +1,31 @@
 "use client";
 
 import { memo, useCallback, useMemo, useRef, useState } from "react";
-import { DivisionGridMappingEditor } from "./MappingEditor";
 import { OwRankRangePicker } from "./OwRankRangePicker";
 import { DivisionGridImportWizard } from "./ImportWizard";
 import { DivisionGridLibrary } from "./GridLibrary";
-import { MappingReadinessMatrix } from "./MappingReadinessMatrix";
+import { DivisionGridConflictResolver } from "./ConflictResolver";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CopyPlus, Minus, Plus, Save, Star, Trash2, Upload, Wand2, X } from "lucide-react";
+import { Minus, Plus, Save, Trash2, Upload, Wand2, X } from "lucide-react";
 import Image from "next/image";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
-} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { NumberInput } from "@/components/ui/number-input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select";
 import { notify } from "@/lib/notify";
 import { usePermissions } from "@/hooks/usePermissions";
 import { OW2_RANK_OPTIONS } from "@/lib/ow-rank-mapping";
 import workspaceService from "@/services/workspace.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
-import type { DivisionGridVersion, DivisionTier } from "@/types/workspace.types";
+import type {
+  DivisionGridActivationReadiness,
+  DivisionGridVersion,
+  DivisionTier
+} from "@/types/workspace.types";
 
 function buildDefaultTiers(): DivisionTier[] {
   const divisions = [
@@ -108,16 +94,6 @@ function emptyTier(number: number, index: number): DivisionTier {
   };
 }
 
-function hasCriticalChanges(original: DivisionTier[], current: DivisionTier[]): boolean {
-  if (original.length !== current.length) return true;
-  const origSorted = [...original].sort((a, b) => a.number - b.number);
-  const currSorted = [...current].sort((a, b) => a.number - b.number);
-  return origSorted.some((orig, i) => {
-    const curr = currSorted[i];
-    return orig.rank_min !== curr.rank_min || orig.rank_max !== curr.rank_max;
-  });
-}
-
 function buildEditorState(selectedVersion: DivisionGridVersion | null): {
   label: string;
   tiers: DivisionTier[];
@@ -137,12 +113,25 @@ function buildEditorState(selectedVersion: DivisionGridVersion | null): {
   };
 }
 
+type SaveTierPayload = {
+  id?: number | null;
+  slug: string;
+  number: number;
+  name: string;
+  sort_order: number;
+  rank_min: number;
+  rank_max: number | null;
+  icon_url: string;
+  ow_rank_min: number | null;
+  ow_rank_max: number | null;
+};
+
 type DivisionGridEditorCardProps = {
   workspaceId: number;
-  gridId: number;
   canEdit: boolean;
-  selectedVersion: DivisionGridVersion | null;
-  onSaved: () => Promise<void>;
+  activeVersion: DivisionGridVersion | null;
+  saving: boolean;
+  onSave: (payload: { name: string; tiers: SaveTierPayload[] }) => void;
 };
 
 // Navigable column indices: 0=#, 1=name, 2=rank_min, 3=rank_max (OW range uses a popover, no nav)
@@ -314,12 +303,12 @@ const TierEditorRow = memo(function TierEditorRow({
 
 function DivisionGridEditorCard({
   workspaceId,
-  gridId,
   canEdit,
-  selectedVersion,
-  onSaved
+  activeVersion,
+  saving,
+  onSave
 }: DivisionGridEditorCardProps) {
-  const initialState = useMemo(() => buildEditorState(selectedVersion), [selectedVersion]);
+  const initialState = useMemo(() => buildEditorState(activeVersion), [activeVersion]);
   const [label, setLabel] = useState(initialState.label);
   const [tiers, setTiers] = useState<DivisionTier[]>(initialState.tiers);
   const [selectedRows, setSelectedRows] = useState<Set<number>>(() => new Set());
@@ -327,7 +316,6 @@ function DivisionGridEditorCard({
   const [rangeStart, setRangeStart] = useState(0);
   const [rangeStep, setRangeStep] = useState(DEFAULT_RANK_STEP);
   const [tiersToAdd, setTiersToAdd] = useState(1);
-  const [showSaveDialog, setShowSaveDialog] = useState(false);
 
   // Keyboard navigation refs: key = `${row}-${col}`
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
@@ -385,36 +373,9 @@ function DivisionGridEditorCard({
     [tiers]
   );
 
-  const saveVersionMutation = useMutation({
-    mutationFn: async (mode: "edit" | "new") => {
-      if (mode === "edit" && selectedVersion) {
-        return workspaceService.updateDivisionGridVersion(selectedVersion.id, {
-          label,
-          tiers: tiersPayload
-        });
-      }
-      return workspaceService.createDivisionGridVersion(workspaceId, gridId, {
-        label,
-        tiers: tiersPayload
-      });
-    },
-    onSuccess: async (_, mode) => {
-      await onSaved();
-      notify.success(mode === "edit" ? "Version saved" : "New draft created");
-    }
-  });
-
   const handleSave = useCallback(() => {
-    if (!selectedVersion) {
-      saveVersionMutation.mutate("new");
-      return;
-    }
-    if (hasCriticalChanges(selectedVersion.tiers, tiers)) {
-      setShowSaveDialog(true);
-    } else {
-      saveVersionMutation.mutate("edit");
-    }
-  }, [selectedVersion, tiers, saveVersionMutation]);
+    onSave({ name: label, tiers: tiersPayload });
+  }, [onSave, label, tiersPayload]);
 
   const updateTier = useCallback(
     (index: number, field: keyof DivisionTier, value: string | number | null) => {
@@ -778,43 +739,52 @@ function DivisionGridEditorCard({
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Button onClick={handleSave} disabled={!canEdit || saveVersionMutation.isPending}>
+          <Button onClick={handleSave} disabled={!canEdit || saving}>
             <Save className="mr-2 h-4 w-4" />
             Save
           </Button>
         </div>
       </CardContent>
 
-      <AlertDialog open={showSaveDialog} onOpenChange={setShowSaveDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Critical changes detected</AlertDialogTitle>
-            <AlertDialogDescription>
-              You changed the number of tiers or their rank ranges. Would you like to edit the
-              current version in-place, or save these changes as a new draft version?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                setShowSaveDialog(false);
-                saveVersionMutation.mutate("new");
-              }}
-            >
-              Create new version
-            </AlertDialogAction>
-            <AlertDialogAction
-              onClick={() => {
-                setShowSaveDialog(false);
-                saveVersionMutation.mutate("edit");
-              }}
-            >
-              Edit current version
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+    </Card>
+  );
+}
+
+function VersionHistoryCard({
+  versions,
+  activeVersionId
+}: {
+  versions: DivisionGridVersion[];
+  activeVersionId: number | null;
+}) {
+  const ordered = [...versions].sort((left, right) => right.version - left.version);
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Version history</CardTitle>
+        <CardDescription>
+          Read-only. Each structural save creates a new version; existing tournaments stay pinned to
+          theirs and are remapped automatically.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-1">
+        {ordered.map((version) => (
+          <div
+            key={version.id}
+            className="flex flex-wrap items-center gap-2 border-b py-1.5 text-sm last:border-b-0"
+          >
+            <span className="font-medium tabular-nums">v{version.version}</span>
+            <span className="text-muted-foreground">{version.label}</span>
+            <Badge variant="outline">{version.status}</Badge>
+            {version.id === activeVersionId && <Badge>Active</Badge>}
+            {version.published_at && (
+              <span className="ml-auto text-xs text-muted-foreground">
+                {new Date(version.published_at).toLocaleDateString()}
+              </span>
+            )}
+          </div>
+        ))}
+      </CardContent>
     </Card>
   );
 }
@@ -827,20 +797,10 @@ export default function DivisionsAdminPage() {
   const fetchWorkspaces = useWorkspaceStore((state) => state.fetchWorkspaces);
   const workspace = getCurrentWorkspace();
 
-  const [selectedGridId, setSelectedGridId] = useState<number | null>(() => {
-    if (typeof window === "undefined") return null;
-    const value = new URLSearchParams(window.location.search).get("grid");
-    return value ? Number(value) : null;
-  });
-  const [selectedVersionId, setSelectedVersionId] = useState<number | null>(() => {
-    if (typeof window === "undefined") return null;
-    const value = new URLSearchParams(window.location.search).get("version");
-    return value ? Number(value) : null;
-  });
-  const [reviewMappingPair, setReviewMappingPair] = useState<{
-    sourceVersionId: number | null;
-    targetVersionId: number | null;
-  }>({ sourceVersionId: null, targetVersionId: null });
+  const [conflict, setConflict] = useState<{
+    targetVersionId: number;
+    readiness: DivisionGridActivationReadiness;
+  } | null>(null);
 
   const canCreate =
     currentWorkspaceId !== null &&
@@ -854,9 +814,6 @@ export default function DivisionsAdminPage() {
   const canExport =
     currentWorkspaceId !== null &&
     (isSuperuser || canAccessPermission("division_grid.export", currentWorkspaceId));
-  const canPublish =
-    currentWorkspaceId !== null &&
-    (isSuperuser || canAccessPermission("division_grid.publish", currentWorkspaceId));
 
   const gridsQuery = useQuery({
     queryKey: ["division-grids", currentWorkspaceId],
@@ -864,100 +821,45 @@ export default function DivisionsAdminPage() {
     enabled: currentWorkspaceId !== null
   });
   const grids = useMemo(() => gridsQuery.data ?? [], [gridsQuery.data]);
+  const defaultVersionId = workspace?.default_division_grid_version_id ?? null;
   const activeGrid =
-    grids.find((grid) =>
-      grid.versions.some((version) => version.id === workspace?.default_division_grid_version_id)
-    ) ?? null;
-  const selectedGrid =
-    grids.find((grid) => grid.id === selectedGridId) ??
-    activeGrid ??
+    grids.find((grid) => grid.versions.some((version) => version.id === defaultVersionId)) ??
     grids.find((grid) => !grid.archived_at) ??
+    grids[0] ??
     null;
-  const versions = selectedGrid?.versions ?? [];
-  const defaultSelectedVersion =
-    versions.find((version) => version.id === workspace?.default_division_grid_version_id) ??
-    versions.slice().sort((left, right) => right.version - left.version)[0] ??
+  const activeVersion =
+    activeGrid?.versions.find((version) => version.id === defaultVersionId) ??
+    activeGrid?.versions.slice().sort((left, right) => right.version - left.version)[0] ??
     null;
-  const selectedVersion =
-    versions.find((version) => version.id === selectedVersionId) ?? defaultSelectedVersion;
-  const effectiveVersionId = selectedVersion?.id ?? null;
-  const allVersions = useMemo(() => grids.flatMap((grid) => grid.versions), [grids]);
-  const reviewSourceVersionQuery = useQuery({
-    queryKey: ["division-grid-version", reviewMappingPair.sourceVersionId],
-    queryFn: () => workspaceService.getDivisionGridVersion(reviewMappingPair.sourceVersionId!),
-    enabled:
-      reviewMappingPair.sourceVersionId !== null &&
-      !allVersions.some((version) => version.id === reviewMappingPair.sourceVersionId)
-  });
-  const mappingVersions = useMemo(() => {
-    const byId = new Map(allVersions.map((version) => [version.id, version]));
-    if (reviewSourceVersionQuery.data) {
-      byId.set(reviewSourceVersionQuery.data.id, reviewSourceVersionQuery.data);
-    }
-    return [...byId.values()];
-  }, [allVersions, reviewSourceVersionQuery.data]);
-  const mappingGridNames = useMemo(
-    () => Object.fromEntries(grids.map((grid) => [grid.id, grid.name])),
-    [grids]
-  );
-
-  const selectGrid = useCallback((gridId: number, versionId?: number) => {
-    setSelectedGridId(gridId);
-    setSelectedVersionId(versionId ?? null);
-    if (typeof window !== "undefined") {
-      const url = new URL(window.location.href);
-      url.searchParams.set("grid", String(gridId));
-      if (versionId) url.searchParams.set("version", String(versionId));
-      else url.searchParams.delete("version");
-      url.searchParams.set("tab", "editor");
-      url.hash = "editor";
-      window.history.replaceState(null, "", url);
-    }
-  }, []);
 
   const refreshGrids = useCallback(async () => {
-    await queryClient.invalidateQueries({ queryKey: ["division-grids", currentWorkspaceId] });
-  }, [currentWorkspaceId, queryClient]);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["division-grids", currentWorkspaceId] }),
+      fetchWorkspaces()
+    ]);
+  }, [currentWorkspaceId, queryClient, fetchWorkspaces]);
 
-  const cloneMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedVersion) throw new Error("Select a version first.");
-      return workspaceService.cloneDivisionGridVersion(selectedVersion.id);
-    },
-    onSuccess: async (version) => {
+  const conflictTargetVersion = useMemo(() => {
+    if (!conflict || !activeGrid) return null;
+    return activeGrid.versions.find((version) => version.id === conflict.targetVersionId) ?? null;
+  }, [conflict, activeGrid]);
+
+  const saveMutation = useMutation({
+    mutationFn: (payload: { name: string; tiers: SaveTierPayload[] }) =>
+      workspaceService.saveWorkspaceGrid(currentWorkspaceId!, payload),
+    onSuccess: async (result) => {
       await refreshGrids();
-      if (selectedGrid) selectGrid(selectedGrid.id, version.id);
-      notify.success("Draft created from selected version");
-    }
-  });
-  const publishMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedVersion) throw new Error("Select a draft first.");
-      return workspaceService.publishDivisionGridVersion(selectedVersion.id);
+      if (result.mode === "new_version_pending") {
+        setConflict({ targetVersionId: result.saved_version_id, readiness: result.readiness });
+        notify.warning("Saved as a new version", {
+          description: "Resolve the mapping conflicts below to activate it."
+        });
+        return;
+      }
+      setConflict(null);
+      notify.success(result.mode === "in_place" ? "Grid updated" : "New version activated");
     },
-    onSuccess: async (version) => {
-      await refreshGrids();
-      if (selectedGrid) selectGrid(selectedGrid.id, version.id);
-      notify.success("Version published", {
-        description: "Review activation readiness before making it the workspace default."
-      });
-    }
-  });
-  const readinessQuery = useQuery({
-    queryKey: ["division-grid-readiness", currentWorkspaceId, selectedVersion?.id],
-    queryFn: () =>
-      workspaceService.getDivisionGridVersionReadiness(currentWorkspaceId!, selectedVersion!.id),
-    enabled: currentWorkspaceId !== null && selectedVersion?.status === "published"
-  });
-  const activateMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedVersion || !currentWorkspaceId) throw new Error("Select a published version.");
-      return workspaceService.activateDivisionGridVersion(currentWorkspaceId, selectedVersion.id);
-    },
-    onSuccess: async () => {
-      await Promise.all([refreshGrids(), fetchWorkspaces()]);
-      notify.success("Workspace division grid activated");
-    }
+    onError: () => notify.error("Failed to save grid")
   });
 
   if (!currentWorkspaceId) {
@@ -969,58 +871,22 @@ export default function DivisionsAdminPage() {
     );
   }
 
+  const conflictSources =
+    conflict?.readiness.sources.filter((source) => source.conflict_tiers.length > 0) ?? [];
+
   return (
     <div className="flex flex-col gap-6">
       <AdminPageHeader
         title="Divisions"
-        description="Choose a grid, import one version when needed, and edit its tiers."
-        actions={
-          selectedVersion ? (
-            <div className="flex flex-wrap gap-2">
-              {canCreate && (
-                <Button
-                  variant="outline"
-                  onClick={() => cloneMutation.mutate()}
-                  disabled={cloneMutation.isPending}
-                >
-                  <CopyPlus className="mr-2 h-4 w-4" />
-                  {selectedVersion.status === "published" ? "Fork draft" : "Clone draft"}
-                </Button>
-              )}
-              {canPublish && selectedVersion.status === "draft" && (
-                <Button
-                  onClick={() => publishMutation.mutate()}
-                  disabled={publishMutation.isPending}
-                >
-                  Publish version
-                </Button>
-              )}
-              {canPublish &&
-                selectedVersion.status === "published" &&
-                workspace?.default_division_grid_version_id !== selectedVersion.id && (
-                  <Button
-                    onClick={() => activateMutation.mutate()}
-                    disabled={
-                      activateMutation.isPending ||
-                      readinessQuery.isLoading ||
-                      readinessQuery.data?.is_ready !== true
-                    }
-                  >
-                    <Star className="mr-2 h-4 w-4" />
-                    Activate
-                  </Button>
-                )}
-            </div>
-          ) : null
-        }
+        description="Edit your workspace division grid. Saving auto-versions, remaps existing tournaments, and activates when the mapping is complete."
       />
 
       <DivisionGridLibrary
         workspaceId={currentWorkspaceId}
         workspaceName={workspace?.name ?? "Workspace"}
-        defaultVersionId={workspace?.default_division_grid_version_id ?? null}
+        defaultVersionId={defaultVersionId}
         grids={grids}
-        selectedGridId={selectedGrid?.id ?? null}
+        selectedGridId={activeGrid?.id ?? null}
         permissions={{
           create: canCreate,
           update: canUpdate,
@@ -1029,104 +895,43 @@ export default function DivisionsAdminPage() {
         }}
         loading={gridsQuery.isLoading}
         error={gridsQuery.error}
-        onSelect={selectGrid}
+        onSelect={() => {}}
         onChanged={refreshGrids}
       />
 
       <DivisionGridImportWizard
         workspaceId={currentWorkspaceId}
         canImport={canImport}
-        onImported={async (job) => {
-          await refreshGrids();
-          const imported = job.result?.imported_grids[0];
-          if (imported) selectGrid(imported.target_grid_id);
-        }}
+        onImported={refreshGrids}
       />
 
-      {selectedGrid && (
-        <Card id="editor">
-          <CardHeader>
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <CardTitle>Edit {selectedGrid.name}</CardTitle>
-                <CardDescription>
-                  Choose a draft to edit. Published versions remain read-only.
-                </CardDescription>
-              </div>
-              <label className="grid gap-2 text-sm font-medium">
-                Version
-                <Select
-                  value={effectiveVersionId?.toString() ?? ""}
-                  onValueChange={(value) => selectGrid(selectedGrid.id, Number(value))}
-                >
-                  <SelectTrigger className="w-80">
-                    <SelectValue placeholder="Select version" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {versions
-                      .slice()
-                      .sort((left, right) => right.version - left.version)
-                      .map((version) => (
-                        <SelectItem key={version.id} value={version.id.toString()}>
-                          v{version.version} · {version.label} · {version.status}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </label>
-            </div>
-          </CardHeader>
-          {selectedVersion?.status === "published" &&
-            readinessQuery.data &&
-            !readinessQuery.data.is_ready && (
-              <CardContent>
-                <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
-                  Activation is blocked until mappings from source version ID(s){" "}
-                  {Array.from(
-                    new Set([
-                      ...readinessQuery.data.missing_mapping_version_ids,
-                      ...readinessQuery.data.incomplete_mapping_version_ids
-                    ])
-                  ).join(", ")}{" "}
-                  are complete.
-                </div>
-              </CardContent>
-            )}
-        </Card>
-      )}
-
-      {selectedGrid && (
-        <DivisionGridEditorCard
-          key={selectedVersion?.id ?? `${selectedGrid.id}-new`}
+      {conflict && conflictTargetVersion && (
+        <DivisionGridConflictResolver
           workspaceId={currentWorkspaceId}
-          gridId={selectedGrid.id}
-          canEdit={selectedVersion ? canUpdate && selectedVersion.status === "draft" : canCreate}
-          selectedVersion={selectedVersion}
-          onSaved={refreshGrids}
+          targetVersionId={conflict.targetVersionId}
+          targetTiers={conflictTargetVersion.tiers}
+          sources={conflictSources}
+          canEdit={canUpdate}
+          onResolved={async () => {
+            setConflict(null);
+            await refreshGrids();
+          }}
         />
       )}
 
-      <MappingReadinessMatrix
-        workspaceId={currentWorkspaceId}
-        versions={allVersions}
-        onSelectVersion={(targetVersionId, sourceVersionId) => {
-          setReviewMappingPair({ sourceVersionId, targetVersionId });
-          const grid = grids.find((candidate) =>
-            candidate.versions.some((version) => version.id === targetVersionId)
-          );
-          if (grid) selectGrid(grid.id, targetVersionId);
-        }}
-      />
-
-      {mappingVersions.length >= 2 && (
-        <DivisionGridMappingEditor
-          key={`${reviewMappingPair.sourceVersionId ?? "source"}-${reviewMappingPair.targetVersionId ?? "target"}`}
-          versions={mappingVersions}
-          gridNames={mappingGridNames}
-          canEdit={canUpdate}
-          reviewSourceVersionId={reviewMappingPair.sourceVersionId}
-          reviewTargetVersionId={reviewMappingPair.targetVersionId}
+      {activeGrid && (
+        <DivisionGridEditorCard
+          key={activeVersion?.id ?? `${activeGrid.id}-new`}
+          workspaceId={currentWorkspaceId}
+          canEdit={activeVersion ? canUpdate : canCreate}
+          activeVersion={activeVersion}
+          saving={saveMutation.isPending}
+          onSave={(payload) => saveMutation.mutate(payload)}
         />
+      )}
+
+      {activeGrid && activeGrid.versions.length > 0 && (
+        <VersionHistoryCard versions={activeGrid.versions} activeVersionId={defaultVersionId} />
       )}
     </div>
   );

@@ -10,6 +10,7 @@ import {
   DivisionGridMarketplaceWorkspace,
   DivisionGridMappingRule,
   DivisionGridPortableDocument,
+  DivisionGridSaveResult,
   DivisionGridVersion,
   Workspace,
   WorkspaceMember
@@ -187,6 +188,30 @@ export default class workspaceService {
   ): Promise<DivisionGridEntity> {
     return apiFetch(`/api/v1/division-grids/library/${gridId}`, {
       method: "PATCH",
+      body: data
+    }).then((r) => r.json());
+  }
+
+  static async saveWorkspaceGrid(
+    workspaceId: number,
+    data: {
+      name?: string | null;
+      tiers: Array<{
+        id?: number | null;
+        slug: string;
+        number: number;
+        name: string;
+        sort_order: number;
+        rank_min: number;
+        rank_max: number | null;
+        icon_url: string;
+        ow_rank_min: number | null;
+        ow_rank_max: number | null;
+      }>;
+    }
+  ): Promise<DivisionGridSaveResult> {
+    return apiFetch(`/api/v1/division-grids/by-workspace/${workspaceId}/grid`, {
+      method: "PUT",
       body: data
     }).then((r) => r.json());
   }
