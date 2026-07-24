@@ -6,12 +6,13 @@ import { DivisionGridImportWizard } from "./ImportWizard";
 import { DivisionGridLibrary } from "./GridLibrary";
 import { DivisionGridConflictResolver } from "./ConflictResolver";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Minus, Plus, Save, Trash2, Upload, Wand2, X } from "lucide-react";
+import { Minus, Plus, Save, Star, Trash2, Upload, Wand2, X } from "lucide-react";
 import Image from "next/image";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ApiError } from "@/lib/api-error";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -818,6 +819,9 @@ export default function DivisionsAdminPage() {
   const canDelete =
     currentWorkspaceId !== null &&
     (isSuperuser || canAccessPermission("division_grid.delete", currentWorkspaceId));
+  const canPublish =
+    currentWorkspaceId !== null &&
+    (isSuperuser || canAccessPermission("division_grid.publish", currentWorkspaceId));
 
   const gridsQuery = useQuery({
     queryKey: ["division-grids", currentWorkspaceId],
@@ -873,6 +877,37 @@ export default function DivisionsAdminPage() {
     onError: () => notify.error("Failed to save grid")
   });
 
+  const publishMutation = useMutation({
+    mutationFn: () => workspaceService.publishDivisionGridVersion(activeVersion!.id),
+    onSuccess: async () => {
+      await refreshGrids();
+      notify.success("Version published");
+    },
+    onError: () => notify.error("Failed to publish version")
+  });
+  const activateMutation = useMutation({
+    mutationFn: () => workspaceService.activateDivisionGridVersion(currentWorkspaceId!, activeVersion!.id),
+    onSuccess: async () => {
+      setConflict(null);
+      await refreshGrids();
+      notify.success("Grid activated for the workspace");
+    },
+    onError: async (error) => {
+      if (error instanceof ApiError && error.status === 409 && activeVersion) {
+        const readiness = await workspaceService.getDivisionGridVersionReadiness(
+          currentWorkspaceId!,
+          activeVersion.id
+        );
+        setConflict({ targetVersionId: activeVersion.id, readiness });
+        notify.warning("Activation blocked", {
+          description: "Resolve the mapping conflicts below, then activate."
+        });
+        return;
+      }
+      notify.error("Failed to activate grid");
+    }
+  });
+
   if (!currentWorkspaceId) {
     return (
       <AdminPageHeader
@@ -890,6 +925,34 @@ export default function DivisionsAdminPage() {
       <AdminPageHeader
         title="Divisions"
         description="Edit your workspace division grid. Saving auto-versions, remaps existing tournaments, and activates when the mapping is complete."
+        actions={
+          activeVersion ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {defaultVersionId === activeVersion.id ? (
+                <Badge variant="secondary">Active grid</Badge>
+              ) : (
+                canPublish && (
+                  <Button
+                    onClick={() => activateMutation.mutate()}
+                    disabled={activateMutation.isPending || activeVersion.status !== "published"}
+                  >
+                    <Star className="mr-2 h-4 w-4" />
+                    Activate grid
+                  </Button>
+                )
+              )}
+              {canPublish && activeVersion.status === "draft" && (
+                <Button
+                  variant="outline"
+                  onClick={() => publishMutation.mutate()}
+                  disabled={publishMutation.isPending}
+                >
+                  Publish version
+                </Button>
+              )}
+            </div>
+          ) : null
+        }
       />
 
       <DivisionGridLibrary
