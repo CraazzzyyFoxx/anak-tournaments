@@ -230,18 +230,20 @@ async def update_grid(
     return await get_grid_by_id(session, grid_id)
 
 
-async def delete_grid(session: AsyncSession, grid_id: int) -> None:
+async def delete_grid(session: AsyncSession, grid_id: int, *, force: bool = False) -> None:
     """Hard-delete a division grid and its versions/tiers/mappings (FK cascade).
 
-    Refuses system grids, the workspace default, and any grid whose versions are
-    still pinned by a tournament — so historical standings never lose their grid.
+    Without ``force``: refuses the workspace default and any grid whose versions
+    are pinned by a tournament. With ``force``: those guards are skipped — the
+    workspace default is cleared and pinned tournaments are detached (FK SET
+    NULL) — but system grids (``workspace_id IS NULL``) are never deletable.
     """
     grid = await get_grid_by_id(session, grid_id)
     if grid.workspace_id is None:
         raise HTTPException(status_code=409, detail="System division grids cannot be deleted")
 
     version_ids = [version.id for version in grid.versions]
-    if version_ids:
+    if version_ids and not force:
         default_version_id = await session.scalar(
             sa.select(models.Workspace.default_division_grid_version_id).where(
                 models.Workspace.id == grid.workspace_id
@@ -263,8 +265,22 @@ async def delete_grid(session: AsyncSession, grid_id: int) -> None:
                 detail=f"Cannot delete grid: {tournament_uses} tournament(s) use its versions",
             )
 
+    if version_ids and force:
+        # Clear the workspace default if it points into this grid so the delete
+        # does not depend on DB-side SET NULL timing; pinned tournaments are
+        # detached by the FK ON DELETE SET NULL when the versions are removed.
+        await session.execute(
+            sa.update(models.Workspace)
+            .where(
+                models.Workspace.id == grid.workspace_id,
+                models.Workspace.default_division_grid_version_id.in_(version_ids),
+            )
+            .values(default_division_grid_version_id=None)
+        )
+
     for version_id in version_ids:
         await division_grid_cache.invalidate_grid_version(version_id)
+    await division_grid_cache.invalidate_workspace(grid.workspace_id)
     await session.delete(grid)
     await session.flush()
 

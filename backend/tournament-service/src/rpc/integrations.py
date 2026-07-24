@@ -460,7 +460,8 @@ def register(broker: Any, logger: Any) -> None:
             grid_id = _require_id(data)
             grid = await division_grid_service.get_grid_by_id(session, grid_id)
             await require_workspace_permission(grid.workspace_id, session=session, user=user, action="delete")
-            await division_grid_service.delete_grid(session, grid_id)
+            force = _q1(data, "force", _bool, default=False)
+            await division_grid_service.delete_grid(session, grid_id, force=force)
             await session.commit()  # route commits explicitly (service does not).
             return None  # route returns 204 (no body).
 

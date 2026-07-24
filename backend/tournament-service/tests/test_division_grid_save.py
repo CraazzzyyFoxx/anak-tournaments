@@ -263,3 +263,39 @@ def test_delete_grid_rejects_system_grid() -> None:
         session.delete.assert_not_called()
 
     asyncio.run(run())
+
+def test_delete_grid_force_bypasses_guards_and_clears_default() -> None:
+    async def run():
+        grid = _grid_for_delete(version_ids=(100, 101))
+        session = SimpleNamespace(
+            delete=AsyncMock(),
+            flush=AsyncMock(),
+            execute=AsyncMock(),
+            scalar=AsyncMock(),
+        )
+        with (
+            patch.object(division_service, "get_grid_by_id", AsyncMock(return_value=grid)),
+            patch.object(division_service.division_grid_cache, "invalidate_grid_version", AsyncMock()),
+            patch.object(division_service.division_grid_cache, "invalidate_workspace", AsyncMock()),
+        ):
+            await division_service.delete_grid(session, 7, force=True)
+        session.delete.assert_awaited_once_with(grid)
+        session.execute.assert_awaited()  # workspace default cleared
+        session.scalar.assert_not_called()  # guards skipped
+
+    asyncio.run(run())
+
+
+def test_delete_grid_force_still_rejects_system_grid() -> None:
+    async def run():
+        grid = _grid_for_delete(workspace_id=None)
+        session = SimpleNamespace(delete=AsyncMock(), flush=AsyncMock(), execute=AsyncMock())
+        with (
+            patch.object(division_service, "get_grid_by_id", AsyncMock(return_value=grid)),
+            pytest.raises(Exception) as caught,
+        ):
+            await division_service.delete_grid(session, 7, force=True)
+        assert getattr(caught.value, "status_code", None) == 409
+        session.delete.assert_not_called()
+
+    asyncio.run(run())

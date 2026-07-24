@@ -39,6 +39,7 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { notify } from "@/lib/notify";
+import { ApiError } from "@/lib/api-error";
 import workspaceService from "@/services/workspace.service";
 import type { DivisionGridEntity, DivisionGridPortableDocument } from "@/types/workspace.types";
 
@@ -77,6 +78,7 @@ export function DivisionGridLibrary({
 }: Props) {
   const portableInputRef = useRef<HTMLInputElement>(null);
   const [editingName, setEditingName] = useState<string | null>(null);
+  const [forceDeleteOpen, setForceDeleteOpen] = useState(false);
   const activeGrid = grids.find((grid) =>
     grid.versions.some((version) => version.id === defaultVersionId)
   );
@@ -110,15 +112,23 @@ export function DivisionGridLibrary({
     onError: showMutationError("Grid could not be updated")
   });
   const deleteMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: (force: boolean) => {
       if (!selectedGrid) throw new Error("Choose a division grid first.");
-      return workspaceService.deleteDivisionGrid(selectedGrid.id);
+      return workspaceService.deleteDivisionGrid(selectedGrid.id, force);
     },
     onSuccess: async () => {
+      setForceDeleteOpen(false);
       await onChanged();
       notify.success("Division grid deleted");
     },
-    onError: showMutationError("Grid could not be deleted")
+    onError: (error) => {
+      // 409 = default/in-use guard; offer a force-delete confirmation instead.
+      if (error instanceof ApiError && error.status === 409) {
+        setForceDeleteOpen(true);
+        return;
+      }
+      showMutationError("Grid could not be deleted")(error);
+    }
   });
   const portableImportMutation = useMutation({
     mutationFn: (document: DivisionGridPortableDocument) =>
@@ -316,33 +326,58 @@ export function DivisionGridLibrary({
                 </Button>
               )}
               {permissions.delete && (
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive hover:text-destructive"
-                      disabled={deleteMutation.isPending || activeGrid?.id === selectedGrid.id}
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" /> Delete
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Delete “{selectedGrid.name}”?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        This permanently removes the grid and all its versions, tiers, and mappings.
-                        Blocked if it is the workspace default or any version is used by a tournament.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction onClick={() => deleteMutation.mutate()}>
-                        Delete grid
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+                <>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive hover:text-destructive"
+                        disabled={deleteMutation.isPending}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" /> Delete
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete “{selectedGrid.name}”?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Permanently removes the grid and all its versions, tiers, and mappings.
+                          If it is the workspace default or used by tournaments, you will be asked to
+                          confirm a force delete.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => deleteMutation.mutate(false)}>
+                          Delete grid
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+
+                  <AlertDialog open={forceDeleteOpen} onOpenChange={setForceDeleteOpen}>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Force delete “{selectedGrid.name}”?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This grid is the workspace default or still used by tournaments. Force
+                          deleting will unset it as the workspace default and detach affected
+                          tournaments — their division data will be cleared. This cannot be undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          onClick={() => deleteMutation.mutate(true)}
+                        >
+                          Force delete
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </>
               )}
             </div>
           </div>
