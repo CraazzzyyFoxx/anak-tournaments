@@ -86,6 +86,9 @@ export function DivisionGridLibrary({
     grids.find((grid) => grid.id === selectedGridId) ?? activeGrid ?? grids[0] ?? null;
   const activeVersion =
     activeGrid?.versions.find((version) => version.id === defaultVersionId) ?? null;
+  const visibleGrids = grids.filter(
+    (grid) => grid.archived_at === null || grid.id === selectedGrid?.id
+  );
 
   const createMutation = useMutation({
     mutationFn: () =>
@@ -235,13 +238,13 @@ export function DivisionGridLibrary({
                 const grid = grids.find((candidate) => candidate.id === Number(value));
                 if (grid) onSelect(grid.id, grid.versions.at(-1)?.id);
               }}
-              disabled={loading || grids.length === 0}
+              disabled={loading || visibleGrids.length === 0}
             >
               <SelectTrigger>
                 <SelectValue placeholder={loading ? "Loading…" : "Choose grid"} />
               </SelectTrigger>
               <SelectContent>
-                {grids.map((grid) => (
+                {visibleGrids.map((grid) => (
                   <SelectItem key={grid.id} value={grid.id.toString()}>
                     {grid.name} · {grid.versions.length} version(s)
                     {grid.archived_at ? " · archived" : ""}
