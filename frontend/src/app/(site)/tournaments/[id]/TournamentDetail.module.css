@@ -16,7 +16,7 @@
   min-width: 0;
   max-width: 100%;
   border-bottom: 1px solid var(--aqt-border);
-  background: hsl(220 21% 5% / 0.96);
+  background: color-mix(in srgb, var(--aqt-bg) 96%, transparent);
 }
 
 .railFrameWithControls {
