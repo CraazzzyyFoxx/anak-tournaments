@@ -140,3 +140,31 @@ def test_generated_rules_satisfy_runtime_validation() -> None:
     assert result.is_complete
     source_tier_ids = {tier.id for tier in source}
     assert division_service._validate_mapping(source_tier_ids, result.rules) is True
+
+def test_automap_fully_resolves_realistic_ow2_grid_rename() -> None:
+    # Smoke: the default 40-tier OW2 grid, re-slugged but keeping the same rank
+    # ranges (a structural save that reorganizes labels), must auto-map with zero
+    # conflicts via rank overlap and pass runtime validation.
+    writes = division_service.get_default_ow2_tiers_write()
+    source = [
+        SimpleNamespace(id=index + 1, slug=w.slug, name=w.name, rank_min=w.rank_min, rank_max=w.rank_max)
+        for index, w in enumerate(writes)
+    ]
+    target = [
+        SimpleNamespace(
+            id=1000 + index + 1,
+            slug=f"renamed-{w.slug}",
+            name=w.name,
+            rank_min=w.rank_min,
+            rank_max=w.rank_max,
+        )
+        for index, w in enumerate(writes)
+    ]
+
+    result = automap.generate_mapping_rules(source, target)
+
+    assert result.conflicts == []
+    assert result.is_complete
+    covered = {rule.source_tier_id for rule in result.rules}
+    assert covered == {tier.id for tier in source}
+    assert division_service._validate_mapping({tier.id for tier in source}, result.rules) is True
