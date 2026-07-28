@@ -482,7 +482,9 @@
 
 thead .stickyTeamColumn {
   z-index: 3;
-  background: hsl(220 22% 10%) !important;
+  /* Opaque header-row color: card lifted a touch, kept opaque so scrolled
+     content can't bleed through. Derived from the token so branding follows. */
+  background: color-mix(in srgb, var(--aqt-card, var(--card)) 98%, white) !important;
 }
 
 .stageEmpty {
