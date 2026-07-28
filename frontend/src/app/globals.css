@@ -2337,7 +2337,7 @@
 }
 .aqt-tn table.tn td {
   padding: 13px 14px;
-  border-bottom: 1px solid hsl(215 20% 10%);
+  border-bottom: 1px solid color-mix(in srgb, var(--aqt-border) 55%, var(--aqt-bg));
   font-size: 13px;
   vertical-align: middle;
 }
@@ -3048,7 +3048,7 @@
 }
 .aqt-tn table.st td {
   padding: 11px 10px;
-  border-bottom: 1px solid hsl(215 20% 10%);
+  border-bottom: 1px solid color-mix(in srgb, var(--aqt-border) 55%, var(--aqt-bg));
   font-size: 13px;
   vertical-align: middle;
 }
@@ -3597,7 +3597,7 @@
 }
 .aqt-matches table.m td {
   padding: 14px 14px;
-  border-bottom: 1px solid hsl(215 20% 10%);
+  border-bottom: 1px solid color-mix(in srgb, var(--aqt-border) 55%, var(--aqt-bg));
   font-size: 13px;
   vertical-align: middle;
 }
@@ -3819,7 +3819,7 @@
 }
 .aqt-tn .data-table td {
   padding: 12px 14px;
-  border-bottom: 1px solid hsl(215 20% 10%);
+  border-bottom: 1px solid color-mix(in srgb, var(--aqt-border) 55%, var(--aqt-bg));
   font-size: 13px;
   vertical-align: middle;
   color: var(--fg-muted);

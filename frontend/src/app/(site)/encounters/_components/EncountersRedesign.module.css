@@ -1,21 +1,24 @@
 .surface {
-  --enc-bg: hsl(222 30% 6%);
-  --enc-card: hsl(215 20% 8%);
-  --enc-card-2: hsl(215 22% 9%);
-  --enc-border: hsl(215 20% 12%);
-  --enc-border-2: hsl(215 20% 16%);
-  --enc-fg: hsl(210 20% 95%);
-  --enc-muted: hsl(215 12% 60%);
-  --enc-dim: hsl(215 12% 40%);
-  --enc-faint: hsl(215 12% 30%);
+  /* Reference the global OWT tokens so the page stays in lockstep with the
+     rest of the app and follows workspace branding (was a stale hardcoded
+     copy of the palette). */
+  --enc-bg: var(--aqt-bg);
+  --enc-card: var(--aqt-card);
+  --enc-card-2: var(--aqt-card-2);
+  --enc-border: var(--aqt-border);
+  --enc-border-2: var(--aqt-border-2);
+  --enc-fg: var(--aqt-fg);
+  --enc-muted: var(--aqt-fg-muted);
+  --enc-dim: var(--aqt-fg-dim);
+  --enc-faint: var(--aqt-fg-faint);
   --enc-teal: var(--aqt-teal);
-  --enc-emerald: hsl(142 70% 50%);
-  --enc-amber: hsl(38 95% 55%);
-  --enc-rose: hsl(340 75% 58%);
-  --enc-violet: hsl(270 70% 62%);
-  --enc-blue: hsl(210 80% 60%);
-  --enc-display: var(--font-onest), var(--font-inter), Inter, system-ui, sans-serif;
-  --enc-mono: ui-monospace, "JetBrains Mono", SFMono-Regular, Menlo, monospace;
+  --enc-emerald: var(--aqt-emerald);
+  --enc-amber: var(--aqt-amber);
+  --enc-rose: var(--aqt-rose);
+  --enc-violet: var(--aqt-violet);
+  --enc-blue: var(--aqt-blue);
+  --enc-display: var(--aqt-display);
+  --enc-mono: var(--aqt-mono);
   color: var(--enc-fg);
   display: flex;
   flex-direction: column;
@@ -245,8 +248,8 @@
 }
 
 .savedViewDelete:hover:not(:disabled) {
-  background: hsl(0 72% 58% / 0.12);
-  color: hsl(0 80% 70%);
+  background: hsl(var(--destructive) / 0.12);
+  color: color-mix(in srgb, hsl(var(--destructive)) 70%, white);
 }
 
 .savedViewDelete:disabled {
@@ -381,11 +384,11 @@
 
 /* ============ Notice ============ */
 .notice {
-  border: 1px solid hsl(44 92% 54% / 0.28);
+  border: 1px solid color-mix(in srgb, var(--enc-amber) 28%, transparent);
   border-radius: 8px;
-  background: hsl(44 92% 54% / 0.1);
+  background: color-mix(in srgb, var(--enc-amber) 10%, transparent);
   padding: 10px 12px;
-  color: hsl(42 95% 72%);
+  color: color-mix(in srgb, var(--enc-amber) 70%, white);
   font-size: 13px;
 }
 
@@ -412,7 +415,7 @@
   font-size: 14px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: hsl(210 20% 88%);
+  color: color-mix(in srgb, var(--enc-fg) 80%, var(--enc-muted));
 }
 
 .cardSub {
@@ -682,27 +685,27 @@
 }
 
 .tgAmber {
-  background: hsl(38 95% 55% / 0.16);
+  background: color-mix(in srgb, var(--enc-amber) 16%, transparent);
   color: var(--enc-amber);
-  border: 1px solid hsl(38 95% 55% / 0.3);
+  border: 1px solid color-mix(in srgb, var(--enc-amber) 30%, transparent);
 }
 
 .tgRose {
-  background: hsl(340 75% 58% / 0.18);
+  background: color-mix(in srgb, var(--enc-rose) 18%, transparent);
   color: var(--enc-rose);
-  border: 1px solid hsl(340 75% 58% / 0.3);
+  border: 1px solid color-mix(in srgb, var(--enc-rose) 30%, transparent);
 }
 
 .tgViolet {
-  background: hsl(270 70% 62% / 0.18);
+  background: color-mix(in srgb, var(--enc-violet) 18%, transparent);
   color: var(--enc-violet);
-  border: 1px solid hsl(270 70% 62% / 0.3);
+  border: 1px solid color-mix(in srgb, var(--enc-violet) 30%, transparent);
 }
 
 .tgBlue {
-  background: hsl(210 80% 60% / 0.16);
+  background: color-mix(in srgb, var(--enc-blue) 16%, transparent);
   color: var(--enc-blue);
-  border: 1px solid hsl(210 80% 60% / 0.3);
+  border: 1px solid color-mix(in srgb, var(--enc-blue) 30%, transparent);
 }
 
 .vs {
@@ -786,7 +789,7 @@
 
 .statusLive::before {
   background: var(--enc-emerald);
-  box-shadow: 0 0 0 3px hsl(142 70% 50% / 0.2);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--enc-emerald) 20%, transparent);
 }
 
 .statusUpcoming {
@@ -849,7 +852,7 @@
 
 .table td {
   padding: 12px 14px;
-  border-bottom: 1px solid hsl(215 20% 10%);
+  border-bottom: 1px solid color-mix(in srgb, var(--enc-border) 55%, var(--enc-bg));
   font-size: 13px;
   vertical-align: middle;
 }
@@ -952,20 +955,20 @@
 }
 
 .stagePillPlayoffs {
-  background: hsl(38 95% 55% / 0.08);
-  border-color: hsl(38 95% 55% / 0.25);
+  background: color-mix(in srgb, var(--enc-amber) 8%, transparent);
+  border-color: color-mix(in srgb, var(--enc-amber) 25%, transparent);
   color: var(--enc-amber);
 }
 
 .stagePillGroup {
-  background: hsl(210 80% 60% / 0.08);
-  border-color: hsl(210 80% 60% / 0.25);
+  background: color-mix(in srgb, var(--enc-blue) 8%, transparent);
+  border-color: color-mix(in srgb, var(--enc-blue) 25%, transparent);
   color: var(--enc-blue);
 }
 
 .stagePillFinals {
-  background: hsl(340 75% 58% / 0.08);
-  border-color: hsl(340 75% 58% / 0.25);
+  background: color-mix(in srgb, var(--enc-rose) 8%, transparent);
+  border-color: color-mix(in srgb, var(--enc-rose) 25%, transparent);
   color: var(--enc-rose);
 }
 
@@ -1049,28 +1052,28 @@
 
 .mediaIconLogs {
   color: var(--enc-emerald);
-  border-color: hsl(142 70% 50% / 0.32);
-  background: hsl(142 70% 50% / 0.08);
+  border-color: color-mix(in srgb, var(--enc-emerald) 32%, transparent);
+  background: color-mix(in srgb, var(--enc-emerald) 8%, transparent);
 }
 
 .mediaIconVod {
   color: var(--enc-amber);
-  border-color: hsl(38 95% 55% / 0.32);
-  background: hsl(38 95% 55% / 0.08);
+  border-color: color-mix(in srgb, var(--enc-amber) 32%, transparent);
+  background: color-mix(in srgb, var(--enc-amber) 8%, transparent);
 }
 
 .mediaIconVod:hover {
-  background: hsl(38 95% 55% / 0.14);
+  background: color-mix(in srgb, var(--enc-amber) 14%, transparent);
 }
 
 .mediaIconCast {
   color: var(--enc-rose);
-  border-color: hsl(340 75% 58% / 0.32);
-  background: hsl(340 75% 58% / 0.08);
+  border-color: color-mix(in srgb, var(--enc-rose) 32%, transparent);
+  background: color-mix(in srgb, var(--enc-rose) 8%, transparent);
 }
 
 .mediaIconCast:hover {
-  background: hsl(340 75% 58% / 0.14);
+  background: color-mix(in srgb, var(--enc-rose) 14%, transparent);
 }
 
 .mediaIconDisabled {
@@ -1269,7 +1272,7 @@
 }
 
 .balanceAway {
-  background: hsl(215 20% 14%);
+  background: color-mix(in srgb, var(--enc-border) 50%, var(--enc-border-2));
   display: flex;
   align-items: center;
   justify-content: center;

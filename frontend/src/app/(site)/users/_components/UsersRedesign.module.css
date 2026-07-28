@@ -278,7 +278,7 @@
 
 .table td {
   padding: 12px 14px;
-  border-bottom: 1px solid hsl(215 20% 10%);
+  border-bottom: 1px solid color-mix(in srgb, var(--u-border) 55%, var(--u-bg));
   font-size: 13px;
   vertical-align: middle;
   color: var(--u-fg);
