@@ -298,6 +298,11 @@ export function BalancerMainPageClient() {
     () => variants.find((variant) => variant.id === activeVariantId) ?? null,
     [activeVariantId, variants]
   );
+  // The persisted balance is only "current" while the active variant is the saved
+  // one and nobody has edited it since. Any editor change or a regenerated variant
+  // is new work, so Save/Export become available again.
+  const isBalanceSaved = activeVariant?.source === "saved" && !activeVariant.dirty;
+  const isBalanceExported = isBalanceSaved && savedBalanceQuery.data?.exported_at != null;
   const quickEditPlayer = useMemo(
     () => players.find((player) => player.id === editingPlayerId) ?? null,
     [editingPlayerId, players]
@@ -795,6 +800,8 @@ export function BalancerMainPageClient() {
               canRunBalance={canRunBalance}
               isSavePending={saveBalanceMutation.isPending}
               isExportPending={exportToTournamentMutation.isPending}
+              isBalanceSaved={isBalanceSaved}
+              isBalanceExported={isBalanceExported}
               tournamentId={tournamentId}
               onRunBalance={() => runBalanceMutation.mutate()}
               onSaveBalance={() => saveBalanceMutation.mutate()}

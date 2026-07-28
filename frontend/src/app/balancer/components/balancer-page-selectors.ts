@@ -176,7 +176,7 @@ export function replaceVariantPayload(
   payload: InternalBalancePayload,
 ): BalanceVariant[] {
   return variants.map((variant) =>
-    variant.id === activeVariantId ? { ...variant, payload } : variant,
+    variant.id === activeVariantId ? { ...variant, payload, dirty: true } : variant,
   );
 }
 

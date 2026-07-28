@@ -32,6 +32,12 @@ export type BalanceVariant = {
   config?: BalancerConfig | null;
   /** Number of pool players excluded from this run due to validation issues */
   skippedCount?: number;
+  /**
+   * Payload edited in the editor since the variant was built. Only meaningful for
+   * `source: "saved"`, where it separates "this is exactly what is persisted" from
+   * "there is new work to save/export".
+   */
+  dirty?: boolean;
 };
 
 export type PlayerValidationIssue =

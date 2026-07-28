@@ -41,6 +41,10 @@ type BalanceActionsBarProps = {
   canRunBalance: boolean;
   isSavePending: boolean;
   isExportPending: boolean;
+  /** Active variant is exactly the persisted balance — nothing new to save. */
+  isBalanceSaved: boolean;
+  /** That persisted balance is already exported to tournament teams. */
+  isBalanceExported: boolean;
   onRunBalance: () => void;
   onSaveBalance: () => void;
   onExportBalance: () => void;
@@ -55,6 +59,8 @@ export function BalanceActionsBar({
   canRunBalance,
   isSavePending,
   isExportPending,
+  isBalanceSaved,
+  isBalanceExported,
   onRunBalance,
   onSaveBalance,
   onExportBalance,
@@ -190,28 +196,38 @@ export function BalanceActionsBar({
           type="button"
           className="rounded-xl bg-primary text-primary-foreground hover:bg-primary/90"
           onClick={onSaveBalance}
-          disabled={!activeVariant || isSavePending || isExportPending}
+          title={
+            isBalanceSaved
+              ? "This balance is already saved — edit the rosters or generate a new variant to save again."
+              : undefined
+          }
+          disabled={!activeVariant || isBalanceSaved || isSavePending || isExportPending}
         >
           {isSavePending ? (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           ) : (
             <Check className="mr-2 h-4 w-4" />
           )}
-          Save
+          {isBalanceSaved ? "Saved" : "Save"}
         </Button>
         <Button
           type="button"
           variant="outline"
           className={cn("rounded-xl", MUTED_BUTTON_CLASS)}
           onClick={onExportBalance}
-          disabled={!activeVariant || isExportPending || isSavePending}
+          title={
+            isBalanceExported
+              ? "This balance is already exported — edit the rosters or generate a new variant to export again."
+              : undefined
+          }
+          disabled={!activeVariant || isBalanceExported || isExportPending || isSavePending}
         >
           {isExportPending ? (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           ) : (
             <Upload className="mr-2 h-4 w-4" />
           )}
-          Export to Tournament
+          {isBalanceExported ? "Exported" : "Export to Tournament"}
         </Button>
         <Button
           type="button"
