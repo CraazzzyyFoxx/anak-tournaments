@@ -193,7 +193,10 @@ async def export_balance(session: AsyncSession, balance_id: int) -> tuple[models
     result = await session.execute(
         sa.select(models.BalancerBalance)
         .where(models.BalancerBalance.id == balance_id)
-        .options(selectinload(models.BalancerBalance.teams))
+        # ``variants`` is read by ``enqueue_balance_exported_event`` below; a lazy
+        # load there would blow up (async IO outside the greenlet) *after*
+        # ``bulk_create_from_balancer`` already committed the tournament teams.
+        .options(selectinload(models.BalancerBalance.teams), selectinload(models.BalancerBalance.variants))
     )
     balance = result.scalar_one_or_none()
     if balance is None:
