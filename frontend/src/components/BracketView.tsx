@@ -783,7 +783,7 @@ export function BracketView({
                 key={edge.id}
                 d={edge.path}
                 stroke={
-                  edge.isCompleted ? "hsl(172 70% 49% / 0.55)" : "hsl(0 0% 100% / 0.12)"
+                  edge.isCompleted ? "color-mix(in srgb, var(--aqt-teal) 55%, transparent)" : "hsl(0 0% 100% / 0.12)"
                 }
                 strokeWidth="2"
                 strokeLinecap="round"

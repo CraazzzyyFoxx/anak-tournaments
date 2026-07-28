@@ -278,8 +278,8 @@ const OverviewLastTournamentCard = ({ tournament, tournaments, userId }: Props) 
                   className="aqt-display inline-flex h-[20px] w-[20px] items-center justify-center rounded-[4px] text-[11px] font-bold"
                   style={{
                     color: "var(--aqt-rose)",
-                    background: "hsl(349 84% 63% / 0.14)",
-                    border: "1px solid hsl(349 84% 63% / 0.35)"
+                    background: "color-mix(in srgb, var(--aqt-rose) 14%, transparent)",
+                    border: "1px solid color-mix(in srgb, var(--aqt-rose) 35%, transparent)"
                   }}
                   title={t("users.overview.lastTournament.mapLost")}
                 >

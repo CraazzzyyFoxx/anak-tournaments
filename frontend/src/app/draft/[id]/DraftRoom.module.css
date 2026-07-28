@@ -489,7 +489,7 @@
   border: 1px solid hsl(217 17% 21% / 0.45);
   border-radius: 0.4rem;
   background:
-    linear-gradient(105deg, transparent 32%, hsl(172 70% 49% / 0.08) 48%, transparent 64%),
+    linear-gradient(105deg, transparent 32%, color-mix(in srgb, var(--aqt-teal) 8%, transparent) 48%, transparent 64%),
     hsl(220 22% 11% / 0.82);
   background-size:
     240% 100%,

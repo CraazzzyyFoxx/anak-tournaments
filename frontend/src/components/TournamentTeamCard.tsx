@@ -104,8 +104,8 @@ export const TournamentTeamTable = ({
                     <span
                       className="aqt-mono rounded-[4px] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em]"
                       style={{
-                        background: "hsl(172 70% 49% / 0.12)",
-                        border: "1px solid hsl(172 70% 49% / 0.3)",
+                        background: "color-mix(in srgb, var(--aqt-teal) 12%, transparent)",
+                        border: "1px solid color-mix(in srgb, var(--aqt-teal) 30%, transparent)",
                         color: "var(--aqt-teal)"
                       }}
                     >

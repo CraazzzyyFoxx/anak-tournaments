@@ -466,8 +466,8 @@
   color: var(--aqt-blue);
 }
 .aqt-stage-pill.finals {
-  background: hsl(349 84% 63% / 0.08);
-  border-color: hsl(349 84% 63% / 0.25);
+  background: color-mix(in srgb, var(--aqt-rose) 8%, transparent);
+  border-color: color-mix(in srgb, var(--aqt-rose) 25%, transparent);
   color: var(--aqt-rose);
 }
 
@@ -574,8 +574,8 @@
   color: var(--aqt-fg);
 }
 .aqt-filter-chip.active {
-  background: hsl(172 70% 49% / 0.12);
-  border-color: hsl(172 70% 49% / 0.35);
+  background: color-mix(in srgb, var(--aqt-teal) 12%, transparent);
+  border-color: color-mix(in srgb, var(--aqt-teal) 35%, transparent);
   color: var(--aqt-teal);
 }
 .aqt-filter-chip .aqt-count {
@@ -587,7 +587,7 @@
   border-radius: 4px;
 }
 .aqt-filter-chip.active .aqt-count {
-  background: hsl(172 70% 49% / 0.16);
+  background: color-mix(in srgb, var(--aqt-teal) 16%, transparent);
   color: var(--aqt-teal);
 }
 .aqt-filter-divider {
@@ -618,7 +618,7 @@
 }
 .aqt-place-spark .aqt-bar {
   width: 100%;
-  background: linear-gradient(180deg, var(--aqt-teal), hsl(172 70% 49% / 0.35));
+  background: linear-gradient(180deg, var(--aqt-teal), color-mix(in srgb, var(--aqt-teal) 35%, transparent));
   border-radius: 3px 3px 0 0;
   transition: 0.15s;
   min-height: 4px;
@@ -1052,8 +1052,8 @@
 }
 .aqt-ach-card .aqt-stamp.x {
   color: var(--aqt-teal);
-  background: hsl(172 70% 49% / 0.12);
-  border-color: hsl(172 70% 49% / 0.28);
+  background: color-mix(in srgb, var(--aqt-teal) 12%, transparent);
+  border-color: color-mix(in srgb, var(--aqt-teal) 28%, transparent);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -1373,7 +1373,7 @@
   stroke-width: 1.2;
 }
 .aqt-radar-you {
-  fill: hsl(172 70% 49% / 0.22);
+  fill: color-mix(in srgb, var(--aqt-teal) 22%, transparent);
   stroke: var(--aqt-teal);
   stroke-width: 1.8;
 }
@@ -1407,7 +1407,7 @@
   border-left: 3px solid hsl(36 88% 65% / 0.5);
 }
 .aqt-t-item.expanded {
-  background: hsl(172 70% 49% / 0.04);
+  background: color-mix(in srgb, var(--aqt-teal) 4%, transparent);
   border-bottom-color: transparent;
 }
 
@@ -1594,7 +1594,7 @@
      restrained teal glow. The spectrum is the single sanctioned multi-hue
      accent — everywhere else, one teal leads. */
   --aqt-spectrum: linear-gradient(90deg, var(--aqt-tank), var(--aqt-damage), var(--aqt-support));
-  --aqt-hero-glow: radial-gradient(ellipse at 30% 45%, hsl(172 70% 49% / 0.1), transparent 60%);
+  --aqt-hero-glow: radial-gradient(ellipse at 30% 45%, color-mix(in srgb, var(--aqt-teal) 10%, transparent), transparent 60%);
 }
 
 /* Page-hero title accent — role-spectrum gradient text. Callers wrap the
@@ -1620,8 +1620,8 @@
 /* ═══════════════════════════════════════════════════════════════════════
    Tournaments redesign — structural styles (Tournaments Redesign.html).
    Scoped under .aqt-tn. Local token aliases point at the global --aqt-*
-   set (single source of truth); alpha tints are kept as literals because
-   the design relies on translucency of the same hues.
+   set (single source of truth); alpha tints derive from the same tokens via
+   color-mix so workspace-themed accents carry through.
    ═══════════════════════════════════════════════════════════════════════ */
 .aqt-tn {
   --bg: var(--aqt-bg);
@@ -1638,6 +1638,7 @@
   --emerald: var(--aqt-emerald);
   --amber: var(--aqt-amber);
   --rose: var(--aqt-rose);
+  --gold: var(--aqt-gold);
   --violet: var(--aqt-violet);
   --blue: var(--aqt-blue);
   --display: var(--aqt-display);
@@ -1699,7 +1700,7 @@
   left: -5%;
   width: 65%;
   height: 130%;
-  background: radial-gradient(ellipse at 30% 50%, hsl(172 70% 49% / 0.18), transparent 62%);
+  background: radial-gradient(ellipse at 30% 50%, color-mix(in srgb, var(--teal) 18%, transparent), transparent 62%);
   pointer-events: none;
 }
 .aqt-tn .glow-2 {
@@ -1708,7 +1709,7 @@
   right: 0;
   width: 55%;
   height: 100%;
-  background: radial-gradient(ellipse at 70% 30%, hsl(349 84% 63% / 0.1), transparent 58%);
+  background: radial-gradient(ellipse at 70% 30%, color-mix(in srgb, var(--rose) 10%, transparent), transparent 58%);
   pointer-events: none;
 }
 .aqt-tn .hero-grid {
@@ -1768,7 +1769,7 @@
   height: 6px;
   border-radius: 50%;
   background: var(--rose);
-  box-shadow: 0 0 0 3px hsl(349 84% 63% / 0.18);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--rose) 18%, transparent);
   animation: aqtPulse 2s ease-in-out infinite;
   margin-right: 6px;
   vertical-align: middle;
@@ -1808,12 +1809,12 @@
   color: var(--fg);
 }
 .aqt-tn .tn-btn.primary {
-  background: hsl(172 70% 49% / 0.14);
-  border-color: hsl(172 70% 49% / 0.3);
+  background: color-mix(in srgb, var(--teal) 14%, transparent);
+  border-color: color-mix(in srgb, var(--teal) 30%, transparent);
   color: var(--teal);
 }
 .aqt-tn .tn-btn.primary:hover {
-  background: hsl(172 70% 49% / 0.2);
+  background: color-mix(in srgb, var(--teal) 20%, transparent);
 }
 .aqt-tn .tn-btn .kbd {
   font-family: var(--mono);
@@ -1854,8 +1855,8 @@
   color: var(--fg);
 }
 .aqt-tn .filter-chip.active {
-  background: hsl(172 70% 49% / 0.12);
-  border-color: hsl(172 70% 49% / 0.35);
+  background: color-mix(in srgb, var(--teal) 12%, transparent);
+  border-color: color-mix(in srgb, var(--teal) 35%, transparent);
   color: var(--teal);
 }
 .aqt-tn .filter-chip .count {
@@ -1867,7 +1868,7 @@
   border-radius: 4px;
 }
 .aqt-tn .filter-chip.active .count {
-  background: hsl(172 70% 49% / 0.16);
+  background: color-mix(in srgb, var(--teal) 16%, transparent);
   color: var(--teal);
 }
 .aqt-tn .filter-chip .dot {
@@ -1877,7 +1878,7 @@
 }
 .aqt-tn .filter-chip .dot.live {
   background: var(--rose);
-  box-shadow: 0 0 0 3px hsl(349 84% 63% / 0.18);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--rose) 18%, transparent);
 }
 .aqt-tn .filter-chip .dot.upcoming {
   background: var(--amber);
@@ -1994,21 +1995,21 @@
   background: var(--card-2);
 }
 .aqt-tn .feat-card.live {
-  border-color: hsl(349 84% 63% / 0.25);
+  border-color: color-mix(in srgb, var(--rose) 25%, transparent);
 }
 .aqt-tn .feat-card.live:hover {
-  border-color: hsl(349 84% 63% / 0.4);
+  border-color: color-mix(in srgb, var(--rose) 40%, transparent);
 }
 .aqt-tn .feat-glow {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: radial-gradient(ellipse at 0% 0%, hsl(349 84% 63% / 0.14), transparent 55%),
-    radial-gradient(ellipse at 100% 100%, hsl(172 70% 49% / 0.08), transparent 55%);
+  background: radial-gradient(ellipse at 0% 0%, color-mix(in srgb, var(--rose) 14%, transparent), transparent 55%),
+    radial-gradient(ellipse at 100% 100%, color-mix(in srgb, var(--teal) 8%, transparent), transparent 55%);
 }
 .aqt-tn .feat-card.upcoming .feat-glow {
-  background: radial-gradient(ellipse at 0% 0%, hsl(36 88% 65% / 0.1), transparent 55%),
-    radial-gradient(ellipse at 100% 100%, hsl(172 70% 49% / 0.06), transparent 60%);
+  background: radial-gradient(ellipse at 0% 0%, color-mix(in srgb, var(--amber) 10%, transparent), transparent 55%),
+    radial-gradient(ellipse at 100% 100%, color-mix(in srgb, var(--teal) 6%, transparent), transparent 60%);
 }
 .aqt-tn .feat-hex {
   position: absolute;
@@ -2060,16 +2061,16 @@
   font-family: Inter, sans-serif;
 }
 .aqt-tn .status-pill.live {
-  background: hsl(349 84% 63% / 0.14);
+  background: color-mix(in srgb, var(--rose) 14%, transparent);
   color: var(--rose);
-  border: 1px solid hsl(349 84% 63% / 0.3);
+  border: 1px solid color-mix(in srgb, var(--rose) 30%, transparent);
 }
 .aqt-tn .status-pill.live .dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: var(--rose);
-  box-shadow: 0 0 0 3px hsl(349 84% 63% / 0.18);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--rose) 18%, transparent);
   animation: aqtPulse 2s ease-in-out infinite;
 }
 .aqt-tn .status-pill.upcoming {
@@ -2217,7 +2218,7 @@
   flex-shrink: 0;
 }
 .aqt-tn .feat-now .team .av.t1 {
-  background: linear-gradient(135deg, hsl(174 72% 50%), hsl(174 60% 30%));
+  background: linear-gradient(135deg, var(--teal), color-mix(in srgb, var(--teal) 55%, black));
   color: hsl(220 30% 8%);
 }
 .aqt-tn .feat-now .team .av.t2 {
@@ -2402,7 +2403,7 @@
   font-family: Inter, sans-serif;
 }
 .aqt-tn .tn-status.live {
-  background: hsl(349 84% 63% / 0.14);
+  background: color-mix(in srgb, var(--rose) 14%, transparent);
   color: var(--rose);
 }
 .aqt-tn .tn-status.live .dot {
@@ -2410,7 +2411,7 @@
   height: 6px;
   border-radius: 50%;
   background: var(--rose);
-  box-shadow: 0 0 0 2.5px hsl(349 84% 63% / 0.18);
+  box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--rose) 18%, transparent);
   animation: aqtPulse 2s ease-in-out infinite;
 }
 .aqt-tn .tn-status.upcoming {
@@ -2461,7 +2462,7 @@
 .aqt-tn .tn-stage .progress .fill {
   position: absolute;
   inset: 0 auto 0 0;
-  background: linear-gradient(90deg, var(--teal), hsl(174 72% 60%));
+  background: linear-gradient(90deg, var(--teal), color-mix(in srgb, var(--teal) 70%, white));
   border-radius: 3px;
 }
 .aqt-tn .tn-stage .progress .fill.amber {
@@ -2600,8 +2601,8 @@
   color: var(--fg);
 }
 .aqt-tn .page-btn.active {
-  background: hsl(172 70% 49% / 0.12);
-  border-color: hsl(172 70% 49% / 0.3);
+  background: color-mix(in srgb, var(--teal) 12%, transparent);
+  border-color: color-mix(in srgb, var(--teal) 30%, transparent);
   color: var(--teal);
 }
 .aqt-tn .page-btn.disabled {
@@ -2639,7 +2640,7 @@
 .aqt-tn .tn-hero {
   position: relative;
   overflow: hidden;
-  border: 1px solid hsl(349 84% 63% / 0.25);
+  border: 1px solid color-mix(in srgb, var(--rose) 25%, transparent);
   border-radius: 14px;
   padding: 28px 36px 24px;
   background: var(--bg);
@@ -2659,7 +2660,7 @@
   left: -10%;
   width: 60%;
   height: 160%;
-  background: radial-gradient(ellipse at 30% 50%, hsl(349 84% 63% / 0.18), transparent 60%);
+  background: radial-gradient(ellipse at 30% 50%, color-mix(in srgb, var(--rose) 18%, transparent), transparent 60%);
   pointer-events: none;
 }
 .aqt-tn .glow-teal {
@@ -2668,7 +2669,7 @@
   right: -5%;
   width: 55%;
   height: 130%;
-  background: radial-gradient(ellipse at 70% 40%, hsl(172 70% 49% / 0.14), transparent 60%);
+  background: radial-gradient(ellipse at 70% 40%, color-mix(in srgb, var(--teal) 14%, transparent), transparent 60%);
   pointer-events: none;
 }
 .aqt-tn .tn-hero-inner {
@@ -2821,14 +2822,14 @@
 }
 .aqt-tn .tab.active .count {
   color: var(--teal);
-  background: hsl(172 70% 49% / 0.14);
+  background: color-mix(in srgb, var(--teal) 14%, transparent);
 }
 .aqt-tn .tab .live-tag {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: var(--rose);
-  box-shadow: 0 0 0 3px hsl(349 84% 63% / 0.18);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--rose) 18%, transparent);
   animation: aqtPulse 2s ease-in-out infinite;
   margin-left: 2px;
 }
@@ -2901,9 +2902,9 @@
   color: var(--fg);
 }
 .aqt-tn .stage-tab.active {
-  background: hsl(172 70% 49% / 0.14);
+  background: color-mix(in srgb, var(--teal) 14%, transparent);
   color: var(--teal);
-  box-shadow: inset 0 0 0 1px hsl(172 70% 49% / 0.3);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--teal) 30%, transparent);
 }
 .aqt-tn .stage-tab .count {
   font-family: var(--mono);
@@ -2915,7 +2916,7 @@
 }
 .aqt-tn .stage-tab.active .count {
   color: var(--teal);
-  background: hsl(172 70% 49% / 0.18);
+  background: color-mix(in srgb, var(--teal) 18%, transparent);
 }
 
 .aqt-tn .groups-layout {
@@ -2957,14 +2958,14 @@
   width: 38px;
   height: 38px;
   border-radius: 8px;
-  background: hsl(172 70% 49% / 0.14);
+  background: color-mix(in srgb, var(--teal) 14%, transparent);
   color: var(--teal);
   font-family: var(--display);
   font-weight: 800;
   font-size: 20px;
 }
 .aqt-tn .standings-card .head .title .gid.playoff {
-  background: hsl(45 90% 60% / 0.14);
+  background: color-mix(in srgb, var(--gold) 14%, transparent);
   color: var(--gold);
 }
 .aqt-tn .standings-card .head .title .stack {
@@ -3096,8 +3097,8 @@
   cursor: default;
 }
 .aqt-tn .st-footer .badge:hover {
-  background: hsl(172 70% 49% / 0.08);
-  border-color: hsl(172 70% 49% / 0.2);
+  background: color-mix(in srgb, var(--teal) 8%, transparent);
+  border-color: color-mix(in srgb, var(--teal) 20%, transparent);
   color: var(--teal);
 }
 @media (max-width: 640px) {
@@ -3123,16 +3124,16 @@
   text-align: center;
 }
 .aqt-tn table.st tr.advance {
-  background: hsl(172 70% 49% / 0.05);
+  background: color-mix(in srgb, var(--teal) 5%, transparent);
 }
 .aqt-tn table.st tr.advance:hover td {
-  background: hsl(172 70% 49% / 0.09);
+  background: color-mix(in srgb, var(--teal) 9%, transparent);
 }
 .aqt-tn table.st tr.crown {
-  background: hsl(45 90% 60% / 0.06);
+  background: color-mix(in srgb, var(--gold) 6%, transparent);
 }
 .aqt-tn table.st tr.crown:hover td {
-  background: hsl(45 90% 60% / 0.1);
+  background: color-mix(in srgb, var(--gold) 10%, transparent);
 }
 .aqt-tn table.st tr.crown td:first-child {
   padding-left: 32px;
@@ -3253,7 +3254,7 @@
 }
 .aqt-tn .st-maps .bar .l {
   height: 100%;
-  background: hsl(349 84% 63% / 0.4);
+  background: color-mix(in srgb, var(--rose) 40%, transparent);
 }
 .aqt-tn .st-diff {
   font-family: var(--mono);
@@ -3290,7 +3291,7 @@
   background: var(--emerald);
 }
 .aqt-tn .form-chips .fc.l {
-  background: hsl(349 84% 63% / 0.7);
+  background: color-mix(in srgb, var(--rose) 70%, transparent);
   color: hsl(0 0% 100%);
 }
 .aqt-tn .form-chips .fc.t {
@@ -3309,7 +3310,7 @@
   font-family: Inter, sans-serif;
 }
 .aqt-tn .st-status.adv {
-  background: hsl(172 70% 49% / 0.14);
+  background: color-mix(in srgb, var(--teal) 14%, transparent);
   color: var(--teal);
 }
 .aqt-tn .st-status.adv .arrow {
@@ -3324,7 +3325,7 @@
   color: var(--fg-dim);
 }
 .aqt-tn .st-status.winner {
-  background: hsl(45 90% 60% / 0.14);
+  background: color-mix(in srgb, var(--gold) 14%, transparent);
   color: var(--gold);
 }
 .aqt-tn .st-cut {
@@ -3337,7 +3338,7 @@
   left: 14px;
   right: 14px;
   top: 0;
-  border-top: 1.5px dashed hsl(172 70% 49% / 0.4);
+  border-top: 1.5px dashed color-mix(in srgb, var(--teal) 40%, transparent);
 }
 .aqt-tn .st-cut::after {
   content: attr(data-label);
@@ -3396,8 +3397,8 @@
 }
 .group-chip.a {
   color: var(--aqt-teal);
-  background: hsl(174 72% 50% / 0.1);
-  border-color: hsl(174 72% 50% / 0.22);
+  background: color-mix(in srgb, var(--aqt-teal) 10%, transparent);
+  border-color: color-mix(in srgb, var(--aqt-teal) 22%, transparent);
 }
 .group-chip.b {
   color: var(--aqt-amber);
@@ -3428,8 +3429,8 @@
 }
 .placement.gold {
   color: var(--aqt-gold);
-  background: hsl(45 90% 60% / 0.1);
-  border-color: hsl(45 90% 60% / 0.3);
+  background: color-mix(in srgb, var(--aqt-gold) 10%, transparent);
+  border-color: color-mix(in srgb, var(--aqt-gold) 30%, transparent);
 }
 .placement.silver {
   color: hsl(0 0% 80%);
@@ -3611,10 +3612,10 @@
   border-bottom: 0;
 }
 .aqt-matches table.m tbody tr.live td {
-  background: hsl(349 84% 63% / 0.045);
+  background: color-mix(in srgb, var(--rose) 4.5%, transparent);
 }
 .aqt-matches table.m tbody tr.live:hover td {
-  background: hsl(349 84% 63% / 0.08);
+  background: color-mix(in srgb, var(--rose) 8%, transparent);
 }
 .aqt-matches table.m td.r {
   text-align: right;
@@ -3660,7 +3661,7 @@
   font-weight: 700;
 }
 .aqt-matches .m-up .row.winner .av {
-  box-shadow: 0 0 0 1.5px hsl(172 70% 49% / 0.6);
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--teal) 60%, transparent);
 }
 .aqt-matches .m-up .row.loser .av {
   opacity: 0.6;
@@ -3701,7 +3702,7 @@
 }
 .aqt-matches .m-close .fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--teal), hsl(174 72% 65%));
+  background: linear-gradient(90deg, var(--teal), color-mix(in srgb, var(--teal) 65%, white));
   border-radius: 3px;
 }
 .aqt-matches .m-close .fill.hot {
@@ -3766,8 +3767,8 @@
 }
 .aqt-matches .m-media .pill.has {
   color: var(--teal);
-  background: hsl(172 70% 49% / 0.08);
-  border-color: hsl(172 70% 49% / 0.25);
+  background: color-mix(in srgb, var(--teal) 8%, transparent);
+  border-color: color-mix(in srgb, var(--teal) 25%, transparent);
 }
 .aqt-matches .m-media .pill.empty {
   opacity: 0.4;
@@ -3777,7 +3778,7 @@
   height: 7px;
   border-radius: 50%;
   background: var(--rose);
-  box-shadow: 0 0 0 3px hsl(349 84% 63% / 0.18);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--rose) 18%, transparent);
   animation: aqtPulse 2s ease-in-out infinite;
   display: inline-block;
 }
