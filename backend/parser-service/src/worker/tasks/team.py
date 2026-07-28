@@ -11,8 +11,8 @@ async def create_from_folder(session: AsyncSession) -> None:
     paths: list[tuple[int, str]] = []
 
     for path in Path("teams").glob("*.json"):
-        number = str(path).split("_")[-1].replace(".json", "")
-        tournament_id = int(number)
+        raw_id = str(path).split("_")[-1].replace(".json", "")
+        tournament_id = int(raw_id)
         paths.append((tournament_id, str(path)))
 
     paths = sorted(paths, key=lambda item: item[0])

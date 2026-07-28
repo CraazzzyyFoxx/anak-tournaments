@@ -15,7 +15,6 @@ export type PhaseScheduleFormState = Record<
 >;
 
 export type TournamentFormState = {
-  number: number | null;
   name: string;
   description: string;
   challonge_slug: string;
@@ -138,7 +137,6 @@ export function getPhaseSchedulePayload(
 
 export function getTournamentForm(tournament: Tournament, timezone: string): TournamentFormState {
   return {
-    number: tournament.number ?? null,
     name: tournament.name,
     description: tournament.description ?? "",
     challonge_slug: tournament.challonge_slug ?? "",

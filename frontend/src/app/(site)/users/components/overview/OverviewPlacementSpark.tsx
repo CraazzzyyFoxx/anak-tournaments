@@ -52,7 +52,7 @@ const OverviewPlacementSpark = async ({ tournaments, limit = 12 }: Props) => {
     const shape: Shape =
       placement <= 3 ? "podium" : placement > Math.ceil(tour.count_teams / 2) ? "bottom" : "mid";
     return {
-      label: tour.number ? `${tour.number}` : tour.name.split(" | ")[1] ?? tour.name.slice(0, 4),
+      label: tour.name.split(" | ")[1] ?? tour.name.slice(0, 4),
       placement,
       countTeams: tour.count_teams,
       xFrac: n > 1 ? i / (n - 1) : 0.5,

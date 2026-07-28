@@ -32,7 +32,6 @@ const overviewFixture: Tournament = {
   name: "Summer Clash",
   start_date: new Date("2026-07-15T12:00:00Z"),
   end_date: new Date("2026-07-16T12:00:00Z"),
-  number: 72,
   description: "Public tournament",
   challonge_id: null,
   challonge_slug: null,

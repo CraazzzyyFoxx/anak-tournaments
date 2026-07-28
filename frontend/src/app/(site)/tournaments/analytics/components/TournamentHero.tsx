@@ -80,16 +80,10 @@ export default function TournamentHero({
 
   const eyebrow = (
     <HeroCoord className="inline-flex flex-wrap items-center gap-2">
-      <span className="text-[color:var(--aqt-fg-muted)]">#{tournament.number}</span>
-      {dates ? (
-        <>
-          <span className="opacity-50">·</span>
-          <span>{dates}</span>
-        </>
-      ) : null}
+      {dates ? <span>{dates}</span> : null}
       {algorithmName ? (
         <>
-          <span className="opacity-50">·</span>
+          {dates ? <span className="opacity-50">·</span> : null}
           <span>{t("analytics.community.standings.rankedBy", { algorithm: algorithmName })}</span>
         </>
       ) : null}

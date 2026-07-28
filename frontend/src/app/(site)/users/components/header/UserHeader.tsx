@@ -59,7 +59,7 @@ const UserHeader = async ({ profile, user }: UserHeaderProps) => {
   // No seasons in the system — show the trend from the most recent tournament:
   // its map winrate vs the user's career map winrate. One lightweight fetch.
   const lastSummary = profile.tournaments.length
-    ? [...profile.tournaments].sort((a, b) => (b.number ?? 0) - (a.number ?? 0))[0]
+    ? [...profile.tournaments].sort((a, b) => b.id - a.id)[0]
     : null;
   // The form streak and the last-tournament fetch are independent — run them
   // in parallel instead of awaiting sequentially.

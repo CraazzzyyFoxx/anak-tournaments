@@ -1299,7 +1299,6 @@ async def get_tournaments(
 
         tournament = schemas.UserTournament(
             id=team.tournament.id,
-            number=team.tournament.number,
             name=team.tournament.name,
             is_league=team.tournament.is_league,
             team_id=team.id,
@@ -1393,7 +1392,6 @@ async def get_tournament_with_stats(
 
     return schemas.UserTournamentWithStats(
         id=team.tournament.id,
-        number=team.tournament.number,
         name=team.tournament.name,
         division=resolve_tournament_division(
             player.rank,

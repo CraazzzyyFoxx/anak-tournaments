@@ -171,7 +171,7 @@ async def load_active_channels():
             new_channels[discord_channel.channel_id] = tournament.id
             logger.info(
                 f"📌 Monitoring channel {discord_channel.channel_id} "
-                f"for tournament #{tournament.number} - {tournament.name}"
+                f"for tournament {tournament.name}"
             )
 
         active_channels = new_channels

@@ -4906,10 +4906,17 @@
           }
         },
         {
-          "name": "number",
+          "name": "start_date",
           "required": true,
           "schema": {
-            "type": "integer"
+            "type": "string"
+          }
+        },
+        {
+          "name": "end_date",
+          "required": true,
+          "schema": {
+            "type": "string"
           }
         },
         {
@@ -5235,12 +5242,32 @@
       },
       "summary": "Update tournament"
     },
+    "rpc.tournament.admin_veto_act": {
+      "description": "Performs a ban or pick on behalf of the given side (admin override of the captain flow) and returns the updated pool entry; requires match-update permission on its workspace.",
+      "summary": "Veto for a side"
+    },
+    "rpc.tournament.admin_veto_config_delete": {
+      "description": "Deletes a map-veto config by id (running sessions keep their snapshot); requires match-update permission on its workspace.",
+      "summary": "Delete veto config"
+    },
+    "rpc.tournament.admin_veto_config_list": {
+      "description": "Returns all map-veto configs of a tournament (cascade levels ordered tournament, stage, round); requires match-update permission on its workspace.",
+      "summary": "List veto configs"
+    },
+    "rpc.tournament.admin_veto_config_upsert": {
+      "description": "Creates or replaces the map-veto config for one cascade level (tournament, stage or stage+round) after validating the step sequence and map pool; requires match-update permission on its workspace.",
+      "summary": "Upsert veto config"
+    },
+    "rpc.tournament.admin_veto_session_reset": {
+      "description": "Drops an encounter's veto session and map pool, re-creates them with freshly resolved seeds and returns the new room state; requires match-update permission on its workspace.",
+      "summary": "Reset veto session"
+    },
     "rpc.tournament.captain_map_pool": {
       "description": "Returns the public map pool for an encounter; no authentication required.",
       "summary": "Get encounter map pool"
     },
     "rpc.tournament.captain_map_pool_state": {
-      "description": "Returns the encounter's map-veto state; with optional auth the requesting captain's side is annotated, otherwise viewer_side is null.",
+      "description": "Returns the encounter's map-veto room state, lazily creating the veto session when both teams and a config are known; without a session it reports the reason (not_configured/teams_unknown) instead of failing. With optional auth the requesting captain's side is annotated, otherwise viewer_side is null.",
       "summary": "Get map veto state"
     },
     "rpc.tournament.captain_my_role": {
@@ -5252,7 +5279,7 @@
       "summary": "Get captain reports"
     },
     "rpc.tournament.captain_submit_report": {
-      "description": "Lets an encounter captain submit their own report (series score + closeness 1..10 + optional per-map codes); reports are per-captain and the result auto-confirms when both captains' scores match, otherwise disputed; requires authentication.",
+      "description": "Lets an encounter captain submit their own report (series score + closeness 1..10 + optional per-map codes). Reports are per-captain; when both captains' scores match the encounter auto-confirms and closeness becomes their average, otherwise it is disputed. Upsert allowed until confirmed; requires authentication.",
       "summary": "Submit captain report"
     },
     "rpc.tournament.captain_veto": {
@@ -5647,6 +5674,49 @@
       },
       "summary": "Get tournament"
     },
+    "rpc.tournament.grid_delete": {
+      "description": "Hard-deletes a division grid and its versions/tiers/mappings (204 no body); refuses the workspace default or grids whose versions are used by tournaments. Requires division_grid-delete permission.",
+      "summary": "Delete division grid"
+    },
+    "rpc.tournament.grid_import_job_get": {
+      "description": "Returns durable progress, result, and failure details for one workspace import job.",
+      "response": {
+        "array": false,
+        "ref": "tournament.DivisionGridImportJobRead"
+      },
+      "summary": "Get division grid import job"
+    },
+    "rpc.tournament.grid_import_jobs_list": {
+      "description": "Lists recent workspace import jobs, optionally restricted to pending and running jobs.",
+      "query_params": [
+        {
+          "name": "workspace_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "active_only",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "response": {
+        "array": true,
+        "ref": "tournament.DivisionGridImportJobRead"
+      },
+      "summary": "List division grid import jobs"
+    },
     "rpc.tournament.grid_mapping_get": {
       "description": "Returns the division mapping between a source and target grid version; requires an authenticated user but no workspace permission.",
       "summary": "Get grid mapping"
@@ -5668,20 +5738,84 @@
       "summary": "List marketplace grids"
     },
     "rpc.tournament.grid_marketplace_import": {
-      "description": "Imports selected division grids from a source workspace (copying assets via S3, 201 Created); requires division_grid-import permission on the target workspace.",
+      "description": "Creates or reuses an idempotent background import job (202 Accepted); requires division_grid-import permission.",
       "request": {
         "array": false,
         "ref": "tournament.DivisionGridMarketplaceImportRequest"
       },
       "response": {
         "array": false,
-        "ref": "tournament.DivisionGridMarketplaceImportResult"
+        "ref": "tournament.DivisionGridImportJobRead"
       },
-      "summary": "Import marketplace grids"
+      "summary": "Queue marketplace grid import"
+    },
+    "rpc.tournament.grid_marketplace_preflight": {
+      "description": "Reports conflicts, asset policy, operation counts, and a stable source fingerprint without writing data.",
+      "request": {
+        "array": false,
+        "ref": "tournament.DivisionGridMarketplaceImportRequest"
+      },
+      "response": {
+        "array": false,
+        "ref": "tournament.DivisionGridMarketplacePreflightResult"
+      },
+      "summary": "Preflight marketplace grid import"
     },
     "rpc.tournament.grid_marketplace_workspaces": {
       "description": "Lists workspaces whose division grids can be imported into the target workspace; requires division_grid-read permission.",
       "summary": "List marketplace source workspaces"
+    },
+    "rpc.tournament.grid_portable_export": {
+      "description": "Exports every version and slug-based mapping as a portable division-grid/v1 document.",
+      "response": {
+        "array": false,
+        "ref": "tournament.DivisionGridPortableDocument-Output"
+      },
+      "summary": "Export a portable division grid"
+    },
+    "rpc.tournament.grid_portable_import": {
+      "description": "Imports a validated division-grid/v1 document in library, sync, or copy mode.",
+      "request": {
+        "array": false,
+        "ref": "tournament.DivisionGridPortableImportRequest"
+      },
+      "response": {
+        "array": false,
+        "ref": "tournament.DivisionGridRead"
+      },
+      "summary": "Import a portable division grid"
+    },
+    "rpc.tournament.grid_save": {
+      "description": "Server-authoritative save: applies cosmetic edits in place, or spawns a new version, auto-generates mappings from every used source version, and auto-activates when complete; requires division_grid-update permission.",
+      "request": {
+        "array": false,
+        "ref": "tournament.DivisionGridSaveRequest"
+      },
+      "response": {
+        "array": false,
+        "ref": "tournament.DivisionGridSaveResult"
+      },
+      "summary": "Save the workspace division grid"
+    },
+    "rpc.tournament.grid_update": {
+      "description": "Renames, archives, or restores a workspace-owned division grid; requires division_grid-update permission.",
+      "request": {
+        "array": false,
+        "ref": "tournament.DivisionGridUpdate"
+      },
+      "response": {
+        "array": false,
+        "ref": "tournament.DivisionGridRead"
+      },
+      "summary": "Update division grid metadata"
+    },
+    "rpc.tournament.grid_version_activate": {
+      "description": "Atomically checks mapping readiness and assigns the published version as the workspace default.",
+      "response": {
+        "array": false,
+        "ref": "tournament.DivisionGridVersionRead"
+      },
+      "summary": "Activate a published grid version"
     },
     "rpc.tournament.grid_version_clone": {
       "description": "Clones a division grid version into a new draft (201 Created); requires division_grid-create permission on the grid's workspace.",
@@ -5722,6 +5856,14 @@
         "ref": "tournament.DivisionGridVersionRead"
       },
       "summary": "Publish grid version"
+    },
+    "rpc.tournament.grid_version_readiness": {
+      "description": "Checks that mappings from every version used by workspace tournaments to the target version are complete.",
+      "response": {
+        "array": false,
+        "ref": "tournament.DivisionGridActivationReadiness"
+      },
+      "summary": "Check grid activation readiness"
     },
     "rpc.tournament.grid_version_update": {
       "description": "Updates a division grid version by id; requires division_grid-update permission on the grid's workspace.",
@@ -6276,7 +6418,6 @@
             "enum": [
               "id",
               "name",
-              "number",
               "start_date",
               "end_date",
               "similarity:name"
@@ -6857,6 +6998,10 @@
         "ref": "tournament.TournamentComputationJobRead"
       },
       "summary": "Activate and generate stage"
+    },
+    "rpc.tournament.stage_apply_best_of": {
+      "description": "Rewrites best_of on the stage's existing encounters from its settings_json best-of config (in place, preserving scores); requires stage-update permission on its workspace.",
+      "summary": "Apply best-of to existing matches"
     },
     "rpc.tournament.stage_generate": {
       "description": "Enqueues a bracket-generation job (202 Accepted) for the stage; requires stage-update permission on its workspace.",
@@ -8751,18 +8896,6 @@
           "default": null,
           "title": "Name"
         },
-        "number": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Number"
-        },
         "updated_at": {
           "anyOf": [
             {
@@ -9151,18 +9284,6 @@
         "name": {
           "title": "Name",
           "type": "string"
-        },
-        "number": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Number"
         }
       },
       "required": [
@@ -12393,18 +12514,6 @@
           "title": "Name",
           "type": "string"
         },
-        "number": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Number"
-        },
         "status": {
           "anyOf": [
             {
@@ -14081,17 +14190,6 @@
           "title": "Name",
           "type": "string"
         },
-        "number": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Number"
-        },
         "placement": {
           "anyOf": [
             {
@@ -14136,7 +14234,6 @@
       },
       "required": [
         "id",
-        "number",
         "name",
         "is_league",
         "team_id",
@@ -14324,17 +14421,6 @@
           "title": "Name",
           "type": "string"
         },
-        "number": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Number"
-        },
         "status": {
           "anyOf": [
             {
@@ -14349,7 +14435,6 @@
       },
       "required": [
         "id",
-        "number",
         "name",
         "is_league"
       ],
@@ -14404,17 +14489,6 @@
           "title": "Name",
           "type": "string"
         },
-        "number": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Number"
-        },
         "playoff_placement": {
           "anyOf": [
             {
@@ -14443,7 +14517,6 @@
       },
       "required": [
         "id",
-        "number",
         "name",
         "division",
         "closeness",
@@ -23154,17 +23227,6 @@
           "title": "Name",
           "type": "string"
         },
-        "number": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Number"
-        },
         "phase_schedule": {
           "default": [],
           "items": {
@@ -23202,7 +23264,6 @@
       "required": [
         "id",
         "workspace_id",
-        "number",
         "name",
         "description",
         "challonge_id",
@@ -23676,7 +23737,7 @@
       "type": "object"
     },
     "tournament.BalancerRankAutofillStage": {
-      "description": "A single source in the rank-autofill priority chain.\n\n``lookback_tournaments`` limits ``division_history``/``analytics`` to tournaments whose number is\nwithin the last N before the current one; ``lookback_days`` overrides the OW weekly window. The\nirrelevant lookback for a given ``source`` is ignored by the service.",
+      "description": "A single source in the rank-autofill priority chain.\n\n``lookback_tournaments`` limits ``division_history``/``analytics`` to the last N tournaments\nbefore the current one; ``lookback_days`` overrides the OW weekly window. The\nirrelevant lookback for a given ``source`` is ignored by the service.",
       "properties": {
         "enabled": {
           "default": true,
@@ -24314,18 +24375,6 @@
           ],
           "default": null,
           "title": "Tournament Name"
-        },
-        "tournament_number": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Tournament Number"
         }
       },
       "required": [
@@ -25942,6 +25991,52 @@
       "title": "CustomFieldDefinition",
       "type": "object"
     },
+    "tournament.DivisionGridActivationReadiness": {
+      "properties": {
+        "incomplete_mapping_version_ids": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Incomplete Mapping Version Ids",
+          "type": "array"
+        },
+        "is_ready": {
+          "title": "Is Ready",
+          "type": "boolean"
+        },
+        "missing_mapping_version_ids": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Missing Mapping Version Ids",
+          "type": "array"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.DivisionGridReadinessSource"
+          },
+          "title": "Sources",
+          "type": "array"
+        },
+        "target_version_id": {
+          "title": "Target Version Id",
+          "type": "integer"
+        },
+        "used_source_version_ids": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Used Source Version Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "target_version_id",
+        "is_ready"
+      ],
+      "title": "DivisionGridActivationReadiness",
+      "type": "object"
+    },
     "tournament.DivisionGridCreate": {
       "properties": {
         "description": {
@@ -25974,6 +26069,121 @@
         "name"
       ],
       "title": "DivisionGridCreate",
+      "type": "object"
+    },
+    "tournament.DivisionGridImportJobRead": {
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "finished_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Finished At"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "progress": {
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Progress",
+          "type": "integer"
+        },
+        "requested_by_user_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Requested By User Id"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/tournament.DivisionGridMarketplaceImportResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "source_workspace_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Workspace Id"
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Started At"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "running",
+            "completed",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "workspace_id": {
+          "title": "Workspace Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "workspace_id",
+        "source_workspace_id",
+        "status",
+        "progress",
+        "created_at",
+        "started_at",
+        "finished_at"
+      ],
+      "title": "DivisionGridImportJobRead",
       "type": "object"
     },
     "tournament.DivisionGridMappingRead": {
@@ -26106,19 +26316,25 @@
       "type": "object"
     },
     "tournament.DivisionGridMarketplaceImportRequest": {
+      "additionalProperties": false,
       "properties": {
-        "set_default": {
-          "default": false,
-          "title": "Set Default",
+        "include_icons": {
+          "default": true,
+          "title": "Include Icons",
           "type": "boolean"
         },
-        "source_grid_ids": {
-          "items": {
-            "type": "integer"
-          },
-          "minItems": 1,
-          "title": "Source Grid Ids",
-          "type": "array"
+        "include_ow_rank_mappings": {
+          "default": true,
+          "title": "Include Ow Rank Mappings",
+          "type": "boolean"
+        },
+        "source_grid_id": {
+          "title": "Source Grid Id",
+          "type": "integer"
+        },
+        "source_version_id": {
+          "title": "Source Version Id",
+          "type": "integer"
         },
         "source_workspace_id": {
           "title": "Source Workspace Id",
@@ -26127,7 +26343,8 @@
       },
       "required": [
         "source_workspace_id",
-        "source_grid_ids"
+        "source_grid_id",
+        "source_version_id"
       ],
       "title": "DivisionGridMarketplaceImportRequest",
       "type": "object"
@@ -26242,8 +26459,320 @@
       "title": "DivisionGridMarketplaceImportedGrid",
       "type": "object"
     },
+    "tournament.DivisionGridMarketplacePreflightResult": {
+      "properties": {
+        "assets_to_copy": {
+          "title": "Assets To Copy",
+          "type": "integer"
+        },
+        "assets_to_reuse": {
+          "title": "Assets To Reuse",
+          "type": "integer"
+        },
+        "conflicts": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Conflicts",
+          "type": "array"
+        },
+        "external_assets": {
+          "title": "External Assets",
+          "type": "integer"
+        },
+        "grids_count": {
+          "title": "Grids Count",
+          "type": "integer"
+        },
+        "mappings_count": {
+          "title": "Mappings Count",
+          "type": "integer"
+        },
+        "source_fingerprint": {
+          "title": "Source Fingerprint",
+          "type": "string"
+        },
+        "source_workspace_id": {
+          "title": "Source Workspace Id",
+          "type": "integer"
+        },
+        "tiers_count": {
+          "title": "Tiers Count",
+          "type": "integer"
+        },
+        "versions_count": {
+          "title": "Versions Count",
+          "type": "integer"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.DivisionGridMarketplaceImportWarning"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "source_workspace_id",
+        "grids_count",
+        "versions_count",
+        "tiers_count",
+        "mappings_count",
+        "assets_to_copy",
+        "assets_to_reuse",
+        "external_assets",
+        "source_fingerprint"
+      ],
+      "title": "DivisionGridMarketplacePreflightResult",
+      "type": "object"
+    },
+    "tournament.DivisionGridPortableDocument-Input": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "mappings": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.DivisionGridPortableMapping"
+          },
+          "title": "Mappings",
+          "type": "array"
+        },
+        "name": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "division-grid/v1",
+          "default": "division-grid/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "slug": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Slug",
+          "type": "string"
+        },
+        "versions": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.DivisionGridPortableVersion"
+          },
+          "minItems": 1,
+          "title": "Versions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "slug",
+        "name",
+        "versions"
+      ],
+      "title": "DivisionGridPortableDocument",
+      "type": "object"
+    },
+    "tournament.DivisionGridPortableDocument-Output": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "mappings": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.DivisionGridPortableMapping"
+          },
+          "title": "Mappings",
+          "type": "array"
+        },
+        "name": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "division-grid/v1",
+          "default": "division-grid/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "slug": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Slug",
+          "type": "string"
+        },
+        "versions": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.DivisionGridPortableVersion"
+          },
+          "minItems": 1,
+          "title": "Versions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "slug",
+        "name",
+        "versions"
+      ],
+      "title": "DivisionGridPortableDocument",
+      "type": "object"
+    },
+    "tournament.DivisionGridPortableImportRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "document": {
+          "$ref": "#/components/schemas/tournament.DivisionGridPortableDocument-Input"
+        },
+        "mode": {
+          "default": "library",
+          "enum": [
+            "library",
+            "sync",
+            "copy"
+          ],
+          "title": "Mode",
+          "type": "string"
+        }
+      },
+      "required": [
+        "document"
+      ],
+      "title": "DivisionGridPortableImportRequest",
+      "type": "object"
+    },
+    "tournament.DivisionGridPortableMapping": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "rules": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.DivisionGridPortableMappingRule"
+          },
+          "title": "Rules",
+          "type": "array"
+        },
+        "source_version": {
+          "title": "Source Version",
+          "type": "integer"
+        },
+        "target_version": {
+          "title": "Target Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source_version",
+        "target_version",
+        "name"
+      ],
+      "title": "DivisionGridPortableMapping",
+      "type": "object"
+    },
+    "tournament.DivisionGridPortableMappingRule": {
+      "properties": {
+        "is_primary": {
+          "default": false,
+          "title": "Is Primary",
+          "type": "boolean"
+        },
+        "source_tier_slug": {
+          "title": "Source Tier Slug",
+          "type": "string"
+        },
+        "target_tier_slug": {
+          "title": "Target Tier Slug",
+          "type": "string"
+        },
+        "weight": {
+          "exclusiveMinimum": 0,
+          "title": "Weight",
+          "type": "number"
+        }
+      },
+      "required": [
+        "source_tier_slug",
+        "target_tier_slug",
+        "weight"
+      ],
+      "title": "DivisionGridPortableMappingRule",
+      "type": "object"
+    },
+    "tournament.DivisionGridPortableVersion": {
+      "properties": {
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "published"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "tiers": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.DivisionGridTierWrite"
+          },
+          "minItems": 1,
+          "title": "Tiers",
+          "type": "array"
+        },
+        "version": {
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "version",
+        "label",
+        "status",
+        "tiers"
+      ],
+      "title": "DivisionGridPortableVersion",
+      "type": "object"
+    },
     "tournament.DivisionGridRead": {
       "properties": {
+        "archived_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Archived At"
+        },
         "description": {
           "anyOf": [
             {
@@ -26259,6 +26788,19 @@
           "title": "Id",
           "type": "integer"
         },
+        "imported_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Imported At"
+        },
         "name": {
           "title": "Name",
           "type": "string"
@@ -26266,6 +26808,54 @@
         "slug": {
           "title": "Slug",
           "type": "string"
+        },
+        "source_fingerprint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Fingerprint"
+        },
+        "source_grid_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Grid Id"
+        },
+        "source_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Key"
+        },
+        "source_workspace_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Workspace Id"
         },
         "versions": {
           "items": {
@@ -26294,6 +26884,168 @@
         "description"
       ],
       "title": "DivisionGridRead",
+      "type": "object"
+    },
+    "tournament.DivisionGridReadinessConflictTier": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "slug": {
+          "title": "Slug",
+          "type": "string"
+        },
+        "source_tier_id": {
+          "title": "Source Tier Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source_tier_id",
+        "slug",
+        "name"
+      ],
+      "title": "DivisionGridReadinessConflictTier",
+      "type": "object"
+    },
+    "tournament.DivisionGridReadinessSource": {
+      "properties": {
+        "conflict_tiers": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.DivisionGridReadinessConflictTier"
+          },
+          "title": "Conflict Tiers",
+          "type": "array"
+        },
+        "grid_name": {
+          "title": "Grid Name",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "missing",
+            "incomplete"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "tournament_count": {
+          "default": 0,
+          "title": "Tournament Count",
+          "type": "integer"
+        },
+        "tournament_names": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tournament Names",
+          "type": "array"
+        },
+        "version_id": {
+          "title": "Version Id",
+          "type": "integer"
+        },
+        "version_label": {
+          "title": "Version Label",
+          "type": "string"
+        }
+      },
+      "required": [
+        "version_id",
+        "version_label",
+        "grid_name",
+        "status"
+      ],
+      "title": "DivisionGridReadinessSource",
+      "type": "object"
+    },
+    "tournament.DivisionGridSaveRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "grid_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Grid Id"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "tiers": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.DivisionGridTierWrite"
+          },
+          "minItems": 1,
+          "title": "Tiers",
+          "type": "array"
+        }
+      },
+      "required": [
+        "tiers"
+      ],
+      "title": "DivisionGridSaveRequest",
+      "type": "object"
+    },
+    "tournament.DivisionGridSaveResult": {
+      "properties": {
+        "active_version_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Active Version Id"
+        },
+        "grid": {
+          "$ref": "#/components/schemas/tournament.DivisionGridRead"
+        },
+        "mode": {
+          "enum": [
+            "in_place",
+            "new_version_activated",
+            "new_version_pending"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "readiness": {
+          "$ref": "#/components/schemas/tournament.DivisionGridActivationReadiness"
+        },
+        "saved_version_id": {
+          "title": "Saved Version Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "mode",
+        "grid",
+        "saved_version_id",
+        "readiness"
+      ],
+      "title": "DivisionGridSaveResult",
       "type": "object"
     },
     "tournament.DivisionGridTierRead": {
@@ -26388,6 +27140,18 @@
           "title": "Icon Url",
           "type": "string"
         },
+        "id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
         "name": {
           "maxLength": 255,
           "minLength": 1,
@@ -26458,6 +27222,50 @@
         "icon_url"
       ],
       "title": "DivisionGridTierWrite",
+      "type": "object"
+    },
+    "tournament.DivisionGridUpdate": {
+      "properties": {
+        "archived": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Archived"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        }
+      },
+      "title": "DivisionGridUpdate",
       "type": "object"
     },
     "tournament.DivisionGridVersionCreate": {
@@ -26601,9 +27409,9 @@
           "title": "Id",
           "type": "integer"
         },
-        "number": {
-          "title": "Number",
-          "type": "integer"
+        "name": {
+          "title": "Name",
+          "type": "string"
         },
         "support_avg_div": {
           "anyOf": [
@@ -26630,7 +27438,7 @@
       },
       "required": [
         "id",
-        "number",
+        "name",
         "tank_avg_div",
         "damage_avg_div",
         "support_avg_div"
@@ -26657,6 +27465,12 @@
           ],
           "default": null,
           "title": "Away Team Id"
+        },
+        "best_of": {
+          "default": 3,
+          "minimum": 1,
+          "title": "Best Of",
+          "type": "integer"
         },
         "current_map_index": {
           "anyOf": [
@@ -27836,6 +28650,19 @@
           ],
           "default": null,
           "title": "Away Team Id"
+        },
+        "best_of": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Best Of"
         },
         "closeness": {
           "anyOf": [
@@ -32343,18 +33170,6 @@
           "title": "Name",
           "type": "string"
         },
-        "number": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Number"
-        },
         "start_date": {
           "format": "date",
           "title": "Start Date",
@@ -32507,7 +33322,6 @@
           "enum": [
             "id",
             "name",
-            "number",
             "start_date",
             "end_date",
             "similarity:name"
@@ -32666,17 +33480,6 @@
           "title": "Name",
           "type": "string"
         },
-        "number": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Number"
-        },
         "participants_count": {
           "anyOf": [
             {
@@ -32754,7 +33557,6 @@
       "required": [
         "id",
         "workspace_id",
-        "number",
         "name",
         "description",
         "challonge_id",
@@ -32840,9 +33642,9 @@
           "title": "Id",
           "type": "integer"
         },
-        "number": {
-          "title": "Number",
-          "type": "integer"
+        "name": {
+          "title": "Name",
+          "type": "string"
         },
         "players_count": {
           "title": "Players Count",
@@ -32851,7 +33653,7 @@
       },
       "required": [
         "id",
-        "number",
+        "name",
         "players_count",
         "avg_sr",
         "avg_closeness"
@@ -33037,18 +33839,6 @@
           ],
           "default": null,
           "title": "Name"
-        },
-        "number": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Number"
         },
         "start_date": {
           "anyOf": [

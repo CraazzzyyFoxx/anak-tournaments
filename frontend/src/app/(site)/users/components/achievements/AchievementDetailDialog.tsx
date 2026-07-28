@@ -107,7 +107,6 @@ export const AchievementDetailDialog = ({ achievement, onClose }: Props) => {
                         <div className="flex flex-wrap gap-1.5">
                           {ach.tournaments.map((t) => (
                             <span key={t.id} className="aqt-stage-pill" title={t.name}>
-                              {t.number != null ? `#${t.number} · ` : ""}
                               {t.name}
                             </span>
                           ))}

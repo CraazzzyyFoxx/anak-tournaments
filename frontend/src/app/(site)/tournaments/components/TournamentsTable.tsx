@@ -29,9 +29,6 @@ const TournamentRow = ({ tournament }: { tournament: Tournament }) => {
   return (
     <tr onClick={() => router.push(`/tournaments/${tournament.id}`)}>
       <td>
-        <span className="tn-id">#{tournament.number}</span>
-      </td>
-      <td>
         <div className="tn-name-cell">
           <span className="nm">
             {tournament.name}
@@ -153,7 +150,6 @@ const TournamentsTable = ({ tournaments, page, pageSize, onPageChange }: Tournam
       <table className="tn">
         <thead>
           <tr>
-            <th style={{ width: 60 }}>#</th>
             <th>{t("common.tournament")}</th>
             <th style={{ width: 120 }}>{t("common.status")}</th>
             <th style={{ width: 170 }}>{t("common.stage")}</th>

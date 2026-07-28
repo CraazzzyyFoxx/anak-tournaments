@@ -28,7 +28,6 @@ class TournamentPhaseScheduleRead(BaseModel):
 
 class TournamentRead(BaseRead):
     workspace_id: int
-    number: int | None
     name: str
     description: str | None
     challonge_id: int | None

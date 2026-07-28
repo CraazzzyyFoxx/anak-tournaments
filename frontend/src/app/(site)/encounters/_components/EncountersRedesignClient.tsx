@@ -136,9 +136,7 @@ function countLabel(value?: number): string {
 
 function tournamentLabel(encounter: Encounter, t: Translate): string {
   if (!encounter.tournament) return t("common.tournament");
-  return encounter.tournament.is_league
-    ? encounter.tournament.name
-    : t("encounters.tournamentNumber", { number: encounter.tournament.number });
+  return encounter.tournament.name;
 }
 
 function stageLabel(encounter: Encounter, t: Translate): string {

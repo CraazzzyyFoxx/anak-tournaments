@@ -616,7 +616,7 @@ async function TournamentActivityCard() {
               className="flex-1 text-center"
               style={{ fontSize: 9, color: "var(--aqt-fg-faint)" }}
             >
-              {i % Math.ceil(visible.length / 8) === 0 ? `#${t.number}` : ""}
+              {i % Math.ceil(visible.length / 8) === 0 ? t.name : ""}
             </span>
           ))}
         </div>

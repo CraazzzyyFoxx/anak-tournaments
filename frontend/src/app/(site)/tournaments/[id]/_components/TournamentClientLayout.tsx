@@ -119,8 +119,12 @@ export default function TournamentClientLayout({
               {t("common.tournaments")}
             </Link>
             <span className="opacity-50">/</span>
-            <span>{tournament.is_league ? t("common.league") : `#${tournament.number}`}</span>
-            <span className="opacity-50">·</span>
+            {tournament.is_league && (
+              <>
+                <span>{t("common.league")}</span>
+                <span className="opacity-50">·</span>
+              </>
+            )}
             <span>{formatDateRange(tournament.start_date, tournament.end_date, locale)}</span>
           </HeroCoord>
         }

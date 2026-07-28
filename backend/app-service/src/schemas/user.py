@@ -88,7 +88,6 @@ class UserTournamentSummary(BaseModel):
     """
 
     id: int
-    number: int | None
     name: str
     is_league: bool
     is_finished: bool = False
@@ -130,7 +129,6 @@ class UserEncounterTournament(BaseModel):
 
     id: int
     name: str
-    number: int | None = None
     is_league: bool
     is_finished: bool = False
     status: enums.TournamentStatus | None = None
@@ -219,7 +217,6 @@ class EncounterReadWithUserStats(BaseModel):
 
 class UserTournament(BaseModel):
     id: int
-    number: int | None
     name: str
     is_league: bool
     team_id: int
@@ -249,7 +246,6 @@ class UserTournamentStat(BaseModel):
 
 class UserTournamentWithStats(BaseModel):
     id: int
-    number: int | None
     name: str
     division: int
     # `division` is resolved against the tournament's own grid (see

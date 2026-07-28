@@ -80,35 +80,6 @@ async def get_group(session: AsyncSession, id: int, entities: list[str]) -> mode
     return result.unique().scalars().first()
 
 
-async def get_by_number_and_league(
-    session: AsyncSession, number: int, is_league: bool, entities: list[str]
-) -> models.Tournament | None:
-    """
-    Retrieves a `Tournament` model instance by its number and league status, optionally including related entities.
-
-    Args:
-        session: An SQLAlchemy `AsyncSession` for database interaction.
-        number: The number of the tournament to retrieve.
-        is_league: Whether the tournament is a league.
-        entities: A list of strings representing the names of related entities to include.
-
-    Returns:
-        A `Tournament` model instance if found, otherwise `None`.
-    """
-    query = (
-        sa.select(models.Tournament)
-        .where(
-            sa.and_(
-                models.Tournament.number == number,
-                models.Tournament.is_league == is_league,
-            )
-        )
-        .options(*tournament_entities(entities))
-    )
-    result = await session.execute(query)
-    return result.unique().scalars().first()
-
-
 async def get_all(
     session: AsyncSession,
     params: schemas.TournamentPaginationSortSearchParams,
@@ -210,8 +181,8 @@ async def get_history_tournaments(
         .join(players_sq, players_sq.c.tournament_id == models.Tournament.id, isouter=True)
         .join(teams_sq, teams_sq.c.tournament_id == models.Tournament.id, isouter=True)
         .join(encounters_sq, encounters_sq.c.tournament_id == models.Tournament.id, isouter=True)
-        .where(models.Tournament.number.isnot(None), models.Tournament.is_hidden.is_(False))
-        .order_by(models.Tournament.number)
+        .where(models.Tournament.is_league.is_(False), models.Tournament.is_hidden.is_(False))
+        .order_by(models.Tournament.start_date.nulls_last(), models.Tournament.id)
     )
     if workspace_id is not None:
         query = query.where(models.Tournament.workspace_id == workspace_id)
@@ -249,13 +220,13 @@ async def get_avg_div_tournaments(
         )
         .where(
             models.Player.tournament_id == models.Tournament.id,
-            models.Tournament.number.isnot(None),
+            models.Tournament.is_league.is_(False),
             models.Tournament.is_hidden.is_(False),
         )
         # Grouping by the Tournament PK lets Postgres project the whole
         # tournament row (functional dependency).
         .group_by(models.Tournament.id, models.Player.role, models.Player.rank)
-        .order_by(models.Tournament.number)
+        .order_by(models.Tournament.start_date.nulls_last(), models.Tournament.id)
     )
     if workspace_id is not None:
         query = query.where(models.Tournament.workspace_id == workspace_id)

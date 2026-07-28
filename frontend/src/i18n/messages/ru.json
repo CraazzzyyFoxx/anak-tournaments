@@ -1695,7 +1695,6 @@
     "dataUnavailable": "Данные о встречах временно недоступны. Повторная попытка в фоновом режиме.",
     "views": "Виды",
     "unassigned": "Не назначено",
-    "tournamentNumber": "Турнир {number}",
     "searchPlaceholder": "Поиск по команде, игроку или паре…",
     "roundNum": "Раунд {round}",
     "roundShort": "Р{round}",
@@ -2273,7 +2272,6 @@
       "allOpponents": "Все соперники",
       "colOpponent": "Соперник",
       "colWinrate": "% побед",
-      "tTag": "T {number}",
       "mapLabel": "Карта {number}",
       "overperformanceBadge": "Сверх ожиданий",
       "mvp": {
@@ -2379,7 +2377,7 @@
         "subtitle": "{count, plural, one {# турнир} few {# турнира} many {# турниров} other {# турнира}} · место относительно числа команд",
         "axisTop": "топ",
         "axisLast": "посл.",
-        "dotTitle": "Т#{number} · место {placement}/{count}",
+        "dotTitle": "{name} · место {placement}/{count}",
         "legend": {
           "first": "1-е место",
           "podium": "Подиум",

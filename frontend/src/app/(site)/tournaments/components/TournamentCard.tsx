@@ -119,9 +119,6 @@ const TournamentCard = ({ tournament }: { tournament: Tournament }) => {
             {t(`common.statusBadge.${tournament.status}`)}
           </span>
         </div>
-        {!tournament.is_league && (
-          <span className="text-xs tabular-nums text-white/45">#{tournament.number}</span>
-        )}
       </div>
 
       {/* Title */}

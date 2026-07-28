@@ -34,7 +34,6 @@ class Tournament(db.TimeStampIntegerMixin):
     __table_args__ = ({"schema": "tournament"},)
 
     workspace_id: Mapped[int] = mapped_column(ForeignKey(Workspace.id, ondelete="CASCADE"), index=True)
-    number: Mapped[int] = mapped_column(Integer(), nullable=True)
     name: Mapped[str] = mapped_column(String())
     description: Mapped[str | None] = mapped_column(String(), nullable=True)
     is_league: Mapped[bool] = mapped_column(Boolean(), default=False, server_default="false", nullable=False)

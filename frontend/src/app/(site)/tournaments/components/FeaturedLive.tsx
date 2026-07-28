@@ -46,10 +46,9 @@ const FeaturedTournamentCard = ({
       <div className="feat-top">
         <div>
           <span className="feat-id">
-            #{tournament.number}
-            {tournament.is_league ? ` · ${t("common.league")}` : ""}
+            {tournament.is_league ? t("common.league") : ""}
             {tournament.team_formation &&
-              ` · ${tournament.team_formation === "draft" ? t("common.draft") : t("common.balancer")}`}
+              `${tournament.is_league ? " · " : ""}${tournament.team_formation === "draft" ? t("common.draft") : t("common.balancer")}`}
           </span>
           <h3 className="feat-name">{tournament.name}</h3>
         </div>

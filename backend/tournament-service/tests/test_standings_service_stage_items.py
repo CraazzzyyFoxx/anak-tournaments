@@ -49,7 +49,6 @@ class StandingsServiceStageItemTests(TestCase):
     def test_group_stage_standings_include_assigned_teams_before_matches(self) -> None:
         tournament = models.Tournament(
             workspace_id=1,
-            number=68,
             name="Tournament",
             is_league=False,
             win_points=1.0,
@@ -101,7 +100,6 @@ class StandingsServiceStageItemTests(TestCase):
     def test_swiss_standings_award_configured_bye_points(self) -> None:
         tournament = models.Tournament(
             workspace_id=1,
-            number=72,
             name="Tournament",
             is_league=False,
             win_points=1.0,
@@ -150,7 +148,6 @@ class StandingsServiceStageItemTests(TestCase):
     def test_group_stage_standings_ignore_partially_completed_current_round(self) -> None:
         tournament = models.Tournament(
             workspace_id=1,
-            number=69,
             name="Tournament",
             is_league=False,
             win_points=1.0,
@@ -255,7 +252,6 @@ class StandingsServiceStageItemTests(TestCase):
     def test_elimination_standings_ignore_partially_completed_current_round(self) -> None:
         tournament = models.Tournament(
             workspace_id=1,
-            number=70,
             name="Tournament",
             is_league=False,
             win_points=1.0,
@@ -373,7 +369,6 @@ class StandingsServiceGroupedStageIsolationTests(IsolatedAsyncioTestCase):
     async def test_calculate_for_tournament_keeps_grouped_stage_items_independent(self) -> None:
         tournament = models.Tournament(
             workspace_id=1,
-            number=71,
             name="Tournament",
             is_league=False,
             win_points=1.0,
@@ -554,7 +549,6 @@ class StandingsServiceGroupedStageIsolationTests(IsolatedAsyncioTestCase):
     async def test_swiss_stage_is_not_completed_before_max_rounds(self) -> None:
         tournament = models.Tournament(
             workspace_id=1,
-            number=72,
             name="Tournament",
             is_league=False,
         )
@@ -595,7 +589,6 @@ class StandingsServiceGroupedStageIsolationTests(IsolatedAsyncioTestCase):
     ) -> None:
         tournament = models.Tournament(
             workspace_id=1,
-            number=73,
             name="Tournament",
             is_league=False,
         )
@@ -660,7 +653,6 @@ class StandingsServiceGroupedStageIsolationTests(IsolatedAsyncioTestCase):
     ) -> None:
         tournament = models.Tournament(
             workspace_id=1,
-            number=74,
             name="Tournament",
             is_league=False,
         )

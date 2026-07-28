@@ -81,7 +81,7 @@ from src.services.registration.mapping_catalog import (
 from src.services.registration.rank_autofill import (
     _DEFAULT_STAGE_ORDER_BY_MODE,
     _active_roles_ranked_after_updates,
-    _autofill_lookback_cutoff,
+    _autofill_lookback_tournament_ids,
     _rank_autofill_balancer_addition,
     _rank_snapshot_payload,
     _ResolvedAutofillStage,
@@ -239,7 +239,7 @@ __all__ = [
     "_DEFAULT_STAGE_ORDER_BY_MODE",
     "_ResolvedAutofillStage",
     "_active_roles_ranked_after_updates",
-    "_autofill_lookback_cutoff",
+    "_autofill_lookback_tournament_ids",
     "_rank_autofill_balancer_addition",
     "_rank_snapshot_payload",
     "autofill_registration_ranks_from_parsed",

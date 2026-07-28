@@ -38,7 +38,6 @@ const MatchRow = ({ enc, selfUserId }: MatchRowProps) => {
   const kind = stageKindFor(enc.stage_item?.name ?? enc.stage?.name);
   const scoreKind = userScore > oppScore ? "win" : userScore < oppScore ? "loss" : "draw";
   const resKind = userScore > oppScore ? "w" : userScore < oppScore ? "l" : "d";
-  const tNum = enc.tournament?.number ?? enc.tournament_id;
   const opponentName = isUserHome ? enc.away_team?.name : enc.home_team?.name;
   const userTeamName = isUserHome ? enc.home_team?.name : enc.away_team?.name;
   const heroSet = new Set<string>();
@@ -72,7 +71,7 @@ const MatchRow = ({ enc, selfUserId }: MatchRowProps) => {
             color: "var(--aqt-teal)"
           }}
         >
-          {t("users.matches.tTag", { number: String(tNum) })}
+          {enc.tournament?.name ?? `#${enc.tournament_id}`}
         </Link>
       </td>
       <td className="px-3.5 py-3">

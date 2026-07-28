@@ -86,12 +86,7 @@ const TournamentsPage = () => {
 
     const query = search.trim().toLowerCase();
     if (query) {
-      filtered = filtered.filter(
-        (t) =>
-          t.name.toLowerCase().includes(query) ||
-          `#${t.number}`.includes(query) ||
-          String(t.number).includes(query)
-      );
+      filtered = filtered.filter((t) => t.name.toLowerCase().includes(query));
     }
 
     return [...filtered].sort((a, b) => {

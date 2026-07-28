@@ -18,7 +18,6 @@ class TournamentCreate(BaseModel):
     """Schema for creating a tournament"""
 
     workspace_id: int
-    number: int | None = None
     name: str
     description: str | None = None
     is_league: bool = False
@@ -38,7 +37,6 @@ class TournamentCreate(BaseModel):
 class TournamentUpdate(BaseModel):
     """Schema for updating a tournament"""
 
-    number: int | None = None
     name: str | None = None
     description: str | None = None
     challonge_slug: str | None = None

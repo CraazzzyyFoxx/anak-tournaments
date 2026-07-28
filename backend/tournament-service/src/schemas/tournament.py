@@ -41,7 +41,6 @@ class TournamentPhaseScheduleRead(BaseModel):
 
 class TournamentRead(BaseRead):
     workspace_id: int
-    number: int | None
     name: str
     description: str | None
     challonge_id: int | None
@@ -101,7 +100,7 @@ class OwalStandings(BaseModel):
 
 class TournamentPaginationSortSearchQueryParams(
     pagination.PaginationSortSearchQueryParams[
-        typing.Literal["id", "name", "number", "start_date", "end_date", "similarity:name"]
+        typing.Literal["id", "name", "start_date", "end_date", "similarity:name"]
     ]
 ):
     is_league: bool | None = None

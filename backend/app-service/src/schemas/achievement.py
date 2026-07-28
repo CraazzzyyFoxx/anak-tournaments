@@ -35,7 +35,6 @@ class AchievementTournamentLink(BaseModel):
     """Narrow tournament reference for achievement payloads."""
 
     id: int
-    number: int | None = None
     name: str
     is_league: bool
 

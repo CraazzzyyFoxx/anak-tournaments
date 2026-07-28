@@ -177,7 +177,7 @@ async def get_player_by_user_and_tournament(
             detail=[
                 errors.ApiExc(
                     code="not_found",
-                    msg=f"Player with user [id={user_id}] not found in tournament [number={tournament_id}].",
+                    msg=f"Player with user [id={user_id}] not found in tournament [id={tournament_id}].",
                 )
             ],
         )
@@ -224,7 +224,7 @@ async def create_player(
             detail=[
                 errors.ApiExc(
                     code="player_already_exists",
-                    msg=f"Player [id={user.id} name={user.name}] already exists in this tournament [number={tournament.number}].",
+                    msg=f"Player [id={user.id} name={user.name}] already exists in this tournament [name={tournament.name}].",
                 )
             ],
         )

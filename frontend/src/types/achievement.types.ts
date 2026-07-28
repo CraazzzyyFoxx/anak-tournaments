@@ -30,7 +30,6 @@ export interface Achievement {
 
 export interface AchievementTournamentLink {
   id: number;
-  number: number | null;
   name: string;
   is_league: boolean;
 }

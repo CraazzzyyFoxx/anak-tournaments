@@ -131,7 +131,6 @@ import type {
 export interface TournamentCreateInput {
   workspace_id: number;
   name: string;
-  number?: number;
   description?: string;
   is_league: boolean;
   status?: TournamentStatus;
@@ -146,7 +145,6 @@ export interface TournamentCreateInput {
 }
 
 export interface TournamentUpdateInput {
-  number?: number | null;
   name?: string;
   description?: string | null;
   challonge_slug?: string | null;

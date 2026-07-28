@@ -62,7 +62,6 @@ def register(broker: Any, logger: Any) -> None:
             tournament = await tournament_flows.create_with_groups(
                 session,
                 workspace_id,
-                c.require_query_int(data, "number"),
                 c.q1(data, "is_league", c.qbool, False),
                 _date(data, "start_date"),
                 _date(data, "end_date"),

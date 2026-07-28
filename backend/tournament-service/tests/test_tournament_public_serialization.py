@@ -37,7 +37,6 @@ def _tournament() -> models.Tournament:
         created_at=datetime.now(UTC),
         updated_at=None,
         workspace_id=1,
-        number=10,
         name="Tournament 10",
         description=None,
         is_league=False,
@@ -145,7 +144,6 @@ class TournamentSerializationTests(IsolatedAsyncioTestCase):
         tournament = _tournament()
         second_tournament = _tournament()
         second_tournament.id = 2
-        second_tournament.number = 11
         second_tournament.name = "Tournament 11"
         make_transient_to_detached(tournament)
         make_transient_to_detached(second_tournament)

@@ -66,7 +66,6 @@ export type PlayerRankHistoryPreviewEntry = {
   original_division_number: number | null;
   tournament_id: number | null;
   tournament_name: string | null;
-  tournament_number: number | null;
   source_role: UserRoleType | null;
   tournament_grid_version: DivisionGridVersion | null;
   /** Where this entry came from: balancer history or analytics (getUserTournaments). */
@@ -616,7 +615,6 @@ export async function fetchPlayerRankHistoryPreview(
             original_division_number: null,
             tournament_id: entry.tournament_id,
             tournament_name: entry.tournament_name,
-            tournament_number: entry.tournament_number,
             source_role: null,
             tournament_grid_version: null,
             source: "balancer"
@@ -628,12 +626,12 @@ export async function fetchPlayerRankHistoryPreview(
     }
 
     // Step 2: Analytics fallback — past tournament ranks for roles not found in step 1,
-    // ordered by tournament number DESC.
+    // most recent tournaments first.
     const missingRoles = ROLE_ORDER.filter((role) => !latestPerRole.has(role));
     if (missingRoles.length > 0) {
       const tournaments = await userService.getUserTournaments(user.id, workspaceId);
       if (tournaments?.length) {
-        const sorted = [...tournaments].sort((a, b) => b.number - a.number);
+        const sorted = [...tournaments].sort((a, b) => b.id - a.id);
 
         const sourceVersionsById = new Map<number, DivisionGridVersion>();
         for (const tournament of sorted) {
@@ -675,7 +673,6 @@ export async function fetchPlayerRankHistoryPreview(
               original_division_number: originalDivisionNumber,
               tournament_id: tournament.id,
               tournament_name: tournament.name,
-              tournament_number: tournament.number,
               source_role: roleName,
               tournament_grid_version: tournament.division_grid_version ?? null,
               source: "analytics"

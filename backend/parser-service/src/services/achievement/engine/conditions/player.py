@@ -5,6 +5,7 @@ Grain varies by condition.
 
 from __future__ import annotations
 
+import datetime
 from typing import Any
 
 import sqlalchemy as sa
@@ -153,16 +154,17 @@ async def execute_tournament_count(
 
     Optional filters narrow which tournaments are counted:
         is_league: bool | None — filter Tournament.is_league
-        number_min / number_max: int — filter Tournament.number range
-            (e.g. number_max=18 for OW1, number_min=19 for OW2)
+        start_after / start_before: str (ISO date) — filter Tournament.start_date
+            (start_after is inclusive >=, start_before is strict <; e.g.
+            start_before="2022-10-04" for OW1, start_after="2022-10-04" for OW2)
     """
     op = params["op"]
     value = params["value"]
     op_fn = OPERATORS[op]
 
     is_league = params.get("is_league")
-    number_min = params.get("number_min")
-    number_max = params.get("number_max")
+    start_after = params.get("start_after")
+    start_before = params.get("start_before")
 
     where_clauses = [
         models.Tournament.workspace_id == context.workspace_id,
@@ -170,10 +172,10 @@ async def execute_tournament_count(
     ]
     if is_league is not None:
         where_clauses.append(models.Tournament.is_league.is_(is_league))
-    if number_min is not None:
-        where_clauses.append(models.Tournament.number >= number_min)
-    if number_max is not None:
-        where_clauses.append(models.Tournament.number <= number_max)
+    if start_after is not None:
+        where_clauses.append(models.Tournament.start_date >= datetime.date.fromisoformat(start_after))
+    if start_before is not None:
+        where_clauses.append(models.Tournament.start_date < datetime.date.fromisoformat(start_before))
 
     query = (
         sa.select(models.WorkspaceMember.player_id)

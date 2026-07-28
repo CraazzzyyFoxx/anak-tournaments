@@ -266,7 +266,6 @@ export interface RegistrationRankAutofillResponse {
 
 export interface BalancerRegistrationRankHistoryEntry {
   tournament_id: number;
-  tournament_number: number | null;
   tournament_name: string | null;
   role: BalancerRoleCode;
   rank_value: number;

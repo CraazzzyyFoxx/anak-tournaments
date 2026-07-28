@@ -44,7 +44,7 @@ class TournamentCreateWithGroupsTests(IsolatedAsyncioTestCase):
         )
 
         with (
-            patch.object(tournament_flows.service, "get_by_number", AsyncMock(return_value=None)),
+            patch.object(tournament_flows.service, "get_by_name_and_league", AsyncMock(return_value=None)),
             patch.object(
                 tournament_flows,
                 "get_workspace_division_grid_version_id",
@@ -74,7 +74,6 @@ class TournamentCreateWithGroupsTests(IsolatedAsyncioTestCase):
             result = await tournament_flows.create_with_groups(
                 session,
                 workspace_id=10,
-                number=4,
                 is_league=False,
                 start_date=date(2026, 4, 17),
                 end_date=date(2026, 4, 18),
@@ -88,7 +87,6 @@ class TournamentCreateWithGroupsTests(IsolatedAsyncioTestCase):
         create_tournament.assert_awaited_once_with(
             session,
             workspace_id=10,
-            number=4,
             is_league=False,
             name="Imported",
             description="Desc",
@@ -119,7 +117,7 @@ class TournamentCreateWithGroupsTests(IsolatedAsyncioTestCase):
         )
 
         with (
-            patch.object(tournament_flows.service, "get_by_number", AsyncMock(return_value=None)),
+            patch.object(tournament_flows.service, "get_by_name_and_league", AsyncMock(return_value=None)),
             patch.object(
                 tournament_flows,
                 "get_workspace_division_grid_version_id",
@@ -149,7 +147,6 @@ class TournamentCreateWithGroupsTests(IsolatedAsyncioTestCase):
             await tournament_flows.create_with_groups(
                 session,
                 workspace_id=10,
-                number=4,
                 is_league=False,
                 start_date=date(2026, 4, 17),
                 end_date=date(2026, 4, 18),

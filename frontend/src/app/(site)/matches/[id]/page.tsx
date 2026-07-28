@@ -54,10 +54,7 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
 
   const tournamentGrid = match.encounter?.tournament?.division_grid_version ?? null;
 
-  let tournament_name = `${match?.encounter?.tournament.number}`;
-  if (match?.encounter?.tournament.is_league) {
-    tournament_name = match?.encounter?.tournament.name;
-  }
+  const tournament_name = match?.encounter?.tournament.name;
   const stageLabel =
     match?.encounter?.stage_item?.name ??
     match?.encounter?.stage?.name ??

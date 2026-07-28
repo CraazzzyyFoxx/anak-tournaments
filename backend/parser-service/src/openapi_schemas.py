@@ -102,7 +102,8 @@ OPERATIONS: dict[str, Op] = {
         response=schemas.TournamentRead,
         query_params=(
             QueryParam("workspace_id", "integer", required=True),
-            QueryParam("number", "integer", required=True),
+            QueryParam("start_date", required=True),
+            QueryParam("end_date", required=True),
             QueryParam("is_league", "boolean"),
             QueryParam("division_grid_version_id", "integer"),
             QueryParam("challonge_slug"),

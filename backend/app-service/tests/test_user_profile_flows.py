@@ -186,7 +186,6 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
             standings=[standing],
             tournament=SimpleNamespace(
                 id=3,
-                number=12,
                 name="Tournament Example",
                 is_league=False,
                 division_grid_version=tournament_grid_version,
@@ -277,7 +276,6 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
         )
         tournament = SimpleNamespace(
             id=3,
-            number=12,
             name="Tournament Example",
             is_league=False,
             division_grid_version=tournament_grid_version,
@@ -338,7 +336,6 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
             ],
             tournament=SimpleNamespace(
                 id=3,
-                number=12,
                 name="Tournament Example",
                 is_league=False,
                 division_grid_version=None,

@@ -135,21 +135,20 @@ async def get_tournament(session: AsyncSession, tournament_id: int) -> models.To
 
 async def create_tournament(session: AsyncSession, data: admin_schemas.TournamentCreate) -> models.Tournament:
     """Create a new tournament"""
-    if data.number is not None:
-        result = await session.execute(
-            select(models.Tournament).where(
-                models.Tournament.workspace_id == data.workspace_id,
-                models.Tournament.number == data.number,
-                models.Tournament.is_league == data.is_league,
-            )
+    result = await session.execute(
+        select(models.Tournament).where(
+            models.Tournament.workspace_id == data.workspace_id,
+            models.Tournament.name == data.name,
+            models.Tournament.is_league == data.is_league,
         )
-        existing_tournament = result.scalar_one_or_none()
+    )
+    existing_tournament = result.scalar_one_or_none()
 
-        if existing_tournament:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Tournament with this number already exists in this workspace",
-            )
+    if existing_tournament:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Tournament with this name already exists in this workspace",
+        )
 
     payload = data.model_dump()
     payload["division_grid_version_id"] = await _resolve_division_grid_version_id(

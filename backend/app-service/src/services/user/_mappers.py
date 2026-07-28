@@ -41,7 +41,6 @@ def to_user_tournament_summary(
     """Narrow tournament card for UserProfile.tournaments + filter lists."""
     return schemas.UserTournamentSummary(
         id=tournament.id,
-        number=tournament.number,
         name=tournament.name,
         is_league=tournament.is_league,
         is_finished=tournament.is_finished,
@@ -132,7 +131,6 @@ def to_encounter_tournament_summary(
     return schemas.UserEncounterTournament(
         id=tournament.id,
         name=tournament.name,
-        number=tournament.number,
         is_league=tournament.is_league,
         is_finished=tournament.is_finished,
         status=tournament.status,

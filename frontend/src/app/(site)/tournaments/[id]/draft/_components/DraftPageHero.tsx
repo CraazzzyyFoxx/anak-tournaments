@@ -78,10 +78,6 @@ export function DraftPageHero({
             <span aria-hidden className="opacity-45">
               /
             </span>
-            <span>#{tournament.number}</span>
-            <span aria-hidden className="opacity-45">
-              ·
-            </span>
             <span>{formatDateRange(tournament.start_date, tournament.end_date, locale)}</span>
           </div>
 

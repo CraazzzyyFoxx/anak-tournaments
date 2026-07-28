@@ -60,7 +60,7 @@ const OverviewRecentEncounters = async ({ encounters, userName, tournaments }: P
         );
         const stage = getStageLabel(enc);
         const tour = enc.tournament;
-        const tournamentLabel = tour ? (tour.number ? `T${tour.number}` : tour.name.slice(0, 3)) : "T?";
+        const tournamentLabel = tour ? tour.name.slice(0, 3) : "T?";
         const score = enc.score;
         const scoreKind = score.home === score.away ? "draw" : (isUserHome ? score.home > score.away : score.away > score.home) ? "win" : "loss";
         const scoreStr = `${score.home} - ${score.away}`;

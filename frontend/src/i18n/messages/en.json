@@ -1695,7 +1695,6 @@
     "dataUnavailable": "Encounter data is temporarily unavailable. Retrying in the background.",
     "views": "Views",
     "unassigned": "Unassigned",
-    "tournamentNumber": "Tournament {number}",
     "searchPlaceholder": "Search by team, player, or matchup…",
     "roundNum": "Round {round}",
     "roundShort": "R{round}",
@@ -2273,7 +2272,6 @@
       "allOpponents": "All opponents",
       "colOpponent": "Opponent",
       "colWinrate": "Win%",
-      "tTag": "T {number}",
       "mapLabel": "Map {number}",
       "overperformanceBadge": "Above expectations",
       "mvp": {
@@ -2379,7 +2377,7 @@
         "subtitle": "{count, plural, one {# tournament} other {# tournaments}} · finish position vs field size",
         "axisTop": "top",
         "axisLast": "last",
-        "dotTitle": "T#{number} · placed {placement}/{count}",
+        "dotTitle": "{name} · placed {placement}/{count}",
         "legend": {
           "first": "1st place",
           "podium": "Podium",

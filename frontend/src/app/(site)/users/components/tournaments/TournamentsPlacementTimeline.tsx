@@ -24,20 +24,12 @@ const colorClass = (placement: number, field: number): "gold" | "silver" | "bron
 const TournamentsPlacementTimeline = ({ tournaments, selectedIds = [], onSelect }: Props) => {
   const tr = useTranslations();
   const valid = tournaments
-    .filter((t) => t.number && t.placement && t.count_teams)
-    .sort((a, b) => a.number - b.number);
+    .filter((t) => t.placement && t.count_teams)
+    .sort((a, b) => a.id - b.id);
   if (valid.length === 0) return null;
 
   const selected = new Set(selectedIds);
-  const minN = valid[0].number;
-  const maxN = valid[valid.length - 1].number;
-  const range = maxN - minN || 1;
-
-  // Build an x-axis label set (~7 ticks)
-  const ticks: number[] = [];
-  for (let i = 0; i <= 6; i++) {
-    ticks.push(Math.round(minN + (range * i) / 6));
-  }
+  const n = valid.length;
 
   return (
     <CardSurface
@@ -53,14 +45,14 @@ const TournamentsPlacementTimeline = ({ tournaments, selectedIds = [], onSelect 
           <span>{tr("users.tournaments.timeline.axisLast")}</span>
         </div>
         <div className="aqt-ln">
-          {valid.map((t) => {
+          {valid.map((t, i) => {
             const ratio = t.placement / t.count_teams;
-            const left = ((t.number - minN) / range) * 100;
+            const left = n > 1 ? (i / (n - 1)) * 100 : 50;
             const top = ratio * 100;
             const cls = colorClass(t.placement, t.count_teams);
             const isSelected = selected.has(t.id);
             const label = tr("users.tournaments.timeline.dotTitle", {
-              number: String(t.number),
+              name: t.name,
               placement: String(t.placement),
               count: String(t.count_teams)
             });
@@ -87,9 +79,8 @@ const TournamentsPlacementTimeline = ({ tournaments, selectedIds = [], onSelect 
           })}
         </div>
         <div className="aqt-x-axis">
-          {ticks.map((n, i) => (
-            <span key={i}>#{n}</span>
-          ))}
+          <span>{valid[0].name}</span>
+          {n > 1 ? <span>{valid[n - 1].name}</span> : null}
         </div>
       </div>
       <div className="flex flex-wrap gap-3.5 border-t border-[color:var(--aqt-border)] px-[18px] py-3.5 text-[12px] text-[color:var(--aqt-fg-muted)]">

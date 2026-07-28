@@ -230,8 +230,8 @@ class BalancerRegistrationRoleInput(BaseModel):
 class BalancerRankAutofillStage(BaseModel):
     """A single source in the rank-autofill priority chain.
 
-    ``lookback_tournaments`` limits ``division_history``/``analytics`` to tournaments whose number is
-    within the last N before the current one; ``lookback_days`` overrides the OW weekly window. The
+    ``lookback_tournaments`` limits ``division_history``/``analytics`` to the last N tournaments
+    before the current one; ``lookback_days`` overrides the OW weekly window. The
     irrelevant lookback for a given ``source`` is ignored by the service.
     """
 
@@ -304,7 +304,6 @@ class BalancerRegistrationRankAutofillResponse(BaseModel):
 
 class BalancerRegistrationRankHistoryEntry(BaseModel):
     tournament_id: int
-    tournament_number: int | None = None
     tournament_name: str | None = None
     role: BalancerRole
     rank_value: int

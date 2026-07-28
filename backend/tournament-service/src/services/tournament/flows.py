@@ -119,7 +119,6 @@ async def to_pydantic(
         workspace_id=tournament.workspace_id,
         start_date=tournament.start_date,
         end_date=tournament.end_date,
-        number=tournament.number,
         is_league=tournament.is_league,
         is_finished=tournament.is_finished,
         is_hidden=tournament.is_hidden,
@@ -283,38 +282,6 @@ async def get_stages_read(session: AsyncSession, tournament_id: int) -> list[sch
     return output
 
 
-async def get_by_number_and_league(
-    session: AsyncSession, number: int, is_league: bool, entities: list[str]
-) -> models.Tournament:
-    """
-    Retrieves a `Tournament` model instance by its number and league status, optionally including related entities.
-
-    Args:
-        session: An SQLAlchemy `AsyncSession` for database interaction.
-        number: The number of the tournament to retrieve.
-        is_league: Whether the tournament is a league.
-        entities: A list of strings representing the names of related entities to include.
-
-    Returns:
-        A `Tournament` model instance.
-
-    Raises:
-        errors.ApiHTTPException: If the tournament is not found.
-    """
-    tournament = await service.get_by_number_and_league(session, number, is_league, entities)
-    if tournament is None:
-        raise errors.ApiHTTPException(
-            status_code=404,
-            detail=[
-                errors.ApiExc(
-                    code="tournament_not_found",
-                    msg="Tournament with this number not found",
-                )
-            ],
-        )
-    return tournament
-
-
 async def get_all(
     session: AsyncSession,
     params: schemas.TournamentPaginationSortSearchParams,
@@ -405,7 +372,7 @@ async def get_history_tournaments(
         output.append(
             schemas.TournamentStatistics(
                 id=stat[0].id,
-                number=stat[0].number,
+                name=stat[0].name,
                 players_count=stat[1],
                 avg_sr=round(stat[2], 2),
                 avg_closeness=stat[3],
@@ -434,13 +401,13 @@ async def get_avg_divisions_tournaments(
     # aggregates players to a per-(tournament, role, rank) histogram, so the
     # average is weighted by the count instead of iterating every player row.
     raw_rank_cache: dict[int, dict[enums.HeroClass, list[tuple[float, int]]]] = {}
-    tournament_numbers: dict[int, int] = {}
+    tournament_names: dict[int, str] = {}
 
     rows = await service.get_avg_div_tournaments(session, workspace_id=workspace_id)
     for tournament, role, rank, players_count in rows:
         if tournament.id not in raw_rank_cache:
             raw_rank_cache[tournament.id] = {}
-            tournament_numbers[tournament.id] = tournament.number
+            tournament_names[tournament.id] = tournament.name
 
         source_version_id: int | None = tournament.division_grid_version_id
 
@@ -473,7 +440,7 @@ async def get_avg_divisions_tournaments(
         output.append(
             schemas.DivisionStatistics(
                 id=tournament_id,
-                number=tournament_numbers[tournament_id],
+                name=tournament_names[tournament_id],
                 tank_avg_div=avg_or_none(roles.get(enums.HeroClass.tank)),
                 damage_avg_div=avg_or_none(roles.get(enums.HeroClass.damage)),
                 support_avg_div=avg_or_none(roles.get(enums.HeroClass.support)),

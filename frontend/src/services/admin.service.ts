@@ -173,7 +173,6 @@ class AdminService {
 
   async createTournamentWithGroups(params: {
     workspace_id: number;
-    number: number;
     challonge_slug: string;
     is_league: boolean;
     start_date: string;

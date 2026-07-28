@@ -110,7 +110,6 @@ export interface Tournament {
   name: string;
   start_date: Date;
   end_date: Date;
-  number: number;
   description: string | null;
   challonge_id: number | null;
   challonge_slug: string | null;

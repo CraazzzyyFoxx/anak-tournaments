@@ -25,7 +25,6 @@ def _tournament() -> SimpleNamespace:
         id=7,
         created_at=NOW,
         updated_at=None,
-        number=7,
         name="Tournament 7",
         is_finished=False,
         division_grid_version_id=None,

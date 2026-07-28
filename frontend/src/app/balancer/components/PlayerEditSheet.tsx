@@ -274,7 +274,6 @@ function getRankFillPercentFromDivisionIndex(
 
 function formatTournamentSource(entry: PlayerRankHistoryPreviewEntry): string {
   if (entry.tournament_name) return entry.tournament_name;
-  if (entry.tournament_number != null) return `Tournament #${entry.tournament_number}`;
   return entry.source === "balancer" ? "Balancer history" : "Analytics";
 }
 
@@ -692,8 +691,6 @@ function HistoryPreviewCard({
         </div>
         {entry.tournament_name ? (
           <div className="font-medium text-[color:var(--aqt-fg)]">{entry.tournament_name}</div>
-        ) : entry.tournament_number != null ? (
-          <div className="font-medium text-[color:var(--aqt-fg)]">Tournament #{entry.tournament_number}</div>
         ) : null}
         {entry.source_role ? <div>Source role: {entry.source_role}</div> : null}
       </div>

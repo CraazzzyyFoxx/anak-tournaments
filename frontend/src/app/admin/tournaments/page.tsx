@@ -34,7 +34,6 @@ type TournamentFormData = TournamentFormFieldsValue & {
   name: string;
   description: string;
   is_league: boolean;
-  number: number | null;
   start_date: string;
   end_date: string;
 };
@@ -43,7 +42,6 @@ const emptyTournamentForm: TournamentFormData = {
   name: "",
   description: "",
   is_league: false,
-  number: null,
   division_grid_version_id: null,
   start_date: "",
   end_date: ""
@@ -51,7 +49,6 @@ const emptyTournamentForm: TournamentFormData = {
 
 function getTournamentEditForm(tournament: Tournament): TournamentFormData {
   return {
-    number: tournament.number ?? null,
     name: tournament.name,
     description: tournament.description || "",
     challonge_slug: tournament.challonge_slug || "",
@@ -74,14 +71,12 @@ function getCreatePayload(
     is_league: formData.is_league,
     start_date: formData.start_date,
     end_date: formData.end_date,
-    division_grid_version_id: formData.division_grid_version_id,
-    ...(formData.number === null ? {} : { number: formData.number })
+    division_grid_version_id: formData.division_grid_version_id
   };
 }
 
 function getUpdatePayload(formData: TournamentFormData): TournamentUpdateInput {
   return {
-    number: formData.number,
     name: formData.name,
     description: formData.description,
     challonge_slug: formData.challonge_slug
@@ -143,7 +138,6 @@ export default function TournamentsPage() {
   const createWithGroupsMutation = useMutation({
     mutationFn: (params: {
       workspace_id: number;
-      number: number;
       challonge_slug: string;
       is_league: boolean;
       start_date: string;
@@ -208,12 +202,10 @@ export default function TournamentsPage() {
   const handleSubmitCreate = (e: React.FormEvent) => {
     e.preventDefault();
     if (createMode === "challonge") {
-      if (!formData.number || !challongeSlug.trim() || !formData.start_date || !formData.end_date)
-        return;
+      if (!challongeSlug.trim() || !formData.start_date || !formData.end_date) return;
       if (!currentWorkspaceId) return;
       createWithGroupsMutation.mutate({
         workspace_id: currentWorkspaceId,
-        number: formData.number,
         challonge_slug: normalizeChallongeSlug(challongeSlug),
         is_league: formData.is_league,
         start_date: formData.start_date,
@@ -257,11 +249,6 @@ export default function TournamentsPage() {
     : undefined;
 
   const columns: ColumnDef<Tournament>[] = [
-    {
-      accessorKey: "number",
-      header: "#",
-      cell: ({ row }) => <div className="font-medium">{row.getValue("number") || "—"}</div>
-    },
     {
       accessorKey: "name",
       header: "Name",

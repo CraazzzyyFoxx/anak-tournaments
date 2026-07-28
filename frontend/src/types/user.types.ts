@@ -40,7 +40,6 @@ export interface UserRole {
 
 export interface UserTournamentWithStats {
   id: number;
-  number: number;
   name: string;
   division: number;
   /** Grid the `division` was resolved against — render its icon on this grid,
@@ -66,7 +65,6 @@ export interface UserTournamentWithStats {
 
 export interface UserTournamentSummary {
   id: number;
-  number: number | null;
   name: string;
   is_league: boolean;
   is_finished?: boolean;
@@ -96,7 +94,6 @@ export interface UserTournamentPlayer {
 export interface UserEncounterTournament {
   id: number;
   name: string;
-  number: number | null;
   is_league: boolean;
   is_finished?: boolean;
   status?: string | null;
@@ -169,7 +166,6 @@ export interface EncounterWithUserStats {
 export interface UserTournament {
   id: number;
   name: string;
-  number: number;
   is_league: boolean;
   team_id: number;
   team: string;

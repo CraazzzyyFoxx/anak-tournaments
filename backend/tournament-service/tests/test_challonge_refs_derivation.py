@@ -96,7 +96,6 @@ def _tournament() -> models.Tournament:
         created_at=datetime.now(UTC),
         updated_at=None,
         workspace_id=1,
-        number=10,
         name="Tournament 10",
         description=None,
         is_league=False,

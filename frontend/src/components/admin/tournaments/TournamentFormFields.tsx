@@ -28,7 +28,6 @@ export type TournamentFormFieldsValue = {
   is_league: boolean;
   start_date: string;
   end_date: string;
-  number?: number | null;
   challonge_slug?: string | null;
   is_finished?: boolean;
   win_points?: number;
@@ -59,7 +58,6 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
   divisionGridVersions = [],
   divisionGridLoading = false,
 }: TournamentFormFieldsProps<T>) {
-  const showNumber = mode !== "edit";
   const showDescription = mode !== "challonge-create";
   const showInlineChallonge = mode === "edit" || mode === "workspace-edit";
   const showSeparateChallonge = mode === "challonge-create";
@@ -90,36 +88,16 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
         </div>
       ) : null}
 
-      {mode !== "challonge-create" || showNumber ? (
-        <div className={showNumber ? "grid grid-cols-1 sm:grid-cols-[3fr_1fr] gap-4" : ""}>
-          {mode !== "challonge-create" ? (
-            <div>
-              <Label htmlFor={`${idPrefix}-name`}>{mode === "manual-create" ? "Name *" : "Name"}</Label>
-              <Input
-                id={`${idPrefix}-name`}
-                value={value.name}
-                onChange={(event) => onChange({ ...value, name: event.target.value })}
-                required={mode === "manual-create"}
-                className="mt-1.5"
-              />
-            </div>
-          ) : null}
-
-          {showNumber ? (
-            <div>
-              <Label htmlFor={`${idPrefix}-number`}>
-                {mode === "challonge-create" ? "Number *" : "Number"}
-              </Label>
-              <NumberInput
-                id={`${idPrefix}-number`}
-                integer
-                value={value.number}
-                onValueChange={(next) => onChange({ ...value, number: next })}
-                required={mode === "challonge-create"}
-                className="mt-1.5"
-              />
-            </div>
-          ) : null}
+      {mode !== "challonge-create" ? (
+        <div className="col-span-full">
+          <Label htmlFor={`${idPrefix}-name`}>{mode === "manual-create" ? "Name *" : "Name"}</Label>
+          <Input
+            id={`${idPrefix}-name`}
+            value={value.name}
+            onChange={(event) => onChange({ ...value, name: event.target.value })}
+            required={mode === "manual-create"}
+            className="mt-1.5"
+          />
         </div>
       ) : null}
 

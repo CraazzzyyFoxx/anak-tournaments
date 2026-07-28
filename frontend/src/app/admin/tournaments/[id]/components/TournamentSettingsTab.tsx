@@ -151,7 +151,6 @@ export function TournamentSettingsTab({
     event.preventDefault();
 
     const payload: TournamentUpdateInput = {
-      number: formData.number,
       name: formData.name.trim(),
       description: formData.description.trim() || null,
       challonge_slug: formData.challonge_slug
@@ -220,31 +219,17 @@ export function TournamentSettingsTab({
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-[3fr_1fr] gap-4">
-                <div>
-                  <Label htmlFor="settings-name" className="text-xs">
-                    Tournament Name
-                  </Label>
-                  <Input
-                    id="settings-name"
-                    value={formData.name}
-                    onChange={(event) => setFormData({ ...formData, name: event.target.value })}
-                    required
-                    className="mt-1.5 bg-background/50"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="settings-number" className="text-xs">
-                    Number
-                  </Label>
-                  <NumberInput
-                    id="settings-number"
-                    integer
-                    value={formData.number}
-                    onValueChange={(next) => setFormData({ ...formData, number: next })}
-                    className="mt-1.5 bg-background/50"
-                  />
-                </div>
+              <div>
+                <Label htmlFor="settings-name" className="text-xs">
+                  Tournament Name
+                </Label>
+                <Input
+                  id="settings-name"
+                  value={formData.name}
+                  onChange={(event) => setFormData({ ...formData, name: event.target.value })}
+                  required
+                  className="mt-1.5 bg-background/50"
+                />
               </div>
               <div>
                 <Label htmlFor="settings-description" className="text-xs">

@@ -61,10 +61,7 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
       : encounter.score.home < encounter.score.away
         ? t("encounters.detail.winner")
         : t("encounters.detail.loser");
-  let name = `${encounter.tournament.number}`;
-  if (encounter.tournament.is_league) {
-    name = encounter.tournament.name;
-  }
+  const name = encounter.tournament.name;
   const stageLabel = encounter.stage_item?.name ?? encounter.stage?.name ?? t("encounters.unassigned");
   const tournamentGrid = encounter.tournament.division_grid_version ?? null;
 

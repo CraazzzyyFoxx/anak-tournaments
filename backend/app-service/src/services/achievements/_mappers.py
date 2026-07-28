@@ -11,7 +11,6 @@ def to_tournament_link(
 ) -> schemas.AchievementTournamentLink:
     return schemas.AchievementTournamentLink(
         id=tournament.id,
-        number=tournament.number,
         name=tournament.name,
         is_league=tournament.is_league,
     )

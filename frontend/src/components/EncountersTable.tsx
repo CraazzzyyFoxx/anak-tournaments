@@ -259,9 +259,7 @@ const EncountersTable = ({
                 const meta = getMatchMeta(encounter);
                 const when = formatWhen(encounter, meta.isLive);
                 const closeness = encounter.closeness;
-                const tournamentName = encounter.tournament?.is_league
-                  ? encounter.tournament.name
-                  : `Tournament ${encounter.tournament?.number ?? "—"}`;
+                const tournamentName = encounter.tournament?.name ?? "—";
                 const openEncounter = () => router.push(`/encounters/${encounter.id}`);
 
                 return (

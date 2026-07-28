@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { UserProfile, UserTournament } from "@/types/user.types";
 import {
   type TournamentGroup,
-  groupMaxNumber,
+  groupMaxId,
   groupRepId,
   groupTournamentIds,
   groupTournamentsByLeague
@@ -22,14 +22,14 @@ interface Props {
   profile?: UserProfile | null;
 }
 
-/** Rep-id of the most-recent event group (greatest tournament number). */
+/** Rep-id of the most-recent event group (greatest tournament id). */
 const mostRecentKey = (groups: TournamentGroup[]): number | null => {
   let best: number | null = null;
-  let bestNumber = -Infinity;
+  let bestId = -Infinity;
   for (const group of groups) {
-    const number = groupMaxNumber(group);
-    if (number > bestNumber) {
-      bestNumber = number;
+    const id = groupMaxId(group);
+    if (id > bestId) {
+      bestId = id;
       best = groupRepId(group);
     }
   }
