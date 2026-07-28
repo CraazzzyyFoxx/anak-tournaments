@@ -28,7 +28,7 @@ export type BalanceVariant = {
   id: string;
   label: string;
   payload: InternalBalancePayload;
-  source: "saved" | "generated";
+  source: "saved" | "generated" | "imported";
   config?: BalancerConfig | null;
   /** Number of pool players excluded from this run due to validation issues */
   skippedCount?: number;

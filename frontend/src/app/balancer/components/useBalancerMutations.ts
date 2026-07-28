@@ -4,6 +4,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { useMutation } from "@tanstack/react-query";
 import type React from "react";
 import type { JobAction } from "./useBalancerJob";
+import { parseImportedBalancePayload } from "./balance-import";
 import { sanitizeBalancerConfig } from "./balancer-config-helpers";
 import {
   buildBalancerInput,
@@ -67,7 +68,7 @@ type ExportToTournamentVariables = {
   onStageChange?: FlowStageReporter;
 };
 
-type ImportTeamsVariables = {
+type ImportBalanceVariables = {
   file: File;
   onStageChange?: FlowStageReporter;
 };
@@ -495,24 +496,32 @@ export function useBalancerMutations({
     }
   });
 
-  const importTeamsMutation = useMutation({
-    mutationFn: async ({ file, onStageChange }: ImportTeamsVariables) => {
+  // Import loads the file as another variant — creating tournament teams stays an
+  // explicit Save / Export to Tournament step, same as for a generated balance.
+  const importBalanceMutation = useMutation({
+    mutationFn: async ({ file, onStageChange }: ImportBalanceVariables) => {
       if (!tournamentId) throw new Error("Select a tournament first");
 
-      await runReportedStage("read", onStageChange, async () => {
-        JSON.parse(await file.text());
-      });
-
-      const result = await runReportedStage("import", onStageChange, () =>
-        balancerAdminService.importTeamsFromJson(tournamentId, file)
+      const payload = await runReportedStage("read", onStageChange, async () =>
+        parseImportedBalancePayload(await file.text())
       );
 
-      await runReportedStage("refresh", onStageChange, invalidateTournamentExportQueries);
-
-      return result;
+      return runReportedStage("load", onStageChange, async () => {
+        const variant: BalanceVariant = {
+          id: `imported-${Date.now()}`,
+          label: `Imported ${file.name}`,
+          payload,
+          source: "imported"
+        };
+        setVariants((current) => [...current, variant]);
+        setActiveVariantId(variant.id);
+        return { variant, teamCount: payload.teams.length };
+      });
     },
-    onSuccess: (result) => {
-      notify.success("Teams imported", { description: `${result.imported_teams} teams created.` });
+    onSuccess: ({ teamCount }) => {
+      notify.success("Balance loaded from JSON", {
+        description: `${teamCount} teams ready to review — save or export when it looks right.`
+      });
     }
   });
 
@@ -527,6 +536,6 @@ export function useBalancerMutations({
     runBalanceMutation,
     saveBalanceMutation,
     exportToTournamentMutation,
-    importTeamsMutation
+    importBalanceMutation
   };
 }

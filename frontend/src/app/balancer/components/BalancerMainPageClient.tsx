@@ -97,17 +97,12 @@ const IMPORT_JSON_STEPS: BalancerOperationStepDefinition[] = [
   {
     id: "read",
     label: "Read JSON file",
-    description: "Validate that the selected file contains JSON."
+    description: "Parse the file and check that it holds a balance payload."
   },
   {
-    id: "import",
-    label: "Import teams",
-    description: "Create tournament teams from the JSON payload."
-  },
-  {
-    id: "refresh",
-    label: "Refresh tournament data",
-    description: "Update cached tournament teams and public views."
+    id: "load",
+    label: "Load balance preview",
+    description: "Add it to the variant list so it can be reviewed, saved or exported."
   }
 ];
 
@@ -433,7 +428,7 @@ export function BalancerMainPageClient() {
     runBalanceMutation,
     saveBalanceMutation,
     exportToTournamentMutation,
-    importTeamsMutation
+    importBalanceMutation
   } = useBalancerMutations({
     tournamentId,
     workspaceId,
@@ -584,19 +579,21 @@ export function BalancerMainPageClient() {
       setJsonImportSummary(null);
       setJsonImportError(null);
       setIsJsonImportOpen(true);
-      importTeamsMutation.mutate(
+      importBalanceMutation.mutate(
         { file, onStageChange: handleJsonImportStageChange },
         {
           onSuccess: (result) => {
-            setJsonImportSummary(`${result.imported_teams} teams imported from ${file.name}.`);
+            setJsonImportSummary(
+              `${result.teamCount} teams loaded from ${file.name}. Review the balance, then Save or Export to Tournament.`
+            );
           },
           onError: (error) => {
-            setJsonImportError(getErrorMessage(error, "Failed to import teams from JSON"));
+            setJsonImportError(getErrorMessage(error, "Failed to read the balance JSON"));
           }
         }
       );
     },
-    [handleJsonImportStageChange, importTeamsMutation]
+    [handleJsonImportStageChange, importBalanceMutation]
   );
 
   const quickPoolActionsPending =
@@ -697,9 +694,9 @@ export function BalancerMainPageClient() {
         open={isJsonImportOpen}
         onOpenChange={setIsJsonImportOpen}
         title="Import JSON"
-        description="Import a previously downloaded balance JSON into the selected tournament."
+        description="Load a previously downloaded balance JSON as a preview variant. Nothing is written to the tournament until you save or export it."
         steps={jsonImportSteps}
-        isRunning={importTeamsMutation.isPending}
+        isRunning={importBalanceMutation.isPending}
         summary={jsonImportSummary}
         error={jsonImportError}
         retryLabel="Retry import"
@@ -761,8 +758,8 @@ export function BalancerMainPageClient() {
               canRunBalance={canRunBalance}
               onRunBalance={() => runBalanceMutation.mutate()}
               isRunPending={runBalanceMutation.isPending}
-              onImportTeams={startJsonImport}
-              isImportPending={importTeamsMutation.isPending}
+              onImportBalance={startJsonImport}
+              isImportPending={importBalanceMutation.isPending}
               onExportPlayers={() => exportPlayersMutation.mutate()}
               isExportPlayersPending={exportPlayersMutation.isPending}
               jobStatus={jobState.status}

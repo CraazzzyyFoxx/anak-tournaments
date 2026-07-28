@@ -44,7 +44,7 @@ type PresetRunPanelProps = {
   canRunBalance: boolean;
   onRunBalance: () => void;
   isRunPending: boolean;
-  onImportTeams: (file: File) => void;
+  onImportBalance: (file: File) => void;
   isImportPending: boolean;
   onExportPlayers: () => void;
   isExportPlayersPending: boolean;
@@ -66,7 +66,7 @@ export function PresetRunPanel({
   canRunBalance,
   onRunBalance,
   isRunPending,
-  onImportTeams,
+  onImportBalance,
   isImportPending,
   onExportPlayers,
   isExportPlayersPending,
@@ -153,7 +153,7 @@ export function PresetRunPanel({
         className="hidden"
         onChange={(event) => {
           const file = event.target.files?.[0];
-          if (file) onImportTeams(file);
+          if (file) onImportBalance(file);
           event.target.value = "";
         }}
       />
@@ -162,6 +162,7 @@ export function PresetRunPanel({
         variant="outline"
         onClick={() => importFileRef.current?.click()}
         disabled={isImportPending}
+        title="Load a balance JSON as a preview variant — nothing is written to the tournament"
         className="h-8 rounded-lg border-[color:var(--aqt-border-2)] bg-black/15 px-3 text-sm text-[color:var(--aqt-fg-muted)] hover:bg-white/[0.05] hover:text-[color:var(--aqt-fg)]"
       >
         {isImportPending ? (
