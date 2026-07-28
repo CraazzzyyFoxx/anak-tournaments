@@ -119,7 +119,7 @@
 .navItem:hover,
 .navItem:focus-visible {
   color: var(--aqt-fg);
-  background: hsl(0 0% 100% / 0.025);
+  background: var(--aqt-overlay-2);
   outline: none;
 }
 
@@ -345,9 +345,9 @@
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.7rem 0.85rem;
-  border: 1px solid hsl(36 88% 65% / 0.24);
+  border: 1px solid color-mix(in srgb, var(--aqt-amber) 24%, transparent);
   border-radius: 0.4rem;
-  background: hsl(36 88% 65% / 0.055);
+  background: color-mix(in srgb, var(--aqt-amber) 5.5%, transparent);
   color: var(--aqt-fg-muted);
   font-size: 0.75rem;
 }
@@ -521,7 +521,7 @@ thead .stickyTeamColumn {
 .participantHeaderRow {
   min-height: 2.55rem;
   border-bottom: 1px solid var(--aqt-border);
-  background: hsl(0 0% 100% / 0.015);
+  background: var(--aqt-overlay-1);
 }
 
 .participantHeaderCell {
@@ -565,7 +565,7 @@ thead .stickyTeamColumn {
 }
 
 .participantVirtualRow:hover {
-  background: hsl(0 0% 100% / 0.022);
+  background: var(--aqt-overlay-2);
 }
 
 .participantSummaryRow {
@@ -654,7 +654,7 @@ thead .stickyTeamColumn {
   padding: 0.85rem;
   border: 1px solid var(--aqt-border);
   border-radius: 0.5rem;
-  background: hsl(0 0% 100% / 0.015);
+  background: var(--aqt-overlay-1);
 }
 
 .participantHiddenField {
@@ -845,7 +845,7 @@ thead .stickyTeamColumn {
   .participantExpander {
     min-width: 5.4rem;
     border-color: var(--aqt-border-2);
-    background: hsl(0 0% 100% / 0.025);
+    background: var(--aqt-overlay-2);
     color: var(--aqt-fg-muted);
     font-family: var(--aqt-mono);
     font-size: 0.625rem;

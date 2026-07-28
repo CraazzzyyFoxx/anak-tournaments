@@ -154,7 +154,7 @@
 }
 
 .viewTab:hover {
-  background: hsl(0 0% 100% / 0.03);
+  background: var(--aqt-overlay-2);
   color: var(--enc-fg);
 }
 
@@ -180,7 +180,7 @@
   font-family: var(--enc-mono);
   font-size: 10px;
   color: var(--enc-faint);
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   padding: 1px 6px;
   border-radius: 4px;
   font-weight: 600;
@@ -273,7 +273,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: hsl(0 0% 100% / 0.02);
+  background: var(--aqt-overlay-2);
   border: 1px solid var(--enc-border);
   color: var(--enc-muted);
   font-size: 12px;
@@ -285,7 +285,7 @@
 }
 
 .filterChip:hover {
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   color: var(--enc-fg);
 }
 
@@ -299,7 +299,7 @@
   font-family: var(--enc-mono);
   font-size: 10px;
   color: var(--enc-faint);
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   padding: 1px 6px;
   border-radius: 4px;
 }
@@ -323,7 +323,7 @@
   height: 34px;
   border: 1px solid var(--enc-border);
   border-radius: 8px;
-  background: hsl(0 0% 100% / 0.02);
+  background: var(--aqt-overlay-2);
   color: var(--enc-muted);
   padding: 0 10px;
   font-size: 12px;
@@ -342,7 +342,7 @@
 }
 
 .filterSelectTrigger:hover {
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   color: var(--enc-fg);
 }
 
@@ -360,7 +360,7 @@
 
 .filterSearch input {
   width: 100%;
-  background: hsl(0 0% 100% / 0.02);
+  background: var(--aqt-overlay-2);
   border: 1px solid var(--enc-border);
   color: var(--enc-fg);
   border-radius: 8px;
@@ -431,7 +431,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   border: 1px solid var(--enc-border-2);
   padding: 3px 8px;
   border-radius: 999px;
@@ -529,7 +529,7 @@
 
 .scoreCellEmpty {
   color: var(--enc-faint);
-  background: hsl(0 0% 100% / 0.02);
+  background: var(--aqt-overlay-2);
 }
 
 .scoreLegend {
@@ -646,7 +646,7 @@
 }
 
 .feat:hover {
-  background: hsl(0 0% 100% / 0.02);
+  background: var(--aqt-overlay-2);
 }
 
 .matchup {
@@ -846,7 +846,7 @@
   color: var(--enc-faint);
   text-align: left;
   padding: 10px 14px;
-  background: hsl(0 0% 100% / 0.015);
+  background: var(--aqt-overlay-1);
   border-bottom: 1px solid var(--enc-border);
 }
 
@@ -863,7 +863,7 @@
 }
 
 .table tbody tr:hover td {
-  background: hsl(0 0% 100% / 0.025);
+  background: var(--aqt-overlay-2);
 }
 
 .table tbody tr:last-child td {
@@ -943,7 +943,7 @@
 /* Stage pill variants */
 .stagePill {
   display: inline-block;
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   border: 1px solid var(--enc-border-2);
   color: var(--enc-muted);
   font-size: 10px;
@@ -983,7 +983,7 @@
 .closenessTrack {
   flex: 1;
   height: 5px;
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -1012,7 +1012,7 @@
   width: 14px;
   height: 6px;
   border-radius: 2px;
-  background: hsl(0 0% 100% / 0.06);
+  background: var(--aqt-overlay-3);
 }
 
 .pipWin {
@@ -1037,7 +1037,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: hsl(0 0% 100% / 0.025);
+  background: var(--aqt-overlay-2);
   border: 1px solid var(--enc-border-2);
   color: var(--enc-faint);
   transition: 0.15s;
@@ -1047,7 +1047,7 @@
 
 .mediaIcon:hover:not(.mediaIconDisabled) {
   color: var(--enc-fg);
-  background: hsl(0 0% 100% / 0.05);
+  background: var(--aqt-overlay-3);
 }
 
 .mediaIconLogs {
@@ -1099,7 +1099,7 @@
   justify-content: space-between;
   padding: 14px 18px;
   border-top: 1px solid var(--enc-border);
-  background: hsl(0 0% 100% / 0.012);
+  background: var(--aqt-overlay-1);
   gap: 12px;
   flex-wrap: wrap;
 }
@@ -1122,7 +1122,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: hsl(0 0% 100% / 0.02);
+  background: var(--aqt-overlay-2);
   border: 1px solid var(--enc-border);
   color: var(--enc-muted);
   border-radius: 6px;
@@ -1134,7 +1134,7 @@
 }
 
 .pageBtn:hover:not(:disabled):not(.pageBtnActive):not(.pageBtnEllipsis) {
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   color: var(--enc-fg);
 }
 
@@ -1232,7 +1232,7 @@
 .mapTrack {
   width: 120px;
   height: 5px;
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   border-radius: 2px;
   overflow: hidden;
 }

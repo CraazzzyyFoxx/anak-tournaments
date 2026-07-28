@@ -400,7 +400,7 @@
   background: var(--aqt-emerald);
 }
 .aqt-form-chip.l {
-  background: hsl(0 0% 100% / 0.05);
+  background: var(--aqt-overlay-3);
   color: var(--aqt-fg-dim);
 }
 .aqt-form-chip.d {
@@ -412,7 +412,7 @@
   width: 12px;
   height: 6px;
   border-radius: 2px;
-  background: hsl(0 0% 100% / 0.06);
+  background: var(--aqt-overlay-3);
   display: inline-block;
 }
 .aqt-pip.win {
@@ -428,7 +428,7 @@
   width: 11px;
   height: 18px;
   border-radius: 2px;
-  background: hsl(0 0% 100% / 0.06);
+  background: var(--aqt-overlay-3);
   display: inline-block;
 }
 .aqt-pip-tall.win {
@@ -444,7 +444,7 @@
 /* stage pill */
 .aqt-stage-pill {
   display: inline-block;
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   border: 1px solid var(--aqt-border-2);
   color: var(--aqt-fg-muted);
   font-size: 10px;
@@ -456,13 +456,13 @@
   font-family: var(--aqt-mono);
 }
 .aqt-stage-pill.playoffs {
-  background: hsl(36 88% 65% / 0.08);
-  border-color: hsl(36 88% 65% / 0.25);
+  background: color-mix(in srgb, var(--aqt-amber) 8%, transparent);
+  border-color: color-mix(in srgb, var(--aqt-amber) 25%, transparent);
   color: var(--aqt-amber);
 }
 .aqt-stage-pill.group {
-  background: hsl(210 80% 60% / 0.08);
-  border-color: hsl(210 80% 60% / 0.25);
+  background: color-mix(in srgb, var(--aqt-blue) 8%, transparent);
+  border-color: color-mix(in srgb, var(--aqt-blue) 25%, transparent);
   color: var(--aqt-blue);
 }
 .aqt-stage-pill.finals {
@@ -517,7 +517,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   border: 1px solid var(--aqt-border-2);
   color: var(--aqt-fg-muted);
   font-family: var(--aqt-mono);
@@ -559,7 +559,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: hsl(0 0% 100% / 0.02);
+  background: var(--aqt-overlay-2);
   border: 1px solid var(--aqt-border);
   color: var(--aqt-fg-muted);
   font-size: 12px;
@@ -570,7 +570,7 @@
   transition: 0.15s;
 }
 .aqt-filter-chip:hover {
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   color: var(--aqt-fg);
 }
 .aqt-filter-chip.active {
@@ -582,7 +582,7 @@
   font-family: var(--aqt-mono);
   font-size: 10px;
   color: var(--aqt-fg-faint);
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   padding: 1px 6px;
   border-radius: 4px;
 }
@@ -627,7 +627,7 @@
   filter: brightness(1.2);
 }
 .aqt-place-spark .aqt-col.podium .aqt-bar {
-  background: linear-gradient(180deg, var(--aqt-amber), hsl(36 88% 65% / 0.4));
+  background: linear-gradient(180deg, var(--aqt-amber), color-mix(in srgb, var(--aqt-amber) 40%, transparent));
 }
 .aqt-place-spark .aqt-col.first .aqt-bar {
   background: linear-gradient(180deg, hsl(45 95% 60%), hsl(38 90% 48%));
@@ -659,7 +659,7 @@
 /* role pyramid bar */
 .aqt-pyramid-bar {
   height: 42px;
-  background: hsl(0 0% 100% / 0.025);
+  background: var(--aqt-overlay-2);
   border-radius: 8px;
   overflow: hidden;
   display: flex;
@@ -713,7 +713,7 @@
   width: 6px;
   height: 18px;
   border-radius: 1px;
-  background: hsl(0 0% 100% / 0.06);
+  background: var(--aqt-overlay-3);
 }
 .aqt-opp-row .aqt-wl .b.w {
   background: var(--aqt-emerald);
@@ -769,7 +769,7 @@
 }
 .aqt-mode-card .aqt-bar {
   height: 4px;
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -807,7 +807,7 @@
   transition: 0.15s;
 }
 .aqt-map-row:hover {
-  background: hsl(0 0% 100% / 0.022);
+  background: var(--aqt-overlay-2);
 }
 .aqt-map-row:last-child {
   border-bottom: 0;
@@ -836,7 +836,7 @@
 .aqt-wr-bar .aqt-track {
   flex: 1;
   height: 6px;
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   border-radius: 3px;
   overflow: hidden;
 }
@@ -1045,7 +1045,7 @@
   font-size: 10px;
   font-weight: 700;
   color: var(--aqt-fg-muted);
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   border: 1px solid var(--aqt-border-2);
   padding: 2px 6px;
   border-radius: 4px;
@@ -1295,7 +1295,7 @@
   gap: 6px;
   font-size: 11.5px;
   color: var(--aqt-fg-muted);
-  background: hsl(0 0% 100% / 0.03);
+  background: var(--aqt-overlay-2);
   border: 1px solid var(--aqt-border-2);
   border-radius: 999px;
   padding: 3px 10px;
@@ -1324,7 +1324,7 @@
   border-bottom: 0;
 }
 .aqt-earner-row:hover {
-  background: hsl(0 0% 100% / 0.02);
+  background: var(--aqt-overlay-2);
 }
 .aqt-earner-rank {
   font-family: var(--aqt-mono);
@@ -1398,13 +1398,13 @@
   border-bottom: 0;
 }
 .aqt-t-item:hover {
-  background: hsl(0 0% 100% / 0.02);
+  background: var(--aqt-overlay-2);
 }
 .aqt-t-item.gold {
   border-left: 3px solid var(--aqt-amber);
 }
 .aqt-t-item.podium {
-  border-left: 3px solid hsl(36 88% 65% / 0.5);
+  border-left: 3px solid color-mix(in srgb, var(--aqt-amber) 50%, transparent);
 }
 .aqt-t-item.expanded {
   background: color-mix(in srgb, var(--aqt-teal) 4%, transparent);
@@ -1417,7 +1417,7 @@
   height: 200px;
   padding: 14px 8px 8px;
   border: 1px solid var(--aqt-border);
-  background: hsl(0 0% 100% / 0.012);
+  background: var(--aqt-overlay-1);
   border-radius: 10px;
   overflow: hidden;
 }
@@ -1581,6 +1581,16 @@
   --aqt-support: hsl(150 57% 52%);
   --aqt-live: var(--aqt-rose);
   --aqt-warm: var(--aqt-amber);
+  /* Nested-surface elevation. First-level cards sit on --aqt-card; a nested
+     card uses --aqt-card-2 OR one of these translucent white overlays; deeper
+     nesting always uses overlays. White alpha composites over ANY parent
+     surface (palette is clamped dark), so contrast and brand hue survive at
+     every depth. -1 subtle (strips, thead, zebra) · -2 raised (chips, nested
+     surfaces) · -3 lifted (hover/active, track fills). */
+  --aqt-overlay-1: hsl(0 0% 100% / 0.015);
+  --aqt-overlay-2: hsl(0 0% 100% / 0.025);
+  --aqt-overlay-3: hsl(0 0% 100% / 0.05);
+  --aqt-overlay-border: hsl(0 0% 100% / 0.06);
   /* Achievement rarity accent (HSL triplet so `hsl(var(--rar) / a)` alpha tints
      work). Global fallback = "common" grey; the `.aqt-rar-*` classes override
      it per tier. Kept as a triplet, not a full color, on purpose. */
@@ -1793,7 +1803,7 @@
   cursor: pointer;
   font-family: inherit;
   border: 1px solid var(--border);
-  background: hsl(0 0% 100% / 0.02);
+  background: var(--aqt-overlay-2);
   color: var(--fg-muted);
   font-weight: 600;
   font-size: 12.5px;
@@ -1805,7 +1815,7 @@
   transition: 0.15s;
 }
 .aqt-tn .tn-btn:hover {
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   color: var(--fg);
 }
 .aqt-tn .tn-btn.primary {
@@ -1820,7 +1830,7 @@
   font-family: var(--mono);
   font-size: 10px;
   color: var(--fg-faint);
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   padding: 1px 5px;
   border-radius: 4px;
 }
@@ -1840,7 +1850,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: hsl(0 0% 100% / 0.02);
+  background: var(--aqt-overlay-2);
   border: 1px solid var(--border);
   color: var(--fg-muted);
   font-size: 12px;
@@ -1851,7 +1861,7 @@
   transition: 0.15s;
 }
 .aqt-tn .filter-chip:hover {
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   color: var(--fg);
 }
 .aqt-tn .filter-chip.active {
@@ -1863,7 +1873,7 @@
   font-family: var(--mono);
   font-size: 10px;
   color: var(--fg-faint);
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   padding: 1px 6px;
   border-radius: 4px;
 }
@@ -1904,7 +1914,7 @@
 }
 .aqt-tn .filter-search input {
   width: 100%;
-  background: hsl(0 0% 100% / 0.02);
+  background: var(--aqt-overlay-2);
   border: 1px solid var(--border);
   color: var(--fg);
   border-radius: 8px;
@@ -1924,7 +1934,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: hsl(0 0% 100% / 0.02);
+  background: var(--aqt-overlay-2);
   border: 1px solid var(--border);
   color: var(--fg-muted);
   font-size: 12px;
@@ -1959,7 +1969,7 @@
   font-weight: 500;
   letter-spacing: 0;
   text-transform: none;
-  background: hsl(0 0% 100% / 0.03);
+  background: var(--aqt-overlay-2);
   border: 1px solid var(--border);
   padding: 2px 8px;
   border-radius: 6px;
@@ -2074,19 +2084,19 @@
   animation: aqtPulse 2s ease-in-out infinite;
 }
 .aqt-tn .status-pill.upcoming {
-  background: hsl(36 88% 65% / 0.12);
+  background: color-mix(in srgb, var(--amber) 12%, transparent);
   color: var(--amber);
-  border: 1px solid hsl(36 88% 65% / 0.3);
+  border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent);
 }
 .aqt-tn .status-pill.finished {
-  background: hsl(215 12% 40% / 0.18);
+  background: color-mix(in srgb, var(--fg-dim) 18%, transparent);
   color: var(--fg-muted);
   border: 1px solid var(--border-2);
 }
 .aqt-tn .status-pill.draft {
-  background: hsl(210 80% 60% / 0.12);
+  background: color-mix(in srgb, var(--blue) 12%, transparent);
   color: var(--blue);
-  border: 1px solid hsl(210 80% 60% / 0.3);
+  border: 1px solid color-mix(in srgb, var(--blue) 30%, transparent);
 }
 .aqt-tn .feat-meta {
   position: relative;
@@ -2100,7 +2110,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: hsl(0 0% 100% / 0.03);
+  background: var(--aqt-overlay-2);
   border: 1px solid var(--border-2);
   font-size: 11.5px;
   color: var(--fg-muted);
@@ -2162,7 +2172,7 @@
   z-index: 1;
   margin: 14px 22px 18px;
   padding: 12px 14px;
-  background: hsl(0 0% 100% / 0.025);
+  background: var(--aqt-overlay-2);
   border: 1px solid var(--border);
   border-radius: 10px;
   display: flex;
@@ -2251,7 +2261,7 @@
   font-family: var(--mono);
   font-size: 10px;
   color: var(--fg-muted);
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   padding: 3px 7px;
   border-radius: 5px;
 }
@@ -2263,7 +2273,7 @@
   justify-content: space-between;
   padding: 14px 22px;
   border-top: 1px solid var(--border);
-  background: hsl(0 0% 100% / 0.015);
+  background: var(--aqt-overlay-1);
 }
 .aqt-tn .feat-foot .left {
   display: flex;
@@ -2326,7 +2336,7 @@
   color: var(--fg-faint);
   text-align: left;
   padding: 11px 14px;
-  background: hsl(0 0% 100% / 0.015);
+  background: var(--aqt-overlay-1);
   border-bottom: 1px solid var(--border);
 }
 .aqt-tn table.tn th.r {
@@ -2346,7 +2356,7 @@
   transition: 0.12s;
 }
 .aqt-tn table.tn tbody tr:hover td {
-  background: hsl(0 0% 100% / 0.022);
+  background: var(--aqt-overlay-2);
 }
 .aqt-tn table.tn tbody tr:last-child td {
   border-bottom: 0;
@@ -2415,7 +2425,7 @@
   animation: aqtPulse 2s ease-in-out infinite;
 }
 .aqt-tn .tn-status.upcoming {
-  background: hsl(36 88% 65% / 0.12);
+  background: color-mix(in srgb, var(--amber) 12%, transparent);
   color: var(--amber);
 }
 .aqt-tn .tn-status.upcoming .dot {
@@ -2425,7 +2435,7 @@
   background: var(--amber);
 }
 .aqt-tn .tn-status.finished {
-  background: hsl(215 12% 40% / 0.18);
+  background: color-mix(in srgb, var(--fg-dim) 18%, transparent);
   color: var(--fg-muted);
 }
 .aqt-tn .tn-status.finished .dot {
@@ -2435,7 +2445,7 @@
   background: var(--fg-dim);
 }
 .aqt-tn .tn-status.draft {
-  background: hsl(210 80% 60% / 0.12);
+  background: color-mix(in srgb, var(--blue) 12%, transparent);
   color: var(--blue);
 }
 .aqt-tn .tn-status.draft .dot {
@@ -2455,7 +2465,7 @@
   position: relative;
   width: 80px;
   height: 5px;
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   border-radius: 3px;
   overflow: hidden;
 }
@@ -2469,7 +2479,7 @@
   background: linear-gradient(90deg, var(--amber), hsl(38 95% 65%));
 }
 .aqt-tn .tn-stage .progress .fill.muted {
-  background: hsl(215 12% 40%);
+  background: var(--fg-dim);
 }
 .aqt-tn .tn-stage .stage-label {
   font-family: var(--mono);
@@ -2527,7 +2537,7 @@
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   border: 2px solid var(--card);
   font-family: var(--mono);
   font-size: 9px;
@@ -2558,7 +2568,7 @@
   transition: 0.15s;
 }
 .aqt-tn .icon-btn:hover {
-  background: hsl(0 0% 100% / 0.05);
+  background: var(--aqt-overlay-3);
   color: var(--fg);
   border-color: var(--border);
 }
@@ -2570,7 +2580,7 @@
   justify-content: space-between;
   padding: 14px 18px;
   border-top: 1px solid var(--border);
-  background: hsl(0 0% 100% / 0.012);
+  background: var(--aqt-overlay-1);
 }
 .aqt-tn .page-info {
   font-size: 12px;
@@ -2587,7 +2597,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: hsl(0 0% 100% / 0.02);
+  background: var(--aqt-overlay-2);
   border: 1px solid var(--border);
   color: var(--fg-muted);
   border-radius: 6px;
@@ -2597,7 +2607,7 @@
   padding: 0 8px;
 }
 .aqt-tn .page-btn:hover {
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   color: var(--fg);
 }
 .aqt-tn .page-btn.active {
@@ -2649,10 +2659,10 @@
   border-color: var(--border-2);
 }
 .aqt-tn .tn-hero.status-upcoming {
-  border-color: hsl(36 88% 65% / 0.28);
+  border-color: color-mix(in srgb, var(--amber) 28%, transparent);
 }
 .aqt-tn .tn-hero.status-draft {
-  border-color: hsl(210 80% 60% / 0.24);
+  border-color: color-mix(in srgb, var(--blue) 24%, transparent);
 }
 .aqt-tn .glow-rose {
   position: absolute;
@@ -2816,7 +2826,7 @@
   font-family: var(--mono);
   font-size: 10.5px;
   color: var(--fg-faint);
-  background: hsl(0 0% 100% / 0.03);
+  background: var(--aqt-overlay-2);
   padding: 1px 6px;
   border-radius: 4px;
 }
@@ -2910,7 +2920,7 @@
   font-family: var(--mono);
   font-size: 10px;
   color: var(--fg-faint);
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   padding: 1px 6px;
   border-radius: 4px;
 }
@@ -2942,7 +2952,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: hsl(0 0% 100% / 0.012);
+  background: var(--aqt-overlay-1);
   gap: 14px;
   flex-wrap: wrap;
 }
@@ -3036,7 +3046,7 @@
   color: var(--fg-faint);
   text-align: left;
   padding: 10px 10px;
-  background: hsl(0 0% 100% / 0.015);
+  background: var(--aqt-overlay-1);
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
@@ -3058,7 +3068,7 @@
   align-items: center;
   gap: 12px;
   padding: 12px 18px;
-  background: hsl(0 0% 100% / 0.012);
+  background: var(--aqt-overlay-1);
   border-top: 1px solid var(--border);
   font-size: 11px;
 }
@@ -3087,8 +3097,8 @@
   font-size: 10px;
 }
 .aqt-tn .st-footer .badge {
-  background: hsl(0 0% 100% / 0.03);
-  border: 1px solid hsl(0 0% 100% / 0.06);
+  background: var(--aqt-overlay-2);
+  border: 1px solid var(--aqt-overlay-border);
   color: var(--fg-dim);
   padding: 2px 8px;
   border-radius: 4px;
@@ -3112,7 +3122,7 @@
   transition: 0.12s;
 }
 .aqt-tn table.st tbody tr:hover td {
-  background: hsl(0 0% 100% / 0.025);
+  background: var(--aqt-overlay-2);
 }
 .aqt-tn table.st tbody tr:last-child td {
   border-bottom: 0;
@@ -3243,7 +3253,7 @@
   position: relative;
   width: 90px;
   height: 6px;
-  background: hsl(0 0% 100% / 0.05);
+  background: var(--aqt-overlay-3);
   border-radius: 3px;
   overflow: hidden;
   display: flex;
@@ -3321,7 +3331,7 @@
   border-bottom: 4px solid var(--teal);
 }
 .aqt-tn .st-status.out {
-  background: hsl(0 0% 100% / 0.03);
+  background: var(--aqt-overlay-2);
   color: var(--fg-dim);
 }
 .aqt-tn .st-status.winner {
@@ -3363,15 +3373,15 @@
    tournament shell. References the global --aqt-* token layer.
    ═══════════════════════════════════════════════════════════════════════ */
 .team-card {
-  background: hsl(0 0% 100% / 0.018);
-  border: 1px solid hsl(0 0% 100% / 0.07);
+  background: var(--aqt-overlay-1);
+  border: 1px solid var(--aqt-overlay-border);
   border-radius: 12px;
   overflow: hidden;
   transition: 0.15s;
 }
 .team-card:hover {
   border-color: hsl(0 0% 100% / 0.12);
-  background: hsl(0 0% 100% / 0.028);
+  background: var(--aqt-overlay-2);
 }
 .team-card .tc-header {
   padding: 14px 18px 16px;
@@ -3444,7 +3454,7 @@
 }
 .placement.def {
   color: hsl(0 0% 65%);
-  background: hsl(0 0% 100% / 0.05);
+  background: var(--aqt-overlay-3);
   border-color: hsl(0 0% 100% / 0.12);
 }
 .team-card .tc-name-row {
@@ -3482,7 +3492,7 @@
   color: hsl(0 0% 100% / 0.65);
 }
 .team-card .tc-divider {
-  border-top: 1px solid hsl(0 0% 100% / 0.06);
+  border-top: 1px solid var(--aqt-overlay-border);
 }
 .roster {
   width: 100%;
@@ -3503,7 +3513,7 @@
 }
 .roster td {
   padding: 8px 12px;
-  border-top: 1px solid hsl(0 0% 100% / 0.04);
+  border-top: 1px solid var(--aqt-overlay-border);
   font-size: 13px;
   vertical-align: middle;
 }
@@ -3511,7 +3521,7 @@
   text-align: center;
 }
 .roster tr:hover td {
-  background: hsl(0 0% 100% / 0.02);
+  background: var(--aqt-overlay-2);
 }
 .roster .roster-scroll {
   overflow-x: auto;
@@ -3544,7 +3554,7 @@
 }
 .aqt-matches .m-search input {
   width: 100%;
-  background: hsl(0 0% 100% / 0.02);
+  background: var(--aqt-overlay-2);
   border: 1px solid var(--border);
   color: var(--fg);
   border-radius: 8px;
@@ -3585,7 +3595,7 @@
   color: var(--fg-faint);
   text-align: left;
   padding: 10px 14px;
-  background: hsl(0 0% 100% / 0.01);
+  background: var(--aqt-overlay-1);
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
@@ -3606,7 +3616,7 @@
   transition: 0.12s;
 }
 .aqt-matches table.m tbody tr:hover td {
-  background: hsl(0 0% 100% / 0.022);
+  background: var(--aqt-overlay-2);
 }
 .aqt-matches table.m tbody tr:last-child td {
   border-bottom: 0;
@@ -3696,7 +3706,7 @@
 .aqt-matches .m-close .track {
   flex: 1;
   height: 5px;
-  background: hsl(0 0% 100% / 0.05);
+  background: var(--aqt-overlay-3);
   border-radius: 3px;
   overflow: hidden;
 }
@@ -3760,7 +3770,7 @@
   font-size: 10px;
   font-weight: 500;
   color: var(--fg-muted);
-  background: hsl(0 0% 100% / 0.03);
+  background: var(--aqt-overlay-2);
   border: 1px solid var(--border-2);
   padding: 2px 6px;
   border-radius: 5px;
@@ -3807,7 +3817,7 @@
   color: var(--fg-faint);
   text-align: left;
   padding: 11px 14px;
-  background: hsl(0 0% 100% / 0.015);
+  background: var(--aqt-overlay-1);
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
 }
@@ -3829,7 +3839,7 @@
   cursor: default;
 }
 .aqt-tn .data-table tbody tr:hover td {
-  background: hsl(0 0% 100% / 0.022);
+  background: var(--aqt-overlay-2);
 }
 .aqt-tn .data-table tbody tr:last-child td {
   border-bottom: 0;
@@ -3922,7 +3932,7 @@
 .aqt-tn .hero-bar {
   position: relative;
   height: 24px;
-  background: hsl(0 0% 100% / 0.025);
+  background: var(--aqt-overlay-2);
   border-radius: 5px;
   overflow: hidden;
   display: flex;

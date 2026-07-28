@@ -91,7 +91,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   border: 1px solid var(--u-border-2);
   padding: 3px 8px;
   border-radius: 999px;
@@ -114,7 +114,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: hsl(0 0% 100% / 0.02);
+  background: var(--aqt-overlay-2);
   border: 1px solid var(--u-border);
   color: var(--u-muted);
   font-size: 12px;
@@ -128,7 +128,7 @@
 }
 
 .filterChip:hover {
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   color: var(--u-fg);
 }
 
@@ -147,7 +147,7 @@
   font-family: var(--u-mono);
   font-size: 10px;
   color: var(--u-faint);
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   padding: 1px 6px;
   border-radius: 4px;
 }
@@ -174,7 +174,7 @@
 
 .filterSearch input {
   width: 100%;
-  background: hsl(0 0% 100% / 0.02);
+  background: var(--aqt-overlay-2);
   border: 1px solid var(--u-border);
   color: var(--u-fg);
   border-radius: 8px;
@@ -200,7 +200,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: hsl(0 0% 100% / 0.02);
+  background: var(--aqt-overlay-2);
   border: 1px solid var(--u-border);
   color: var(--u-muted);
   font-size: 12px;
@@ -261,7 +261,7 @@
   color: var(--u-faint);
   text-align: left;
   padding: 10px 14px;
-  background: hsl(0 0% 100% / 0.015);
+  background: var(--aqt-overlay-1);
   border-bottom: 1px solid var(--u-border);
   white-space: nowrap;
 }
@@ -285,7 +285,7 @@
 }
 
 .table tbody tr:hover td {
-  background: hsl(0 0% 100% / 0.025);
+  background: var(--aqt-overlay-2);
 }
 
 .table tbody tr:last-child td {
@@ -376,7 +376,7 @@
   height: 38px;
   border-radius: 999px;
   border: 1px solid var(--u-border-2);
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   padding: 2px;
   display: inline-flex;
   align-items: center;
@@ -432,7 +432,7 @@
 .placementTrack {
   flex: 1;
   height: 5px;
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -471,7 +471,7 @@
   height: 30px;
   border-radius: 50%;
   border: 1px solid var(--u-border-2);
-  background: hsl(0 0% 100% / 0.02);
+  background: var(--aqt-overlay-2);
   align-items: center;
   justify-content: center;
   color: var(--u-teal);
@@ -487,13 +487,13 @@
 
 /* ===== Expanded row ===== */
 .expandRow td {
-  background: hsl(0 0% 100% / 0.012);
+  background: var(--aqt-overlay-1);
   padding: 14px 18px;
   border-bottom: 1px solid var(--u-border);
 }
 
 .expandRow:hover td {
-  background: hsl(0 0% 100% / 0.012);
+  background: var(--aqt-overlay-1);
 }
 
 .exGrid {
@@ -550,7 +550,7 @@
   flex-direction: column;
   gap: 8px;
   padding: 10px 12px;
-  background: hsl(0 0% 100% / 0.018);
+  background: var(--aqt-overlay-1);
   border: 1px solid var(--u-border);
   border-radius: 8px;
 }
@@ -599,7 +599,7 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  background: hsl(0 0% 100% / 0.03);
+  background: var(--aqt-overlay-2);
   border: 1px solid var(--u-border-2);
   font-size: 10.5px;
   font-family: var(--u-mono);
@@ -627,7 +627,7 @@
   justify-content: space-between;
   padding: 14px 18px;
   border-top: 1px solid var(--u-border);
-  background: hsl(0 0% 100% / 0.012);
+  background: var(--aqt-overlay-1);
   gap: 12px;
   flex-wrap: wrap;
 }
@@ -650,7 +650,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: hsl(0 0% 100% / 0.02);
+  background: var(--aqt-overlay-2);
   border: 1px solid var(--u-border);
   color: var(--u-muted);
   border-radius: 6px;
@@ -663,7 +663,7 @@
 }
 
 .pageBtn:hover:not(:disabled) {
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   color: var(--u-fg);
 }
 
@@ -805,7 +805,7 @@
   font-family: var(--u-mono);
   font-size: 10px;
   color: var(--u-faint);
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   padding: 1px 6px;
   border-radius: 4px;
 }
@@ -852,7 +852,7 @@
 }
 
 .alphaLink:hover:not(:disabled) {
-  background: hsl(0 0% 100% / 0.04);
+  background: var(--aqt-overlay-3);
   color: var(--u-fg);
 }
 

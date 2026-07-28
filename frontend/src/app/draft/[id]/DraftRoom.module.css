@@ -486,7 +486,7 @@
 .skeletonBlock {
   display: block;
   min-width: 0;
-  border: 1px solid hsl(217 17% 21% / 0.45);
+  border: 1px solid color-mix(in srgb, var(--aqt-border-2) 45%, transparent);
   border-radius: 0.4rem;
   background:
     linear-gradient(105deg, transparent 32%, color-mix(in srgb, var(--aqt-teal) 8%, transparent) 48%, transparent 64%),
