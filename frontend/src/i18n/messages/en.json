@@ -3138,6 +3138,14 @@
     "continueTo": "to continue to {siteName}",
     "continueWith": "Continue with {provider}",
     "unavailable": "OAuth login is currently unavailable.",
-    "agreement": "By continuing, you agree to our <terms>Terms of Service</terms> and <privacy>Privacy Policy</privacy>"
+    "agreement": "By continuing, you agree to our <terms>Terms of Service</terms> and <privacy>Privacy Policy</privacy>",
+    "errors": {
+      "oauth_init_failed": "Couldn't start sign-in. Please try again.",
+      "invalid_state": "The sign-in attempt expired or was invalid. Please try again.",
+      "invalid_provider": "Unknown sign-in provider.",
+      "exchange_failed": "Couldn't complete sign-in. Please try again.",
+      "invalid_origin": "Sign-in isn't allowed from this domain.",
+      "generic": "Sign-in failed. Please try again."
+    }
   }
 }
