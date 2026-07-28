@@ -34,6 +34,33 @@ function orderedColumns(
   ];
 }
 
+/**
+ * Native find-in-page only sees mounted rows, so the virtual window hides most
+ * participants from Ctrl+F. The keydown is observed without preventDefault: the
+ * browser still opens its own find bar, and by the time anything is typed the
+ * list has re-rendered every row in normal flow (kept cheap by
+ * `content-visibility: auto`).
+ */
+function useFindInPageMode(): boolean {
+  const [findMode, setFindMode] = useState(false);
+
+  useEffect(() => {
+    if (findMode) return;
+    // event.code, not event.key: on a Cyrillic layout the F key reports "а".
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code === "KeyF" && (event.ctrlKey || event.metaKey) && !event.altKey) {
+        setFindMode(true);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [findMode]);
+
+  // ponytail: one-way switch — once the visitor searched, keep the full DOM for
+  // the rest of the visit instead of tracking when the find bar closes.
+  return findMode;
+}
+
 function useDocumentScrollMargin() {
   const listStartRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<number | null>(null);
@@ -87,6 +114,7 @@ export default function VirtualParticipantsList({
   onToggleExpanded,
 }: VirtualParticipantsListProps) {
   const t = useTranslations();
+  const findMode = useFindInPageMode();
   const { listStartRef, scrollMargin } = useDocumentScrollMargin();
   const displayColumns = useMemo(
     () => orderedColumns(visibleColumns, allColumns),
@@ -111,6 +139,9 @@ export default function VirtualParticipantsList({
     scrollMargin,
   });
   const virtualItems = virtualizer.getVirtualItems();
+  const rows = findMode
+    ? registrations.map((registration, index) => ({ index, key: registration.id, start: 0 }))
+    : virtualItems;
   const secondaryColumnCount = Math.max(displayColumns.length - 1, 0);
   const gridStyle = {
     "--participant-grid-columns":
@@ -154,9 +185,9 @@ export default function VirtualParticipantsList({
         <div
           className={styles.participantVirtualSpacer}
           ref={listStartRef}
-          style={{ height: virtualizer.getTotalSize() }}
+          style={findMode ? undefined : { height: virtualizer.getTotalSize() }}
         >
-          {virtualItems.map((item) => {
+          {rows.map((item) => {
             const registration = registrations[item.index];
             const expanded = expandedIds.has(registration.id);
             const detailsId = `participant-details-${registration.id}`;
@@ -164,12 +195,17 @@ export default function VirtualParticipantsList({
 
             return (
               <div
-                className={styles.participantVirtualRow}
+                className={cn(
+                  styles.participantVirtualRow,
+                  findMode && styles.participantStaticRow,
+                )}
                 data-expanded={expanded ? "true" : "false"}
                 data-index={item.index}
                 key={item.key}
-                ref={virtualizer.measureElement}
-                style={{ transform: `translateY(${item.start - scrollMargin}px)` }}
+                ref={findMode ? undefined : virtualizer.measureElement}
+                style={
+                  findMode ? undefined : { transform: `translateY(${item.start - scrollMargin}px)` }
+                }
               >
                 <div
                   aria-rowindex={item.index + 2}

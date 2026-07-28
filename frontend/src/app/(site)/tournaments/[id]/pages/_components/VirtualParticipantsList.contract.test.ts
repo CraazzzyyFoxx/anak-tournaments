@@ -18,8 +18,21 @@ describe("virtual participants collection", () => {
     expect(source).toContain("virtualizer.measureElement");
     expect(source).toContain("item.start - scrollMargin");
     expect(source).toContain("virtualizer.getTotalSize()");
-    expect(source).toContain("virtualItems.map");
-    expect(source).not.toContain("registrations.map");
+    expect(source).toContain("rows.map");
+  });
+
+  it("mounts every row for native find-in-page without stealing the shortcut", () => {
+    // event.code survives non-latin layouts; preventDefault must stay absent so
+    // the browser still opens its own find bar.
+    expect(source).toContain('event.code === "KeyF"');
+    expect(source).toContain("event.ctrlKey || event.metaKey");
+    expect(source).not.toMatch(/KeyF[\s\S]{0,200}preventDefault/);
+    expect(source).toMatch(/findMode[\s\S]*registrations\.map/);
+    expect(source).toContain("findMode ? undefined : virtualizer.measureElement");
+    expect(cssSource).toMatch(
+      /\.participantStaticRow\s*\{[^}]*content-visibility:\s*auto[^}]*\}/s,
+    );
+    expect(cssSource).toMatch(/\.participantStaticRow\s*\{[^}]*contain-intrinsic-size:/s);
   });
 
   it("derives document scroll margin without creating another vertical viewport", () => {
@@ -95,6 +108,6 @@ describe("virtual participants collection", () => {
 
   it("maps virtual items rather than the complete registration payload", () => {
     expect(source).toContain("const virtualItems = virtualizer.getVirtualItems()");
-    expect(source).toMatch(/virtualItems\.map[\s\S]*column\.render/);
+    expect(source).toMatch(/rows\.map[\s\S]*column\.render/);
   });
 });

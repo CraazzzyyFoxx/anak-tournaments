@@ -354,6 +354,45 @@ describe("VirtualParticipantsList mount budget", () => {
 
   });
 
+  it("mounts every row once the browser find shortcut is pressed", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createTestRoot(container);
+
+    await act(async () => {
+      root.render(
+        <VirtualParticipantsList
+          allColumns={[imageColumn]}
+          expandedIds={new Set()}
+          onToggleExpanded={() => {}}
+          registrations={registrations}
+          visibleColumns={[imageColumn]}
+        />
+      );
+      await new Promise<void>((resolve) => testWindow.requestAnimationFrame(() => resolve()));
+    });
+
+    expect(container.querySelector('[data-index="499"]')).toBeNull();
+
+    // Cyrillic layout reports key "а" for the F key, so only code is reliable.
+    const findEvent = new testWindow.KeyboardEvent("keydown", {
+      code: "KeyF",
+      key: "а",
+      ctrlKey: true
+    });
+    await act(async () => {
+      window.dispatchEvent(findEvent);
+    });
+
+    expect(findEvent.defaultPrevented).toBe(false);
+    expect(container.querySelectorAll("[data-index]").length).toBe(500);
+    expect(container.querySelector('[data-registration-image="500"]')).not.toBeNull();
+    const lastRow = container.querySelector<HTMLElement>('[data-index="499"]')!;
+    expect(lastRow.style.transform).toBe("");
+    const spacer = lastRow.parentElement as HTMLElement;
+    expect(spacer.style.height).toBe("");
+  });
+
   it("mounts expensive details only for the expanded row and remeasures its height", async () => {
     const container = document.createElement("div");
     container.setAttribute("data-participant-layout", "true");

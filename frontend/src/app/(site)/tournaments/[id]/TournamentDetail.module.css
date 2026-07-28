@@ -551,6 +551,17 @@ thead .stickyTeamColumn {
   contain: layout style;
 }
 
+/* Find-in-page mode: every row is mounted in normal flow so the browser's own
+   search can reach it, while offscreen rows skip layout and paint. */
+.participantStaticRow {
+  position: static;
+  content-visibility: auto;
+  /* 55px content + 1px border-bottom keeps an unrendered row at the
+     ESTIMATED_ROW_HEIGHT the virtualizer used, so switching modes while
+     scrolled does not move the page. */
+  contain-intrinsic-size: auto 55px;
+}
+
 .participantVirtualRow:hover {
   background: hsl(0 0% 100% / 0.022);
 }
