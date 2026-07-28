@@ -18,7 +18,7 @@ const TabButton = ({ value, label, badge }: { value: string; label: string; badg
   <TabsTrigger
     value={value}
     className={cn(
-      "h-9 rounded-lg px-4 text-[14px] font-semibold gap-2 data-[state=active]:bg-[hsl(172_70%_49%_/_0.14)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-[inset_0_0_0_1px_hsl(172_70%_49%_/_0.3)]"
+      "h-9 rounded-lg px-4 text-[14px] font-semibold gap-2 data-[state=active]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)] data-[state=active]:text-[color:var(--aqt-teal)] data-[state=active]:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--aqt-teal)_30%,transparent)]"
     )}
   >
     <span>{label}</span>
