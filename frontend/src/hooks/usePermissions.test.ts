@@ -69,7 +69,7 @@ describe("usePermissions helpers", () => {
     expect(hasWorkspacePermissionForProfile(profile, 11, "tournament.read")).toBe(true);
     expect(hasWorkspacePermissionForProfile(profile, 11, "team.import")).toBe(true);
     expect(hasWorkspacePermissionForProfile(profile, 12, "tournament.read")).toBe(false);
-    expect(canAccessAnyPermissionForProfile(profile, ["map.read"])).toBe(true);
+    expect(canAccessAnyPermissionForProfile(profile, ["standing.read"])).toBe(true);
   });
 
   it("does not trust legacy workspace memberRole as a permission wildcard", () => {

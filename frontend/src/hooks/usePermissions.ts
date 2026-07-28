@@ -22,9 +22,6 @@ const resourcesWithCrud = [
   "balancer",
   "analytics",
   "achievement",
-  "hero",
-  "gamemode",
-  "map",
   "division_grid",
   "log",
   "discord_channel",
@@ -69,9 +66,6 @@ type SpecialPermission =
   | "achievement.calculate"
   | "achievement.import"
   | "achievement.export"
-  | "hero.sync"
-  | "gamemode.sync"
-  | "map.sync"
   | "division_grid.import"
   | "division_grid.export"
   | "division_grid.publish"

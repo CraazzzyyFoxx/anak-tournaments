@@ -559,7 +559,7 @@
       "summary": "Upload asset"
     },
     "rpc.app.gamemodes.admin_create": {
-      "description": "Creates a gamemode; requires the global gamemode.create permission.",
+      "description": "Creates a gamemode (superuser only).",
       "request": {
         "array": false,
         "ref": "app.GamemodeCreate"
@@ -571,15 +571,15 @@
       "summary": "Create gamemode"
     },
     "rpc.app.gamemodes.admin_delete": {
-      "description": "Deletes a gamemode by id; requires the global gamemode.delete permission, returns 204.",
+      "description": "Deletes a gamemode by id (superuser only), returns 204.",
       "summary": "Delete gamemode"
     },
     "rpc.app.gamemodes.admin_list": {
-      "description": "Returns a paginated admin list of gamemodes; requires the global gamemode.read permission.",
+      "description": "Returns a paginated admin list of gamemodes (superuser only).",
       "summary": "Admin list gamemodes"
     },
     "rpc.app.gamemodes.admin_update": {
-      "description": "Updates a gamemode by id; requires the global gamemode.update permission.",
+      "description": "Updates a gamemode by id (superuser only).",
       "request": {
         "array": false,
         "ref": "app.GamemodeUpdate"
@@ -599,7 +599,7 @@
       "summary": "Gamemode lookup"
     },
     "rpc.app.heroes.admin_create": {
-      "description": "Creates a hero; requires the global hero.create permission.",
+      "description": "Creates a hero (superuser only).",
       "request": {
         "array": false,
         "ref": "app.HeroCreate"
@@ -611,15 +611,15 @@
       "summary": "Create hero"
     },
     "rpc.app.heroes.admin_delete": {
-      "description": "Deletes a hero by id; requires the global hero.delete permission, returns 204.",
+      "description": "Deletes a hero by id (superuser only), returns 204.",
       "summary": "Delete hero"
     },
     "rpc.app.heroes.admin_list": {
-      "description": "Returns a paginated admin list of heroes; requires the global hero.read permission.",
+      "description": "Returns a paginated admin list of heroes (superuser only).",
       "summary": "Admin list heroes"
     },
     "rpc.app.heroes.admin_update": {
-      "description": "Updates a hero by id; requires the global hero.update permission.",
+      "description": "Updates a hero by id (superuser only).",
       "request": {
         "array": false,
         "ref": "app.HeroUpdate"
@@ -821,7 +821,7 @@
       "summary": "Hero playtime stats"
     },
     "rpc.app.maps.admin_create": {
-      "description": "Creates a map; requires the global map.create permission.",
+      "description": "Creates a map (superuser only).",
       "request": {
         "array": false,
         "ref": "app.MapCreate"
@@ -833,15 +833,15 @@
       "summary": "Create map"
     },
     "rpc.app.maps.admin_delete": {
-      "description": "Deletes a map by id; requires the global map.delete permission, returns 204.",
+      "description": "Deletes a map by id (superuser only), returns 204.",
       "summary": "Delete map"
     },
     "rpc.app.maps.admin_list": {
-      "description": "Returns a paginated admin list of maps; requires the global map.read permission.",
+      "description": "Returns a paginated admin list of maps (superuser only).",
       "summary": "Admin list maps"
     },
     "rpc.app.maps.admin_update": {
-      "description": "Updates a map by id; requires the global map.update permission.",
+      "description": "Updates a map by id (superuser only).",
       "request": {
         "array": false,
         "ref": "app.MapUpdate"
@@ -4670,15 +4670,15 @@
       "summary": "Upload match logs"
     },
     "rpc.parser.metadata.sync_gamemodes": {
-      "description": "Syncs gamemode metadata from OverFast into the database and acks success; requires gamemode.sync permission.",
+      "description": "Syncs gamemode metadata from OverFast into the database and acks success (superuser only).",
       "summary": "Sync gamemodes"
     },
     "rpc.parser.metadata.sync_heroes": {
-      "description": "Syncs hero metadata from OverFast into the database and acks success; requires hero.sync permission.",
+      "description": "Syncs hero metadata from OverFast into the database and acks success (superuser only).",
       "summary": "Sync heroes"
     },
     "rpc.parser.metadata.sync_maps": {
-      "description": "Syncs map metadata from OverFast into the database and acks success; requires map.sync permission.",
+      "description": "Syncs map metadata from OverFast into the database and acks success (superuser only).",
       "summary": "Sync maps"
     },
     "rpc.parser.rank.battle_tag_history": {

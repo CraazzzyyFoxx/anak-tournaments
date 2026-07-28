@@ -156,15 +156,15 @@ DOCS: dict[str, dict] = {
     # ── OverFast metadata sync ─────────────────────────────────────────────────
     "rpc.parser.metadata.sync_heroes": {
         "summary": "Sync heroes",
-        "description": "Syncs hero metadata from OverFast into the database and acks success; requires hero.sync permission.",
+        "description": "Syncs hero metadata from OverFast into the database and acks success (superuser only).",
     },
     "rpc.parser.metadata.sync_maps": {
         "summary": "Sync maps",
-        "description": "Syncs map metadata from OverFast into the database and acks success; requires map.sync permission.",
+        "description": "Syncs map metadata from OverFast into the database and acks success (superuser only).",
     },
     "rpc.parser.metadata.sync_gamemodes": {
         "summary": "Sync gamemodes",
-        "description": "Syncs gamemode metadata from OverFast into the database and acks success; requires gamemode.sync permission.",
+        "description": "Syncs gamemode metadata from OverFast into the database and acks success (superuser only).",
     },
     # ── global settings ─────────────────────────────────────────────────────
     "rpc.parser.settings.list": {

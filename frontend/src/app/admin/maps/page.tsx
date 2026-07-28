@@ -38,7 +38,6 @@ import type { Gamemode } from "@/types/gamemode.types";
 import type { PaginatedResponse } from "@/types/pagination.types";
 import { usePermissions } from "@/hooks/usePermissions";
 import { hasUnsavedChanges } from "@/lib/form-change";
-import { useWorkspaceStore } from "@/stores/workspace.store";
 
 const emptyMapForm: MapCreateInput = {
   name: "",
@@ -89,18 +88,13 @@ export default function MapsAdminPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
-  const { canAccessPermission } = usePermissions();
-  const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
+  const { isSuperuser } = usePermissions();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingMap, setEditingMap] = useState<MapRead | null>(null);
   const [deletingMap, setDeletingMap] = useState<MapRead | null>(null);
   const [formData, setFormData] = useState<MapCreateInput | MapUpdateInput>({
     ...emptyMapForm,
   });
-  const canCreate = canAccessPermission("map.create", workspaceId);
-  const canUpdate = canAccessPermission("map.update", workspaceId);
-  const canDelete = canAccessPermission("map.delete", workspaceId);
-  const canSync = canAccessPermission("map.sync", workspaceId);
   const selectedGamemodeId = parseGamemodeQueryParam(searchParams.get(GAMEMODE_QUERY_PARAM));
 
   // Fetch gamemodes for selector
@@ -215,7 +209,7 @@ export default function MapsAdminPage() {
       size: 50,
       cell: ({ row }) => {
         const map = row.original;
-        if (!canUpdate && !canDelete) {
+        if (!isSuperuser) {
           return null;
         }
         return (
@@ -227,26 +221,22 @@ export default function MapsAdminPage() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>Actions</DropdownMenuLabel>
-               {canUpdate ? (
-                 <DropdownMenuItem
-                   onClick={() => {
-                     updateMutation.reset();
-                     setEditingMap(map);
-                     setFormData({ name: map.name, gamemode_id: map.gamemode_id });
-                   }}
-                 >
-                   <Pencil className="mr-2 h-4 w-4" />
-                   Edit
-                 </DropdownMenuItem>
-               ) : null}
-               {canUpdate && canDelete ? <DropdownMenuSeparator /> : null}
-               {canDelete ? (
-                 <DropdownMenuItem onClick={() => setDeletingMap(map)} className="text-destructive">
-                   <Trash2 className="mr-2 h-4 w-4" />
-                   Delete
-                 </DropdownMenuItem>
-               ) : null}
-             </DropdownMenuContent>
+              <DropdownMenuItem
+                onClick={() => {
+                  updateMutation.reset();
+                  setEditingMap(map);
+                  setFormData({ name: map.name, gamemode_id: map.gamemode_id });
+                }}
+              >
+                <Pencil className="mr-2 h-4 w-4" />
+                Edit
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setDeletingMap(map)} className="text-destructive">
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
            </DropdownMenu>
          );
       },
@@ -259,33 +249,29 @@ export default function MapsAdminPage() {
         title="Maps"
         description="Manage game maps"
         actions={
-          canSync || canCreate ? (
+          isSuperuser ? (
             <div className="flex gap-2">
-              {canSync ? (
-                <Button
-                  variant="outline"
-                  onClick={() => syncMutation.mutate()}
-                  disabled={syncMutation.isPending}
-                >
-                  <RefreshCw
-                    className={`mr-2 h-4 w-4 ${syncMutation.isPending ? "animate-spin" : ""}`}
-                  />
-                  Sync from Game
-                </Button>
-              ) : null}
-              {canCreate ? (
-                <Button
-                  onClick={() => {
-                    createMutation.reset();
-                    updateMutation.reset();
-                    setFormData({ ...emptyMapForm });
-                    setCreateDialogOpen(true);
-                  }}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create Map
-                </Button>
-              ) : null}
+              <Button
+                variant="outline"
+                onClick={() => syncMutation.mutate()}
+                disabled={syncMutation.isPending}
+              >
+                <RefreshCw
+                  className={`mr-2 h-4 w-4 ${syncMutation.isPending ? "animate-spin" : ""}`}
+                />
+                Sync from Game
+              </Button>
+              <Button
+                onClick={() => {
+                  createMutation.reset();
+                  updateMutation.reset();
+                  setFormData({ ...emptyMapForm });
+                  setCreateDialogOpen(true);
+                }}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Create Map
+              </Button>
             </div>
           ) : null
         }
@@ -335,7 +321,7 @@ export default function MapsAdminPage() {
           </Select>
         }
         onRowDoubleClick={
-          canUpdate
+          isSuperuser
             ? (row) => {
                 const map = row.original;
                 updateMutation.reset();
@@ -404,7 +390,7 @@ export default function MapsAdminPage() {
       </EntityFormDialog>
 
       {/* Delete Confirmation */}
-      {canDelete && deletingMap && (
+      {deletingMap && (
         <DeleteConfirmDialog
           open={!!deletingMap}
           onOpenChange={(open) => !open && setDeletingMap(null)}

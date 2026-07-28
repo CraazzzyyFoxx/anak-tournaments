@@ -25,24 +25,18 @@ import adminService from "@/services/admin.service";
 import type { Gamemode, GamemodeCreateInput, GamemodeUpdateInput } from "@/types/admin.types";
 import { usePermissions } from "@/hooks/usePermissions";
 import { hasUnsavedChanges } from "@/lib/form-change";
-import { useWorkspaceStore } from "@/stores/workspace.store";
 
 const emptyGamemodeForm: GamemodeCreateInput = { name: "" };
 
 export default function GamemodesAdminPage() {
   const queryClient = useQueryClient();
-  const { canAccessPermission } = usePermissions();
-  const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
+  const { isSuperuser } = usePermissions();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingGamemode, setEditingGamemode] = useState<Gamemode | null>(null);
   const [deletingGamemode, setDeletingGamemode] = useState<Gamemode | null>(null);
   const [formData, setFormData] = useState<GamemodeCreateInput | GamemodeUpdateInput>({
     ...emptyGamemodeForm,
   });
-  const canCreate = canAccessPermission("gamemode.create", workspaceId);
-  const canUpdate = canAccessPermission("gamemode.update", workspaceId);
-  const canDelete = canAccessPermission("gamemode.delete", workspaceId);
-  const canSync = canAccessPermission("gamemode.sync", workspaceId);
 
   const createMutation = useMutation({
     mutationFn: (data: GamemodeCreateInput) => adminService.createGamemode(data),
@@ -105,7 +99,7 @@ export default function GamemodesAdminPage() {
       size: 50,
       cell: ({ row }) => {
         const gamemode = row.original;
-        if (!canUpdate && !canDelete) {
+        if (!isSuperuser) {
           return null;
         }
         return (
@@ -117,29 +111,25 @@ export default function GamemodesAdminPage() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>Actions</DropdownMenuLabel>
-               {canUpdate ? (
-                 <DropdownMenuItem
-                   onClick={() => {
-                     updateMutation.reset();
-                     setEditingGamemode(gamemode);
-                     setFormData({ name: gamemode.name });
-                   }}
-                 >
-                   <Pencil className="mr-2 h-4 w-4" />
-                   Edit
-                 </DropdownMenuItem>
-               ) : null}
-               {canUpdate && canDelete ? <DropdownMenuSeparator /> : null}
-               {canDelete ? (
-                 <DropdownMenuItem
-                   onClick={() => setDeletingGamemode(gamemode)}
-                   className="text-destructive"
-                 >
-                   <Trash2 className="mr-2 h-4 w-4" />
-                   Delete
-                 </DropdownMenuItem>
-               ) : null}
-             </DropdownMenuContent>
+              <DropdownMenuItem
+                onClick={() => {
+                  updateMutation.reset();
+                  setEditingGamemode(gamemode);
+                  setFormData({ name: gamemode.name });
+                }}
+              >
+                <Pencil className="mr-2 h-4 w-4" />
+                Edit
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => setDeletingGamemode(gamemode)}
+                className="text-destructive"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
            </DropdownMenu>
          );
       },
@@ -152,33 +142,29 @@ export default function GamemodesAdminPage() {
         title="Gamemodes"
         description="Manage game modes"
         actions={
-          canSync || canCreate ? (
+          isSuperuser ? (
             <div className="flex gap-2">
-              {canSync ? (
-                <Button
-                  variant="outline"
-                  onClick={() => syncMutation.mutate()}
-                  disabled={syncMutation.isPending}
-                >
-                  <RefreshCw
-                    className={`mr-2 h-4 w-4 ${syncMutation.isPending ? "animate-spin" : ""}`}
-                  />
-                  Sync from Game
-                </Button>
-              ) : null}
-              {canCreate ? (
-                <Button
-                  onClick={() => {
-                    createMutation.reset();
-                    updateMutation.reset();
-                    setFormData({ ...emptyGamemodeForm });
-                    setCreateDialogOpen(true);
-                  }}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create Gamemode
-                </Button>
-              ) : null}
+              <Button
+                variant="outline"
+                onClick={() => syncMutation.mutate()}
+                disabled={syncMutation.isPending}
+              >
+                <RefreshCw
+                  className={`mr-2 h-4 w-4 ${syncMutation.isPending ? "animate-spin" : ""}`}
+                />
+                Sync from Game
+              </Button>
+              <Button
+                onClick={() => {
+                  createMutation.reset();
+                  updateMutation.reset();
+                  setFormData({ ...emptyGamemodeForm });
+                  setCreateDialogOpen(true);
+                }}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Create Gamemode
+              </Button>
             </div>
           ) : null
         }
@@ -193,7 +179,7 @@ export default function GamemodesAdminPage() {
         searchPlaceholder="Search gamemodes..."
         emptyMessage="No gamemodes found."
         onRowDoubleClick={
-          canUpdate
+          isSuperuser
             ? (row) => {
                 const gamemode = row.original;
                 updateMutation.reset();
@@ -243,7 +229,7 @@ export default function GamemodesAdminPage() {
       </EntityFormDialog>
 
       {/* Delete Confirmation */}
-      {canDelete && deletingGamemode && (
+      {deletingGamemode && (
         <DeleteConfirmDialog
           open={!!deletingGamemode}
           onOpenChange={(open) => !open && setDeletingGamemode(null)}

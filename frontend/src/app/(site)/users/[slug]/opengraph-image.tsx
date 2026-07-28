@@ -33,9 +33,12 @@ export default async function Image({ params }: { params: Promise<{ slug: string
     if (profile.maps_total > 0) {
       winrate = `${((profile.maps_won / profile.maps_total) * 100).toFixed(0)}% WR`;
     }
-    avatar = toAbsolute(getPlayerImage(profile, user));
-  } catch {
+    // Satori can't rasterize GIFs — fall back to hero art / default avatar.
+    const isGif = user.avatar_url?.toLowerCase().split("?")[0]?.endsWith(".gif") ?? false;
+    avatar = toAbsolute(getPlayerImage(profile, isGif ? { ...user, avatar_url: null } : user));
+  } catch (error) {
     // keep defaults — render a generic branded card
+    console.error(`opengraph-image: failed to load player "${slug}":`, error);
   }
 
   return new ImageResponse(

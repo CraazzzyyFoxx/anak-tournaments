@@ -57,7 +57,7 @@ function isDefined<T>(value: T | null): value is T {
 }
 
 export default function AdminDashboard() {
-  const { canAccessPermission, hasPermission } = usePermissions();
+  const { canAccessPermission, hasPermission, isSuperuser } = usePermissions();
   const workspaceId = useCurrentWorkspaceId();
 
   const canReadTournaments = canAccessPermission("tournament.read", workspaceId);
@@ -67,9 +67,6 @@ export default function AdminDashboard() {
   const canReadStandings = canAccessPermission("standing.read", workspaceId);
   const canReadUsers = canAccessPermission("user.read", workspaceId);
   const canReadAccessUsers = hasPermission("auth_user.read");
-  const canReadHeroes = canAccessPermission("hero.read", workspaceId);
-  const canReadGamemodes = canAccessPermission("gamemode.read", workspaceId);
-  const canReadMaps = canAccessPermission("map.read", workspaceId);
   const canReadRoles = hasPermission("role.read");
   const canReadPermissions = hasPermission("permission.read");
 
@@ -149,9 +146,6 @@ export default function AdminDashboard() {
     accessAdminHref ? { href: accessAdminHref, title: "Access & Roles", icon: Shield } : null,
   ].filter(isDefined);
 
-  // KPI data
-  const hasContentInventory = canReadHeroes || canReadMaps || canReadGamemodes;
-
   if (statsQuery.isLoading || tournamentsQuery.isLoading) {
     return (
       <div className="flex flex-col gap-4">
@@ -191,7 +185,7 @@ export default function AdminDashboard() {
         players={canReadTeams ? (stats?.players_total ?? 0) : null}
         encounters={canReadMatches ? (stats?.encounters_total ?? 0) : null}
         content={
-          hasContentInventory
+          isSuperuser
             ? { heroes: stats?.heroes_total ?? 0, maps: stats?.maps_total ?? 0, gamemodes: stats?.gamemodes_total ?? 0 }
             : null
         }

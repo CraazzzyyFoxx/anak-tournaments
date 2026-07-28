@@ -80,16 +80,43 @@ function domainBehavior(path: string): DomainBehavior {
 
 // ─── Workspace ID (server-side, cached per request) ─────────────────────────
 
+// Platform-host default: cookie-less server renders (crawlers, first visits,
+// opengraph-image routes) carry no workspace header/cookie, but /api/v1 reads
+// are fail-closed and 400 without workspace_id. Mirror the client's rule
+// (resolveCurrentWorkspaceId: first workspace) so public SSR renders scoped
+// data instead of erroring. Raw fetch, not apiFetch: no recursion into the
+// workspace injection below and no auth-cookie read. Cached in the Data Cache
+// so the gateway sees at most one hit per revalidate window.
+const getDefaultWorkspaceId = cache(async (): Promise<string | undefined> => {
+  try {
+    const base = internalApiOrigin() ?? (await getServerRequestOrigin());
+    if (!base) return undefined;
+    const res = await fetch(`${base}/api/v1/workspaces`, { next: { revalidate: 300 } });
+    if (!res.ok) return undefined;
+    const workspaces: { id: number }[] = await res.json();
+    return workspaces[0] ? String(workspaces[0].id) : undefined;
+  } catch {
+    return undefined;
+  }
+});
+
 const getServerWorkspaceId = cache(async (): Promise<string | undefined> => {
   try {
     const { headers, cookies } = await import("next/headers");
     const headerId = (await headers()).get("x-owt-workspace-id");
     if (headerId) return headerId;
     const cookieStore = await cookies();
-    return cookieStore.get("owt-workspace-id")?.value ?? cookieStore.get("aqt-workspace-id")?.value;
+    const cookieId =
+      cookieStore.get("owt-workspace-id")?.value ?? cookieStore.get("aqt-workspace-id")?.value;
+    if (cookieId) return cookieId;
   } catch {
+    // No ambient request state (e.g. unstable_cache): keep prior behavior —
+    // callers there pass an explicit workspace or skipWorkspace.
     return undefined;
   }
+  // Tenant hosts always carry the middleware-set header, so reaching here
+  // means the platform host (or a middleware-excluded path): use the default.
+  return getDefaultWorkspaceId();
 });
 
 const getServerRequestOrigin = cache(async (): Promise<string | undefined> => {

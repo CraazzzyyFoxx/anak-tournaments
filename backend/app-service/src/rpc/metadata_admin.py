@@ -1,8 +1,9 @@
 """Admin CRUD for game metadata (hero / map / gamemode), relocated from
 parser-service. The public reads already live in app-service (shared CRUD read
-engine); these are the global-permission-gated admin writes + paginated admin
-list. Service + schema code ported verbatim into ``src/services/admin`` and
-``src/schemas/admin``.
+engine); these are the superuser-only admin writes + paginated admin list. Game
+metadata is global game content shared by every workspace, so it is not
+delegated to workspace roles. Service + schema code ported verbatim into
+``src/services/admin`` and ``src/schemas/admin``.
 """
 
 from __future__ import annotations
@@ -11,7 +12,6 @@ from typing import Any
 
 from faststream.rabbit import RabbitMessage
 
-from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.query import build_query_model
 from src.core import db
 from src.schemas import GamemodeRead, HeroRead, MapRead
@@ -27,18 +27,14 @@ from . import _common as c
 _SF = db.async_session_maker
 
 
-def _gate(data: dict, resource: str, action: str) -> None:
-    user = c.actor(data)
-    c.require_active(user)
-    if not user.has_permission(resource, action):
-        raise HTTPException(status_code=403, detail=f"Permission denied: {resource}.{action} required")
+def _gate(data: dict) -> None:
+    c.require_superuser(c.actor(data))
 
 
 def register(broker: Any, logger: Any) -> None:
     def _register_entity(
         *,
         prefix: str,
-        resource: str,
         list_qp: Any,
         list_params: Any,
         create_schema: Any,
@@ -52,7 +48,7 @@ def register(broker: Any, logger: Any) -> None:
         @broker.subscriber(f"rpc.app.{prefix}.admin_list")
         async def _list(data: dict, msg: RabbitMessage) -> dict:
             async def op(session: Any) -> Any:
-                _gate(data, resource, "read")
+                _gate(data)
                 qp = build_query_model(list_qp, data.get("query"))
                 res = await list_fn(session, list_params.from_query_params(qp))
                 return {
@@ -67,7 +63,7 @@ def register(broker: Any, logger: Any) -> None:
         @broker.subscriber(f"rpc.app.{prefix}.admin_create")
         async def _create(data: dict, msg: RabbitMessage) -> dict:
             async def op(session: Any) -> Any:
-                _gate(data, resource, "create")
+                _gate(data)
                 obj = await create_fn(session, create_schema.model_validate(c.payload(data)))
                 return read_schema.model_validate(obj, from_attributes=True)
 
@@ -76,7 +72,7 @@ def register(broker: Any, logger: Any) -> None:
         @broker.subscriber(f"rpc.app.{prefix}.admin_update")
         async def _update(data: dict, msg: RabbitMessage) -> dict:
             async def op(session: Any) -> Any:
-                _gate(data, resource, "update")
+                _gate(data)
                 obj = await update_fn(session, c.require_id(data), update_schema.model_validate(c.payload(data)))
                 return read_schema.model_validate(obj, from_attributes=True)
 
@@ -85,7 +81,7 @@ def register(broker: Any, logger: Any) -> None:
         @broker.subscriber(f"rpc.app.{prefix}.admin_delete")
         async def _delete(data: dict, msg: RabbitMessage) -> dict:
             async def op(session: Any) -> Any:
-                _gate(data, resource, "delete")
+                _gate(data)
                 await delete_fn(session, c.require_id(data))
                 return None
 
@@ -93,7 +89,6 @@ def register(broker: Any, logger: Any) -> None:
 
     _register_entity(
         prefix="heroes",
-        resource="hero",
         list_qp=hero_schemas.HeroListQueryParams,
         list_params=hero_schemas.HeroListParams,
         create_schema=hero_schemas.HeroCreate,
@@ -106,7 +101,6 @@ def register(broker: Any, logger: Any) -> None:
     )
     _register_entity(
         prefix="maps",
-        resource="map",
         list_qp=map_schemas.MapListQueryParams,
         list_params=map_schemas.MapListParams,
         create_schema=map_schemas.MapCreate,
@@ -119,7 +113,6 @@ def register(broker: Any, logger: Any) -> None:
     )
     _register_entity(
         prefix="gamemodes",
-        resource="gamemode",
         list_qp=gamemode_schemas.GamemodeListQueryParams,
         list_params=gamemode_schemas.GamemodeListParams,
         create_schema=gamemode_schemas.GamemodeCreate,

@@ -240,53 +240,53 @@ DOCS: dict[str, dict] = {
     # ── metadata admin: heroes ─────────────────────────────────────────────────────────
     "rpc.app.heroes.admin_list": {
         "summary": "Admin list heroes",
-        "description": "Returns a paginated admin list of heroes; requires the global hero.read permission.",
+        "description": "Returns a paginated admin list of heroes (superuser only).",
     },
     "rpc.app.heroes.admin_create": {
         "summary": "Create hero",
-        "description": "Creates a hero; requires the global hero.create permission.",
+        "description": "Creates a hero (superuser only).",
     },
     "rpc.app.heroes.admin_update": {
         "summary": "Update hero",
-        "description": "Updates a hero by id; requires the global hero.update permission.",
+        "description": "Updates a hero by id (superuser only).",
     },
     "rpc.app.heroes.admin_delete": {
         "summary": "Delete hero",
-        "description": "Deletes a hero by id; requires the global hero.delete permission, returns 204.",
+        "description": "Deletes a hero by id (superuser only), returns 204.",
     },
     # ── metadata admin: maps ────────────────────────────────────────────────────────────
     "rpc.app.maps.admin_list": {
         "summary": "Admin list maps",
-        "description": "Returns a paginated admin list of maps; requires the global map.read permission.",
+        "description": "Returns a paginated admin list of maps (superuser only).",
     },
     "rpc.app.maps.admin_create": {
         "summary": "Create map",
-        "description": "Creates a map; requires the global map.create permission.",
+        "description": "Creates a map (superuser only).",
     },
     "rpc.app.maps.admin_update": {
         "summary": "Update map",
-        "description": "Updates a map by id; requires the global map.update permission.",
+        "description": "Updates a map by id (superuser only).",
     },
     "rpc.app.maps.admin_delete": {
         "summary": "Delete map",
-        "description": "Deletes a map by id; requires the global map.delete permission, returns 204.",
+        "description": "Deletes a map by id (superuser only), returns 204.",
     },
     # ── metadata admin: gamemodes ─────────────────────────────────────────────────────────
     "rpc.app.gamemodes.admin_list": {
         "summary": "Admin list gamemodes",
-        "description": "Returns a paginated admin list of gamemodes; requires the global gamemode.read permission.",
+        "description": "Returns a paginated admin list of gamemodes (superuser only).",
     },
     "rpc.app.gamemodes.admin_create": {
         "summary": "Create gamemode",
-        "description": "Creates a gamemode; requires the global gamemode.create permission.",
+        "description": "Creates a gamemode (superuser only).",
     },
     "rpc.app.gamemodes.admin_update": {
         "summary": "Update gamemode",
-        "description": "Updates a gamemode by id; requires the global gamemode.update permission.",
+        "description": "Updates a gamemode by id (superuser only).",
     },
     "rpc.app.gamemodes.admin_delete": {
         "summary": "Delete gamemode",
-        "description": "Deletes a gamemode by id; requires the global gamemode.delete permission, returns 204.",
+        "description": "Deletes a gamemode by id (superuser only), returns 204.",
     },
     # ── users admin (CRUD) ───────────────────────────────────────────────────────────────
     "rpc.app.users.admin_list": {

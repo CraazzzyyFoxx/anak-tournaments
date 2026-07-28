@@ -34,7 +34,6 @@ import type { Hero } from "@/types/hero.types";
 import type { HeroCreateInput, HeroUpdateInput } from "@/types/admin.types";
 import { usePermissions } from "@/hooks/usePermissions";
 import { hasUnsavedChanges } from "@/lib/form-change";
-import { useWorkspaceStore } from "@/stores/workspace.store";
 
 const HERO_ROLES = ["Tank", "Damage", "Support"];
 const emptyHeroForm: HeroCreateInput = {
@@ -95,18 +94,13 @@ function getHeroForm(hero: Hero | null): HeroCreateInput | HeroUpdateInput {
 
 export default function HeroesAdminPage() {
   const queryClient = useQueryClient();
-  const { canAccessPermission } = usePermissions();
-  const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
+  const { isSuperuser } = usePermissions();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingHero, setEditingHero] = useState<Hero | null>(null);
   const [deletingHero, setDeletingHero] = useState<Hero | null>(null);
   const [formData, setFormData] = useState<HeroCreateInput | HeroUpdateInput>({
     ...emptyHeroForm,
   });
-  const canCreate = canAccessPermission("hero.create", workspaceId);
-  const canUpdate = canAccessPermission("hero.update", workspaceId);
-  const canDelete = canAccessPermission("hero.delete", workspaceId);
-  const canSync = canAccessPermission("hero.sync", workspaceId);
 
   const createMutation = useMutation({
     mutationFn: (data: HeroCreateInput) => adminService.createHero(data),
@@ -213,7 +207,7 @@ export default function HeroesAdminPage() {
       size: 50,
       cell: ({ row }) => {
         const hero = row.original;
-        if (!canUpdate && !canDelete) {
+        if (!isSuperuser) {
           return null;
         }
 
@@ -226,26 +220,22 @@ export default function HeroesAdminPage() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>Actions</DropdownMenuLabel>
-               {canUpdate ? (
-                  <DropdownMenuItem
-                    onClick={() => {
-                      updateMutation.reset();
-                      setEditingHero(hero);
-                      setFormData(getHeroForm(hero));
-                    }}
-                  >
-                    <Pencil className="mr-2 h-4 w-4" />
-                    Edit
-                 </DropdownMenuItem>
-               ) : null}
-               {canUpdate && canDelete ? <DropdownMenuSeparator /> : null}
-               {canDelete ? (
-                 <DropdownMenuItem onClick={() => setDeletingHero(hero)} className="text-destructive">
-                   <Trash2 className="mr-2 h-4 w-4" />
-                   Delete
-                 </DropdownMenuItem>
-               ) : null}
-             </DropdownMenuContent>
+              <DropdownMenuItem
+                onClick={() => {
+                  updateMutation.reset();
+                  setEditingHero(hero);
+                  setFormData(getHeroForm(hero));
+                }}
+              >
+                <Pencil className="mr-2 h-4 w-4" />
+                Edit
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setDeletingHero(hero)} className="text-destructive">
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
            </DropdownMenu>
          );
       },
@@ -258,31 +248,27 @@ export default function HeroesAdminPage() {
         title="Heroes"
         description="Manage game heroes and their roles"
         actions={
-          canSync || canCreate ? (
+          isSuperuser ? (
             <div className="flex gap-2">
-              {canSync ? (
-                <Button
-                  variant="outline"
-                  onClick={() => syncMutation.mutate()}
-                  disabled={syncMutation.isPending}
-                >
-                  <RefreshCw className={`mr-2 h-4 w-4 ${syncMutation.isPending ? "animate-spin" : ""}`} />
-                  Sync from Game
-                </Button>
-              ) : null}
-              {canCreate ? (
-                <Button
-                  onClick={() => {
-                    createMutation.reset();
-                    updateMutation.reset();
-                    setFormData({ ...emptyHeroForm });
-                    setCreateDialogOpen(true);
-                  }}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create Hero
-                </Button>
-              ) : null}
+              <Button
+                variant="outline"
+                onClick={() => syncMutation.mutate()}
+                disabled={syncMutation.isPending}
+              >
+                <RefreshCw className={`mr-2 h-4 w-4 ${syncMutation.isPending ? "animate-spin" : ""}`} />
+                Sync from Game
+              </Button>
+              <Button
+                onClick={() => {
+                  createMutation.reset();
+                  updateMutation.reset();
+                  setFormData({ ...emptyHeroForm });
+                  setCreateDialogOpen(true);
+                }}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Create Hero
+              </Button>
             </div>
           ) : null
         }
@@ -297,7 +283,7 @@ export default function HeroesAdminPage() {
         searchPlaceholder="Search heroes..."
         emptyMessage="No heroes found."
         onRowDoubleClick={
-          canUpdate
+          isSuperuser
             ? (row) => {
                 const hero = row.original;
                 updateMutation.reset();
@@ -415,7 +401,7 @@ export default function HeroesAdminPage() {
       </EntityFormDialog>
 
       {/* Delete Confirmation */}
-      {canDelete && deletingHero && (
+      {deletingHero && (
         <DeleteConfirmDialog
           open={!!deletingHero}
           onOpenChange={(open) => !open && setDeletingHero(null)}
