@@ -156,6 +156,90 @@ def test_internal_balance_payload_rejects_legacy_result_shape() -> None:
         )
 
 
+def test_normalize_balance_response_payload_upgrades_legacy_camel_case_row() -> None:
+    """Regression: GET /balance must load rows saved before the camelCase ->
+    snake_case rename instead of 500-ing on ``BalanceResponse`` validation.
+    """
+
+    from src.services.balancer.config.public_contract import (
+        normalize_balance_response_payload,
+    )
+
+    normalized = normalize_balance_response_payload(
+        {
+            "teams": [
+                {
+                    "id": 1,
+                    "name": "Team 1",
+                    "avgMMR": 2500.0,
+                    "variance": 1.0,
+                    "totalDiscomfort": 100,
+                    "maxDiscomfort": 100,
+                    "roster": {
+                        "Tank": [
+                            {
+                                "uuid": "297",
+                                "name": "Player#1234",
+                                "rating": 2500,
+                                "discomfort": 100,
+                                "isCaptain": True,
+                                "preferences": ["Tank", "Damage"],
+                                "allRatings": {"Tank": 2500, "Damage": 2400},
+                                "isFlex": False,
+                                "subRole": None,
+                            }
+                        ]
+                    },
+                }
+            ],
+            "statistics": {
+                "averageMMR": 2422.47,
+                "mmrStdDev": 6.91,
+                "totalTeams": 1,
+                "playersPerTeam": 1,
+                "offRoleCount": 1,
+                "subRoleCollisionCount": 0,
+                "unbalancedCount": 0,
+            },
+            "benchedPlayers": [
+                {
+                    "uuid": "298",
+                    "name": "Bench#1234",
+                    "rating": 2000,
+                    "discomfort": 0,
+                    "isCaptain": False,
+                    "preferences": ["Support"],
+                    "allRatings": {"Support": 2000},
+                    "isFlex": False,
+                    "subRole": "main_heal",
+                }
+            ],
+        }
+    )
+
+    team = normalized["teams"][0]
+    assert team["average_mmr"] == 2500.0
+    assert team["rating_variance"] == 1.0
+    assert team["total_discomfort"] == 100
+    assert team["max_discomfort"] == 100
+
+    player = team["roster"]["Tank"][0]
+    assert player["assigned_rating"] == 2500
+    assert player["role_discomfort"] == 100
+    assert player["is_captain"] is True
+    assert player["role_preferences"] == ["Tank", "Damage"]
+    assert player["all_ratings"] == {"Tank": 2500, "Damage": 2400}
+    assert player["is_flex"] is False
+
+    assert normalized["statistics"]["average_mmr"] == 2422.47
+    assert normalized["statistics"]["mmr_std_dev"] == 6.91
+    assert normalized["statistics"]["players_per_team"] == 1
+    assert normalized["benched_players"][0]["sub_role"] == "main_heal"
+
+    # The upgraded payload must satisfy the save-side schema too.
+    InternalBalancerTeamsPayload.model_validate(normalized)
+
+
 def test_internal_balance_payload_accepts_public_player_shape_with_is_flex() -> None:
     payload = InternalBalancerTeamsPayload.model_validate(
         {
