@@ -182,7 +182,10 @@ func run() error {
 	// Rate-limited (anti-brute-force): register/login/refresh + oauth callbacks.
 	mux.HandleFunc("POST /api/auth/register", authLimiter.Wrap(identityHandler.Register))
 	mux.HandleFunc("POST /api/auth/login", authLimiter.Wrap(identityHandler.Login))
-	mux.HandleFunc("POST /api/auth/refresh", authLimiter.Wrap(identityHandler.Refresh))
+	// Refresh meters only FAILED attempts (WrapFailures): legitimate rotations
+	// from a shared VPN/NAT exit IP must not exhaust one flat per-IP budget and
+	// 429 everyone behind it into a forced re-login.
+	mux.HandleFunc("POST /api/auth/refresh", authLimiter.WrapFailures(identityHandler.Refresh))
 	mux.HandleFunc("POST /api/auth/logout", identityHandler.Logout)
 	mux.HandleFunc("POST /api/auth/logout-all", identityHandler.LogoutAll)
 	mux.HandleFunc("GET /api/auth/sessions", identityHandler.Sessions)

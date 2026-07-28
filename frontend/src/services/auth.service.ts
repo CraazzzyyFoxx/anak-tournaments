@@ -1,5 +1,6 @@
 import type { AuthUser, LinkedPlayer, OAuthProviderAvailability, OAuthProviderName, TokenPair } from "@/types/auth.types";
 import { apiFetch } from "@/lib/api-fetch";
+import { parseApiError } from "@/lib/api-error";
 
 export type OAuthCallbackMode = "cookie" | "ticket";
 
@@ -230,7 +231,11 @@ export const authService = {
       body: { refresh_token: refreshToken },
       throwOnError: false
     });
-    if (!res.ok) throw new Error("Failed to refresh token");
+    // Throw the upstream status, not a bare Error: only a genuine 401 means the
+    // session is dead. 429 (shared VPN/NAT exit IP burning the per-IP auth
+    // budget) and 5xx are transient and MUST NOT log the user out — the
+    // /auth/refresh route handler distinguishes them by `ApiError.status`.
+    if (!res.ok) throw await parseApiError(res);
     return res.json();
   },
 

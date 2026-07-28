@@ -81,6 +81,13 @@ async def refresh(
         return schemas.Token(**cached_pair)
 
     record = await AuthService.get_active_refresh_token_record(session, refresh_token)
+    # Rotation grace: the client is replaying the token we JUST rotated because it
+    # never received the new pair (the request died with the old network path — a
+    # VPN switch). Beyond the grace window this stays a reuse attack.
+    grace_replay = False
+    if not record:
+        record = await AuthService.get_rotation_grace_record(session, refresh_token)
+        grace_replay = record is not None
     if not record:
         # Triggers reuse-detection on a known-but-revoked token.
         await AuthService.get_user_by_refresh_token(session, refresh_token)
@@ -92,9 +99,21 @@ async def refresh(
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User account is inactive")
 
-    revoked = await AuthService.revoke_refresh_token(session, refresh_token, commit=False)
-    if not revoked:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired refresh token")
+    if grace_replay:
+        # Retire the successor minted by the lost rotation so the session keeps
+        # exactly one live refresh token; keep the sid unbanned — the access token
+        # issued below carries it.
+        await AuthService.revoke_session_tokens(
+            session,
+            record.user_id,
+            record.session_id,
+            commit=False,
+            blacklist=False,
+        )
+    else:
+        revoked = await AuthService.revoke_refresh_token(session, refresh_token, commit=False)
+        if not revoked:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired refresh token")
 
     access_token = AuthService.create_access_token(
         data={

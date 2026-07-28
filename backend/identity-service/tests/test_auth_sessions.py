@@ -467,3 +467,133 @@ def test_list_all_sessions_aggregates_in_sql_and_filters_status() -> None:
     session_filtered = _FakeSession([{"scalars": [active, revoked]}])
     only_active = asyncio.run(SessionService.list_all_sessions(session_filtered, status="active"))
     assert [summary["session_id"] for summary in only_active] == [str(active.session_id)]
+
+
+def test_refresh_grace_replay_rotates_instead_of_killing_the_session(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A client replaying the token we JUST rotated keeps its session.
+
+    That is what a lost rotation response looks like (the in-flight request dies
+    with the old network path — the classic VPN switch): the client holds only the
+    token the server already revoked. Treating it as a reuse attack revoked the
+    whole session family and forced a re-login, which is the bug this pins.
+    """
+    session_id = uuid4()
+    session_started_at = datetime.now(UTC)
+    grace_record = SimpleNamespace(user_id=5, session_id=session_id, session_started_at=session_started_at)
+    fake_user = SimpleNamespace(
+        id=5, email="vpn@example.com", username="vpn-user", is_superuser=False, is_active=True
+    )
+    revoke_session_calls: list[tuple[int, object, bool, bool]] = []
+    reuse_detection_calls: list[str] = []
+    create_calls: list[tuple[object, object, bool]] = []
+
+    async def fake_get_active_refresh_token_record(session, token):
+        return None
+
+    async def fake_get_rotation_grace_record(session, token):
+        assert token == "rotated-token"
+        return grace_record
+
+    async def fake_get_user_by_refresh_token(session, token):
+        reuse_detection_calls.append(token)
+        return None
+
+    async def fake_get_user_with_rbac(session, user_id, *, include_player_links=False):
+        return fake_user
+
+    async def fake_revoke_session_tokens(session, user_id, sid, commit=True, blacklist=True):
+        revoke_session_calls.append((user_id, sid, commit, blacklist))
+        return 1
+
+    async def fake_create_refresh_token_db(
+        session, user_id, token, request=None, session_id=None, session_started_at=None,
+        commit=True, user_agent=None, ip_address=None,
+    ):
+        create_calls.append((session_id, session_started_at, commit))
+        return SimpleNamespace()
+
+    monkeypatch.setattr(AuthService, "get_active_refresh_token_record", fake_get_active_refresh_token_record)
+    monkeypatch.setattr(AuthService, "get_rotation_grace_record", fake_get_rotation_grace_record, raising=False)
+    monkeypatch.setattr(AuthService, "get_user_by_refresh_token", fake_get_user_by_refresh_token)
+    monkeypatch.setattr(AuthService, "get_user_with_rbac", fake_get_user_with_rbac)
+    monkeypatch.setattr(AuthService, "revoke_session_tokens", fake_revoke_session_tokens, raising=False)
+    monkeypatch.setattr(AuthService, "create_refresh_token", lambda: "new-refresh-token")
+    monkeypatch.setattr(AuthService, "create_refresh_token_db", fake_create_refresh_token_db)
+    monkeypatch.setattr("src.services.auth_flows.get_refresh_idem", AsyncMock(return_value=None))
+    monkeypatch.setattr("src.services.auth_flows.set_refresh_idem", AsyncMock())
+
+    fake_session = SimpleNamespace(commit=AsyncMock())
+
+    response = asyncio.run(
+        auth_flows.refresh(
+            session=fake_session,
+            refresh_token="rotated-token",
+            user_agent="Chrome",
+            ip_address="10.0.0.2",
+        )
+    )
+
+    payload = AuthService.decode_token(response.access_token)
+
+    assert reuse_detection_calls == [], "grace replay must not run reuse detection"
+    # blacklist=False: the sid stays usable — the access token issued below carries it.
+    assert revoke_session_calls == [(5, session_id, False, False)]
+    assert response.refresh_token == "new-refresh-token"
+    assert payload["sid"] == str(session_id)
+    assert create_calls == [(session_id, session_started_at, False)]
+
+
+def test_refresh_outside_grace_still_triggers_reuse_detection(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Beyond the grace window a revoked token is still treated as an attack."""
+    reuse_detection_calls: list[str] = []
+
+    async def fake_get_active_refresh_token_record(session, token):
+        return None
+
+    async def fake_get_rotation_grace_record(session, token):
+        return None
+
+    async def fake_get_user_by_refresh_token(session, token):
+        reuse_detection_calls.append(token)
+        return None
+
+    monkeypatch.setattr(AuthService, "get_active_refresh_token_record", fake_get_active_refresh_token_record)
+    monkeypatch.setattr(AuthService, "get_rotation_grace_record", fake_get_rotation_grace_record, raising=False)
+    monkeypatch.setattr(AuthService, "get_user_by_refresh_token", fake_get_user_by_refresh_token)
+    monkeypatch.setattr("src.services.auth_flows.get_refresh_idem", AsyncMock(return_value=None))
+
+    with pytest.raises(HTTPException) as caught:
+        asyncio.run(
+            auth_flows.refresh(
+                session=SimpleNamespace(commit=AsyncMock()),
+                refresh_token="stale-token",
+                user_agent="Chrome",
+                ip_address="10.0.0.2",
+            )
+        )
+
+    assert caught.value.status_code == 401
+    assert reuse_detection_calls == ["stale-token"]
+
+
+def test_get_rotation_grace_record_requires_a_live_session_family() -> None:
+    """A logged-out session can never be resurrected through the grace window."""
+    revoked_token = SimpleNamespace(
+        user_id=7, session_id=uuid4(), is_revoked=True, revoked_at=datetime.now(UTC)
+    )
+
+    # No non-revoked sibling => the whole family is gone (logout / revoke session).
+    dead_family = _FakeSession([{"scalar": revoked_token}, {"scalar": None}])
+    assert asyncio.run(AuthService.get_rotation_grace_record(dead_family, "rotated-token")) is None
+
+    # A live sibling (the successor minted by the lost rotation) => replay allowed.
+    live_family = _FakeSession([{"scalar": revoked_token}, {"scalar": 4242}])
+    assert asyncio.run(AuthService.get_rotation_grace_record(live_family, "rotated-token")) is revoked_token
+
+    # The window itself is enforced in SQL, so pin that the emitted statement
+    # really filters on revocation recency and not just "is_revoked".
+    from sqlalchemy.dialects import postgresql
+
+    compiled = str(live_family.executed[0].compile(dialect=postgresql.dialect()))
+    assert "revoked_at >" in compiled
+    assert "expires_at >" in compiled

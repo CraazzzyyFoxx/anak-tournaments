@@ -123,6 +123,73 @@ func (l *Limiter) Wrap(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// WrapFailures returns next guarded by the limiter, keyed on client IP + request
+// path, but consuming a token ONLY when next rejects the call as unauthenticated
+// (401/403). Successful calls are free.
+//
+// Wrap's flat per-IP budget is wrong for /api/auth/refresh: a VPN or carrier-NAT
+// exit node puts many legitimate users behind ONE IP, and their ordinary token
+// rotations alone drain the bucket. The resulting 429 reaches the frontend as a
+// refresh failure — i.e. everyone sharing that IP gets logged out. Brute-force
+// attempts, by definition, produce 401s, so metering only failures keeps the
+// anti-brute-force property without punishing shared IPs.
+func (l *Limiter) WrapFailures(next http.HandlerFunc) http.HandlerFunc {
+	if !l.Enabled() {
+		return next
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		key := clientip.From(r) + "|" + r.URL.Path
+		if !l.hasTokens(key) {
+			tooManyRequests(w, l.window)
+			return
+		}
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next(rec, r)
+		if rec.status == http.StatusUnauthorized || rec.status == http.StatusForbidden {
+			l.allow(key)
+		}
+	}
+}
+
+// hasTokens reports whether key's bucket still has a token to spend, refilling it
+// but NOT consuming. An untracked key (nothing failed yet) always passes and,
+// unlike allow, allocates no bucket — so well-behaved clients cost no memory.
+func (l *Limiter) hasTokens(key string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	b, ok := l.buckets[key]
+	if !ok {
+		return true
+	}
+	now := l.now()
+	b.tokens += now.Sub(b.last).Seconds() * l.rate
+	if b.tokens > l.burst {
+		b.tokens = l.burst
+	}
+	b.last = now
+	return b.tokens >= 1
+}
+
+// statusRecorder records the status the wrapped handler wrote, so WrapFailures
+// can meter only rejections. A handler that writes a body without an explicit
+// WriteHeader keeps the zero value 200 (success), which is what net/http sends.
+type statusRecorder struct {
+	http.ResponseWriter
+	status      int
+	wroteHeader bool
+}
+
+func (s *statusRecorder) WriteHeader(status int) {
+	if !s.wroteHeader {
+		s.status = status
+		s.wroteHeader = true
+	}
+	s.ResponseWriter.WriteHeader(status)
+}
+
+// Unwrap exposes the wrapped writer to http.ResponseController (flush/deadlines).
+func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }
+
 // WrapAnon returns next guarded by the limiter for anonymous requests only —
 // those that carry no bearer token — keyed on client IP alone (a global
 // per-IP anonymous budget across all paths). Authenticated requests

@@ -158,3 +158,111 @@ func TestIsAnonymous(t *testing.T) {
 		}
 	}
 }
+
+// wrapFailuresReq builds a POST /api/auth/refresh from a fixed client IP, the
+// shape WrapFailures is wired for in main.go.
+func wrapFailuresReq(ip string) *http.Request {
+	r := httptest.NewRequest(http.MethodPost, "/api/auth/refresh", nil)
+	r.Header.Set("X-Real-IP", ip)
+	return r
+}
+
+// TestLimiter_WrapFailures_SuccessesAreFree is the whole point of WrapFailures:
+// a VPN / carrier-NAT exit IP carries many legitimate users, and their ordinary
+// refresh rotations must never exhaust one shared per-IP budget (the 429 reaches
+// the browser as a refresh failure, i.e. a forced re-login for everyone on it).
+func TestLimiter_WrapFailures_SuccessesAreFree(t *testing.T) {
+	l := New(2, 1000*time.Second) // 2 per 1000s: refill is negligible in-test.
+	h := l.WrapFailures(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	for i := range 20 {
+		rec := httptest.NewRecorder()
+		h(rec, wrapFailuresReq("1.1.1.1"))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("successful refresh %d: want 200, got %d", i, rec.Code)
+		}
+	}
+}
+
+// TestLimiter_WrapFailures_MetersRejections proves the anti-brute-force property
+// survives: failed attempts (401 — what guessing a refresh token produces) still
+// consume the per-IP budget, and the next attempt is throttled.
+func TestLimiter_WrapFailures_MetersRejections(t *testing.T) {
+	l := New(2, 1000*time.Second)
+	calls := 0
+	h := l.WrapFailures(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusUnauthorized)
+	})
+
+	for i := range 2 {
+		rec := httptest.NewRecorder()
+		h(rec, wrapFailuresReq("1.1.1.1"))
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("failed refresh %d: want 401, got %d", i, rec.Code)
+		}
+	}
+
+	rec := httptest.NewRecorder()
+	h(rec, wrapFailuresReq("1.1.1.1"))
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("3rd failed refresh: want 429, got %d", rec.Code)
+	}
+	if rec.Header().Get("Retry-After") == "" {
+		t.Error("429 response should carry a Retry-After header")
+	}
+	if calls != 2 {
+		t.Fatalf("handler should have run only for the 2 allowed attempts, ran %d", calls)
+	}
+
+	// A throttled IP must not affect anyone else.
+	rec = httptest.NewRecorder()
+	h(rec, wrapFailuresReq("2.2.2.2"))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("fresh IP: want 401 (own bucket), got %d", rec.Code)
+	}
+}
+
+// TestLimiter_WrapFailures_SuccessAfterFailuresStillPasses proves a client that
+// recovers is not stuck behind its own earlier failures while the bucket holds
+// tokens, and that successes never deepen the debt.
+func TestLimiter_WrapFailures_SuccessAfterFailuresStillPasses(t *testing.T) {
+	l := New(2, 1000*time.Second)
+	status := http.StatusUnauthorized
+	h := l.WrapFailures(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(status)
+	})
+
+	rec := httptest.NewRecorder()
+	h(rec, wrapFailuresReq("1.1.1.1")) // burns 1 of 2
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401, got %d", rec.Code)
+	}
+
+	status = http.StatusOK
+	for i := range 10 {
+		rec = httptest.NewRecorder()
+		h(rec, wrapFailuresReq("1.1.1.1"))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("recovered refresh %d: want 200, got %d", i, rec.Code)
+		}
+	}
+}
+
+// TestLimiter_WrapFailures_DisabledPassThrough mirrors Wrap/WrapAnon: a
+// non-positive limit yields the handler unchanged.
+func TestLimiter_WrapFailures_DisabledPassThrough(t *testing.T) {
+	l := New(0, 0)
+	h := l.WrapFailures(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	})
+	for i := range 5 {
+		rec := httptest.NewRecorder()
+		h(rec, wrapFailuresReq("1.1.1.1"))
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("disabled limiter should pass attempt %d through, got %d", i, rec.Code)
+		}
+	}
+}
