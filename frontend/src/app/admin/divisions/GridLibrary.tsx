@@ -6,13 +6,10 @@ import {
   Archive,
   Download,
   FolderOpen,
-  Pencil,
   Plus,
   RotateCcw,
-  Save,
   Trash2,
-  Upload,
-  X
+  Upload
 } from "lucide-react";
 
 import {
@@ -30,7 +27,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { InlineEditText } from "@/components/admin/InlineEditText";
 import {
   Select,
   SelectContent,
@@ -77,7 +74,6 @@ export function DivisionGridLibrary({
   onChanged
 }: Props) {
   const portableInputRef = useRef<HTMLInputElement>(null);
-  const [editingName, setEditingName] = useState<string | null>(null);
   const [forceDeleteOpen, setForceDeleteOpen] = useState(false);
   const activeGrid = grids.find((grid) =>
     grid.versions.some((version) => version.id === defaultVersionId)
@@ -109,7 +105,6 @@ export function DivisionGridLibrary({
       return workspaceService.updateDivisionGrid(selectedGrid.id, data);
     },
     onSuccess: async () => {
-      setEditingName(null);
       await onChanged();
     },
     onError: showMutationError("Grid could not be updated")
@@ -268,46 +263,20 @@ export function DivisionGridLibrary({
         {selectedGrid && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3">
             <div className="min-w-0">
-              {editingName === null ? (
-                <div className="truncate font-medium">{selectedGrid.name}</div>
-              ) : (
-                <Input
-                  aria-label="Grid name"
-                  value={editingName}
-                  onChange={(event) => setEditingName(event.target.value)}
-                  className="max-w-sm"
-                />
-              )}
+              <InlineEditText
+                value={selectedGrid.name}
+                label="grid name"
+                canEdit={permissions.update}
+                textClassName="font-medium"
+                inputClassName="max-w-sm"
+                onSave={(name) => updateMutation.mutateAsync({ name })}
+              />
               <div className="mt-1 text-xs text-muted-foreground">
                 {selectedGrid.slug} · {selectedGrid.versions.length} version(s)
                 {selectedGrid.archived_at ? " · archived" : ""}
               </div>
             </div>
             <div className="flex flex-wrap gap-1">
-              {permissions.update &&
-                (editingName === null ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setEditingName(selectedGrid.name)}
-                  >
-                    <Pencil className="mr-2 h-4 w-4" /> Rename
-                  </Button>
-                ) : (
-                  <>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => updateMutation.mutate({ name: editingName.trim() })}
-                      disabled={!editingName.trim() || updateMutation.isPending}
-                    >
-                      <Save className="mr-2 h-4 w-4" /> Save
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => setEditingName(null)}>
-                      <X className="mr-2 h-4 w-4" /> Cancel
-                    </Button>
-                  </>
-                ))}
               {permissions.export && (
                 <Button variant="ghost" size="sm" onClick={() => void exportPortable()}>
                   <Download className="mr-2 h-4 w-4" /> Export

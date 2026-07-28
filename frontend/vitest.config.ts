@@ -18,6 +18,7 @@ export default defineConfig({
       "src/app/admin/tournaments/**/components/mapVeto.helpers.test.ts",
       "src/app/**/users/compare/**/*.test.ts",
       "src/components/tournaments/**/*.test.ts",
+      "src/components/admin/**/*.test.tsx",
     ],
   },
 });

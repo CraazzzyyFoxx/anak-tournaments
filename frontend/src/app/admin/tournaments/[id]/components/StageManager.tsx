@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
+import { InlineEditText } from "@/components/admin/InlineEditText";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -500,6 +501,13 @@ export function StageManager({ tournamentId }: StageManagerProps) {
       setEditingItemTypeId(null);
       invalidateStageData();
     }
+  });
+
+  const updateItemNameMutation = useMutation({
+    mutationFn: ({ stageItemId, name }: { stageItemId: number; name: string }) =>
+      adminService.updateStageItem(stageItemId, { name }),
+    onSuccess: () => invalidateStageData(),
+    onError: (error) => notify.apiError(error, { title: "Failed to rename structure item" })
   });
 
   const updateInputMutation = useMutation({
@@ -1119,7 +1127,17 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                             >
                               <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
-                                  <p className="truncate text-sm font-medium">{item.name}</p>
+                                  <InlineEditText
+                                    value={item.name}
+                                    label="structure item name"
+                                    textClassName="text-sm font-medium"
+                                    onSave={(name) =>
+                                      updateItemNameMutation.mutateAsync({
+                                        stageItemId: item.id,
+                                        name
+                                      })
+                                    }
+                                  />
                                   <p className="text-xs text-muted-foreground">
                                     {item.inputs.length} slot(s)
                                   </p>

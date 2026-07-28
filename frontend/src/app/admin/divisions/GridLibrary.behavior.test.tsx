@@ -108,13 +108,14 @@ describe("DivisionGridLibrary", () => {
 
   it("hides every mutating control when its operation permission is absent", () => {
     const document = renderLibrary(deniedPermissions);
-    const buttonLabels = Array.from(document.querySelectorAll("button"), (button) =>
-      button.textContent?.trim()
+    const buttonLabels = Array.from(
+      document.querySelectorAll("button"),
+      (button) => button.getAttribute("aria-label") ?? button.textContent?.trim()
     );
 
     expect(buttonLabels).not.toContain("New grid");
     expect(buttonLabels).not.toContain("Import JSON");
-    expect(buttonLabels).not.toContain("Rename");
+    expect(buttonLabels).not.toContain("Edit grid name");
     expect(buttonLabels).not.toContain("Export");
     expect(buttonLabels).not.toContain("Archive");
     expect(buttonLabels).toContain("Open");
@@ -128,12 +129,13 @@ describe("DivisionGridLibrary", () => {
       export: true,
       delete: true
     });
-    const buttonLabels = Array.from(document.querySelectorAll("button"), (button) =>
-      button.textContent?.trim()
+    const buttonLabels = Array.from(
+      document.querySelectorAll("button"),
+      (button) => button.getAttribute("aria-label") ?? button.textContent?.trim()
     );
 
     expect(buttonLabels).toContain("New grid");
-    expect(buttonLabels).toContain("Rename");
+    expect(buttonLabels).toContain("Edit grid name");
     expect(buttonLabels).toContain("Export");
     expect(buttonLabels).toContain("Archive");
     expect(buttonLabels).toContain("Delete");
