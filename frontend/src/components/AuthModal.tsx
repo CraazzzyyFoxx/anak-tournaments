@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import Image from "next/image";
 import type { ReactNode } from "react";
 import {
@@ -32,12 +31,18 @@ const ProviderButton = ({ href, title, icon }: ProviderButtonProps) => {
       variant="outline"
       className="h-10 w-full justify-start bg-white/[0.04] border-white/[0.08] hover:bg-white/[0.08] hover:border-white/[0.16] transition-all duration-150 text-white/75 hover:text-white rounded-lg gap-3 font-normal"
     >
-      <Link href={href}>
+      {/* Plain <a>, NEVER next/link: /auth/{provider}/login is a GET route
+          handler with side effects — every execution mints a fresh OAuth state
+          and overwrites the single shared owt_oauth_csrf cookie. <Link>
+          prefetches it (on viewport entry AND hover), so late prefetch
+          responses race the click's Set-Cookie and desync the cookie from the
+          state carried to the provider, failing the callback's CSRF binding. */}
+      <a href={href}>
         <div className="flex h-4 w-4 shrink-0 items-center justify-center">
           {icon}
         </div>
         <span className="text-[13px] font-medium">{title}</span>
-      </Link>
+      </a>
     </Button>
   );
 };
