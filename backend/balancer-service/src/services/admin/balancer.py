@@ -29,6 +29,25 @@ async def ensure_tournament_exists(session: AsyncSession, tournament_id: int) ->
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
 
+async def get_tournament_row(session: AsyncSession, tournament_id: int) -> sa.Row:
+    """Minimal tournament projection (id/name/status) for the summary RPC.
+
+    Deliberately NO ``is_hidden`` filter: the summary powers the staff-facing
+    balancer tool context, and hidden (preview) tournaments must stay
+    resolvable for callers who already passed the workspace ``team.read`` gate.
+    """
+    row = (
+        await session.execute(
+            sa.select(models.Tournament.id, models.Tournament.name, models.Tournament.status).where(
+                models.Tournament.id == tournament_id
+            )
+        )
+    ).one_or_none()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+    return row
+
+
 async def get_tournament_config(
     session: AsyncSession,
     tournament_id: int,

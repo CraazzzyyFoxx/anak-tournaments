@@ -87,6 +87,22 @@ def register(broker: Any, logger: Any) -> None:
 
         return await c.envelope(logger, "admin.tournament_config_upsert", op, session_factory=_SF)
 
+    # --- tournament summary (balancer tool context, D29) --------------------
+    @broker.subscriber("rpc.balancer.admin.tournament_summary_get")
+    async def _tournament_summary_get(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            c.require_admin_panel(user)
+            tournament_id = c.require_id(data)
+            ws_id = await _get_tournament_workspace_id(session, tournament_id)
+            c.require_workspace_permission(data, user, ws_id, "team", "read")
+            # Tournament row, not config: id/name/status are non-nullable by
+            # construction, and hidden tournaments stay visible (team.read gate).
+            t = await admin_balancer.get_tournament_row(session, tournament_id)
+            return {"id": t.id, "name": t.name, "status": t.status, "workspace_id": ws_id}
+
+        return await c.envelope(logger, "admin.tournament_summary_get", op, session_factory=_SF)
+
     # --- saved balance ------------------------------------------------------
     @broker.subscriber("rpc.balancer.admin.balance_get")
     async def _balance_get(data: dict, msg: RabbitMessage) -> dict:

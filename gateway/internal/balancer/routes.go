@@ -35,6 +35,7 @@ var PublicRoutes = []edge.RouteSpec{
 var AdminRoutes = []edge.RouteSpec{
 	{Method: "GET", Pattern: "/api/balancer/tournaments/{tournament_id}/config", Queue: "rpc.balancer.admin.tournament_config_get", IDParam: "tournament_id", Auth: edge.AuthRequired, Timeout: fastReadTimeout},
 	{Method: "PUT", Pattern: "/api/balancer/tournaments/{tournament_id}/config", Queue: "rpc.balancer.admin.tournament_config_upsert", IDParam: "tournament_id", Body: true, Auth: edge.AuthRequired},
+	{Method: "GET", Pattern: "/api/balancer/tournaments/{tournament_id}/summary", Queue: "rpc.balancer.admin.tournament_summary_get", IDParam: "tournament_id", Auth: edge.AuthRequired, Timeout: fastReadTimeout},
 	{Method: "GET", Pattern: "/api/balancer/tournaments/{tournament_id}/balance", Queue: "rpc.balancer.admin.balance_get", IDParam: "tournament_id", Auth: edge.AuthRequired},
 	{Method: "PUT", Pattern: "/api/balancer/tournaments/{tournament_id}/balance", Queue: "rpc.balancer.admin.balance_save", IDParam: "tournament_id", Body: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/balancer/balances/{balance_id}/export", Queue: "rpc.balancer.admin.balance_export", IDParam: "balance_id", Auth: edge.AuthRequired},
