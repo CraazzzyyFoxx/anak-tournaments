@@ -22,7 +22,7 @@ import { useTranslations } from "next-intl";
 import {
   STAGE_WINDOW_KIND,
   stageWindowValue
-} from "@/app/balancer/components/rank-autofill-stages";
+} from "../rank-autofill-stages";
 import { NumberInput } from "@/components/ui/number-input";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
