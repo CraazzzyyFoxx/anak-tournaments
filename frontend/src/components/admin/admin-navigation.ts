@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   Map,
   type LucideIcon,
+  Palette,
   Settings2,
   Shield,
   Swords,
@@ -79,7 +80,7 @@ export const adminNavigationGroups: AdminNavGroup[] = [
     ],
   },
   {
-    title: "Competition",
+    title: "Tournaments",
     items: [
       {
         title: "Tournaments",
@@ -88,6 +89,11 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         description: "Manage tournament lifecycle, stages, and schedules.",
         permissions: ["tournament.read"],
       },
+    ],
+  },
+  {
+    title: "Data browser",
+    items: [
       {
         title: "Teams",
         href: "/admin/teams",
@@ -116,20 +122,11 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         description: "Audit bracket health and ranking outputs.",
         permissions: ["standing.read"],
       },
-      {
-        title: "Player Identities",
-        href: "/admin/users",
-        icon: UserCircle,
-        description: "Resolve Discord, BattleTag, and Twitch identities.",
-        permissions: ["user.read"],
-      },
-      {
-        title: "Rank Collection",
-        href: "/admin/rank",
-        icon: Activity,
-        description: "OverFast rank collection status and manual re-fetch per player.",
-        permissions: ["user.read"],
-      },
+    ],
+  },
+  {
+    title: "Workspace",
+    items: [
       {
         title: "Divisions",
         href: "/admin/divisions",
@@ -138,11 +135,32 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         workspaceAdminVisible: true,
       },
       {
+        title: "Balancer Statuses",
+        href: "/admin/balancer",
+        icon: Settings2,
+        description: "Manage workspace-specific registration and balancer statuses.",
+        permissions: ["team.read"],
+      },
+      {
         title: "Achievements",
         href: "/admin/achievements",
         icon: Award,
         description: "Manage achievements with condition tree evaluation engine.",
         permissions: ["achievement.read"],
+      },
+      {
+        title: "Members",
+        href: "/admin/workspaces/members",
+        icon: UserCog,
+        description: "Manage workspace member access and roles.",
+        workspaceAdminVisible: true,
+      },
+      {
+        title: "Branding",
+        href: "/admin/workspaces",
+        icon: Palette,
+        description: "Workspace branding, domains, and metadata.",
+        workspaceAdminVisible: true,
       },
     ],
   },
@@ -223,17 +241,24 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         superuserOnly: true,
       },
       {
+        title: "Player Identities",
+        href: "/admin/users",
+        icon: UserCircle,
+        description: "Resolve Discord, BattleTag, and Twitch identities.",
+        permissions: ["user.read"],
+      },
+      {
+        title: "Rank Collection",
+        href: "/admin/rank",
+        icon: Activity,
+        description: "OverFast rank collection status and manual re-fetch per player.",
+        permissions: ["user.read"],
+      },
+      {
         title: "Workspaces",
         href: "/admin/workspaces",
         icon: Building2,
         description: "Manage workspaces and their settings.",
-        workspaceAdminVisible: true,
-      },
-      {
-        title: "Workspace Members",
-        href: "/admin/workspaces/members",
-        icon: UserCog,
-        description: "Manage workspace member access and roles.",
         workspaceAdminVisible: true,
       },
       {
@@ -264,7 +289,7 @@ export const adminRoutePermissions: Array<{
   { prefix: "/admin/workspaces/members", permissions: [], workspaceAdminVisible: true },
   { prefix: "/admin/workspaces", permissions: [], workspaceAdminVisible: true },
   { prefix: "/admin/settings", permissions: [], superuserOnly: true },
-  { prefix: "/admin/balancer", permissions: ["team.import"] },
+  { prefix: "/admin/balancer", permissions: ["team.read"] },
   { prefix: "/admin/tournaments", permissions: ["tournament.read"] },
   { prefix: "/admin/teams", permissions: ["team.read"] },
   { prefix: "/admin/players", permissions: ["player.read"] },

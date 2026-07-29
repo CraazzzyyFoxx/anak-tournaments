@@ -340,7 +340,8 @@ export default function AdminBalancerPage() {
   const [editingStatus, setEditingStatus] = useState<BalancerCustomStatus | null>(null);
   const [deletingStatus, setDeletingStatus] = useState<BalancerCustomStatus | null>(null);
   const [form, setForm] = useState<StatusFormState>(EMPTY_FORM);
-  const canManageStatuses = canAccessPermission("team.import", workspaceId);
+  // D12: page is readable with team.read; mutations follow the server matrix (team.update).
+  const canManageStatuses = canAccessPermission("team.update", workspaceId);
 
   const statusesQuery = useQuery({
     queryKey: ["balancer-admin", "status-catalog", workspaceId],
@@ -485,10 +486,12 @@ export default function AdminBalancerPage() {
                   this workspace.
                 </CardDescription>
               </div>
-              <Button size="sm" onClick={() => openCreate(scope)} disabled={!canManageStatuses}>
-                <Plus className="mr-2 size-4" />
-                Add
-              </Button>
+              {canManageStatuses ? (
+                <Button size="sm" onClick={() => openCreate(scope)}>
+                  <Plus className="mr-2 size-4" />
+                  Add
+                </Button>
+              ) : null}
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
@@ -533,20 +536,16 @@ export default function AdminBalancerPage() {
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => openEdit(statusRow)}
-                                disabled={!canManageStatuses}
-                              >
-                                <Pencil className="size-4" />
-                              </Button>
-                              {statusRow.can_reset ? (
+                              {canManageStatuses ? (
+                                <Button size="icon" variant="ghost" onClick={() => openEdit(statusRow)}>
+                                  <Pencil className="size-4" />
+                                </Button>
+                              ) : null}
+                              {canManageStatuses && statusRow.can_reset ? (
                                 <Button
                                   size="icon"
                                   variant="ghost"
                                   onClick={() => setDeletingStatus(statusRow)}
-                                  disabled={!canManageStatuses}
                                 >
                                   <Trash2 className="size-4" />
                                 </Button>
@@ -608,22 +607,24 @@ export default function AdminBalancerPage() {
                             </TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-2">
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  onClick={() => openEdit(statusRow)}
-                                  disabled={!canManageStatuses}
-                                >
-                                  <Pencil className="size-4" />
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  onClick={() => setDeletingStatus(statusRow)}
-                                  disabled={!canManageStatuses}
-                                >
-                                  <Trash2 className="size-4" />
-                                </Button>
+                                {canManageStatuses ? (
+                                  <>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      onClick={() => openEdit(statusRow)}
+                                    >
+                                      <Pencil className="size-4" />
+                                    </Button>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      onClick={() => setDeletingStatus(statusRow)}
+                                    >
+                                      <Trash2 className="size-4" />
+                                    </Button>
+                                  </>
+                                ) : null}
                               </div>
                             </TableCell>
                           </TableRow>

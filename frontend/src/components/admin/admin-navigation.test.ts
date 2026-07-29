@@ -1,6 +1,10 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
-import { getMatchingAdminRoute, getVisibleAdminNavigationGroups } from "@/components/admin/admin-navigation";
+import {
+  adminNavigationGroups,
+  getMatchingAdminRoute,
+  getVisibleAdminNavigationGroups,
+} from "@/components/admin/admin-navigation";
 
 describe("admin navigation visibility", () => {
   it("shows workspace-admin entries when the access callback allows workspace-admin items", () => {
@@ -29,5 +33,53 @@ describe("admin navigation visibility", () => {
       expect(hrefs).not.toContain(href);
       expect(getMatchingAdminRoute(href)?.superuserOnly).toBe(true);
     }
+  });
+});
+
+describe("admin navigation lifecycle grouping (D12, §5)", () => {
+  it("orders sidebar groups by tournament lifecycle", () => {
+    expect(adminNavigationGroups.map((group) => group.title)).toEqual([
+      "Overview",
+      "Tournaments",
+      "Data browser",
+      "Workspace",
+      "Game Content",
+      "Administration",
+    ]);
+  });
+
+  it("keeps the data browser to cross-tournament read pages", () => {
+    const group = adminNavigationGroups.find((g) => g.title === "Data browser");
+    expect(group?.items.map((item) => item.href)).toEqual([
+      "/admin/teams",
+      "/admin/players",
+      "/admin/encounters",
+      "/admin/standings",
+    ]);
+  });
+
+  it("collects workspace tools including the balancer statuses entry", () => {
+    const group = adminNavigationGroups.find((g) => g.title === "Workspace");
+    expect(group?.items.map((item) => item.href)).toEqual([
+      "/admin/divisions",
+      "/admin/balancer",
+      "/admin/achievements",
+      "/admin/workspaces/members",
+      "/admin/workspaces",
+    ]);
+  });
+
+  it("gates /admin/balancer by team.read so status readers can open it", () => {
+    expect(getMatchingAdminRoute("/admin/balancer")?.permissions).toEqual(["team.read"]);
+    expect(getMatchingAdminRoute("/admin/balancer/anything")?.permissions).toEqual(["team.read"]);
+  });
+
+  it("shows the balancer statuses entry to team.read holders", () => {
+    const groups = getVisibleAdminNavigationGroups((item) =>
+      (item.permissions ?? []).includes("team.read"),
+    );
+    const hrefs = groups.flatMap((group) => group.items.map((item) => item.href));
+
+    expect(hrefs).toContain("/admin/balancer");
   });
 });

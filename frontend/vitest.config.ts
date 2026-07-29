@@ -22,6 +22,7 @@ export default defineConfig({
       "src/app/**/users/compare/**/*.test.ts",
       "src/components/tournaments/**/*.test.ts",
       "src/components/admin/**/*.test.tsx",
+      "src/components/admin/**/*.test.ts",
     ],
   },
 });
