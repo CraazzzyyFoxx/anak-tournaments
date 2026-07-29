@@ -15,6 +15,7 @@ export default defineConfig({
       "src/app/**/tournaments/**/veto/**/*.test.ts",
       "src/app/admin/tournaments/**/components/draft/**/*.test.ts",
       "src/app/admin/tournaments/**/overview/**/*.test.ts",
+      "src/app/admin/tournaments/new/**/*.test.ts",
       "src/app/admin/divisions/**/*.test.tsx",
       "src/app/admin/tournaments/**/components/mapVeto.helpers.test.ts",
       "src/app/balancer/components/balance-import.test.ts",
