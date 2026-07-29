@@ -125,6 +125,10 @@ export function ReviewStep({
           <p className="mb-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
             Registration
           </p>
+          <p className="mb-2 text-xs text-muted-foreground">
+            These choices are not applied automatically — finish them in the form builder
+            (Registration tab of the hub) after creation.
+          </p>
           <dl>
             <Row label="Registration" value={registration.is_open ? "Open" : "Closed"} />
             <Row label="Auto-approve" value={registration.auto_approve ? "On" : "Off"} />

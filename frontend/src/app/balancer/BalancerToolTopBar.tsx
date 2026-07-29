@@ -23,9 +23,11 @@ export function BalancerToolTopBar({ summary }: BalancerToolTopBarProps) {
   const searchParams = useSearchParams();
   const returnTo = searchParams.get("return");
   // Only trust internal paths from `?return=` (e.g. the creation wizard);
-  // anything else falls back to the hub's teams tab (A-O2).
+  // protocol-relative `//host` would be an open redirect — reject it too.
   const backHref =
-    returnTo?.startsWith("/") ? returnTo : `/admin/tournaments/${summary.id}/teams`;
+    returnTo?.startsWith("/") && !returnTo.startsWith("//")
+      ? returnTo
+      : `/admin/tournaments/${summary.id}/teams`;
 
   return (
     <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-3 border-b border-border/50 bg-background/90 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/82 md:px-5">

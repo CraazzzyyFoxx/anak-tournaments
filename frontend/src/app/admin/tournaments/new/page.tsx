@@ -212,24 +212,44 @@ export default function NewTournamentPage() {
       const workspaceId = currentWorkspaceId;
       draftPromiseRef.current = (async () => {
         if (!workspaceId) throw new Error("Select a workspace first");
-        const created =
-          source === "challonge"
-            ? // with_groups cannot take is_hidden — hide right after import.
-              await adminService
-                .createTournamentWithGroups({
-                  workspace_id: workspaceId,
-                  challonge_slug: normalizeChallongeSlug(challongeSlug),
-                  is_league: form.is_league,
-                  start_date: form.start_date,
-                  end_date: form.end_date,
-                  division_grid_version_id: form.division_grid_version_id ?? null
-                })
-                .then((imported) => adminService.updateTournament(imported.id, { is_hidden: true }))
-            : await adminService.createTournament(buildDraftCreateInput(workspaceId, form));
+        let created: Tournament;
+        if (source === "challonge") {
+          const imported = await adminService.createTournamentWithGroups({
+            workspace_id: workspaceId,
+            challonge_slug: normalizeChallongeSlug(challongeSlug),
+            is_league: form.is_league,
+            start_date: form.start_date,
+            end_date: form.end_date,
+            division_grid_version_id: form.division_grid_version_id ?? null
+          });
+          // Adopt BEFORE hiding: a failed hide must never re-run the import
+          // (duplicate tournaments). with_groups cannot take is_hidden itself.
+          adoptDraft(imported);
+          try {
+            created = await adminService.updateTournament(imported.id, { is_hidden: true });
+          } catch {
+            try {
+              created = await adminService.updateTournament(imported.id, { is_hidden: true });
+            } catch {
+              notify.warning("Imported from Challonge, but hiding it failed", {
+                description:
+                  "The tournament is temporarily public — hide it from Settings → Visibility if needed."
+              });
+              created = imported;
+            }
+          }
+        } else {
+          created = await adminService.createTournament(buildDraftCreateInput(workspaceId, form));
+        }
         adoptDraft(created);
         void queryClient.invalidateQueries({ queryKey: ["tournaments"] });
+        void queryClient.invalidateQueries({
+          queryKey: ["admin", "tournaments", "wizard-resume"]
+        });
         return created;
       })().catch((error) => {
+        // A created-but-unadopted draft only happens before the import resolves;
+        // after adoption draftRef short-circuits this initializer entirely.
         draftPromiseRef.current = null;
         throw error;
       });
@@ -252,6 +272,7 @@ export default function NewTournamentPage() {
     },
     onSuccess: ({ id, publish }) => {
       void queryClient.invalidateQueries({ queryKey: ["tournaments"] });
+      void queryClient.invalidateQueries({ queryKey: ["admin", "tournaments", "wizard-resume"] });
       notify.success(publish ? "Tournament created" : "Draft created", {
         description: publish
           ? undefined

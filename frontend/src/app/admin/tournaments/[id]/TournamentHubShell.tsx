@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useRealtimeTopic } from "@/hooks/useRealtimeTopic";
+import { useSyncActiveWorkspace } from "@/hooks/useSyncActiveWorkspace";
 import { useTournamentRealtime } from "@/hooks/useTournamentRealtime";
 import encounterService from "@/services/encounter.service";
 import teamService from "@/services/team.service";
@@ -96,6 +97,10 @@ export function TournamentHubShell({
   const standingsQuery = useHubStandingsQuery(tournamentId);
 
   const tournamentWorkspaceId = tournamentQuery.data?.workspace_id ?? null;
+  // Align the workspace store with the tournament's workspace: workspace-scoped
+  // catalogs (custom statuses, sub-roles) on the registration tab read the store,
+  // and apiFetch injects the store workspace into every call (D25/D29).
+  useSyncActiveWorkspace(tournamentWorkspaceId);
   const divisionGridsQuery = useHubDivisionGridsQuery(tournamentId, tournamentWorkspaceId);
 
   // Living-checklist freshness (§3, G-O6): balancer + bracket events schedule

@@ -102,8 +102,9 @@ export default function AdminDashboard() {
   const tournaments = tournamentsQuery.data?.results ?? [];
 
   const derived = useMemo(() => {
+    const visibleTournaments = tournaments.filter((t) => !t.is_hidden);
     const activeTournament = canReadTournaments
-      ? (tournaments.find((t) => !t.is_finished && !t.is_hidden) ?? tournaments[0] ?? null)
+      ? (visibleTournaments.find((t) => !t.is_finished) ?? visibleTournaments[0] ?? null)
       : null;
 
     const activeStats = stats?.active_tournament_stats;
