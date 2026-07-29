@@ -133,6 +133,8 @@ export interface TournamentCreateInput {
   name: string;
   description?: string;
   is_league: boolean;
+  /** Lazy wizard drafts (D4) are created Unpublished and published later. */
+  is_hidden?: boolean;
   status?: TournamentStatus;
   start_date: string;
   end_date: string;

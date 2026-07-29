@@ -1,16 +1,22 @@
 "use client";
 
+import Link from "next/link";
+import { ExternalLink } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 
 import type { WizardRegistrationState } from "../wizard-model";
 
-// Status fields of the registration form builder (balancer/registrations/form).
-// The full builder (custom fields, ordering) is linked from the hub after the
-// tournament exists — TODO(T11): internal link to `{draftId}/registration/form`.
+// Status fields of the registration form builder (hub registration/form).
+// The full builder (custom fields, ordering) lives in the tournament hub;
+// it is linked below once the lazy Unpublished draft exists (D4/D25).
 interface RegistrationStepProps {
   value: WizardRegistrationState;
   onChange: (next: WizardRegistrationState) => void;
+  /** Lazy draft id; the form builder link stays disabled until it exists. */
+  draftId: number | null;
 }
 
 const ROWS: Array<{
@@ -35,7 +41,7 @@ const ROWS: Array<{
   }
 ];
 
-export function RegistrationStep({ value, onChange }: RegistrationStepProps) {
+export function RegistrationStep({ value, onChange, draftId }: RegistrationStepProps) {
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-4 bg-muted/20 border border-border/50 rounded-lg p-3.5">
@@ -58,10 +64,24 @@ export function RegistrationStep({ value, onChange }: RegistrationStepProps) {
           </div>
         ))}
       </div>
-      <p className="text-xs text-muted-foreground">
-        The full registration form builder (custom fields, built-in field configuration) opens
-        from the tournament hub after creation.
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          Custom fields and built-in field configuration live in the full form builder.
+        </p>
+        {draftId ? (
+          <Button asChild type="button" variant="outline" size="sm">
+            <Link href={`/admin/tournaments/${draftId}/registration/form`}>
+              Open full form builder
+              <ExternalLink className="ml-2 h-3.5 w-3.5" />
+            </Link>
+          </Button>
+        ) : (
+          <Button type="button" variant="outline" size="sm" disabled>
+            Open full form builder
+            <ExternalLink className="ml-2 h-3.5 w-3.5" />
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

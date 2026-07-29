@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarDays,
   Check,
@@ -13,15 +14,33 @@ import {
   Wrench
 } from "lucide-react";
 
-import { SCHEDULABLE_PHASES } from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.helpers";
+import {
+  getPhaseSchedulePayload,
+  SCHEDULABLE_PHASES
+} from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.helpers";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { usePermissions } from "@/hooks/usePermissions";
+import { normalizeChallongeSlug } from "@/lib/challonge";
 import { notify } from "@/lib/notify";
+import { DEFAULT_WORKSPACE_TIMEZONE } from "@/lib/timezone";
 import { cn } from "@/lib/utils";
+import adminService from "@/services/admin.service";
+import tournamentService from "@/services/tournament.service";
 import workspaceService from "@/services/workspace.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
+import type { Tournament } from "@/types/tournament.types";
 import type { DivisionGridVersion } from "@/types/workspace.types";
 
 import { BasicsStep } from "./steps/BasicsStep";
@@ -30,12 +49,17 @@ import { ReviewStep } from "./steps/ReviewStep";
 import { RulesStep } from "./steps/RulesStep";
 import { ScheduleStep } from "./steps/ScheduleStep";
 import {
+  buildDraftCreateInput,
+  buildDraftUpdateInput,
   canCreateNow,
   canNavigateToWizardStep,
+  findResumableDraft,
   nextWizardStep,
   previousWizardStep,
+  stepEntryRequiresDraft,
   validateWizardStep,
   visibleWizardSteps,
+  wizardStateFromDraft,
   type WizardBasicsState,
   type WizardFormData,
   type WizardRegistrationState,
@@ -97,8 +121,13 @@ const emptySchedule: WizardScheduleState = {
 };
 
 export default function NewTournamentPage() {
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const { canAccessPermission } = usePermissions();
   const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
+  const workspaces = useWorkspaceStore((s) => s.workspaces);
+  const timezone =
+    workspaces.find((ws) => ws.id === currentWorkspaceId)?.timezone ?? DEFAULT_WORKSPACE_TIMEZONE;
   const canTeamImport = canAccessPermission("team.import", currentWorkspaceId);
   const steps = useMemo(() => visibleWizardSteps(canTeamImport), [canTeamImport]);
 
@@ -112,6 +141,14 @@ export default function NewTournamentPage() {
     auto_approve: false,
     require_open_profile: false
   });
+
+  // Lazy Unpublished draft (D4): created by the first action needing an id.
+  // The ref mirrors the state so async closures never see a stale draft, and
+  // the promise ref collapses concurrent triggers into one POST.
+  const [draft, setDraft] = useState<Tournament | null>(null);
+  const draftRef = useRef<Tournament | null>(null);
+  const draftPromiseRef = useRef<Promise<Tournament> | null>(null);
+  const [resumeDismissed, setResumeDismissed] = useState(false);
 
   // The registration step can disappear while active (permission profile loads in).
   const activeStep = steps.includes(step) ? step : "basics";
@@ -130,6 +167,33 @@ export default function NewTournamentPage() {
     .slice()
     .sort((left, right) => right.version - left.version);
 
+  // Resume (D4): the latest Unpublished stage-less tournament of this
+  // workspace is an abandoned wizard draft — offer to continue it.
+  const resumeQuery = useQuery({
+    queryKey: ["admin", "tournaments", "wizard-resume", currentWorkspaceId],
+    queryFn: () => tournamentService.getAll(null, currentWorkspaceId),
+    enabled: Boolean(currentWorkspaceId),
+    staleTime: Infinity
+  });
+  const resumable = findResumableDraft(resumeQuery.data?.results ?? [], currentWorkspaceId);
+  const showResumePrompt = Boolean(resumable) && !resumeDismissed && !draft;
+
+  const adoptDraft = (tournament: Tournament) => {
+    draftRef.current = tournament;
+    draftPromiseRef.current = Promise.resolve(tournament);
+    setDraft(tournament);
+  };
+
+  const resumeDraft = (candidate: Tournament) => {
+    const prefill = wizardStateFromDraft(candidate, timezone);
+    setSource("manual");
+    setChallongeSlug(candidate.challonge_slug ?? "");
+    setForm(prefill.form);
+    setSchedule(prefill.schedule);
+    adoptDraft(candidate);
+    setResumeDismissed(true);
+  };
+
   const basics: WizardBasicsState = {
     source,
     name: form.name,
@@ -139,28 +203,81 @@ export default function NewTournamentPage() {
   };
   const createNowReady = canCreateNow(basics);
 
-  const createTournament = (publish: boolean) => {
-    // TODO(T11): lazy Unpublished draft (POST with is_hidden), Create now with
-    // defaults, publish on Review & Create, then redirect to the hub overview.
-    console.info("[tournament-wizard] create (stub, T11)", {
-      publish,
-      source,
-      challongeSlug,
-      form,
-      schedule,
-      registration: canTeamImport ? registration : null
-    });
-    notify.info("Not wired yet", {
-      description: "Tournament creation lands with the draft flow (next iteration)."
-    });
+  /** ensureSession pattern (DraftSetupWizard): first caller POSTs the hidden
+   * draft, everyone after — including retries of Create now / publish —
+   * reuses the same tournament and only PATCHes it. */
+  const ensureDraft = (): Promise<Tournament> => {
+    if (draftRef.current) return Promise.resolve(draftRef.current);
+    if (!draftPromiseRef.current) {
+      const workspaceId = currentWorkspaceId;
+      draftPromiseRef.current = (async () => {
+        if (!workspaceId) throw new Error("Select a workspace first");
+        const created =
+          source === "challonge"
+            ? // with_groups cannot take is_hidden — hide right after import.
+              await adminService
+                .createTournamentWithGroups({
+                  workspace_id: workspaceId,
+                  challonge_slug: normalizeChallongeSlug(challongeSlug),
+                  is_league: form.is_league,
+                  start_date: form.start_date,
+                  end_date: form.end_date,
+                  division_grid_version_id: form.division_grid_version_id ?? null
+                })
+                .then((imported) => adminService.updateTournament(imported.id, { is_hidden: true }))
+            : await adminService.createTournament(buildDraftCreateInput(workspaceId, form));
+        adoptDraft(created);
+        void queryClient.invalidateQueries({ queryKey: ["tournaments"] });
+        return created;
+      })().catch((error) => {
+        draftPromiseRef.current = null;
+        throw error;
+      });
+    }
+    return draftPromiseRef.current;
   };
+
+  const finishMutation = useMutation({
+    mutationFn: async (publish: boolean) => {
+      const active = await ensureDraft();
+      await adminService.updateTournament(
+        active.id,
+        buildDraftUpdateInput(form, schedule, { publish })
+      );
+      const scheduleEntries = getPhaseSchedulePayload(schedule.phase_schedule, timezone);
+      if (scheduleEntries.length > 0) {
+        await adminService.setTournamentSchedule(active.id, scheduleEntries);
+      }
+      return { id: active.id, publish };
+    },
+    onSuccess: ({ id, publish }) => {
+      void queryClient.invalidateQueries({ queryKey: ["tournaments"] });
+      notify.success(publish ? "Tournament created" : "Draft created", {
+        description: publish
+          ? undefined
+          : "It stays Unpublished until you publish it from Review or Settings."
+      });
+      router.push(`/admin/tournaments/${id}/overview`);
+    },
+    onError: (error) => notify.apiError(error, { title: "Could not create the tournament" })
+  });
+
+  const createTournament = (publish: boolean) => finishMutation.mutate(publish);
 
   const next = () => {
     if (validateWizardStep(activeStep, basics).length > 0) {
       notify.warning("Fill in the required fields to continue");
       return;
     }
-    setStep(nextWizardStep(steps, activeStep));
+    const target = nextWizardStep(steps, activeStep);
+    // Step 4 links the form builder and review publishes via PATCH — both
+    // need the draft; create it in the background on entry.
+    if (stepEntryRequiresDraft(target)) {
+      ensureDraft().catch((error) =>
+        notify.apiError(error, { title: "Could not create the draft" })
+      );
+    }
+    setStep(target);
   };
 
   return (
@@ -169,6 +286,26 @@ export default function NewTournamentPage() {
         title="New Tournament"
         description="Set up a tournament step by step. Only the basics are required."
       />
+
+      <AlertDialog open={showResumePrompt}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Continue setup?</AlertDialogTitle>
+            <AlertDialogDescription>
+              “{resumable?.name}” is an Unpublished draft you started earlier. Continue setting it
+              up, or start a new tournament from scratch.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setResumeDismissed(true)}>
+              Start new
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={() => resumable && resumeDraft(resumable)}>
+              Continue setup
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <div className="overflow-x-auto pb-1">
         <ol className="flex min-w-[640px] items-center gap-2" aria-label="Creation steps">
@@ -249,7 +386,7 @@ export default function NewTournamentPage() {
             />
           )}
           {activeStep === "registration" && (
-            <RegistrationStep value={registration} onChange={setRegistration} />
+            <RegistrationStep value={registration} onChange={setRegistration} draftId={draft?.id ?? null} />
           )}
           {activeStep === "review" && (
             <ReviewStep
@@ -279,15 +416,19 @@ export default function NewTournamentPage() {
               <Button
                 type="button"
                 variant="outline"
-                disabled={!createNowReady}
+                disabled={!createNowReady || finishMutation.isPending}
                 onClick={() => createTournament(false)}
               >
                 Create now
               </Button>
             )}
             {activeStep === "review" ? (
-              <Button type="button" onClick={() => createTournament(true)}>
-                Create tournament
+              <Button
+                type="button"
+                disabled={finishMutation.isPending}
+                onClick={() => createTournament(true)}
+              >
+                {finishMutation.isPending ? "Creating…" : "Create tournament"}
               </Button>
             ) : (
               <Button type="button" onClick={next}>

@@ -2,8 +2,13 @@
 // Pattern mirrors [id]/components/draft/setup-model.ts: a const step list,
 // back-only navigation and per-step validation kept free of React.
 
-import type { SchedulablePhase } from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.helpers";
+import {
+  getTournamentForm,
+  type SchedulablePhase
+} from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.helpers";
 import type { TournamentFormFieldsValue } from "@/components/admin/tournaments/TournamentFormFields";
+import type { TournamentCreateInput, TournamentUpdateInput } from "@/types/admin.types";
+import type { Tournament } from "@/types/tournament.types";
 
 export const WIZARD_STEPS = ["basics", "schedule", "rules", "registration", "review"] as const;
 
@@ -83,4 +88,109 @@ export function previousWizardStep(steps: WizardStep[], current: WizardStep): Wi
 
 export function nextWizardStep(steps: WizardStep[], current: WizardStep): WizardStep {
   return steps[Math.min(steps.length - 1, steps.indexOf(current) + 1)];
+}
+
+// ── Lazy Unpublished draft (D4) ──
+
+/**
+ * Steps whose entry needs a persisted tournament id: step 4 links the full
+ * form builder (`…/{id}/registration/form`) and review publishes via PATCH.
+ * "Create now" and "Review & Create" ensure the draft by construction.
+ */
+export function stepEntryRequiresDraft(step: WizardStep): boolean {
+  return step === "registration" || step === "review";
+}
+
+/** POST payload for the lazy draft: current form state, always hidden. */
+export function buildDraftCreateInput(
+  workspaceId: number,
+  form: WizardFormData
+): TournamentCreateInput {
+  return {
+    workspace_id: workspaceId,
+    name: form.name.trim(),
+    description: form.description.trim() || undefined,
+    is_league: form.is_league,
+    start_date: form.start_date,
+    end_date: form.end_date,
+    win_points: form.win_points,
+    draw_points: form.draw_points,
+    loss_points: form.loss_points,
+    division_grid_version_id: form.division_grid_version_id ?? null,
+    is_hidden: true
+  };
+}
+
+/**
+ * PATCH payload syncing the draft with the wizard state. `is_hidden` is only
+ * touched when publishing (Review & Create); "Create now" leaves the draft
+ * Unpublished — publication stays a deliberate act (Settings/Review).
+ * The name is omitted when blank: Challonge-imported drafts own their name.
+ */
+export function buildDraftUpdateInput(
+  form: WizardFormData,
+  schedule: WizardScheduleState,
+  { publish }: { publish: boolean }
+): TournamentUpdateInput {
+  const name = form.name.trim();
+  return {
+    ...(name ? { name } : {}),
+    description: form.description.trim() || null,
+    is_league: form.is_league,
+    start_date: form.start_date,
+    end_date: form.end_date,
+    win_points: form.win_points,
+    draw_points: form.draw_points,
+    loss_points: form.loss_points,
+    division_grid_version_id: form.division_grid_version_id ?? null,
+    team_formation: form.team_formation,
+    auto_transitions_enabled: schedule.auto_transitions_enabled,
+    allow_late_registration: schedule.allow_late_registration,
+    ...(publish ? { is_hidden: false } : {})
+  };
+}
+
+/**
+ * D4 resume: the latest Unpublished tournament of the current workspace that
+ * has no stages yet (stages appear via Challonge import or the hub — such a
+ * tournament is past wizard scope).
+ */
+export function findResumableDraft<
+  T extends Pick<Tournament, "id" | "workspace_id" | "is_hidden" | "stages">
+>(tournaments: readonly T[], workspaceId: number | null | undefined): T | null {
+  if (!workspaceId) return null;
+  let latest: T | null = null;
+  for (const entry of tournaments) {
+    if (!entry.is_hidden || entry.workspace_id !== workspaceId) continue;
+    if ((entry.stages ?? []).length > 0) continue;
+    if (!latest || entry.id > latest.id) latest = entry;
+  }
+  return latest;
+}
+
+/** Prefill the wizard from a resumed draft (dates/schedule in workspace time). */
+export function wizardStateFromDraft(
+  tournament: Tournament,
+  timezone: string
+): { form: WizardFormData; schedule: WizardScheduleState } {
+  const state = getTournamentForm(tournament, timezone);
+  return {
+    form: {
+      name: state.name,
+      description: state.description,
+      is_league: state.is_league,
+      start_date: state.start_date,
+      end_date: state.end_date,
+      division_grid_version_id: state.division_grid_version_id,
+      team_formation: state.team_formation,
+      win_points: state.win_points,
+      draw_points: state.draw_points,
+      loss_points: state.loss_points
+    },
+    schedule: {
+      phase_schedule: state.phase_schedule,
+      auto_transitions_enabled: state.auto_transitions_enabled,
+      allow_late_registration: state.allow_late_registration
+    }
+  };
 }
