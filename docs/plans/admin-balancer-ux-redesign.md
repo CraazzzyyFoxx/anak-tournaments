@@ -4,6 +4,8 @@
 > История: v2 — APPROVED полным multi-agent review; v3 — пересмотр интеграции балансера по запросу стейкхолдера (без сайдбара); v3.1 — ревизии по дельта-ревью.
 > Основа: инвентаризация `docs/plans/admin-balancer-ux-inventory.md`.
 > Смежные доки: `docs/redesign-plan.md` (публичный сайт), `docs/design-book.md` (токены Editorial Tactical).
+> **Фаза 1 — РЕАЛИЗОВАНА** (2026-07-29, ветка `feat/admin-balancer-ux-phase1`, 24 коммита). План: `docs/plans/2026-07-29-admin-balancer-ux-phase1.md`. Верификация: 203+ vitest, полный tsc, eslint (новые файлы чистые), production build, backend 19/19 целевых + full-suite паритет с develop, финальное spec+quality ревью (все находки исправлены).
+> Зафиксированные отклонения реализации: (1) «Create now» оставляет турнир Unpublished — публикация осознанная через Review/Settings (безопаснее «эквивалента диалога», принято); (2) шаг 4 wizard'а — тумблеры информационные, применяются в form builder (PUT формы требует built_in_fields — авто-запись рисковала дефолтами; Review-шаг проговаривает это явно); (3) resume-детект без фильтра created_by (упрощение плана). **Перед деплоем**: миграционная проверка organizer-бандлов (D26) — роли, модерирующие регистрации, должны содержать tournament.read + team.read.
 
 ## Understanding Summary
 
