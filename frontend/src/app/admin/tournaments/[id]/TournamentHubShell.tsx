@@ -23,11 +23,12 @@ import {
 import { allowedTab, isTabKey, type TabKey } from "./tab-guards";
 
 /**
- * Hub tab bar (D2, D20). `registration` joins in T8; `draft`/`veto`/`logs`
- * are transitional and retire in Phase 2 with permanent redirects.
+ * Hub tab bar (D2, D20). `draft`/`veto`/`logs` are transitional and retire in
+ * Phase 2 with permanent redirects.
  */
 const TAB_BAR: ReadonlyArray<{ key: TabKey; label: string }> = [
   { key: "overview", label: "Overview" },
+  { key: "registration", label: "Registration" },
   { key: "teams", label: "Teams" },
   { key: "stages", label: "Stages" },
   { key: "matches", label: "Play & Results" },
