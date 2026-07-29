@@ -13,6 +13,7 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  Scale,
   Sparkles,
   Trash2,
   UserPlus
@@ -1187,6 +1188,15 @@ export function TournamentTeamsTab({
                   Import from JSON
                 </Button>
               </>
+            ) : null}
+            {canImportTeams ? (
+              <Button asChild variant="outline">
+                {/* D30/A-O2: the sole UI entry to the balancer tool after the shell removal (v3.1). */}
+                <Link href={`/balancer?tournament=${tournamentId}`}>
+                  <Scale className="mr-2 h-4 w-4" />
+                  Open Balancer
+                </Link>
+              </Button>
             ) : null}
             {canManageTeams ? (
               <Button asChild>
