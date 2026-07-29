@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { useBalancerTournamentId } from "@/app/balancer/components/useBalancerTournamentId";
@@ -46,14 +46,17 @@ export function useToolContext(): ToolContext {
   // Alignment is required once per tournament, then latched: after entry the
   // sync hook deliberately does not fight a manual workspace switch, so a
   // reactive check would demote a once-ready context back to "loading" forever.
-  const alignedForRef = useRef<number | null>(null);
+  // Render-phase setState with a guard is React's documented pattern for
+  // derived-state latching (refs must not be touched during render).
+  const [alignedFor, setAlignedFor] = useState<number | null>(null);
   if (
     summary != null &&
-    (hostLockedWorkspaceId != null || currentWorkspaceId === summary.workspace_id)
+    (hostLockedWorkspaceId != null || currentWorkspaceId === summary.workspace_id) &&
+    alignedFor !== tournamentId
   ) {
-    alignedForRef.current = tournamentId;
+    setAlignedFor(tournamentId);
   }
-  const aligned = summary == null || alignedForRef.current === tournamentId;
+  const aligned = summary == null || alignedFor === tournamentId;
 
   const status = resolveToolState(tournamentId, query);
   return { status: status === "ready" && !aligned ? "loading" : status, summary };
