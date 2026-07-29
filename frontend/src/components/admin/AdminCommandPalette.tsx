@@ -11,7 +11,10 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import type { AdminNavGroup } from "@/components/admin/admin-navigation";
+import {
+  adminNavItemSearchValue,
+  type AdminNavGroup,
+} from "@/components/admin/admin-navigation";
 
 interface AdminCommandPaletteProps {
   groups: AdminNavGroup[];
@@ -40,7 +43,7 @@ export function AdminCommandPalette({ groups, open, onOpenChange }: AdminCommand
             {group.items.map((item) => (
               <CommandItem
                 key={item.href}
-                value={`${item.title} ${item.description}`}
+                value={adminNavItemSearchValue(item)}
                 onSelect={() => handleSelect(item.href)}
               >
                 <item.icon className="size-4 text-muted-foreground" />

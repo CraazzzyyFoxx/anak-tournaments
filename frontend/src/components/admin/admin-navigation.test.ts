@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  adminNavItemSearchValue,
   adminNavigationGroups,
   getMatchingAdminRoute,
   getVisibleAdminNavigationGroups,
@@ -81,5 +82,43 @@ describe("admin navigation lifecycle grouping (D12, §5)", () => {
     const hrefs = groups.flatMap((group) => group.items.map((item) => item.href));
 
     expect(hrefs).toContain("/admin/balancer");
+  });
+});
+
+describe("admin administration entry and palette aliases (D10, D11)", () => {
+  it("exposes staff access as the single administration access entry", () => {
+    const admin = adminNavigationGroups.find((g) => g.title === "Administration");
+    const hrefs = admin?.items.map((item) => item.href);
+
+    expect(hrefs).toEqual(["/admin/access", "/admin/users", "/admin/rank", "/admin/workspaces"]);
+  });
+
+  it("keeps per-tab access route gating after the single-entry collapse", () => {
+    expect(getMatchingAdminRoute("/admin/access/users")?.globalOnly).toBe(true);
+    expect(getMatchingAdminRoute("/admin/access/api-keys")?.workspaceAdminVisible).toBe(true);
+    expect(getMatchingAdminRoute("/admin/access")?.workspaceAdminVisible).toBe(true);
+  });
+
+  it("aliases 'users' to both the identity and staff access entries", () => {
+    const items = adminNavigationGroups.flatMap((g) => g.items);
+    const usersItems = items.filter((item) => item.aliases?.includes("users"));
+
+    expect(usersItems.map((item) => item.href).sort()).toEqual(["/admin/access", "/admin/users"]);
+  });
+
+  it("aliases 'settings' to rank collection only", () => {
+    const items = adminNavigationGroups.flatMap((g) => g.items);
+    const settingsItems = items.filter((item) => item.aliases?.includes("settings"));
+
+    expect(settingsItems.map((item) => item.href)).toEqual(["/admin/rank"]);
+  });
+
+  it("includes aliases in the command palette search value", () => {
+    const items = adminNavigationGroups.flatMap((g) => g.items);
+    const rank = items.find((item) => item.href === "/admin/rank");
+
+    expect(rank).toBeDefined();
+    expect(adminNavItemSearchValue(rank!)).toContain("settings");
+    expect(adminNavItemSearchValue(rank!)).toContain(rank!.title);
   });
 });

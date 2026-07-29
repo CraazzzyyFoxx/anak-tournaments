@@ -4,7 +4,6 @@ import {
   BarChart3,
   Building2,
   Gamepad2,
-  KeyRound,
   Layers,
   LayoutDashboard,
   Map,
@@ -26,6 +25,8 @@ export type AdminNavItem = {
   href: string;
   icon: LucideIcon;
   description: string;
+  /** Extra search terms for the command palette (D11). */
+  aliases?: string[];
   permissions?: AppPermission[];
   superuserOnly?: boolean;
   workspaceAdminVisible?: boolean;
@@ -194,51 +195,13 @@ export const adminNavigationGroups: AdminNavGroup[] = [
     title: "Administration",
     items: [
       {
-        title: "Users",
-        href: "/admin/access/users",
-        icon: Users,
-        description: "Admin account access and assignments.",
-        permissions: accessUsersPermissions,
-        globalOnly: true,
-      },
-      {
-        title: "Roles",
-        href: "/admin/access/roles",
+        title: "Staff Access",
+        href: "/admin/access",
         icon: Shield,
-        description: "Role catalog and permission bundles.",
-        permissions: accessRolesPermissions,
+        description: "Staff accounts, roles, permissions, API keys, and sessions.",
+        permissions: accessAdminPermissions,
         workspaceAdminVisible: true,
-      },
-      {
-        title: "Permissions",
-        href: "/admin/access/permissions",
-        icon: Shield,
-        description: "Permission visibility and governance.",
-        permissions: accessPermissionsPermissions,
-        globalOnly: true,
-      },
-      {
-        title: "OAuth Connections",
-        href: "/admin/access/oauth",
-        icon: KeyRound,
-        description: "View OAuth provider connections linked to user accounts.",
-        permissions: accessUsersPermissions,
-        globalOnly: true,
-      },
-      {
-        title: "API Keys",
-        href: "/admin/access/api-keys",
-        icon: KeyRound,
-        description: "Manage workspace-scoped public API credentials.",
-        permissions: accessApiKeysPermissions,
-        workspaceAdminVisible: true,
-      },
-      {
-        title: "Sessions",
-        href: "/admin/access/sessions",
-        icon: Shield,
-        description: "Inspect logical auth sessions across all users.",
-        superuserOnly: true,
+        aliases: ["users", "access"],
       },
       {
         title: "Player Identities",
@@ -246,6 +209,7 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         icon: UserCircle,
         description: "Resolve Discord, BattleTag, and Twitch identities.",
         permissions: ["user.read"],
+        aliases: ["users"],
       },
       {
         title: "Rank Collection",
@@ -253,6 +217,7 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         icon: Activity,
         description: "OverFast rank collection status and manual re-fetch per player.",
         permissions: ["user.read"],
+        aliases: ["settings"],
       },
       {
         title: "Workspaces",
@@ -260,13 +225,6 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         icon: Building2,
         description: "Manage workspaces and their settings.",
         workspaceAdminVisible: true,
-      },
-      {
-        title: "Settings",
-        href: "/admin/settings",
-        icon: Settings2,
-        description: "System-level settings for the admin workspace.",
-        superuserOnly: true,
       },
     ],
   },
@@ -288,7 +246,6 @@ export const adminRoutePermissions: Array<{
   { prefix: "/admin/access", permissions: accessAdminPermissions, workspaceAdminVisible: true },
   { prefix: "/admin/workspaces/members", permissions: [], workspaceAdminVisible: true },
   { prefix: "/admin/workspaces", permissions: [], workspaceAdminVisible: true },
-  { prefix: "/admin/settings", permissions: [], superuserOnly: true },
   { prefix: "/admin/balancer", permissions: ["team.read"] },
   { prefix: "/admin/tournaments", permissions: ["tournament.read"] },
   { prefix: "/admin/teams", permissions: ["team.read"] },
@@ -370,4 +327,11 @@ export function getActiveAdminNavigation(pathname: string, groups: AdminNavGroup
   }
 
   return null;
+}
+
+/** Search haystack for the admin command palette: title + description + aliases (D11). */
+export function adminNavItemSearchValue(
+  item: Pick<AdminNavItem, "title" | "description" | "aliases">,
+): string {
+  return [item.title, item.description, ...(item.aliases ?? [])].join(" ");
 }
