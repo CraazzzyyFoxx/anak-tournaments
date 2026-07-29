@@ -28,6 +28,7 @@ import {
   BalancerRegistrationRankHistoryEntry,
   BalancerTournamentConfig,
   BalancerTournamentConfigUpsertInput,
+  BalancerTournamentSummary,
   RegistrationRankAutofillRequest,
   RegistrationRankAutofillResponse,
   SavedBalance,
@@ -199,6 +200,16 @@ export default class balancerAdminService {
   static async exportPlayers(tournamentId: number): Promise<BalancerPlayerExportResponse> {
     const response = await apiFetch(`/api/v1/admin/balancer/tournaments/${tournamentId}/players/export`
     );
+    return response.json();
+  }
+
+  /**
+   * Tool-context resolver (D29): `team.read`-gated, sees hidden tournaments,
+   * resolves the workspace server-side from the tournament — safe to call
+   * before the workspace store is aligned.
+   */
+  static async getTournamentSummary(tournamentId: number): Promise<BalancerTournamentSummary> {
+    const response = await apiFetch(`/api/balancer/tournaments/${tournamentId}/summary`);
     return response.json();
   }
 

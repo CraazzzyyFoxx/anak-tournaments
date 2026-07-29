@@ -147,6 +147,14 @@ export interface BalancerTournamentConfigUpsertInput {
   config_json?: Record<string, unknown> | null;
 }
 
+/** Response of `GET /api/balancer/tournaments/{id}/summary` (D29 tool-context resolver). */
+export interface BalancerTournamentSummary {
+  id: number;
+  name: string;
+  status: string;
+  workspace_id: number;
+}
+
 export interface TournamentSheetUpsertInput {
   source_url: string;
   title?: string | null;

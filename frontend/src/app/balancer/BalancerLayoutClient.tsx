@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { BalancerShell } from "@/app/balancer/components/BalancerShell";
+import { useToolContext } from "@/app/balancer/useToolContext";
 import { BalancerSidebar } from "@/components/balancer/BalancerSidebar";
 import { adminEntryPermissions } from "@/components/admin/admin-navigation";
 import {
@@ -19,7 +20,6 @@ import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { usePermissions } from "@/hooks/usePermissions";
 import { SIDEBAR_COOKIE_NAMES } from "@/lib/sidebar-cookies";
-import { useWorkspaceStore } from "@/stores/workspace.store";
 
 function LoadingState() {
   return (
@@ -48,6 +48,25 @@ function UnauthorizedState() {
           className="mt-6 inline-block rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
         >
           Go Home
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+function NoTournamentState() {
+  return (
+    <div className="flex h-screen w-full items-center justify-center">
+      <div className="text-center">
+        <h1 className="text-4xl font-bold">No tournament selected</h1>
+        <p className="mt-4 text-muted-foreground">
+          The balancer is a per-tournament tool. Open it from a tournament to get started.
+        </p>
+        <Link
+          href="/admin/tournaments"
+          className="mt-6 inline-block rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+        >
+          Open a tournament
         </Link>
       </div>
     </div>
@@ -104,21 +123,33 @@ type BalancerLayoutClientProps = {
 };
 
 export function BalancerLayoutClient({ children, defaultSidebarOpen }: BalancerLayoutClientProps) {
-  const currentWorkspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
   const { isLoaded, isOrganizer, canAccessAdminRoute } = usePermissions();
+  const { status: contextStatus, summary } = useToolContext();
 
-  if (!isLoaded) {
+  // Render gate (D29, Risk 1): children fire apiFetch calls that inject
+  // workspace_id from the store, so nothing below may render until the
+  // tournament context is resolved AND the store is aligned to it. A
+  // layout-wide gate is simpler and safer than per-hook `enabled` flags.
+  if (!isLoaded || contextStatus === "loading") {
     return <LoadingState />;
   }
 
-  const hasAdminAccess = canAccessAdminRoute({
-    permissions: adminEntryPermissions,
-    workspaceId: currentWorkspaceId,
-    workspaceAdminVisible: true
-  });
+  if (contextStatus === "missing" || contextStatus === "not_found") {
+    return <NoTournamentState />;
+  }
+
+  // The entry predicate is unchanged, but the workspace comes from the
+  // resolved summary, not the store (the store may still be switching).
+  const hasAdminAccess =
+    summary != null &&
+    canAccessAdminRoute({
+      permissions: adminEntryPermissions,
+      workspaceId: summary.workspace_id,
+      workspaceAdminVisible: true
+    });
   const hasAccess = hasAdminAccess || isOrganizer;
 
-  if (!hasAccess) {
+  if (contextStatus === "forbidden" || !hasAccess) {
     return <UnauthorizedState />;
   }
 
