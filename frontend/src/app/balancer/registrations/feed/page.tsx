@@ -1,13 +1,14 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { useBalancerTournamentId } from "@/app/balancer/components/useBalancerTournamentId";
-import SheetsFeedPage from "@/components/balancer/feed/SheetsFeedPage";
+import { balancerRedirectTarget, searchParamsFromRecord } from "@/app/balancer/redirect-map";
 
-// D25 dual availability: this legacy route keeps rendering the shared Google
-// Sheets feed builder (tournament resolved from the ?tournament query) until
-// T14 replaces it with a permanent redirect to the hub registration sub-route.
-export default function BalancerRegistrationsFeedPage() {
-  const tournamentId = useBalancerTournamentId();
-
-  return <SheetsFeedPage tournamentId={tournamentId} basePath="/balancer/registrations" />;
+// D28: legacy route permanently redirects to the hub sheets-feed sub-route.
+export default async function BalancerRegistrationsFeedRedirectPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  redirect(
+    balancerRedirectTarget("/balancer/registrations/feed", searchParamsFromRecord(await searchParams))
+  );
 }

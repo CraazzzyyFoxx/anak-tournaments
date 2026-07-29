@@ -1,5 +1,14 @@
 import { redirect } from "next/navigation";
 
-export default function BalancerApplicationsRedirectPage() {
-  redirect("/balancer/registrations?source=google_sheets");
+import { balancerRedirectTarget, searchParamsFromRecord } from "@/app/balancer/redirect-map";
+
+// D28: legacy route permanently redirects to the sheets-filtered registration tab.
+export default async function BalancerApplicationsRedirectPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  redirect(
+    balancerRedirectTarget("/balancer/applications", searchParamsFromRecord(await searchParams))
+  );
 }

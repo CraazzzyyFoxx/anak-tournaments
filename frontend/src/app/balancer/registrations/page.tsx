@@ -1,13 +1,12 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { useBalancerTournamentId } from "@/app/balancer/components/useBalancerTournamentId";
-import RegistrationsTable from "@/components/balancer/registrations/RegistrationsTable";
+import { balancerRedirectTarget, searchParamsFromRecord } from "@/app/balancer/redirect-map";
 
-// D25 dual availability: this legacy route keeps rendering the shared table
-// (tournament resolved from the ?tournament query) until T14 replaces it with
-// a permanent redirect to the hub registration tab.
-export default function BalancerRegistrationsPage() {
-  const tournamentId = useBalancerTournamentId();
-
-  return <RegistrationsTable tournamentId={tournamentId} basePath="/balancer/registrations" />;
+// D28: legacy route permanently redirects to the hub registration tab.
+export default async function BalancerRegistrationsRedirectPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  redirect(balancerRedirectTarget("/balancer/registrations", searchParamsFromRecord(await searchParams)));
 }

@@ -22,6 +22,7 @@ export default defineConfig({
       "src/app/balancer/components/balance-import.test.ts",
       "src/app/balancer/components/balancer-page-selectors.test.ts",
       "src/app/balancer/tool-context.test.ts",
+      "src/app/balancer/redirect-map.test.ts",
       "src/app/**/users/compare/**/*.test.ts",
       "src/components/tournaments/**/*.test.ts",
       "src/components/admin/**/*.test.tsx",
