@@ -23,6 +23,7 @@ import {
   TournamentUpdateInput,
   TournamentPreviewAccessEntry,
   TournamentStatusTransitionInput,
+  TournamentReadiness,
   TournamentPhaseScheduleEntryInput,
   StageCreateInput,
   StageUpdateInput,
@@ -143,6 +144,12 @@ class AdminService {
 
   async getTournament(id: number): Promise<Tournament> {
     const response = await apiFetch(`/api/v1/admin/tournaments/${id}`);
+    return response.json();
+  }
+
+  /** Readiness aggregate for the hub living checklist (D13, §7.1). */
+  async getTournamentReadiness(id: number): Promise<TournamentReadiness> {
+    const response = await apiFetch(`/api/v1/admin/tournaments/${id}/readiness`);
     return response.json();
   }
 

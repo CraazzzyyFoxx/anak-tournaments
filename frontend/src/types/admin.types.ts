@@ -189,6 +189,41 @@ export interface TournamentStatusTransitionInput {
   force?: boolean;
 }
 
+/**
+ * Readiness aggregate for the hub living checklist (D13, §7.1).
+ * Mirrors backend/app-service/src/services/dashboard/readiness.py. Field
+ * groups are masked by the caller's permissions: `tournament.read` gates the
+ * setup/bracket/logs group, `team.read` gates the registration/pool/balance/
+ * draft group — a masked group arrives as `null` and the checklist renders
+ * "no-access" instead of zeros (D16).
+ */
+export interface TournamentReadiness {
+  tournament_id: number;
+  status: string;
+  team_formation: string;
+  // visible with tournament.read:
+  schedule_configured: boolean | null;
+  grid_selected: boolean | null;
+  stages_total: number | null;
+  stage_slots_filled: boolean | null;
+  bracket_generated: boolean | null;
+  encounters_total: number | null;
+  encounters_with_logs: number | null;
+  logs_used: boolean | null;
+  // visible with team.read:
+  registration_form_configured: boolean | null;
+  registration_open: boolean | null;
+  registrations_pending: number | null;
+  registrations_approved: number | null;
+  registrations_checked_in: number | null;
+  registrations_ranked: number | null;
+  pool_ready: number | null;
+  pool_need_fix: number | null;
+  balance_saved: boolean | null;
+  balance_exported_at: string | null;
+  draft_session_status: string | null;
+}
+
 // ─── Stage Admin ────────────────────────────────────────────────────────────
 
 export interface StageCreateInput {

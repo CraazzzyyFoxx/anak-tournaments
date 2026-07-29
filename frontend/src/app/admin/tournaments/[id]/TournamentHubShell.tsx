@@ -1,17 +1,19 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useRealtimeTopic } from "@/hooks/useRealtimeTopic";
 import { useTournamentRealtime } from "@/hooks/useTournamentRealtime";
 import encounterService from "@/services/encounter.service";
 import teamService from "@/services/team.service";
 import { TournamentWorkspaceHeader } from "./components/TournamentWorkspaceHeader";
+import { getTournamentWorkspaceQueryKeys } from "./components/tournamentWorkspace.queryKeys";
 import {
   flattenDivisionGridVersions,
   TOURNAMENT_WORKSPACE_REFRESH_INTERVAL_MS,
@@ -37,6 +39,11 @@ const TAB_BAR: ReadonlyArray<{ key: TabKey; label: string }> = [
   { key: "veto", label: "Map Veto" },
   { key: "settings", label: "Settings" }
 ];
+
+// Trailing debounce for readiness invalidations (§3): bulk registration edits
+// emit one balancer event per row — a burst must cost one readiness refetch,
+// not N (same pattern as useBalancerRealtime's data-event debounce).
+const READINESS_INVALIDATE_DEBOUNCE_MS = 400;
 
 /**
  * Client shell of the tournament hub (§1.1): owns the permission gate, the
@@ -91,11 +98,36 @@ export function TournamentHubShell({
   const tournamentWorkspaceId = tournamentQuery.data?.workspace_id ?? null;
   const divisionGridsQuery = useHubDivisionGridsQuery(tournamentId, tournamentWorkspaceId);
 
+  // Living-checklist freshness (§3, G-O6): balancer + bracket events schedule
+  // one debounced invalidation of the readiness aggregate. No polling (CG-O4).
+  const queryClient = useQueryClient();
+  const readinessTimerRef = useRef<number | undefined>(undefined);
+  const scheduleReadinessInvalidate = useCallback(() => {
+    window.clearTimeout(readinessTimerRef.current);
+    readinessTimerRef.current = window.setTimeout(() => {
+      void queryClient.invalidateQueries({
+        queryKey: getTournamentWorkspaceQueryKeys(tournamentId).readiness
+      });
+    }, READINESS_INVALIDATE_DEBOUNCE_MS);
+  }, [queryClient, tournamentId]);
+  useEffect(() => () => window.clearTimeout(readinessTimerRef.current), []);
+
   // The one and only realtime mount of the hub — tab pages must not mount it.
   useTournamentRealtime({
     tournamentId: isValidTournamentId ? tournamentId : null,
-    workspaceId: tournamentWorkspaceId
+    workspaceId: tournamentWorkspaceId,
+    onUpdate: scheduleReadinessInvalidate
   });
+
+  // Existing tournament-scoped balancer topic (assumption A4): registration /
+  // pool / balance writes land here, not on the bracket topic.
+  useRealtimeTopic(
+    isValidTournamentId ? `tournament:${tournamentId}:balancer` : null,
+    (event) => {
+      if (event.event_type === "balancer.presence") return;
+      scheduleReadinessInvalidate();
+    }
+  );
 
   const tournament = tournamentQuery.data;
   const canUpdateTournament = canAccessPermission("tournament.update", tournamentWorkspaceId);
