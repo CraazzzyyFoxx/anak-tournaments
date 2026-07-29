@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { ColumnDef } from "@tanstack/react-table";
-import { MoreHorizontal, Plus, Minus, Pencil, Trash2, Upload, ArrowRightLeft } from "lucide-react";
+import { MoreHorizontal, Plus, Minus, Pencil, Trash2, Upload, ArrowRightLeft, UserCog } from "lucide-react";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -285,6 +286,11 @@ export default function UsersAdminPage() {
   const [linkAuthUserId, setLinkAuthUserId] = useState<number | null>(null);
   const [linkAuthUserLabel, setLinkAuthUserLabel] = useState("");
   const canLinkAuth = hasPermission("auth_user.update");
+  // Cross-link to /admin/access/users (D9: the two Users pages stay separate
+  // and cross-navigate). The identity payload does not carry the auth link, so
+  // the link pre-fills the auth-user search with the player name (sans the
+  // BattleTag discriminator) as a best effort — same pattern as the OAuth page.
+  const canFindAuthAccount = hasPermission("auth_user.read");
 
   const resetCreateForm = () => {
     setCreateName("");
@@ -401,7 +407,7 @@ export default function UsersAdminPage() {
       size: 50,
       cell: ({ row }) => {
         const user = row.original;
-        if (!canOpenProfile && !canDelete && !canMerge) {
+        if (!canOpenProfile && !canDelete && !canMerge && !canFindAuthAccount) {
           return null;
         }
         return (
@@ -419,13 +425,25 @@ export default function UsersAdminPage() {
                   Edit Profile
                 </DropdownMenuItem>
               )}
+              {canFindAuthAccount && (
+                <DropdownMenuItem asChild>
+                  <Link
+                    href={`/admin/access/users?search=${encodeURIComponent(user.name.split("#")[0] || user.name)}`}
+                  >
+                    <UserCog className="mr-2 h-4 w-4" />
+                    Find in Access Users
+                  </Link>
+                </DropdownMenuItem>
+              )}
               {canMerge && (
                 <DropdownMenuItem onClick={() => setMergeUser(user)}>
                   <ArrowRightLeft className="mr-2 h-4 w-4" />
                   Merge
                 </DropdownMenuItem>
               )}
-              {(canOpenProfile || canMerge) && canDelete && <DropdownMenuSeparator />}
+              {(canOpenProfile || canFindAuthAccount || canMerge) && canDelete && (
+                <DropdownMenuSeparator />
+              )}
               {canDelete && (
                 <DropdownMenuItem
                   onClick={() => setDeletingUser(user)}

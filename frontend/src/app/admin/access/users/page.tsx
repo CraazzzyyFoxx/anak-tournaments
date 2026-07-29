@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { ColumnDef } from "@tanstack/react-table";
 import {
   BadgeCheck,
@@ -61,10 +62,13 @@ const PAGE_SIZE = 15;
 
 export default function AccessAdminUsersPage() {
   const queryClient = useQueryClient();
-  const { hasPermission, isSuperuser } = usePermissions();
+  const { hasPermission, isSuperuser, canAccessPermission } = usePermissions();
   const currentUserId = useAuthProfileStore((s) => s.user?.id);
   const canAssignRoles = hasPermission("role.assign") && hasPermission("role.read");
   const canManageLinkedPlayers = hasPermission("auth_user.update");
+  // Cross-link to /admin/users (D9: the two Users pages stay separate and
+  // cross-navigate); gated by the same permission that page requires.
+  const canReadPlayerIdentities = canAccessPermission("user.read");
 
   const [managingUserId, setManagingUserId] = useState<number | null>(null);
   const [selectedRoleId, setSelectedRoleId] = useState<string>("");
@@ -176,8 +180,22 @@ export default function AccessAdminUsersPage() {
         if (!linkedPlayer) {
           return <span className="text-sm text-muted-foreground">Not linked</span>;
         }
+        if (!canReadPlayerIdentities) {
+          return <Badge variant="default">{linkedPlayer.player_name}</Badge>;
+        }
 
-        return <Badge variant="default">{linkedPlayer.player_name}</Badge>;
+        return (
+          <Link
+            href={`/admin/users?search=${encodeURIComponent(linkedPlayer.player_name)}`}
+            className="inline-flex"
+            title="Open in Player Identities"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Badge variant="default" className="hover:underline">
+              {linkedPlayer.player_name}
+            </Badge>
+          </Link>
+        );
       }
     },
     {
@@ -429,6 +447,15 @@ export default function AccessAdminUsersPage() {
                             <p className="text-sm text-muted-foreground">
                               Player ID: {linkedPlayer.player_id}
                             </p>
+                            {canReadPlayerIdentities ? (
+                              <Link
+                                href={`/admin/users?search=${encodeURIComponent(linkedPlayer.player_name)}`}
+                                className="mt-1 inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                              >
+                                <Link2 className="h-3.5 w-3.5" />
+                                Open in Player Identities
+                              </Link>
+                            ) : null}
                           </div>
                           {canManageLinkedPlayers ? (
                             <Button

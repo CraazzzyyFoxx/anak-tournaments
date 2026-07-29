@@ -3,9 +3,11 @@
 import { type CSSProperties, type ReactNode, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { skipToken, useQuery } from "@tanstack/react-query";
 
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { adminEntryPermissions, getMatchingAdminRoute } from "@/components/admin/admin-navigation";
+import { getTournamentWorkspaceQueryKeys } from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.queryKeys";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -61,9 +63,43 @@ function formatBreadcrumbLabel(segment: string) {
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }
 
+/** Detail crumbs whose numeric id segment can be resolved to an entity name
+ * from the query cache. The tournament hub shell / team workspace page own
+ * these queries; the breadcrumb only READS the cache (skipToken never
+ * fetches) and falls back to the generic "Details" label. */
+function getBreadcrumbEntityRef(
+  segments: string[]
+): { queryKey: readonly unknown[]; segmentIndex: number } | null {
+  const [, section, id] = segments;
+  if (!id || !/^\d+$/.test(id)) {
+    return null;
+  }
+  if (section === "tournaments") {
+    return { queryKey: getTournamentWorkspaceQueryKeys(Number(id)).tournament, segmentIndex: 2 };
+  }
+  if (section === "teams") {
+    // Same key as the team workspace query (admin/teams/[id]/page.tsx).
+    return { queryKey: ["admin", "team", Number(id)] as const, segmentIndex: 2 };
+  }
+  return null;
+}
+
+function EntityBreadcrumbName({
+  queryKey,
+  fallback,
+}: {
+  queryKey: readonly unknown[];
+  fallback: string;
+}) {
+  const { data } = useQuery({ queryKey, queryFn: skipToken });
+  const name = (data as { name?: unknown } | undefined)?.name;
+  return <>{typeof name === "string" && name ? name : fallback}</>;
+}
+
 function AdminBreadcrumb() {
   const pathname = usePathname();
   const segments = pathname.split("/").filter(Boolean);
+  const entityRef = getBreadcrumbEntityRef(segments);
 
   return (
     <Breadcrumb>
@@ -74,7 +110,15 @@ function AdminBreadcrumb() {
         {segments.slice(1).map((segment, index) => {
           const href = `/admin/${segments.slice(1, index + 2).join("/")}`;
           const isLast = index === segments.length - 2;
-          const label = formatBreadcrumbLabel(segment);
+          const label =
+            entityRef && index + 1 === entityRef.segmentIndex ? (
+              <EntityBreadcrumbName
+                queryKey={entityRef.queryKey}
+                fallback={formatBreadcrumbLabel(segment)}
+              />
+            ) : (
+              formatBreadcrumbLabel(segment)
+            );
 
           return (
             <div key={`${segment}-${index}`} className="flex items-center gap-2">
