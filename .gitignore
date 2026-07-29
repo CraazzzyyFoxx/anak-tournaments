@@ -18,6 +18,8 @@ backend/.cache/
 /app/.idea
 /parser/.idea
 logs/
+# `logs/` above is for runtime logs — the hub's Logs tab route is source code.
+!frontend/src/app/admin/tournaments/\[id\]/logs/
 monitoring/secrets/*
 !monitoring/secrets/.gitkeep
 !monitoring/secrets/*.example
