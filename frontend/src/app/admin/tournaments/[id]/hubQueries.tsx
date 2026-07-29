@@ -1,0 +1,116 @@
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
+
+import { Skeleton } from "@/components/ui/skeleton";
+import adminService from "@/services/admin.service";
+import encounterService from "@/services/encounter.service";
+import teamService from "@/services/team.service";
+import tournamentService from "@/services/tournament.service";
+import workspaceService from "@/services/workspace.service";
+import type { Stage, Tournament } from "@/types/tournament.types";
+import type { DivisionGridEntity, DivisionGridVersion } from "@/types/workspace.types";
+import { getTournamentWorkspaceQueryKeys } from "./components/tournamentWorkspace.queryKeys";
+
+export const TOURNAMENT_WORKSPACE_REFRESH_INTERVAL_MS = 60_000;
+
+/** Shared loading fallback of every hub tab route. */
+export const tabFallback = (
+  <div className="space-y-4">
+    <Skeleton className="h-32 w-full rounded-xl" />
+    <Skeleton className="h-64 w-full rounded-xl" />
+  </div>
+);
+
+/*
+ * Shared query hooks of the tournament hub (T5). Keys and options MUST stay
+ * in lockstep between the shell (gate + header metrics) and the tab pages —
+ * realtime patch-in-cache and workspace invalidation address these exact keys
+ * (see components/tournamentWorkspace.queryKeys.ts). TanStack Query dedupes
+ * observers of the same key, so a tab page mounting a hook reuses the shell's
+ * cache entry instead of refetching. The pre-T5 `enabled` tab conditions
+ * (shouldLoadTeams = teams|matches, shouldLoadEncounters = matches|logs) are
+ * now expressed by WHICH route pages mount each hook.
+ */
+
+export function useHubTournamentQuery(tournamentId: number) {
+  return useQuery({
+    queryKey: getTournamentWorkspaceQueryKeys(tournamentId).tournament,
+    queryFn: () => adminService.getTournament(tournamentId),
+    enabled: Number.isFinite(tournamentId) && tournamentId > 0
+  });
+}
+
+export function useHubStagesQuery(tournamentId: number) {
+  return useQuery({
+    queryKey: getTournamentWorkspaceQueryKeys(tournamentId).stages,
+    queryFn: () => adminService.getStages(tournamentId),
+    enabled: Number.isFinite(tournamentId) && tournamentId > 0
+  });
+}
+
+export function useHubTeamsQuery(tournamentId: number) {
+  return useQuery({
+    queryKey: getTournamentWorkspaceQueryKeys(tournamentId).teams,
+    queryFn: () => teamService.getAll({ tournamentId }),
+    enabled: Number.isFinite(tournamentId) && tournamentId > 0
+  });
+}
+
+export function useHubEncountersQuery(tournamentId: number) {
+  return useQuery({
+    queryKey: getTournamentWorkspaceQueryKeys(tournamentId).encounters,
+    queryFn: () => encounterService.getAll(1, "", tournamentId, -1),
+    enabled: Number.isFinite(tournamentId) && tournamentId > 0,
+    refetchInterval: TOURNAMENT_WORKSPACE_REFRESH_INTERVAL_MS,
+    refetchIntervalInBackground: true
+  });
+}
+
+export function useHubStandingsQuery(tournamentId: number) {
+  return useQuery({
+    queryKey: getTournamentWorkspaceQueryKeys(tournamentId).standings,
+    queryFn: () =>
+      tournamentService.getStandings(tournamentId, {
+        includeMatchesHistory: false,
+        includeTeamGroup: false
+      }),
+    enabled: Number.isFinite(tournamentId) && tournamentId > 0,
+    refetchInterval: TOURNAMENT_WORKSPACE_REFRESH_INTERVAL_MS,
+    refetchIntervalInBackground: true
+  });
+}
+
+export function useHubDivisionGridsQuery(
+  tournamentId: number,
+  workspaceId: number | null | undefined
+) {
+  return useQuery({
+    queryKey: getTournamentWorkspaceQueryKeys(tournamentId).divisionGrids,
+    queryFn: async () => {
+      if (!workspaceId) return [];
+      return workspaceService.getDivisionGrids(workspaceId);
+    },
+    enabled: Boolean(workspaceId)
+  });
+}
+
+/** Newest-first flat list of grid versions — header and Settings tab must agree. */
+export function flattenDivisionGridVersions(
+  grids: DivisionGridEntity[] | undefined
+): DivisionGridVersion[] {
+  return (grids ?? [])
+    .flatMap((grid) => grid.versions)
+    .slice()
+    .sort((left, right) => right.version - left.version);
+}
+
+/** A tournament sources its bracket from Challonge — lockstep across overview/teams/matches. */
+export function hasChallongeSource(
+  tournament: Tournament | undefined,
+  stages: Stage[]
+): boolean {
+  return Boolean(
+    tournament?.challonge_slug || stages.some((stage) => Boolean(stage.challonge_slug))
+  );
+}

@@ -1,28 +1,48 @@
 "use client";
 
-import type { ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, type ReactNode } from "react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useTournamentRealtime } from "@/hooks/useTournamentRealtime";
-import adminService from "@/services/admin.service";
 import encounterService from "@/services/encounter.service";
 import teamService from "@/services/team.service";
-import tournamentService from "@/services/tournament.service";
-import workspaceService from "@/services/workspace.service";
-import type { DivisionGridVersion } from "@/types/workspace.types";
 import { TournamentWorkspaceHeader } from "./components/TournamentWorkspaceHeader";
+import {
+  flattenDivisionGridVersions,
+  TOURNAMENT_WORKSPACE_REFRESH_INTERVAL_MS,
+  useHubDivisionGridsQuery,
+  useHubStagesQuery,
+  useHubStandingsQuery,
+  useHubTournamentQuery
+} from "./hubQueries";
+import { allowedTab, isTabKey, type TabKey } from "./tab-guards";
 
-const TOURNAMENT_WORKSPACE_REFRESH_INTERVAL_MS = 60_000;
+/**
+ * Hub tab bar (D2, D20). `registration` joins in T8; `draft`/`veto`/`logs`
+ * are transitional and retire in Phase 2 with permanent redirects.
+ */
+const TAB_BAR: ReadonlyArray<{ key: TabKey; label: string }> = [
+  { key: "overview", label: "Overview" },
+  { key: "teams", label: "Teams" },
+  { key: "stages", label: "Stages" },
+  { key: "matches", label: "Play & Results" },
+  { key: "logs", label: "Logs" },
+  { key: "draft", label: "Draft" },
+  { key: "veto", label: "Map Veto" },
+  { key: "settings", label: "Settings" }
+];
 
 /**
  * Client shell of the tournament hub (§1.1): owns the permission gate, the
- * workspace header, the single `useTournamentRealtime` mount and the shared
- * queries. Query keys MUST stay identical to the tab pages — realtime
- * patch-in-cache and workspace invalidation depend on them
- * (see components/tournamentWorkspace.queryKeys.ts).
+ * workspace header, the tab bar with route guards, the single
+ * `useTournamentRealtime` mount and the shared queries. Query keys MUST stay
+ * identical to the tab pages — realtime patch-in-cache and workspace
+ * invalidation depend on them (see components/tournamentWorkspace.queryKeys.ts).
  */
 export function TournamentHubShell({
   tournamentId,
@@ -32,14 +52,19 @@ export function TournamentHubShell({
   children: ReactNode;
 }>) {
   const router = useRouter();
+  const pathname = usePathname();
   const isValidTournamentId = Number.isFinite(tournamentId) && tournamentId > 0;
   const { canAccessPermission, isLoaded: permissionsLoaded, isSuperuser } = usePermissions();
 
-  const tournamentQuery = useQuery({
-    queryKey: ["admin", "tournament", tournamentId],
-    queryFn: () => adminService.getTournament(tournamentId),
-    enabled: isValidTournamentId
-  });
+  const basePath = `/admin/tournaments/${tournamentId}`;
+  // Segment right after the id is the tab; deeper segments (future sub-routes
+  // like registration/form) still resolve to their parent tab.
+  const tabSegment = pathname.startsWith(basePath)
+    ? (pathname.slice(basePath.length).split("/").find(Boolean) ?? "overview")
+    : "overview";
+  const activeTab: TabKey = isTabKey(tabSegment) ? tabSegment : "overview";
+
+  const tournamentQuery = useHubTournamentQuery(tournamentId);
 
   const teamsCountQuery = useQuery({
     queryKey: ["admin", "tournament", tournamentId, "teams", "count"],
@@ -57,35 +82,14 @@ export function TournamentHubShell({
     refetchIntervalInBackground: true
   });
 
-  const stagesQuery = useQuery({
-    queryKey: ["admin", "stages", tournamentId],
-    queryFn: () => adminService.getStages(tournamentId),
-    enabled: isValidTournamentId
-  });
-
-  const standingsQuery = useQuery({
-    queryKey: ["admin", "tournament", tournamentId, "standings"],
-    queryFn: () =>
-      tournamentService.getStandings(tournamentId, {
-        includeMatchesHistory: false,
-        includeTeamGroup: false
-      }),
-    enabled: isValidTournamentId,
-    refetchInterval: TOURNAMENT_WORKSPACE_REFRESH_INTERVAL_MS,
-    refetchIntervalInBackground: true
-  });
-
-  const divisionGridsQuery = useQuery({
-    queryKey: ["admin", "tournament", tournamentId, "division-grids"],
-    queryFn: async () => {
-      const workspaceId = tournamentQuery.data?.workspace_id;
-      if (!workspaceId) return [];
-      return workspaceService.getDivisionGrids(workspaceId);
-    },
-    enabled: Boolean(tournamentQuery.data?.workspace_id)
-  });
+  const stagesQuery = useHubStagesQuery(tournamentId);
+  // Pre-T5 the standings query was gated to the overview|matches tabs, but the
+  // header shows the standings metric unconditionally — keep it always enabled.
+  const standingsQuery = useHubStandingsQuery(tournamentId);
 
   const tournamentWorkspaceId = tournamentQuery.data?.workspace_id ?? null;
+  const divisionGridsQuery = useHubDivisionGridsQuery(tournamentId, tournamentWorkspaceId);
+
   // The one and only realtime mount of the hub — tab pages must not mount it.
   useTournamentRealtime({
     tournamentId: isValidTournamentId ? tournamentId : null,
@@ -96,6 +100,7 @@ export function TournamentHubShell({
   const canUpdateTournament = canAccessPermission("tournament.update", tournamentWorkspaceId);
   const canDeleteTournament = canAccessPermission("tournament.delete", tournamentWorkspaceId);
   const canReadAnalytics = canAccessPermission("analytics.read", tournamentWorkspaceId);
+  const canTeamRead = canAccessPermission("team.read", tournamentWorkspaceId);
   const canCreateTeam = canAccessPermission("team.create", tournamentWorkspaceId);
   const canUpdateTeam = canAccessPermission("team.update", tournamentWorkspaceId);
   const canDeleteTeam = canAccessPermission("team.delete", tournamentWorkspaceId);
@@ -114,13 +119,29 @@ export function TournamentHubShell({
     tournamentWorkspaceId
   );
 
+  const teamFormation: "balancer" | "draft" =
+    tournament?.team_formation === "draft" ? "draft" : "balancer";
+  const tabAccess = {
+    canUpdateTournament,
+    canUpdateEncounter,
+    canTeamRead,
+    teamFormation
+  };
+  const activeTabAllowed = allowedTab(activeTab, tabAccess);
+
+  // Route guard (D2): a direct hit on a tab the caller may not open bounces
+  // back to overview. Only decide once permissions and the tournament are in.
+  useEffect(() => {
+    if (!permissionsLoaded || !tournament) return;
+    if (!activeTabAllowed) {
+      router.replace(`${basePath}/overview`);
+    }
+  }, [permissionsLoaded, tournament, activeTabAllowed, basePath, router]);
+
   const teamsCount = teamsCountQuery.data ?? null;
   const encountersCount = encountersCountQuery.data ?? null;
   const standingsCount = standingsQuery.data?.length ?? null;
-  const divisionGridVersions: DivisionGridVersion[] = (divisionGridsQuery.data ?? [])
-    .flatMap((grid) => grid.versions)
-    .slice()
-    .sort((left, right) => right.version - left.version);
+  const divisionGridVersions = flattenDivisionGridVersions(divisionGridsQuery.data);
 
   if (tournamentQuery.isLoading || stagesQuery.isLoading || !permissionsLoaded) {
     return (
@@ -199,11 +220,18 @@ export function TournamentHubShell({
         canToggleFinished={canUpdateTournament && isSuperuser}
         divisionGridVersions={divisionGridVersions}
         divisionGridLoading={divisionGridsQuery.isLoading}
-        // Transitional bridge until T5 turns tabs into routes: page.tsx
-        // consumes `?tab=settings` and switches its local tab state.
-        onEditClick={() => router.push("?tab=settings", { scroll: false })}
+        onEditClick={() => router.push(`${basePath}/settings`)}
       />
-      {children}
+      <Tabs value={activeTab} className="space-y-4">
+        <TabsList className="h-auto flex-wrap justify-start">
+          {TAB_BAR.filter((tab) => allowedTab(tab.key, tabAccess)).map((tab) => (
+            <TabsTrigger key={tab.key} value={tab.key} asChild>
+              <Link href={`${basePath}/${tab.key}`}>{tab.label}</Link>
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        {activeTabAllowed ? children : null}
+      </Tabs>
     </div>
   );
 }

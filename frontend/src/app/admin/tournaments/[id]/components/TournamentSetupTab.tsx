@@ -31,7 +31,6 @@ import adminService from "@/services/admin.service";
 import type { DiscordChannelInput, DiscordChannelRead } from "@/types/admin.types";
 import type { Stage, Tournament } from "@/types/tournament.types";
 import { ChallongeSyncPanel } from "./ChallongeSyncPanel";
-import { StageManager } from "./StageManager";
 import { getTournamentWorkspaceQueryKeys } from "./tournamentWorkspace.queryKeys";
 
 interface TournamentSetupTabProps {
@@ -195,9 +194,8 @@ export function TournamentSetupTab({
           />
         </div>
 
-        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)]">
-          <StageManager tournamentId={tournamentId} />
-
+        {/* StageManager lives on the stages/ route since T5. */}
+        <div className="grid items-start gap-4">
           <div className="flex min-w-0 flex-col gap-4">
             <ChallongeSyncPanel
               tournamentId={tournamentId}
