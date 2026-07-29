@@ -51,6 +51,25 @@ class AlgorithmConfig(BaseSettings):
             "same role)."
         ),
     )
+    low_rank_threshold: int = Field(
+        default=0,
+        ge=0,
+        le=10000,
+        description=(
+            "Rating threshold (canonical scale, see rating_scale_ceiling) below "
+            "or at which a player counts as low-rank; a player is low-rank when "
+            "their best role rating is <= this value. 0 disables the mechanic."
+        ),
+    )
+    low_rank_collision_weight: float = Field(
+        default=250.0,
+        ge=0.0,
+        description=(
+            "Penalty weight per pair of low-rank players in the same team, "
+            "normalized per team count. Discourages stacking two low-rank "
+            "players together."
+        ),
+    )
     team_max_pain_weight: float = Field(
         default=1.0,
         ge=0.0,

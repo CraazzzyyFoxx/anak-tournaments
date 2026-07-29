@@ -50,6 +50,8 @@ class MooBackendContractTests(TestCase):
         config.mutation_rate_min = 0.2
         config.island_count = 6
         config.crossover_rate = 0.9
+        config.low_rank_threshold = 900
+        config.low_rank_collision_weight = 300.0
 
         player = Player(
             name="Player One",
@@ -76,6 +78,8 @@ class MooBackendContractTests(TestCase):
         self.assertEqual(config_payload["mutation_rate_min"], 0.2)
         self.assertEqual(config_payload["island_count"], 6)
         self.assertEqual(config_payload["crossover_rate"], 0.9)
+        self.assertEqual(config_payload["low_rank_threshold"], 900)
+        self.assertEqual(config_payload["low_rank_collision_weight"], 300.0)
         self.assertNotIn("elitism_rate", config_payload)
         self.assertNotIn("stagnation_threshold", config_payload)
         self.assertNotIn("default_convergence_patience", config_payload)

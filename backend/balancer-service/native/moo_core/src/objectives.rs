@@ -47,6 +47,7 @@ pub(crate) fn calculate_team_stats(context: &Context, team: &TeamState) -> TeamS
     let mut total_pain = 0.0;
     let mut max_pain = 0i32;
     let mut subrole_collisions = 0i32;
+    let mut low_rank_count = 0usize;
     let mut role_totals = vec![0.0; context.roles.len()];
     let mut role_counts = vec![0usize; context.roles.len()];
     let mut role_avg_sum = 0.0;
@@ -75,6 +76,9 @@ pub(crate) fn calculate_team_stats(context: &Context, team: &TeamState) -> TeamS
             count += 1;
             if pain > max_pain {
                 max_pain = pain;
+            }
+            if player.is_low_rank {
+                low_rank_count += 1;
             }
 
             if let Some(subclass) = player.subclasses[role_index].as_deref() {
@@ -127,6 +131,7 @@ pub(crate) fn calculate_team_stats(context: &Context, team: &TeamState) -> TeamS
         intra_std,
         max_pain,
         subrole_collisions,
+        low_rank_pairs: ((low_rank_count * low_rank_count.saturating_sub(1)) / 2) as i32,
         role_totals,
         role_counts,
         internal_role_spread,
@@ -174,6 +179,7 @@ pub(crate) struct ObjectiveBreakdown {
     pub(crate) tank_adjacent_gap_penalty: f64,
     pub(crate) tank_std: f64,
     pub(crate) effective_total_std: f64,
+    pub(crate) avg_low_rank_pairs: f64,
     pub(crate) avg_discomfort: f64,
     pub(crate) global_max_pain: f64,
     pub(crate) avg_team_max_pain: f64,
@@ -240,6 +246,7 @@ pub(crate) fn calculate_breakdown_with_scratch(
     let mut global_max_pain = 0i32;
     let mut sum_team_max_pain = 0i64;
     let mut sum_subrole_collisions = 0i32;
+    let mut sum_low_rank_pairs = 0i32;
     let mut sum_intra_std = 0.0;
     let mut sum_internal_role_spread = 0.0;
 
@@ -254,6 +261,7 @@ pub(crate) fn calculate_breakdown_with_scratch(
         global_max_pain = global_max_pain.max(s.max_pain);
         sum_team_max_pain += s.max_pain as i64;
         sum_subrole_collisions += s.subrole_collisions;
+        sum_low_rank_pairs += s.low_rank_pairs;
         sum_intra_std += s.intra_std;
         sum_internal_role_spread += s.internal_role_spread;
 
@@ -354,13 +362,18 @@ pub(crate) fn calculate_breakdown_with_scratch(
         + tank_std * ctx.config.tank_std_weight
         + eff_total_std * ctx.config.effective_total_std_weight;
 
+    // Пары низкоранговых в одной команде — «обречённые» составы; по паттерну
+    // subrole_collisions, но в balance: это вопрос силы команды, не комфорта.
+    let avg_low_rank_pairs = sum_low_rank_pairs as f64 / team_count as f64;
+
     let objective_balance = total_rating_std * ctx.config.team_total_balance_weight
         + gap_penalty * ctx.config.max_team_gap_weight
         + inter_team_std * ctx.config.average_mmr_balance_weight
         + role_line_penalty * ctx.config.role_line_balance_weight
         + intra_team_penalty
         + role_spread_penalty
-        + ow2_tank_penalty;
+        + ow2_tank_penalty
+        + avg_low_rank_pairs * ctx.config.low_rank_collision_weight;
 
     let avg_discomfort = sum_discomfort / team_count as f64;
     // Хвостовой член: средний по командам максимум боли. Глобальный max видит
@@ -387,6 +400,7 @@ pub(crate) fn calculate_breakdown_with_scratch(
         global_max_pain: global_max_pain as f64,
         avg_team_max_pain,
         avg_subrole_collisions,
+        avg_low_rank_pairs,
         balance: objective_balance,
         comfort: objective_comfort,
     }

@@ -26,6 +26,8 @@ CONFIG_LIMITS: dict[str, dict[str, int | float]] = {
     "intra_team_std_weight": {"min": 0.0, "max": 10000.0},
     "internal_role_spread_weight": {"min": 0.0, "max": 10000.0},
     "sub_role_collision_weight": {"min": 0.0, "max": 10000.0},
+    "low_rank_threshold": {"min": 0, "max": 10000},
+    "low_rank_collision_weight": {"min": 0.0, "max": 10000.0},
     "team_max_pain_weight": {"min": 0.0, "max": 10000.0},
     "max_team_gap_weight": {"min": 0.0, "max": 10000.0},
     "tank_impact_weight": {"min": 0.0, "max": 10000.0},
@@ -63,6 +65,8 @@ EDITABLE_CONFIG_FIELD_KEYS = {
     "intra_team_std_weight",
     "internal_role_spread_weight",
     "sub_role_collision_weight",
+    "low_rank_threshold",
+    "low_rank_collision_weight",
     "team_max_pain_weight",
     "tank_impact_weight",
     "dps_impact_weight",
@@ -174,6 +178,23 @@ CONFIG_FIELD_DEFINITIONS: list[dict[str, typing.Any]] = [
         "key": "sub_role_collision_weight",
         "label": "Subrole collision",
         "description": "Penalty weight per pair of players in the same team sharing the same role subclass.",
+        "type": "float",
+        "group": "Quality weights",
+    },
+    {
+        "key": "low_rank_threshold",
+        "label": "Low-rank threshold",
+        "description": (
+            "Players whose best role rating is at or below this value count as "
+            "low-rank; teams with two or more of them get penalized. 0 disables."
+        ),
+        "type": "integer",
+        "group": "Quality weights",
+    },
+    {
+        "key": "low_rank_collision_weight",
+        "label": "Low-rank pair penalty",
+        "description": "Penalty weight per pair of low-rank players in the same team.",
         "type": "float",
         "group": "Quality weights",
     },

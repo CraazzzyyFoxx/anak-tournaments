@@ -23,6 +23,8 @@ PUBLIC_CONFIG_KEYS = {
     "intra_team_std_weight",
     "internal_role_spread_weight",
     "sub_role_collision_weight",
+    "low_rank_threshold",
+    "low_rank_collision_weight",
     "team_max_pain_weight",
     "tank_impact_weight",
     "dps_impact_weight",
