@@ -1,21 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import { useParams } from "next/navigation";
+import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePermissions } from "@/hooks/usePermissions";
-import { useTournamentRealtime } from "@/hooks/useTournamentRealtime";
 import adminService from "@/services/admin.service";
 import encounterService from "@/services/encounter.service";
 import teamService from "@/services/team.service";
 import tournamentService from "@/services/tournament.service";
 import workspaceService from "@/services/workspace.service";
 import type { DivisionGridVersion } from "@/types/workspace.types";
-import { TournamentWorkspaceHeader } from "./components/TournamentWorkspaceHeader";
 
 type TournamentWorkspaceTab =
   | "overview"
@@ -90,50 +87,31 @@ const TournamentMapVetoTab = dynamic(
   { loading: () => tabFallback }
 );
 
-
-function UnauthorizedTournamentWorkspaceState() {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Unauthorized</CardTitle>
-        <CardDescription>
-          You do not have permission to access this tournament workspace.
-        </CardDescription>
-      </CardHeader>
-    </Card>
-  );
-}
-
 export default function AdminTournamentWorkspacePage() {
   const params = useParams<{ id: string }>();
   const tournamentId = Number(params.id);
   const isValidTournamentId = Number.isFinite(tournamentId) && tournamentId > 0;
-  const { canAccessPermission, isLoaded: permissionsLoaded, isSuperuser } = usePermissions();
+  const { canAccessPermission, isLoaded: permissionsLoaded } = usePermissions();
   const [activeTab, setActiveTab] = useState<TournamentWorkspaceTab>("overview");
   const shouldLoadTeams = activeTab === "teams" || activeTab === "matches";
   const shouldLoadEncounters = activeTab === "matches" || activeTab === "logs";
   const shouldLoadStandings = activeTab === "overview" || activeTab === "matches";
+  const router = useRouter();
+  const pathname = usePathname();
+  const requestedTab = useSearchParams().get("tab");
+  useEffect(() => {
+    // Transitional bridge from the hub shell header (T4) until tabs become
+    // routes (T5): the shell's Edit button navigates with ?tab=settings.
+    if (requestedTab === "settings") {
+      setActiveTab("settings");
+      router.replace(pathname, { scroll: false });
+    }
+  }, [requestedTab, pathname, router]);
 
   const tournamentQuery = useQuery({
     queryKey: ["admin", "tournament", tournamentId],
     queryFn: () => adminService.getTournament(tournamentId),
     enabled: isValidTournamentId
-  });
-
-  const teamsCountQuery = useQuery({
-    queryKey: ["admin", "tournament", tournamentId, "teams", "count"],
-    queryFn: () => teamService.getCount(tournamentId),
-    enabled: isValidTournamentId,
-    refetchInterval: TOURNAMENT_WORKSPACE_REFRESH_INTERVAL_MS,
-    refetchIntervalInBackground: true
-  });
-
-  const encountersCountQuery = useQuery({
-    queryKey: ["admin", "tournament", tournamentId, "encounters", "count"],
-    queryFn: () => encounterService.getCount(tournamentId),
-    enabled: isValidTournamentId,
-    refetchInterval: TOURNAMENT_WORKSPACE_REFRESH_INTERVAL_MS,
-    refetchIntervalInBackground: true
   });
 
   const teamsQuery = useQuery({
@@ -185,15 +163,10 @@ export default function AdminTournamentWorkspacePage() {
   });
 
   const tournamentWorkspaceId = tournamentQuery.data?.workspace_id ?? null;
-  useTournamentRealtime({
-    tournamentId: isValidTournamentId ? tournamentId : null,
-    workspaceId: tournamentWorkspaceId
-  });
 
   const tournament = tournamentQuery.data;
   const canUpdateTournament = canAccessPermission("tournament.update", tournamentWorkspaceId);
   const canDeleteTournament = canAccessPermission("tournament.delete", tournamentWorkspaceId);
-  const canReadAnalytics = canAccessPermission("analytics.read", tournamentWorkspaceId);
   const canCreateTeam = canAccessPermission("team.create", tournamentWorkspaceId);
   const canUpdateTeam = canAccessPermission("team.update", tournamentWorkspaceId);
   const canDeleteTeam = canAccessPermission("team.delete", tournamentWorkspaceId);
@@ -212,12 +185,9 @@ export default function AdminTournamentWorkspacePage() {
     tournamentWorkspaceId
   );
   const teams = teamsQuery.data?.results ?? [];
-  const teamsCount = teamsQuery.data?.total ?? teamsCountQuery.data ?? null;
   const stages = stagesQuery.data ?? [];
   const standings = standingsQuery.data ?? [];
-  const standingsCount = standingsQuery.data?.length ?? null;
   const encounters = encountersQuery.data?.results ?? [];
-  const encountersCount = encountersQuery.data?.total ?? encountersCountQuery.data ?? null;
   const divisionGridVersions: DivisionGridVersion[] = (divisionGridsQuery.data ?? [])
     .flatMap((grid) => grid.versions)
     .slice()
@@ -227,76 +197,15 @@ export default function AdminTournamentWorkspacePage() {
   );
 
   if (tournamentQuery.isLoading || stagesQuery.isLoading || !permissionsLoaded) {
-    return (
-      <div className="space-y-6">
-        <Skeleton className="h-28 w-full rounded-xl" />
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Skeleton className="h-24 rounded-xl" />
-          <Skeleton className="h-24 rounded-xl" />
-          <Skeleton className="h-24 rounded-xl" />
-          <Skeleton className="h-24 rounded-xl" />
-        </div>
-        <Skeleton className="h-96 w-full rounded-xl" />
-      </div>
-    );
+    return tabFallback;
   }
 
   if (!tournament) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Tournament not found</CardTitle>
-          <CardDescription>The requested admin workspace could not be loaded.</CardDescription>
-        </CardHeader>
-      </Card>
-    );
-  }
-
-  if (
-    !isSuperuser &&
-    ![
-      canUpdateTournament,
-      canDeleteTournament,
-      canReadAnalytics,
-      canCreateTeam,
-      canUpdateTeam,
-      canDeleteTeam,
-      canImportTeams,
-      canCreatePlayer,
-      canUpdatePlayer,
-      canDeletePlayer,
-      canCreateEncounter,
-      canUpdateEncounter,
-      canDeleteEncounter,
-      canSyncEncounters,
-      canUpdateStanding,
-      canDeleteStanding,
-      canRecalculateStandings
-    ].some(Boolean)
-  ) {
-    return <UnauthorizedTournamentWorkspaceState />;
+    return null;
   }
 
   return (
     <div className="space-y-4">
-      <TournamentWorkspaceHeader
-        tournament={tournament}
-        tournamentId={tournamentId}
-        teamsCount={teamsCount}
-        teamsCountLoading={teamsCount == null && teamsCountQuery.isLoading}
-        encountersCount={encountersCount}
-        encountersCountLoading={encountersCount == null && encountersCountQuery.isLoading}
-        standingsCount={standingsCount}
-        standingsCountLoading={standingsCount == null && standingsQuery.isLoading}
-        canReadAnalytics={canReadAnalytics}
-        canUpdateTournament={canUpdateTournament}
-        canDeleteTournament={canDeleteTournament}
-        canToggleFinished={canUpdateTournament && isSuperuser}
-        divisionGridVersions={divisionGridVersions}
-        divisionGridLoading={divisionGridsQuery.isLoading}
-        onEditClick={() => setActiveTab("settings")}
-      />
-
       <Tabs
         value={activeTab}
         onValueChange={(value) => setActiveTab(value as TournamentWorkspaceTab)}
