@@ -46,7 +46,6 @@ type NavItem = {
   key: string;
   href: string;
   requiresAdminAccess?: boolean;
-  requiresBalancerAccess?: boolean;
 };
 
 type NavGroup = {
@@ -81,10 +80,7 @@ const NAV_GROUPS = [
   },
   {
     key: "organization",
-    items: [
-      { key: "balancer", href: "/balancer", requiresBalancerAccess: true },
-      { key: "admin", href: "/admin", requiresAdminAccess: true }
-    ]
+    items: [{ key: "admin", href: "/admin", requiresAdminAccess: true }]
   }
 ] as const satisfies readonly NavGroup[];
 
@@ -102,10 +98,7 @@ const navTriggerActiveClass =
   "focus:bg-[color:color-mix(in_srgb,var(--aqt-teal)_16%,transparent)] focus:text-[var(--aqt-teal)] " +
   "data-[state=open]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_16%,transparent)] data-[state=open]:text-[var(--aqt-teal)]";
 
-function isNavGroupActive(
-  items: readonly { href: string }[],
-  pathname: string
-): boolean {
+function isNavGroupActive(items: readonly { href: string }[], pathname: string): boolean {
   return items.some((item) => {
     if (item.href === "/") return pathname === "/";
     return pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -142,22 +135,16 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
     canAccessAdminRoute({
       permissions: adminEntryPermissions,
       workspaceId: currentWorkspaceId,
-      workspaceAdminVisible: true,
+      workspaceAdminVisible: true
     });
-  const canAccessBalancer = canAccessAdmin || isOrganizer;
-  const canAccessOrganization = isLoaded && (canAccessAdmin || canAccessBalancer);
+  // D27: organizers get the admin entry — same predicate that used to open the balancer.
+  const canAccessAdminEntry = canAccessAdmin || isOrganizer;
+  const canAccessOrganization = isLoaded && canAccessAdminEntry;
   const handleLoginClick = () => {
     const nextPath =
       typeof window === "undefined" ? "/" : getCurrentPathForAuthRedirect(window.location);
     openAuthModal(nextPath);
   };
-
-  const getVisibleItems = (items: readonly NavItem[]) =>
-    items.filter((item) => {
-      if (item.requiresAdminAccess) return canAccessAdmin;
-      if (item.requiresBalancerAccess) return canAccessBalancer;
-      return true;
-    });
 
   return (
     <header className="sticky top-0 z-50 flex h-14 items-center gap-4 border-b border-border/70 px-4 backdrop-blur-xl md:px-6">
@@ -182,35 +169,37 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
         <WorkspaceSwitcher />
       )}
       <NavigationMenu className="hidden md:flex">
-        {NAV_GROUPS.filter(
-          (group) => group.key !== "organization" || canAccessOrganization
-        ).map((group) => (
-          <NavigationMenuList key={group.key}>
-            <NavigationMenuItem>
-              <NavigationMenuTrigger
-                className={cn(
-                  navTriggerClass,
-                  isNavGroupActive(group.items, pathname) && navTriggerActiveClass
-                )}
-              >
-                {t(`nav.groups.${group.key}`)}
-              </NavigationMenuTrigger>
-              <NavigationMenuContent>
-                <ul className="grid w-100 gap-3 p-4 md:w-125 md:grid-cols-2 lg:w-150 ">
-                  {getVisibleItems(group.items).map((item) => (
-                    <ListItem
-                      key={item.key}
-                      title={t(`nav.items.${item.key}.title` as Parameters<typeof t>[0])}
-                      href={item.href}
-                    >
-                      {t(`nav.items.${item.key}.desc` as Parameters<typeof t>[0])}
-                    </ListItem>
-                  ))}
-                </ul>
-              </NavigationMenuContent>
-            </NavigationMenuItem>
-          </NavigationMenuList>
-        ))}
+        {NAV_GROUPS.filter((group) => group.key !== "organization" || canAccessOrganization).map(
+          (group) => (
+            <NavigationMenuList key={group.key}>
+              <NavigationMenuItem>
+                <NavigationMenuTrigger
+                  className={cn(
+                    navTriggerClass,
+                    isNavGroupActive(group.items, pathname) && navTriggerActiveClass
+                  )}
+                >
+                  {t(`nav.groups.${group.key}`)}
+                </NavigationMenuTrigger>
+                <NavigationMenuContent>
+                  <ul className="grid w-100 gap-3 p-4 md:w-125 md:grid-cols-2 lg:w-150 ">
+                    {group.items
+                      .filter((item: NavItem) => !item.requiresAdminAccess || canAccessAdminEntry)
+                      .map((item) => (
+                        <ListItem
+                          key={item.key}
+                          title={t(`nav.items.${item.key}.title` as Parameters<typeof t>[0])}
+                          href={item.href}
+                        >
+                          {t(`nav.items.${item.key}.desc` as Parameters<typeof t>[0])}
+                        </ListItem>
+                      ))}
+                  </ul>
+                </NavigationMenuContent>
+              </NavigationMenuItem>
+            </NavigationMenuList>
+          )
+        )}
       </NavigationMenu>
       <Sheet>
         <SheetTrigger asChild>
@@ -250,15 +239,17 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
                   </AccordionTrigger>
                   <AccordionContent>
                     <div className="grid gap-4 pl-4">
-                      {getVisibleItems(group.items).map((item) => (
-                        <Link
-                          key={item.key}
-                          href={item.href}
-                          className="text-muted-foreground hover:text-foreground text-sm"
-                        >
-                          {t(`nav.items.${item.key}.title` as Parameters<typeof t>[0])}
-                        </Link>
-                      ))}
+                      {group.items
+                        .filter((item: NavItem) => !item.requiresAdminAccess || canAccessAdminEntry)
+                        .map((item) => (
+                          <Link
+                            key={item.key}
+                            href={item.href}
+                            className="text-muted-foreground hover:text-foreground text-sm"
+                          >
+                            {t(`nav.items.${item.key}.title` as Parameters<typeof t>[0])}
+                          </Link>
+                        ))}
                     </div>
                   </AccordionContent>
                 </AccordionItem>

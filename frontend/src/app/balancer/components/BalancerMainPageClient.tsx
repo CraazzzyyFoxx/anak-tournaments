@@ -628,7 +628,7 @@ export function BalancerMainPageClient() {
       <Alert>
         <AlertTitle>Select a tournament</AlertTitle>
         <AlertDescription>
-          Choose a tournament in the balancer header to work with registrations and the Balancing
+          Open a tournament from the tournament hub to work with registrations and the Balancing
           Pool.
         </AlertDescription>
       </Alert>
