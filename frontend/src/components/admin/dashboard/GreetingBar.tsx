@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Plus, Upload } from "lucide-react";
+import { Plus } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -47,7 +47,7 @@ export function GreetingBar({ canCreateTournament }: GreetingBarProps) {
       <div className="flex items-center gap-2 shrink-0">
         {canCreateTournament && (
           <Button asChild variant="outline" size="sm">
-            <Link href="/admin/tournaments">
+            <Link href="/admin/tournaments/new">
               <Plus className="size-3.5" />
               New Tournament
             </Link>

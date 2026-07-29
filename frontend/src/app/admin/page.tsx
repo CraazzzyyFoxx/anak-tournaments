@@ -103,7 +103,7 @@ export default function AdminDashboard() {
 
   const derived = useMemo(() => {
     const activeTournament = canReadTournaments
-      ? (tournaments.find((t) => !t.is_finished) ?? tournaments[0] ?? null)
+      ? (tournaments.find((t) => !t.is_finished && !t.is_hidden) ?? tournaments[0] ?? null)
       : null;
 
     const activeStats = stats?.active_tournament_stats;
