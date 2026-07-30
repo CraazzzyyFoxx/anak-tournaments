@@ -2884,7 +2884,8 @@
       "minChars": "Type at least 2 characters.",
       "clear": "Clear search",
       "resultsLabel": "User search results"
-    }
+    },
+    "mobileMenuTitle": "Site navigation"
   },
   "draftAdmin": {
     "title": "Draft administration",

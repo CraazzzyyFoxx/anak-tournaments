@@ -29,6 +29,7 @@ export default defineConfig({
       "src/components/admin/**/*.test.tsx",
       "src/components/admin/**/*.test.ts",
       "src/components/ui/data-pagination.test.tsx",
+      "src/components/site/**/*.test.tsx",
     ],
   },
 });

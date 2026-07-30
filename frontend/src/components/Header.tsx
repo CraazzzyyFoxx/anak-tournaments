@@ -4,7 +4,7 @@ import React from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { LogIn, Menu } from "lucide-react";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import UserSearch from "@/components/UserSearch";
 import { useTranslations } from "next-intl";
@@ -88,7 +88,10 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
             <span className="sr-only">{t("nav.toggleMenu")}</span>
           </Button>
         </SheetTrigger>
-        <SheetContent side="left">
+        {/* The sheet is a dialog: it needs a name, and Radix warns unless the
+            absent description is declared absent on purpose. */}
+        <SheetContent side="left" aria-describedby={undefined}>
+          <SheetTitle className="sr-only">{t("nav.mobileMenuTitle")}</SheetTitle>
           <nav className="grid gap-2 text-lg font-medium">
             <Link
               href="/"

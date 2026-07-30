@@ -71,68 +71,118 @@ interface SiteNavProps {
  * `useVisibleNavGroups()` and the same `nav.*` message lookups — the header
  * previously carried two hand-maintained copies, so any nav change had to be
  * made twice.
+ *
+ * A group holding a single item renders as a direct link, not a disclosure:
+ * a dropdown that opens onto one row makes the reader pay an extra click and a
+ * guess for nothing. The link is labelled with the ITEM's title, because that
+ * is where it actually goes — "Organization" promises a section, "Admin" names
+ * the destination. This is a rule about arity, not about a specific group, so
+ * adding a second item turns the disclosure back on by itself.
  */
 export function SiteNav({ variant, className }: SiteNavProps) {
   const t = useTranslations();
   const pathname = usePathname() ?? "";
   const groups = useVisibleNavGroups();
 
+  const titleOf = (key: string) => t(`nav.items.${key}.title` as Parameters<typeof t>[0]);
+
   if (variant === "mobile") {
     return (
       <Accordion type="single" collapsible className={cn("w-full", className)}>
-        {groups.map((group) => (
-          <AccordionItem key={group.key} value={group.key}>
-            <AccordionTrigger className="text-base hover:text-foreground">
-              {t(`nav.groups.${group.key}`)}
-            </AccordionTrigger>
-            <AccordionContent>
-              <div className="grid gap-4 pl-4">
-                {group.items.map((item) => (
-                  <Link
-                    key={item.key}
-                    href={item.href}
-                    className="text-sm text-muted-foreground hover:text-foreground"
-                  >
-                    {t(`nav.items.${item.key}.title` as Parameters<typeof t>[0])}
-                  </Link>
-                ))}
-              </div>
-            </AccordionContent>
-          </AccordionItem>
-        ))}
+        {groups.map((group) => {
+          const [only] = group.items;
+          if (group.items.length === 1) {
+            return (
+              <Link
+                key={group.key}
+                href={only.href}
+                aria-current={isNavGroupActive(group.items, pathname) ? "page" : undefined}
+                className={cn(
+                  "flex items-center border-b py-4 text-base font-medium transition-colors hover:underline",
+                  isNavGroupActive(group.items, pathname)
+                    ? "text-[color:var(--aqt-teal)]"
+                    : "text-foreground"
+                )}
+              >
+                {titleOf(only.key)}
+              </Link>
+            );
+          }
+
+          return (
+            <AccordionItem key={group.key} value={group.key}>
+              <AccordionTrigger className="text-base hover:text-foreground">
+                {t(`nav.groups.${group.key}`)}
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="grid gap-4 pl-4">
+                  {group.items.map((item) => (
+                    <Link
+                      key={item.key}
+                      href={item.href}
+                      className="text-sm text-muted-foreground hover:text-foreground"
+                    >
+                      {titleOf(item.key)}
+                    </Link>
+                  ))}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          );
+        })}
       </Accordion>
     );
   }
 
   return (
     <NavigationMenu className={cn("hidden md:flex", className)}>
-      {groups.map((group) => (
-        <NavigationMenuList key={group.key}>
-          <NavigationMenuItem>
-            <NavigationMenuTrigger
-              className={cn(
-                navTriggerClass,
-                isNavGroupActive(group.items, pathname) && navTriggerActiveClass
-              )}
-            >
-              {t(`nav.groups.${group.key}`)}
-            </NavigationMenuTrigger>
-            <NavigationMenuContent>
-              <ul className="grid w-100 gap-3 p-4 md:w-125 md:grid-cols-2 lg:w-150">
-                {group.items.map((item) => (
-                  <ListItem
-                    key={item.key}
-                    title={t(`nav.items.${item.key}.title` as Parameters<typeof t>[0])}
-                    href={item.href}
+      {/* One list, not one per group: N single-item <ul>s told assistive
+          technology the header held N separate navigations. */}
+      <NavigationMenuList>
+        {groups.map((group) => {
+          const isActive = isNavGroupActive(group.items, pathname);
+          const [only] = group.items;
+
+          if (group.items.length === 1) {
+            return (
+              <NavigationMenuItem key={group.key}>
+                <NavigationMenuLink asChild>
+                  <Link
+                    href={only.href}
+                    aria-current={isActive ? "page" : undefined}
+                    className={cn(
+                      "inline-flex w-max items-center justify-center transition-colors focus:outline-none",
+                      navTriggerClass,
+                      isActive && navTriggerActiveClass
+                    )}
                   >
-                    {t(`nav.items.${item.key}.desc` as Parameters<typeof t>[0])}
-                  </ListItem>
-                ))}
-              </ul>
-            </NavigationMenuContent>
-          </NavigationMenuItem>
-        </NavigationMenuList>
-      ))}
+                    {titleOf(only.key)}
+                  </Link>
+                </NavigationMenuLink>
+              </NavigationMenuItem>
+            );
+          }
+
+          return (
+            <NavigationMenuItem key={group.key}>
+              <NavigationMenuTrigger
+                className={cn(navTriggerClass, isActive && navTriggerActiveClass)}
+              >
+                {t(`nav.groups.${group.key}`)}
+              </NavigationMenuTrigger>
+              <NavigationMenuContent>
+                <ul className="grid w-100 gap-3 p-4 md:w-125 md:grid-cols-2 lg:w-150">
+                  {group.items.map((item) => (
+                    <ListItem key={item.key} title={titleOf(item.key)} href={item.href}>
+                      {t(`nav.items.${item.key}.desc` as Parameters<typeof t>[0])}
+                    </ListItem>
+                  ))}
+                </ul>
+              </NavigationMenuContent>
+            </NavigationMenuItem>
+          );
+        })}
+      </NavigationMenuList>
     </NavigationMenu>
   );
 }
