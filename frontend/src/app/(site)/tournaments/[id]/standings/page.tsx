@@ -2,7 +2,7 @@
 
 import { useParams } from "next/navigation";
 
-import TournamentStandingsPage from "@/app/(site)/tournaments/[id]/pages/TournamentStandingsPage";
+import TournamentStandingsPage from "@/app/(site)/tournaments/[id]/_views/TournamentStandingsPage";
 
 export default function TournamentStandingsRoutePage() {
   const params = useParams<{ id: string }>();

@@ -1,11 +1,12 @@
 import React from "react";
 import { getTranslations } from "next-intl/server";
-import { Swords } from "lucide-react";
+import { ArrowRight, Swords } from "lucide-react";
 import Link from "next/link";
 import { HeroWithUserStats } from "@/types/hero.types";
 import { UserMapRead } from "@/types/user.types";
 import { LogStatsName } from "@/types/stats.types";
-import { CardSurface, normalizeRole, type AqtRoleKey } from "@/app/(site)/users/components/shared/atoms";
+import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
+import { normalizeRole, type AqtRoleKey } from "@/components/hero/heroRole";
 import { formatStatValue, getOverall } from "@/app/(site)/users/components/heroes/utils";
 import HeroImage from "@/components/hero/HeroImage";
 import HeroUserStatsPopover from "@/components/hero/HeroUserStatsPopover";
@@ -129,7 +130,8 @@ const OverviewTopHeroesTable = async ({ heroes, maps, userSlug, limit = DEFAULT_
       subtitle={t("users.overview.topHeroes.played", { count: heroes.length })}
       action={
         <Link href={`/users/${userSlug}?tab=heroes`} className="aqt-seeall">
-          {t("common.all")} {heroes.length} →
+          {t("common.all")} {heroes.length}
+          <ArrowRight aria-hidden className="size-3" />
         </Link>
       }
     >
@@ -180,7 +182,7 @@ const OverviewTopHeroesTable = async ({ heroes, maps, userSlug, limit = DEFAULT_
                     </div>
                   </td>
                   <td className="px-3 py-2.5">
-                    <div className="flex justify-center" title={roleName} aria-label={roleName}>
+                    <div className="flex justify-center" title={roleName}>
                       <PlayerRoleIcon
                         role={r.roleKey ? ROLE_ICON_NAME[r.roleKey] : null}
                         size={16}
@@ -228,7 +230,9 @@ const OverviewTopHeroesTable = async ({ heroes, maps, userSlug, limit = DEFAULT_
                                 : "var(--aqt-fg-muted)"
                         }}
                       >
-                        {r.vsAvg > 0 ? "▲" : r.vsAvg < 0 ? "▼" : "–"} {Math.abs(r.vsAvg * 100).toFixed(0)}
+                        <span aria-hidden>{r.vsAvg > 0 ? "▲" : r.vsAvg < 0 ? "▼" : "–"}</span>{" "}
+                        <span className="sr-only">{r.vsAvg > 0 ? "+" : r.vsAvg < 0 ? "−" : ""}</span>
+                        {Math.abs(r.vsAvg * 100).toFixed(0)}
                       </span>
                     )}
                   </td>

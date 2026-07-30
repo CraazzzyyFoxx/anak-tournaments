@@ -134,6 +134,7 @@
     "smurfDesc": "All registered smurf BattleTags for this participant.",
     "history": "History",
     "status": "Status",
+    "actions": "Actions",
     "balancer": "Balancer",
     "admission": "Admission",
     "admissionStatus": {
@@ -190,7 +191,67 @@
       "flanker": "FLK",
       "flex_dps": "FD",
       "flex_support": "FS"
-    }
+    },
+    "clearFilters": "Clear filters",
+    "now": "Now",
+    "unassignedStage": "Unassigned",
+    "save": "Save",
+    "delete": "Delete",
+    "previous": "Previous",
+    "pagination": {
+      "label": "Pagination",
+      "previous": "Previous page",
+      "next": "Next page",
+      "goToPage": "Go to page {page}"
+    },
+    "pageState": {
+      "error": {
+        "title": "Unable to load this section",
+        "description": "The request failed. Check your connection and try again."
+      },
+      "empty": {
+        "title": "Nothing here yet",
+        "description": "This section fills up as tournaments are played."
+      },
+      "filteredEmpty": {
+        "title": "No results",
+        "description": "No rows match the current filters."
+      },
+      "notFound": {
+        "title": "Not found",
+        "description": "This page does not exist, or it has been removed."
+      }
+    },
+    "searchLabel": "Search",
+    "filters": "Filters",
+    "openMenu": "Open account menu",
+    "signIn": "Sign in",
+    "homeLink": "Go to the home page",
+    "sourceOnGithub": "View the source on GitHub",
+    "skipToContent": "Skip to content",
+    "footer": {
+      "disclaimer": "{siteName} is not affiliated with or endorsed by Blizzard Entertainment, Inc."
+    },
+    "placementSpark": {
+      "label": "Placements: {summary}"
+    },
+    "matchLogs": {
+      "none": "No logs",
+      "noneAvailable": "No logs available",
+      "available": "Logs available",
+      "download": "Download log: {label}",
+      "downloadAll": "Download logs ({count})",
+      "title": "Match logs",
+      "map": "Map {index}"
+    },
+    "heroStats": {
+      "winrate": "Winrate",
+      "games": "Games",
+      "record": "Record",
+      "playtimeOnMap": "Playtime on this map",
+      "countedNote": "Games are counted when hero time played is over 60s."
+    },
+    "sortDirection": "Sort direction: {current}. Switch to {next}."
   },
   "registration": {
     "wizard": {
@@ -229,6 +290,7 @@
       "twitch": "Twitch",
       "addSmurfPlaceholder": "Add smurf BattleTag",
       "addSmurfButton": "Add",
+      "removeSmurf": "Remove {tag}",
       "verifiedHint": "Choose one of your OAuth-verified accounts.",
       "verifiedNone": "No verified {label} account is linked.",
       "verifiedLink": "Link {label} via OAuth",
@@ -564,7 +626,12 @@
       "Away sweep": "Away team sweep"
     },
     "starsAria": "{count, plural, one {# star} other {# stars}}",
-    "notSet": "Not set"
+    "notSet": "Not set",
+    "statuses": {
+      "open": "Open",
+      "pending": "Pending",
+      "completed": "Completed"
+    }
   },
   "matchReport": {
     "title": "Match Report",
@@ -1160,7 +1227,7 @@
       "createdRelative": "created {relative}"
     },
     "meta": {
-      "title": "Tournaments Analytics | {siteName}",
+      "title": "Tournaments Analytics",
       "description": "View tournaments analytics on {siteName}."
     }
   },
@@ -1170,7 +1237,11 @@
     },
     "heading": {
       "all": "All tournaments",
-      "total": "{count, plural, one {# total} other {# total}}"
+      "shown": "{count, plural, one {# shown} other {# shown}}"
+    },
+    "row": {
+      "bracketAria": "Bracket for {name}",
+      "openAria": "Open tournament {name}"
     },
     "empty": {
       "title": "No tournaments found",
@@ -1184,9 +1255,7 @@
       "liveNow": "Live now",
       "matchesInFlight": "{count, plural, one {# match in flight} other {# matches in flight}}",
       "noMatchesInFlight": "No matches in flight",
-      "totalTournaments": "Total tournaments",
-      "activeCount": "{count, plural, one {# active} other {# active}}",
-      "teamsBalanced": "{count, plural, one {# team balanced} other {# teams balanced}}"
+      "teamsBalancedLabel": "Teams balanced"
     },
     "filters": {
       "standard": "Standard",
@@ -1196,10 +1265,6 @@
         "oldest": "Oldest first",
         "participants": "Most participants"
       }
-    },
-    "card": {
-      "viewBracket": "View Bracket",
-      "participantsCount": "{count, plural, one {# participant} other {# participants}}"
     },
     "featured": {
       "liveRightNow": "Live right now",
@@ -1233,7 +1298,17 @@
     "tournamentsLoadError": "Failed to load tournaments",
     "loadingTournaments": "Loading tournaments...",
     "selectTournament": "Select a tournament",
-    "jumpToTeam": "Jump to team",
+    "findTeam": "Find team",
+    "sortValue": "{field} — {order}",
+    "groupLabel": "Group {name}",
+    "roster": {
+      "role": "Role",
+      "battleTag": "Battle tag",
+      "division": "Div",
+      "newcomer": "New",
+      "newcomerRole": "New role",
+      "avgSr": "Avg. SR"
+    },
     "sortAvgSr": "Avg. SR",
     "sortPlacement": "Placement",
     "sortGroup": "Group",
@@ -1361,7 +1436,6 @@
       "shotsHit": "Shots Hit",
       "shotsMissed": "Shots Missed"
     },
-    "unassignedStage": "Unassigned",
     "matchesTotal": "{count, plural, one {# match total} other {# matches total}}",
     "allTournaments": "All tournaments",
     "noMatchesFound": "No matches found.",
@@ -1389,6 +1463,17 @@
       "earnedSub": "Total awards, all-time"
     },
     "searchPlaceholder": "Search achievements…",
+    "meta": {
+      "description": "Browse every achievement on {siteName}."
+    },
+    "rarityName": {
+      "mythic": "Mythic",
+      "legendary": "Legendary",
+      "epic": "Epic",
+      "rare": "Rare",
+      "uncommon": "Uncommon",
+      "common": "Common"
+    },
     "results": "{count, plural, one {# result} other {# results}}",
     "sectionCount": "{count, plural, one {# badge} other {# badges}}",
     "category": {
@@ -1478,6 +1563,7 @@
     "metaTitleFallback": "Tournament",
     "metaDescriptionFallback": "Tournament overview.",
     "sectionsNav": "Tournament sections",
+    "bracketRegion": "Bracket — scroll horizontally to see all rounds",
     "sortTeams": "Sort teams",
     "rankHistory": "Rank history",
     "allFieldsVisible": "All fields visible in table",
@@ -1624,6 +1710,8 @@
     "selectSeason": "Select season",
     "stacks": "Stacks",
     "searchUser": "Search user...",
+    "standingsTableLabel": "OWAL standings. Scroll horizontally for all day and record columns.",
+    "stacksTableLabel": "OWAL stacks. Scroll horizontally for all columns.",
     "only3Days": "Only 3+ days",
     "playerOne": "Player One",
     "playerTwo": "Player Two",
@@ -1685,7 +1773,11 @@
     "granularityPlaceholder": "Granularity",
     "daily": "Daily",
     "hourly": "Hourly",
-    "allPoints": "All points"
+    "allPoints": "All points",
+    "groupByLabel": "Group by",
+    "accountLabel": "Battle.net account",
+    "roleLabel": "Role",
+    "platformLabel": "Platform"
   },
   "encounters": {
     "meta": {
@@ -1694,10 +1786,10 @@
     },
     "dataUnavailable": "Encounter data is temporarily unavailable. Retrying in the background.",
     "views": "Views",
-    "unassigned": "Unassigned",
     "searchPlaceholder": "Search by team, player, or matchup…",
     "roundNum": "Round {round}",
     "roundShort": "R{round}",
+    "bestOfShort": "Bo{count}",
     "mapsCount": "{count, plural, one {# map} other {# maps}}",
     "aria": {
       "views": "Encounter views",
@@ -1755,7 +1847,10 @@
       "maps": "Maps",
       "closeness": "Closeness",
       "media": "Media",
-      "played": "Played"
+      "played": "Played",
+      "format": "Format",
+      "when": "When",
+      "logs": "Logs"
     },
     "savedView": {
       "saved": "View saved",
@@ -1764,7 +1859,8 @@
       "promptDefault": "Current view",
       "deleteAria": "Delete saved view {name}",
       "confirmDelete": "Delete saved view \"{name}\"?",
-      "saveCurrent": "Save current view"
+      "saveCurrent": "Save current view",
+      "deleteTitle": "Delete saved view"
     },
     "insights": {
       "title": "Insights",
@@ -1849,14 +1945,16 @@
       "playtime": "Playtime",
       "logName": "Log name",
       "openNewTab": "Open in New Tab",
-      "allMatch": "All Match"
+      "allMatch": "All Match",
+      "openStats": "Open the {map} scoreboard"
     },
     "team": {
       "placement": "Placement: {value}",
       "colName": "Name",
       "colDivision": "Division",
       "colNew": "New",
-      "colNewRole": "New Role"
+      "colNewRole": "New Role",
+      "substitution": "Substitute"
     },
     "chart": {
       "title": "Kills and Assists Overview",
@@ -1991,7 +2089,9 @@
         "maps": "Maps",
         "avgPlace": "Avg Place",
         "playoffs": "Playoffs {place}",
-        "deltaTitle": "Last tournament vs career"
+        "deltaTitle": "Last tournament vs career",
+        "trendUp": "Increase",
+        "trendDown": "Decrease"
       },
       "tabs": {
         "overview": "Overview",
@@ -2016,6 +2116,17 @@
       "atoms": {
         "recentForm": "Recent form",
         "mapsTitle": "{label}: {count, plural, one {# map} other {# maps}}"
+      },
+      "share": {
+        "heading": "OWT player card",
+        "rolePlayer": "Player",
+        "division": "Div {division}",
+        "events": "{count, plural, one {# event} other {# events}}",
+        "winrate": "Winrate",
+        "avgPlace": "Avg place",
+        "titles": "Titles",
+        "mapsWon": "Maps won",
+        "formLast": "Form · last {count}"
       }
     },
     "overview": {
@@ -2122,7 +2233,8 @@
           "wr": "WR",
           "kda": "KDA",
           "mvp": "MVP"
-        }
+        },
+        "searchLabel": "Search teammates"
       },
       "leaderboard": {
         "open": "Open lobby leaderboard · {stat}",
@@ -2159,7 +2271,6 @@
     },
     "heroes": {
       "searchStats": "Search stats…",
-      "recordLegend": "♔ = holds the all-players record",
       "recordTitle": "Holds the all-players record",
       "noStatsMatch": "No stats match search",
       "col": {
@@ -2168,7 +2279,8 @@
         "bestYou": "Best (you)",
         "avg10": "Avg /10",
         "bestAll": "Best (all)",
-        "global10": "Global /10"
+        "global10": "Global /10",
+        "delta": "Delta vs global average"
       },
       "radar": {
         "dmg": "DMG",
@@ -2218,7 +2330,9 @@
       },
       "played": "{time} played",
       "poolShare": "{pct}% pool share",
-      "playtimeShare": "Playtime share"
+      "playtimeShare": "Playtime share",
+      "searchHeroes": "Search heroes…",
+      "removeAxis": "Remove {stat} axis"
     },
     "maps": {
       "overallWinrate": "Overall winrate",
@@ -2250,7 +2364,8 @@
       "colWinrate": "Winrate",
       "colRecord": "Record",
       "colGames": "Games",
-      "noMaps": "No maps match the filters"
+      "noMaps": "No maps match the filters",
+      "searchLabel": "Search maps"
     },
     "matches": {
       "loadError": "Could not load matches. Please try again later.",
@@ -2286,7 +2401,8 @@
       "colMvp": "MVP",
       "colCloseness": "Close.",
       "colLogs": "Logs",
-      "noMatches": "No matches for current filter"
+      "noMatches": "No matches for current filter",
+      "searchOpponentLabel": "Search opponent"
     },
     "tournaments": {
       "title": "Tournament history",
@@ -2434,7 +2550,8 @@
         "earnedIn": "Earned in",
         "earnedCount": "· earned ×{count}",
         "earnedNoDetails": "Earned {count}× — no tournament or match details recorded."
-      }
+      },
+      "searchLabel": "Search achievements"
     },
     "list": {
       "meta": {
@@ -2636,8 +2753,6 @@
     "heroesCompare": {
       "selectHeroPrompt": "Select a hero above to rank every player who's logged time on it.",
       "allTournaments": "All tournaments",
-      "sortAscending": "Sort ascending",
-      "sortDescending": "Sort descending",
       "stat": {
         "elims": "Elims / 10",
         "healing": "Healing / 10",
@@ -2675,7 +2790,10 @@
         "scope": "scope",
         "playersCount": "<em>{count}</em> {count, plural, one {player} other {players}}",
         "noData": "No data found for this hero.",
-        "noDataInTournament": "No data found for this hero in this tournament."
+        "noDataInTournament": "No data found for this hero in this tournament.",
+        "rank": "Rank",
+        "player": "Player",
+        "selectStat": "Change column stat: {stat}"
       },
       "hero": {
         "healing": "Healing",
@@ -2691,7 +2809,7 @@
         "usersBreadcrumb": "Users",
         "breadcrumb": "Hero compare",
         "title": "Who plays it <em>best</em>?",
-        "lede": "Pick a hero and rank every player who's logged time on it. Each column ranks the same roster independently — so the elims leader and the healing leader can be different people, side by side."
+        "lede": "Pick a hero and rank every player who's logged time on it. One shared row order across every column — click any column header to sort the whole board by it."
       }
     }
   },
@@ -2752,6 +2870,7 @@
     },
     "workspaces": "Workspaces",
     "switchWorkspace": "Switch workspace",
+    "openWorkspace": "Open {name}",
     "activeEvents": {
       "title": "Active Events",
       "badge": "{count} Active",
@@ -2805,15 +2924,33 @@
     "customPickTime": "Custom time per pick in seconds",
     "format": "Draft format",
     "formats": {
-      "snake": { "title": "Snake", "description": "The direction reverses after every round." },
-      "linear": { "title": "Linear", "description": "The same captain order is used every round." },
-      "custom": { "title": "Custom", "description": "Choose a rule independently for each round." }
+      "snake": {
+        "title": "Snake",
+        "description": "The direction reverses after every round."
+      },
+      "linear": {
+        "title": "Linear",
+        "description": "The same captain order is used every round."
+      },
+      "custom": {
+        "title": "Custom",
+        "description": "Choose a rule independently for each round."
+      }
     },
     "autopick": "Automatic pick strategy",
     "autopicks": {
-      "best_fit": { "title": "Best fit", "description": "Balances role need and player strength while preserving a feasible finish." },
-      "role_need": { "title": "Role need", "description": "Prioritizes the role the current team needs most." },
-      "best_available": { "title": "Best available", "description": "Chooses the strongest safe option remaining in the pool." }
+      "best_fit": {
+        "title": "Best fit",
+        "description": "Balances role need and player strength while preserving a feasible finish."
+      },
+      "role_need": {
+        "title": "Role need",
+        "description": "Prioritizes the role the current team needs most."
+      },
+      "best_available": {
+        "title": "Best available",
+        "description": "Chooses the strongest safe option remaining in the pool."
+      }
     },
     "advanced": "Advanced settings",
     "allowOverride": "Allow admin override",
@@ -2836,7 +2973,11 @@
     "missingAccounts": "No linked account",
     "excludedPlayers": "Excluded / not approved",
     "roleCoverage": "Declared role coverage",
-    "roles": { "tank": "Tank", "dps": "Damage", "support": "Support" },
+    "roles": {
+      "tank": "Tank",
+      "dps": "Damage",
+      "support": "Support"
+    },
     "blocker": "Blocker",
     "blocked": "Blocked",
     "ready": "Ready",
@@ -2855,22 +2996,35 @@
     "allRoles": "All roles",
     "selectCaptain": "Select {name} as captain",
     "removeCaptain": "Remove captain {name}",
-    "noCaptainsFound": "No matching players found.",
+    "noCaptainsFound": "No players match this search. Clear the search or widen the role filter.",
     "selectedTeams": "Selected teams",
     "selectCaptainsHint": "Select captains from the pool to configure their teams.",
     "teamName": "Team name (optional)",
     "captainOrder": "Captain order",
     "orders": {
-      "weakest_first": { "title": "Weakest first", "description": "Lower-rated captains receive earlier seats." },
-      "strongest_first": { "title": "Strongest first", "description": "Higher-rated captains receive earlier seats." },
-      "random": { "title": "Seeded random", "description": "A saved seed makes the random result reproducible." },
-      "manual": { "title": "Manual", "description": "Drag captains into the exact order you want." }
+      "weakest_first": {
+        "title": "Weakest first",
+        "description": "Lower-rated captains receive earlier seats."
+      },
+      "strongest_first": {
+        "title": "Strongest first",
+        "description": "Higher-rated captains receive earlier seats."
+      },
+      "random": {
+        "title": "Seeded random",
+        "description": "A saved seed makes the random result reproducible."
+      },
+      "manual": {
+        "title": "Manual",
+        "description": "Drag captains into the exact order you want."
+      }
     },
     "newRandomSeed": "Generate a new random seed",
     "moveCaptain": "Move captain {name}",
     "schedulePreview": "Round schedule preview",
     "validatingDraft": "The server is building a dry-run and checking role feasibility…",
     "previewFailed": "Draft validation failed",
+    "previewFailedHint": "Check the pool and captain selection, then continue again to re-run validation.",
     "reviewChecks": {
       "pool": "Enough eligible players",
       "captains": "Captain count matches team count",
@@ -2894,14 +3048,16 @@
     "readyToStartHint": "Open the board for captains, then start when everyone is connected.",
     "notReadyToStartHint": "Return to setup and resolve the reported role or pool deficits.",
     "startDraft": "Start draft",
+    "startConfirmTitle": "Start the draft",
+    "startConfirmDescription": "Every captain's board goes live and the clock on the first pick starts at once. You can pause the draft afterwards, but it cannot be returned to the ready state.",
     "openLiveBoard": "Open live board",
-    "changeAndReseed": "Change and re-seed",
+    "editSetup": "Edit setup",
     "back": "Back",
     "continue": "Continue",
-    "makeReady": "Seed and make ready",
-    "confirmReseed": "Confirm re-seed",
-    "cancel": "Cancel",
-    "reseedConfirmTitle": "Replace the current draft seed?",
+    "seedDraft": "Seed draft",
+    "keepEditing": "Keep editing",
+    "discardSetup": "Discard setup",
+    "reseedConfirmTitle": "Replace the current draft seed",
     "reseedConfirmDescription": "Teams, players and upcoming picks will be rebuilt from the reviewed configuration. The draft has not started, so no completed live pick will be changed.",
     "fixStepErrors": "Fix the highlighted parameters before continuing.",
     "captainCountError": "Select exactly {count} captains.",
@@ -2911,7 +3067,7 @@
     "draftSeeded": "Draft seed saved and validated",
     "draftStarted": "Draft started",
     "startFailed": "Draft could not be started",
-    "cancelSetupTitle": "Discard this draft setup?",
+    "cancelSetupTitle": "Discard draft setup",
     "cancelSetupDescription": "Unsaved configuration, captain order and preview choices will be cleared. No draft session has been created yet.",
     "loadFailed": "Draft data could not be loaded",
     "loadFailedHint": "Check the connection and try again.",
@@ -2929,16 +3085,30 @@
       "title": "Draft control room",
       "description": "Monitor the live invariant, captain connectivity and exceptional organizer actions from one surface.",
       "adminCoordinate": "ADMIN / DRAFT-{id}",
-      "status": { "live": "Live", "paused": "Paused", "completed": "Completed", "cancelled": "Cancelled", "ready": "Ready", "setup": "Setup" },
+      "status": {
+        "live": "Live",
+        "paused": "Paused",
+        "completed": "Completed",
+        "cancelled": "Cancelled",
+        "ready": "Ready",
+        "setup": "Setup"
+      },
       "format": "Format",
       "teamSize": "Roster size",
       "connection": "Realtime",
-      "connectionState": { "idle": "Idle", "connecting": "Connecting", "connected": "Connected", "reconnecting": "Reconnecting" },
+      "connectionState": {
+        "idle": "Idle",
+        "connecting": "Connecting",
+        "connected": "Connected",
+        "reconnecting": "Reconnecting"
+      },
       "pickProgress": "Pick progress",
       "round": "Round",
       "clock": "Clock",
       "systemPause": "System pause",
-      "blockedReason": { "role_shortage": "No globally feasible role assignment remains. Edit a player's declared roles, then resume manually." },
+      "blockedReason": {
+        "role_shortage": "No globally feasible role assignment remains. Edit a player's declared roles, then resume manually."
+      },
       "resolveRoles": "Resolve role shortage",
       "currentPick": "Current operation",
       "noCurrentPick": "No current pick",
@@ -2948,11 +3118,15 @@
       "teams": "Teams",
       "availablePlayers": "Available players",
       "viewers": "Anonymous viewers",
-      "feasibilityUnavailable": "Feasibility status is temporarily unavailable.",
+      "feasibilityUnavailable": "Feasibility status is temporarily unavailable. It refreshes on its own — reload the page if it stays empty.",
       "feasible": "Completion remains feasible",
       "infeasible": "Role shortage detected",
       "slotCoverage": "Matched role slots: {matched} of {total}",
-      "roles": { "tank": "Tank", "dps": "Damage", "support": "Support" },
+      "roles": {
+        "tank": "Tank",
+        "dps": "Damage",
+        "support": "Support"
+      },
       "deficit": "missing {missing} · eligible {eligible}",
       "captainPresence": "Captain presence",
       "captainPresenceCount": "{online} of {total} connected",
@@ -2963,15 +3137,27 @@
         "resume": "Resume manually",
         "autopick": "Run autopick",
         "override": "Override pick",
-        "rollback": "Rollback last pick",
+        "rollback": "Roll back last pick",
         "cancel": "Cancel draft",
         "export": "Export teams"
       },
       "confirm": {
-        "autopick": { "title": "Run an admin autopick?", "description": "The server will choose the highest-ranked safe option and immediately resolve the current pick." },
-        "rollback": { "title": "Rollback the last resolved pick?", "description": "The player returns to the pool, later pick state is reset and the draft remains paused until manually resumed." },
-        "cancel": { "title": "Cancel this draft?", "description": "The session becomes terminal and cannot be resumed. Existing data remains available for audit." },
-        "export": { "title": "Export final teams?", "description": "Final draft rosters will be written to tournament teams. Repeating the export is idempotent." }
+        "autopick": {
+          "title": "Run admin autopick",
+          "description": "The server picks the highest-ranked safe option on the current captain's behalf and closes the pick at once. The captain cannot undo it."
+        },
+        "rollback": {
+          "title": "Roll back the last pick",
+          "description": "The picked player returns to the pool, the pick is handed back to that team's captain, and the draft stays paused until you resume it manually."
+        },
+        "cancel": {
+          "title": "Cancel draft",
+          "description": "Every captain's board closes at once, the drafted teams are discarded and the session can never be resumed. Completed picks stay readable for audit."
+        },
+        "export": {
+          "title": "Export final teams",
+          "description": "Every drafted roster is written to the tournament's teams, replacing their current players. Repeating the export produces the same result."
+        }
       },
       "actionSuccess": {
         "pause": "Draft paused",
@@ -2982,20 +3168,24 @@
         "cancel": "Draft cancelled",
         "export": "Teams exported"
       },
-      "dismiss": "Back",
-      "confirmAction": "Confirm action",
+      "dismiss": "Keep as is",
       "overrideTitle": "Override the current pick",
       "overrideDescription": "Only server-approved safe player-role options are available. This action is recorded in the private audit trail.",
       "overrideOption": "Player and role",
       "overrideSelect": "Choose a safe option",
       "overrideReason": "Reason",
-      "overrideReasonPlaceholder": "Why is organizer intervention required?"
+      "overrideReasonPlaceholder": "Why is organizer intervention required?",
+      "overrideIncomplete": "Choose a safe player-role option and enter a reason before overriding the pick."
     },
     "roleConflict": {
       "title": "Add a missing player role",
       "description": "Update the draft snapshot without editing the original registration. Preview feasibility before committing.",
       "unmatchedSlots": "Unmatched team-role slots",
-      "roles": { "tank": "Tank", "dps": "Damage", "support": "Support" },
+      "roles": {
+        "tank": "Tank",
+        "dps": "Damage",
+        "support": "Support"
+      },
       "player": "Remaining player",
       "selectPlayer": "Choose a player",
       "declaredRoles": "Declared roles",
@@ -3011,7 +3201,12 @@
       "commitFailed": "Role edit could not be saved",
       "committed": "Player role added. The draft remains paused.",
       "previewOnly": "Preview",
-      "impact": { "resolved": "Role shortage resolved", "improved": "Feasibility improved", "unchanged": "No feasibility change", "worse": "Feasibility became worse" },
+      "impact": {
+        "resolved": "Role shortage resolved",
+        "improved": "Feasibility improved",
+        "unchanged": "No feasibility change",
+        "worse": "Feasibility became worse"
+      },
       "before": "Before",
       "after": "After",
       "preview": "Preview impact",
@@ -3040,14 +3235,26 @@
       "loadingName": "Loading tournament",
       "publicBoard": "Public board"
     },
-    "status": { "setup": "Setup", "ready": "Ready", "live": "Live", "paused": "Paused", "completed": "Completed", "cancelled": "Cancelled" },
+    "status": {
+      "setup": "Setup",
+      "ready": "Ready",
+      "live": "Live",
+      "paused": "Paused",
+      "completed": "Completed",
+      "cancelled": "Cancelled"
+    },
     "format": "Format",
     "rosterSize": "Roster",
     "teams": "Teams",
     "progress": "Progress",
     "onClock": "On the clock",
     "onClockLabel": "On the clock",
-    "connection": { "idle": "Realtime idle", "connecting": "Connecting", "connected": "Live connection", "reconnecting": "Reconnecting" },
+    "connection": {
+      "idle": "Realtime idle",
+      "connecting": "Connecting",
+      "connected": "Live connection",
+      "reconnecting": "Reconnecting"
+    },
     "anonymousViewers": "Viewers: {count}",
     "onlineCount": "{n} of {total} online",
     "you": "You",
@@ -3073,7 +3280,11 @@
     "teamAverage": "Avg",
     "openSlot": "Open slot",
     "onTheClock": "On the clock",
-    "roles": { "tank": "Tank", "dps": "Damage", "support": "Support" },
+    "roles": {
+      "tank": "Tank",
+      "dps": "Damage",
+      "support": "Support"
+    },
     "flex": "Flex",
     "availablePool": "Player pool",
     "searchPlayers": "Search players",
@@ -3104,7 +3315,10 @@
     "chooseRole": "Choose role",
     "primaryRole": "Primary role",
     "rank": "Rank",
-    "optionReason": { "role_filled": "This roster slot is already filled.", "role_shortage": "Choosing this option would leave another required role impossible to fill." },
+    "optionReason": {
+      "role_filled": "This roster slot is already filled.",
+      "role_shortage": "Choosing this option would leave another required role impossible to fill."
+    },
     "shortlist": "Shortlist",
     "shortlistEmpty": "Save players here while you compare options. This list is private to this browser.",
     "howItWorks": "How it works?",
@@ -3120,7 +3334,11 @@
     "pickSuccess": "{player} was picked successfully.",
     "checkingSafeOptions": "Checking every player-role option against the remaining draft…",
     "mobileViews": "Draft workspace sections",
-    "mobileView": { "pool": "Pool", "team": "My team", "order": "Order" },
+    "mobileView": {
+      "pool": "Pool",
+      "team": "My team",
+      "order": "Order"
+    },
     "spectatorCompleted": "The draft is complete. These are the final rosters and recorded selections.",
     "spectatorReadOnly": "This public board updates live. Selection controls are shown only to registered captains.",
     "loadingTitle": "Loading the draft room",
@@ -3144,6 +3362,37 @@
       "exchange_failed": "Couldn't complete sign-in. Please try again.",
       "invalid_origin": "Sign-in isn't allowed from this domain.",
       "generic": "Sign-in failed. Please try again."
+    }
+  },
+  "errors": {
+    "boundary": {
+      "title": "Something went wrong",
+      "description": "This section failed to load. Try again, or head back to the dashboard.",
+      "digest": "Error {digest}",
+      "retry": "Try again",
+      "home": "Back to dashboard"
+    }
+  },
+  "notFound": {
+    "eyebrow": "404 // route unavailable",
+    "title": "That route is off the board.",
+    "description": "The page you requested has moved or never existed. Head back to the dashboard, or pick one of the live sections below.",
+    "backHome": "Back to dashboard",
+    "browseTournaments": "Browse tournaments",
+    "quickRecovery": "Quick recovery",
+    "links": {
+      "tournaments": {
+        "title": "Tournaments",
+        "description": "Return to the full tournament board."
+      },
+      "players": {
+        "title": "Players",
+        "description": "Jump into player profiles and rankings."
+      },
+      "encounters": {
+        "title": "Encounters",
+        "description": "Open recent match breakdowns and results."
+      }
     }
   }
 }

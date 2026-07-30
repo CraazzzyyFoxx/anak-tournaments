@@ -86,7 +86,7 @@ export function VetoMapGrid({ pool, mapsById, selectedMapId, canSelect, onSelect
                     </span>
                   )}
                   {entry.action_index != null ? (
-                    <span className="absolute left-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-md bg-black/65 font-mono text-xs font-semibold text-white">
+                    <span className="absolute left-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-md bg-black/65 font-mono text-xs font-semibold tabular-nums text-[color:var(--aqt-fg)]">
                       {entry.action_index + 1}
                     </span>
                   ) : null}

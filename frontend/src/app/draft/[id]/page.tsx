@@ -6,7 +6,7 @@ import { redirect, useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 
-import { DraftBoard } from "@/app/(site)/tournaments/[id]/draft/_components/DraftBoard";
+import { DraftBoard } from "@/components/draft/DraftBoard";
 import { useTournamentQuery } from "@/app/(site)/tournaments/[id]/_hooks/useTournamentClientData";
 import { Button } from "@/components/ui/button";
 

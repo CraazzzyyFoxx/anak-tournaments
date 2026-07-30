@@ -2,7 +2,6 @@
 
 import React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { ArrowRight, Users } from "lucide-react";
 
@@ -13,8 +12,6 @@ import {
   teamInitials,
 } from "./tournaments-helpers";
 
-const stopPropagation = (event: React.MouseEvent) => event.stopPropagation();
-
 const FeaturedTournamentCard = ({
   group,
   small = false,
@@ -23,25 +20,16 @@ const FeaturedTournamentCard = ({
   small?: boolean;
 }) => {
   const t = useTranslations();
-  const router = useRouter();
   const { tournament, current, encounters } = group;
 
   const stageName = current.stage?.name ?? null;
   const mapName = currentMapName(current);
   const players = tournament.participants_count ?? 0;
 
-  const onCardClick = (event: React.MouseEvent) => {
-    if ((event.target as HTMLElement).closest("a")) return;
-    router.push(`/tournaments/${tournament.id}`);
-  };
-
   return (
-    <article
-      className={`feat-card live${small ? " small" : ""}`}
-      onClick={onCardClick}
-    >
-      <div className="feat-glow" />
-      <div className="feat-hex" />
+    <article className={`feat-card live${small ? " small" : ""}`}>
+      <div aria-hidden className="feat-glow" />
+      <div aria-hidden className="feat-hex" />
 
       <div className="feat-top">
         <div>
@@ -50,17 +38,29 @@ const FeaturedTournamentCard = ({
             {tournament.team_formation &&
               `${tournament.is_league ? " · " : ""}${tournament.team_formation === "draft" ? t("common.draft") : t("common.balancer")}`}
           </span>
-          <h3 className="feat-name">{tournament.name}</h3>
+          {/* The card used to navigate from an `onClick` on the <article>, so
+              keyboard users could not reach it and AT never announced a target.
+              A stretched overlay link is not an option here: `.feat-foot` is its
+              own stacking context, so the footer's Bracket/Open buttons could
+              never sit above the overlay. The title carries the link instead. */}
+          <h3 className="feat-name">
+            <Link
+              href={`/tournaments/${tournament.id}`}
+              className="text-inherit no-underline outline-none hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]"
+            >
+              {tournament.name}
+            </Link>
+          </h3>
         </div>
         <span className="status-pill live">
-          <span className="dot" />
+          <span aria-hidden className="dot" />
           {stageName ? `${t("common.live")} · ${stageName}` : t("common.live")}
         </span>
       </div>
 
       <div className="feat-meta">
         <span className="meta-pill">
-          <Users width={11} height={11} />
+          <Users aria-hidden width={11} height={11} />
           <span className="v">{players}</span> {t("common.players")}
         </span>
         <span className="meta-pill">
@@ -90,6 +90,7 @@ const FeaturedTournamentCard = ({
         <div className="now-lbl">
           <span className="k">
             <span
+              aria-hidden
               className="live-dot"
               style={{ marginRight: 4, width: 6, height: 6 }}
             />
@@ -99,7 +100,7 @@ const FeaturedTournamentCard = ({
         </div>
         <div className="vs">
           <div className="team">
-            <span className="av t1">{teamInitials(current.home_team?.name)}</span>
+            <span aria-hidden className="av t1">{teamInitials(current.home_team?.name)}</span>
             <span className="nm">{current.home_team?.name ?? t("common.tbd")}</span>
           </div>
           <span className="score">
@@ -108,7 +109,7 @@ const FeaturedTournamentCard = ({
             {current.score?.away ?? 0}
           </span>
           <div className="team right">
-            <span className="av t2">{teamInitials(current.away_team?.name)}</span>
+            <span aria-hidden className="av t2">{teamInitials(current.away_team?.name)}</span>
             <span className="nm">{current.away_team?.name ?? t("common.tbd")}</span>
           </div>
         </div>
@@ -124,21 +125,13 @@ const FeaturedTournamentCard = ({
           </span>
         </div>
         <div className="right">
-          <Link
-            href={`/tournaments/${tournament.id}/bracket`}
-            className="tn-btn"
-            onClick={stopPropagation}
-          >
+          <Link href={`/tournaments/${tournament.id}/bracket`} className="tn-btn">
             {t("common.bracket")}
-            <ArrowRight width={11} height={11} />
+            <ArrowRight aria-hidden width={11} height={11} />
           </Link>
-          <Link
-            href={`/tournaments/${tournament.id}`}
-            className="tn-btn primary"
-            onClick={stopPropagation}
-          >
+          <Link href={`/tournaments/${tournament.id}`} className="tn-btn primary">
             {t("common.open")}
-            <ArrowRight width={11} height={11} />
+            <ArrowRight aria-hidden width={11} height={11} />
           </Link>
         </div>
       </div>
@@ -158,6 +151,7 @@ const FeaturedLive = ({ groups }: { groups: LiveTournamentGroup[] }) => {
       <div className="section-head">
         <h2>
           <span
+            aria-hidden
             className="live-dot"
             style={{ width: 7, height: 7, marginRight: 0 }}
           />

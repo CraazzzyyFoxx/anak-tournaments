@@ -2,7 +2,7 @@
 
 import { Check, Circle, Pencil, PlusCircle, ShieldX } from "lucide-react";
 
-import PlayerDivisionIcon from "@/components/PlayerDivisionIcon";
+import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,7 +26,8 @@ import {
 } from "@/components/ui/context-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import type { AdminRegistration, BalancerPlayerRecord, BalancerRoleCode, StatusMeta } from "@/types/balancer-admin.types";
+import type { AdminRegistration, BalancerPlayerRecord, BalancerRoleCode } from "@/types/balancer-admin.types";
+import type { StatusMeta } from "@/types/registration.types";
 import { getRegistrationBattleTags } from "./balancer-page-helpers";
 import { BattleTagContextMenuItems, BattleTagCopyButton, SmurfTagStrip } from "./BattleTagCopyControls";
 import { IssueChip, issueChipKey } from "./IssueChip";
@@ -300,7 +301,7 @@ export function PoolPlayerCompactList({
                         <div className="flex items-center gap-2 pr-1">
                           {divisionNumber != null ? (
                             <span className="shrink-0" title={`Division ${divisionNumber}`}>
-                              <PlayerDivisionIcon division={divisionNumber} width={20} height={20} />
+                              <DivisionIcon division={divisionNumber} width={20} height={20} />
                             </span>
                           ) : null}
                           {primaryEntry?.rank_value != null ? (

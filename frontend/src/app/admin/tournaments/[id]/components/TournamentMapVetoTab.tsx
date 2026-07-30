@@ -14,6 +14,7 @@ import {
   X
 } from "lucide-react";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import { TONE_CLASS } from "@/components/admin/tone";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -137,13 +138,16 @@ function MapPoolCard({
       ) : (
         <div aria-hidden className="absolute inset-0 bg-muted/40" />
       )}
-      <div aria-hidden className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+      <div
+        aria-hidden
+        className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent"
+      />
       {selected ? (
-        <span className="absolute right-1.5 top-1.5 flex size-5 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
+        <span className="absolute right-1.5 top-1.5 flex size-5 items-center justify-center rounded-full bg-primary text-xs font-semibold tabular-nums text-primary-foreground">
           {selectionIndex + 1}
         </span>
       ) : null}
-      <span className="relative truncate px-2 pb-1.5 text-xs font-medium text-white">
+      <span className="relative truncate px-2 pb-1.5 text-xs font-medium text-foreground">
         {map.name}
       </span>
     </button>
@@ -331,10 +335,15 @@ export function TournamentMapVetoTab({
     });
   };
 
-  const presetButtons: { preset: Exclude<VetoPreset, "custom">; label: string; minPool: number }[] = [
-    { preset: "bo1", label: "Bo1", minPool: 2 },
-    { preset: "bo3", label: "Bo3", minPool: BO3_SEQUENCE.length },
-    { preset: "bo5", label: "Bo5", minPool: BO5_SEQUENCE.length }
+  const presetButtons: {
+    preset: Exclude<VetoPreset, "custom">;
+    label: string;
+    srLabel: string;
+    minPool: number;
+  }[] = [
+    { preset: "bo1", label: "Bo1", srLabel: "Best of 1 preset", minPool: 2 },
+    { preset: "bo3", label: "Bo3", srLabel: "Best of 3 preset", minPool: BO3_SEQUENCE.length },
+    { preset: "bo5", label: "Bo5", srLabel: "Best of 5 preset", minPool: BO5_SEQUENCE.length }
   ];
 
   return (
@@ -342,7 +351,9 @@ export function TournamentMapVetoTab({
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
           <div className="space-y-1.5">
-            <CardTitle>Map veto</CardTitle>
+            <CardTitle asChild>
+              <h2>Map veto</h2>
+            </CardTitle>
             <CardDescription>
               Map pools and pick/ban sequences for veto rooms. The most specific level wins:
               stage + round overrides stage, stage overrides the tournament default.
@@ -350,7 +361,7 @@ export function TournamentMapVetoTab({
           </div>
           {canManage ? (
             <Button onClick={openCreateEditor}>
-              <Plus className="h-4 w-4" />
+              <Plus className="h-4 w-4" aria-hidden />
               Add config
             </Button>
           ) : null}
@@ -368,64 +379,69 @@ export function TournamentMapVetoTab({
             </p>
           ) : (
             <ul className="space-y-3">
-              {configs.map((config) => (
-                <li
-                  key={config.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/70 px-4 py-3"
-                >
-                  <div className="min-w-0 space-y-1.5">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium">{getVetoLevelLabel(config, stagesById)}</span>
-                      <Badge variant="outline">{getVetoPresetLabel(config.preset)}</Badge>
-                      {config.turn_timer_seconds != null ? (
-                        <Badge variant="secondary">{config.turn_timer_seconds}s timer</Badge>
-                      ) : null}
+              {configs.map((config) => {
+                const levelLabel = getVetoLevelLabel(config, stagesById);
+                return (
+                  <li
+                    key={config.id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/70 px-4 py-3"
+                  >
+                    <div className="min-w-0 space-y-1.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium">{levelLabel}</span>
+                        <Badge variant="outline">{getVetoPresetLabel(config.preset)}</Badge>
+                        {config.turn_timer_seconds != null ? (
+                          <Badge variant="secondary" className="tabular-nums">
+                            {config.turn_timer_seconds}s timer
+                          </Badge>
+                        ) : null}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                        <span>
+                          <span className="tabular-nums">{config.map_ids.length}</span>{" "}
+                          {config.map_ids.length === 1 ? "map" : "maps"}:
+                        </span>
+                        <span className="truncate">
+                          {config.map_ids
+                            .map((mapId) => mapsById.get(mapId)?.name ?? `#${mapId}`)
+                            .join(", ")}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {config.sequence.map((token, index) => (
+                          <Badge
+                            key={`${config.id}-${index}`}
+                            variant={tokenAction(token) === "ban" ? "destructive" : "secondary"}
+                            className="text-xs"
+                          >
+                            {tokenLabel(token)}
+                          </Badge>
+                        ))}
+                      </div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                      <span>
-                        {config.map_ids.length}{" "}
-                        {config.map_ids.length === 1 ? "map" : "maps"}:
-                      </span>
-                      <span className="truncate">
-                        {config.map_ids
-                          .map((mapId) => mapsById.get(mapId)?.name ?? `#${mapId}`)
-                          .join(", ")}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {config.sequence.map((token, index) => (
-                        <Badge
-                          key={`${config.id}-${index}`}
-                          variant={tokenAction(token) === "ban" ? "destructive" : "secondary"}
-                          className="text-[11px]"
+                    {canManage ? (
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Edit veto config for ${levelLabel}`}
+                          onClick={() => openEditEditor(config)}
                         >
-                          {tokenLabel(token)}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                  {canManage ? (
-                    <div className="flex shrink-0 items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label={`Edit ${getVetoLevelLabel(config, stagesById)}`}
-                        onClick={() => openEditEditor(config)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label={`Delete ${getVetoLevelLabel(config, stagesById)}`}
-                        onClick={() => setConfigPendingDelete(config)}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  ) : null}
-                </li>
-              ))}
+                          <Pencil className="h-4 w-4" aria-hidden />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Delete veto config for ${levelLabel}`}
+                          onClick={() => setConfigPendingDelete(config)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" aria-hidden />
+                        </Button>
+                      </div>
+                    ) : null}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </CardContent>
@@ -513,17 +529,23 @@ export function TournamentMapVetoTab({
                 ) : null}
               </div>
               {replacesExisting ? (
-                <p className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
-                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <p
+                  className={cn(
+                    "flex items-start gap-2 rounded-lg border px-3 py-2 text-xs",
+                    TONE_CLASS.warning
+                  )}
+                >
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
                   A config already exists for this level — saving will replace it.
                 </p>
               ) : null}
 
               <div className="space-y-2">
                 <div className="flex items-baseline justify-between">
-                  <Label>Map pool</Label>
+                  <h3 className="text-sm font-medium">Map pool</h3>
                   <span className="text-xs text-muted-foreground">
-                    {formState.mapIds.length} selected · click order sets the pool order
+                    <span className="tabular-nums">{formState.mapIds.length}</span> selected · click
+                    order sets the pool order
                   </span>
                 </div>
                 {mapsQuery.isLoading ? (
@@ -553,25 +575,34 @@ export function TournamentMapVetoTab({
 
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <Label>Veto sequence</Label>
+                  <h3 className="text-sm font-medium">Veto sequence</h3>
                   <div className="flex items-center gap-1.5">
-                    {presetButtons.map(({ preset, label, minPool }) => (
-                      <Button
-                        key={preset}
-                        type="button"
-                        size="sm"
-                        variant={formState.preset === preset ? "default" : "outline"}
-                        disabled={formState.mapIds.length < minPool}
-                        title={
-                          formState.mapIds.length < minPool
-                            ? `Needs at least ${minPool} maps in the pool`
-                            : undefined
-                        }
-                        onClick={() => applyPreset(preset)}
-                      >
-                        {label}
-                      </Button>
-                    ))}
+                    <div
+                      role="radiogroup"
+                      aria-label="Veto sequence preset"
+                      className="flex items-center gap-1.5"
+                    >
+                      {presetButtons.map(({ preset, label, srLabel, minPool }) => (
+                        <Button
+                          key={preset}
+                          type="button"
+                          role="radio"
+                          aria-checked={formState.preset === preset}
+                          aria-label={srLabel}
+                          size="sm"
+                          variant={formState.preset === preset ? "default" : "outline"}
+                          disabled={formState.mapIds.length < minPool}
+                          title={
+                            formState.mapIds.length < minPool
+                              ? `Needs at least ${minPool} maps in the pool`
+                              : undefined
+                          }
+                          onClick={() => applyPreset(preset)}
+                        >
+                          {label}
+                        </Button>
+                      ))}
+                    </div>
                     <Badge variant={formState.preset === "custom" ? "default" : "outline"}>
                       Custom
                     </Badge>
@@ -591,7 +622,7 @@ export function TournamentMapVetoTab({
                           key={index}
                           className="flex items-center gap-2 rounded-lg border border-border/70 px-2 py-1.5"
                         >
-                          <span className="w-6 text-center text-xs font-medium text-muted-foreground">
+                          <span className="w-6 text-center text-xs font-medium tabular-nums text-muted-foreground">
                             {index + 1}
                           </span>
                           <Select
@@ -645,7 +676,7 @@ export function TournamentMapVetoTab({
                               disabled={index === 0}
                               onClick={() => moveStep(index, -1)}
                             >
-                              <ArrowUp className="h-3.5 w-3.5" />
+                              <ArrowUp className="h-3.5 w-3.5" aria-hidden />
                             </Button>
                             <Button
                               type="button"
@@ -656,7 +687,7 @@ export function TournamentMapVetoTab({
                               disabled={index === formState.sequence.length - 1}
                               onClick={() => moveStep(index, 1)}
                             >
-                              <ArrowDown className="h-3.5 w-3.5" />
+                              <ArrowDown className="h-3.5 w-3.5" aria-hidden />
                             </Button>
                             <Button
                               type="button"
@@ -671,7 +702,7 @@ export function TournamentMapVetoTab({
                                 })
                               }
                             >
-                              <X className="h-3.5 w-3.5" />
+                              <X className="h-3.5 w-3.5" aria-hidden />
                             </Button>
                           </div>
                         </li>
@@ -685,7 +716,7 @@ export function TournamentMapVetoTab({
                   size="sm"
                   onClick={() => patchSequence((steps) => [...steps, "ban_first"])}
                 >
-                  <Plus className="h-4 w-4" />
+                  <Plus className="h-4 w-4" aria-hidden />
                   Add step
                 </Button>
               </div>
@@ -713,14 +744,14 @@ export function TournamentMapVetoTab({
                 >
                   {allErrors.map((error) => (
                     <p key={error} className="flex items-start gap-2">
-                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
                       {error}
                     </p>
                   ))}
                 </div>
               ) : (
                 <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Check className="h-3.5 w-3.5 text-emerald-500" />
+                  <Check className="h-3.5 w-3.5 text-success" aria-hidden />
                   Sequence is valid for the selected pool.
                 </p>
               )}
@@ -730,8 +761,10 @@ export function TournamentMapVetoTab({
                   role="alert"
                   className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
                 >
-                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                  {formError}
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                  <span>
+                    <span className="font-medium">Could not save the veto config.</span> {formError}
+                  </span>
                 </div>
               ) : null}
             </div>
@@ -748,7 +781,7 @@ export function TournamentMapVetoTab({
               <Button type="submit" disabled={!canSave}>
                 {upsertMutation.isPending ? (
                   <>
-                    <LoaderCircle className="h-4 w-4 animate-spin" />
+                    <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden />
                     Saving…
                   </>
                 ) : (
@@ -770,7 +803,7 @@ export function TournamentMapVetoTab({
             deleteMutation.mutate(configPendingDelete.id);
           }
         }}
-        title="Delete veto config?"
+        title="Delete veto config"
         description={
           configPendingDelete
             ? `The "${getVetoLevelLabel(configPendingDelete, stagesById)}" veto config will be removed. Matches fall back to the next config level; running veto sessions keep their snapshot.`

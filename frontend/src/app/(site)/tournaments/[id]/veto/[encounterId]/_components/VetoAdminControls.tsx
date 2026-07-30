@@ -46,15 +46,21 @@ export function VetoAdminControls({
   const t = useTranslations("encounters.veto.room");
   const defaultSide: VetoSide = state.turn_side ?? "home";
   const defaultAction: MapVetoAction = state.expected_action === "pick" ? "pick" : "ban";
-  const [side, setSide] = useState<VetoSide>(defaultSide);
-  const [action, setAction] = useState<MapVetoAction>(defaultAction);
-
-  // Follow the live turn: whenever the current step changes, re-point the
-  // override controls at the side/action the sequence actually expects.
-  useEffect(() => {
-    setSide(defaultSide);
-    setAction(defaultAction);
-  }, [defaultSide, defaultAction, state.current_step_index]);
+  // The override is stored WITH the step it was made for, so a new step
+  // automatically falls back to what the sequence expects. This used to be two
+  // `useState`s resynced from an effect — a cascading render for a value that is
+  // pure derivation.
+  const step = state.current_step_index;
+  const [override, setOverride] = useState<{
+    step: number | null;
+    side: VetoSide;
+    action: MapVetoAction;
+  } | null>(null);
+  const isOverridden = override?.step === step;
+  const side = isOverridden ? override.side : defaultSide;
+  const action = isOverridden ? override.action : defaultAction;
+  const setSide = (next: VetoSide) => setOverride({ step, side: next, action });
+  const setAction = (next: MapVetoAction) => setOverride({ step, side, action: next });
 
   const resetMutation = useMutation({
     mutationFn: () => adminService.resetVetoSession(encounterId),

@@ -19,15 +19,15 @@ const chartConfig = {
   },
   tank_avg_div: {
     label: "Tank",
-    color: "#7d92cc"
+    color: "var(--aqt-tank)"
   },
   damage_avg_div: {
     label: "Damage",
-    color: "#f28e1c"
+    color: "var(--aqt-damage)"
   },
   support_avg_div: {
     label: "Support",
-    color: "#f7a0cc"
+    color: "var(--aqt-support)"
   }
 } satisfies ChartConfig;
 

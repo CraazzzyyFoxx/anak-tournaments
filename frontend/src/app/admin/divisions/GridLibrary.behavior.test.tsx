@@ -113,12 +113,12 @@ describe("DivisionGridLibrary", () => {
       (button) => button.getAttribute("aria-label") ?? button.textContent?.trim()
     );
 
-    expect(buttonLabels).not.toContain("New grid");
+    expect(buttonLabels).not.toContain("Create grid");
     expect(buttonLabels).not.toContain("Import JSON");
     expect(buttonLabels).not.toContain("Edit grid name");
-    expect(buttonLabels).not.toContain("Export");
-    expect(buttonLabels).not.toContain("Archive");
-    expect(buttonLabels).toContain("Open");
+    expect(buttonLabels).not.toContain("Export JSON");
+    expect(buttonLabels).not.toContain("Archive grid");
+    expect(buttonLabels).toContain("Open grid");
   });
 
   it("shows only controls backed by explicitly granted permissions", () => {
@@ -134,11 +134,11 @@ describe("DivisionGridLibrary", () => {
       (button) => button.getAttribute("aria-label") ?? button.textContent?.trim()
     );
 
-    expect(buttonLabels).toContain("New grid");
+    expect(buttonLabels).toContain("Create grid");
     expect(buttonLabels).toContain("Edit grid name");
-    expect(buttonLabels).toContain("Export");
-    expect(buttonLabels).toContain("Archive");
-    expect(buttonLabels).toContain("Delete");
+    expect(buttonLabels).toContain("Export JSON");
+    expect(buttonLabels).toContain("Archive grid");
+    expect(buttonLabels).toContain("Delete grid");
     expect(buttonLabels).not.toContain("Import JSON");
   });
 });

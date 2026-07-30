@@ -99,8 +99,8 @@ function SubrolePill({
         muted && !disabled && "opacity-45",
         !disabled && active
           ? "border-blue-400/60 bg-blue-500/18 text-blue-100"
-          : "border-[color:var(--aqt-border-2)] bg-white/[0.03] text-[color:var(--aqt-fg-muted)]",
-        !disabled && !active && "hover:bg-white/[0.06] hover:text-[color:var(--aqt-fg-muted)]",
+          : "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg-muted)]",
+        !disabled && !active && "hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg-muted)]",
       )}
     >
       {label}

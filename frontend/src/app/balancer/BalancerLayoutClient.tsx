@@ -6,7 +6,7 @@ import Link from "next/link";
 import { BalancerToolTopBar } from "@/app/balancer/BalancerToolTopBar";
 import { BalancerShell } from "@/app/balancer/components/BalancerShell";
 import { useToolContext } from "@/app/balancer/useToolContext";
-import { adminEntryPermissions } from "@/components/admin/admin-navigation";
+import { adminEntryPermissions } from "@/lib/admin-permissions";
 import { usePermissions } from "@/hooks/usePermissions";
 
 function LoadingState() {

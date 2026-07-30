@@ -2,8 +2,9 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { CardSurface, StagePill } from "@/app/(site)/users/components/shared/atoms";
-import { ArrowLeftRight, ListOrdered } from "lucide-react";
+import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
+import { StagePill } from "@/components/match/cells";
+import { ArrowLeftRight, ArrowRight, ListOrdered } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -30,7 +31,7 @@ interface MatchesSidebarsProps {
   stageStats: StageStats;
 }
 
-// Top N shown inline; the rest live behind the "All N →" head-to-head modal.
+// Top N shown inline; the rest live behind the "All N" head-to-head modal.
 const SIDEBAR_LIMIT = 8;
 
 const oppTotal = (o: OpponentStat) => o.wins + o.losses + o.draws;
@@ -42,7 +43,7 @@ const wrColor = (wr: number, total: number) =>
   total === 0 ? "var(--aqt-fg-faint)" : wr > 55 ? "var(--aqt-emerald)" : wr < 45 ? "var(--aqt-rose)" : "var(--aqt-amber)";
 
 const OpponentPips = ({ o }: { o: OpponentStat }) => (
-  <span className="aqt-wl">
+  <span className="aqt-wl" aria-hidden>
     {Array.from({ length: o.wins }).map((_, idx) => <span key={`w${idx}`} className="b w" />)}
     {Array.from({ length: o.losses }).map((_, idx) => <span key={`l${idx}`} className="b l" />)}
     {Array.from({ length: o.draws }).map((_, idx) => <span key={`d${idx}`} className="b d" />)}
@@ -70,17 +71,22 @@ const MatchesSidebars = ({ opponentStats, stageStats }: MatchesSidebarsProps) =>
   };
   const shown = opponentStats.slice(0, SIDEBAR_LIMIT);
 
+  // Sticky rail: shared offset token, and a stacking context below the z-40 tab
+  // strip so it scrolls under the opaque bar instead of through it.
   return (
-    <aside className="flex flex-col gap-3.5 xl:sticky xl:top-22">
+    <aside className="flex flex-col gap-3.5 xl:sticky xl:top-[var(--aqt-sticky-top)] xl:z-30">
       <CardSurface
         flush
         title={t("users.matches.mostFoughtOpponents")}
-        icon={<ArrowLeftRight size={15} />}
+        icon={<ArrowLeftRight aria-hidden size={15} />}
         action={
           opponentStats.length > SIDEBAR_LIMIT ? (
             <Dialog>
-              <DialogTrigger className="aqt-seeall">
-                {t("common.all")} {opponentStats.length} →
+              <DialogTrigger className="aqt-seeall" aria-label={t("users.matches.allOpponents")}>
+                <span className="tabular-nums">
+                  {t("common.all")} {opponentStats.length}
+                </span>
+                <ArrowRight aria-hidden className="size-3" />
               </DialogTrigger>
               <DialogContent className="max-w-[560px] border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg)]">
                 <DialogHeader>
@@ -105,7 +111,7 @@ const MatchesSidebars = ({ opponentStats, stageStats }: MatchesSidebarsProps) =>
                         return (
                           <tr
                             key={o.name}
-                            className="border-b border-[color:var(--aqt-border)] last:border-b-0 hover:bg-[hsl(0_0%_100%/0.02)]"
+                            className="border-b border-[color:var(--aqt-border)] last:border-b-0 hover:bg-[color:var(--aqt-overlay-2)]"
                           >
                             <td className="aqt-mono px-3 py-2 text-[color:var(--aqt-fg-faint)]">
                               {String(i + 1).padStart(2, "0")}
@@ -133,10 +139,10 @@ const MatchesSidebars = ({ opponentStats, stageStats }: MatchesSidebarsProps) =>
       >
         {shown.map((opp, i) => (
           <div key={opp.name} className="aqt-opp-row">
-            <span className="aqt-rank">{String(i + 1).padStart(2, "0")}</span>
+            <span className="aqt-rank tabular-nums">{String(i + 1).padStart(2, "0")}</span>
             <span className="aqt-nm">{opp.name}</span>
             <OpponentPips o={opp} />
-            <span className="aqt-pct">
+            <span className="aqt-pct tabular-nums">
               {opp.wins}-{opp.losses}{opp.draws > 0 ? `-${opp.draws}` : ""}
             </span>
           </div>
@@ -146,7 +152,7 @@ const MatchesSidebars = ({ opponentStats, stageStats }: MatchesSidebarsProps) =>
         ) : null}
       </CardSurface>
 
-      <CardSurface flush title={t("users.matches.byStage")} icon={<ListOrdered size={15} />}>
+      <CardSurface flush title={t("users.matches.byStage")} icon={<ListOrdered aria-hidden size={15} />}>
         {(["group", "playoffs", "finals"] as const).map((k) => {
           const stats = stageStats[k];
           const total = stats.w + stats.l;
@@ -156,7 +162,7 @@ const MatchesSidebars = ({ opponentStats, stageStats }: MatchesSidebarsProps) =>
               <span className="aqt-nm inline-flex items-center gap-2">
                 <StagePill kind={k}>{stageLabels[k]}</StagePill>
               </span>
-              <span className="aqt-pct">{stats.w}-{stats.l}</span>
+              <span className="aqt-pct tabular-nums">{stats.w}-{stats.l}</span>
               <span
                 className="aqt-mono text-[12px] font-bold"
                 style={{

@@ -1,12 +1,13 @@
 "use client";
 
-import { type CSSProperties, type ReactNode, useEffect } from "react";
+import { Fragment, type CSSProperties, type ReactNode, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { skipToken, useQuery } from "@tanstack/react-query";
 
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
-import { adminEntryPermissions, getMatchingAdminRoute } from "@/components/admin/admin-navigation";
+import { getMatchingAdminRoute } from "@/components/admin/admin-navigation";
+import { adminEntryPermissions } from "@/lib/admin-permissions";
 import { getTournamentWorkspaceQueryKeys } from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.queryKeys";
 import {
   Breadcrumb,
@@ -28,7 +29,7 @@ function LoadingState() {
     <div className="flex h-screen w-full items-center justify-center">
       <div className="text-center">
         <div className="inline-block size-8 animate-spin rounded-full border-4 border-current border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]" />
-        <p className="mt-4 text-muted-foreground">Loading...</p>
+        <p className="mt-4 text-muted-foreground">Loading…</p>
       </div>
     </div>
   );
@@ -121,12 +122,19 @@ function AdminBreadcrumb() {
             );
 
           return (
-            <div key={`${segment}-${index}`} className="flex items-center gap-2">
+            // Fragment, not a <div>: BreadcrumbList renders an <ol>, which
+            // admits only <li> children. The wrapper broke list semantics on
+            // every admin page.
+            <Fragment key={`${segment}-${index}`}>
               <BreadcrumbSeparator />
               <BreadcrumbItem>
-                {isLast ? <BreadcrumbPage>{label}</BreadcrumbPage> : <BreadcrumbLink href={href}>{label}</BreadcrumbLink>}
+                {isLast ? (
+                  <BreadcrumbPage>{label}</BreadcrumbPage>
+                ) : (
+                  <BreadcrumbLink href={href}>{label}</BreadcrumbLink>
+                )}
               </BreadcrumbItem>
-            </div>
+            </Fragment>
           );
         })}
       </BreadcrumbList>
@@ -184,15 +192,29 @@ export function AdminLayoutClient({ children, defaultSidebarOpen }: AdminLayoutC
         defaultOpen={defaultSidebarOpen}
         style={sidebarShellStyle}
       >
+        {/* First focusable element: the sidebar puts ~30 nav links before the
+            page content, so keyboard users need a way past them. */}
+        <a
+          href="#admin-content"
+          className="sr-only focus-visible:not-sr-only focus-visible:fixed focus-visible:left-4 focus-visible:top-4 focus-visible:z-50 focus-visible:rounded-lg focus-visible:bg-primary focus-visible:px-3 focus-visible:py-2 focus-visible:text-sm focus-visible:font-medium focus-visible:text-primary-foreground"
+        >
+          Skip to content
+        </a>
         <AdminSidebar />
         <SidebarInset className="min-h-svh min-w-0 bg-background/95 md:peer-data-[variant=inset]:border md:peer-data-[variant=inset]:border-border/50 md:peer-data-[variant=inset]:shadow-xl md:peer-data-[variant=inset]:shadow-black/10">
-          <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-3 border-b border-border/50 bg-background/90 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/82 md:px-5">
+          <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-3 border-b border-border/50 bg-background/90 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:px-5">
             <SidebarTrigger className="size-8 rounded-lg border border-border/60" />
             <Separator orientation="vertical" className="h-5" />
             <AdminBreadcrumb />
           </header>
 
-          <div className="flex flex-1 flex-col gap-4 overflow-x-hidden p-4">{children}</div>
+          <div
+            id="admin-content"
+            tabIndex={-1}
+            className="flex flex-1 flex-col gap-4 overflow-x-hidden p-4"
+          >
+            {children}
+          </div>
         </SidebarInset>
       </SidebarProvider>
     </TooltipProvider>

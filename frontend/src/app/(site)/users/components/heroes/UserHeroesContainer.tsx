@@ -7,7 +7,7 @@ import { useTranslations } from "next-intl";
 import userService from "@/services/user.service";
 import SearchableImageSelect, {
   type SearchableImageOption
-} from "@/app/(site)/users/compare/components/SearchableImageSelect";
+} from "@/components/ui/searchable-image-select";
 import HeroesView from "@/app/(site)/users/components/heroes/HeroesView";
 import { Skeleton } from "@/components/ui/skeleton";
 

@@ -11,7 +11,7 @@ import { parseOptionalInt, getMapIconSrc, roleLabelKey } from "@/app/(site)/user
 import UserSearchCombobox from "@/app/(site)/users/compare/components/UserSearchCombobox";
 import SearchableImageSelect, {
   type SearchableImageOption,
-} from "@/app/(site)/users/compare/components/SearchableImageSelect";
+} from "@/components/ui/searchable-image-select";
 import { Hero } from "@/types/hero.types";
 import { MapRead } from "@/types/map.types";
 import { Tournament } from "@/types/tournament.types";

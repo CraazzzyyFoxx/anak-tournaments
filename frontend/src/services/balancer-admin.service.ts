@@ -32,10 +32,10 @@ import {
   RegistrationRankAutofillRequest,
   RegistrationRankAutofillResponse,
   SavedBalance,
-  StatusScope,
   WorkspaceBalancerConfig,
   WorkspaceBalancerConfigUpsert
 } from "@/types/balancer-admin.types";
+import type { StatusScope } from "@/types/registration.types";
 
 // Endpoints whose response model is `X | None` return HTTP 200 with a `null`
 // body from FastAPI, but the Go gateway omits the body for null data. Parse

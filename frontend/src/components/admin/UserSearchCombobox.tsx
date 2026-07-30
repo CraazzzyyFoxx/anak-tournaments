@@ -1,23 +1,13 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Check, ChevronsUpDown } from "lucide-react";
 import { useDebounce } from "use-debounce";
 
 import userService from "@/services/user.service";
 import { MinimizedUser } from "@/types/user.types";
-import { Button } from "@/components/ui/button";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-  CommandSeparator,
-} from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { AdminCombobox, AdminComboboxCheck } from "@/components/admin/AdminCombobox";
+import { CommandGroup, CommandItem } from "@/components/ui/command";
 
 interface UserSearchComboboxProps {
   id?: string;
@@ -36,14 +26,13 @@ export function UserSearchCombobox({
   selectedName,
   onSelect,
   placeholder = "Select user",
-  searchPlaceholder = "Search user...",
+  searchPlaceholder = "Search user…",
   disabled = false,
   allowClear = true,
 }: UserSearchComboboxProps) {
   const [open, setOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
   const [debouncedSearch] = useDebounce(searchValue, 250);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
 
   const normalizedQuery = debouncedSearch.trim();
   const shouldSearch = normalizedQuery.length >= 2;
@@ -85,65 +74,49 @@ export function UserSearchCombobox({
   );
 
   const emptyMessage = usersQuery.isFetching
-    ? "Loading users..."
+    ? "Loading users…"
     : usersQuery.isError
-      ? "Failed to load users."
+      ? "Could not load users. Try again."
       : !shouldSearch
-        ? "Type at least 2 characters."
-        : "No users found.";
+        ? "Type at least 2 characters to search."
+        : "No users match that search. Try a shorter name.";
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          id={id}
-          ref={triggerRef}
-          type="button"
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          disabled={disabled}
-          className="h-10 w-full justify-between border-border/60 bg-background/80 font-normal hover:bg-background/90"
-        >
-          <span className="truncate" title={selectedLabel}>
-            {selectedLabel}
-          </span>
-          <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-0">
-        <Command>
-          <CommandInput value={searchValue} onValueChange={setSearchValue} placeholder={searchPlaceholder} />
-          <CommandList>
-            <CommandEmpty>{emptyMessage}</CommandEmpty>
-            <CommandGroup>
-              {results.map((user) => (
-                <CommandItem
-                  key={user.id}
-                  value={`${user.name} ${user.id}`}
-                  onSelect={() => handleSelect(user)}
-                >
-                  <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
-                    <span className="truncate">{user.name}</span>
-                    <span className="shrink-0 text-xs text-muted-foreground">#{user.id}</span>
-                  </div>
-                  <Check className={`ml-2 h-4 w-4 ${value === user.id ? "opacity-100" : "opacity-0"}`} />
-                </CommandItem>
-              ))}
-            </CommandGroup>
-            {allowClear && typeof value === "number" && value > 0 ? (
-              <>
-                <CommandSeparator />
-                <CommandGroup>
-                  <CommandItem value="clear-user-selection" onSelect={() => handleSelect(undefined)}>
-                    Clear selection
-                  </CommandItem>
-                </CommandGroup>
-              </>
-            ) : null}
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
+    <AdminCombobox
+      id={id}
+      open={open}
+      onOpenChange={setOpen}
+      label={selectedLabel}
+      disabled={disabled}
+      searchValue={searchValue}
+      onSearchValueChange={setSearchValue}
+      searchPlaceholder={searchPlaceholder}
+      emptyMessage={emptyMessage}
+      clear={
+        allowClear && typeof value === "number" && value > 0
+          ? {
+              label: "Clear selection",
+              value: "clear-user-selection",
+              onSelect: () => handleSelect(undefined)
+            }
+          : undefined
+      }
+    >
+      <CommandGroup>
+        {results.map((user) => (
+          <CommandItem
+            key={user.id}
+            value={`${user.name} ${user.id}`}
+            onSelect={() => handleSelect(user)}
+          >
+            <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
+              <span className="truncate">{user.name}</span>
+              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">#{user.id}</span>
+            </div>
+            <AdminComboboxCheck selected={value === user.id} />
+          </CommandItem>
+        ))}
+      </CommandGroup>
+    </AdminCombobox>
   );
 }

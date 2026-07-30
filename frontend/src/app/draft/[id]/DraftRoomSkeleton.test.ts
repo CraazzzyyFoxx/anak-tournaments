@@ -77,7 +77,7 @@ describe("standalone Draft loading skeleton", () => {
   it("uses the canonical composition in route and client initial loading states", () => {
     const loading = sourceFor("loading.tsx");
     const page = sourceFor("page.tsx");
-    const board = sourceFor("../../(site)/tournaments/[id]/draft/_components/DraftBoard.tsx");
+    const board = sourceFor("../../../components/draft/DraftBoard.tsx");
 
     expect(loading).toContain('import { DraftRoomSkeleton } from "./DraftRoomSkeleton"');
     expect(loading).toContain("return <DraftRoomSkeleton />");
@@ -116,7 +116,7 @@ describe("standalone Draft loading skeleton", () => {
   it("matches the loaded board width and mobile Back toolbar geometry", () => {
     const css = sourceFor("DraftRoom.module.css");
     const page = sourceFor("page.tsx");
-    const board = sourceFor("../../(site)/tournaments/[id]/draft/_components/DraftBoard.tsx");
+    const board = sourceFor("../../../components/draft/DraftBoard.tsx");
 
     expect(board).toContain("max-w-[min(2000px,96vw)]");
     expect(css).toMatch(

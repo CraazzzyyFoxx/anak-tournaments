@@ -197,6 +197,8 @@ const TierEditorRow = memo(function TierEditorRow({
     (col: number) => (element: HTMLInputElement | null) => onSetInputRef(rowIndex, col, element),
     [onSetInputRef, rowIndex]
   );
+  // Every cell needs its own accessible name; the name cell can be blank mid-edit.
+  const rowLabel = tier.name || `division ${tier.number}`;
 
   return (
     <div className="grid min-w-[900px] grid-cols-[40px_56px_48px_180px_220px_1fr_40px_36px] gap-2 border-b px-4 py-1.5 last:border-b-0">
@@ -204,13 +206,14 @@ const TierEditorRow = memo(function TierEditorRow({
         <Checkbox
           checked={isSelected}
           onCheckedChange={(checked) => onSelect(rowIndex, checked === true)}
-          aria-label={`Select ${tier.name}`}
+          aria-label={`Select ${rowLabel}`}
           disabled={!canEdit}
         />
       </div>
       <Input
         ref={setInputRef(0)}
         inputMode="numeric"
+        aria-label={`Number for ${rowLabel}`}
         className="h-8 text-center tabular-nums"
         value={tier.number}
         onChange={(event) => onUpdate(rowIndex, "number", parseIntegerInput(event.target.value))}
@@ -218,9 +221,10 @@ const TierEditorRow = memo(function TierEditorRow({
         disabled={!canEdit}
       />
       <div className="flex items-center justify-center">
+        {/* Decorative: the editable name sits in the next cell. */}
         <Image
           src={tier.icon_url}
-          alt={tier.name}
+          alt=""
           width={28}
           height={28}
           className="h-7 w-7 object-contain"
@@ -228,6 +232,7 @@ const TierEditorRow = memo(function TierEditorRow({
       </div>
       <Input
         ref={setInputRef(1)}
+        aria-label={`Name for ${rowLabel}`}
         className="h-8"
         value={tier.name}
         onChange={(event) => onUpdate(rowIndex, "name", event.target.value)}
@@ -238,6 +243,7 @@ const TierEditorRow = memo(function TierEditorRow({
         <Input
           ref={setInputRef(2)}
           inputMode="numeric"
+          aria-label={`Minimum rank for ${rowLabel}`}
           className="h-8 w-24 tabular-nums"
           value={tier.rank_min}
           onChange={(event) =>
@@ -246,10 +252,13 @@ const TierEditorRow = memo(function TierEditorRow({
           onKeyDown={(event) => onKeyDown(event, rowIndex, 2)}
           disabled={!canEdit}
         />
-        <span className="shrink-0 text-xs text-muted-foreground">-</span>
+        <span aria-hidden className="shrink-0 text-xs text-muted-foreground">
+          –
+        </span>
         <Input
           ref={setInputRef(3)}
           inputMode="numeric"
+          aria-label={`Maximum rank for ${rowLabel}`}
           className="h-8 w-24 tabular-nums"
           placeholder="max"
           value={tier.rank_max ?? ""}
@@ -272,10 +281,12 @@ const TierEditorRow = memo(function TierEditorRow({
           onChange={(min, max) => onUpdateOwRange(rowIndex, min, max)}
         />
       </div>
+      {/* `sr-only` rather than `hidden`: a display:none input is unreachable by keyboard. */}
       <label className="inline-flex cursor-pointer items-center justify-center">
         <input
           type="file"
-          className="hidden"
+          className="peer sr-only"
+          aria-label={`Upload icon for ${rowLabel}`}
           accept="image/png,image/webp,image/jpeg,image/gif"
           disabled={!canEdit}
           onChange={(event) => {
@@ -284,8 +295,8 @@ const TierEditorRow = memo(function TierEditorRow({
             event.currentTarget.value = "";
           }}
         />
-        <span className="inline-flex h-8 w-8 items-center justify-center rounded-md border hover:bg-muted">
-          <Upload className="h-3.5 w-3.5" />
+        <span className="inline-flex h-8 w-8 items-center justify-center rounded-md border hover:bg-muted peer-focus-visible:ring-1 peer-focus-visible:ring-ring">
+          <Upload aria-hidden className="h-3.5 w-3.5" />
         </span>
       </label>
       <Button
@@ -294,9 +305,9 @@ const TierEditorRow = memo(function TierEditorRow({
         className="h-8 w-8 text-muted-foreground hover:text-destructive"
         onClick={() => onDelete(rowIndex)}
         disabled={!canEdit}
-        aria-label={`Delete ${tier.name}`}
+        aria-label={`Delete ${rowLabel}`}
       >
-        <Trash2 className="h-3.5 w-3.5" />
+        <Trash2 aria-hidden className="h-3.5 w-3.5" />
       </Button>
     </div>
   );
@@ -565,7 +576,9 @@ function DivisionGridEditorCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Version Editor</CardTitle>
+        <CardTitle asChild>
+          <h2>Version editor</h2>
+        </CardTitle>
         <CardDescription>
           Minor changes (name, icon, OW ranks) save in-place. Adding or removing tiers, or changing
           rank ranges, will prompt you to choose between editing the current version or creating a
@@ -573,17 +586,23 @@ function DivisionGridEditorCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <Input
-          value={label}
-          onChange={(event) => setLabel(event.target.value)}
-          placeholder="Version label"
-        />
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground" htmlFor="version-label">
+            Version label
+          </label>
+          <Input
+            id="version-label"
+            value={label}
+            onChange={(event) => setLabel(event.target.value)}
+            placeholder="Version label"
+          />
+        </div>
 
         <div className="rounded-md border bg-muted/20 p-3">
           <div className="flex flex-wrap items-end gap-3">
             <div className="space-y-1">
               <div className="text-xs font-medium text-muted-foreground">Bulk target</div>
-              <Badge variant="outline" className="h-9 px-3">
+              <Badge variant="outline" className="h-9 px-3 tabular-nums">
                 {bulkTargetLabel}
               </Badge>
             </div>
@@ -606,16 +625,16 @@ function DivisionGridEditorCard({
               onClick={() => shiftBulkRanks(1)}
               disabled={!canEdit || bulkTargetIndexes.length === 0}
             >
-              <Plus className="mr-2 h-4 w-4" />
-              Add
+              <Plus aria-hidden className="mr-2 h-4 w-4" />
+              Raise ranks
             </Button>
             <Button
               variant="outline"
               onClick={() => shiftBulkRanks(-1)}
               disabled={!canEdit || bulkTargetIndexes.length === 0}
             >
-              <Minus className="mr-2 h-4 w-4" />
-              Reduce
+              <Minus aria-hidden className="mr-2 h-4 w-4" />
+              Lower ranks
             </Button>
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground" htmlFor="range-start">
@@ -650,8 +669,8 @@ function DivisionGridEditorCard({
               onClick={autoFillBulkRanges}
               disabled={!canEdit || bulkTargetIndexes.length === 0}
             >
-              <Wand2 className="mr-2 h-4 w-4" />
-              Auto ranges
+              <Wand2 aria-hidden className="mr-2 h-4 w-4" />
+              Auto-fill ranges
             </Button>
             <Button
               variant="outline"
@@ -659,16 +678,16 @@ function DivisionGridEditorCard({
               disabled={!canEdit || bulkTargetIndexes.length === 0}
               title="Distribute the OW2 ladder across the targeted tiers (top tier gets the highest ranks)"
             >
-              <Wand2 className="mr-2 h-4 w-4" />
-              Auto OW map
+              <Wand2 aria-hidden className="mr-2 h-4 w-4" />
+              Auto-map OW ranges
             </Button>
             <Button
               variant="outline"
               onClick={clearOwRanges}
               disabled={!canEdit || bulkTargetIndexes.length === 0}
             >
-              <X className="mr-2 h-4 w-4" />
-              Clear OW
+              <X aria-hidden className="mr-2 h-4 w-4" />
+              Clear OW ranges
             </Button>
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground" htmlFor="tiers-to-add">
@@ -685,7 +704,7 @@ function DivisionGridEditorCard({
               />
             </div>
             <Button variant="outline" onClick={addTiers} disabled={!canEdit}>
-              <Plus className="mr-2 h-4 w-4" />
+              <Plus aria-hidden className="mr-2 h-4 w-4" />
               Add tiers
             </Button>
             <Button
@@ -694,8 +713,8 @@ function DivisionGridEditorCard({
               disabled={!canEdit || selectedRowIndexes.length === 0}
               className="text-destructive hover:text-destructive"
             >
-              <Trash2 className="mr-2 h-4 w-4" />
-              Delete selected
+              <Trash2 aria-hidden className="mr-2 h-4 w-4" />
+              Delete selected tiers
             </Button>
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
@@ -716,8 +735,8 @@ function DivisionGridEditorCard({
             <span>#</span>
             <span>Icon</span>
             <span>Name</span>
-            <span>Rank Range</span>
-            <span>OW Range</span>
+            <span>Rank range</span>
+            <span>OW range</span>
             <span>Upload</span>
             <span />
           </div>
@@ -737,16 +756,20 @@ function DivisionGridEditorCard({
               onUpload={uploadIcon}
             />
           ))}
+          {tiers.length === 0 && (
+            <p className="px-4 py-6 text-sm text-muted-foreground">
+              No divisions yet. Set “Tiers” above, then choose “Add tiers” to start the grid.
+            </p>
+          )}
         </div>
 
         <div className="flex flex-wrap gap-2">
           <Button onClick={handleSave} disabled={!canEdit || saving}>
-            <Save className="mr-2 h-4 w-4" />
-            Save
+            <Save aria-hidden className="mr-2 h-4 w-4" />
+            {saving ? "Saving…" : "Save grid"}
           </Button>
         </div>
       </CardContent>
-
     </Card>
   );
 }
@@ -762,7 +785,9 @@ function VersionHistoryCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Version history</CardTitle>
+        <CardTitle asChild>
+          <h2>Version history</h2>
+        </CardTitle>
         <CardDescription>
           Read-only. Each structural save creates a new version; existing tournaments stay pinned to
           theirs and are remapped automatically.
@@ -779,7 +804,7 @@ function VersionHistoryCard({
             <Badge variant="outline">{version.status}</Badge>
             {version.id === activeVersionId && <Badge>Active</Badge>}
             {version.published_at && (
-              <span className="ml-auto text-xs text-muted-foreground">
+              <span className="ml-auto text-xs tabular-nums text-muted-foreground">
                 {new Date(version.published_at).toLocaleDateString()}
               </span>
             )}
@@ -874,7 +899,11 @@ export default function DivisionsAdminPage() {
       setConflict(null);
       notify.success(result.mode === "in_place" ? "Grid updated" : "New version activated");
     },
-    onError: () => notify.error("Failed to save grid")
+    onError: () =>
+      notify.error("Grid could not be saved", {
+        description:
+          "Your edits are still in the form — check that every division has a name and a rank range, then save again."
+      })
   });
 
   const publishMutation = useMutation({
@@ -883,7 +912,10 @@ export default function DivisionsAdminPage() {
       await refreshGrids();
       notify.success("Version published");
     },
-    onError: () => notify.error("Failed to publish version")
+    onError: () =>
+      notify.error("Version could not be published", {
+        description: "The version is still a draft. Retry, or reload the page if it keeps failing."
+      })
   });
   const activateMutation = useMutation({
     mutationFn: () => workspaceService.activateDivisionGridVersion(currentWorkspaceId!, activeVersion!.id),
@@ -904,7 +936,10 @@ export default function DivisionsAdminPage() {
         });
         return;
       }
-      notify.error("Failed to activate grid");
+      notify.error("Grid could not be activated", {
+        description:
+          "The workspace still uses its previous grid. Publish this version first, then activate it."
+      });
     }
   });
 
@@ -935,8 +970,13 @@ export default function DivisionsAdminPage() {
                   <Button
                     onClick={() => activateMutation.mutate()}
                     disabled={activateMutation.isPending || activeVersion.status !== "published"}
+                    title={
+                      activeVersion.status === "published"
+                        ? undefined
+                        : "Publish this version first, then activate it."
+                    }
                   >
-                    <Star className="mr-2 h-4 w-4" />
+                    <Star aria-hidden className="mr-2 h-4 w-4" />
                     Activate grid
                   </Button>
                 )

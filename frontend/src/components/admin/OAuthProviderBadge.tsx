@@ -15,12 +15,14 @@ export const PROVIDER_META: Record<
   github: { label: "GitHub", icon: null }
 };
 
+/** Brand colours, not status tones — always explicit hexes so no semantic
+ *  token gets repurposed for branding. */
 const PROVIDER_COLORS: Record<OAuthProvider, string> = {
   discord: "bg-[#5865F2]/15 text-[#7289da] border-[#5865F2]/30",
   twitch: "bg-[#9146FF]/15 text-[#b380ff] border-[#9146FF]/30",
   battlenet: "bg-[#148EFF]/15 text-[#60b0ff] border-[#148EFF]/30",
-  google: "bg-red-500/15 text-red-400 border-red-500/30",
-  github: "bg-zinc-500/15 text-zinc-300 border-zinc-500/30"
+  google: "bg-[#EA4335]/15 text-[#f28b82] border-[#EA4335]/30",
+  github: "bg-[#6E7681]/15 text-[#c9d1d9] border-[#6E7681]/30"
 };
 
 export function ProviderBadge({ provider }: { provider: OAuthProvider }) {
@@ -36,7 +38,7 @@ export function ProviderBadge({ provider }: { provider: OAuthProvider }) {
           className={meta.iconClass ?? ""}
         />
       ) : (
-        <Globe className="h-3.5 w-3.5" />
+        <Globe aria-hidden className="h-3.5 w-3.5" />
       )}
       {meta?.label ?? provider}
     </Badge>

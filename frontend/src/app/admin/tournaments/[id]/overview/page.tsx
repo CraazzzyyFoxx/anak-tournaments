@@ -1,37 +1,24 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
+import { GitBranch, Link2, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { usePermissions } from "@/hooks/usePermissions";
+import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
+import type { Tone } from "@/components/admin/tone";
 import adminService from "@/services/admin.service";
 import { getTournamentWorkspaceQueryKeys } from "../components/tournamentWorkspace.queryKeys";
-import {
-  hasChallongeSource,
-  tabFallback,
-  useHubStagesQuery,
-  useHubTournamentQuery
-} from "../hubQueries";
+import { hasChallongeSource, tabFallback, useHubStagesQuery, useHubTournamentQuery } from "../hubQueries";
 import { buildChecklist } from "./checklist-model";
 import { LifecycleChecklist } from "./LifecycleChecklist";
 import { PhaseStepper } from "./PhaseStepper";
-
-const TournamentSetupTab = dynamic(
-  () =>
-    import("../components/TournamentSetupTab").then((module) => ({
-      default: module.TournamentSetupTab
-    })),
-  { loading: () => tabFallback }
-);
 
 export default function OverviewTabPage() {
   const params = useParams<{ id: string }>();
   const tournamentId = Number(params.id);
   const isValidTournamentId = Number.isFinite(tournamentId) && tournamentId > 0;
-  const { canAccessPermission } = usePermissions();
 
   const tournamentQuery = useHubTournamentQuery(tournamentId);
   const stagesQuery = useHubStagesQuery(tournamentId);
@@ -72,6 +59,19 @@ export default function OverviewTabPage() {
   const draftSessionStatus = readiness?.draft_session_status;
   const draftRunning = draftSessionStatus === "live" || draftSessionStatus === "paused";
 
+  // Read-only integration state. Configuring these lives on the Settings tab —
+  // Overview answers "where is this tournament", not "how is it wired".
+  const discordChannel = discordChannelQuery.data;
+  const linkedStagesCount = stages.filter((stage) => Boolean(stage.challonge_slug)).length;
+  const structuredStagesCount = stages.filter((stage) => stage.items.length > 0).length;
+  const stagesTone: Tone =
+    stages.length === 0 || structuredStagesCount < stages.length ? "warning" : "success";
+  const discordTone: Tone = discordChannel?.is_active
+    ? "success"
+    : discordChannel
+      ? "neutral"
+      : "warning";
+
   return (
     <div className="flex flex-col gap-4">
       <PhaseStepper tournament={tournament} />
@@ -79,30 +79,57 @@ export default function OverviewTabPage() {
         // "Draft live -> Teams" banner (UA-O9). Phase 1 home of the draft
         // board is the draft tab; the Phase 2 permanent redirect draft->teams
         // keeps this link landing on its final address.
-        <Card className="border-amber-700/50 bg-amber-950/20">
-          <CardContent className="flex items-center justify-between gap-3 p-4">
-            <p className="text-sm text-amber-200">
+        <Card className="border-warning/40 bg-warning/10">
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+            <p className="text-sm text-warning">
               Team draft is {draftSessionStatus} — manage it from the draft board.
             </p>
             <Button asChild size="sm" variant="outline">
-              <Link href={`${basePath}/draft`}>Open draft</Link>
+              <Link href={`${basePath}/draft`}>Open draft board</Link>
             </Button>
           </CardContent>
         </Card>
       ) : null}
-      <LifecycleChecklist
-        items={checklistItems}
-        isLoading={readinessQuery.isLoading}
-      />
-      <TournamentSetupTab
-        tournamentId={tournamentId}
-        tournament={tournament}
-        stages={stages}
-        hasChallongeSource={challongeSourced}
-        canUpdateTournament={canAccessPermission("tournament.update", tournament.workspace_id)}
-        discordChannel={discordChannelQuery.data}
-        discordChannelLoading={discordChannelQuery.isLoading}
-      />
+      <LifecycleChecklist items={checklistItems} isLoading={readinessQuery.isLoading} />
+      <StatTileGrid className="xl:grid-cols-3">
+        <StatTile
+          label="Stages"
+          value={stages.length === 0 ? "None yet" : `${stages.length} configured`}
+          detail={
+            stages.length === 0
+              ? "Add a stage before match operations"
+              : `${structuredStagesCount}/${stages.length} with structure`
+          }
+          tone={stagesTone}
+          icon={GitBranch}
+        />
+        <StatTile
+          label="Challonge"
+          value={challongeSourced ? "Connected" : "Manual"}
+          detail={
+            challongeSourced
+              ? `${linkedStagesCount} linked stage${linkedStagesCount === 1 ? "" : "s"}`
+              : "Brackets are managed in this workspace"
+          }
+          tone={challongeSourced ? "success" : "neutral"}
+          icon={Link2}
+        />
+        <StatTile
+          label="Discord"
+          value={
+            discordChannelQuery.isLoading
+              ? "Checking…"
+              : discordChannel?.is_active
+                ? "Monitoring"
+                : discordChannel
+                  ? "Paused"
+                  : "Not configured"
+          }
+          detail={discordChannel?.channel_name ?? "Match log intake"}
+          tone={discordTone}
+          icon={MessageSquare}
+        />
+      </StatTileGrid>
     </div>
   );
 }

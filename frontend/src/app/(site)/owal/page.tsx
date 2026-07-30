@@ -1,6 +1,6 @@
 import React from "react";
-import OwalSeasonFilter from "./components/OwalSeasonFilter";
-import OwalPageTabs from "./components/OwalPageTabs";
+import OwalSeasonFilter from "./_components/OwalSeasonFilter";
+import OwalPageTabs from "./_components/OwalPageTabs";
 import { getOwalPageData, OwalPageSearchParams } from "./_data";
 
 export const dynamic = "force-dynamic";

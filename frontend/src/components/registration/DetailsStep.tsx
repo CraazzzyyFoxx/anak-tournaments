@@ -1,10 +1,11 @@
-import { useEffect } from "react";
+import { useEffect, useId } from "react";
 import type { RegistrationForm } from "@/types/registration.types";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { useTranslations } from "next-intl";
 import CustomField from "./CustomField";
 import FieldLabel from "./FieldLabel";
+import FormField, { fieldControlClass } from "./FormField";
 import { getBuiltInFieldValidationError } from "./validation";
 import { BadgeInfo } from "lucide-react";
 import {
@@ -53,6 +54,9 @@ export default function DetailsStep({
   balancerStatusOptions,
 }: DetailsStepProps) {
   const t = useTranslations();
+  const streamPovId = useId();
+  const statusId = useId();
+  const balancerStatusId = useId();
   const fields = form.built_in_fields;
   const showNotes = fields?.notes?.enabled !== false;
   const showStreamPov = fields?.stream_pov?.enabled === true;
@@ -89,10 +93,14 @@ export default function DetailsStep({
         <div className="space-y-2">
           <FieldLabel
             label={mode === "admin" ? "Stream POV" : t("registration.details.streamPov")}
+            htmlFor={streamPovId}
             required={fields?.stream_pov?.required === true}
           />
-          <label className="flex items-center gap-3">
+          {/* Radix Switch renders a <button>; a wrapping <label> would not
+              associate it, so the id/htmlFor pair carries the name. */}
+          <div className="flex items-center gap-3">
             <Switch
+              id={streamPovId}
               checked={values.stream_pov === "true"}
               onCheckedChange={(checked) => onUpdate("stream_pov", checked ? "true" : "false")}
             />
@@ -101,50 +109,45 @@ export default function DetailsStep({
                 ? "Participant can provide a point-of-view stream."
                 : t("registration.details.streamPovLabel")}
             </span>
-          </label>
+          </div>
         </div>
       )}
 
       {showNotes && (
-        <div className="space-y-1.5">
-          <FieldLabel
-            label={mode === "admin" ? "Public Notes" : t("registration.details.notes")}
-            required={fields?.notes?.required === true}
-          />
-          <textarea
-            placeholder={mode === "admin" ? "Visible notes for balancer-facing context" : t("registration.details.notesPlaceholder")}
-            value={values.notes ?? ""}
-            onChange={(e) => onUpdate("notes", e.target.value)}
-            rows={2}
-            className={cn(
-              "w-full rounded-lg border border-[color:var(--aqt-border-2)] bg-white/3 px-3 py-2 text-sm text-[color:var(--aqt-fg)] placeholder-white/30 outline-none transition-colors focus:border-[color:var(--aqt-border-2)]",
-              notesValidationError && "border-red-500/70 text-red-100 placeholder:text-red-200/60 focus:border-red-500/70",
-            )}
-          />
-          {notesValidationError && (
-            <p className="text-xs text-red-400">{notesValidationError}</p>
-          )}
-        </div>
+        <FormField
+          multiline
+          label={mode === "admin" ? "Public Notes" : t("registration.details.notes")}
+          required={fields?.notes?.required === true}
+          placeholder={mode === "admin" ? "Visible notes for balancer-facing context" : t("registration.details.notesPlaceholder")}
+          value={values.notes ?? ""}
+          onChange={(v) => onUpdate("notes", v)}
+          error={notesValidationError}
+        />
       )}
 
       {mode === "admin" && onAdminNotesChange && (
-        <div className="space-y-1.5">
-          <FieldLabel label="Admin Notes" icon={<BadgeInfo className="size-3.5 opacity-50" />} />
-          <textarea
-            placeholder="Internal notes for admins only"
-            value={adminNotes ?? ""}
-            onChange={(e) => onAdminNotesChange(e.target.value)}
-            rows={2}
-            className="w-full rounded-lg border border-[color:var(--aqt-border-2)] bg-white/3 px-3 py-2 text-sm text-[color:var(--aqt-fg)] placeholder-white/30 outline-none transition-colors focus:border-[color:var(--aqt-border-2)]"
-          />
-        </div>
+        <FormField
+          multiline
+          label="Admin Notes"
+          icon={<BadgeInfo className="size-3.5 opacity-50" />}
+          placeholder="Internal notes for admins only"
+          value={adminNotes ?? ""}
+          onChange={onAdminNotesChange}
+        />
       )}
 
       {mode === "admin" && onStatusChange && registrationStatusOptions && (
         <div className="space-y-1.5">
-          <FieldLabel label="Registration Status" icon={<BadgeInfo className="size-3.5 opacity-50" />} />
+          <FieldLabel
+            label="Registration Status"
+            htmlFor={statusId}
+            icon={<BadgeInfo className="size-3.5 opacity-50" />}
+          />
           <Select value={status ?? "pending"} onValueChange={onStatusChange}>
-            <SelectTrigger className="h-9 w-full rounded-lg border border-[color:var(--aqt-border-2)] bg-white/3 px-3 text-sm text-[color:var(--aqt-fg)] focus-visible:ring-0 focus-visible:border-[color:var(--aqt-border-2)]">
+            <SelectTrigger
+              id={statusId}
+              className={cn(fieldControlClass, "h-9")}
+            >
               <SelectValue placeholder="Select registration status" />
             </SelectTrigger>
             <SelectContent>
@@ -167,9 +170,16 @@ export default function DetailsStep({
 
       {mode === "admin" && onBalancerStatusChange && balancerStatusOptions && (
         <div className="space-y-1.5">
-          <FieldLabel label="Balancer Status" icon={<BadgeInfo className="size-3.5 opacity-50" />} />
+          <FieldLabel
+            label="Balancer Status"
+            htmlFor={balancerStatusId}
+            icon={<BadgeInfo className="size-3.5 opacity-50" />}
+          />
           <Select value={balancerStatus ?? "not_in_balancer"} onValueChange={onBalancerStatusChange}>
-            <SelectTrigger className="h-9 w-full rounded-lg border border-[color:var(--aqt-border-2)] bg-white/3 px-3 text-sm text-[color:var(--aqt-fg)] focus-visible:ring-0 focus-visible:border-[color:var(--aqt-border-2)]">
+            <SelectTrigger
+              id={balancerStatusId}
+              className={cn(fieldControlClass, "h-9")}
+            >
               <SelectValue placeholder="Select balancer status" />
             </SelectTrigger>
             <SelectContent>

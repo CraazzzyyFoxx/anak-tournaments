@@ -114,7 +114,7 @@ export default function PlayerDetail({
             ) : null}
           </div>
           <div className={styles.cPlayerRole}>
-            <PlayerRoleIcon role={player.role} size={15} />
+            <PlayerRoleIcon role={player.role} size={15} decorative />
             <span>
               {t("analytics.community.player.roleLine", {
                 role: roleLabel,

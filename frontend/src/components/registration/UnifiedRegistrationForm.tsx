@@ -783,7 +783,7 @@ export default function UnifiedRegistrationForm({
           <button
             type="button"
             onClick={handleBack}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--aqt-border-2)] px-3 py-2 text-sm font-medium text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-white/4"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--aqt-border-2)] px-3 py-2 text-sm font-medium text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-[color:var(--aqt-overlay-3)]"
           >
             <ArrowLeft className="size-3.5" />
             {mode === "admin" ? "Back" : t("common.back")}
@@ -792,7 +792,7 @@ export default function UnifiedRegistrationForm({
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-lg border border-[color:var(--aqt-border-2)] px-3 py-2 text-sm font-medium text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-white/4"
+            className="rounded-lg border border-[color:var(--aqt-border-2)] px-3 py-2 text-sm font-medium text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-[color:var(--aqt-overlay-3)]"
           >
             {mode === "admin" ? "Cancel" : t("common.cancel")}
           </button>
@@ -802,7 +802,7 @@ export default function UnifiedRegistrationForm({
           type="button"
           onClick={handleNext}
           disabled={submitPending || Boolean(currentStepValidationError)}
-          className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-medium text-black transition-opacity hover:opacity-90 disabled:opacity-50"
+          className="inline-flex items-center gap-2 rounded-lg bg-[color:var(--aqt-teal)] px-4 py-2 text-sm font-medium text-[color:var(--aqt-bg)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50"
         >
           {submitPending && <Loader2 className="size-4 animate-spin" />}
           {isLastStep ? (

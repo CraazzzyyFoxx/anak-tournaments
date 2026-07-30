@@ -132,7 +132,7 @@ const OverviewCareerList = async ({ profile, tournaments = [] }: Props) => {
               {t("users.overview.career.events", { count: totalPlaced })}
             </span>
           </div>
-          <div className="flex h-[8px] w-full overflow-hidden rounded-full border border-[color:var(--aqt-border)]">
+          <div className="flex h-[8px] w-full overflow-hidden rounded-full border border-[color:var(--aqt-border)]" aria-hidden>
             {visibleSegments.map((s) => (
               <div
                 key={s.key}
@@ -144,7 +144,7 @@ const OverviewCareerList = async ({ profile, tournaments = [] }: Props) => {
           <div className="flex flex-wrap gap-x-3 gap-y-1">
             {visibleSegments.map((s) => (
               <span key={s.key} className="inline-flex items-center gap-1.5 text-[11px] text-[color:var(--aqt-fg-muted)]">
-                <span className="inline-block h-[7px] w-[7px] rounded-full" style={{ background: s.color }} />
+                <span className="inline-block h-[7px] w-[7px] rounded-full" style={{ background: s.color }} aria-hidden />
                 {t(s.labelKey as Parameters<typeof t>[0])}
                 <span className="aqt-tnum font-bold text-[color:var(--aqt-fg)]">{s.count}</span>
               </span>

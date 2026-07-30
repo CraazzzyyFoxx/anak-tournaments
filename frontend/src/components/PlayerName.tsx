@@ -30,13 +30,15 @@ const PlayerName = ({
       : null;
 
   return (
-    <div className="flex flex-col">
-      <div className="flex flex-row gap-1 items-center">
-        <Link href={`/users/${getPlayerSlug(player.name)}`}>
-          <h4 className="text-base font-semibold">{name}</h4>
+    <div className="flex min-w-0 flex-col">
+      <div className="flex min-w-0 flex-row items-center gap-1">
+        <Link href={`/users/${getPlayerSlug(player.name)}`} className="min-w-0">
+          <span className="block truncate text-base font-semibold" title={name}>
+            {name}
+          </span>
         </Link>
         {tag && !excludeBadge && (
-          <Badge variant="secondary" className="px-1 text-xs">
+          <Badge variant="secondary" className="shrink-0 px-1 text-xs">
             <p className="text-muted-foreground">{`#${tag}`}</p>
           </Badge>
         )}

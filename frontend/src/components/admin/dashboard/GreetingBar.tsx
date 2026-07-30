@@ -26,20 +26,23 @@ export function GreetingBar({ canCreateTournament }: GreetingBarProps) {
 
   const greeting = getGreeting();
   const displayName = user?.username ?? "Admin";
+  const today = new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
 
   return (
     <div className="flex items-center justify-between gap-4">
       <div className="flex items-center gap-3 min-w-0">
         <div className="min-w-0">
-          <h1 className="text-lg font-medium text-foreground truncate">
-            {greeting}, {displayName}
-          </h1>
+          <h1 className="truncate text-lg font-medium text-foreground">Dashboard</h1>
           <p className="text-xs text-muted-foreground">
-            {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+            {greeting}, {displayName} · <span className="tabular-nums">{today}</span>
           </p>
         </div>
         {currentWorkspace && (
-          <Badge variant="outline" className="rounded-full px-2.5 py-0.5 text-[10px] uppercase tracking-widest text-muted-foreground shrink-0">
+          <Badge variant="outline" className="rounded-full px-2.5 py-0.5 text-xs uppercase tracking-widest text-muted-foreground shrink-0">
             {currentWorkspace.name}
           </Badge>
         )}
@@ -48,8 +51,8 @@ export function GreetingBar({ canCreateTournament }: GreetingBarProps) {
         {canCreateTournament && (
           <Button asChild variant="outline" size="sm">
             <Link href="/admin/tournaments/new">
-              <Plus className="size-3.5" />
-              New Tournament
+              <Plus className="size-3.5" aria-hidden />
+              Create tournament
             </Link>
           </Button>
         )}

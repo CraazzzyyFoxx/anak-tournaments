@@ -6,7 +6,7 @@ export interface DamageIconProps {
   color?: string;
 }
 
-const DamageIcon = ({ width = 24, height = 24, color = "white" }: DamageIconProps) => {
+const DamageIcon = ({ width = 24, height = 24, color = "currentColor" }: DamageIconProps) => {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"

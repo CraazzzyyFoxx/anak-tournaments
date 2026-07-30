@@ -82,25 +82,32 @@ const MatchStatsSection = ({ match, tournamentGrid }: MatchStatsSectionProps) =>
     </div>
   ) : null;
 
+  // ONE table, ONE horizontal scroll container, two `<tbody>` sections. Two
+  // sibling tables each scrolled independently, so reaching a right-hand stat
+  // column on one team desynced it from the other — the exact comparison this
+  // panel exists to make.
   const tables = (
     <div className="overflow-hidden rounded-[12px] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)]">
-      <MatchTeamTable
-        team={home}
-        isHome={true}
-        matchRound={activeRound}
-        columns={columns}
-        columnMax={columnMax}
-        tournamentGrid={tournamentGrid}
-      />
-      <div className="h-px bg-[color:var(--aqt-border)]" />
-      <MatchTeamTable
-        team={away}
-        isHome={false}
-        matchRound={activeRound}
-        columns={columns}
-        columnMax={columnMax}
-        tournamentGrid={tournamentGrid}
-      />
+      <div className="relative w-full overflow-auto">
+        <table className="w-full caption-bottom text-sm">
+          <MatchTeamTable
+            team={home}
+            isHome={true}
+            matchRound={activeRound}
+            columns={columns}
+            columnMax={columnMax}
+            tournamentGrid={tournamentGrid}
+          />
+          <MatchTeamTable
+            team={away}
+            isHome={false}
+            matchRound={activeRound}
+            columns={columns}
+            columnMax={columnMax}
+            tournamentGrid={tournamentGrid}
+          />
+        </table>
+      </div>
     </div>
   );
 

@@ -4,7 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { ResTag, ScoreCell, StagePill } from "@/app/(site)/users/components/shared/atoms";
+import { ResTag, ScoreCell, StagePill } from "@/components/match/cells";
 import MvpMatchPill from "@/components/match/MvpMatchPill";
 import { resolveMvpPlacement } from "@/components/match/cells";
 import MatchLogIndicator from "@/components/match/MatchLogIndicator";
@@ -58,7 +58,7 @@ const MatchRow = ({ enc, selfUserId }: MatchRowProps) => {
   return (
     <tr
       onClick={() => router.push(`/encounters/${enc.id}`)}
-      className="cursor-pointer border-b border-[color:var(--aqt-border)] transition-colors last:border-b-0 hover:bg-[hsl(0_0%_100%/0.025)]"
+      className="cursor-pointer border-b border-[color:var(--aqt-border)] transition-colors last:border-b-0 hover:bg-[color:var(--aqt-overlay-2)]"
     >
       <td className="px-3.5 py-3">
         <Link

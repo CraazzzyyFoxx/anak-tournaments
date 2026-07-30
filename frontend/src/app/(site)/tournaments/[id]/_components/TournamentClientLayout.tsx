@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import TournamentRegisterButton from "./TournamentRegisterButton";
-import { isTournamentStatusEnded } from "@/lib/tournament-status";
+import { getTournamentStatusMeta, isTournamentStatusEnded } from "@/lib/tournament-status";
 import { cn, formatDateRange } from "@/lib/utils";
 import { useTournamentRealtime } from "@/hooks/useTournamentRealtime";
 import { createTrailingCoalescer } from "@/hooks/tournamentRealtime.helpers";
@@ -17,6 +17,7 @@ import { useTranslations, useLocale } from "next-intl";
 import TournamentSectionNav from "./TournamentSectionNav";
 import { TournamentShellSkeleton } from "./TournamentSkeletons";
 import { PageHero, HeroCoord, HeroStat } from "@/components/site/PageHero";
+import { PageStateCard } from "@/components/ui/page-state-card";
 
 type TournamentClientLayoutProps = {
   tournamentId: number;
@@ -69,12 +70,7 @@ export default function TournamentClientLayout({
   if (!tournament) {
     return (
       <div className="aqt-tn">
-        <div
-          className="tn-card"
-          style={{ padding: "48px 24px", textAlign: "center", color: "var(--fg-dim)" }}
-        >
-          {t("common.tournamentNotFound")}
-        </div>
+        <PageStateCard state="not-found" title={t("common.tournamentNotFound")} />
       </div>
     );
   }
@@ -82,14 +78,7 @@ export default function TournamentClientLayout({
   const stages = tournament.stages;
   const teamsCount = tournament.teams_count ?? 0;
 
-  const designClass =
-    tournament.status === "live" || tournament.status === "playoffs"
-      ? "live"
-      : tournament.status === "registration" || tournament.status === "check_in"
-        ? "upcoming"
-        : tournament.status === "completed" || tournament.status === "archived"
-          ? "finished"
-          : "draft";
+  const statusVariant = getTournamentStatusMeta(tournament.status).variant;
   const isEnded = isTournamentStatusEnded(tournament.status);
   const players = tournament.participants_count ?? 0;
   const completedStages = stages.filter((stage) => stage.is_completed).length;
@@ -101,8 +90,8 @@ export default function TournamentClientLayout({
           role="status"
           className="rounded-xl border px-4 py-3"
           style={{
-            borderColor: "hsl(var(--border))",
-            background: "hsl(var(--muted) / 0.4)"
+            borderColor: "var(--aqt-border)",
+            background: "var(--aqt-overlay-2)"
           }}
         >
           <p className="text-sm font-semibold">{t("tournamentDetail.previewBanner")}</p>
@@ -131,7 +120,7 @@ export default function TournamentClientLayout({
         title={tournament.name}
         meta={
           <>
-            <span className={cn("status-pill", designClass)}>
+            <span className={cn("status-pill", statusVariant)}>
               {(tournament.status === "live" || tournament.status === "playoffs") && (
                 <span className="dot" />
               )}

@@ -19,6 +19,7 @@ import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { ProviderBadge } from "@/components/admin/OAuthProviderBadge";
 import { StatusIcon } from "@/components/admin/StatusIcon";
+import { EYEBROW_CLASS, TONE_CLASS } from "@/components/admin/tone";
 import { UserDenyEditor } from "./UserDenyEditor";
 import { UserSearchCombobox } from "@/components/admin/UserSearchCombobox";
 import {
@@ -42,6 +43,7 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -49,6 +51,7 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePermissions } from "@/hooks/usePermissions";
 import { getSingleLinkedPlayer } from "@/lib/auth-profile-links";
@@ -174,7 +177,7 @@ export default function AccessAdminUsersPage() {
     },
     {
       id: "linkedPlayers",
-      header: "Linked Account",
+      header: "Linked account",
       cell: ({ row }) => {
         const linkedPlayer = getSingleLinkedPlayer(row.original.linked_players);
         if (!linkedPlayer) {
@@ -188,7 +191,7 @@ export default function AccessAdminUsersPage() {
           <Link
             href={`/admin/users?search=${encodeURIComponent(linkedPlayer.player_name)}`}
             className="inline-flex"
-            title="Open in Player Identities"
+            title="Open in Player identities"
             onClick={(e) => e.stopPropagation()}
           >
             <Badge variant="default" className="hover:underline">
@@ -246,8 +249,8 @@ export default function AccessAdminUsersPage() {
       cell: ({ row }) => (
         <div className="flex justify-end">
           <Button variant="outline" size="sm" onClick={() => setManagingUserId(row.original.id)}>
-            <UserCog className="mr-2 h-4 w-4" />
-            {canAssignRoles ? "Manage" : "Inspect"}
+            <UserCog aria-hidden className="mr-2 h-4 w-4" />
+            {canAssignRoles ? "Manage access" : "View access"}
           </Button>
         </div>
       )
@@ -264,7 +267,7 @@ export default function AccessAdminUsersPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader
-        title="Access Users"
+        title="Access users"
         description="Manage auth accounts, review assigned roles, and inspect effective permissions."
         meta={<Badge variant="secondary">RBAC</Badge>}
       />
@@ -291,8 +294,8 @@ export default function AccessAdminUsersPage() {
           })
         }
         columns={columns}
-        searchPlaceholder="Search auth users..."
-        emptyMessage="No auth users found."
+        searchPlaceholder="Search auth users…"
+        emptyMessage="No auth accounts match this search. Clear the search box to see every account."
         onRowDoubleClick={(row) => setManagingUserId(row.original.id)}
       />
 
@@ -309,7 +312,7 @@ export default function AccessAdminUsersPage() {
       >
         <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Manage Access</DialogTitle>
+            <DialogTitle>Manage access</DialogTitle>
             <DialogDescription>
               {canAssignRoles
                 ? "Assign roles, manage linked analytics accounts, and review effective permissions for this auth account."
@@ -318,7 +321,11 @@ export default function AccessAdminUsersPage() {
           </DialogHeader>
 
           {userDetailQuery.isLoading ? (
-            <div className="py-8 text-sm text-muted-foreground">Loading auth user...</div>
+            <div className="space-y-3 py-4">
+              <Skeleton className="h-20 w-full" />
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-40 w-full" />
+            </div>
           ) : userDetailQuery.data ? (
             <div className="space-y-6">
               <div className="rounded-lg border border-border/60 bg-card/60 p-4">
@@ -355,11 +362,7 @@ export default function AccessAdminUsersPage() {
 
                 <TabsContent value="roles" className="max-h-[60vh] space-y-4 overflow-y-auto pr-1">
                   <div className="space-y-4 rounded-lg border border-border/60 bg-card/60 p-4">
-                    <div>
-                      <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                        Assigned Roles
-                      </h3>
-                    </div>
+                    <h3 className={EYEBROW_CLASS}>Assigned roles</h3>
 
                     <div className="space-y-3">
                       {userDetailQuery.data.roles.length > 0 ? (
@@ -374,55 +377,65 @@ export default function AccessAdminUsersPage() {
                                 {role.description || "No description provided."}
                               </p>
                             </div>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              disabled={!canAssignRoles || removeRoleMutation.isPending}
-                              onClick={() =>
-                                removeRoleMutation.mutate({
-                                  user_id: userDetailQuery.data!.id,
-                                  role_id: role.id
-                                })
-                              }
-                            >
-                              {canAssignRoles ? "Remove" : "Assigned"}
-                            </Button>
+                            {canAssignRoles ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                aria-label={`Remove role ${role.name} from this account`}
+                                disabled={removeRoleMutation.isPending}
+                                onClick={() =>
+                                  removeRoleMutation.mutate({
+                                    user_id: userDetailQuery.data!.id,
+                                    role_id: role.id
+                                  })
+                                }
+                              >
+                                Remove role
+                              </Button>
+                            ) : null}
                           </div>
                         ))
                       ) : (
-                        <p className="text-sm text-muted-foreground">No roles assigned.</p>
+                        <p className="text-sm text-muted-foreground">
+                          No roles assigned. This account only has the permissions every signed-in
+                          user gets.
+                        </p>
                       )}
                     </div>
 
                     {canAssignRoles ? (
-                      <div className="rounded-md border border-dashed border-border p-4">
-                        <div className="space-y-3">
-                          <p className="text-sm font-medium">Assign another role</p>
-                          <Select value={selectedRoleId} onValueChange={setSelectedRoleId}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select a role" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {assignableRoles.map((role) => (
-                                <SelectItem key={role.id} value={String(role.id)}>
-                                  {role.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <Button
-                            disabled={!selectedRoleId || assignRoleMutation.isPending}
-                            onClick={() =>
-                              assignRoleMutation.mutate({
-                                user_id: userDetailQuery.data!.id,
-                                role_id: Number(selectedRoleId)
-                              })
+                      <div className="space-y-3 rounded-md border border-dashed border-border p-4">
+                        <Label htmlFor="assign-role">Assign another role</Label>
+                        <Select value={selectedRoleId} onValueChange={setSelectedRoleId}>
+                          <SelectTrigger id="assign-role">
+                            <SelectValue placeholder="Select a role" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {assignableRoles.map((role) => (
+                              <SelectItem key={role.id} value={String(role.id)}>
+                                {role.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          disabled={assignRoleMutation.isPending}
+                          onClick={() => {
+                            if (!selectedRoleId) {
+                              notify.error("Pick a role first.", {
+                                description: "Choose a role from the list, then assign it."
+                              });
+                              return;
                             }
-                          >
-                            <Shield className="mr-2 h-4 w-4" />
-                            Assign Role
-                          </Button>
-                        </div>
+                            assignRoleMutation.mutate({
+                              user_id: userDetailQuery.data!.id,
+                              role_id: Number(selectedRoleId)
+                            });
+                          }}
+                        >
+                          <Shield aria-hidden className="mr-2 h-4 w-4" />
+                          Assign role
+                        </Button>
                       </div>
                     ) : null}
                   </div>
@@ -431,9 +444,7 @@ export default function AccessAdminUsersPage() {
                 <TabsContent value="player" className="max-h-[60vh] space-y-4 overflow-y-auto pr-1">
                   <div className="space-y-4 rounded-lg border border-border/60 bg-card/60 p-4">
                     <div>
-                      <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                        Linked Player Account
-                      </h3>
+                      <h3 className={EYEBROW_CLASS}>Linked player account</h3>
                       <p className="mt-1 text-sm text-muted-foreground">
                         The `players.user` record owned by this auth account (at most one).
                       </p>
@@ -444,7 +455,7 @@ export default function AccessAdminUsersPage() {
                         <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border/60 p-3">
                           <div>
                             <p className="font-medium">{linkedPlayer.player_name}</p>
-                            <p className="text-sm text-muted-foreground">
+                            <p className="text-sm tabular-nums text-muted-foreground">
                               Player ID: {linkedPlayer.player_id}
                             </p>
                             {canReadPlayerIdentities ? (
@@ -452,8 +463,8 @@ export default function AccessAdminUsersPage() {
                                 href={`/admin/users?search=${encodeURIComponent(linkedPlayer.player_name)}`}
                                 className="mt-1 inline-flex items-center gap-1 text-sm text-primary hover:underline"
                               >
-                                <Link2 className="h-3.5 w-3.5" />
-                                Open in Player Identities
+                                <Link2 aria-hidden className="h-3.5 w-3.5" />
+                                Open in Player identities
                               </Link>
                             ) : null}
                           </div>
@@ -461,6 +472,7 @@ export default function AccessAdminUsersPage() {
                             <Button
                               variant="outline"
                               size="sm"
+                              aria-label={`Unlink player ${linkedPlayer.player_name} from this account`}
                               disabled={removeLinkedPlayerMutation.isPending}
                               onClick={() =>
                                 removeLinkedPlayerMutation.mutate({
@@ -469,48 +481,55 @@ export default function AccessAdminUsersPage() {
                                 })
                               }
                             >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Unlink
+                              <Trash2 aria-hidden className="mr-2 h-4 w-4" />
+                              Unlink player
                             </Button>
                           ) : null}
                         </div>
                       ) : (
-                        <p className="text-sm text-muted-foreground">No linked player account.</p>
+                        <p className="text-sm text-muted-foreground">
+                          No linked player account
+                          {canManageLinkedPlayers
+                            ? ". Assign one below to connect this login to its tournament history."
+                            : "."}
+                        </p>
                       )}
                     </div>
 
                     {canManageLinkedPlayers && !linkedPlayer ? (
-                      <div className="rounded-md border border-dashed border-border p-4">
-                        <div className="space-y-3">
-                          <p className="text-sm font-medium">Assign analytics account</p>
-                          <UserSearchCombobox
-                            value={selectedAnalyticsUserId ?? undefined}
-                            selectedName={selectedAnalyticsUserName || undefined}
-                            placeholder="Select analytics account"
-                            searchPlaceholder="Search analytics account..."
-                            onSelect={(user: MinimizedUser | undefined) => {
-                              setSelectedAnalyticsUserId(user?.id ?? null);
-                              setSelectedAnalyticsUserName(user?.name ?? "");
-                            }}
-                          />
-                          <Button
-                            disabled={
-                              selectedAnalyticsUserId == null ||
-                              assignLinkedPlayerMutation.isPending
-                            }
-                            onClick={() => {
-                              if (selectedAnalyticsUserId == null) return;
-                              assignLinkedPlayerMutation.mutate({
-                                userId: userDetailQuery.data!.id,
-                                player_id: selectedAnalyticsUserId,
-                                is_primary: true
+                      <div className="space-y-3 rounded-md border border-dashed border-border p-4">
+                        <Label htmlFor="assign-analytics-account">Assign analytics account</Label>
+                        <UserSearchCombobox
+                          id="assign-analytics-account"
+                          value={selectedAnalyticsUserId ?? undefined}
+                          selectedName={selectedAnalyticsUserName || undefined}
+                          placeholder="Select analytics account"
+                          searchPlaceholder="Search analytics account…"
+                          onSelect={(user: MinimizedUser | undefined) => {
+                            setSelectedAnalyticsUserId(user?.id ?? null);
+                            setSelectedAnalyticsUserName(user?.name ?? "");
+                          }}
+                        />
+                        <Button
+                          disabled={assignLinkedPlayerMutation.isPending}
+                          onClick={() => {
+                            if (selectedAnalyticsUserId == null) {
+                              notify.error("Pick an analytics account first.", {
+                                description:
+                                  "Search for the player this login belongs to, then assign it."
                               });
-                            }}
-                          >
-                            <Link2 className="mr-2 h-4 w-4" />
-                            Assign Account
-                          </Button>
-                        </div>
+                              return;
+                            }
+                            assignLinkedPlayerMutation.mutate({
+                              userId: userDetailQuery.data!.id,
+                              player_id: selectedAnalyticsUserId,
+                              is_primary: true
+                            });
+                          }}
+                        >
+                          <Link2 aria-hidden className="mr-2 h-4 w-4" />
+                          Assign account
+                        </Button>
                       </div>
                     ) : null}
                   </div>
@@ -519,9 +538,7 @@ export default function AccessAdminUsersPage() {
                 <TabsContent value="oauth" className="max-h-[60vh] space-y-4 overflow-y-auto pr-1">
                   <div className="space-y-4 rounded-lg border border-border/60 bg-card/60 p-4">
                     <div>
-                      <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                        OAuth Connections
-                      </h3>
+                      <h3 className={EYEBROW_CLASS}>OAuth connections</h3>
                       <p className="mt-1 text-sm text-muted-foreground">
                         Provider accounts linked to this auth account.
                       </p>
@@ -529,7 +546,7 @@ export default function AccessAdminUsersPage() {
 
                     <div className="space-y-3">
                       {oauthConnectionsQuery.isLoading ? (
-                        <p className="text-sm text-muted-foreground">Loading connections...</p>
+                        <Skeleton className="h-16 w-full" />
                       ) : oauthConnectionsQuery.data?.results.length ? (
                         oauthConnectionsQuery.data.results.map((conn) => {
                           const expired = conn.token_expires_at
@@ -553,11 +570,7 @@ export default function AccessAdminUsersPage() {
                               {conn.token_expires_at ? (
                                 <Badge
                                   variant="outline"
-                                  className={
-                                    expired
-                                      ? "border-red-500/30 text-red-400"
-                                      : "border-green-500/30 text-green-400"
-                                  }
+                                  className={TONE_CLASS[expired ? "danger" : "success"]}
                                 >
                                   {expired ? "Expired" : "Active"}
                                 </Badge>
@@ -566,7 +579,10 @@ export default function AccessAdminUsersPage() {
                           );
                         })
                       ) : (
-                        <p className="text-sm text-muted-foreground">No OAuth connections.</p>
+                        <p className="text-sm text-muted-foreground">
+                          No OAuth connections. This account signs in with its email and password
+                          only.
+                        </p>
                       )}
                     </div>
                   </div>
@@ -580,9 +596,7 @@ export default function AccessAdminUsersPage() {
 
                   <div className="space-y-4 rounded-lg border border-border/60 bg-card/60 p-4">
                     <div>
-                      <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                        Effective Permissions
-                      </h3>
+                      <h3 className={EYEBROW_CLASS}>Effective permissions</h3>
                       <p className="mt-1 text-sm text-muted-foreground">
                         Computed union of all permissions granted by assigned roles.
                       </p>
@@ -595,7 +609,9 @@ export default function AccessAdminUsersPage() {
                         </Badge>
                       ))}
                       {userDetailQuery.data.effective_permissions.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">No effective permissions.</p>
+                        <p className="text-sm text-muted-foreground">
+                          No effective permissions. Assign a role on the Roles tab to grant access.
+                        </p>
                       ) : null}
                     </div>
                   </div>
@@ -604,7 +620,8 @@ export default function AccessAdminUsersPage() {
             </div>
           ) : (
             <div className="py-8 text-sm text-muted-foreground">
-              Unable to load auth user details.
+              Could not load this auth account. Close the dialog and reopen it — the account may
+              have just been deleted.
             </div>
           )}
 
@@ -613,21 +630,22 @@ export default function AccessAdminUsersPage() {
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button variant="destructive" disabled={deleteUserMutation.isPending}>
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Delete Account
+                    <Trash2 aria-hidden className="mr-2 h-4 w-4" />
+                    Delete account
                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>Delete this account?</AlertDialogTitle>
+                    <AlertDialogTitle>Delete auth account</AlertDialogTitle>
                     <AlertDialogDescription>
                       This permanently deletes the auth account for{" "}
                       <span className="font-medium text-foreground">
                         {userDetailQuery.data.email}
                       </span>
                       , including its roles, permission denies, OAuth connections, API keys, and
-                      active sessions. The linked player profile and tournament history are
-                      preserved (only unlinked). This cannot be undone.
+                      active sessions, so they are signed out of every device immediately. The
+                      linked player profile and tournament history are preserved (only unlinked).
+                      This cannot be undone.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -636,7 +654,7 @@ export default function AccessAdminUsersPage() {
                       className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                       onClick={() => deleteUserMutation.mutate(userDetailQuery.data!.id)}
                     >
-                      Delete Account
+                      Delete account
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>

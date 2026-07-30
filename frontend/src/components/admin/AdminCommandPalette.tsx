@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useCommandState } from "cmdk";
 import { useRouter } from "next/navigation";
 
 import {
@@ -22,6 +23,24 @@ interface AdminCommandPaletteProps {
   onOpenChange: (open: boolean) => void;
 }
 
+/**
+ * Announces how many pages the current query matched. cmdk filters internally,
+ * so the count only exists in command state — without this, a screen reader
+ * hears nothing when the visible list shrinks to two entries.
+ */
+function ResultCountAnnouncer() {
+  const count = useCommandState((state) => state.filtered.count);
+  const search = useCommandState((state) => state.search);
+
+  return (
+    <div role="status" aria-live="polite" className="sr-only">
+      {search
+        ? `${count} ${count === 1 ? "page matches" : "pages match"} "${search}"`
+        : `${count} pages available`}
+    </div>
+  );
+}
+
 export function AdminCommandPalette({ groups, open, onOpenChange }: AdminCommandPaletteProps) {
   const router = useRouter();
 
@@ -35,9 +54,13 @@ export function AdminCommandPalette({ groups, open, onOpenChange }: AdminCommand
 
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange}>
-      <CommandInput placeholder="Search pages..." />
+      <CommandInput aria-label="Search admin pages" placeholder="Search admin pages…" />
+      <ResultCountAnnouncer />
       <CommandList>
-        <CommandEmpty>No results found.</CommandEmpty>
+        <CommandEmpty>
+          No admin page matches that. Try a shorter word, such as &ldquo;teams&rdquo; or
+          &ldquo;rank&rdquo;.
+        </CommandEmpty>
         {groups.map((group) => (
           <CommandGroup key={group.title} heading={group.title}>
             {group.items.map((item) => (
@@ -46,7 +69,7 @@ export function AdminCommandPalette({ groups, open, onOpenChange }: AdminCommand
                 value={adminNavItemSearchValue(item)}
                 onSelect={() => handleSelect(item.href)}
               >
-                <item.icon className="size-4 text-muted-foreground" />
+                <item.icon aria-hidden className="size-4 text-muted-foreground" />
                 <div className="flex flex-col gap-0.5">
                   <span>{item.title}</span>
                   <span className="text-xs text-muted-foreground">{item.description}</span>

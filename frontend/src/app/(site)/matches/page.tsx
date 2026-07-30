@@ -1,21 +1,11 @@
 "use client";
 
-import React, { Suspense, useEffect, useMemo, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import {
-  ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  PaginationState,
-  SortingState,
-  useReactTable
-} from "@tanstack/react-table";
 import Image from "next/image";
-import { Filter, Swords } from "lucide-react";
+import Link from "next/link";
+import { Filter } from "lucide-react";
 
 import tournamentService from "@/services/tournament.service";
 import encounterService from "@/services/encounter.service";
@@ -27,180 +17,75 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import { PaginationWithLinks } from "@/components/ui/pagination-with-links";
+import { DataPagination } from "@/components/ui/data-pagination";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
-import { MapRead } from "@/types/map.types";
-import { Match, Score } from "@/types/encounter.types";
+import { useQueryParams } from "@/hooks/useQueryParams";
+
+const PAGE_SIZE = 10;
+
+const MatchesTableSkeleton = () => (
+  <div className="flex flex-col gap-1.5">
+    {Array.from({ length: 8 }).map((_, index) => (
+      <Skeleton key={index} className="h-12 w-full rounded-lg" />
+    ))}
+  </div>
+);
 
 const MatchesPage = () => {
   const t = useTranslations();
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const [activeTournamentId, setActiveTournamentId] = useState<number | null>(null);
-  const [sorting, setSorting] = React.useState<SortingState>([]);
-  const [pagination, setPagination] = React.useState<PaginationState>({
-    pageIndex: 0,
-    pageSize: 10
-  });
+  const { searchParams, setParams } = useQueryParams({ resetOnChange: ["page"] });
 
-  const columns = useMemo<ColumnDef<Match>[]>(
-    () => [
-      {
-        accessorKey: "map",
-        header: t("matches.col.map"),
-        cell: ({ row }) => {
-          const map: MapRead = row.getValue("map");
-          return (
-            <div className="flex items-center gap-3 px-3 py-2.5">
-              <div className="relative h-12 w-40 shrink-0 overflow-hidden rounded-md">
-                <Image
-                  src={map.image_path}
-                  alt={map.name}
-                  fill
-                  style={{ objectFit: "cover" }}
-                  className="brightness-75"
-                />
-              </div>
-              <span className="text-sm font-medium text-white/90 whitespace-nowrap">
-                {map.name}
-              </span>
-            </div>
-          );
-        }
-      },
-      {
-        accessorKey: "tournament",
-        header: t("common.tournament"),
-        cell: ({ row }) => (
-          <div className="px-3 py-2.5">
-            <span className="text-sm text-white/60">
-              {row.original.encounter?.tournament.name}
-            </span>
-          </div>
-        )
-      },
-      {
-        accessorKey: "stage",
-        header: t("common.stage"),
-        cell: ({ row }) => {
-          const stageLabel =
-            row.original.encounter?.stage_item?.name ??
-            row.original.encounter?.stage?.name ??
-            t("matches.unassignedStage");
-          return (
-            <div className="px-3 py-2.5">
-              <span className="inline-flex items-center rounded-full bg-white/[0.06] border border-white/[0.08] px-2 py-0.5 text-[11px] text-white/55">
-                {stageLabel}
-              </span>
-            </div>
-          );
-        }
-      },
-      {
-        accessorKey: "name",
-        header: t("matches.col.match"),
-        cell: ({ row }) => (
-          <div className="px-3 py-2.5">
-            <span className="text-sm text-white/85">{row.original.home_team?.name}</span>
-            <span className="text-sm text-white/30 mx-1.5">{t("common.vs")}</span>
-            <span className="text-sm text-white/85">{row.original.away_team?.name}</span>
-          </div>
-        )
-      },
-      {
-        accessorKey: "score",
-        header: t("matches.col.score"),
-        cell: ({ row }) => {
-          const score: Score = row.getValue("score");
-          return (
-            <div className="px-3 py-2.5">
-              <span className="text-sm font-semibold tabular-nums text-white/85">
-                {score.home}
-                <span className="text-white/30 mx-0.5">–</span>
-                {score.away}
-              </span>
-            </div>
-          );
-        }
-      }
-    ],
-    [t]
-  );
+  // Both filter and page are read straight back out of the URL, so a reload or a
+  // shared link restores exactly the view the user was looking at. The tournament
+  // filter used to live in component state only: the URL claimed a filter, the
+  // request never carried one, and a reload silently reset the Select.
+  const page = Number.parseInt(searchParams?.get("page") ?? "1", 10) || 1;
+  const tournamentIdParam = searchParams?.get("tournamentId") ?? null;
+  const tournamentId = tournamentIdParam ? Number(tournamentIdParam) : null;
+  const activeTournamentId = tournamentId != null && Number.isFinite(tournamentId) ? tournamentId : null;
 
   const { data: tournamentsData } = useQuery({
     queryKey: ["tournaments"],
     queryFn: () => tournamentService.getAll()
   });
 
-  const { data: matchesData, isLoading: isLoadingMatches } = useQuery({
-    queryKey: ["matches", pagination.pageIndex],
-    queryFn: () => encounterService.getAllMatches(pagination.pageIndex + 1, pagination.pageSize, "")
+  const matchesQuery = useQuery({
+    queryKey: ["matches", page, activeTournamentId],
+    queryFn: () => encounterService.getAllMatches(page, PAGE_SIZE, "", activeTournamentId)
   });
 
-  const table = useReactTable({
-    data: matchesData?.results || [],
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    rowCount: matchesData?.total || 0,
-    onSortingChange: setSorting,
-    state: { sorting, pagination },
-    manualPagination: true
-  });
-
-  useEffect(() => {
-    const newSearchParams = new URLSearchParams(searchParams);
-    setPagination((prev) => ({
-      ...prev,
-      pageIndex: Number(newSearchParams.get("page")) - 1 || 0
-    }));
-    if (!newSearchParams.has("page")) {
-      newSearchParams.set("page", "1");
-      router.push(`${pathname}?${newSearchParams.toString()}`);
-    }
-  }, [pathname, router, searchParams]);
-
-  const pushTournamentId = (newTournamentId: string) => {
-    if (!searchParams) return;
-    const newSearchParams = new URLSearchParams(searchParams);
-
-    if (newTournamentId === "all") {
-      newSearchParams.delete("tournamentId");
-      setActiveTournamentId(null);
-    } else {
-      newSearchParams.set("tournamentId", String(newTournamentId));
-      setActiveTournamentId(Number(newTournamentId));
-    }
-
-    router.push(`${pathname}?${newSearchParams.toString()}`);
-  };
+  const matchesData = matchesQuery.data;
+  const rows = matchesData?.results ?? [];
+  const totalPages = Math.max(1, Math.ceil((matchesData?.total ?? 0) / PAGE_SIZE));
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-white">
+          <h1 className="text-2xl font-semibold tracking-tight text-[color:var(--aqt-fg)]">
             {t("common.matches")}
           </h1>
           {matchesData && (
-            <p className="mt-1 text-sm text-white/40">
+            <p className="mt-1 text-sm tabular-nums text-[color:var(--aqt-fg-dim)]">
               {t("matches.matchesTotal", { count: matchesData.total })}
             </p>
           )}
         </div>
 
-        {/* Filter */}
         <div className="flex items-center gap-2.5">
-          <Filter className="h-3.5 w-3.5 text-white/30 shrink-0" />
+          <Filter aria-hidden className="h-3.5 w-3.5 shrink-0 text-[color:var(--aqt-fg-faint)]" />
           <Select
             value={activeTournamentId?.toString() ?? "all"}
-            onValueChange={(value) => pushTournamentId(value)}
+            onValueChange={(value) =>
+              setParams({ tournamentId: value === "all" ? null : value })
+            }
           >
-            <SelectTrigger className="h-8 w-full sm:w-64 border-white/[0.07] bg-white/[0.02] text-sm text-white/80 shadow-none hover:border-white/[0.13] hover:bg-white/[0.04] focus:ring-1 focus:ring-white/[0.15] focus:ring-offset-0">
+            <SelectTrigger
+              aria-label={t("matches.allTournaments")}
+              className="h-8 w-full border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] text-sm text-[color:var(--aqt-fg-muted)] shadow-none hover:border-[color:var(--aqt-border-2)] hover:bg-[color:var(--aqt-overlay-2)] sm:w-64"
+            >
               <SelectValue placeholder={t("matches.allTournaments")} />
             </SelectTrigger>
             <SelectContent className="max-h-[min(var(--radix-select-content-available-height),20rem)]">
@@ -217,71 +102,117 @@ const MatchesPage = () => {
         </div>
       </div>
 
-      {/* Table */}
-      {isLoadingMatches ? (
-        <div className="flex flex-col gap-1.5">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <Skeleton key={i} className="h-12 w-full rounded-lg" />
-          ))}
-        </div>
+      {matchesQuery.isError ? (
+        <PageStateCard state="error" onAction={() => void matchesQuery.refetch()} />
+      ) : matchesQuery.isPending ? (
+        <MatchesTableSkeleton />
+      ) : rows.length === 0 ? (
+        <PageStateCard
+          state={activeTournamentId != null ? "filtered-empty" : "empty"}
+          description={t("matches.noMatchesFound")}
+          onAction={
+            activeTournamentId != null ? () => setParams({ tournamentId: null }) : undefined
+          }
+        />
       ) : (
         <div className="flex flex-col gap-4">
-          <div className="rounded-xl border border-white/[0.07] overflow-hidden">
+          <div className="overflow-hidden rounded-xl border border-[color:var(--aqt-border)]">
             <ScrollArea>
               <table className="w-full caption-bottom text-sm">
                 <thead>
-                  {table.getHeaderGroups().map((headerGroup) => (
-                    <tr key={headerGroup.id} className="border-b border-white/[0.06]">
-                      {headerGroup.headers.map((header) => (
-                        <th
-                          key={header.id}
-                          className="h-8 px-3 text-left text-[10px] uppercase tracking-wide text-white/35 font-semibold whitespace-nowrap"
-                        >
-                          {header.isPlaceholder
-                            ? null
-                            : flexRender(header.column.columnDef.header, header.getContext())}
-                        </th>
-                      ))}
-                    </tr>
-                  ))}
+                  <tr className="border-b border-[color:var(--aqt-border)]">
+                    {[
+                      t("matches.col.map"),
+                      t("common.tournament"),
+                      t("common.stage"),
+                      t("matches.col.match"),
+                      t("matches.col.score")
+                    ].map((label) => (
+                      <th
+                        key={label}
+                        scope="col"
+                        className="h-8 whitespace-nowrap px-3 text-left text-[10px] font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-faint)]"
+                      >
+                        {label}
+                      </th>
+                    ))}
+                  </tr>
                 </thead>
                 <tbody>
-                  {table.getRowModel().rows?.length ? (
-                    table.getRowModel().rows.map((row) => (
+                  {rows.map((match) => {
+                    const stageLabel =
+                      match.encounter?.stage_item?.name ??
+                      match.encounter?.stage?.name ??
+                      t("common.unassignedStage");
+
+                    return (
                       <tr
-                        key={row.id}
-                        onClick={() => router.push(`/matches/${row.original.id}`)}
-                        className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.03] cursor-pointer transition-colors"
+                        key={match.id}
+                        className="border-b border-[color:var(--aqt-border)] transition-colors last:border-0 hover:bg-[color:var(--aqt-overlay-1)]"
                       >
-                        {row.getVisibleCells().map((cell) => (
-                          <td key={cell.id} className="p-0 align-middle">
-                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                          </td>
-                        ))}
+                        <td className="p-0 align-middle">
+                          {/* A real anchor, so the row is keyboard reachable,
+                              announced as a link, and middle-clickable. */}
+                          <Link
+                            href={`/matches/${match.id}`}
+                            className="flex items-center gap-3 px-3 py-2.5 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--aqt-teal)]"
+                          >
+                            <span className="relative h-12 w-40 shrink-0 overflow-hidden rounded-md bg-[color:var(--aqt-overlay-2)]">
+                              {match.map ? (
+                                <Image
+                                  src={match.map.image_path}
+                                  alt=""
+                                  fill
+                                  style={{ objectFit: "cover" }}
+                                  className="brightness-75"
+                                />
+                              ) : null}
+                            </span>
+                            <span className="whitespace-nowrap text-sm font-medium text-[color:var(--aqt-fg)]">
+                              {match.map?.name ?? "—"}
+                            </span>
+                          </Link>
+                        </td>
+                        <td className="px-3 py-2.5 align-middle">
+                          <span className="text-sm text-[color:var(--aqt-fg-muted)]">
+                            {match.encounter?.tournament.name}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 align-middle">
+                          <span className="inline-flex items-center rounded-full border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-1)] px-2 py-0.5 text-[11px] text-[color:var(--aqt-fg-muted)]">
+                            {stageLabel}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 align-middle">
+                          <span className="text-sm text-[color:var(--aqt-fg)]">
+                            {match.home_team?.name}
+                          </span>
+                          <span className="mx-1.5 text-sm text-[color:var(--aqt-fg-faint)]">
+                            {t("common.vs")}
+                          </span>
+                          <span className="text-sm text-[color:var(--aqt-fg)]">
+                            {match.away_team?.name}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 align-middle">
+                          <span className="text-sm font-semibold tabular-nums text-[color:var(--aqt-fg)]">
+                            {match.score.home}
+                            <span className="mx-0.5 text-[color:var(--aqt-fg-faint)]">–</span>
+                            {match.score.away}
+                          </span>
+                        </td>
                       </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td
-                        colSpan={columns.length}
-                        className="h-32 text-center align-middle"
-                      >
-                        <div className="flex flex-col items-center justify-center gap-2 text-white/25">
-                          <Swords className="h-8 w-8" />
-                          <p className="text-sm">{t("matches.noMatchesFound")}</p>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
+                    );
+                  })}
                 </tbody>
               </table>
               <ScrollBar orientation="horizontal" />
             </ScrollArea>
           </div>
-          <PaginationWithLinks
-            page={pagination.pageIndex + 1}
-            totalCount={matchesData?.total || 0}
-            pageSize={pagination.pageSize}
+          <DataPagination
+            page={page}
+            totalPages={totalPages}
+            onPageChange={(nextPage) => setParams({ page: nextPage })}
           />
         </div>
       )}
@@ -289,13 +220,12 @@ const MatchesPage = () => {
   );
 };
 
-const MatchesPageWrapper = () => {
-  const t = useTranslations();
-  return (
-    <Suspense fallback={<div>{t("common.loading")}</div>}>
-      <MatchesPage />
-    </Suspense>
-  );
-};
+const MatchesPageWrapper = () => (
+  // `useSearchParams` needs a Suspense boundary; the fallback is the same
+  // skeleton the loaded page uses, not a bare "Loading…" line.
+  <Suspense fallback={<MatchesTableSkeleton />}>
+    <MatchesPage />
+  </Suspense>
+);
 
 export default MatchesPageWrapper;

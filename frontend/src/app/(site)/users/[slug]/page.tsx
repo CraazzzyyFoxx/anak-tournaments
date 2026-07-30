@@ -2,28 +2,27 @@ import React, { Suspense, cache } from "react";
 import userService from "@/services/user.service";
 import UserHeader from "@/app/(site)/users/components/header/UserHeader";
 import { TabsContent } from "@/components/ui/tabs";
-import UserOverviewPage, { UserOverviewPageSkeleton } from "@/app/(site)/users/pages/UserOverviewPage";
-import UserMapsPage from "@/app/(site)/users/pages/UserMapsPage";
+import UserOverviewPage, { UserOverviewPageSkeleton } from "@/app/(site)/users/_views/UserOverviewPage";
+import UserMapsPage from "@/app/(site)/users/_views/UserMapsPage";
 import { notFound, redirect } from "next/navigation";
-import UserHeroesPage from "@/app/(site)/users/pages/UserHeroesPage";
+import UserHeroesPage from "@/app/(site)/users/_views/UserHeroesPage";
 import {
   UserEncountersPageSkeleton,
   UserEncountersPage
-} from "@/app/(site)/users/pages/UserEncountersPage";
+} from "@/app/(site)/users/_views/UserEncountersPage";
 import type { MatchesFilters } from "@/app/(site)/users/components/matches/MatchesTable";
 import { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import {
   UserTournamentsPage,
   UserTournamentsPageSkeleton
-} from "@/app/(site)/users/pages/UserTournamentsPage";
-import UserAchievementPage from "@/app/(site)/users/pages/UserAchievementPage";
+} from "@/app/(site)/users/_views/UserTournamentsPage";
+import UserAchievementPage from "@/app/(site)/users/_views/UserAchievementPage";
 import { SITE_NAME, SITE_URL_OBJ } from "@/config/site";
 import { isNotFoundError } from "@/lib/api-error";
 import { decodePlayerSlug } from "@/utils/player";
 import { Skeleton } from "@/components/ui/skeleton";
 import UserTabsClient from "@/app/(site)/users/components/tabs/UserTabsClient";
-import UserLiquidGlassProvider from "@/app/(site)/users/components/shared/UserLiquidGlassProvider";
 import UserHeaderSkeleton from "@/app/(site)/users/components/header/UserHeaderSkeleton";
 import { ProfileJsonLd } from "@/app/(site)/users/components/shared/profile-jsonld";
 
@@ -322,7 +321,7 @@ export default async function UserPage({
   });
 
   return (
-    <UserLiquidGlassProvider>
+    <>
       <Suspense fallback={<UserHeaderSkeleton />}>
         <UserHeaderSection userAndProfile={userAndProfile} slug={resolvedParams.slug} />
       </Suspense>
@@ -345,6 +344,6 @@ export default async function UserPage({
           </Suspense>
         </TabsWithBadges>
       </Suspense>
-    </UserLiquidGlassProvider>
+    </>
   );
 }

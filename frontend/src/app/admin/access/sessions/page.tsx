@@ -6,6 +6,7 @@ import { Globe, MonitorSmartphone, Shield } from "lucide-react";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { TONE_TEXT, type Tone } from "@/components/admin/tone";
 import {
   Select,
   SelectContent,
@@ -13,34 +14,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import { rbacService } from "@/services/rbac.service";
 import type { AdminAuthSession, AdminSessionStatus } from "@/types/rbac.types";
 
 const PAGE_SIZE = 20;
 
-const STATUS_META: Record<
-  AdminSessionStatus,
-  {
-    dotClassName: string;
-    label: string;
-    textClassName: string;
-  }
-> = {
-  active: {
-    dotClassName: "bg-emerald-500",
-    label: "Active",
-    textClassName: "text-emerald-500",
-  },
-  revoked: {
-    dotClassName: "bg-amber-500",
-    label: "Revoked",
-    textClassName: "text-amber-500",
-  },
-  expired: {
-    dotClassName: "bg-slate-500",
-    label: "Expired",
-    textClassName: "text-slate-400",
-  },
+const STATUS_META: Record<AdminSessionStatus, { label: string; tone: Tone }> = {
+  active: { label: "Active", tone: "success" },
+  revoked: { label: "Revoked", tone: "warning" },
+  expired: { label: "Expired", tone: "neutral" },
 };
 
 function formatTimestamp(value: string | null | undefined): string {
@@ -80,15 +63,17 @@ function formatDeviceLabel(userAgent: string | null | undefined): string {
   if (browser) return browser;
   if (platform) return platform;
 
-  return userAgent.length > 64 ? `${userAgent.slice(0, 64)}...` : userAgent;
+  return userAgent.length > 64 ? `${userAgent.slice(0, 64)}…` : userAgent;
 }
 
 function StatusCell({ status }: { status: AdminSessionStatus }) {
   const meta = STATUS_META[status];
 
   return (
-    <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${meta.textClassName}`}>
-      <span className={`size-1.5 rounded-full ${meta.dotClassName}`} />
+    <span
+      className={cn("inline-flex items-center gap-1.5 text-xs font-medium", TONE_TEXT[meta.tone])}
+    >
+      <span aria-hidden className="size-1.5 rounded-full bg-current" />
       {meta.label}
     </span>
   );
@@ -120,7 +105,7 @@ export default function AccessAdminSessionsPage() {
       cell: ({ row }) => (
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <MonitorSmartphone className="h-4 w-4 text-muted-foreground" />
+            <MonitorSmartphone aria-hidden className="h-4 w-4 text-muted-foreground" />
             <span className="truncate text-sm font-medium">{formatDeviceLabel(row.original.user_agent)}</span>
           </div>
           <p className="mt-1 truncate text-xs text-muted-foreground">
@@ -136,21 +121,29 @@ export default function AccessAdminSessionsPage() {
     },
     {
       accessorKey: "login_at",
-      header: "Signed In",
-      cell: ({ row }) => <span className="text-sm text-muted-foreground">{formatTimestamp(row.original.login_at)}</span>,
+      header: "Signed in",
+      cell: ({ row }) => (
+        <span className="text-sm tabular-nums text-muted-foreground">
+          {formatTimestamp(row.original.login_at)}
+        </span>
+      ),
     },
     {
       accessorKey: "last_seen_at",
-      header: "Last Seen",
+      header: "Last seen",
       cell: ({ row }) => (
-        <span className="text-sm text-muted-foreground">{formatTimestamp(row.original.last_seen_at)}</span>
+        <span className="text-sm tabular-nums text-muted-foreground">
+          {formatTimestamp(row.original.last_seen_at)}
+        </span>
       ),
     },
     {
       accessorKey: "expires_at",
       header: "Expires",
       cell: ({ row }) => (
-        <span className="text-sm text-muted-foreground">{formatTimestamp(row.original.expires_at)}</span>
+        <span className="text-sm tabular-nums text-muted-foreground">
+          {formatTimestamp(row.original.expires_at)}
+        </span>
       ),
     },
     {
@@ -161,10 +154,10 @@ export default function AccessAdminSessionsPage() {
       cell: ({ row }) => (
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-sm">
-            <Globe className="h-4 w-4 text-muted-foreground" />
-            <span>{row.original.ip_address ?? "Unavailable"}</span>
+            <Globe aria-hidden className="h-4 w-4 text-muted-foreground" />
+            <span className="tabular-nums">{row.original.ip_address ?? "Unavailable"}</span>
           </div>
-          <p className="mt-1 truncate text-xs text-muted-foreground">
+          <p className="mt-1 truncate text-xs tabular-nums text-muted-foreground">
             Session ID: {row.original.session_id}
           </p>
         </div>
@@ -175,11 +168,11 @@ export default function AccessAdminSessionsPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader
-        title="Auth Sessions"
+        title="Auth sessions"
         description="Superuser view across all user sessions. Read-only inventory for investigation and support."
         meta={
           <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-            <Shield className="size-3.5" />
+            <Shield aria-hidden className="size-3.5" />
             Superuser
           </span>
         }
@@ -209,11 +202,11 @@ export default function AccessAdminSessionsPage() {
           })
         }
         columns={columns}
-        searchPlaceholder="Search by email, username, IP, or user agent..."
-        emptyMessage="No sessions found."
+        searchPlaceholder="Search by email, username, IP, or user agent…"
+        emptyMessage="No sessions match these filters. Try a different search or set the status filter to all statuses."
         actions={
           <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as "all" | AdminSessionStatus)}>
-            <SelectTrigger className="w-44">
+            <SelectTrigger className="w-44" aria-label="Filter by session status">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>

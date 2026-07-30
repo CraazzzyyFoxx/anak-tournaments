@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { Check, Circle, GripVertical, Pencil, PlusCircle, ShieldX } from "lucide-react";
 
-import PlayerDivisionIcon from "@/components/PlayerDivisionIcon";
+import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,7 +35,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import type { AdminRegistration, BalancerPlayerRecord, BalancerRoleCode, StatusMeta } from "@/types/balancer-admin.types";
+import type { AdminRegistration, BalancerPlayerRecord, BalancerRoleCode } from "@/types/balancer-admin.types";
+import type { StatusMeta } from "@/types/registration.types";
 import {
   POOL_LANES,
   POOL_LANE_LABELS,
@@ -309,7 +310,7 @@ function TriagePlayerCard({
 
             <div className="flex shrink-0 items-center gap-1">
               {primaryEntry?.division_number != null ? (
-                <PlayerDivisionIcon division={primaryEntry.division_number} width={20} height={20} />
+                <DivisionIcon division={primaryEntry.division_number} width={20} height={20} />
               ) : null}
               {primaryEntry?.rank_value != null ? (
                 <span className={cn("min-w-10 text-right text-[13px] font-semibold tabular-nums text-cyan-300", primaryRole && ROLE_TEXT_ACCENTS[primaryRole])}>

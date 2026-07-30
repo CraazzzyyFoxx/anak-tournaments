@@ -23,6 +23,10 @@ export interface EffectivePhase {
   optional: boolean;
   /** Phase is at or before the tournament's current status. */
   reached: boolean;
+  /** Status sits OUTSIDE the effective chain (force-transition drift). The
+   * stepper must render it as an off-track marker, not as a chain position —
+   * appending it inline reads as "current phase comes after Archived". */
+  drifted?: boolean;
 }
 
 export interface EffectivePhasesInput {
@@ -58,7 +62,7 @@ export function effectivePhases({
   // current phase instead of breaking the stepper. The completed<->archived
   // cycle never drifts — both statuses are always in the chain.
   if (currentStatus !== undefined && !chain.includes(currentStatus)) {
-    phases.push({ key: currentStatus, optional: false, reached: true });
+    phases.push({ key: currentStatus, optional: false, reached: true, drifted: true });
   }
 
   return phases;

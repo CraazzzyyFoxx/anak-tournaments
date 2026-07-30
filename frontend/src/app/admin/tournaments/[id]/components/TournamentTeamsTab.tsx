@@ -4,10 +4,11 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } 
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  AlertTriangle,
   ArrowLeftRight,
-  Check,
-  ChevronsUpDown,
+  ClipboardList,
   FolderInput,
+  Gauge,
   Loader2,
   Minus,
   Pencil,
@@ -16,29 +17,25 @@ import {
   Scale,
   Sparkles,
   Trash2,
-  UserPlus
+  UserPlus,
+  Users
 } from "lucide-react";
 
+import { AdminCombobox, AdminComboboxCheck } from "@/components/admin/AdminCombobox";
 import {
   AdminDetailTableShell,
   getAdminDetailTableStyles
 } from "@/components/admin/AdminDetailTable";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
+import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { UserSearchCombobox } from "@/components/admin/UserSearchCombobox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList
-} from "@/components/ui/command";
+import { CommandGroup, CommandItem } from "@/components/ui/command";
 import {
   Dialog,
   DialogContent,
@@ -49,7 +46,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -84,7 +80,6 @@ import { formatSubRoleLabel } from "@/utils/player";
 import {
   TOURNAMENT_DETAIL_PREVIEW_LIMIT,
   getEmptyTeamForm,
-  getTeamForm,
   type TeamFormState
 } from "./tournamentWorkspace.helpers";
 import { invalidateTournamentWorkspace } from "./tournamentWorkspace.queryKeys";
@@ -116,6 +111,8 @@ interface TournamentTeamsTabProps {
 
 interface TeamNumberInputProps {
   id: string;
+  /** Human-readable field name used by the stepper buttons' accessible labels. */
+  label: string;
   value: number;
   onChange: (value: number) => void;
   min?: number;
@@ -132,6 +129,7 @@ interface PlayerOption {
 }
 
 interface SearchableSelectProps {
+  id?: string;
   value: string;
   options: PlayerOption[];
   onChange: (value: string) => void;
@@ -172,12 +170,12 @@ function summarizeChallongeSyncResult(result: {
   unchanged: number;
   skipped: number;
 }) {
-  return [
-    `${result.created} created`,
-    `${result.updated} updated`,
-    `${result.unchanged} unchanged`,
-    `${result.skipped} skipped`
-  ].join(", ");
+  return (
+    <span className="tabular-nums">
+      {result.created} created, {result.updated} updated, {result.unchanged} unchanged,{" "}
+      {result.skipped} skipped
+    </span>
+  );
 }
 
 function clampTeamNumber(value: number, min?: number, max?: number) {
@@ -198,6 +196,7 @@ function normalizeTeamNumberDraft(value: number) {
 
 function TeamNumberInput({
   id,
+  label,
   value,
   onChange,
   min,
@@ -240,9 +239,9 @@ function TeamNumberInput({
         className="h-full w-10 shrink-0 rounded-r-none border-r"
         onClick={() => stepValue(-1)}
         disabled={disabled || (typeof min === "number" && value <= min)}
-        aria-label={`Decrease ${id}`}
+        aria-label={`Decrease ${label}`}
       >
-        <Minus className="h-3.5 w-3.5" />
+        <Minus className="h-3.5 w-3.5" aria-hidden />
       </Button>
       <div className="flex min-w-0 flex-1 items-center">
         <Input
@@ -260,7 +259,7 @@ function TeamNumberInput({
           }}
           onBlur={() => commitValue(draft)}
           disabled={disabled}
-          className="h-full rounded-none border-0 bg-transparent text-center shadow-none focus-visible:ring-0"
+          className="h-full rounded-none border-0 bg-transparent text-center tabular-nums shadow-none focus-visible:ring-0"
         />
         {suffix ? (
           <span className="shrink-0 pr-3 text-xs font-medium text-muted-foreground">{suffix}</span>
@@ -273,15 +272,16 @@ function TeamNumberInput({
         className="h-full w-10 shrink-0 rounded-l-none border-l"
         onClick={() => stepValue(1)}
         disabled={disabled || (typeof max === "number" && value >= max)}
-        aria-label={`Increase ${id}`}
+        aria-label={`Increase ${label}`}
       >
-        <Plus className="h-3.5 w-3.5" />
+        <Plus className="h-3.5 w-3.5" aria-hidden />
       </Button>
     </div>
   );
 }
 
 function SearchableSelect({
+  id,
   value,
   options,
   onChange,
@@ -291,73 +291,52 @@ function SearchableSelect({
   disabled = false
 }: SearchableSelectProps) {
   const [open, setOpen] = useState(false);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const [search, setSearch] = useState("");
   const selected = options.find((option) => option.value === value);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          ref={triggerRef}
-          type="button"
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          disabled={disabled}
-          className="h-10 w-full justify-between border-border/60 bg-background/80 font-normal hover:bg-background/90"
-        >
-          <span className="truncate" title={selected?.label ?? placeholder}>
-            {selected?.label ?? placeholder}
-          </span>
-          <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-0">
-        <Command>
-          <CommandInput placeholder={searchPlaceholder} />
-          <CommandList>
-            <CommandEmpty>{emptyMessage}</CommandEmpty>
-            <CommandGroup>
-              {options.map((option) => (
-                <CommandItem
-                  key={option.value}
-                  value={`${option.label} ${option.meta ?? ""} ${option.value}`}
-                  onSelect={() => {
-                    onChange(option.value);
-                    setOpen(false);
-                  }}
-                >
-                  <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
-                    <span className="truncate">{option.label}</span>
-                    {option.meta ? (
-                      <span className="shrink-0 text-xs text-muted-foreground">{option.meta}</span>
-                    ) : null}
-                  </div>
-                  <Check
-                    className={cn(
-                      "ml-2 h-4 w-4",
-                      value === option.value ? "opacity-100" : "opacity-0"
-                    )}
-                  />
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
+    <AdminCombobox
+      id={id}
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (!nextOpen) {
+          setSearch("");
+        }
+      }}
+      label={selected?.label ?? placeholder}
+      disabled={disabled}
+      searchValue={search}
+      onSearchValueChange={setSearch}
+      searchPlaceholder={searchPlaceholder}
+      emptyMessage={emptyMessage}
+    >
+      <CommandGroup>
+        {options.map((option) => (
+          <CommandItem
+            key={option.value}
+            value={`${option.label} ${option.meta ?? ""} ${option.value}`}
+            onSelect={() => {
+              onChange(option.value);
+              setSearch("");
+              setOpen(false);
+            }}
+          >
+            <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
+              <span className="truncate">{option.label}</span>
+              {option.meta ? (
+                <span className="shrink-0 text-xs text-muted-foreground">{option.meta}</span>
+              ) : null}
+            </div>
+            <AdminComboboxCheck selected={value === option.value} />
+          </CommandItem>
+        ))}
+      </CommandGroup>
+    </AdminCombobox>
   );
 }
 
 const PLAYER_ROLE_OPTIONS: PlayerRoleOption[] = ["Tank", "Damage", "Support"];
-
-function RoleOptionContent({ role }: { role: PlayerRoleOption }) {
-  return (
-    <div className="flex items-center gap-2">
-      <span>{role}</span>
-    </div>
-  );
-}
 
 function filterSubRoleOptions(subRoles: PlayerSubRole[] | undefined, role: PlayerRoleOption) {
   const catalogRole = role === "Tank" ? "tank" : role === "Support" ? "support" : "damage";
@@ -747,7 +726,7 @@ export function TournamentTeamsTab({
       );
     },
     onError: (error: Error) => {
-      setTeamFormError(error.message);
+      setTeamFormError(`Could not save the team roster. ${error.message}`);
     }
   });
 
@@ -788,7 +767,7 @@ export function TournamentTeamsTab({
     }
 
     if (!playerFormData.name.trim()) {
-      setPlayerFormError("Player name is required.");
+      setPlayerFormError("Enter a player name.");
       return;
     }
 
@@ -799,7 +778,7 @@ export function TournamentTeamsTab({
 
     const requiresUser = existingDraft?.state !== "existing";
     if (requiresUser && playerFormData.user_id <= 0) {
-      setPlayerFormError("Linked user is required.");
+      setPlayerFormError("Select the user this roster member belongs to.");
       return;
     }
 
@@ -849,27 +828,27 @@ export function TournamentTeamsTab({
     event.preventDefault();
 
     if (!teamFormData.name.trim()) {
-      setTeamFormError("Team name is required.");
+      setTeamFormError("Enter a team name.");
       return;
     }
 
     if (rosterDraftPlayers.length === 0) {
-      setTeamFormError("At least one roster member is required.");
+      setTeamFormError("Add at least one player to the roster before saving.");
       return;
     }
 
     if (!captainOptions.some((option) => option.user_id === teamFormData.captain_id)) {
-      setTeamFormError("Captain must be selected from the current roster.");
+      setTeamFormError("Pick a captain from the current roster.");
       return;
     }
 
     if (!editingTeam && !canCreateTeam) {
-      setTeamFormError("You do not have permission to create teams.");
+      setTeamFormError("You cannot create teams. Ask an admin for the create-team permission.");
       return;
     }
 
     if (editingTeam && !canUpdateTeam && !canManageRoster) {
-      setTeamFormError("You do not have permission to update this team.");
+      setTeamFormError("You cannot edit this team. Ask an admin for the update-team permission.");
       return;
     }
 
@@ -990,7 +969,7 @@ export function TournamentTeamsTab({
 
     if (!canSubmitChallongeMappings) {
       notify.error("Mappings incomplete", {
-        description: `${activeUnmappedParticipants.length} active Challonge participants are unmapped.`
+        description: `Map the remaining ${activeUnmappedParticipants.length} active Challonge participants before syncing.`
       });
       return;
     }
@@ -1041,8 +1020,8 @@ export function TournamentTeamsTab({
                     size="sm"
                     onClick={() => openPlayerCreateDialog(draft)}
                   >
-                    <UserPlus className="mr-2 h-4 w-4" />
-                    Add Substitute
+                    <UserPlus className="mr-2 h-4 w-4" aria-hidden />
+                    Add substitute
                   </Button>
                 ) : null}
                 {canEditDraft ? (
@@ -1050,9 +1029,10 @@ export function TournamentTeamsTab({
                     type="button"
                     variant="ghost"
                     size="icon"
+                    aria-label={`Edit ${draft.name || "unnamed player"}`}
                     onClick={() => openPlayerEditDialog(draft)}
                   >
-                    <Pencil className="h-4 w-4" />
+                    <Pencil className="h-4 w-4" aria-hidden />
                   </Button>
                 ) : null}
                 {canDeleteDraft ? (
@@ -1060,10 +1040,11 @@ export function TournamentTeamsTab({
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="text-destructive"
+                    className="text-danger"
+                    aria-label={`Remove ${draft.name || "unnamed player"} from roster`}
                     onClick={() => handleRemoveRosterPlayer(draft)}
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Trash2 className="h-4 w-4" aria-hidden />
                   </Button>
                 ) : null}
               </div>
@@ -1082,86 +1063,64 @@ export function TournamentTeamsTab({
       ? Math.round(teams.reduce((sum, team) => sum + team.avg_sr, 0) / teams.length)
       : 0;
 
+  const syncTeamsButton = canImportTeams ? (
+    <Button
+      variant="outline"
+      onClick={openChallongeSyncDialog}
+      disabled={syncTeamsMutation.isPending || !hasChallongeSource}
+    >
+      <RefreshCw className="mr-2 h-4 w-4" aria-hidden />
+      Sync teams
+    </Button>
+  ) : null;
+
   return (
     <>
-      <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <Card className="border-border/40">
-          <CardContent className="p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Teams
-            </p>
-            <p className="mt-2 text-2xl font-semibold tabular-nums">{teams.length}</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {stagesCount} stage{stagesCount === 1 ? "" : "s"} configured
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="border-border/40">
-          <CardContent className="p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Roster Records
-            </p>
-            <p className="mt-2 text-2xl font-semibold tabular-nums">{rosterPlayersCount}</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {teamsWithRosterCount}/{teams.length || 0} teams have players
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="border-border/40">
-          <CardContent className="p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Average SR
-            </p>
-            <p className="mt-2 text-2xl font-semibold tabular-nums">
-              {teams.length ? averageSr : "-"}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">Across loaded teams</p>
-          </CardContent>
-        </Card>
-        <Card className="border-border/40">
-          <CardContent className="p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Import State
-            </p>
-            <p className="mt-2 text-2xl font-semibold tabular-nums">
-              {hasChallongeSource ? "Linked" : "Manual"}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {emptyRosterTeamsCount > 0
-                ? `${emptyRosterTeamsCount} empty roster(s)`
-                : "Roster coverage ready"}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+      <StatTileGrid className="mb-4">
+        <StatTile
+          label="Teams"
+          value={teams.length}
+          detail={`${stagesCount} stage${stagesCount === 1 ? "" : "s"} configured`}
+          icon={Users}
+        />
+        <StatTile
+          label="Roster records"
+          value={rosterPlayersCount}
+          detail={`${teamsWithRosterCount}/${teams.length} teams have players`}
+          icon={ClipboardList}
+        />
+        <StatTile
+          label="Average SR"
+          value={teams.length ? averageSr : "—"}
+          detail="Across loaded teams"
+          icon={Gauge}
+        />
+        <StatTile
+          label="Empty rosters"
+          value={emptyRosterTeamsCount}
+          detail={
+            emptyRosterTeamsCount > 0
+              ? "Add players before seeding stages"
+              : "Every team has players"
+          }
+          icon={AlertTriangle}
+          tone={emptyRosterTeamsCount > 0 ? "warning" : "success"}
+        />
+      </StatTileGrid>
 
       <Card className="border-border/40">
         <CardHeader className="gap-3 pb-3">
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-            <div className="min-w-0">
-              <CardTitle className="text-base font-semibold">Team Operations</CardTitle>
-              <CardDescription className="mt-1">
-                Review tournament rosters, sync external mappings, or jump into the dedicated team
-                workspace for detailed edits.
-              </CardDescription>
-            </div>
-            <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground/50">
-              <span>{teams.length} teams</span>
-              <span>·</span>
-              <span>{stagesCount} stages configured</span>
-            </div>
+          <div className="min-w-0">
+            <CardTitle asChild className="text-base font-semibold">
+              <h2>Team operations</h2>
+            </CardTitle>
+            <CardDescription className="mt-1">
+              Review tournament rosters, sync external mappings, or jump into the dedicated team
+              workspace for detailed edits.
+            </CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
-            {canImportTeams ? (
-              <Button
-                variant="outline"
-                onClick={openChallongeSyncDialog}
-                disabled={syncTeamsMutation.isPending || !hasChallongeSource}
-              >
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Sync Teams
-              </Button>
-            ) : null}
+            {syncTeamsButton}
             {canImportTeams ? (
               <>
                 <input
@@ -1181,9 +1140,9 @@ export function TournamentTeamsTab({
                   disabled={importTeamsMutation.isPending}
                 >
                   {importTeamsMutation.isPending ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
                   ) : (
-                    <FolderInput className="mr-2 h-4 w-4" />
+                    <FolderInput className="mr-2 h-4 w-4" aria-hidden />
                   )}
                   Import from JSON
                 </Button>
@@ -1193,16 +1152,16 @@ export function TournamentTeamsTab({
               <Button asChild variant="outline">
                 {/* D30/A-O2: the sole UI entry to the balancer tool after the shell removal (v3.1). */}
                 <Link href={`/balancer?tournament=${tournamentId}`}>
-                  <Scale className="mr-2 h-4 w-4" />
-                  Open Balancer
+                  <Scale className="mr-2 h-4 w-4" aria-hidden />
+                  Open balancer
                 </Link>
               </Button>
             ) : null}
             {canManageTeams ? (
               <Button asChild>
                 <Link href={teamsAdminHref}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Manage Teams
+                  <Plus className="mr-2 h-4 w-4" aria-hidden />
+                  Manage teams
                 </Link>
               </Button>
             ) : null}
@@ -1227,20 +1186,26 @@ export function TournamentTeamsTab({
                       <TableCell className={tableStyles.cell}>
                         <span className="font-medium">{team.name}</span>
                       </TableCell>
-                      <TableCell className={tableStyles.cell}>{team.avg_sr.toFixed(0)}</TableCell>
-                      <TableCell className={tableStyles.cell}>{team.total_sr}</TableCell>
-                      <TableCell className={tableStyles.cell}>{team.players.length}</TableCell>
+                      <TableCell className={`${tableStyles.cell} tabular-nums`}>
+                        {team.avg_sr.toFixed(0)}
+                      </TableCell>
+                      <TableCell className={`${tableStyles.cell} tabular-nums`}>
+                        {team.total_sr}
+                      </TableCell>
+                      <TableCell className={`${tableStyles.cell} tabular-nums`}>
+                        {team.players.length}
+                      </TableCell>
                       <TableCell className={tableStyles.cell}>
                         <div className="flex items-center justify-end gap-2">
                           <Button
                             asChild
                             variant="ghost"
                             size="sm"
-                            aria-label={`Open ${team.name}`}
+                            aria-label={`Open team ${team.name}`}
                           >
                             <Link href={`/admin/teams/${team.id}`}>
-                              <Pencil className="mr-2 h-4 w-4" />
-                              Open
+                              <Pencil className="mr-2 h-4 w-4" aria-hidden />
+                              Open team
                             </Link>
                           </Button>
                         </div>
@@ -1256,21 +1221,12 @@ export function TournamentTeamsTab({
                           dedicated teams workspace to create the first roster.
                         </span>
                         <div className="flex flex-wrap gap-2">
-                          {canImportTeams ? (
-                            <Button
-                              variant="outline"
-                              onClick={openChallongeSyncDialog}
-                              disabled={syncTeamsMutation.isPending || !hasChallongeSource}
-                            >
-                              <RefreshCw className="mr-2 h-4 w-4" />
-                              Sync Teams
-                            </Button>
-                          ) : null}
+                          {syncTeamsButton}
                           {canManageTeams ? (
                             <Button asChild variant="outline">
                               <Link href={teamsAdminHref}>
-                                <Plus className="mr-2 h-4 w-4" />
-                                Manage Teams
+                                <Plus className="mr-2 h-4 w-4" aria-hidden />
+                                Manage teams
                               </Link>
                             </Button>
                           ) : null}
@@ -1282,17 +1238,6 @@ export function TournamentTeamsTab({
               </TableBody>
             </Table>
           </AdminDetailTableShell>
-
-          {teams.length > TOURNAMENT_DETAIL_PREVIEW_LIMIT ? (
-            <div className="border-t border-border/30 px-3 py-2">
-              <Link
-                href={teamsAdminHref}
-                className="text-[12px] text-muted-foreground/60 transition-colors hover:text-foreground"
-              >
-                Show all {teams.length} teams →
-              </Link>
-            </div>
-          ) : null}
         </CardContent>
       </Card>
 
@@ -1308,7 +1253,7 @@ export function TournamentTeamsTab({
       >
         <DialogContent className="flex max-h-[90vh] max-w-5xl flex-col overflow-hidden">
           <DialogHeader className="border-b border-border/60 pb-4">
-            <DialogTitle>Sync Challonge Teams</DialogTitle>
+            <DialogTitle>Sync Challonge teams</DialogTitle>
             <DialogDescription>
               Match each Challonge participant to the internal team used by analytics and matches.
             </DialogDescription>
@@ -1317,11 +1262,18 @@ export function TournamentTeamsTab({
           <form onSubmit={handleChallongeMappingSubmit} className="flex min-h-0 flex-1 flex-col">
             <div className="flex flex-wrap items-center justify-between gap-3 py-3">
               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                <Badge variant="secondary">{challongeParticipants.length} participants</Badge>
-                <Badge variant={activeUnmappedParticipants.length ? "destructive" : "secondary"}>
+                <Badge variant="secondary" className="tabular-nums">
+                  {challongeParticipants.length} participants
+                </Badge>
+                <Badge
+                  variant={activeUnmappedParticipants.length ? "destructive" : "secondary"}
+                  className="tabular-nums"
+                >
                   {activeUnmappedParticipants.length} unmapped
                 </Badge>
-                <Badge variant="secondary">{selectedChallongeMappings.length} selected</Badge>
+                <Badge variant="secondary" className="tabular-nums">
+                  {selectedChallongeMappings.length} selected
+                </Badge>
               </div>
               <Button
                 type="button"
@@ -1335,8 +1287,8 @@ export function TournamentTeamsTab({
                   )
                 }
               >
-                <Sparkles className="mr-2 h-4 w-4" />
-                Apply Suggestions
+                <Sparkles className="mr-2 h-4 w-4" aria-hidden />
+                Apply suggestions
               </Button>
             </div>
 
@@ -1344,11 +1296,11 @@ export function TournamentTeamsTab({
               <Table>
                 <TableHeader>
                   <TableRow className={tableStyles.headerRow}>
-                    <TableHead className={tableStyles.head}>Challonge Participant</TableHead>
+                    <TableHead className={tableStyles.head}>Challonge participant</TableHead>
                     <TableHead className={tableStyles.head}>Group</TableHead>
                     <TableHead className={tableStyles.head}>Current</TableHead>
                     <TableHead className={tableStyles.head}>Suggestion</TableHead>
-                    <TableHead className={tableStyles.head}>Internal Team</TableHead>
+                    <TableHead className={tableStyles.head}>Internal team</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1356,8 +1308,8 @@ export function TournamentTeamsTab({
                     <TableRow className={tableStyles.row}>
                       <TableCell className={tableStyles.cell} colSpan={5}>
                         <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          Loading Challonge participants...
+                          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                          Loading Challonge participants…
                         </div>
                       </TableCell>
                     </TableRow>
@@ -1380,8 +1332,8 @@ export function TournamentTeamsTab({
                               <div className="truncate font-medium" title={participant.name}>
                                 {participant.name}
                               </div>
-                              <div className="mt-0.5 text-xs text-muted-foreground">
-                                #{participant.participant_id} / Challonge #
+                              <div className="mt-0.5 text-xs tabular-nums text-muted-foreground">
+                                #{participant.participant_id} · Challonge #
                                 {participant.challonge_id}
                               </div>
                             </div>
@@ -1405,6 +1357,7 @@ export function TournamentTeamsTab({
                                 variant="ghost"
                                 size="sm"
                                 className="h-8 max-w-[180px] justify-start px-2"
+                                aria-label={`Map ${participant.name} to ${suggestedTeam.name}`}
                                 onClick={() =>
                                   setChallongeMappingDraft((current) => ({
                                     ...current,
@@ -1412,7 +1365,7 @@ export function TournamentTeamsTab({
                                   }))
                                 }
                               >
-                                <Sparkles className="mr-2 h-3.5 w-3.5 shrink-0" />
+                                <Sparkles className="mr-2 h-3.5 w-3.5 shrink-0" aria-hidden />
                                 <span className="truncate">{suggestedTeam.name}</span>
                               </Button>
                             ) : (
@@ -1429,7 +1382,7 @@ export function TournamentTeamsTab({
                                 }))
                               }
                             >
-                              <SelectTrigger>
+                              <SelectTrigger aria-label={`Internal team for ${participant.name}`}>
                                 <SelectValue placeholder="Select team" />
                               </SelectTrigger>
                               <SelectContent>
@@ -1449,7 +1402,8 @@ export function TournamentTeamsTab({
                     <TableRow className={tableStyles.row}>
                       <TableCell className={tableStyles.cell} colSpan={5}>
                         <div className="py-4 text-sm text-muted-foreground">
-                          No Challonge participants found.
+                          No participants came back from Challonge. Check the Challonge link on the
+                          Settings tab, then reopen this dialog.
                         </div>
                       </TableCell>
                     </TableRow>
@@ -1473,11 +1427,11 @@ export function TournamentTeamsTab({
               >
                 {syncTeamsMutation.isPending ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Syncing...
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+                    Syncing…
                   </>
                 ) : (
-                  "Sync Mappings"
+                  "Sync mappings"
                 )}
               </Button>
             </DialogFooter>
@@ -1493,11 +1447,11 @@ export function TournamentTeamsTab({
             resetTeamDialog();
           }
         }}
-        title={editingTeam ? "Edit Team & Roster" : "Create Team & Roster"}
+        title={editingTeam ? "Edit team & roster" : "Create team & roster"}
         description="Manage team identity, captain assignment, and the full tournament roster in one place."
         onSubmit={handleTeamSubmit}
         isSubmitting={saveTeamMutation.isPending}
-        submittingLabel={editingTeam ? "Saving team..." : "Creating team..."}
+        submittingLabel={editingTeam ? "Saving team…" : "Creating team…"}
         errorMessage={teamFormError}
         isDirty={isTeamDirty}
       >
@@ -1513,7 +1467,7 @@ export function TournamentTeamsTab({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="workspace-team-name">Team Name</Label>
+            <Label htmlFor="workspace-team-name">Team name</Label>
             <Input
               id="workspace-team-name"
               value={teamFormData.name}
@@ -1567,8 +1521,8 @@ export function TournamentTeamsTab({
               </div>
               {canCreatePlayer ? (
                 <Button type="button" variant="outline" onClick={() => openPlayerCreateDialog()}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Player
+                  <Plus className="mr-2 h-4 w-4" aria-hidden />
+                  Add player
                 </Button>
               ) : null}
             </div>
@@ -1594,20 +1548,19 @@ export function TournamentTeamsTab({
         }}
         title={
           playerDialogState?.mode === "edit"
-            ? "Edit Roster Member"
+            ? "Edit roster member"
             : playerDialogState?.mode === "create-substitute"
-              ? "Add Substitute"
-              : "Add Player"
+              ? "Add substitute"
+              : "Add player"
         }
         description="Changes here stay local until you save the team dialog."
         onSubmit={handlePlayerDialogSubmit}
-        isSubmitting={false}
         errorMessage={playerFormError}
         isDirty={isPlayerDirty}
       >
         <div className="space-y-4">
           <div>
-            <Label htmlFor="team-roster-player-name">Player Name</Label>
+            <Label htmlFor="team-roster-player-name">Player name</Label>
             <Input
               id="team-roster-player-name"
               value={playerFormData.name}
@@ -1618,7 +1571,7 @@ export function TournamentTeamsTab({
           </div>
 
           <div>
-            <Label htmlFor="team-roster-player-user">Linked User</Label>
+            <Label htmlFor="team-roster-player-user">Linked user</Label>
             <UserSearchCombobox
               id="team-roster-player-user"
               value={
@@ -1632,7 +1585,7 @@ export function TournamentTeamsTab({
                   : playerFormData.user_name || undefined
               }
               placeholder="Search user by name"
-              searchPlaceholder="Search user..."
+              searchPlaceholder="Search user…"
               disabled={playerDialogDraft?.state === "existing"}
               allowClear={playerDialogDraft?.state !== "existing"}
               onSelect={(user: MinimizedUser | undefined) =>
@@ -1669,7 +1622,7 @@ export function TournamentTeamsTab({
               <SelectContent>
                 {PLAYER_ROLE_OPTIONS.map((role) => (
                   <SelectItem key={role} value={role}>
-                    <RoleOptionContent role={role} />
+                    {role}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -1679,10 +1632,11 @@ export function TournamentTeamsTab({
           <div>
             <Label htmlFor="team-roster-player-sub-role">Sub-role</Label>
             <SearchableSelect
+              id="team-roster-player-sub-role"
               value={playerFormData.sub_role || "none"}
               options={playerSubRoleSelectOptions}
               placeholder="Select sub-role"
-              searchPlaceholder="Search sub-role..."
+              searchPlaceholder="Search sub-role…"
               emptyMessage="No sub-roles found."
               onChange={(value) =>
                 setPlayerFormData((current) => ({
@@ -1697,6 +1651,7 @@ export function TournamentTeamsTab({
             <Label htmlFor="team-roster-player-rank">Rank</Label>
             <TeamNumberInput
               id="team-roster-player-rank"
+              label="player rank"
               value={playerFormData.rank}
               min={0}
               step={1}
@@ -1757,7 +1712,7 @@ export function TournamentTeamsTab({
             deleteTeamMutation.mutate(teamPendingDelete.id);
           }
         }}
-        title="Delete Team"
+        title="Delete team"
         description={`Delete "${teamPendingDelete?.name ?? "this team"}"? This also removes roster members and related match records.`}
         cascadeInfo={[
           "Players in this team",

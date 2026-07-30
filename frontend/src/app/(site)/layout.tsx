@@ -61,7 +61,7 @@ export default async function SiteLayout({
       <div className="w-full max-w-screen-3xl pt-6 mx-auto px-4 md:px-6 xl:px-10 h-full">
         <Header tenantMode={tenantMode} tenantWorkspace={tenantWorkspace} />
         <div className="flex w-full flex-col min-h-[95%]">
-          <main className="flex flex-1 flex-col gap-4 pt-4 md:gap-8 md:pt-8">
+          <main id="main-content" tabIndex={-1} className="flex flex-1 flex-col gap-4 pt-4 md:gap-8 md:pt-8">
             {children}
           </main>
         </div>

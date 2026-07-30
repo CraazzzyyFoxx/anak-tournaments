@@ -6,6 +6,7 @@ import { AlertTriangle, CheckCircle2, Circle, Lock, Minus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EYEBROW_CLASS, TONE_CLASS, type Tone } from "@/components/admin/tone";
 import { cn } from "@/lib/utils";
 import type { ChecklistItem, ChecklistPhase, ChecklistState } from "./checklist-model";
 
@@ -18,20 +19,12 @@ const PHASE_TITLES: Record<ChecklistPhase, string> = {
   finish: "Finish"
 };
 
-// Tone classes mirror the Setup Health tiles in TournamentSetupTab.
-const STATE_META: Record<
-  ChecklistState,
-  { label: string; icon: ElementType; className: string }
-> = {
-  done: { label: "Done", icon: CheckCircle2, className: "border-primary/40 bg-primary/10 text-primary" },
-  todo: { label: "To do", icon: Circle, className: "border-border/60 bg-muted/10 text-muted-foreground" },
-  warn: {
-    label: "Attention",
-    icon: AlertTriangle,
-    className: "border-amber-700/50 bg-amber-950/20 text-amber-200"
-  },
-  skipped: { label: "Skipped", icon: Minus, className: "border-border/60 bg-muted/10 text-muted-foreground" },
-  "no-access": { label: "No access", icon: Lock, className: "border-border/60 bg-muted/10 text-muted-foreground" }
+const STATE_META: Record<ChecklistState, { label: string; icon: ElementType; tone: Tone }> = {
+  done: { label: "Done", icon: CheckCircle2, tone: "accent" },
+  todo: { label: "To do", icon: Circle, tone: "neutral" },
+  warn: { label: "Attention", icon: AlertTriangle, tone: "warning" },
+  skipped: { label: "Skipped", icon: Minus, tone: "neutral" },
+  "no-access": { label: "No access", icon: Lock, tone: "neutral" }
 };
 
 function ChecklistRow({ item }: Readonly<{ item: ChecklistItem }>) {
@@ -48,11 +41,11 @@ function ChecklistRow({ item }: Readonly<{ item: ChecklistItem }>) {
           <span className="text-sm">{item.label}</span>
         )}
         {item.detail ? (
-          <p className="truncate text-xs text-muted-foreground">{item.detail}</p>
+          <p className="truncate text-xs tabular-nums text-muted-foreground">{item.detail}</p>
         ) : null}
       </div>
-      <Badge variant="outline" className={cn("shrink-0 gap-1", meta.className)}>
-        <Icon className="size-3" />
+      <Badge variant="outline" className={cn("shrink-0 gap-1", TONE_CLASS[meta.tone])}>
+        <Icon className="size-3" aria-hidden />
         {meta.label}
       </Badge>
     </div>
@@ -62,6 +55,9 @@ function ChecklistRow({ item }: Readonly<{ item: ChecklistItem }>) {
 /**
  * Living checklist of the Overview tab (§3, D22). Items come pre-computed
  * from `buildChecklist`; groups without applicable items are omitted.
+ *
+ * This is the tab's `<h2>` section — the hub previously rendered no heading
+ * above `<h3>`, leaving these group titles as the document's first headings.
  */
 export function LifecycleChecklist({
   items,
@@ -74,7 +70,9 @@ export function LifecycleChecklist({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Lifecycle checklist</CardTitle>
+        <CardTitle asChild>
+          <h2>Lifecycle checklist</h2>
+        </CardTitle>
         <CardDescription>
           What the tournament still needs on its way to completion.
         </CardDescription>
@@ -90,9 +88,7 @@ export function LifecycleChecklist({
           <div className="grid gap-x-6 gap-y-4 md:grid-cols-2 xl:grid-cols-3">
             {groups.map((group) => (
               <section key={group.phase}>
-                <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  {PHASE_TITLES[group.phase]}
-                </h3>
+                <h3 className={EYEBROW_CLASS}>{PHASE_TITLES[group.phase]}</h3>
                 <div className="mt-1">
                   {group.rows.map((item) => (
                     <ChecklistRow key={item.key} item={item} />

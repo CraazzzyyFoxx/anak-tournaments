@@ -4,8 +4,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeftRight,
-  Check,
-  ChevronsUpDown,
+  Minus,
   Pencil,
   Plus,
   Sparkles,
@@ -13,23 +12,16 @@ import {
   UserPlus
 } from "lucide-react";
 
+import { AdminCombobox, AdminComboboxCheck } from "@/components/admin/AdminCombobox";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { UserSearchCombobox } from "@/components/admin/UserSearchCombobox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList
-} from "@/components/ui/command";
+import { CommandGroup, CommandItem } from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -430,6 +422,7 @@ function normalizeTeamNumberDraft(value: number) {
 
 function TeamNumberInput({
   id,
+  label,
   value,
   onChange,
   min,
@@ -439,6 +432,8 @@ function TeamNumberInput({
   disabled = false
 }: {
   id: string;
+  /** Accessible name of the field, e.g. "rank" — used by the stepper buttons. */
+  label: string;
   value: number;
   onChange: (value: number) => void;
   min?: number;
@@ -481,9 +476,9 @@ function TeamNumberInput({
         className="h-full w-10 shrink-0 rounded-r-none border-r"
         onClick={() => stepValue(-1)}
         disabled={disabled || (typeof min === "number" && value <= min)}
-        aria-label={`Decrease ${id}`}
+        aria-label={`Decrease ${label}`}
       >
-        <span className="sr-only">Decrease</span>-
+        <Minus aria-hidden className="h-4 w-4" />
       </Button>
       <div className="flex min-w-0 flex-1 items-center">
         <Input
@@ -501,7 +496,7 @@ function TeamNumberInput({
           }}
           onBlur={() => commitValue(draft)}
           disabled={disabled}
-          className="h-full rounded-none border-0 bg-transparent text-center shadow-none focus-visible:ring-0"
+          className="h-full rounded-none border-0 bg-transparent text-center tabular-nums shadow-none focus-visible:ring-0"
         />
         {suffix ? (
           <span className="shrink-0 pr-3 text-xs font-medium text-muted-foreground">{suffix}</span>
@@ -514,15 +509,16 @@ function TeamNumberInput({
         className="h-full w-10 shrink-0 rounded-l-none border-l"
         onClick={() => stepValue(1)}
         disabled={disabled || (typeof max === "number" && value >= max)}
-        aria-label={`Increase ${id}`}
+        aria-label={`Increase ${label}`}
       >
-        <span className="sr-only">Increase</span>+
+        <Plus aria-hidden className="h-4 w-4" />
       </Button>
     </div>
   );
 }
 
 function SearchableSelect({
+  id,
   value,
   options,
   onChange,
@@ -531,6 +527,7 @@ function SearchableSelect({
   emptyMessage,
   disabled = false
 }: {
+  id?: string;
   value: string;
   options: Array<{ value: string; label: string; meta?: string }>;
   onChange: (value: string) => void;
@@ -540,59 +537,43 @@ function SearchableSelect({
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [searchValue, setSearchValue] = useState("");
   const selected = options.find((option) => option.value === value);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          disabled={disabled}
-          className="h-10 w-full justify-between border-border/60 bg-background/80 font-normal hover:bg-background/90"
-        >
-          <span className="truncate" title={selected?.label ?? placeholder}>
-            {selected?.label ?? placeholder}
-          </span>
-          <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-0">
-        <Command>
-          <CommandInput placeholder={searchPlaceholder} />
-          <CommandList>
-            <CommandEmpty>{emptyMessage}</CommandEmpty>
-            <CommandGroup>
-              {options.map((option) => (
-                <CommandItem
-                  key={option.value}
-                  value={`${option.label} ${option.meta ?? ""} ${option.value}`}
-                  onSelect={() => {
-                    onChange(option.value);
-                    setOpen(false);
-                  }}
-                >
-                  <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
-                    <span className="truncate">{option.label}</span>
-                    {option.meta ? (
-                      <span className="shrink-0 text-xs text-muted-foreground">{option.meta}</span>
-                    ) : null}
-                  </div>
-                  <Check
-                    className={cn(
-                      "ml-2 h-4 w-4",
-                      value === option.value ? "opacity-100" : "opacity-0"
-                    )}
-                  />
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
+    <AdminCombobox
+      id={id}
+      open={open}
+      onOpenChange={setOpen}
+      label={selected?.label ?? placeholder}
+      disabled={disabled}
+      searchValue={searchValue}
+      onSearchValueChange={setSearchValue}
+      searchPlaceholder={searchPlaceholder}
+      emptyMessage={emptyMessage}
+    >
+      <CommandGroup>
+        {options.map((option) => (
+          <CommandItem
+            key={option.value}
+            value={`${option.label} ${option.meta ?? ""} ${option.value}`}
+            onSelect={() => {
+              onChange(option.value);
+              setOpen(false);
+              setSearchValue("");
+            }}
+          >
+            <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
+              <span className="truncate">{option.label}</span>
+              {option.meta ? (
+                <span className="shrink-0 text-xs text-muted-foreground">{option.meta}</span>
+              ) : null}
+            </div>
+            <AdminComboboxCheck selected={value === option.value} />
+          </CommandItem>
+        ))}
+      </CommandGroup>
+    </AdminCombobox>
   );
 }
 
@@ -830,7 +811,7 @@ export function TeamRosterEditorDialog({
         }
 
         if (!progressed) {
-          throw new Error("Unable to resolve substitute chain before save.");
+          throw new Error("Could not resolve the substitute chain. Re-add the affected substitute and try again.");
         }
 
         pendingSubstitutes = unresolved;
@@ -884,7 +865,7 @@ export function TeamRosterEditorDialog({
     }
 
     if (!playerFormData.name.trim()) {
-      setPlayerFormError("Player name is required.");
+      setPlayerFormError("Enter a player name.");
       return;
     }
 
@@ -895,7 +876,7 @@ export function TeamRosterEditorDialog({
 
     const requiresUser = existingDraft?.state !== "existing";
     if (requiresUser && playerFormData.user_id <= 0) {
-      setPlayerFormError("Linked user is required.");
+      setPlayerFormError("Select a linked user.");
       return;
     }
 
@@ -945,17 +926,17 @@ export function TeamRosterEditorDialog({
     event.preventDefault();
 
     if (!teamFormData.name.trim()) {
-      setTeamFormError("Team name is required.");
+      setTeamFormError("Enter a team name.");
       return;
     }
 
     if (rosterDraftPlayers.length === 0) {
-      setTeamFormError("At least one roster member is required.");
+      setTeamFormError("Add at least one roster member.");
       return;
     }
 
     if (!captainOptions.some((option) => option.user_id === teamFormData.captain_id)) {
-      setTeamFormError("Captain must be selected from the current roster.");
+      setTeamFormError("Pick a captain from the current roster.");
       return;
     }
 
@@ -1026,7 +1007,7 @@ export function TeamRosterEditorDialog({
                   {draft.is_substitution ? <Badge variant="secondary">Substitute</Badge> : null}
                   {draft.state === "new" ? <Badge variant="outline">New</Badge> : null}
                 </div>
-                <div className="text-sm text-muted-foreground">
+                <div className="text-sm tabular-nums text-muted-foreground">
                   {draft.user_id > 0
                     ? `${draft.user_name} · Rank ${draft.rank}`
                     : "User not selected yet"}
@@ -1049,8 +1030,8 @@ export function TeamRosterEditorDialog({
                     size="sm"
                     onClick={() => openPlayerCreateDialog(draft)}
                   >
-                    <UserPlus className="mr-2 h-4 w-4" />
-                    Add Substitute
+                    <UserPlus aria-hidden className="mr-2 h-4 w-4" />
+                    Add substitute
                   </Button>
                 ) : null}
                 {canEditDraft ? (
@@ -1058,9 +1039,10 @@ export function TeamRosterEditorDialog({
                     type="button"
                     variant="ghost"
                     size="icon"
+                    aria-label={`Edit ${draft.name || "unnamed player"}`}
                     onClick={() => openPlayerEditDialog(draft)}
                   >
-                    <Pencil className="h-4 w-4" />
+                    <Pencil aria-hidden className="h-4 w-4" />
                   </Button>
                 ) : null}
                 {canDeleteDraft ? (
@@ -1069,9 +1051,10 @@ export function TeamRosterEditorDialog({
                     variant="ghost"
                     size="icon"
                     className="text-destructive"
+                    aria-label={`Remove ${draft.name || "unnamed player"} from roster`}
                     onClick={() => handleRemoveRosterPlayer(draft)}
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Trash2 aria-hidden className="h-4 w-4" />
                   </Button>
                 ) : null}
               </div>
@@ -1093,11 +1076,11 @@ export function TeamRosterEditorDialog({
           }
           onOpenChange(nextOpen);
         }}
-        title={isEditing ? "Edit Team & Roster" : "Create Team & Roster"}
+        title={isEditing ? "Edit team & roster" : "Create team & roster"}
         description="Manage team identity, captain assignment, and the full tournament roster in one place."
         onSubmit={handleTeamSubmit}
         isSubmitting={saveTeamMutation.isPending}
-        submittingLabel={isEditing ? "Saving team..." : "Creating team..."}
+        submittingLabel={isEditing ? "Saving team…" : "Creating team…"}
         errorMessage={teamFormError}
         isDirty={isTeamDirty}
         contentClassName="h-[min(900px,calc(100vh-2rem))] max-h-[calc(100dvh-2rem)] max-w-4xl"
@@ -1114,7 +1097,7 @@ export function TeamRosterEditorDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="workspace-team-name">Team Name</Label>
+            <Label htmlFor="workspace-team-name">Team name</Label>
             <Input
               id="workspace-team-name"
               value={teamFormData.name}
@@ -1160,7 +1143,7 @@ export function TeamRosterEditorDialog({
             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className="text-sm font-medium">Roster</p>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs tabular-nums text-muted-foreground">
                   {rosterDraftPlayers.length
                     ? `${rosterDraftPlayers.length} active roster records`
                     : "No roster members yet."}
@@ -1168,8 +1151,8 @@ export function TeamRosterEditorDialog({
               </div>
               {canCreatePlayer ? (
                 <Button type="button" variant="outline" onClick={() => openPlayerCreateDialog()}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Player
+                  <Plus aria-hidden className="mr-2 h-4 w-4" />
+                  Add player
                 </Button>
               ) : null}
             </div>
@@ -1196,10 +1179,10 @@ export function TeamRosterEditorDialog({
         }}
         title={
           playerDialogState?.mode === "edit"
-            ? "Edit Roster Member"
+            ? "Edit roster member"
             : playerDialogState?.mode === "create-substitute"
-              ? "Add Substitute"
-              : "Add Player"
+              ? "Add substitute"
+              : "Add player"
         }
         description="Changes here stay local until you save the team dialog."
         onSubmit={handlePlayerDialogSubmit}
@@ -1209,7 +1192,7 @@ export function TeamRosterEditorDialog({
       >
         <div className="space-y-4">
           <div>
-            <Label htmlFor="team-roster-player-name">Player Name</Label>
+            <Label htmlFor="team-roster-player-name">Player name</Label>
             <Input
               id="team-roster-player-name"
               value={playerFormData.name}
@@ -1220,7 +1203,7 @@ export function TeamRosterEditorDialog({
           </div>
 
           <div>
-            <Label htmlFor="team-roster-player-user">Linked User</Label>
+            <Label htmlFor="team-roster-player-user">Linked user</Label>
             <UserSearchCombobox
               id="team-roster-player-user"
               value={
@@ -1234,7 +1217,7 @@ export function TeamRosterEditorDialog({
                   : playerFormData.user_name || undefined
               }
               placeholder="Search user by name"
-              searchPlaceholder="Search user..."
+              searchPlaceholder="Search user…"
               disabled={playerDialogDraft?.state === "existing"}
               allowClear={playerDialogDraft?.state !== "existing"}
               onSelect={(user: MinimizedUser | undefined) =>
@@ -1281,11 +1264,12 @@ export function TeamRosterEditorDialog({
           <div>
             <Label htmlFor="team-roster-player-sub-role">Sub-role</Label>
             <SearchableSelect
+              id="team-roster-player-sub-role"
               value={playerFormData.sub_role || "none"}
               options={playerSubRoleSelectOptions}
               placeholder="Select sub-role"
-              searchPlaceholder="Search sub-role..."
-              emptyMessage="No sub-roles found."
+              searchPlaceholder="Search sub-role…"
+              emptyMessage="No sub-roles found for this role."
               onChange={(value) =>
                 setPlayerFormData((current) => ({
                   ...current,
@@ -1299,6 +1283,7 @@ export function TeamRosterEditorDialog({
             <Label htmlFor="team-roster-player-rank">Rank</Label>
             <TeamNumberInput
               id="team-roster-player-rank"
+              label="rank"
               value={playerFormData.rank}
               min={0}
               step={1}

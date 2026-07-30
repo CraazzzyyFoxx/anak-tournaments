@@ -4,7 +4,7 @@ import React, { useMemo, useState, useTransition } from "react";
 import { Award, Crown, Flame, Gem, Sparkles } from "lucide-react";
 import Image from "next/image";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { AchievementRarity } from "@/types/achievement.types";
 import type { UserTournamentSummary } from "@/types/user.types";
@@ -17,12 +17,15 @@ import {
 } from "@/components/ui/select";
 import {
   classifyRarity,
+  localizedText,
   RARITY_ORDER,
   rarityRanges,
   rarityTitles,
   type Rarity
 } from "@/app/(site)/users/components/achievements/rarity";
 import { AchievementDetailDialog } from "@/app/(site)/users/components/achievements/AchievementDetailDialog";
+import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
+import { SearchField } from "@/components/ui/search-field";
 
 const TOURNAMENT_QUERY_KEY = "achievementTournamentId";
 
@@ -34,6 +37,7 @@ interface Props {
 
 const AchievementsView = ({ achievements, tournaments = [], selectedTournamentValue = "all" }: Props) => {
   const tr = useTranslations();
+  const locale = useLocale();
   const titles = rarityTitles(tr);
   const ranges = rarityRanges(tr);
   const router = useRouter();
@@ -151,52 +155,47 @@ const AchievementsView = ({ achievements, tournaments = [], selectedTournamentVa
       </div>
 
       {/* Filters */}
-      <div className="aqt-filters">
-        <span
-          className={cn("aqt-filter-chip", rarityFilter === null && lockFilter === "all" && "active")}
+      <FilterChipGroup label={tr("common.filters")}>
+        <FilterChip
+          active={rarityFilter === null && lockFilter === "all"}
+          count={totalCount}
           onClick={() => {
             setRarityFilter(null);
             setLockFilter("all");
           }}
-          role="button"
-          tabIndex={0}
         >
-          {tr("common.all")} <span className="aqt-count">{totalCount}</span>
-        </span>
+          {tr("common.all")}
+        </FilterChip>
         {hasLocked ? (
           <>
-            <span
-              className={cn("aqt-filter-chip", lockFilter === "unlocked" && "active")}
+            <FilterChip
+              active={lockFilter === "unlocked"}
+              count={unlockedCount}
               onClick={() => setLockFilter(lockFilter === "unlocked" ? "all" : "unlocked")}
-              role="button"
-              tabIndex={0}
             >
-              {tr("users.achievements.unlocked")} <span className="aqt-count">{unlockedCount}</span>
-            </span>
-            <span
-              className={cn("aqt-filter-chip", lockFilter === "locked" && "active")}
+              {tr("users.achievements.unlocked")}
+            </FilterChip>
+            <FilterChip
+              active={lockFilter === "locked"}
+              count={lockedCount}
               onClick={() => setLockFilter(lockFilter === "locked" ? "all" : "locked")}
-              role="button"
-              tabIndex={0}
             >
-              {tr("users.achievements.locked")} <span className="aqt-count">{lockedCount}</span>
-            </span>
+              {tr("users.achievements.locked")}
+            </FilterChip>
           </>
         ) : null}
-        <span className="aqt-filter-divider" />
+        <span aria-hidden className="aqt-filter-divider" />
         {RARITY_ORDER.map((r) => (
-          <span
+          <FilterChip
             key={r}
-            className={cn("aqt-filter-chip", rarityFilter === r && "active")}
+            active={rarityFilter === r}
+            count={counts[r]}
             onClick={() => setRarityFilter(rarityFilter === r ? null : r)}
-            role="button"
-            tabIndex={0}
           >
             <span className="capitalize">{r}</span>
-            <span className="aqt-count">{counts[r]}</span>
-          </span>
+          </FilterChip>
         ))}
-        <span className="aqt-filter-divider" />
+        <span aria-hidden className="aqt-filter-divider" />
         {uniqueTournaments.length > 0 && (
           <Select value={selectedTournamentValue} onValueChange={onTournamentChange}>
             <SelectTrigger className="h-8 w-48 border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-[14px] text-[color:var(--aqt-fg-muted)] shadow-none hover:border-[color:var(--aqt-border-2)] hover:bg-[hsl(0_0%_100%/0.04)] focus:ring-1 focus:ring-[color:var(--aqt-teal)] focus:ring-offset-0">
@@ -226,19 +225,14 @@ const AchievementsView = ({ achievements, tournaments = [], selectedTournamentVa
             <SelectItem value="count">{tr("users.achievements.sort.earned")}</SelectItem>
           </SelectContent>
         </Select>
-        <div className="filter-search relative ml-auto min-w-[200px] max-w-[300px] flex-1">
-          <input
-            placeholder={tr("users.achievements.searchPlaceholder")}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-lg border border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] px-3 py-1.5 pl-8 text-[14px] outline-none"
-          />
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[color:var(--aqt-fg-faint)]">
-            <circle cx="11" cy="11" r="7" />
-            <path d="m20 20-3.5-3.5" />
-          </svg>
-        </div>
-      </div>
+        <SearchField
+          label={tr("users.achievements.searchLabel")}
+          placeholder={tr("users.achievements.searchPlaceholder")}
+          value={search}
+          onValueChange={setSearch}
+          containerClassName="ml-auto min-w-[200px] max-w-[300px] flex-1"
+        />
+      </FilterChipGroup>
 
       {/* Sections per rarity */}
       {RARITY_ORDER.map((r) => {
@@ -249,7 +243,7 @@ const AchievementsView = ({ achievements, tournaments = [], selectedTournamentVa
           <div key={r} className="aqt-card-surface">
             <div className="aqt-card-head">
               <div className="aqt-card-title">
-                <span className="aqt-card-title-ic">
+                <span aria-hidden className="aqt-card-title-ic">
                   {r === "mythic" ? <Flame size={15} /> : r === "legendary" ? <Crown size={15} /> : r === "epic" ? <Gem size={15} /> : r === "rare" ? <Sparkles size={15} /> : <Award size={15} />}
                 </span>
                 <span>{titles[r]}</span>
@@ -295,7 +289,7 @@ const AchievementsView = ({ achievements, tournaments = [], selectedTournamentVa
                         <div className="flex min-w-0 flex-col gap-0.5">
                           <div className="text-[14.5px] font-semibold leading-tight">{ach.name}</div>
                           <div className="text-[12px] leading-snug text-[color:var(--aqt-fg-dim)]">
-                            {ach.description_ru || ach.description_en}
+                            {localizedText(locale, ach.description_ru, ach.description_en)}
                           </div>
                         </div>
                       </div>
@@ -303,7 +297,9 @@ const AchievementsView = ({ achievements, tournaments = [], selectedTournamentVa
                         {locked ? (
                           <span className="aqt-rarity">{tr("users.achievements.locked")}</span>
                         ) : (
-                          <span className="aqt-rarity">◆ <span className="capitalize">{r}</span></span>
+                          <span className="aqt-rarity">
+                            <span aria-hidden>◆</span> <span className="capitalize">{r}</span>
+                          </span>
                         )}
                         <span className="aqt-mono">{(ach.rarity * 100).toFixed(2)}%</span>
                       </div>

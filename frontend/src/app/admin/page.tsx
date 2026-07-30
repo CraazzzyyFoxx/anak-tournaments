@@ -2,27 +2,25 @@
 
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart3, Shield, Swords, Trophy, UserCircle, Users } from "lucide-react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useCurrentWorkspaceId } from "@/hooks/useCurrentWorkspace";
 import { useLogStream } from "@/hooks/useLogStream";
 import { apiFetch } from "@/lib/api-fetch";
+import { cn } from "@/lib/utils";
 import tournamentService from "@/services/tournament.service";
 import type { PaginatedResponse } from "@/types/pagination.types";
 import type { Tournament } from "@/types/tournament.types";
 
 import { GreetingBar } from "@/components/admin/dashboard/GreetingBar";
-import { KpiStrip } from "@/components/admin/dashboard/KpiStrip";
+import { KpiStrip, kpiColumnsClass } from "@/components/admin/dashboard/KpiStrip";
 import { ActiveTournamentCard } from "@/components/admin/dashboard/ActiveTournamentCard";
 import { LogProcessingQueue } from "@/components/admin/dashboard/LogProcessingQueue";
 import { IssuesQueue, type IssueItem } from "@/components/admin/dashboard/IssuesQueue";
 import { RecentTournaments } from "@/components/admin/dashboard/RecentTournaments";
-import { QuickAccessGrid, type QuickAccessItem } from "@/components/admin/dashboard/QuickAccessGrid";
 
 interface DashboardActiveTournamentStats {
-  tournament_id: number;
   encounters_total: number;
   encounters_missing_logs: number;
   log_coverage_percent: number;
@@ -41,9 +39,6 @@ interface DashboardStats {
   teams_total: number;
   players_total: number;
   encounters_total: number;
-  heroes_total: number;
-  gamemodes_total: number;
-  maps_total: number;
   active_tournament_stats: DashboardActiveTournamentStats | null;
   issues: DashboardIssues;
 }
@@ -52,31 +47,16 @@ function emptyPaginated<T>(): PaginatedResponse<T> {
   return { results: [], total: 0, page: 1, per_page: 0 };
 }
 
-function isDefined<T>(value: T | null): value is T {
-  return value !== null;
-}
-
 export default function AdminDashboard() {
-  const { canAccessPermission, hasPermission, isSuperuser } = usePermissions();
+  const { canAccessPermission } = usePermissions();
   const workspaceId = useCurrentWorkspaceId();
 
   const canReadTournaments = canAccessPermission("tournament.read", workspaceId);
+  const canCreateTournaments = canAccessPermission("tournament.create", workspaceId);
   const canReadTeams = canAccessPermission("team.read", workspaceId);
   const canReadPlayers = canAccessPermission("player.read", workspaceId);
   const canReadMatches = canAccessPermission("match.read", workspaceId);
-  const canReadStandings = canAccessPermission("standing.read", workspaceId);
   const canReadUsers = canAccessPermission("user.read", workspaceId);
-  const canReadAccessUsers = hasPermission("auth_user.read");
-  const canReadRoles = hasPermission("role.read");
-  const canReadPermissions = hasPermission("permission.read");
-
-  const accessAdminHref = canReadAccessUsers
-    ? "/admin/access/users"
-    : canReadRoles
-      ? "/admin/access/roles"
-      : canReadPermissions
-        ? "/admin/access/permissions"
-        : null;
 
   const logStream = useLogStream(true, workspaceId);
 
@@ -100,6 +80,12 @@ export default function AdminDashboard() {
 
   const stats = statsQuery.data;
   const tournaments = tournamentsQuery.data?.results ?? [];
+
+  // One tile per KPI the reader may actually see — the loading skeleton reserves
+  // the same count, so a two-permission role no longer gets a five-tile shimmer.
+  const kpiCount = [canReadTournaments, canReadTeams, canReadPlayers, canReadMatches].filter(
+    Boolean,
+  ).length;
 
   const derived = useMemo(() => {
     const visibleTournaments = tournaments.filter((t) => !t.is_hidden);
@@ -137,25 +123,17 @@ export default function AdminDashboard() {
     };
   }, [stats, tournaments, canReadMatches, canReadTeams, canReadTournaments, canReadUsers]);
 
-  // Quick access items (6 max, no descriptions)
-  const quickAccessItems: QuickAccessItem[] = [
-    canReadTournaments ? { href: "/admin/tournaments", title: "Tournaments", icon: Trophy } : null,
-    canReadTeams ? { href: "/admin/teams", title: "Teams", icon: Users } : null,
-    canReadMatches ? { href: "/admin/encounters", title: "Encounters", icon: Swords } : null,
-    canReadPlayers ? { href: "/admin/players", title: "Players", icon: UserCircle } : null,
-    canReadStandings ? { href: "/admin/standings", title: "Standings", icon: BarChart3 } : null,
-    accessAdminHref ? { href: accessAdminHref, title: "Access & Roles", icon: Shield } : null,
-  ].filter(isDefined);
-
   if (statsQuery.isLoading || tournamentsQuery.isLoading) {
     return (
       <div className="flex flex-col gap-4">
         <Skeleton className="h-14 rounded-2xl" />
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-24 rounded-2xl" />
-          ))}
-        </div>
+        {kpiCount > 0 && (
+          <div className={cn("grid gap-3 md:grid-cols-2", kpiColumnsClass(kpiCount))}>
+            {Array.from({ length: kpiCount }).map((_, i) => (
+              <Skeleton key={i} className="h-24 rounded-2xl" />
+            ))}
+          </div>
+        )}
         <div className="grid gap-4 xl:grid-cols-[7fr_3fr]">
           <div className="flex flex-col gap-4">
             <Skeleton className="h-56 rounded-2xl" />
@@ -173,7 +151,7 @@ export default function AdminDashboard() {
   return (
     <div className="flex flex-col gap-4">
       {/* [1] GREETING BAR */}
-      <GreetingBar canCreateTournament={canReadTournaments} />
+      <GreetingBar canCreateTournament={canCreateTournaments} />
 
       {/* [2] KPI STRIP */}
       <KpiStrip
@@ -183,13 +161,8 @@ export default function AdminDashboard() {
             : null
         }
         teams={canReadTeams ? (stats?.teams_total ?? 0) : null}
-        players={canReadTeams ? (stats?.players_total ?? 0) : null}
+        players={canReadPlayers ? (stats?.players_total ?? 0) : null}
         encounters={canReadMatches ? (stats?.encounters_total ?? 0) : null}
-        content={
-          isSuperuser
-            ? { heroes: stats?.heroes_total ?? 0, maps: stats?.maps_total ?? 0, gamemodes: stats?.gamemodes_total ?? 0 }
-            : null
-        }
       />
 
       {/* [3] TWO-COLUMN SPLIT */}
@@ -216,9 +189,6 @@ export default function AdminDashboard() {
           />
         </div>
       </section>
-
-      {/* [4] QUICK ACCESS */}
-      <QuickAccessGrid items={quickAccessItems} />
     </div>
   );
 }

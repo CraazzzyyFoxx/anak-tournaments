@@ -71,7 +71,11 @@ export function RankSettingsPanel() {
   }
 
   if (settingsQuery.isError) {
-    return <p className="text-destructive">Failed to load settings.</p>;
+    return (
+      <p className="text-danger">
+        Couldn&apos;t load settings. Check your connection and reload the page.
+      </p>
+    );
   }
 
   return (
@@ -121,7 +125,9 @@ function RankCollectionSection({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Rank Collection</CardTitle>
+        <CardTitle asChild>
+          <h2>Rank collection</h2>
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex items-center gap-2">
@@ -148,8 +154,9 @@ function RankCollectionSection({
 
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
           <div className="space-y-1">
-            <Label>Interval (seconds)</Label>
+            <Label htmlFor="rank-interval">Interval (seconds)</Label>
             <NumberInput
+              id="rank-interval"
               integer
               min={60}
               value={form.interval_seconds}
@@ -157,12 +164,19 @@ function RankCollectionSection({
             />
           </div>
           <div className="space-y-1">
-            <Label>Batch size</Label>
-            <NumberInput integer min={1} value={form.batch_size} onValueChange={num("batch_size")} />
+            <Label htmlFor="rank-batch-size">Batch size</Label>
+            <NumberInput
+              id="rank-batch-size"
+              integer
+              min={1}
+              value={form.batch_size}
+              onValueChange={num("batch_size")}
+            />
           </div>
           <div className="space-y-1">
-            <Label>Rate limit (per minute)</Label>
+            <Label htmlFor="rank-rate-limit">Rate limit (per minute)</Label>
             <NumberInput
+              id="rank-rate-limit"
               integer
               min={1}
               value={form.rate_limit_per_minute}
@@ -170,14 +184,14 @@ function RankCollectionSection({
             />
           </div>
           <div className="space-y-1">
-            <Label>Scope</Label>
+            <Label htmlFor="rank-scope">Scope</Label>
             <Select
               value={form.scope}
               onValueChange={(value) =>
                 setForm({ ...form, scope: value as RankCollectionConfig["scope"] })
               }
             >
-              <SelectTrigger>
+              <SelectTrigger id="rank-scope">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -187,8 +201,9 @@ function RankCollectionSection({
             </Select>
           </div>
           <div className="space-y-1">
-            <Label>Extra accounts / registration</Label>
+            <Label htmlFor="rank-extra-accounts">Extra accounts / registration</Label>
             <NumberInput
+              id="rank-extra-accounts"
               integer
               min={0}
               value={form.extra_accounts_per_registration}
@@ -196,8 +211,9 @@ function RankCollectionSection({
             />
           </div>
           <div className="space-y-1">
-            <Label>Max consecutive failures</Label>
+            <Label htmlFor="rank-max-failures">Max consecutive failures</Label>
             <NumberInput
+              id="rank-max-failures"
               integer
               min={1}
               value={form.max_consecutive_failures}
@@ -205,8 +221,9 @@ function RankCollectionSection({
             />
           </div>
           <div className="space-y-1">
-            <Label>Backoff base (seconds)</Label>
+            <Label htmlFor="rank-backoff">Backoff base (seconds)</Label>
             <NumberInput
+              id="rank-backoff"
               integer
               min={1}
               value={form.backoff_base_seconds}
@@ -214,8 +231,9 @@ function RankCollectionSection({
             />
           </div>
           <div className="space-y-1">
-            <Label>Jitter fraction (0–1)</Label>
+            <Label htmlFor="rank-jitter">Jitter fraction (0–1)</Label>
             <NumberInput
+              id="rank-jitter"
               min={0}
               max={1}
               value={form.jitter_fraction}
@@ -223,8 +241,9 @@ function RankCollectionSection({
             />
           </div>
           <div className="space-y-1">
-            <Label>Max per tick (blank = auto)</Label>
+            <Label htmlFor="rank-max-per-tick">Max per tick (blank = auto)</Label>
             <NumberInput
+              id="rank-max-per-tick"
               integer
               min={1}
               placeholder="auto"
@@ -238,8 +257,10 @@ function RankCollectionSection({
           <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
             {mutation.isPending ? "Saving…" : "Save"}
           </Button>
-          {mutation.isSuccess && <span className="text-sm text-green-500">Saved</span>}
-          {mutation.isError && <span className="text-sm text-destructive">Save failed</span>}
+          {mutation.isSuccess && <span className="text-sm text-success">Saved</span>}
+          {mutation.isError && (
+            <span className="text-sm text-danger">Save failed — check the values and try again.</span>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -293,7 +314,9 @@ function RankMappingSection({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Rank Mapping</CardTitle>
+        <CardTitle asChild>
+          <h2>Rank mapping</h2>
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
@@ -316,19 +339,24 @@ function RankMappingSection({
                 key={`${cell.division}-${cell.tier}`}
                 className={cn(
                   "grid grid-cols-[minmax(140px,1fr)_24px_minmax(0,1.4fr)] items-center gap-3 px-4 py-1.5",
-                  isDivisionTop ? "border-t border-white/[0.06]" : ""
+                  isDivisionTop ? "border-t border-border/60" : ""
                 )}
               >
                 <div className="flex items-center gap-2 text-sm">
                   <span className="font-medium capitalize">{cell.division}</span>
                   <span className="text-xs text-muted-foreground">· Tier {cell.tier}</span>
                 </div>
-                <span className="text-center text-muted-foreground">→</span>
+                <span aria-hidden className="text-center text-muted-foreground">
+                  →
+                </span>
                 <Select
                   value={divisionNumber != null ? String(divisionNumber) : ""}
                   onValueChange={(value) => setCellDivision(index, Number(value))}
                 >
-                  <SelectTrigger className="h-9 w-full max-w-xs">
+                  <SelectTrigger
+                    className="h-9 w-full max-w-xs"
+                    aria-label={`Internal division for ${cell.division} tier ${cell.tier}`}
+                  >
                     <SelectValue>
                       {tier ? (
                         <span className="flex items-center gap-2">
@@ -367,8 +395,10 @@ function RankMappingSection({
           <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
             {mutation.isPending ? "Saving…" : "Save"}
           </Button>
-          {mutation.isSuccess && <span className="text-sm text-green-500">Saved</span>}
-          {mutation.isError && <span className="text-sm text-destructive">Save failed</span>}
+          {mutation.isSuccess && <span className="text-sm text-success">Saved</span>}
+          {mutation.isError && (
+            <span className="text-sm text-danger">Save failed — check the values and try again.</span>
+          )}
         </div>
       </CardContent>
     </Card>

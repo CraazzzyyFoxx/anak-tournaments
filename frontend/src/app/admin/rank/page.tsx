@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { usePermissions } from "@/hooks/usePermissions";
 
 import { RankHealthDashboard } from "./_components/rank-health";
@@ -29,17 +30,11 @@ export default function RankCollectionAdminPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Rank Collection</h1>
-          <p className="mt-2 text-muted-foreground">
-            OverFast collection health, live worker task history and per-player inspection.
-          </p>
-        </div>
-        <div className="sm:pt-1">
-          <RankPlayerSearch onSelect={openPlayer} />
-        </div>
-      </div>
+      <AdminPageHeader
+        title="Rank collection"
+        description="OverFast collection health, live worker task history and per-player inspection."
+        actions={<RankPlayerSearch onSelect={openPlayer} />}
+      />
 
       {isSuperuser && (
         <ToggleGroup

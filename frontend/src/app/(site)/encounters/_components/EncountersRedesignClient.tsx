@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bookmark, FileText, Loader2, Pin, Play, Save, Search, Trash2, Tv } from "lucide-react";
-import { usePathname, useRouter } from "next/navigation";
+import { Bookmark, Loader2, Pin, Save, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useDebounce } from "use-debounce";
 import type { PaginatedResponse } from "@/types/pagination.types";
 import type {
@@ -24,37 +25,54 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger
+} from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { DataPagination } from "@/components/ui/data-pagination";
+import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { PageStateCard } from "@/components/ui/page-state-card";
+import { SearchField } from "@/components/ui/search-field";
+import { EncountersDataTable, FULL_ENCOUNTER_COLUMNS } from "@/components/EncountersTable";
 import { PageHero, HeroCoord } from "@/components/site/PageHero";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { notify } from "@/lib/notify";
 import { useAuthModalStore } from "@/stores/auth-modal.store";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import { getCurrentPathForAuthRedirect } from "@/lib/auth-redirect";
+import { getEncounterState, getEncounterWinner } from "@/lib/encounter-status";
 import { cn } from "@/lib/utils";
 import {
   applyBuiltInView,
   BUILT_IN_VIEWS,
-  buildPageList,
   type BuiltInViewId,
   DEFAULT_FILTERS,
   ENCOUNTERS_PAGE_SIZE,
   EncounterFilterState,
   filtersToApiFilters,
   filtersToSearchParams,
-  formatCompactDate,
   formatDuration,
   formatPercent,
-  getEncounterStateLabel,
-  getMediaSlots,
-  getPlayedAt,
   getSeriesDuration,
-  getStageBucket,
   getTeamColor,
   getTeamInitials,
-  getWinnerSide,
-  type MediaSlot,
-  type MediaSlotKey,
   type TeamColor
 } from "./encounters-redesign.helpers";
 import styles from "./EncountersRedesign.module.css";
@@ -62,35 +80,6 @@ import styles from "./EncountersRedesign.module.css";
 // Loose translator alias matching next-intl's `useTranslations()` return type so
 // module-level helpers can accept `t` straight through (strictFunctionTypes-safe).
 type Translate = ReturnType<typeof useTranslations<never>>;
-
-// Maps the raw English state SENTINEL from `getEncounterStateLabel` to its
-// translation key. The sentinel itself is preserved for control flow; only the
-// rendered label is translated.
-const STATE_LABEL_KEYS = {
-  Live: "encounters.state.live",
-  Upcoming: "encounters.state.upcoming",
-  Final: "encounters.state.final",
-  Pending: "encounters.state.pending",
-  Open: "encounters.state.open"
-} as const;
-
-type StateLabelKey = (typeof STATE_LABEL_KEYS)[keyof typeof STATE_LABEL_KEYS];
-
-function stateLabelKey(sentinel: string): StateLabelKey {
-  return STATE_LABEL_KEYS[sentinel as keyof typeof STATE_LABEL_KEYS] ?? "encounters.state.open";
-}
-
-type MediaTooltipKey =
-  | "encounters.media.logsAvailable"
-  | "encounters.media.noLogs"
-  | "encounters.media.comingTwitch";
-
-function mediaTooltipKey(slot: MediaSlot): MediaTooltipKey {
-  if (slot.key === "logs") {
-    return slot.enabled ? "encounters.media.logsAvailable" : "encounters.media.noLogs";
-  }
-  return "encounters.media.comingTwitch";
-}
 
 type EncountersRedesignClientProps = {
   initialData: PaginatedResponse<Encounter>;
@@ -108,13 +97,7 @@ const TEAM_COLOR_CLASS: Record<TeamColor, string> = {
   blue: styles.tgBlue
 };
 
-const STAGE_PILL_CLASS: Record<string, string> = {
-  playoffs: styles.stagePillPlayoffs,
-  group: styles.stagePillGroup,
-  finals: styles.stagePillFinals
-};
-
-const VIEW_SWATCH_HSL: Record<TeamColor, string> = {
+const VIEW_SWATCH_COLOR: Record<TeamColor, string> = {
   teal: "var(--aqt-teal)",
   amber: "var(--aqt-amber)",
   rose: "var(--aqt-rose)",
@@ -123,11 +106,11 @@ const VIEW_SWATCH_HSL: Record<TeamColor, string> = {
 };
 
 const STAGE_DONUT_COLORS = [
-  "hsl(210 80% 60%)",
-  "hsl(38 95% 55%)",
-  "hsl(340 75% 58%)",
-  "hsl(172 70% 49%)",
-  "hsl(270 70% 62%)"
+  "var(--aqt-blue)",
+  "var(--aqt-amber)",
+  "var(--aqt-rose)",
+  "var(--aqt-teal)",
+  "var(--aqt-violet)"
 ];
 
 function countLabel(value?: number): string {
@@ -140,7 +123,7 @@ function tournamentLabel(encounter: Encounter, t: Translate): string {
 }
 
 function stageLabel(encounter: Encounter, t: Translate): string {
-  return encounter.stage_item?.name ?? encounter.stage?.name ?? t("encounters.unassigned");
+  return encounter.stage_item?.name ?? encounter.stage?.name ?? t("common.unassignedStage");
 }
 
 function selectedViewId(filters: EncounterFilterState): BuiltInViewId {
@@ -218,6 +201,8 @@ export default function EncountersRedesignClient({
   const [searchValue, setSearchValue] = useState(initialFilters.query);
   const [debouncedSearch] = useDebounce(searchValue, 300);
   const [page, setPage] = useState(initialPage);
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [saveName, setSaveName] = useState("");
   const previousUrlRef = useRef({ page: initialPage, filters: initialFilters });
   const effectiveFilters = useMemo(
     () => ({ ...filters, query: debouncedSearch }),
@@ -306,6 +291,7 @@ export default function EncountersRedesignClient({
       queryClient.invalidateQueries({
         queryKey: ["encounters-saved-views", currentWorkspaceId, userKey]
       });
+      setSaveDialogOpen(false);
       notify.success(t("encounters.savedView.saved"));
     }
   });
@@ -337,628 +323,612 @@ export default function EncountersRedesignClient({
     : overview.featured.upcoming;
   const sortLabel = t(`encounters.sort.${effectiveFilters.sort}`);
 
+  const isFiltered =
+    effectiveFilters.query !== "" ||
+    effectiveFilters.status != null ||
+    effectiveFilters.has_logs != null ||
+    effectiveFilters.tournament_id != null ||
+    effectiveFilters.stage_id != null ||
+    effectiveFilters.stage_item_id != null ||
+    effectiveFilters.best_of != null ||
+    effectiveFilters.closeness_min != null ||
+    effectiveFilters.closeness_max != null ||
+    effectiveFilters.scope !== DEFAULT_FILTERS.scope ||
+    effectiveFilters.sort !== DEFAULT_FILTERS.sort;
+
   const setFilterPatch = (patch: Partial<EncounterFilterState>) => {
     setPage(1);
     setFilters((current) => ({ ...current, ...patch }));
   };
 
-  const handleSaveCurrentView = () => {
+  const clearFilters = () => {
+    setSearchValue("");
+    setPage(1);
+    setFilters(DEFAULT_FILTERS);
+  };
+
+  const openSaveDialog = () => {
     if (!user) {
       const nextPath = getCurrentPathForAuthRedirect(window.location);
       openAuthModal(nextPath);
       return;
     }
-    const name = window.prompt(
-      t("encounters.savedView.promptName"),
-      t("encounters.savedView.promptDefault")
-    );
-    if (!name?.trim()) return;
-    saveViewMutation.mutate({ name: name.trim() });
+    setSaveName(t("encounters.savedView.promptDefault"));
+    setSaveDialogOpen(true);
   };
 
-  const pageList = buildPageList(page, totalPages);
   const showingStart = rows.length ? (page - 1) * ENCOUNTERS_PAGE_SIZE + 1 : 0;
   const showingEnd = Math.min(page * ENCOUNTERS_PAGE_SIZE, encounters.total);
 
-  const quickFilters: Array<{
-    id: string;
-    label: string;
-    count: number;
-    active: boolean;
-    onClick: () => void;
-  }> = [
+  // Status is owned by these chips alone. There used to be a "Status: …" select
+  // beside them setting the same field with a different option set, so the two
+  // controls silently overwrote each other — and the select added a third "All".
+  const statusChips: Array<{ id: string; label: string; count?: number; value: string }> = [
+    { id: "live", label: t("common.live"), count: overview.kpis.live_now_count, value: "live" },
     {
-      id: "all",
-      label: t("common.all"),
-      count: overview.preset_counts.all ?? overview.kpis.total_encounters,
-      active:
-        effectiveFilters.status == null &&
-        effectiveFilters.has_logs == null &&
-        effectiveFilters.scope === "all",
-      onClick: () => {
-        setSearchValue("");
-        setFilterPatch({
-          status: null,
-          has_logs: null,
-          scope: "all"
-        });
-      }
-    },
-    {
-      id: "live",
-      label: t("common.live"),
-      count: overview.kpis.live_now_count,
-      active: effectiveFilters.status === "live",
-      onClick: () =>
-        setFilterPatch({
-          status: effectiveFilters.status === "live" ? null : "live"
-        })
-    },
-    {
-      id: "upcoming",
-      label: t("encounters.state.upcoming"),
+      id: "pending",
+      label: t("encounters.filter.statusPending"),
       count: overview.kpis.upcoming_count,
-      active: effectiveFilters.status === "pending",
-      onClick: () =>
-        setFilterPatch({
-          status: effectiveFilters.status === "pending" ? null : "pending"
-        })
+      value: "pending"
     },
-    {
-      id: "with_logs",
-      label: t("encounters.filter.withLogs"),
-      count: overview.kpis.with_logs_count,
-      active: effectiveFilters.has_logs === true,
-      onClick: () => setFilterPatch({ has_logs: effectiveFilters.has_logs === true ? null : true })
-    }
+    { id: "completed", label: t("encounters.filter.statusFinal"), value: "completed" },
+    { id: "open", label: t("encounters.filter.statusOpen"), value: "open" }
   ];
 
+  const listBody = () => {
+    if (listQuery.isError) {
+      return <PageStateCard state="error" onAction={() => void listQuery.refetch()} />;
+    }
+    if (!rows.length && !listQuery.isFetching) {
+      return (
+        <PageStateCard
+          state={isFiltered ? "filtered-empty" : "empty"}
+          onAction={isFiltered ? clearFilters : undefined}
+        />
+      );
+    }
+    return (
+      <EncountersDataTable
+        rows={rows}
+        columns={FULL_ENCOUNTER_COLUMNS}
+        loading={listQuery.isFetching && !rows.length}
+      />
+    );
+  };
+
   return (
-    <TooltipProvider>
-      <div className={styles.surface}>
-        <Hero overview={overview} />
+    <div className={styles.surface}>
+      <Hero overview={overview} />
 
-        {initialError ? <div className={styles.notice}>{initialError}</div> : null}
+      {initialError ? (
+        <PageStateCard
+          state="error"
+          description={initialError}
+          onAction={() => {
+            void listQuery.refetch();
+            void overviewQuery.refetch();
+          }}
+        />
+      ) : null}
 
-        <section aria-label={t("encounters.aria.views")}>
-          <div className={styles.views}>
-            <span className={styles.viewsLabel}>
-              <Bookmark className="h-3 w-3" /> {t("encounters.views")}
-            </span>
-            {BUILT_IN_VIEWS.map((view) => (
+      <section aria-label={t("encounters.aria.views")}>
+        <div className={styles.views}>
+          <span className={styles.viewsLabel}>
+            <Bookmark aria-hidden className="h-3 w-3" /> {t("encounters.views")}
+          </span>
+          {BUILT_IN_VIEWS.map((view) => (
+            <button
+              key={view.id}
+              type="button"
+              aria-pressed={activeView === view.id}
+              className={cn(styles.viewTab, activeView === view.id && styles.viewTabActive)}
+              onClick={() => {
+                setPage(1);
+                const next = applyBuiltInView(view.id, effectiveFilters);
+                setSearchValue(next.query);
+                setFilters(next);
+              }}
+            >
+              {view.showPin ? (
+                <Pin aria-hidden className={cn("h-3 w-3", styles.viewPin)} fill="currentColor" />
+              ) : view.swatch ? (
+                <span
+                  aria-hidden
+                  className={styles.viewSwatch}
+                  style={{ background: VIEW_SWATCH_COLOR[view.swatch] }}
+                />
+              ) : null}
+              <span>{t(view.labelKey)}</span>
+              <span className={styles.viewCount}>{countLabel(overview.preset_counts[view.id])}</span>
+            </button>
+          ))}
+          {savedViewsQuery.data?.map((view) => (
+            <div key={view.id} className={styles.savedView}>
               <button
-                key={view.id}
                 type="button"
-                className={cn(styles.viewTab, activeView === view.id && styles.viewTabActive)}
+                className={cn(styles.viewTab, styles.savedViewMain)}
                 onClick={() => {
-                  setPage(1);
-                  const next = applyBuiltInView(view.id, effectiveFilters);
+                  const next = toSavedFilterState(view);
                   setSearchValue(next.query);
+                  setPage(1);
                   setFilters(next);
                 }}
               >
-                {view.showPin ? (
-                  <Pin className={cn("h-3 w-3", styles.viewPin)} fill="currentColor" />
-                ) : view.swatch ? (
-                  <span
-                    className={styles.viewSwatch}
-                    style={{ background: VIEW_SWATCH_HSL[view.swatch] }}
-                  />
-                ) : null}
-                <span>{t(view.labelKey)}</span>
-                <span className={styles.viewCount}>
-                  {countLabel(overview.preset_counts[view.id])}
-                </span>
+                <Bookmark aria-hidden className="h-3 w-3" />
+                <span>{view.name}</span>
               </button>
-            ))}
-            {savedViewsQuery.data?.map((view) => (
-              <div key={view.id} className={styles.savedView}>
-                <button
-                  type="button"
-                  className={cn(styles.viewTab, styles.savedViewMain)}
-                  onClick={() => {
-                    const next = toSavedFilterState(view);
-                    setSearchValue(next.query);
-                    setPage(1);
-                    setFilters(next);
-                  }}
-                >
-                  <Bookmark className="h-3 w-3" />
-                  <span>{view.name}</span>
-                </button>
-                <button
-                  type="button"
-                  className={styles.savedViewDelete}
-                  aria-label={t("encounters.savedView.deleteAria", { name: view.name })}
-                  disabled={deleteViewMutation.isPending}
-                  onClick={() => {
-                    if (!window.confirm(t("encounters.savedView.confirmDelete", { name: view.name })))
-                      return;
-                    deleteViewMutation.mutate({ id: view.id });
-                  }}
-                >
-                  <Trash2 className="h-3 w-3" />
-                </button>
-              </div>
-            ))}
-            <span className={styles.viewsSpacer} />
-            <button
-              type="button"
-              className={styles.viewSave}
-              onClick={handleSaveCurrentView}
-              disabled={saveViewMutation.isPending}
-            >
-              {saveViewMutation.isPending ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <Save className="h-3 w-3" />
-              )}
-              <span>{t("encounters.savedView.saveCurrent")}</span>
-            </button>
-          </div>
-        </section>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <button
+                    type="button"
+                    className={styles.savedViewDelete}
+                    aria-label={t("encounters.savedView.deleteAria", { name: view.name })}
+                    disabled={deleteViewMutation.isPending}
+                  >
+                    <Trash2 aria-hidden className="h-3 w-3" />
+                  </button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>{t("encounters.savedView.deleteTitle")}</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {t("encounters.savedView.confirmDelete", { name: view.name })}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => deleteViewMutation.mutate({ id: view.id })}>
+                      {t("common.delete")}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          ))}
+          <span className={styles.viewsSpacer} />
+          <button
+            type="button"
+            className={styles.viewSave}
+            onClick={openSaveDialog}
+            disabled={saveViewMutation.isPending}
+          >
+            {saveViewMutation.isPending ? (
+              <Loader2 aria-hidden className="h-3 w-3 animate-spin" />
+            ) : (
+              <Save aria-hidden className="h-3 w-3" />
+            )}
+            <span>{t("encounters.savedView.saveCurrent")}</span>
+          </button>
+        </div>
+      </section>
 
-        <section aria-label={t("encounters.aria.filters")}>
-          <div className={styles.filters}>
-            {quickFilters.map((chip) => (
-              <button
-                key={chip.id}
-                type="button"
-                className={cn(styles.filterChip, chip.active && styles.filterChipActive)}
-                onClick={chip.onClick}
-              >
-                <span>{chip.label}</span>
-                <span className={styles.filterChipCount}>{countLabel(chip.count)}</span>
-              </button>
-            ))}
-            <span className={styles.filterDivider} />
-            <FilterSelect
-              label={t("common.tournament")}
-              value={filters.tournament_id == null ? "all" : String(filters.tournament_id)}
-              onValueChange={(value) =>
-                setFilterPatch({ tournament_id: value === "all" ? null : Number(value) })
-              }
-              items={[
-                ["all", t("encounters.filter.tournamentAny")] as [string, string],
-                ...(tournamentsLookupQuery.data ?? []).map(
-                  (item) =>
-                    [
-                      String(item.id),
-                      t("encounters.filter.tournamentNamed", { name: item.name })
-                    ] as [string, string]
-                )
-              ]}
-            />
-            <FilterSelect
-              label={t("encounters.filter.bestOf")}
-              value={filters.best_of == null ? "all" : String(filters.best_of)}
-              onValueChange={(value) =>
-                setFilterPatch({ best_of: value === "all" ? null : Number(value) })
-              }
-              items={[
-                ["all", t("encounters.filter.bestOfAny")],
-                ["3", t("encounters.filter.bestOfValue", { count: "3" })],
-                ["5", t("encounters.filter.bestOfValue", { count: "5" })],
-                ["7", t("encounters.filter.bestOfValue", { count: "7" })]
-              ]}
-            />
-            <FilterSelect
-              label={t("encounters.col.closeness")}
-              value={filters.closeness_min == null ? "all" : String(filters.closeness_min)}
-              onValueChange={(value) =>
-                setFilterPatch({ closeness_min: value === "all" ? null : Number(value) })
-              }
-              items={[
-                ["all", t("encounters.filter.closenessAny")],
-                ["0.4", t("encounters.filter.closenessMin", { pct: "40" })],
-                ["0.6", t("encounters.filter.closenessMin", { pct: "60" })],
-                ["0.8", t("encounters.filter.closenessMin", { pct: "80" })]
-              ]}
-            />
-            <FilterSelect
-              label={t("common.status")}
-              value={filters.status ?? "all"}
-              onValueChange={(value) => setFilterPatch({ status: value === "all" ? null : value })}
-              items={[
-                ["all", t("encounters.filter.statusAll")],
-                ["open", t("encounters.filter.statusOpen")],
-                ["pending", t("encounters.filter.statusPending")],
-                ["completed", t("encounters.filter.statusFinal")]
-              ]}
-            />
-            <div className={styles.filterSearch}>
-              <Search className={styles.filterSearchIcon} size={14} />
-              <input
-                value={searchValue}
-                onChange={(event) => {
-                  setPage(1);
-                  setSearchValue(event.target.value);
-                }}
-                placeholder={t("encounters.searchPlaceholder")}
+      <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>{t("encounters.savedView.saveCurrent")}</DialogTitle>
+          </DialogHeader>
+          <form
+            className="flex flex-col gap-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const name = saveName.trim();
+              if (!name) return;
+              saveViewMutation.mutate({ name });
+            }}
+          >
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="saved-view-name">{t("encounters.savedView.promptName")}</Label>
+              <Input
+                id="saved-view-name"
+                value={saveName}
+                onChange={(event) => setSaveName(event.target.value)}
+                autoFocus
               />
             </div>
-            <FilterSelect
-              label={t("common.sortBy")}
-              value={filters.sort}
-              onValueChange={(value) =>
-                setFilterPatch({ sort: value as EncounterFilterState["sort"] })
-              }
-              items={[
-                ["date", t("encounters.filter.sortDate")],
-                ["closeness", t("encounters.filter.sortCloseness")],
-                ["upcoming", t("encounters.filter.sortUpcoming")]
-              ]}
-              triggerLabel={t("encounters.filter.sortTrigger", { label: sortLabel })}
-              className={styles.filterSelectSort}
-            />
-          </div>
-        </section>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setSaveDialogOpen(false)}
+              >
+                {t("common.cancel")}
+              </Button>
+              <Button type="submit" disabled={!saveName.trim() || saveViewMutation.isPending}>
+                {t("common.save")}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
-        <section aria-label={t("encounters.insights.title")}>
-          <div className={styles.sectionHead}>
-            <h2 className={styles.sectionTitle}>{t("encounters.insights.title")}</h2>
-            <span className={styles.sectionMeta}>
-              {t("encounters.insights.meta", {
-                count: overview.pulse.completed_series_count
-              })}
-            </span>
-          </div>
-          <div className={styles.grid3}>
-            <div className={styles.card}>
-              <div className={styles.cardHead}>
-                <div>
-                  <div className={styles.cardTitle}>{t("encounters.insights.closenessTitle")}</div>
-                  <div className={styles.cardSub}>{t("encounters.insights.closenessSub")}</div>
-                </div>
-                <span className={styles.pill}>
-                  {t("encounters.insights.avg")}{" "}
-                  <span className={cn(styles.mono, styles.pillAccent)}>
-                    {formatPercent(overview.kpis.avg_closeness)}
-                  </span>
-                </span>
+      <section aria-label={t("encounters.aria.filters")}>
+        <div className={styles.filters}>
+          <FilterChipGroup label={t("common.status")}>
+            {statusChips.map((chip) => (
+              <FilterChip
+                key={chip.id}
+                active={effectiveFilters.status === chip.value}
+                count={chip.count == null ? undefined : countLabel(chip.count)}
+                onClick={() =>
+                  setFilterPatch({
+                    status: effectiveFilters.status === chip.value ? null : chip.value
+                  })
+                }
+              >
+                {chip.label}
+              </FilterChip>
+            ))}
+          </FilterChipGroup>
+          <span className={styles.filterDivider} />
+          <FilterSelect
+            label={t("common.tournament")}
+            value={filters.tournament_id == null ? "all" : String(filters.tournament_id)}
+            onValueChange={(value) =>
+              setFilterPatch({ tournament_id: value === "all" ? null : Number(value) })
+            }
+            items={[
+              ["all", t("encounters.filter.tournamentAny")] as [string, string],
+              ...(tournamentsLookupQuery.data ?? []).map(
+                (item) =>
+                  [
+                    String(item.id),
+                    t("encounters.filter.tournamentNamed", { name: item.name })
+                  ] as [string, string]
+              )
+            ]}
+          />
+          <FilterSelect
+            label={t("encounters.filter.bestOf")}
+            value={filters.best_of == null ? "all" : String(filters.best_of)}
+            onValueChange={(value) =>
+              setFilterPatch({ best_of: value === "all" ? null : Number(value) })
+            }
+            items={[
+              ["all", t("encounters.filter.bestOfAny")],
+              ["3", t("encounters.filter.bestOfValue", { count: "3" })],
+              ["5", t("encounters.filter.bestOfValue", { count: "5" })],
+              ["7", t("encounters.filter.bestOfValue", { count: "7" })]
+            ]}
+          />
+          <FilterSelect
+            label={t("encounters.col.closeness")}
+            value={filters.closeness_min == null ? "all" : String(filters.closeness_min)}
+            onValueChange={(value) =>
+              setFilterPatch({ closeness_min: value === "all" ? null : Number(value) })
+            }
+            items={[
+              ["all", t("encounters.filter.closenessAny")],
+              ["0.4", t("encounters.filter.closenessMin", { pct: "40" })],
+              ["0.6", t("encounters.filter.closenessMin", { pct: "60" })],
+              ["0.8", t("encounters.filter.closenessMin", { pct: "80" })]
+            ]}
+          />
+          <SearchField
+            value={searchValue}
+            onValueChange={(next) => {
+              setPage(1);
+              setSearchValue(next);
+            }}
+            label={t("encounters.searchPlaceholder")}
+            placeholder={t("encounters.searchPlaceholder")}
+            containerClassName={styles.filterSearch}
+          />
+          <FilterSelect
+            label={t("common.sortBy")}
+            value={filters.sort}
+            onValueChange={(value) =>
+              setFilterPatch({ sort: value as EncounterFilterState["sort"] })
+            }
+            items={[
+              ["date", t("encounters.filter.sortDate")],
+              ["closeness", t("encounters.filter.sortCloseness")],
+              ["upcoming", t("encounters.filter.sortUpcoming")]
+            ]}
+            triggerLabel={t("encounters.filter.sortTrigger", { label: sortLabel })}
+            className={styles.filterSelectSort}
+          />
+        </div>
+      </section>
+
+      <section aria-label={t("encounters.insights.title")}>
+        <div className={styles.sectionHead}>
+          <h2 className={styles.sectionTitle}>{t("encounters.insights.title")}</h2>
+          <span className={styles.sectionMeta}>
+            {t("encounters.insights.meta", {
+              count: overview.pulse.completed_series_count
+            })}
+          </span>
+        </div>
+        <div className={styles.grid3}>
+          <div className={styles.card}>
+            <div className={styles.cardHead}>
+              <div>
+                <div className={styles.cardTitle}>{t("encounters.insights.closenessTitle")}</div>
+                <div className={styles.cardSub}>{t("encounters.insights.closenessSub")}</div>
               </div>
-              <div className={styles.cardBody}>
-                <div className={styles.hist}>
-                  {overview.closeness_histogram.map((bucket) => (
-                    <div
-                      key={bucket.label}
-                      className={styles.histBar}
-                      style={{ height: `${Math.max(6, (bucket.count / maxHistogram) * 100)}%` }}
-                      title={`${bucket.label}: ${bucket.count}`}
-                    >
-                      <span className={styles.histBarValue}>{bucket.count}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className={styles.histAxis}>
-                  <span>0%</span>
-                  <span>20%</span>
-                  <span>40%</span>
-                  <span>60%</span>
-                  <span>80%</span>
-                  <span>100%</span>
-                </div>
+              <span className={styles.pill}>
+                {t("encounters.insights.avg")}{" "}
+                <span className={cn(styles.mono, styles.pillAccent)}>
+                  {formatPercent(overview.kpis.avg_closeness)}
+                </span>
+              </span>
+            </div>
+            <div className={styles.cardBody}>
+              <div className={styles.hist}>
+                {overview.closeness_histogram.map((bucket) => (
+                  <div
+                    key={bucket.label}
+                    className={styles.histBar}
+                    aria-label={`${bucket.label}: ${bucket.count}`}
+                    style={{ height: `${Math.max(6, (bucket.count / maxHistogram) * 100)}%` }}
+                  >
+                    <span className={styles.histBarValue}>{bucket.count}</span>
+                  </div>
+                ))}
+              </div>
+              <div className={styles.histAxis}>
+                <span>0%</span>
+                <span>20%</span>
+                <span>40%</span>
+                <span>60%</span>
+                <span>80%</span>
+                <span>100%</span>
               </div>
             </div>
+          </div>
 
-            <div className={styles.card}>
-              <div className={styles.cardHead}>
-                <div>
-                  <div className={styles.cardTitle}>{t("encounters.insights.scoreTitle")}</div>
-                  <div className={styles.cardSub}>{t("encounters.insights.scoreSub")}</div>
-                </div>
-                <span className={styles.pill}>
-                  {t("encounters.insights.max")}{" "}
-                  <span className={cn(styles.mono, styles.pillAccent)}>
-                    {countLabel(heatmap.max)}
-                  </span>
-                </span>
+          <div className={styles.card}>
+            <div className={styles.cardHead}>
+              <div>
+                <div className={styles.cardTitle}>{t("encounters.insights.scoreTitle")}</div>
+                <div className={styles.cardSub}>{t("encounters.insights.scoreSub")}</div>
               </div>
-              <div className={styles.cardBody}>
-                <div className={styles.scoreGrid}>
-                  <div />
-                  {heatmap.cols.map((col) => (
-                    <div key={`col-${col}`} className={styles.scoreHeader}>
-                      {col}
-                    </div>
-                  ))}
-                  {heatmap.rows.map((row) => (
-                    <RowCells
-                      key={`row-${row}`}
-                      row={row}
-                      cols={heatmap.cols}
-                      matrix={heatmap.matrix}
-                      max={heatmap.max}
+              <span className={styles.pill}>
+                {t("encounters.insights.max")}{" "}
+                <span className={cn(styles.mono, styles.pillAccent)}>
+                  {countLabel(heatmap.max)}
+                </span>
+              </span>
+            </div>
+            <div className={styles.cardBody}>
+              <div className={styles.scoreGrid}>
+                <div />
+                {heatmap.cols.map((col) => (
+                  <div key={`col-${col}`} className={styles.scoreHeader}>
+                    {col}
+                  </div>
+                ))}
+                {heatmap.rows.map((row) => (
+                  <RowCells
+                    key={`row-${row}`}
+                    row={row}
+                    cols={heatmap.cols}
+                    matrix={heatmap.matrix}
+                    max={heatmap.max}
+                  />
+                ))}
+              </div>
+              <div className={styles.scoreLegend}>
+                <span>{t("encounters.insights.fewer")}</span>
+                <span aria-hidden className={styles.scoreLegendGrad} />
+                <span>{t("encounters.insights.more")}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className={styles.card}>
+            <div className={styles.cardHead}>
+              <div>
+                <div className={styles.cardTitle}>{t("encounters.insights.byStageTitle")}</div>
+                <div className={styles.cardSub}>{t("encounters.insights.byStageSub")}</div>
+              </div>
+            </div>
+            <div className={styles.cardBody}>
+              <div className={styles.donutRow}>
+                <div className={styles.donut}>
+                  <svg width="140" height="140" viewBox="0 0 140 140" aria-hidden>
+                    <circle
+                      cx="70"
+                      cy="70"
+                      r="54"
+                      fill="none"
+                      stroke="var(--aqt-border)"
+                      strokeWidth="18"
                     />
-                  ))}
-                </div>
-                <div className={styles.scoreLegend}>
-                  <span>{t("encounters.insights.fewer")}</span>
-                  <span className={styles.scoreLegendGrad} />
-                  <span>{t("encounters.insights.more")}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className={styles.card}>
-              <div className={styles.cardHead}>
-                <div>
-                  <div className={styles.cardTitle}>{t("encounters.insights.byStageTitle")}</div>
-                  <div className={styles.cardSub}>{t("encounters.insights.byStageSub")}</div>
-                </div>
-              </div>
-              <div className={styles.cardBody}>
-                <div className={styles.donutRow}>
-                  <div className={styles.donut}>
-                    <svg width="140" height="140" viewBox="0 0 140 140">
+                    {stageDonut.segments.map((segment) => (
                       <circle
+                        key={segment.name}
                         cx="70"
                         cy="70"
                         r="54"
                         fill="none"
-                        stroke="hsl(215 20% 12%)"
+                        stroke={segment.color}
                         strokeWidth="18"
+                        strokeDasharray={segment.dashArray}
+                        strokeDashoffset={segment.dashOffset}
+                        transform="rotate(-90 70 70)"
+                        strokeLinecap="butt"
                       />
-                      {stageDonut.segments.map((segment) => (
-                        <circle
-                          key={segment.name}
-                          cx="70"
-                          cy="70"
-                          r="54"
-                          fill="none"
-                          stroke={segment.color}
-                          strokeWidth="18"
-                          strokeDasharray={segment.dashArray}
-                          strokeDashoffset={segment.dashOffset}
-                          transform="rotate(-90 70 70)"
-                          strokeLinecap="butt"
+                    ))}
+                  </svg>
+                  <div className={styles.donutCenter}>
+                    <span className={styles.donutValue}>{countLabel(stageDonut.total)}</span>
+                    <span className={styles.donutLabel}>{t("encounters.insights.series")}</span>
+                  </div>
+                </div>
+                <div className={styles.donutLegend}>
+                  {stageDonut.segments.length ? (
+                    stageDonut.segments.map((segment) => (
+                      <div key={segment.name} className={styles.legendRow}>
+                        <span
+                          aria-hidden
+                          className={styles.legendSwatch}
+                          style={{ background: segment.color }}
                         />
-                      ))}
-                    </svg>
-                    <div className={styles.donutCenter}>
-                      <span className={styles.donutValue}>{countLabel(stageDonut.total)}</span>
-                      <span className={styles.donutLabel}>{t("encounters.insights.series")}</span>
-                    </div>
-                  </div>
-                  <div className={styles.donutLegend}>
-                    {stageDonut.segments.length ? (
-                      stageDonut.segments.map((segment) => (
-                        <div key={segment.name} className={styles.legendRow}>
-                          <span
-                            className={styles.legendSwatch}
-                            style={{ background: segment.color }}
-                          />
-                          <span className={styles.legendName}>{segment.name}</span>
-                          <span className={styles.legendValue}>
-                            {countLabel(segment.count)} · {segment.pct}%
-                          </span>
-                        </div>
-                      ))
-                    ) : (
-                      <span className={styles.dim}>{t("encounters.insights.noStageData")}</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section aria-label={t("encounters.featured.title")}>
-          <div className={styles.sectionHead}>
-            <h2 className={styles.sectionTitle}>{t("encounters.featured.title")}</h2>
-            <span className={styles.sectionMeta}>{t("encounters.featured.meta")}</span>
-          </div>
-          <div className={styles.grid2}>
-            <FeaturedPanel
-              title={t("encounters.featured.closestTitle")}
-              subtitle={t("encounters.featured.closestSub")}
-              encounters={overview.featured.closest}
-              variant="closest"
-            />
-            <FeaturedPanel
-              title={t("encounters.featured.liveTitle")}
-              subtitle={t("encounters.featured.liveSub")}
-              encounters={liveOrUpcoming}
-              variant="live"
-            />
-          </div>
-        </section>
-
-        <section aria-label={t("encounters.list.title")}>
-          <div className={styles.sectionHead}>
-            <h2 className={styles.sectionTitle}>{t("encounters.list.title")}</h2>
-            <span className={styles.sectionMeta}>
-              {t("encounters.list.pageMeta", {
-                page: String(page),
-                total: String(totalPages),
-                sort: effectiveFilters.sort
-              })}
-            </span>
-          </div>
-          <div className={styles.gridTable}>
-            <div className={styles.card}>
-              <div className={styles.tableScroll}>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>{t("encounters.col.matchup")}</th>
-                      <th>{t("common.tournament")}</th>
-                      <th>{t("common.stage")}</th>
-                      <th>{t("encounters.col.round")}</th>
-                      <th className={styles.scoreAlign}>{t("encounters.col.score")}</th>
-                      <th>{t("encounters.col.maps")}</th>
-                      <th>{t("encounters.col.closeness")}</th>
-                      <th>{t("encounters.col.media")}</th>
-                      <th>{t("common.status")}</th>
-                      <th>{t("encounters.col.played")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {listQuery.isFetching && !rows.length ? (
-                      <tr>
-                        <td colSpan={10} className={styles.empty}>
-                          {t("encounters.list.loading")}
-                        </td>
-                      </tr>
-                    ) : rows.length ? (
-                      rows.map((encounter) => (
-                        <EncounterRow key={encounter.id} encounter={encounter} />
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan={10} className={styles.empty}>
-                          {t("encounters.list.empty")}
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-              <div className={styles.pagination}>
-                <span className={styles.pageInfo}>
-                  {t("encounters.list.showing", {
-                    start: String(showingStart),
-                    end: String(showingEnd),
-                    total: countLabel(encounters.total)
-                  })}
-                </span>
-                <div className={styles.pageControls}>
-                  <button
-                    className={styles.pageBtn}
-                    type="button"
-                    disabled={page === 1}
-                    onClick={() => setPage(Math.max(1, page - 1))}
-                  >
-                    ‹ {t("common.prev")}
-                  </button>
-                  {pageList.map((entry, index) =>
-                    entry === "ellipsis" ? (
-                      <span
-                        key={`ellipsis-${index}`}
-                        className={cn(styles.pageBtn, styles.pageBtnEllipsis)}
-                      >
-                        …
-                      </span>
-                    ) : (
-                      <button
-                        key={entry}
-                        type="button"
-                        className={cn(styles.pageBtn, entry === page && styles.pageBtnActive)}
-                        disabled={entry === page}
-                        onClick={() => setPage(entry)}
-                      >
-                        {entry}
-                      </button>
-                    )
-                  )}
-                  <button
-                    className={styles.pageBtn}
-                    type="button"
-                    disabled={page >= totalPages}
-                    onClick={() => setPage(Math.min(totalPages, page + 1))}
-                  >
-                    {t("common.next")} ›
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <aside className={styles.rail}>
-              <div className={styles.card}>
-                <div className={styles.cardHead}>
-                  <div className={styles.cardTitle}>{t("encounters.pulse.title")}</div>
-                </div>
-                <div className={styles.insightList}>
-                  <Insight
-                    label={t("encounters.pulse.avgLength")}
-                    value={formatDuration(overview.pulse.avg_series_seconds)}
-                    meta={t("encounters.pulse.avgLengthMeta", {
-                      count: countLabel(overview.pulse.completed_series_count)
-                    })}
-                  />
-                  <Insight
-                    label={t("encounters.pulse.sweepRate")}
-                    value={`${overview.pulse.sweep_rate}%`}
-                    meta={t("encounters.pulse.sweepMeta", {
-                      sweeps: countLabel(overview.pulse.sweep_count),
-                      distance: countLabel(overview.pulse.went_distance_count)
-                    })}
-                  />
-                  <Insight
-                    label={t("encounters.pulse.reverseSweepRate")}
-                    value={`${overview.pulse.reverse_sweep_rate}%`}
-                    meta={t("encounters.pulse.reverseSweepMeta")}
-                  />
-                  <Insight
-                    label={t("encounters.pulse.mostDecisiveMap")}
-                    value={overview.pulse.most_decisive_map ?? "—"}
-                    valueClassName={styles.insightValueSmall}
-                  />
-                </div>
-              </div>
-
-              <div className={styles.card}>
-                <div className={styles.cardHead}>
-                  <div className={styles.cardTitle}>{t("encounters.hotMaps.title")}</div>
-                  <span className={styles.cardSub}>{t("encounters.hotMaps.sub")}</span>
-                </div>
-                <div>
-                  {overview.hot_maps.length ? (
-                    overview.hot_maps.map((map) => (
-                      <div key={map.name} className={styles.mapRow}>
-                        <span className={styles.mapName}>{map.name}</span>
-                        <div className={styles.mapTrack}>
-                          <div
-                            className={styles.mapFill}
-                            style={{ width: `${(map.count / maxMapCount) * 100}%` }}
-                          />
-                        </div>
-                        <span className={styles.mapNum}>{countLabel(map.count)}</span>
+                        <span className={styles.legendName}>{segment.name}</span>
+                        <span className={cn(styles.legendValue, "tabular-nums")}>
+                          {countLabel(segment.count)} · {segment.pct}%
+                        </span>
                       </div>
                     ))
                   ) : (
-                    <div className={styles.empty}>{t("encounters.hotMaps.empty")}</div>
+                    <span className={styles.dim}>{t("encounters.insights.noStageData")}</span>
                   )}
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
-              <div className={styles.card}>
-                <div className={styles.cardHead}>
-                  <div className={styles.cardTitle}>{t("encounters.sideBalance.title")}</div>
-                  <span className={styles.cardSub}>{t("encounters.sideBalance.sub")}</span>
+      <section aria-label={t("encounters.featured.title")}>
+        <div className={styles.sectionHead}>
+          <h2 className={styles.sectionTitle}>{t("encounters.featured.title")}</h2>
+          <span className={styles.sectionMeta}>{t("encounters.featured.meta")}</span>
+        </div>
+        <div className={styles.grid2}>
+          <FeaturedPanel
+            title={t("encounters.featured.closestTitle")}
+            subtitle={t("encounters.featured.closestSub")}
+            encounters={overview.featured.closest}
+            variant="closest"
+          />
+          <FeaturedPanel
+            title={t("encounters.featured.liveTitle")}
+            subtitle={t("encounters.featured.liveSub")}
+            encounters={liveOrUpcoming}
+            variant="live"
+          />
+        </div>
+      </section>
+
+      <section aria-label={t("encounters.list.title")}>
+        <div className={styles.sectionHead}>
+          <h2 className={styles.sectionTitle}>{t("encounters.list.title")}</h2>
+          <span className={styles.sectionMeta}>
+            {t("encounters.list.pageMeta", {
+              page: String(page),
+              total: String(totalPages),
+              sort: effectiveFilters.sort
+            })}
+          </span>
+        </div>
+        <div className={styles.gridTable}>
+          <div className="flex min-w-0 flex-col gap-3">
+            {listBody()}
+            <DataPagination
+              page={page}
+              totalPages={totalPages}
+              onPageChange={setPage}
+              summary={t("encounters.list.showing", {
+                start: String(showingStart),
+                end: String(showingEnd),
+                total: countLabel(encounters.total)
+              })}
+            />
+          </div>
+
+          <aside className={styles.rail}>
+            <div className={styles.card}>
+              <div className={styles.cardHead}>
+                <div className={styles.cardTitle}>{t("encounters.pulse.title")}</div>
+              </div>
+              <div className={styles.insightList}>
+                <Insight
+                  label={t("encounters.pulse.avgLength")}
+                  value={formatDuration(overview.pulse.avg_series_seconds)}
+                  meta={t("encounters.pulse.avgLengthMeta", {
+                    count: countLabel(overview.pulse.completed_series_count)
+                  })}
+                />
+                <Insight
+                  label={t("encounters.pulse.sweepRate")}
+                  value={`${overview.pulse.sweep_rate}%`}
+                  meta={t("encounters.pulse.sweepMeta", {
+                    sweeps: countLabel(overview.pulse.sweep_count),
+                    distance: countLabel(overview.pulse.went_distance_count)
+                  })}
+                />
+                <Insight
+                  label={t("encounters.pulse.reverseSweepRate")}
+                  value={`${overview.pulse.reverse_sweep_rate}%`}
+                  meta={t("encounters.pulse.reverseSweepMeta")}
+                />
+                <Insight
+                  label={t("encounters.pulse.mostDecisiveMap")}
+                  value={overview.pulse.most_decisive_map ?? "—"}
+                  valueClassName={styles.insightValueSmall}
+                />
+              </div>
+            </div>
+
+            <div className={styles.card}>
+              <div className={styles.cardHead}>
+                <div className={styles.cardTitle}>{t("encounters.hotMaps.title")}</div>
+                <span className={styles.cardSub}>{t("encounters.hotMaps.sub")}</span>
+              </div>
+              <div>
+                {overview.hot_maps.length ? (
+                  overview.hot_maps.map((map) => (
+                    <div key={map.name} className={styles.mapRow}>
+                      <span className={styles.mapName}>{map.name}</span>
+                      <div aria-hidden className={styles.mapTrack}>
+                        <div
+                          className={styles.mapFill}
+                          style={{ width: `${(map.count / maxMapCount) * 100}%` }}
+                        />
+                      </div>
+                      <span className={cn(styles.mapNum, "tabular-nums")}>
+                        {countLabel(map.count)}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <div className={styles.empty}>{t("encounters.hotMaps.empty")}</div>
+                )}
+              </div>
+            </div>
+
+            <div className={styles.card}>
+              <div className={styles.cardHead}>
+                <div className={styles.cardTitle}>{t("encounters.sideBalance.title")}</div>
+                <span className={styles.cardSub}>{t("encounters.sideBalance.sub")}</span>
+              </div>
+              <div className={styles.cardBody}>
+                <div className={styles.balance}>
+                  <div
+                    className={cn(styles.balanceHome, "tabular-nums")}
+                    style={{ width: `${overview.side_balance.home_win_pct}%` }}
+                  >
+                    {overview.side_balance.home_win_pct}%
+                  </div>
+                  <div
+                    className={cn(styles.balanceAway, "tabular-nums")}
+                    style={{ width: `${overview.side_balance.away_win_pct}%` }}
+                  >
+                    {overview.side_balance.away_win_pct}%
+                  </div>
                 </div>
-                <div className={styles.cardBody}>
-                  <div className={styles.balance}>
-                    <div
-                      className={styles.balanceHome}
-                      style={{ width: `${overview.side_balance.home_win_pct}%` }}
-                    >
-                      {overview.side_balance.home_win_pct}%
-                    </div>
-                    <div
-                      className={styles.balanceAway}
-                      style={{ width: `${overview.side_balance.away_win_pct}%` }}
-                    >
-                      {overview.side_balance.away_win_pct}%
-                    </div>
-                  </div>
-                  <div className={styles.balanceLegend}>
-                    <span>
-                      <span className={styles.balanceLegendHome}>● </span>
-                      {t("encounters.sideBalance.homeWins")}
+                <div className={styles.balanceLegend}>
+                  <span>
+                    <span aria-hidden className={styles.balanceLegendHome}>
+                      ●{" "}
                     </span>
-                    <span>
-                      {t("encounters.sideBalance.awayWins")} <span className={styles.dim}>●</span>
+                    {t("encounters.sideBalance.homeWins")}
+                  </span>
+                  <span>
+                    {t("encounters.sideBalance.awayWins")}{" "}
+                    <span aria-hidden className={styles.dim}>
+                      ●
                     </span>
-                  </div>
+                  </span>
                 </div>
               </div>
-            </aside>
-          </div>
-        </section>
-      </div>
-    </TooltipProvider>
+            </div>
+          </aside>
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -1039,7 +1009,7 @@ function HeroStat({
   return (
     <div className={styles.heroStat}>
       <span className={styles.statLabel}>{label}</span>
-      <span className={styles.statValue}>{value}</span>
+      <span className={cn(styles.statValue, "tabular-nums")}>{value}</span>
       <span className={styles.statFoot}>{foot}</span>
     </div>
   );
@@ -1096,7 +1066,11 @@ function RowCells({
         return (
           <div
             key={`${row}-${col}`}
-            className={cn(styles.scoreCellHeat, count === 0 && styles.scoreCellEmpty)}
+            className={cn(
+              styles.scoreCellHeat,
+              count === 0 && styles.scoreCellEmpty,
+              "tabular-nums"
+            )}
             style={{ "--alpha": String(alpha) } as CSSProperties}
           >
             {count > 0 ? countLabel(count) : "—"}
@@ -1119,7 +1093,7 @@ function FeaturedPanel({
   variant: "closest" | "live";
 }) {
   const t = useTranslations();
-  const router = useRouter();
+  const format = useFormatter();
   return (
     <div className={styles.card}>
       <div className={styles.cardHead}>
@@ -1133,19 +1107,15 @@ function FeaturedPanel({
           encounters.slice(0, 4).map((encounter) => {
             const homeName = encounter.home_team?.name ?? t("common.tbd");
             const awayName = encounter.away_team?.name ?? t("common.tbd");
-            const winner = getWinnerSide(encounter);
-            const state = getEncounterStateLabel(encounter);
+            const winner = getEncounterWinner(encounter);
+            const state = getEncounterState(encounter);
             const isLive = variant === "live" && state === "Live";
             const isUpcoming = variant === "live" && state === "Upcoming";
             const closenessPct =
               encounter.closeness != null ? Math.round(encounter.closeness * 100) : null;
+            const scheduledAt = encounter.scheduled_at ? new Date(encounter.scheduled_at) : null;
             return (
-              <div
-                key={encounter.id}
-                className={styles.feat}
-                onClick={() => router.push(`/encounters/${encounter.id}`)}
-                role="link"
-              >
+              <Link key={encounter.id} href={`/encounters/${encounter.id}`} className={styles.feat}>
                 <div>
                   <div className={styles.matchup}>
                     {isLive ? (
@@ -1155,9 +1125,7 @@ function FeaturedPanel({
                     ) : null}
                     {isUpcoming ? (
                       <span className={cn(styles.statusDot, styles.statusUpcoming)}>
-                        {state === "Upcoming"
-                          ? t("encounters.state.soon")
-                          : t(stateLabelKey(state))}
+                        {t("encounters.state.soon")}
                       </span>
                     ) : null}
                     <TeamChip name={homeName} />
@@ -1179,10 +1147,12 @@ function FeaturedPanel({
                 <div className={styles.featSide}>
                   {variant === "live" && isUpcoming ? (
                     <span className={styles.featTime}>
-                      {formatCompactDate(encounter.scheduled_at ?? null)}
+                      {scheduledAt
+                        ? format.dateTime(scheduledAt, { month: "short", day: "numeric" })
+                        : "—"}
                     </span>
                   ) : (
-                    <span className={styles.featScore}>
+                    <span className={cn(styles.featScore, "tabular-nums")}>
                       <span
                         className={
                           winner === "home" ? styles.featScoreWinner : styles.featScoreLoser
@@ -1201,13 +1171,15 @@ function FeaturedPanel({
                     </span>
                   )}
                   {variant === "closest" && closenessPct != null ? (
-                    <span className={styles.badgeCloseness}>⚡ {closenessPct}%</span>
+                    <span className={cn(styles.badgeCloseness, "tabular-nums")}>
+                      ⚡ {closenessPct}%
+                    </span>
                   ) : null}
                   {isLive ? (
                     <span className={styles.featTime}>{t("encounters.state.live")}</span>
                   ) : null}
                 </div>
-              </div>
+              </Link>
             );
           })
         ) : (
@@ -1222,169 +1194,11 @@ function TeamChip({ name }: { name: string }) {
   const color = getTeamColor(name);
   return (
     <span className={styles.teamChip}>
-      <span className={cn(styles.tg, TEAM_COLOR_CLASS[color])}>{getTeamInitials(name)}</span>
+      <span aria-hidden className={cn(styles.tg, TEAM_COLOR_CLASS[color])}>
+        {getTeamInitials(name)}
+      </span>
       <span>{name}</span>
     </span>
-  );
-}
-
-function EncounterRow({ encounter }: { encounter: Encounter }) {
-  const t = useTranslations();
-  const router = useRouter();
-  const winner = getWinnerSide(encounter);
-  const stateLabel = getEncounterStateLabel(encounter);
-  const homeName = encounter.home_team?.name ?? t("common.tbd");
-  const awayName = encounter.away_team?.name ?? t("common.tbd");
-  const sortedMatches = [...(encounter.matches ?? [])].sort((a, b) => a.id - b.id);
-  const stageName = stageLabel(encounter, t);
-  const stageBucket = getStageBucket(stageName);
-  const closenessPct = encounter.closeness != null ? Math.round(encounter.closeness * 100) : null;
-  const homeColor = getTeamColor(homeName);
-  const awayColor = getTeamColor(awayName);
-  const isUpset =
-    encounter.status === "completed" &&
-    closenessPct != null &&
-    closenessPct >= 80 &&
-    Math.abs(encounter.score.home - encounter.score.away) === 1;
-
-  const statusVariant =
-    stateLabel === "Live"
-      ? styles.statusLive
-      : stateLabel === "Upcoming"
-        ? styles.statusUpcoming
-        : stateLabel === "Pending"
-          ? styles.statusPending
-          : stateLabel === "Open"
-            ? styles.statusOpen
-            : styles.statusDone;
-
-  return (
-    <tr onClick={() => router.push(`/encounters/${encounter.id}`)}>
-      <td>
-        <div className={styles.matchupCell}>
-          <div className={styles.teamStack}>
-            <div className={styles.teamLine}>
-              <span className={cn(styles.tg, TEAM_COLOR_CLASS[homeColor])}>
-                {getTeamInitials(homeName)}
-              </span>
-              <span className={cn(styles.teamName, winner === "away" && styles.loser)}>
-                {homeName}
-              </span>
-            </div>
-            <div className={styles.teamLine}>
-              <span className={cn(styles.tg, TEAM_COLOR_CLASS[awayColor])}>
-                {getTeamInitials(awayName)}
-              </span>
-              <span className={cn(styles.teamName, winner === "home" && styles.loser)}>
-                {awayName}
-              </span>
-            </div>
-          </div>
-        </div>
-      </td>
-      <td className={styles.dim}>{tournamentLabel(encounter, t)}</td>
-      <td>
-        <span className={cn(styles.stagePill, STAGE_PILL_CLASS[stageBucket])}>{stageName}</span>
-      </td>
-      <td className={cn(styles.dim, styles.mono)}>
-        {t("encounters.roundShort", { round: encounter.round })}
-      </td>
-      <td className={cn(styles.mono, styles.scoreAlign)}>
-        <span
-          className={cn(
-            styles.scoreCell,
-            winner === "home" ? styles.scoreCellWinner : styles.scoreCellLoser
-          )}
-        >
-          {encounter.score.home}
-        </span>
-        <span className={styles.scoreSep}>–</span>
-        <span
-          className={cn(
-            styles.scoreCell,
-            winner === "away" ? styles.scoreCellWinner : styles.scoreCellLoser
-          )}
-        >
-          {encounter.score.away}
-        </span>
-      </td>
-      <td>
-        <div className={styles.maps}>
-          {sortedMatches.length ? (
-            sortedMatches.map((match) => {
-              const homeWon = match.score.home > match.score.away;
-              return (
-                <span
-                  key={match.id}
-                  className={cn(styles.pip, homeWon ? styles.pipWin : styles.pipLoss)}
-                />
-              );
-            })
-          ) : (
-            <span className={styles.dim}>—</span>
-          )}
-        </div>
-      </td>
-      <td>
-        <div className={styles.closeness}>
-          <div className={styles.closenessTrack}>
-            <div className={styles.closenessFill} style={{ width: `${closenessPct ?? 0}%` }} />
-          </div>
-          <span className={cn(styles.closenessNum)}>
-            {closenessPct == null ? "—" : `${closenessPct}%`}
-          </span>
-        </div>
-      </td>
-      <td>
-        <MediaIcons hasLogs={encounter.has_logs} />
-      </td>
-      <td>
-        <span className={cn(styles.statusDot, statusVariant)}>
-          {isUpset ? t("encounters.state.upset") : t(stateLabelKey(stateLabel))}
-        </span>
-      </td>
-      <td className={cn(styles.dim, styles.mono)}>{formatCompactDate(getPlayedAt(encounter))}</td>
-    </tr>
-  );
-}
-
-const MEDIA_ICON_VARIANT: Record<MediaSlotKey, string> = {
-  logs: styles.mediaIconLogs,
-  vod: styles.mediaIconVod,
-  cast: styles.mediaIconCast
-};
-
-function MediaIcons({ hasLogs }: { hasLogs: boolean }) {
-  const t = useTranslations();
-  return (
-    <div className={styles.media}>
-      {getMediaSlots(hasLogs).map((slot) => {
-        const enabledVariant = slot.enabled ? MEDIA_ICON_VARIANT[slot.key] : null;
-        return (
-          <Tooltip key={slot.key}>
-            <TooltipTrigger asChild>
-              <span
-                className={cn(
-                  styles.mediaIcon,
-                  enabledVariant,
-                  !slot.enabled && styles.mediaIconDisabled
-                )}
-              >
-                {slot.key === "logs" ? (
-                  <FileText className="h-3 w-3" />
-                ) : slot.key === "vod" ? (
-                  <Play className="h-3 w-3" fill="currentColor" />
-                ) : (
-                  <Tv className="h-3 w-3" />
-                )}
-                {slot.key === "cast" && slot.enabled ? <span className={styles.liveDot} /> : null}
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>{t(mediaTooltipKey(slot))}</TooltipContent>
-          </Tooltip>
-        );
-      })}
-    </div>
   );
 }
 
@@ -1402,7 +1216,7 @@ function Insight({
   return (
     <div className={styles.insightRow}>
       <span className={styles.insightLabel}>{label}</span>
-      <span className={cn(styles.insightValue, valueClassName)}>{value}</span>
+      <span className={cn(styles.insightValue, "tabular-nums", valueClassName)}>{value}</span>
       {meta ? <span className={styles.insightMeta}>{meta}</span> : null}
     </div>
   );

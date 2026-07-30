@@ -8,7 +8,7 @@ import {
   accessPermissionsPermissions,
   accessRolesPermissions,
   accessUsersPermissions,
-} from "@/components/admin/admin-navigation";
+} from "@/lib/admin-permissions";
 import { type AppPermission, usePermissions } from "@/hooks/usePermissions";
 
 type AccessRoute = {

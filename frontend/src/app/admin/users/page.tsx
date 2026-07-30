@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import Link from "next/link";
 import { ColumnDef } from "@tanstack/react-table";
-import { MoreHorizontal, Plus, Minus, Pencil, Trash2, Upload, ArrowRightLeft, UserCog } from "lucide-react";
+import { MoreHorizontal, Plus, Pencil, Trash2, Upload, ArrowRightLeft, UserCog } from "lucide-react";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -35,7 +35,6 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Switch } from "@/components/ui/switch";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 import adminService from "@/services/admin.service";
@@ -57,53 +56,49 @@ const defaultImportParams: CsvUserImportParams = {
   sheet_url: ""
 };
 
-interface ColumnStepperProps {
+interface ColumnFieldProps {
+  id: string;
   label: string;
   value: number | null;
+  /** `null` means the column is absent from the sheet and will not be imported. */
   onChange: (value: number | null) => void;
+  /** Marks the field with `*`; a required column cannot be left out. */
   required?: boolean;
+  min?: number;
+  hint?: string;
 }
 
-function ColumnStepper({ label, value, onChange, required }: ColumnStepperProps) {
-  const enabled = value != null;
-
+/**
+ * One column index of the CSV mapping. A compact number field rather than a
+ * card-with-stepper: an empty value is how an optional column is skipped, so the
+ * on/off switch and the +/- pair are both redundant.
+ */
+function ColumnField({ id, label, value, onChange, required, min = 1, hint }: ColumnFieldProps) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border px-4 py-3">
-      <div className="flex items-center gap-3 min-w-0">
-        {!required && (
-          <Switch checked={enabled} onCheckedChange={(checked) => onChange(checked ? 1 : null)} />
-        )}
-        <span className={`text-sm font-medium ${!enabled ? "text-muted-foreground" : ""}`}>
-          {label}
-        </span>
-      </div>
-      <div className="flex items-center gap-1">
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          className="h-8 w-8"
-          disabled={!enabled || (value ?? 0) <= 1}
-          onClick={() => onChange(Math.max(1, (value ?? 1) - 1))}
-        >
-          <Minus className="h-3 w-3" />
-        </Button>
-        <div
-          className={`w-10 text-center tabular-nums text-sm font-medium ${!enabled ? "text-muted-foreground" : ""}`}
-        >
-          {enabled ? value : "—"}
-        </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          className="h-8 w-8"
-          disabled={!enabled}
-          onClick={() => onChange((value ?? 0) + 1)}
-        >
-          <Plus className="h-3 w-3" />
-        </Button>
-      </div>
+    <div className="space-y-1.5">
+      <Label htmlFor={id} className="text-xs">
+        {label}
+        {required ? " *" : ""}
+      </Label>
+      <Input
+        id={id}
+        type="number"
+        inputMode="numeric"
+        min={min}
+        value={value ?? ""}
+        placeholder={required ? undefined : "Skip"}
+        onChange={(event) => {
+          const raw = event.target.value;
+          if (raw === "") {
+            onChange(null);
+            return;
+          }
+          const parsed = Number.parseInt(raw, 10);
+          onChange(Number.isNaN(parsed) ? null : Math.max(min, parsed));
+        }}
+        className="h-9 tabular-nums"
+      />
+      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
     </div>
   );
 }
@@ -115,9 +110,11 @@ interface CsvImportDialogProps {
 
 function CsvImportDialog({ open, onOpenChange }: CsvImportDialogProps) {
   const queryClient = useQueryClient();
+  const fieldId = useId();
   const [tab, setTab] = useState<string>("file");
   const [file, setFile] = useState<File | null>(null);
   const [params, setParams] = useState<CsvUserImportParams>({ ...defaultImportParams });
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const importMutation = useMutation({
     mutationFn: () => {
@@ -135,32 +132,52 @@ function CsvImportDialog({ open, onOpenChange }: CsvImportDialogProps) {
       onOpenChange(false);
       setFile(null);
       setParams({ ...defaultImportParams });
+      setValidationError(null);
     }
   });
 
-  const canSubmit = (tab === "file" && file !== null) || (tab === "sheet" && !!params.sheet_url);
+  // Validate on submit rather than disabling the button, so the reason a click
+  // does nothing is always stated instead of implied.
+  const handleImport = () => {
+    if (tab === "file" && !file) {
+      setValidationError("Choose a CSV file to import.");
+      return;
+    }
+    if (tab === "sheet" && !params.sheet_url) {
+      setValidationError("Paste a Google Sheets link to import from.");
+      return;
+    }
+    setValidationError(null);
+    importMutation.mutate();
+  };
+
+  const errorMessage =
+    validationError ??
+    (importMutation.error instanceof Error
+      ? `Could not import the file. ${importMutation.error.message}`
+      : null);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Import Users from CSV</DialogTitle>
+          <DialogTitle>Import player identities from CSV</DialogTitle>
           <DialogDescription>
-            Upload a CSV file or provide a Google Sheets link to bulk-create users.
+            Upload a CSV file or provide a Google Sheets link to bulk-create player identities.
           </DialogDescription>
         </DialogHeader>
 
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="file">CSV File</TabsTrigger>
+            <TabsTrigger value="file">CSV file</TabsTrigger>
             <TabsTrigger value="sheet">Google Sheets</TabsTrigger>
           </TabsList>
 
           <TabsContent value="file" className="space-y-4 pt-4">
             <div className="space-y-2">
-              <Label htmlFor="csv-file">CSV File</Label>
+              <Label htmlFor={`${fieldId}-file`}>CSV file *</Label>
               <Input
-                id="csv-file"
+                id={`${fieldId}-file`}
                 type="file"
                 accept=".csv,.txt"
                 onChange={(e) => setFile(e.target.files?.[0] ?? null)}
@@ -170,10 +187,10 @@ function CsvImportDialog({ open, onOpenChange }: CsvImportDialogProps) {
 
           <TabsContent value="sheet" className="space-y-4 pt-4">
             <div className="space-y-2">
-              <Label htmlFor="sheet-url">Google Sheets URL</Label>
+              <Label htmlFor={`${fieldId}-sheet-url`}>Google Sheets URL *</Label>
               <Input
-                id="sheet-url"
-                placeholder="https://docs.google.com/spreadsheets/d/..."
+                id={`${fieldId}-sheet-url`}
+                placeholder="https://docs.google.com/spreadsheets/d/…"
                 value={params.sheet_url ?? ""}
                 onChange={(e) => setParams({ ...params, sheet_url: e.target.value })}
               />
@@ -185,86 +202,74 @@ function CsvImportDialog({ open, onOpenChange }: CsvImportDialogProps) {
         </Tabs>
 
         <div className="space-y-3 pt-2">
-          <p className="text-sm font-medium">Column Mapping</p>
-          <div className="space-y-2">
-            <ColumnStepper
+          <p className="text-sm font-medium">Column mapping</p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <ColumnField
+              id={`${fieldId}-battle-tag-row`}
               label="BattleTag"
               value={params.battle_tag_row}
               onChange={(v) => setParams({ ...params, battle_tag_row: v ?? 1 })}
               required
             />
-            <ColumnStepper
+            <ColumnField
+              id={`${fieldId}-discord-row`}
               label="Discord"
               value={params.discord_row}
               onChange={(v) => setParams({ ...params, discord_row: v })}
             />
-            <ColumnStepper
+            <ColumnField
+              id={`${fieldId}-twitch-row`}
               label="Twitch"
               value={params.twitch_row}
               onChange={(v) => setParams({ ...params, twitch_row: v })}
             />
-            <ColumnStepper
+            <ColumnField
+              id={`${fieldId}-smurf-row`}
               label="Smurf"
               value={params.smurf_row}
               onChange={(v) => setParams({ ...params, smurf_row: v })}
             />
           </div>
+          <p className="text-xs text-muted-foreground">
+            Column numbers start at 1. Leave an optional column empty to skip it.
+          </p>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="start-row">Start Row</Label>
-            <div className="flex items-center gap-1">
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="h-9 w-9 shrink-0"
-                disabled={(params.start_row ?? 0) <= 0}
-                onClick={() =>
-                  setParams({ ...params, start_row: Math.max(0, (params.start_row ?? 0) - 1) })
-                }
-              >
-                <Minus className="h-3 w-3" />
-              </Button>
-              <div className="flex-1 text-center tabular-nums text-sm font-medium">
-                {params.start_row ?? 0}
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="h-9 w-9 shrink-0"
-                onClick={() => setParams({ ...params, start_row: (params.start_row ?? 0) + 1 })}
-              >
-                <Plus className="h-3 w-3" />
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">Skip header rows (0 = no skip)</p>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="delimiter">Delimiter</Label>
+          <ColumnField
+            id={`${fieldId}-start-row`}
+            label="Start row"
+            value={params.start_row ?? 0}
+            onChange={(v) => setParams({ ...params, start_row: v ?? 0 })}
+            required
+            min={0}
+            hint="Header rows to skip (0 = none)"
+          />
+          <div className="space-y-1.5">
+            <Label htmlFor={`${fieldId}-delimiter`} className="text-xs">
+              Delimiter *
+            </Label>
             <Input
-              id="delimiter"
+              id={`${fieldId}-delimiter`}
               value={params.delimiter ?? ","}
               onChange={(e) => setParams({ ...params, delimiter: e.target.value })}
+              className="h-9"
             />
           </div>
         </div>
 
-        {importMutation.error instanceof Error && (
-          <p className="text-sm text-destructive">{importMutation.error.message}</p>
+        {errorMessage && (
+          <p role="alert" className="text-sm text-danger">
+            {errorMessage}
+          </p>
         )}
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            onClick={() => importMutation.mutate()}
-            disabled={!canSubmit || importMutation.isPending}
-          >
-            {importMutation.isPending ? "Importing..." : "Import"}
+          <Button onClick={handleImport} disabled={importMutation.isPending}>
+            {importMutation.isPending ? "Importing…" : "Import identities"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -276,6 +281,8 @@ export default function UsersAdminPage() {
   const queryClient = useQueryClient();
   const { canAccessPermission, hasPermission, isSuperuser } = usePermissions();
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
+  const formId = useId();
+  const nameFieldId = `${formId}-name`;
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [profileUser, setProfileUser] = useState<User | null>(null);
@@ -333,7 +340,7 @@ export default function UsersAdminPage() {
         const detail = error instanceof Error ? error.message : "unknown error";
         return {
           user,
-          linkWarning: `Player "${user.name}" created, but linking to the auth account failed: ${detail}. Link it from Access Users.`
+          linkWarning: `Player “${user.name}” created, but linking to the auth account failed: ${detail}. Link it from Access users.`
         };
       }
     },
@@ -363,7 +370,8 @@ export default function UsersAdminPage() {
     {
       accessorKey: "id",
       header: "ID",
-      size: 60
+      size: 60,
+      cell: ({ row }) => <span className="tabular-nums">{row.original.id}</span>
     },
     {
       accessorKey: "name",
@@ -378,7 +386,7 @@ export default function UsersAdminPage() {
           .join("");
         return (
           <div className="flex items-center gap-2.5">
-            <Avatar className="h-7 w-7 text-[11px]">
+            <Avatar className="h-7 w-7 text-xs">
               <AvatarImage src={user.avatar_url ?? undefined} alt={user.name} />
               <AvatarFallback className="bg-muted/60 text-muted-foreground font-medium">
                 {initials || "?"}
@@ -395,9 +403,7 @@ export default function UsersAdminPage() {
       cell: ({ row }) => {
         const user = row.original;
         if (!user.social_accounts?.length) {
-          return (
-            <span className="text-xs text-muted-foreground/50 italic">No identities linked</span>
-          );
+          return <span className="text-xs italic text-muted-foreground">No identities linked</span>;
         }
         return <SocialAccountList accounts={user.social_accounts} linkify={false} />;
       }
@@ -414,15 +420,15 @@ export default function UsersAdminPage() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button aria-label={`Open actions for ${user.name}`} variant="ghost" size="icon">
-                <MoreHorizontal className="h-4 w-4" />
+                <MoreHorizontal aria-hidden className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+              <DropdownMenuLabel className="truncate">{user.name}</DropdownMenuLabel>
               {canOpenProfile && (
                 <DropdownMenuItem onClick={() => setProfileUser(user)}>
-                  <Pencil className="mr-2 h-4 w-4" />
-                  Edit Profile
+                  <Pencil aria-hidden className="mr-2 h-4 w-4" />
+                  Edit player identity
                 </DropdownMenuItem>
               )}
               {canFindAuthAccount && (
@@ -430,15 +436,15 @@ export default function UsersAdminPage() {
                   <Link
                     href={`/admin/access/users?search=${encodeURIComponent(user.name.split("#")[0] || user.name)}`}
                   >
-                    <UserCog className="mr-2 h-4 w-4" />
-                    Find in Access Users
+                    <UserCog aria-hidden className="mr-2 h-4 w-4" />
+                    Go to Access users
                   </Link>
                 </DropdownMenuItem>
               )}
               {canMerge && (
                 <DropdownMenuItem onClick={() => setMergeUser(user)}>
-                  <ArrowRightLeft className="mr-2 h-4 w-4" />
-                  Merge
+                  <ArrowRightLeft aria-hidden className="mr-2 h-4 w-4" />
+                  Merge into another identity
                 </DropdownMenuItem>
               )}
               {(canOpenProfile || canFindAuthAccount || canMerge) && canDelete && (
@@ -449,8 +455,8 @@ export default function UsersAdminPage() {
                   onClick={() => setDeletingUser(user)}
                   className="text-destructive"
                 >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Delete
+                  <Trash2 aria-hidden className="mr-2 h-4 w-4" />
+                  Delete player identity
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>
@@ -463,14 +469,14 @@ export default function UsersAdminPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader
-        title="Player Identities"
+        title="Player identities"
         description="Manage tournament identity records and linked Discord, BattleTag, and Twitch handles."
         actions={
           canCreate ? (
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
-                <Upload className="mr-2 h-4 w-4" />
-                Import CSV
+                <Upload aria-hidden className="mr-2 h-4 w-4" />
+                Import from CSV
               </Button>
               <Button
                 onClick={() => {
@@ -479,8 +485,8 @@ export default function UsersAdminPage() {
                   setCreateDialogOpen(true);
                 }}
               >
-                <Plus className="mr-2 h-4 w-4" />
-                Create User
+                <Plus aria-hidden className="mr-2 h-4 w-4" />
+                Create player identity
               </Button>
             </div>
           ) : null
@@ -507,12 +513,12 @@ export default function UsersAdminPage() {
           })
         }
         columns={columns}
-        searchPlaceholder="Search users..."
-        emptyMessage="No users found."
+        searchPlaceholder="Search player identities…"
+        emptyMessage="No player identities yet. Use “Create player identity” to add the first one."
         onRowClick={canOpenProfile ? (row) => setProfileUser(row.original) : undefined}
       />
 
-      {/* Create User Dialog */}
+      {/* Create player identity Dialog */}
       <EntityFormDialog
         open={createDialogOpen}
         onOpenChange={(open) => {
@@ -521,21 +527,23 @@ export default function UsersAdminPage() {
             resetCreateForm();
           }
         }}
-        title="Create User"
+        title="Create player identity"
         description="Create a new player identity in the system."
         onSubmit={handleCreateSubmit}
         isSubmitting={createMutation.isPending}
         submittingLabel="Creating player identity…"
         errorMessage={
-          createMutation.error instanceof Error ? createMutation.error.message : undefined
+          createMutation.error instanceof Error
+            ? `Check the player name and try again. (${createMutation.error.message})`
+            : undefined
         }
         isDirty={isCreateDirty}
       >
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="name">Name</Label>
+            <Label htmlFor={nameFieldId}>Name *</Label>
             <Input
-              id="name"
+              id={nameFieldId}
               value={createName}
               onChange={(e) => setCreateName(e.target.value)}
               placeholder="Player name (e.g. Karnage#22778)"
@@ -570,7 +578,8 @@ export default function UsersAdminPage() {
           onOpenChange={(open) => !open && setDeletingUser(null)}
           onConfirm={() => deleteMutation.mutate(deletingUser.id)}
           isDeleting={deleteMutation.isPending}
-          title={`Delete ${deletingUser.name}?`}
+          title="Delete player identity"
+          description={`“${deletingUser.name}” and everything linked to it will be permanently removed. This cannot be undone.`}
           cascadeInfo={[
             "All Discord identities",
             "All BattleTag identities",

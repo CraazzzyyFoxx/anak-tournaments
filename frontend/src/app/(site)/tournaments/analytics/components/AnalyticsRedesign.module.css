@@ -1049,6 +1049,13 @@
   border-color: var(--c-line-2);
   background: var(--c-surface-2);
 }
+/* Both .cKpiClickable and .cInfoDot opt into the tab order and handle
+   Enter/Space, but the stylesheet had no outline rule at all — a keyboard user
+   could activate a KPI without ever seeing which one was focused. */
+.cKpiClickable:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 2px;
+}
 .cKpiLabel {
   display: flex;
   align-items: center;
@@ -1106,6 +1113,12 @@
 }
 .cInfoDot:hover {
   border-color: var(--c-accent);
+  color: var(--c-accent);
+}
+.cInfoDot:focus-visible {
+  border-color: var(--c-accent);
+  outline: 2px solid var(--c-accent);
+  outline-offset: 2px;
   color: var(--c-accent);
 }
 .cTerm {

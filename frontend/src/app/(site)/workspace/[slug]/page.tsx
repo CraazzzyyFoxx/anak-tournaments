@@ -1,14 +1,13 @@
-import React, { Suspense } from "react";
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getTranslations } from "next-intl/server";
-import { Award, BarChart3, Scale, Trophy, Users } from "lucide-react";
+import { getLocale, getTranslations } from "next-intl/server";
+import { BarChart3, Calendar, Percent, Trophy, Users as UsersIcon } from "lucide-react";
 
-import StatisticsCard from "@/components/StatisticsCard";
+import { PlatformStatsGrid } from "@/components/stats/PlatformStatsGrid";
 import TournamentsChart from "@/components/TournamentsChart";
 import TournamentsDivisionChart from "@/components/TournamentsDivisionChart";
-import ChampionsTable from "@/components/ChampionsTable";
-import TopWinratePlayersTable from "@/components/TopWinratePlayersTable";
+import { LeaderboardCard } from "@/components/stats/LeaderboardCard";
 import HeroPlaytimeChart from "@/components/HeroPlaytimeChart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,19 +15,19 @@ import statisticsService from "@/services/statistics.service";
 import heroService from "@/services/hero.service";
 import workspaceService from "@/services/workspace.service";
 import tournamentService from "@/services/tournament.service";
+import { formatDateRange } from "@/lib/utils";
 import {
   ChartCardSkeleton,
   PopularHeroesCardSkeleton,
   StatsGridSkeleton,
   TableCardSkeleton,
-} from "@/app/home-skeletons";
+} from "@/components/skeletons/dashboard-skeletons";
 import {
   isTournamentStatusActive,
   getTournamentStatusMeta,
 } from "@/lib/tournament-status";
 import type { Tournament } from "@/types/tournament.types";
 import type { Workspace } from "@/types/workspace.types";
-import { Calendar, Users as UsersIcon } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -74,16 +73,7 @@ export default async function WorkspaceHome({
       </Suspense>
 
       {/* Charts + tables */}
-      <div
-        className="liquid-glass rounded-xl"
-        style={
-          {
-            "--lg-a": "30 41 59",
-            "--lg-b": "15 23 42",
-            "--lg-c": "99 102 241",
-          } as React.CSSProperties
-        }
-      >
+      <div className="liquid-glass rounded-xl">
         <div className="flex flex-col gap-1.5 p-6">
           <h2 className="text-3xl font-bold tracking-tight text-foreground font-display uppercase">
             {t("workspace.dashboard")}
@@ -100,31 +90,13 @@ export default async function WorkspaceHome({
       </div>
 
       <div className="grid gap-6 md:gap-8 lg:grid-cols-2">
-        <div
-          className="liquid-glass rounded-xl h-full"
-          style={
-            {
-              "--lg-a": "15 23 42",
-              "--lg-b": "30 41 59",
-              "--lg-c": "59 130 246",
-            } as React.CSSProperties
-          }
-        >
+        <div className="liquid-glass rounded-xl h-full">
           <Suspense fallback={<ChartCardSkeleton />}>
             <TournamentsChartCard workspaceId={wsId} />
           </Suspense>
         </div>
 
-        <div
-          className="liquid-glass rounded-xl h-full"
-          style={
-            {
-              "--lg-a": "15 23 42",
-              "--lg-b": "30 41 59",
-              "--lg-c": "139 92 246",
-            } as React.CSSProperties
-          }
-        >
+        <div className="liquid-glass rounded-xl h-full">
           <Suspense fallback={<ChartCardSkeleton />}>
             <TournamentsDivisionChartCard workspaceId={wsId} />
           </Suspense>
@@ -132,46 +104,19 @@ export default async function WorkspaceHome({
       </div>
 
       <div className="grid gap-6 md:gap-8 lg:grid-cols-8 pb-8">
-        <div
-          className="liquid-glass rounded-xl h-full lg:col-span-2"
-          style={
-            {
-              "--lg-a": "15 23 42",
-              "--lg-b": "30 41 59",
-              "--lg-c": "16 185 129",
-            } as React.CSSProperties
-          }
-        >
+        <div className="liquid-glass rounded-xl h-full lg:col-span-2">
           <Suspense fallback={<TableCardSkeleton />}>
-            <ChampionsTableCard workspaceId={wsId} />
+            <ChampionsLeaderboard workspaceId={wsId} />
           </Suspense>
         </div>
 
-        <div
-          className="liquid-glass rounded-xl h-full lg:col-span-2"
-          style={
-            {
-              "--lg-a": "15 23 42",
-              "--lg-b": "30 41 59",
-              "--lg-c": "245 158 11",
-            } as React.CSSProperties
-          }
-        >
+        <div className="liquid-glass rounded-xl h-full lg:col-span-2">
           <Suspense fallback={<TableCardSkeleton />}>
-            <TopWinratePlayersTableCard workspaceId={wsId} />
+            <TopWinrateLeaderboard workspaceId={wsId} />
           </Suspense>
         </div>
 
-        <div
-          className="liquid-glass rounded-xl h-full lg:col-span-4"
-          style={
-            {
-              "--lg-a": "15 23 42",
-              "--lg-b": "30 41 59",
-              "--lg-c": "236 72 153",
-            } as React.CSSProperties
-          }
-        >
+        <div className="liquid-glass rounded-xl h-full lg:col-span-4">
           <Suspense fallback={<PopularHeroesCardSkeleton />}>
             <PopularHeroesCard workspaceId={wsId} />
           </Suspense>
@@ -188,16 +133,7 @@ export default async function WorkspaceHome({
 async function WorkspaceHeader({ workspace }: { workspace: Workspace }) {
   const t = await getTranslations();
   return (
-    <div
-      className="liquid-glass rounded-xl p-6 flex flex-col gap-6 md:flex-row md:items-center md:justify-between"
-      style={
-        {
-          "--lg-a": "30 41 59",
-          "--lg-b": "15 23 42",
-          "--lg-c": "99 102 241",
-        } as React.CSSProperties
-      }
-    >
+    <div className="liquid-glass rounded-xl p-6 flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
       <div className="flex flex-col gap-1.5">
         <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
           {t("workspace.eyebrow")}
@@ -281,19 +217,22 @@ async function WorkspaceEventsSection({ workspaceId }: { workspaceId: number }) 
 
 async function EventCard({ tournament }: { tournament: TournamentWithCount }) {
   const t = await getTranslations();
+  const locale = await getLocale();
   const isLive = tournament.status === "live" || tournament.status === "playoffs";
   const statusMeta = getTournamentStatusMeta(tournament.status);
 
-  const startDate = new Date(tournament.start_date);
-  const endDate = new Date(tournament.end_date);
-  const sameDay = startDate.toDateString() === endDate.toDateString();
-  const dateStr = sameDay
-    ? startDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-    : `${startDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${endDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+  const dateStr = formatDateRange(
+    tournament.start_date,
+    tournament.end_date,
+    locale
+  );
 
   return (
-    <Link href={`/tournaments/${tournament.id}`}>
-      <div className="group h-full rounded-xl border border-border/60 bg-card/50 p-4 flex flex-col gap-3 hover:bg-card hover:border-border transition-all duration-150 cursor-pointer">
+    <Link
+      href={`/tournaments/${tournament.id}`}
+      className="rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-bg)]"
+    >
+      <div className="group h-full rounded-xl border border-border/60 bg-card/50 p-4 flex flex-col gap-3 hover:bg-card hover:border-border transition-all duration-150">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
             {isLive ? (
@@ -392,34 +331,7 @@ async function StatsGrid({ workspaceId }: { workspaceId: number }) {
     );
   }
 
-  return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-      <StatisticsCard
-        name={t("statistics.statTournamentsHeld")}
-        value={overall.tournaments}
-        icon={<Trophy className="h-4 w-4" />}
-        iconClassName="bg-indigo-500/10 text-indigo-400"
-      />
-      <StatisticsCard
-        name={t("statistics.statTeamsBalanced")}
-        value={overall.teams}
-        icon={<Scale className="h-4 w-4" />}
-        iconClassName="bg-blue-500/10 text-blue-400"
-      />
-      <StatisticsCard
-        name={t("statistics.statPlayersParticipated")}
-        value={overall.players}
-        icon={<Users className="h-4 w-4" />}
-        iconClassName="bg-emerald-500/10 text-emerald-400"
-      />
-      <StatisticsCard
-        name={t("common.champions")}
-        value={overall.champions}
-        icon={<Award className="h-4 w-4" />}
-        iconClassName="bg-amber-500/10 text-amber-400"
-      />
-    </div>
-  );
+  return <PlatformStatsGrid totals={overall} />;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -482,7 +394,7 @@ async function TournamentsDivisionChartCard({ workspaceId }: { workspaceId: numb
   );
 }
 
-async function ChampionsTableCard({ workspaceId }: { workspaceId: number }) {
+async function ChampionsLeaderboard({ workspaceId }: { workspaceId: number }) {
   const t = await getTranslations();
   let champions = null;
   let hasError = false;
@@ -503,12 +415,18 @@ async function ChampionsTableCard({ workspaceId }: { workspaceId: number }) {
 
   return (
     <div className="bg-card/80 backdrop-blur-sm rounded-xl h-full border-0">
-      <ChampionsTable champions={champions.results} />
+      <LeaderboardCard
+        title={t("common.champions")}
+        icon={<Trophy className="h-4 w-4 text-[color:var(--aqt-amber)]" />}
+        rows={champions.results}
+        format={(value) => `${value}×`}
+        accent="teal"
+      />
     </div>
   );
 }
 
-async function TopWinratePlayersTableCard({ workspaceId }: { workspaceId: number }) {
+async function TopWinrateLeaderboard({ workspaceId }: { workspaceId: number }) {
   const t = await getTranslations();
   let players = null;
   let hasError = false;
@@ -531,7 +449,13 @@ async function TopWinratePlayersTableCard({ workspaceId }: { workspaceId: number
 
   return (
     <div className="bg-card/80 backdrop-blur-sm rounded-xl h-full border-0">
-      <TopWinratePlayersTable players={players.results} />
+      <LeaderboardCard
+        title={t("workspace.topPlayersByWinRatio")}
+        icon={<Percent className="h-4 w-4 text-[color:var(--aqt-emerald)]" />}
+        rows={players.results}
+        format={(value) => (Number.isFinite(value) ? `${(value * 100).toFixed(1)}%` : "-")}
+        accent="emerald"
+      />
     </div>
   );
 }

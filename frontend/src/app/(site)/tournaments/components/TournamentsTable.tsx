@@ -2,39 +2,41 @@
 
 import React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { LayoutGrid, ArrowUpRight } from "lucide-react";
 
 import type { Tournament } from "@/types/tournament.types";
 import { cn, formatDateRange } from "@/lib/utils";
+import { getTournamentStatusMeta } from "@/lib/tournament-status";
+import { DataPagination } from "@/components/ui/data-pagination";
 import { relativeTime, stageProgress } from "./tournaments-helpers";
-
-const stopPropagation = (event: React.MouseEvent) => event.stopPropagation();
 
 const TournamentRow = ({ tournament }: { tournament: Tournament }) => {
   const t = useTranslations();
-  const router = useRouter();
-  const designClass =
-    tournament.status === "live" || tournament.status === "playoffs"
-      ? "live"
-      : tournament.status === "registration" || tournament.status === "check_in"
-        ? "upcoming"
-        : tournament.status === "completed" || tournament.status === "archived"
-          ? "finished"
-          : "draft";
+  const locale = useLocale();
+  const { variant } = getTournamentStatusMeta(tournament.status);
   const stage = stageProgress(tournament, tournament.status, t);
   const players = tournament.participants_count ?? 0;
 
   return (
-    <tr onClick={() => router.push(`/tournaments/${tournament.id}`)}>
+    <tr className="relative">
       <td>
+        {/* Row-wide stretched link. The row *looks* clickable (`cursor: pointer`
+            in the shared table CSS) and used to be driven by `onClick` on the
+            <tr>, which made it unreachable by keyboard and invisible to AT.
+            This keeps the whole-row target while being a real, focusable,
+            announced link whose focus ring outlines the entire row. */}
+        <Link
+          href={`/tournaments/${tournament.id}`}
+          aria-label={t("tournamentsList.row.openAria", { name: tournament.name })}
+          className="absolute inset-0 z-[1] rounded-[2px] outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]"
+        />
         <div className="tn-name-cell">
           <span className="nm">
             {tournament.name}
             {(tournament.status === "live" || tournament.status === "playoffs") && (
               <span className="status-pill live" style={{ fontSize: "8.5px", padding: "2px 7px" }}>
-                <span className="dot" />
+                <span aria-hidden className="dot" />
                 {t("common.live")}
               </span>
             )}
@@ -54,7 +56,7 @@ const TournamentRow = ({ tournament }: { tournament: Tournament }) => {
             )}
           </span>
           <span className="sub">
-            {formatDateRange(tournament.start_date, tournament.end_date)}
+            {formatDateRange(tournament.start_date, tournament.end_date, locale)}
             {tournament.is_league && (
               <>
                 <span className="sep">·</span>
@@ -71,8 +73,8 @@ const TournamentRow = ({ tournament }: { tournament: Tournament }) => {
         </div>
       </td>
       <td>
-        <span className={`tn-status ${designClass}`}>
-          <span className="dot" />
+        <span className={`tn-status ${variant}`}>
+          <span aria-hidden className="dot" />
           {t(`common.statusBadge.${tournament.status}`)}
         </span>
       </td>
@@ -94,7 +96,7 @@ const TournamentRow = ({ tournament }: { tournament: Tournament }) => {
       <td>
         <div className="tn-teams">
           <div className="stack">
-            <span className="big">{players}</span>
+            <span className="big tabular-nums">{players}</span>
             <span className="sub">{t("common.players")}</span>
           </div>
         </div>
@@ -105,22 +107,22 @@ const TournamentRow = ({ tournament }: { tournament: Tournament }) => {
         </span>
       </td>
       <td className="r">
-        <div className="tn-actions">
+        {/* z-[2] keeps these above the stretched row link so they stay
+            independently clickable. */}
+        <div className="tn-actions relative z-[2]">
           <Link
             href={`/tournaments/${tournament.id}/bracket`}
             className="icon-btn"
-            title={t("common.bracket")}
-            onClick={stopPropagation}
+            aria-label={t("tournamentsList.row.bracketAria", { name: tournament.name })}
           >
-            <LayoutGrid width={13} height={13} />
+            <LayoutGrid aria-hidden width={13} height={13} />
           </Link>
           <Link
             href={`/tournaments/${tournament.id}`}
             className="icon-btn"
-            title={t("common.open")}
-            onClick={stopPropagation}
+            aria-label={t("tournamentsList.row.openAria", { name: tournament.name })}
           >
-            <ArrowUpRight width={13} height={13} />
+            <ArrowUpRight aria-hidden width={13} height={13} />
           </Link>
         </div>
       </td>
@@ -150,14 +152,22 @@ const TournamentsTable = ({ tournaments, page, pageSize, onPageChange }: Tournam
       <table className="tn">
         <thead>
           <tr>
-            <th>{t("common.tournament")}</th>
-            <th style={{ width: 120 }}>{t("common.status")}</th>
-            <th style={{ width: 170 }}>{t("common.stage")}</th>
-            <th style={{ width: 110 }}>{t("common.playersLabel")}</th>
-            <th className="r" style={{ width: 110 }}>
+            <th scope="col">{t("common.tournament")}</th>
+            <th scope="col" style={{ width: 120 }}>
+              {t("common.status")}
+            </th>
+            <th scope="col" style={{ width: 170 }}>
+              {t("common.stage")}
+            </th>
+            <th scope="col" style={{ width: 110 }}>
+              {t("common.playersLabel")}
+            </th>
+            <th scope="col" className="r" style={{ width: 110 }}>
               {t("common.updated")}
             </th>
-            <th className="r" style={{ width: 80 }} />
+            <th scope="col" className="r" style={{ width: 80 }}>
+              <span className="sr-only">{t("common.actions")}</span>
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -167,43 +177,17 @@ const TournamentsTable = ({ tournaments, page, pageSize, onPageChange }: Tournam
         </tbody>
       </table>
 
-      <div className="pagination">
-        <span className="page-info">
-          {t("common.showingRange", {
-            start: String(rangeStart),
-            end: String(rangeEnd),
-            total: String(total)
-          })}
-        </span>
-        <div className="page-controls">
-          <button
-            type="button"
-            className={cn("page-btn", safePage <= 1 && "disabled")}
-            onClick={() => safePage > 1 && onPageChange(safePage - 1)}
-            disabled={safePage <= 1}
-          >
-            ←
-          </button>
-          {Array.from({ length: totalPages }, (_, index) => index + 1).map((pageNumber) => (
-            <button
-              key={pageNumber}
-              type="button"
-              className={cn("page-btn", pageNumber === safePage && "active")}
-              onClick={() => onPageChange(pageNumber)}
-            >
-              {pageNumber}
-            </button>
-          ))}
-          <button
-            type="button"
-            className={cn("page-btn", safePage >= totalPages && "disabled")}
-            onClick={() => safePage < totalPages && onPageChange(safePage + 1)}
-            disabled={safePage >= totalPages}
-          >
-            →
-          </button>
-        </div>
-      </div>
+      <DataPagination
+        className="pagination"
+        page={safePage}
+        totalPages={totalPages}
+        onPageChange={onPageChange}
+        summary={t("common.showingRange", {
+          start: String(rangeStart),
+          end: String(rangeEnd),
+          total: String(total)
+        })}
+      />
     </section>
   );
 };

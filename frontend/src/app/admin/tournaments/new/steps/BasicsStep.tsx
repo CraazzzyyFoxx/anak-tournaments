@@ -29,7 +29,7 @@ export function BasicsStep({
 }: BasicsStepProps) {
   return (
     <Tabs value={source} onValueChange={(next) => onSourceChange(next as WizardSource)}>
-      <TabsList className="mb-4">
+      <TabsList className="mb-4" aria-label="Tournament source">
         <TabsTrigger value="manual">Manual</TabsTrigger>
         <TabsTrigger value="challonge">From Challonge</TabsTrigger>
       </TabsList>

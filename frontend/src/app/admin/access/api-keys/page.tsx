@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Check, Clipboard, KeyRound, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
 
@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { DateTimePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -34,6 +35,8 @@ import {
 } from "@/components/ui/select";
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
+import { TONE_TEXT, type Tone } from "@/components/admin/tone";
 import {
   fetchAccountApiKeys,
   useCreateAccountApiKey,
@@ -76,25 +79,10 @@ const EMPTY_COUNTS: AccountApiKeyStatusCounts = { total: 0, active: 0, expired: 
 
 type ApiKeyStatus = "active" | "expired" | "revoked";
 
-const STATUS_META: Record<
-  ApiKeyStatus,
-  { label: string; dotClassName: string; textClassName: string }
-> = {
-  active: {
-    label: "Active",
-    dotClassName: "bg-emerald-500",
-    textClassName: "text-emerald-500"
-  },
-  expired: {
-    label: "Expired",
-    dotClassName: "bg-slate-500",
-    textClassName: "text-slate-500"
-  },
-  revoked: {
-    label: "Revoked",
-    dotClassName: "bg-amber-500",
-    textClassName: "text-amber-500"
-  }
+const STATUS_META: Record<ApiKeyStatus, { label: string; tone: Tone }> = {
+  active: { label: "Active", tone: "success" },
+  expired: { label: "Expired", tone: "neutral" },
+  revoked: { label: "Revoked", tone: "warning" }
 };
 
 function formatTimestamp(value: string | null | undefined): string {
@@ -130,62 +118,43 @@ function getApiKeyStatus(apiKey: AccountApiKey): ApiKeyStatus {
   return "active";
 }
 
-function mergeLimits(limits: Partial<ApiKeyLimits> | undefined): ApiKeyLimits {
-  return { ...DEFAULT_LIMITS, ...(limits ?? {}) };
-}
-
-function mergePolicy(policy: Partial<ApiKeyConfigPolicy> | undefined): ApiKeyConfigPolicy {
-  return {
-    allowed_keys: policy?.allowed_keys ?? DEFAULT_POLICY.allowed_keys,
-    max_values: policy?.max_values ?? DEFAULT_POLICY.max_values
-  };
-}
-
 function StatusCell({ status }: { status: ApiKeyStatus }) {
   const meta = STATUS_META[status];
 
   return (
     <span
-      className={cn("inline-flex items-center gap-1.5 text-xs font-medium", meta.textClassName)}
+      className={cn("inline-flex items-center gap-1.5 text-xs font-medium", TONE_TEXT[meta.tone])}
     >
-      <span className={cn("size-1.5 rounded-full", meta.dotClassName)} />
+      <span aria-hidden className="size-1.5 rounded-full bg-current" />
       {meta.label}
     </span>
   );
 }
 
-function Metric({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-lg border border-border/50 bg-muted/20 px-3 py-2">
-      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60">
-        {label}
-      </p>
-      <p className="mt-0.5 truncate text-sm font-semibold text-foreground">{value}</p>
-    </div>
-  );
-}
-
 function LimitsText({ limits }: { limits: Partial<ApiKeyLimits> | undefined }) {
-  const merged = mergeLimits(limits);
+  const merged: ApiKeyLimits = { ...DEFAULT_LIMITS, ...(limits ?? {}) };
 
   return (
-    <span className="text-xs text-muted-foreground">
-      {merged.requests_per_minute}/min | {merged.jobs_per_day}/day | {merged.concurrent_jobs}{" "}
-      concurrent | {formatBytes(merged.max_upload_bytes)}
+    <span className="text-xs tabular-nums text-muted-foreground">
+      {merged.requests_per_minute}/min · {merged.jobs_per_day}/day · {merged.concurrent_jobs}{" "}
+      concurrent · {formatBytes(merged.max_upload_bytes)}
     </span>
   );
 }
 
 function PolicyText({ policy }: { policy: Partial<ApiKeyConfigPolicy> | undefined }) {
-  const merged = mergePolicy(policy);
+  const merged = {
+    allowed_keys: policy?.allowed_keys ?? DEFAULT_POLICY.allowed_keys,
+    max_values: policy?.max_values ?? DEFAULT_POLICY.max_values
+  };
   const caps = Object.entries(merged.max_values ?? {});
   const capSummary =
-    caps.length > 0 ? caps.map(([field, cap]) => `${field} <= ${cap}`).join(", ") : "No caps";
+    caps.length > 0 ? caps.map(([field, cap]) => `${field} ≤ ${cap}`).join(", ") : "No caps";
 
   return (
-    <div className="max-w-[280px] text-xs text-muted-foreground">
+    <div className="max-w-72 text-xs text-muted-foreground">
       <p className="truncate">Allowed: {merged.allowed_keys.join(", ") || "None"}</p>
-      <p className="truncate">{capSummary}</p>
+      <p className="truncate tabular-nums">{capSummary}</p>
     </div>
   );
 }
@@ -195,8 +164,8 @@ function DefaultPolicyPreview() {
     <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
       <div className="rounded-md border border-border/60 bg-muted/20 p-2">
         <p className="font-medium text-foreground">Limits</p>
-        <p className="mt-1">
-          {DEFAULT_LIMITS.requests_per_minute}/min, {DEFAULT_LIMITS.jobs_per_day}/day,{" "}
+        <p className="mt-1 tabular-nums">
+          {DEFAULT_LIMITS.requests_per_minute}/min · {DEFAULT_LIMITS.jobs_per_day}/day ·{" "}
           {DEFAULT_LIMITS.concurrent_jobs} concurrent
         </p>
       </div>
@@ -223,6 +192,12 @@ export default function AccessAdminApiKeysPage() {
   const [renameName, setRenameName] = useState("");
   const [revokeTarget, setRevokeTarget] = useState<AccountApiKey | null>(null);
   const [counts, setCounts] = useState<AccountApiKeyStatusCounts>(EMPTY_COUNTS);
+  const [copiedSecret, setCopiedSecret] = useState(false);
+  const workspaceFilterId = useId();
+  const createNameId = useId();
+  const createWorkspaceFieldId = useId();
+  const renameNameId = useId();
+  const secretId = useId();
 
   useEffect(() => {
     if (workspaces.length === 0) {
@@ -266,7 +241,18 @@ export default function AccessAdminApiKeysPage() {
   };
 
   const handleCreate = () => {
-    if (effectiveCreateWorkspaceId === null || createName.trim().length === 0) return;
+    if (createName.trim().length === 0) {
+      notify.error("Name the key before creating it.", {
+        description: 'Use something that says where it is used, such as "Balancer API".'
+      });
+      return;
+    }
+    if (effectiveCreateWorkspaceId === null) {
+      notify.error("Pick a workspace for this key.", {
+        description: "An API key is always scoped to exactly one workspace."
+      });
+      return;
+    }
 
     createMutation.mutate(
       {
@@ -277,6 +263,7 @@ export default function AccessAdminApiKeysPage() {
       {
         onSuccess: (result) => {
           setOneTimeKey(result.key);
+          setCopiedSecret(false);
           setSelectedWorkspaceId(result.api_key.workspace_id);
           setCreateWorkspaceId(result.api_key.workspace_id);
           setCreateExpiresAt("");
@@ -291,7 +278,13 @@ export default function AccessAdminApiKeysPage() {
   };
 
   const handleRename = () => {
-    if (!renameTarget || renameName.trim().length === 0) return;
+    if (!renameTarget) return;
+    if (renameName.trim().length === 0) {
+      notify.error("Enter a name for this key.", {
+        description: "The name is how you recognise the key in this list."
+      });
+      return;
+    }
 
     renameMutation.mutate(
       { id: renameTarget.id, name: renameName.trim() },
@@ -319,6 +312,7 @@ export default function AccessAdminApiKeysPage() {
   const copyOneTimeKey = async () => {
     if (!oneTimeKey) return;
     await navigator.clipboard.writeText(oneTimeKey);
+    setCopiedSecret(true);
     notify.success("API key copied");
   };
 
@@ -331,12 +325,12 @@ export default function AccessAdminApiKeysPage() {
         return (
           <div className="flex min-w-0 items-center gap-2">
             <div className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/20">
-              <KeyRound className="size-4 text-muted-foreground" />
+              <KeyRound aria-hidden className="size-4 text-muted-foreground" />
             </div>
             <div className="min-w-0">
               <p className="truncate text-sm font-medium text-foreground">{apiKey.name}</p>
               <p className="truncate font-mono text-xs text-muted-foreground">
-                aqt_sk_{apiKey.public_id}_...
+                aqt_sk_{apiKey.public_id}_…
               </p>
             </div>
           </div>
@@ -353,14 +347,16 @@ export default function AccessAdminApiKeysPage() {
       accessorKey: "created_at",
       header: "Created",
       cell: ({ row }) => (
-        <span className="text-xs text-muted-foreground">{formatTimestamp(row.original.created_at)}</span>
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {formatTimestamp(row.original.created_at)}
+        </span>
       )
     },
     {
       accessorKey: "last_used_at",
-      header: "Last Used",
+      header: "Last used",
       cell: ({ row }) => (
-        <span className="text-xs text-muted-foreground">
+        <span className="text-xs tabular-nums text-muted-foreground">
           {formatTimestamp(row.original.last_used_at)}
         </span>
       )
@@ -369,7 +365,9 @@ export default function AccessAdminApiKeysPage() {
       accessorKey: "expires_at",
       header: "Expires",
       cell: ({ row }) => (
-        <span className="text-xs text-muted-foreground">{formatTimestamp(row.original.expires_at)}</span>
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {formatTimestamp(row.original.expires_at)}
+        </span>
       )
     },
     {
@@ -390,7 +388,7 @@ export default function AccessAdminApiKeysPage() {
       cell: ({ row }) => {
         const apiKey = row.original;
         if (getApiKeyStatus(apiKey) !== "active") {
-          return <span className="text-xs text-muted-foreground/60">No actions</span>;
+          return <span className="text-xs text-muted-foreground">No actions</span>;
         }
         return (
           <div className="flex justify-end gap-1">
@@ -398,21 +396,21 @@ export default function AccessAdminApiKeysPage() {
               variant="ghost"
               size="icon"
               className="size-8 rounded-md"
+              aria-label={`Rename API key ${apiKey.name}`}
               disabled={renameMutation.isPending || revokeMutation.isPending}
               onClick={() => openRenameDialog(apiKey)}
             >
-              <Pencil className="size-4" />
-              <span className="sr-only">Rename API key</span>
+              <Pencil aria-hidden className="size-4" />
             </Button>
             <Button
               variant="ghost"
               size="icon"
               className="size-8 rounded-md text-destructive hover:text-destructive"
+              aria-label={`Revoke API key ${apiKey.name}`}
               disabled={revokeMutation.isPending}
               onClick={() => setRevokeTarget(apiKey)}
             >
-              <Trash2 className="size-4" />
-              <span className="sr-only">Revoke API key</span>
+              <Trash2 aria-hidden className="size-4" />
             </Button>
           </div>
         );
@@ -424,11 +422,12 @@ export default function AccessAdminApiKeysPage() {
     return (
       <div className="space-y-4">
         <AdminPageHeader
-          title="API Keys"
+          title="API keys"
           description="Manage workspace-scoped credentials for the balancer public API."
         />
         <div className="rounded-lg border border-dashed border-border/70 px-4 py-6 text-sm text-muted-foreground">
-          No workspaces are available for API keys.
+          API keys are scoped to a workspace, and you do not administer one yet. Ask a superuser for
+          workspace admin rights, then reload this page.
         </div>
       </div>
     );
@@ -437,91 +436,82 @@ export default function AccessAdminApiKeysPage() {
   return (
     <div className="space-y-4">
       <AdminPageHeader
-        title="API Keys"
+        title="API keys"
         description="Manage workspace-scoped credentials for the balancer public API."
         actions={
           <Button onClick={() => setIsCreateOpen(true)}>
-            <Plus className="size-4" />
+            <Plus aria-hidden className="size-4" />
             Create key
           </Button>
         }
       />
 
-      <div className="rounded-xl border border-border/50 bg-card/50">
-        <div className="flex flex-col gap-3 border-b border-border/40 p-3 lg:flex-row lg:items-end lg:justify-between">
-          <div className="w-full space-y-1.5 lg:max-w-xs">
-            <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
-              Workspace
-            </label>
-            <Select
-              value={
-                effectiveSelectedWorkspaceId !== null
-                  ? String(effectiveSelectedWorkspaceId)
-                  : undefined
-              }
-              onValueChange={(value) => {
-                const nextWorkspaceId = Number(value);
-                setSelectedWorkspaceId(nextWorkspaceId);
-                setCreateWorkspaceId(nextWorkspaceId);
-              }}
-            >
-              <SelectTrigger className="h-9 bg-muted/20">
-                <SelectValue placeholder="Select workspace" />
-              </SelectTrigger>
-              <SelectContent>
-                {manageableWorkspaces.map((workspace) => (
-                  <SelectItem key={workspace.id} value={String(workspace.id)}>
-                    {workspace.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+      <StatTileGrid>
+        <StatTile
+          label="Total keys"
+          value={counts.total}
+          detail={selectedWorkspace ? `In ${selectedWorkspace.name}` : undefined}
+          icon={KeyRound}
+        />
+        <StatTile label="Active" value={counts.active} tone="success" />
+        <StatTile label="Expired" value={counts.expired} tone="neutral" />
+        <StatTile label="Revoked" value={counts.revoked} tone="warning" />
+      </StatTileGrid>
 
-          <div className="grid gap-2 sm:grid-cols-4 lg:min-w-[520px]">
-            <Metric label="Workspace" value={selectedWorkspace?.name ?? "Selected"} />
-            <Metric label="Active" value={counts.active} />
-            <Metric label="Expired" value={counts.expired} />
-            <Metric label="Revoked" value={counts.revoked} />
-          </div>
-        </div>
-
-        {oneTimeKey ? (
-          <div className="bg-emerald-500/5 px-3 py-3">
-            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-foreground">One-time secret</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  This full API key is visible only once.
-                </p>
-                <code className="mt-2 block overflow-x-auto rounded-md border border-emerald-500/20 bg-background/80 p-2 text-xs text-emerald-700 dark:text-emerald-300">
-                  {oneTimeKey}
-                </code>
-              </div>
-              <div className="flex shrink-0 gap-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 rounded-md"
-                  onClick={() => void copyOneTimeKey()}
-                >
-                  <Clipboard className="size-4" />
-                  Copy
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-8 rounded-md"
-                  onClick={() => setOneTimeKey(null)}
-                >
-                  <X className="size-4" />
-                  <span className="sr-only">Dismiss secret</span>
-                </Button>
-              </div>
+      {oneTimeKey ? (
+        <div className="rounded-xl border border-success/40 bg-success/10 p-3">
+          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div className="min-w-0 flex-1">
+              <Label htmlFor={secretId} className="text-sm font-medium text-foreground">
+                One-time secret
+              </Label>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                This full API key is visible only once. Copy it now — reopening this page will not
+                show it again.
+              </p>
+              <Input
+                id={secretId}
+                readOnly
+                value={oneTimeKey}
+                className="mt-2 bg-background/80 font-mono text-xs"
+                onFocus={(event) => event.currentTarget.select()}
+              />
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <span role="status" className="text-xs text-muted-foreground">
+                {copiedSecret ? (
+                  <span className="inline-flex items-center gap-1">
+                    <Check aria-hidden className="size-3.5" />
+                    Copied to clipboard
+                  </span>
+                ) : null}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 rounded-md"
+                aria-label="Copy the API key secret to the clipboard"
+                onClick={() => void copyOneTimeKey()}
+              >
+                <Clipboard aria-hidden className="size-4" />
+                Copy secret
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8 rounded-md"
+                aria-label="Dismiss the one-time secret"
+                onClick={() => {
+                  setOneTimeKey(null);
+                  setCopiedSecret(false);
+                }}
+              >
+                <X aria-hidden className="size-4" />
+              </Button>
             </div>
           </div>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       <AdminDataTable
         initialPageSize={PAGE_SIZE}
@@ -552,8 +542,38 @@ export default function AccessAdminApiKeysPage() {
           return result;
         }}
         columns={columns}
-        searchPlaceholder="Search by name..."
-        emptyMessage="No API keys for this workspace."
+        searchPlaceholder="Search by name…"
+        emptyMessage="No API keys in this workspace yet. Create one to call the balancer public API."
+        actions={
+          <div className="flex items-center gap-2">
+            <Label htmlFor={workspaceFilterId} className="text-xs text-muted-foreground">
+              Workspace
+            </Label>
+            <Select
+              value={
+                effectiveSelectedWorkspaceId !== null
+                  ? String(effectiveSelectedWorkspaceId)
+                  : undefined
+              }
+              onValueChange={(value) => {
+                const nextWorkspaceId = Number(value);
+                setSelectedWorkspaceId(nextWorkspaceId);
+                setCreateWorkspaceId(nextWorkspaceId);
+              }}
+            >
+              <SelectTrigger id={workspaceFilterId} className="h-9 w-56 bg-muted/20">
+                <SelectValue placeholder="Select workspace" />
+              </SelectTrigger>
+              <SelectContent>
+                {manageableWorkspaces.map((workspace) => (
+                  <SelectItem key={workspace.id} value={String(workspace.id)}>
+                    {workspace.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        }
       />
 
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
@@ -566,19 +586,16 @@ export default function AccessAdminApiKeysPage() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
-                Name
-              </label>
+              <Label htmlFor={createNameId}>Name</Label>
               <Input
+                id={createNameId}
                 value={createName}
                 onChange={(event) => setCreateName(event.target.value)}
                 maxLength={100}
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
-                Workspace
-              </label>
+              <Label htmlFor={createWorkspaceFieldId}>Workspace</Label>
               <Select
                 value={
                   effectiveCreateWorkspaceId !== null
@@ -587,7 +604,7 @@ export default function AccessAdminApiKeysPage() {
                 }
                 onValueChange={(value) => setCreateWorkspaceId(Number(value))}
               >
-                <SelectTrigger>
+                <SelectTrigger id={createWorkspaceFieldId}>
                   <SelectValue placeholder="Select workspace" />
                 </SelectTrigger>
                 <SelectContent>
@@ -621,20 +638,13 @@ export default function AccessAdminApiKeysPage() {
             >
               Cancel
             </Button>
-            <Button
-              onClick={handleCreate}
-              disabled={
-                createMutation.isPending ||
-                effectiveCreateWorkspaceId === null ||
-                createName.trim().length === 0
-              }
-            >
+            <Button onClick={handleCreate} disabled={createMutation.isPending}>
               {createMutation.isPending ? (
-                <Loader2 className="size-4 animate-spin" />
+                <Loader2 aria-hidden className="size-4 animate-spin" />
               ) : (
-                <Plus className="size-4" />
+                <Plus aria-hidden className="size-4" />
               )}
-              Create
+              {createMutation.isPending ? "Creating…" : "Create key"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -655,10 +665,9 @@ export default function AccessAdminApiKeysPage() {
             <DialogDescription>Update the display name used in this admin list.</DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5">
-            <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
-              Name
-            </label>
+            <Label htmlFor={renameNameId}>Name</Label>
             <Input
+              id={renameNameId}
               value={renameName}
               onChange={(event) => setRenameName(event.target.value)}
               maxLength={100}
@@ -675,16 +684,13 @@ export default function AccessAdminApiKeysPage() {
             >
               Cancel
             </Button>
-            <Button
-              onClick={handleRename}
-              disabled={renameMutation.isPending || renameName.trim().length === 0}
-            >
+            <Button onClick={handleRename} disabled={renameMutation.isPending}>
               {renameMutation.isPending ? (
-                <Loader2 className="size-4 animate-spin" />
+                <Loader2 aria-hidden className="size-4 animate-spin" />
               ) : (
-                <Check className="size-4" />
+                <Check aria-hidden className="size-4" />
               )}
-              Save
+              {renameMutation.isPending ? "Saving…" : "Save name"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -696,9 +702,11 @@ export default function AccessAdminApiKeysPage() {
       >
         <AlertDialogContent className="rounded-xl">
           <AlertDialogHeader>
-            <AlertDialogTitle>Revoke API key?</AlertDialogTitle>
+            <AlertDialogTitle>Revoke API key</AlertDialogTitle>
             <AlertDialogDescription>
-              Existing requests with this key will stop validating. This action cannot be undone.
+              Revoking {revokeTarget?.name ?? "this key"} stops every request that uses it
+              immediately, so any integration still sending it starts failing with 401. The key
+              cannot be restored — issue a new one instead.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -709,11 +717,11 @@ export default function AccessAdminApiKeysPage() {
               onClick={handleRevoke}
             >
               {revokeMutation.isPending ? (
-                <Loader2 className="size-4 animate-spin" />
+                <Loader2 aria-hidden className="size-4 animate-spin" />
               ) : (
-                <Trash2 className="size-4" />
+                <Trash2 aria-hidden className="size-4" />
               )}
-              Revoke
+              {revokeMutation.isPending ? "Revoking…" : "Revoke key"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

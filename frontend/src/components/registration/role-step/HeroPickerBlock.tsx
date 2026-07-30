@@ -71,7 +71,7 @@ export function HeroPickerBlock({ heroes, selected, max, roleCode, onChange }: H
               />
             </span>
             {isSelected && (
-              <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-white text-[10px] font-bold leading-none text-black shadow">
+              <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-[color:var(--aqt-teal)] text-[10px] font-bold leading-none text-[color:var(--aqt-bg)] shadow">
                 {index + 1}
               </span>
             )}

@@ -4,6 +4,7 @@ import {
   SCHEDULABLE_PHASES,
   type SchedulablePhase
 } from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.helpers";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 import { DateTimePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -46,9 +47,7 @@ export function ScheduleStep({ value, onChange, showDraftPhase }: ScheduleStepPr
   return (
     <div className="space-y-5">
       <div>
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-          Phase Schedule
-        </p>
+        <h3 className={EYEBROW_CLASS}>Phase schedule</h3>
         <p className="mt-1 text-xs text-muted-foreground">
           Each phase starts automatically at its start time when automatic transitions are
           enabled. Leave a phase empty to skip scheduling it.
@@ -57,7 +56,7 @@ export function ScheduleStep({ value, onChange, showDraftPhase }: ScheduleStepPr
 
       {visiblePhases.map((phase) => (
         <div key={phase} className="space-y-2">
-          <p className="text-xs font-medium text-foreground">{PHASE_LABELS[phase]}</p>
+          <h4 className="text-xs font-medium text-foreground">{PHASE_LABELS[phase]}</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <DateTimePicker
               id={`wizard-phase-${phase}-starts`}

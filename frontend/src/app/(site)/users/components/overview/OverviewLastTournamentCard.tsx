@@ -215,7 +215,7 @@ const OverviewLastTournamentCard = ({ tournament, tournaments, userId }: Props) 
               className="aqt-display flex items-center gap-1.5 text-[20px] font-bold uppercase leading-none"
               style={{ color: roleColor(tournament.role) }}
             >
-              <PlayerRoleIcon role={tournament.role} size={18} color={roleColor(tournament.role)} />
+              <PlayerRoleIcon role={tournament.role} size={18} color={roleColor(tournament.role)} decorative />
               {tournament.role}
             </div>
             <div className="aqt-mono mt-1 text-[13px] text-[color:var(--aqt-fg-muted)]">
@@ -264,8 +264,8 @@ const OverviewLastTournamentCard = ({ tournament, tournaments, userId }: Props) 
                   className="aqt-display inline-flex h-[20px] w-[20px] items-center justify-center rounded-[4px] text-[11px] font-bold"
                   style={{
                     color: "var(--aqt-emerald)",
-                    background: "hsl(150 57% 52% / 0.14)",
-                    border: "1px solid hsl(150 57% 52% / 0.35)"
+                    background: "color-mix(in srgb, var(--aqt-emerald) 14%, transparent)",
+                    border: "1px solid color-mix(in srgb, var(--aqt-emerald) 35%, transparent)"
                   }}
                   title={t("users.overview.lastTournament.mapWon")}
                 >

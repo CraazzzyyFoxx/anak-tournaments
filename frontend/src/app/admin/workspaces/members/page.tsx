@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useId, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Check, ChevronsUpDown, Trash2, UserPlus, Wand2 } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
+import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
@@ -59,6 +61,11 @@ function initials(member: WorkspaceMember): string {
   return source.slice(0, 2).toUpperCase();
 }
 
+/** Best human-readable handle for a member, used in control names and confirmations. */
+function memberLabel(member: WorkspaceMember): string {
+  return member.username ?? member.email ?? `User #${member.auth_user_id}`;
+}
+
 /** The custom (non-system) role ids currently held by a member. */
 function memberCustomRoleIds(member: WorkspaceMember): number[] {
   return member.rbac_roles.filter((role) => !role.is_system).map((role) => role.id);
@@ -73,6 +80,7 @@ export default function WorkspaceMembersPage() {
 
   const [addOpen, setAddOpen] = useState(false);
   const [roleFilter, setRoleFilter] = useState<string>("all");
+  const [pendingRemoval, setPendingRemoval] = useState<WorkspaceMember | null>(null);
 
   const canCreateMembers =
     isSuperuser ||
@@ -124,6 +132,7 @@ export default function WorkspaceMembersPage() {
     mutationFn: (authUserId: number) => workspaceService.removeMember(currentWorkspaceId!, authUserId),
     onSuccess: () => {
       invalidateMembers();
+      setPendingRemoval(null);
       notify.success("Member removed");
     },
     onError: (error) => notify.apiError(error)
@@ -184,14 +193,14 @@ export default function WorkspaceMembersPage() {
             <div className="flex items-center gap-3 min-w-0">
               <Avatar className="size-8 shrink-0">
                 {member.avatar_url ? <AvatarImage src={member.avatar_url} alt="" /> : null}
-                <AvatarFallback className="text-[11px]">{initials(member)}</AvatarFallback>
+                <AvatarFallback className="text-xs">{initials(member)}</AvatarFallback>
               </Avatar>
               <div className="min-w-0">
-                <p className="truncate text-[13px] font-medium text-foreground">
+                <p className="truncate text-sm font-medium text-foreground">
                   {member.username ?? `User #${member.auth_user_id}`}
                 </p>
                 {member.email ? (
-                  <p className="truncate text-[12px] text-muted-foreground">{member.email}</p>
+                  <p className="truncate text-xs text-muted-foreground">{member.email}</p>
                 ) : null}
               </div>
             </div>
@@ -210,10 +219,10 @@ export default function WorkspaceMembersPage() {
             return (
               <div className="flex flex-wrap gap-1.5">
                 {member.rbac_roles.length === 0 ? (
-                  <span className="text-[12px] text-muted-foreground/60">No roles</span>
+                  <span className="text-xs text-muted-foreground">No roles</span>
                 ) : (
                   member.rbac_roles.map((role) => (
-                    <Badge key={role.id} variant="outline" className="text-[11px]">
+                    <Badge key={role.id} variant="outline" className="text-xs">
                       {role.name}
                     </Badge>
                   ))
@@ -227,12 +236,15 @@ export default function WorkspaceMembersPage() {
                 value={member.role}
                 onValueChange={(value) => changePrimaryRole(member, value as WorkspaceSystemRole)}
               >
-                <SelectTrigger className="h-8 w-[130px] text-[13px]">
+                <SelectTrigger
+                  className="h-8 w-32 text-sm"
+                  aria-label={`Workspace role for ${memberLabel(member)}`}
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {SYSTEM_ROLES.map((name) => (
-                    <SelectItem key={name} value={name} className="text-[13px]">
+                    <SelectItem key={name} value={name} className="text-sm">
                       {SYSTEM_ROLE_LABEL[name]}
                     </SelectItem>
                   ))}
@@ -242,21 +254,29 @@ export default function WorkspaceMembersPage() {
               {customScopedRoles.length > 0 ? (
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm" className="h-8 gap-1 text-[12px]">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 gap-1 text-xs"
+                      aria-label={`Custom roles for ${memberLabel(member)}`}
+                    >
                       + custom
                       {customCount > 0 ? (
-                        <Badge variant="secondary" className="ml-0.5 h-4 px-1 text-[10px]">
+                        <Badge
+                          variant="secondary"
+                          className="ml-0.5 h-4 px-1 text-xs tabular-nums"
+                        >
                           {customCount}
                         </Badge>
                       ) : null}
-                      <ChevronsUpDown className="size-3 opacity-50" />
+                      <ChevronsUpDown aria-hidden className="size-3 opacity-50" />
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-64 p-0" align="start">
                     <Command>
-                      <CommandInput placeholder="Search custom roles..." />
+                      <CommandInput placeholder="Search custom roles…" />
                       <CommandList>
-                        <CommandEmpty>No custom roles.</CommandEmpty>
+                        <CommandEmpty>No custom roles match that search.</CommandEmpty>
                         <CommandGroup>
                           {customScopedRoles.map((role) => {
                             const checked = memberCustomRoleIds(member).includes(role.id);
@@ -267,6 +287,7 @@ export default function WorkspaceMembersPage() {
                                 onSelect={() => toggleCustomRole(member, role.id)}
                               >
                                 <Check
+                                  aria-hidden
                                   className={cn(
                                     "mr-2 size-4",
                                     checked ? "opacity-100" : "opacity-0"
@@ -304,30 +325,27 @@ export default function WorkspaceMembersPage() {
           <Button
             variant="ghost"
             size="icon"
-            className="size-8 text-destructive"
-            disabled={removeMemberMutation.isPending}
-            onClick={() => removeMemberMutation.mutate(row.original.auth_user_id)}
-            aria-label="Remove member"
+            className="size-8 text-danger"
+            onClick={() => setPendingRemoval(row.original)}
+            aria-label={`Remove ${memberLabel(row.original)} from this workspace`}
           >
-            <Trash2 className="size-3.5" />
+            <Trash2 aria-hidden className="size-3.5" />
           </Button>
         )
       });
     }
     return cols;
-  }, [
-    canUpdateMembers,
-    canDeleteMembers,
-    customScopedRoles,
-    changePrimaryRole,
-    toggleCustomRole,
-    removeMemberMutation
-  ]);
+  }, [canUpdateMembers, canDeleteMembers, customScopedRoles, changePrimaryRole, toggleCustomRole]);
 
+  // Exclusive branch: no workspace selected means the table below never renders,
+  // so this header is the page's only `<h1>`.
   if (!currentWorkspaceId) {
     return (
       <div className="flex flex-col gap-6">
-        <AdminPageHeader title="Workspace Members" description="Select a workspace to manage members." />
+        <AdminPageHeader
+          title="Workspace members"
+          description="Pick a workspace from the switcher above to see and manage its members."
+        />
       </div>
     );
   }
@@ -337,15 +355,15 @@ export default function WorkspaceMembersPage() {
     <>
       {filterRoles.length > 0 ? (
         <Select value={roleFilter} onValueChange={setRoleFilter}>
-          <SelectTrigger className="h-9 w-[150px] text-[13px]" aria-label="Filter by role">
+          <SelectTrigger className="h-9 w-36 text-sm" aria-label="Filter by role">
             <SelectValue placeholder="All roles" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all" className="text-[13px]">
+            <SelectItem value="all" className="text-sm">
               All roles
             </SelectItem>
             {filterRoles.map((role) => (
-              <SelectItem key={role.id} value={String(role.id)} className="text-[13px]">
+              <SelectItem key={role.id} value={String(role.id)} className="text-sm">
                 {role.name}
               </SelectItem>
             ))}
@@ -360,13 +378,13 @@ export default function WorkspaceMembersPage() {
           disabled={autofillMutation.isPending}
           onClick={() => autofillMutation.mutate()}
         >
-          <Wand2 className="size-3.5" />
+          <Wand2 aria-hidden className="size-3.5" />
           Fill missing roles
         </Button>
       ) : null}
       {canCreateMembers ? (
         <Button size="sm" className="gap-1.5" onClick={() => setAddOpen(true)}>
-          <UserPlus className="size-3.5" />
+          <UserPlus aria-hidden className="size-3.5" />
           Add member
         </Button>
       ) : null}
@@ -376,7 +394,7 @@ export default function WorkspaceMembersPage() {
   return (
     <div className="flex flex-col gap-6">
       <AdminPageHeader
-        title="Workspace Members"
+        title="Workspace members"
         description={`Manage who has access to ${workspace?.name ?? "this workspace"} and their RBAC roles.`}
       />
 
@@ -398,8 +416,8 @@ export default function WorkspaceMembersPage() {
         }
         columns={columns}
         initialPageSize={25}
-        searchPlaceholder="Search by name or email..."
-        emptyMessage="No members yet."
+        searchPlaceholder="Search by name or email…"
+        emptyMessage="No members yet. Add staff and administrators here — players who register for a tournament are added automatically."
         actions={tableActions}
       />
 
@@ -416,6 +434,23 @@ export default function WorkspaceMembersPage() {
           }}
         />
       ) : null}
+
+      <DeleteConfirmDialog
+        open={pendingRemoval !== null}
+        onOpenChange={(open) => (open ? null : setPendingRemoval(null))}
+        onConfirm={() =>
+          pendingRemoval && removeMemberMutation.mutate(pendingRemoval.auth_user_id)
+        }
+        title="Remove member"
+        description={
+          pendingRemoval
+            ? `${memberLabel(pendingRemoval)} loses access to ${workspace?.name ?? "this workspace"} and all roles granted here. Their tournament results are kept, and you can add them back later.`
+            : ""
+        }
+        confirmLabel="Remove member"
+        confirmingLabel="Removing…"
+        isDeleting={removeMemberMutation.isPending}
+      />
     </div>
   );
 }
@@ -435,6 +470,7 @@ function AddMemberDialog({
   defaultRoleId?: number;
   onAdded: () => void;
 }) {
+  const userFieldId = useId();
   const [userId, setUserId] = useState<string>("");
   const [roleIds, setRoleIds] = useState<number[]>([]);
   const [userComboOpen, setUserComboOpen] = useState(false);
@@ -460,6 +496,20 @@ function AddMemberDialog({
 
   const selectedUsername = allUsers?.find((u) => u.id === Number(userId))?.username;
 
+  // Validated on submit rather than by disabling the button, so the reason the
+  // form will not go through is spoken instead of silently greyed out.
+  const submit = () => {
+    if (!userId) {
+      notify.error("Pick the user you want to add first.");
+      return;
+    }
+    if (effectiveRoleIds.length === 0) {
+      notify.error("Pick at least one role for this member.");
+      return;
+    }
+    addMemberMutation.mutate();
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
@@ -472,59 +522,63 @@ function AddMemberDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
-          <Popover open={userComboOpen} onOpenChange={setUserComboOpen}>
-            <PopoverTrigger asChild>
-              <Button variant="outline" role="combobox" className="justify-between">
-                <span className="truncate">{selectedUsername ?? "Select user..."}</span>
-                <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
-              <Command>
-                <CommandInput placeholder="Search user..." />
-                <CommandList>
-                  <CommandEmpty>No users found.</CommandEmpty>
-                  <CommandGroup>
-                    {(allUsers ?? []).map((u) => (
-                      <CommandItem
-                        key={u.id}
-                        value={u.username}
-                        onSelect={() => {
-                          setUserId(String(u.id));
-                          setUserComboOpen(false);
-                        }}
-                      >
-                        <Check
-                          className={cn(
-                            "mr-2 size-4",
-                            userId === String(u.id) ? "opacity-100" : "opacity-0"
-                          )}
-                        />
-                        {u.username}
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                </CommandList>
-              </Command>
-            </PopoverContent>
-          </Popover>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor={userFieldId}>User</Label>
+            <Popover open={userComboOpen} onOpenChange={setUserComboOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  id={userFieldId}
+                  variant="outline"
+                  role="combobox"
+                  aria-haspopup="listbox"
+                  aria-expanded={userComboOpen}
+                  className="justify-between"
+                >
+                  <span className="truncate">{selectedUsername ?? "Select user…"}</span>
+                  <ChevronsUpDown aria-hidden className="ml-2 size-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
+                <Command>
+                  <CommandInput placeholder="Search user…" />
+                  <CommandList>
+                    <CommandEmpty>No user matches that search.</CommandEmpty>
+                    <CommandGroup>
+                      {(allUsers ?? []).map((u) => (
+                        <CommandItem
+                          key={u.id}
+                          value={u.username}
+                          onSelect={() => {
+                            setUserId(String(u.id));
+                            setUserComboOpen(false);
+                          }}
+                        >
+                          <Check
+                            aria-hidden
+                            className={cn(
+                              "mr-2 size-4",
+                              userId === String(u.id) ? "opacity-100" : "opacity-0"
+                            )}
+                          />
+                          {u.username}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
 
-          <RoleMultiSelect
-            roles={scopedRoles}
-            value={effectiveRoleIds}
-            onChange={setRoleIds}
-          />
+          <RoleMultiSelect roles={scopedRoles} value={effectiveRoleIds} onChange={setRoleIds} />
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            onClick={() => addMemberMutation.mutate()}
-            disabled={!userId || effectiveRoleIds.length === 0 || addMemberMutation.isPending}
-          >
-            Add
+          <Button onClick={submit} disabled={addMemberMutation.isPending}>
+            {addMemberMutation.isPending ? "Adding…" : "Add member"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -541,6 +595,7 @@ function RoleMultiSelect({
   value: number[];
   onChange: (roleIds: number[]) => void;
 }) {
+  const fieldId = useId();
   const [open, setOpen] = useState(false);
   const selected = useMemo(() => roles.filter((role) => value.includes(role.id)), [roles, value]);
 
@@ -549,39 +604,52 @@ function RoleMultiSelect({
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button variant="outline" role="combobox" className="w-full justify-between">
-          <span className="truncate">
-            {selected.length > 0 ? selected.map((role) => role.name).join(", ") : "Select roles..."}
-          </span>
-          <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
-        <Command>
-          <CommandInput placeholder="Search roles..." />
-          <CommandList>
-            <CommandEmpty>No roles found.</CommandEmpty>
-            <CommandGroup>
-              {roles.map((role) => {
-                const checked = value.includes(role.id);
-                return (
-                  <CommandItem key={role.id} value={role.name} onSelect={() => toggleRole(role.id)}>
-                    <Check className={cn("mr-2 size-4", checked ? "opacity-100" : "opacity-0")} />
-                    <div className="min-w-0">
-                      <p className="truncate">{role.name}</p>
-                      {role.description ? (
-                        <p className="truncate text-xs text-muted-foreground">{role.description}</p>
-                      ) : null}
-                    </div>
-                  </CommandItem>
-                );
-              })}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={fieldId}>Roles</Label>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            id={fieldId}
+            variant="outline"
+            role="combobox"
+            aria-haspopup="listbox"
+            aria-expanded={open}
+            className="w-full justify-between"
+          >
+            <span className="truncate">
+              {selected.length > 0 ? selected.map((role) => role.name).join(", ") : "Select roles…"}
+            </span>
+            <ChevronsUpDown aria-hidden className="ml-2 size-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
+          <Command>
+            <CommandInput placeholder="Search roles…" />
+            <CommandList>
+              <CommandEmpty>No role matches that search.</CommandEmpty>
+              <CommandGroup>
+                {roles.map((role) => {
+                  const checked = value.includes(role.id);
+                  return (
+                    <CommandItem key={role.id} value={role.name} onSelect={() => toggleRole(role.id)}>
+                      <Check
+                        aria-hidden
+                        className={cn("mr-2 size-4", checked ? "opacity-100" : "opacity-0")}
+                      />
+                      <div className="min-w-0">
+                        <p className="truncate">{role.name}</p>
+                        {role.description ? (
+                          <p className="truncate text-xs text-muted-foreground">{role.description}</p>
+                        ) : null}
+                      </div>
+                    </CommandItem>
+                  );
+                })}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+    </div>
   );
 }

@@ -244,7 +244,13 @@ describe("tournament overview server contract", () => {
     expect(source).toMatch(/^\s*["']use client["']/);
     expect(calledIdentifiers(sourceFile)).toContain("useRouter");
     expect(calledMethods(sourceFile)).toContain("refresh");
-    expect(source).toContain('t("common.retry")');
+    // The retry label is the shared card's default rather than a fourth
+    // hand-rolled error design in this file.
+    expect(source).toContain('from "@/components/ui/page-state-card"');
+    expect(source).toContain("onAction={() => router.refresh()}");
+    expect(sourceFor("../../../../components/ui/page-state-card.tsx")).toContain(
+      't("common.retry")'
+    );
     expect(component?.parameters).toHaveLength(0);
   });
 });

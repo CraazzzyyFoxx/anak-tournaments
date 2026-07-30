@@ -1,10 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Building2, Globe, Loader2, X } from "lucide-react";
 
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -36,6 +38,7 @@ export function UserDenyEditor({ userId, canEdit }: { userId: number; canEdit: b
   const workspaces = useWorkspaceStore((state) => state.workspaces);
   const [scope, setScope] = useState<DenyScope>("global");
   const scopeWorkspaceId = scopeToWorkspaceId(scope);
+  const scopeId = useId();
 
   const deniesQuery = useQuery({
     queryKey: ["access-admin", "denies", userId],
@@ -81,31 +84,33 @@ export function UserDenyEditor({ userId, canEdit }: { userId: number; canEdit: b
     <div className="space-y-3 rounded-lg border border-border/60 bg-card/60 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Restricted actions
-          </h3>
-          {loading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+          <h3 className={EYEBROW_CLASS}>Restricted actions</h3>
+          {loading && (
+            <Loader2 aria-hidden className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+          )}
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">Scope:</span>
+          <Label htmlFor={scopeId} className="text-xs text-muted-foreground">
+            Scope
+          </Label>
           <Select
             value={String(scope)}
             onValueChange={(value) => setScope(value === "global" ? "global" : Number(value))}
           >
-            <SelectTrigger className="h-8 w-[180px] text-xs" disabled={!canEdit}>
+            <SelectTrigger id={scopeId} className="h-8 w-44 text-xs" disabled={!canEdit}>
               <SelectValue placeholder="Select scope" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="global">
                 <div className="flex items-center gap-2">
-                  <Globe className="h-3.5 w-3.5" />
+                  <Globe aria-hidden className="h-3.5 w-3.5" />
                   Global
                 </div>
               </SelectItem>
               {workspaces.map((ws) => (
                 <SelectItem key={ws.id} value={String(ws.id)}>
                   <div className="flex items-center gap-2">
-                    <Building2 className="h-3.5 w-3.5" />
+                    <Building2 aria-hidden className="h-3.5 w-3.5" />
                     {ws.name}
                   </div>
                 </SelectItem>
@@ -125,7 +130,7 @@ export function UserDenyEditor({ userId, canEdit }: { userId: number; canEdit: b
             (d) => d.name === capability.name && (d.workspace_id ?? null) === scopeWorkspaceId
           );
           return (
-            <label
+            <div
               key={capability.name}
               className="flex items-center justify-between gap-3 rounded-md border border-border/60 p-3"
             >
@@ -137,16 +142,16 @@ export function UserDenyEditor({ userId, canEdit }: { userId: number; canEdit: b
                   permissionId !== undefined &&
                   toggle.mutate({ permissionId, deny: checked, workspaceId: scopeWorkspaceId })
                 }
-                aria-label={`Restrict: ${capability.label} (${workspaceLabel(scopeWorkspaceId)})`}
+                aria-label={`Restrict ${capability.label} in ${workspaceLabel(scopeWorkspaceId)}`}
               />
-            </label>
+            </div>
           );
         })}
       </div>
 
       {denies.length > 0 && (
         <div className="space-y-1.5 border-t border-border/60 pt-3">
-          <p className="text-xs font-medium text-muted-foreground">Active restrictions</p>
+          <h4 className="text-xs font-medium text-muted-foreground">Active restrictions</h4>
           <ul className="space-y-1.5">
             {denies.map((deny) => {
               const capability = RESTRICTABLE_CAPABILITIES.find((c) => c.name === deny.name);
@@ -158,11 +163,11 @@ export function UserDenyEditor({ userId, canEdit }: { userId: number; canEdit: b
                 >
                   <span className="flex items-center gap-2">
                     <span>{label}</span>
-                    <Badge variant="outline" className="gap-1 text-[10px]">
+                    <Badge variant="outline" className="gap-1 text-xs">
                       {deny.workspace_id ? (
-                        <Building2 className="h-3 w-3" />
+                        <Building2 aria-hidden className="h-3 w-3" />
                       ) : (
-                        <Globe className="h-3 w-3" />
+                        <Globe aria-hidden className="h-3 w-3" />
                       )}
                       {workspaceLabel(deny.workspace_id)}
                     </Badge>
@@ -170,7 +175,7 @@ export function UserDenyEditor({ userId, canEdit }: { userId: number; canEdit: b
                   {canEdit && (
                     <button
                       type="button"
-                      className="text-muted-foreground transition-colors hover:text-destructive disabled:opacity-40"
+                      className="rounded text-muted-foreground transition-colors hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40"
                       disabled={toggle.isPending}
                       onClick={() =>
                         toggle.mutate({
@@ -179,9 +184,9 @@ export function UserDenyEditor({ userId, canEdit }: { userId: number; canEdit: b
                           workspaceId: deny.workspace_id ?? null,
                         })
                       }
-                      aria-label={`Remove restriction: ${label} (${workspaceLabel(deny.workspace_id)})`}
+                      aria-label={`Remove restriction ${label} in ${workspaceLabel(deny.workspace_id)}`}
                     >
-                      <X className="h-3.5 w-3.5" />
+                      <X aria-hidden className="h-3.5 w-3.5" />
                     </button>
                   )}
                 </li>

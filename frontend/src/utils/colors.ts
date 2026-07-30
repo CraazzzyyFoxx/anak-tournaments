@@ -1,21 +1,17 @@
+/**
+ * Winrate → accent color. The single winrate-threshold function in the app;
+ * `HeroUserStatsPopover` used to carry a second, coarser copy.
+ *
+ * Buckets and hue order are unchanged (red → orange → yellow → green → cyan →
+ * purple); the values moved from raw pastel hex onto the `--aqt-*` palette so
+ * they follow workspace theming.
+ */
 export const getWinrateColor = (winrate: number) => {
-  if (winrate > 1) {
-    winrate = winrate / 100;
-  }
-  if (winrate < 0.46) {
-    return "#ff9999"; // pastel red
-  }
-  if (winrate < 0.5) {
-    return "#ffcc99"; // pastel orange
-  }
-  if (winrate < 0.53) {
-    return "#ffff99"; // pastel yellow
-  }
-  if (winrate < 0.58) {
-    return "#99ff99"; // pastel green
-  }
-  if (winrate < 0.64) {
-    return "#99ffff"; // pastel cyan
-  }
-  return "#cc99ff"; // pastel purple
+  const fraction = winrate > 1 ? winrate / 100 : winrate;
+  if (fraction < 0.46) return "var(--aqt-rose)";
+  if (fraction < 0.5) return "var(--aqt-amber)";
+  if (fraction < 0.53) return "var(--aqt-gold)";
+  if (fraction < 0.58) return "var(--aqt-emerald)";
+  if (fraction < 0.64) return "var(--aqt-teal)";
+  return "var(--aqt-violet)";
 };

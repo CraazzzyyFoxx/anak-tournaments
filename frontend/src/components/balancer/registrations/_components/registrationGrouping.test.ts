@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
-import type { AdminRegistration, StatusMeta } from "@/types/balancer-admin.types";
+import type { AdminRegistration } from "@/types/balancer-admin.types";
+import type { StatusMeta } from "@/types/registration.types";
 import { groupRegistrations } from "./registrationGrouping";
 
 const createStatusMeta = (value: string, scope: StatusMeta["scope"], name: string): StatusMeta => ({

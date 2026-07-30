@@ -95,7 +95,7 @@ export function useHubDivisionGridsQuery(
   });
 }
 
-/** Newest-first flat list of grid versions — header and Settings tab must agree. */
+/** Newest-first flat list of grid versions, for the Settings tab grid picker. */
 export function flattenDivisionGridVersions(
   grids: DivisionGridEntity[] | undefined
 ): DivisionGridVersion[] {

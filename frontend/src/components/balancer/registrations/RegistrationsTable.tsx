@@ -46,7 +46,7 @@ import {
 import UnifiedRegistrationForm from "@/components/registration/UnifiedRegistrationForm";
 import BalancerRegistrationsColumnPicker from "@/components/balancer/registrations/_components/BalancerRegistrationsColumnPicker";
 import RegistrationRowActions from "@/components/balancer/registrations/_components/RegistrationRowActions";
-import BattleTagRankHistory from "@/components/BattleTagRankHistory";
+import RankHistory from "@/components/RankHistory";
 import {
   type BalancerRegistrationColumnDefinition,
   buildBalancerRegistrationColumns
@@ -1156,10 +1156,11 @@ export default function RegistrationsTable({
                                       <div className="text-[11px] font-semibold uppercase tracking-wider text-[color:var(--aqt-fg-dim)]">
                                         Rank history
                                       </div>
-                                      <BattleTagRankHistory
-                                        userId={registration.user_id}
-                                        battleTag={registration.battle_tag}
-                                      />
+                                      {registration.user_id != null ? (
+                                        <RankHistory userId={registration.user_id} />
+                                      ) : (
+                                        <RankHistory battleTag={registration.battle_tag} />
+                                      )}
                                     </div>
                                     <dl className="space-y-2 text-xs text-[color:var(--aqt-fg-muted)]">
                                       <div className="text-[11px] font-semibold uppercase tracking-wider text-[color:var(--aqt-fg-dim)]">

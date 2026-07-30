@@ -11,13 +11,13 @@ import {
   Shield,
   Sparkles,
   Trophy,
-  UserCircle2,
   Users
 } from "lucide-react";
 
 import { AdminDetailTableShell, getAdminDetailTableStyles } from "@/components/admin/AdminDetailTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { StatusIcon } from "@/components/admin/StatusIcon";
+import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
 import { TeamRosterEditorDialog } from "@/components/admin/teams/TeamRosterEditorDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -70,7 +70,8 @@ export default function AdminTeamWorkspacePage() {
     return (
       <div className="space-y-6">
         <Skeleton className="h-28 w-full rounded-xl" />
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <Skeleton className="h-28 rounded-xl" />
           <Skeleton className="h-28 rounded-xl" />
           <Skeleton className="h-28 rounded-xl" />
           <Skeleton className="h-28 rounded-xl" />
@@ -84,8 +85,12 @@ export default function AdminTeamWorkspacePage() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Team not found</CardTitle>
-          <CardDescription>The requested admin workspace could not be loaded.</CardDescription>
+          <CardTitle asChild>
+            <h1>Team not found</h1>
+          </CardTitle>
+          <CardDescription>
+            This team may have been deleted. Go back to the teams list and pick another roster.
+          </CardDescription>
         </CardHeader>
       </Card>
     );
@@ -95,83 +100,79 @@ export default function AdminTeamWorkspacePage() {
     <div className="space-y-6">
       <AdminPageHeader
         title={team.name}
-        description="Team workspace with roster details, captain ownership, and tournament context."
+        description="Roster details, captain ownership, and tournament context for this team."
         meta={<Badge variant="secondary">Roster control</Badge>}
+        footer={
+          <p className="text-sm text-muted-foreground">
+            {team.tournament ? (
+              <>
+                {team.tournament.name}
+                {" · "}
+                <span className="tabular-nums">
+                  {new Date(team.tournament.start_date).toLocaleDateString()} –{" "}
+                  {new Date(team.tournament.end_date).toLocaleDateString()}
+                </span>
+              </>
+            ) : (
+              "No linked tournament loaded."
+            )}
+          </p>
+        }
         actions={
           <div className="flex flex-wrap gap-2">
             <Button asChild variant="outline">
               <Link href="/admin/teams">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Teams
+                <ArrowLeft className="mr-2 h-4 w-4" aria-hidden />
+                Back to teams
               </Link>
             </Button>
             {team.tournament ? (
               <Button asChild variant="outline">
                 <Link href={`/admin/tournaments/${team.tournament.id}`}>
-                  <Trophy className="mr-2 h-4 w-4" />
-                  Open Tournament
+                  <Trophy className="mr-2 h-4 w-4" aria-hidden />
+                  Open tournament
                 </Link>
               </Button>
             ) : null}
             {canOpenEditor ? (
               <Button onClick={() => setEditorOpen(true)}>
-                <Pencil className="mr-2 h-4 w-4" />
-                Edit Team
+                <Pencil className="mr-2 h-4 w-4" aria-hidden />
+                Edit team
               </Button>
             ) : null}
           </div>
         }
       />
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Average SR</CardDescription>
-            <CardTitle>{team.avg_sr.toFixed(0)}</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            Balanced roster average
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Total SR</CardDescription>
-            <CardTitle>{team.total_sr}</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            Combined current roster SR
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Roster Size</CardDescription>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-muted-foreground" />
-              {team.players?.length ?? 0}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            Players assigned to this team
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Captain</CardDescription>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Shield className="h-5 w-5 text-muted-foreground" />
-              {team.captain?.name ?? `User #${team.captain?.id}`}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            Tournament owner reference for this roster
-          </CardContent>
-        </Card>
-      </div>
+      <StatTileGrid>
+        <StatTile
+          label="Average SR"
+          value={team.avg_sr.toFixed(0)}
+          detail="Balanced roster average"
+        />
+        <StatTile label="Total SR" value={team.total_sr} detail="Combined current roster SR" />
+        <StatTile
+          label="Roster size"
+          value={team.players?.length ?? 0}
+          detail="Players assigned to this team"
+          icon={Users}
+          tone="info"
+        />
+        <StatTile
+          label="Captain"
+          value={team.captain?.name ?? `User #${team.captain?.id}`}
+          detail="Owns this roster"
+          icon={Shield}
+          tone="accent"
+        />
+      </StatTileGrid>
 
       <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
         <Card>
           <CardHeader>
-            <CardTitle>Roster</CardTitle>
+            <CardTitle asChild>
+              <h2>Roster</h2>
+            </CardTitle>
             <CardDescription>Current players assigned to this team.</CardDescription>
           </CardHeader>
           <CardContent>
@@ -182,7 +183,7 @@ export default function AdminTeamWorkspacePage() {
                     <TableHead className={tableStyles.head}>Player</TableHead>
                     <TableHead className={tableStyles.head}>Role</TableHead>
                     <TableHead className={tableStyles.head}>Sub-role</TableHead>
-                    <TableHead className={tableStyles.head}>Rank</TableHead>
+                    <TableHead className={tableStyles.head}>Rank / Div</TableHead>
                     <TableHead className={tableStyles.head}>Flags</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -204,9 +205,9 @@ export default function AdminTeamWorkspacePage() {
                           </Badge>
                         </TableCell>
                         <TableCell className={tableStyles.cell}>
-                          {formatSubRoleLabel(player.sub_role) ?? "-"}
+                          {formatSubRoleLabel(player.sub_role) ?? "—"}
                         </TableCell>
-                        <TableCell className={tableStyles.cell}>
+                        <TableCell className={tableStyles.numericCell}>
                           {player.rank} / {player.division}
                         </TableCell>
                         <TableCell className={tableStyles.cell}>
@@ -228,7 +229,7 @@ export default function AdminTeamWorkspacePage() {
                   ) : (
                     <TableRow className={tableStyles.row}>
                       <TableCell className={tableStyles.cell} colSpan={5}>
-                        No roster members loaded for this team yet.
+                        No players on this roster yet. Use “Edit team” to add the first player.
                       </TableCell>
                     </TableRow>
                   )}
@@ -238,54 +239,25 @@ export default function AdminTeamWorkspacePage() {
           </CardContent>
         </Card>
 
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Tournament Context</CardTitle>
-              <CardDescription>Where this team currently lives in operations.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <div className="flex items-start gap-3 rounded-lg border p-3">
-                <Trophy className="mt-0.5 h-4 w-4 text-muted-foreground" />
-                <div>
-                  <div className="font-medium">{team.tournament?.name ?? "Tournament unavailable"}</div>
-                  <div className="text-muted-foreground">
-                    {team.tournament
-                      ? `${new Date(team.tournament.start_date).toLocaleDateString()} - ${new Date(team.tournament.end_date).toLocaleDateString()}`
-                      : "No linked tournament metadata loaded."}
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-start gap-3 rounded-lg border p-3">
-                <UserCircle2 className="mt-0.5 h-4 w-4 text-muted-foreground" />
-                <div>
-                  <div className="font-medium">Captain Assignment</div>
-                  <div className="text-muted-foreground">
-                    {team.captain?.name ?? `User #${team.captain?.id}`} controls roster ownership.
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Quick Links</CardTitle>
-              <CardDescription>Jump back into the larger operations flows.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-3">
-              <Button asChild variant="outline" className="justify-start">
-                <Link href={`/admin/teams?tournament=${team.tournament_id}`}>Open Teams List</Link>
-              </Button>
-              <Button asChild variant="outline" className="justify-start">
-                <Link href="/admin/players">Manage Players</Link>
-              </Button>
-              <Button asChild variant="outline" className="justify-start">
-                <Link href="/admin/encounters">Manage Encounters</Link>
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle asChild>
+              <h2>Quick links</h2>
+            </CardTitle>
+            <CardDescription>Jump back into the larger operations flows.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <Button asChild variant="outline" className="justify-start">
+              <Link href={`/admin/teams?tournament=${team.tournament_id}`}>Open teams list</Link>
+            </Button>
+            <Button asChild variant="outline" className="justify-start">
+              <Link href="/admin/players">Manage players</Link>
+            </Button>
+            <Button asChild variant="outline" className="justify-start">
+              <Link href="/admin/encounters">Manage encounters</Link>
+            </Button>
+          </CardContent>
+        </Card>
       </div>
 
       <TeamRosterEditorDialog

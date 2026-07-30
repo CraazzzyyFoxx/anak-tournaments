@@ -4,6 +4,7 @@ import {
   SCHEDULABLE_PHASES,
   type SchedulablePhase
 } from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.helpers";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 import type { DivisionGridVersion } from "@/types/workspace.types";
 
 import type {
@@ -34,7 +35,7 @@ function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline justify-between gap-4 border-b border-border/30 py-2 last:border-b-0">
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="text-sm font-medium text-right">{value}</dd>
+      <dd className="text-right text-sm font-medium tabular-nums">{value}</dd>
     </div>
   );
 }
@@ -60,25 +61,21 @@ export function ReviewStep({
   return (
     <div className="space-y-6">
       <section>
-        <p className="mb-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-          Basics
-        </p>
+        <h3 className={`mb-1 ${EYEBROW_CLASS}`}>Basics</h3>
         <dl>
           <Row label="Source" value={source === "challonge" ? "From Challonge" : "Manual"} />
           {source === "challonge" ? (
-            <Row label="Challonge" value={challongeSlug || "—"} />
+            <Row label="Challonge URL or slug" value={challongeSlug || "—"} />
           ) : (
             <Row label="Name" value={form.name || "—"} />
           )}
-          <Row label="Dates" value={`${form.start_date || "—"} → ${form.end_date || "—"}`} />
-          <Row label="League" value={form.is_league ? "Yes" : "No"} />
+          <Row label="Date range" value={`${form.start_date || "—"} → ${form.end_date || "—"}`} />
+          <Row label="Treat as league season" value={form.is_league ? "Yes" : "No"} />
         </dl>
       </section>
 
       <section>
-        <p className="mb-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-          Schedule
-        </p>
+        <h3 className={`mb-1 ${EYEBROW_CLASS}`}>Schedule</h3>
         <dl>
           {scheduledPhases.length === 0 && <Row label="Phase schedule" value="Not configured" />}
           {scheduledPhases.map((phase) => (
@@ -93,28 +90,26 @@ export function ReviewStep({
             />
           ))}
           <Row
-            label="Automatic transitions"
+            label="Automatic phase transitions"
             value={schedule.auto_transitions_enabled ? "On" : "Off"}
           />
           <Row
-            label="Late registration"
+            label="Allow late registration"
             value={schedule.allow_late_registration ? "Allowed" : "Off"}
           />
         </dl>
       </section>
 
       <section>
-        <p className="mb-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-          Rules
-        </p>
+        <h3 className={`mb-1 ${EYEBROW_CLASS}`}>Rules</h3>
         <dl>
           <Row
             label="Team formation"
             value={form.team_formation === "draft" ? "Live draft" : "Auto-balance (Balancer)"}
           />
-          <Row label="Division grid" value={gridLabel} />
+          <Row label="Division grid version" value={gridLabel} />
           <Row
-            label="Scoring (W / D / L)"
+            label="Scoring points (win / draw / loss)"
             value={`${form.win_points ?? 1} / ${form.draw_points ?? 0.5} / ${form.loss_points ?? 0}`}
           />
         </dl>
@@ -122,16 +117,17 @@ export function ReviewStep({
 
       {registrationVisible && (
         <section>
-          <p className="mb-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            Registration
-          </p>
+          <h3 className={`mb-1 ${EYEBROW_CLASS}`}>Registration</h3>
           <p className="mb-2 text-xs text-muted-foreground">
             These choices are not applied automatically — finish them in the form builder
             (Registration tab of the hub) after creation.
           </p>
           <dl>
-            <Row label="Registration" value={registration.is_open ? "Open" : "Closed"} />
-            <Row label="Auto-approve" value={registration.auto_approve ? "On" : "Off"} />
+            <Row label="Open registration" value={registration.is_open ? "Open" : "Closed"} />
+            <Row
+              label="Auto-approve registrations"
+              value={registration.auto_approve ? "On" : "Off"}
+            />
             <Row
               label="Require open profile"
               value={registration.require_open_profile ? "Yes" : "No"}

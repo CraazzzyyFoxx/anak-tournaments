@@ -16,9 +16,7 @@ import teamService from "@/services/team.service";
 import { TournamentWorkspaceHeader } from "./components/TournamentWorkspaceHeader";
 import { getTournamentWorkspaceQueryKeys } from "./components/tournamentWorkspace.queryKeys";
 import {
-  flattenDivisionGridVersions,
   TOURNAMENT_WORKSPACE_REFRESH_INTERVAL_MS,
-  useHubDivisionGridsQuery,
   useHubStagesQuery,
   useHubStandingsQuery,
   useHubTournamentQuery
@@ -101,7 +99,9 @@ export function TournamentHubShell({
   // catalogs (custom statuses, sub-roles) on the registration tab read the store,
   // and apiFetch injects the store workspace into every call (D25/D29).
   useSyncActiveWorkspace(tournamentWorkspaceId);
-  const divisionGridsQuery = useHubDivisionGridsQuery(tournamentId, tournamentWorkspaceId);
+  // NOTE: no division-grid query here. It used to run on every hub page load
+  // purely to feed three header props that were never read. The Settings tab
+  // owns that query, where the grid picker actually uses it.
 
   // Living-checklist freshness (§3, G-O6): balancer + bracket events schedule
   // one debounced invalidation of the readiness aggregate. No polling (CG-O4).
@@ -179,19 +179,15 @@ export function TournamentHubShell({
   const teamsCount = teamsCountQuery.data ?? null;
   const encountersCount = encountersCountQuery.data ?? null;
   const standingsCount = standingsQuery.data?.length ?? null;
-  const divisionGridVersions = flattenDivisionGridVersions(divisionGridsQuery.data);
 
   if (tournamentQuery.isLoading || stagesQuery.isLoading || !permissionsLoaded) {
     return (
-      <div className="space-y-6">
-        <Skeleton className="h-28 w-full rounded-xl" />
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Skeleton className="h-24 rounded-xl" />
-          <Skeleton className="h-24 rounded-xl" />
-          <Skeleton className="h-24 rounded-xl" />
-          <Skeleton className="h-24 rounded-xl" />
-        </div>
-        <Skeleton className="h-96 w-full rounded-xl" />
+      // Mirrors the real shape: title bar, phase stepper, tab bar, tab body.
+      <div className="space-y-4">
+        <Skeleton className="h-16 w-full rounded-xl" />
+        <Skeleton className="h-14 w-full rounded-xl" />
+        <Skeleton className="h-9 w-full max-w-2xl rounded-lg" />
+        <Skeleton className="h-72 w-full rounded-xl" />
       </div>
     );
   }
@@ -253,12 +249,7 @@ export function TournamentHubShell({
         standingsCount={standingsCount}
         standingsCountLoading={standingsCount == null && standingsQuery.isLoading}
         canReadAnalytics={canReadAnalytics}
-        canUpdateTournament={canUpdateTournament}
-        canDeleteTournament={canDeleteTournament}
         canToggleFinished={canUpdateTournament && isSuperuser}
-        divisionGridVersions={divisionGridVersions}
-        divisionGridLoading={divisionGridsQuery.isLoading}
-        onEditClick={() => router.push(`${basePath}/settings`)}
       />
       <Tabs value={activeTab} className="space-y-4">
         <TabsList className="h-auto flex-wrap justify-start">

@@ -3,7 +3,10 @@
 import { AlertTriangle, CheckCircle2, EyeOff, RefreshCw, ShieldCheck, XCircle } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
+import { TONE_CLASS } from "@/components/admin/tone";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import type { AdminRegistration } from "@/types/balancer-admin.types";
 import type { DraftSeedResponse } from "@/types/draft.types";
 
@@ -51,15 +54,27 @@ export function DraftReviewStep({
   return (
     <div className="space-y-6">
       {previewPending && (
-        <div className="flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm">
-          <RefreshCw className="h-4 w-4 animate-spin text-primary" />
+        <div
+          role="status"
+          className="flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm"
+        >
+          <RefreshCw className="h-4 w-4 animate-spin text-primary" aria-hidden />
           {t("validatingDraft")}
         </div>
       )}
       {previewError && (
-        <div className="flex items-center gap-3 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          <AlertTriangle className="h-4 w-4" />
-          {t("previewFailed")}
+        <div
+          role="alert"
+          className={cn(
+            "flex items-start gap-3 rounded-xl border px-4 py-3 text-sm",
+            TONE_CLASS.danger
+          )}
+        >
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <span>
+            <strong className="font-semibold">{t("previewFailed")}</strong>{" "}
+            {t("previewFailedHint")}
+          </span>
         </div>
       )}
 
@@ -70,23 +85,31 @@ export function DraftReviewStep({
             className="flex items-center gap-3 rounded-xl border border-border/70 bg-card px-4 py-3"
           >
             {check.ok ? (
-              <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-500" />
+              <CheckCircle2
+                className="h-5 w-5 shrink-0 text-success"
+                role="img"
+                aria-label={t("ready")}
+              />
             ) : (
-              <XCircle className="h-5 w-5 shrink-0 text-destructive" />
+              <XCircle
+                className="h-5 w-5 shrink-0 text-danger"
+                role="img"
+                aria-label={t("blocker")}
+              />
             )}
             <span className="text-sm">{check.label}</span>
           </div>
         ))}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Summary label={t("teams")} value={config.teamCount} />
-        <Summary label={t("players")} value={readiness.actualPlayers} />
-        <Summary label={t("totalPicks")} value={config.teamCount * (config.teamSize - 1)} />
-      </div>
+      <StatTileGrid className="sm:grid-cols-3 md:grid-cols-3 xl:grid-cols-3">
+        <StatTile label={t("teamCount")} value={config.teamCount} />
+        <StatTile label={t("poolPlayers")} value={readiness.actualPlayers} />
+        <StatTile label={t("totalPicks")} value={config.teamCount * (config.teamSize - 1)} />
+      </StatTileGrid>
 
       {isReseed && preview && (
-        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
+        <div className={cn("rounded-2xl border p-4", TONE_CLASS.warning)}>
           <div className="flex items-center justify-between gap-3">
             <div>
               <h3 className="font-medium">{t("reseedDiff")}</h3>
@@ -112,11 +135,11 @@ export function DraftReviewStep({
 
       <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
         <div className="flex gap-3">
-          <EyeOff className="mt-0.5 h-5 w-5 text-muted-foreground" />
+          <EyeOff className="mt-0.5 h-5 w-5 text-muted-foreground" aria-hidden />
           <div>
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-semibold">{t("privacyCheck")}</h3>
-              <ShieldCheck className="h-4 w-4 text-emerald-500" />
+              <ShieldCheck className="h-4 w-4 text-success" aria-hidden />
             </div>
             <p className="mt-1 text-sm text-muted-foreground">{t("privacyCheckHint")}</p>
           </div>
@@ -126,20 +149,11 @@ export function DraftReviewStep({
   );
 }
 
-function Summary({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-xl border border-border/70 bg-card p-4">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
-    </div>
-  );
-}
-
 function Diff({ label, before, after }: { label: string; before: number; after: number }) {
   return (
     <div className="rounded-xl bg-background/70 px-3 py-2">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 font-mono text-sm">
+      <p className="mt-1 font-mono text-sm tabular-nums">
         {before} → <strong>{after}</strong>
       </p>
     </div>

@@ -13,6 +13,7 @@ import {
   DialogTrigger
 } from "@/components/ui/dialog";
 import type { FormResult } from "@/app/(site)/users/components/shared/atoms";
+import type { Translate } from "@/app/(site)/users/components/shared/list-utils";
 
 /** Serializable data needed to render the shareable player card. */
 export interface ShareCardData {
@@ -91,7 +92,6 @@ function fitFontSize(
 
 interface Palette {
   bg: string;
-  card: string;
   border: string;
   fg: string;
   fgMuted: string;
@@ -111,9 +111,13 @@ function drawCard(
   onest: string,
   mono: string,
   C: Palette,
-  profileUrl: string
+  profileUrl: string,
+  t: Translate
 ) {
   const roleColor = card.roleTint ? C[card.roleTint] : C.teal;
+  // The card is rasterised for public sharing, so every glyph on it has to be
+  // in the viewer's locale. Canvas has no text transform — uppercase here.
+  const roleLabel = (card.role ?? t("users.profile.share.rolePlayer")).toUpperCase();
 
   // ground
   ctx.fillStyle = C.bg;
@@ -165,9 +169,9 @@ function drawCard(
   ctx.font = `600 18px ${mono}`;
   ctx.fillStyle = C.fgFaint;
   ctx.textAlign = "left";
-  ctx.fillText("// OWT PLAYER CARD", PAD, 66);
+  ctx.fillText(`// ${t("users.profile.share.heading").toUpperCase()}`, PAD, 66);
   ctx.textAlign = "right";
-  ctx.fillText((card.role ?? "PLAYER").toUpperCase(), CARD_W - PAD, 66);
+  ctx.fillText(roleLabel, CARD_W - PAD, 66);
   ctx.textAlign = "left";
 
   // avatar (role gradient + initials)
@@ -209,9 +213,11 @@ function drawCard(
   ctx.font = `500 21px ${mono}`;
   ctx.fillStyle = C.fgMuted;
   const meta = [
-    (card.role ?? "PLAYER").toUpperCase(),
-    card.division != null ? `DIV ${card.division}` : null,
-    `${card.tournaments} EVENTS`
+    roleLabel,
+    card.division != null
+      ? t("users.profile.share.division", { division: card.division }).toUpperCase()
+      : null,
+    t("users.profile.share.events", { count: card.tournaments }).toUpperCase()
   ]
     .filter(Boolean)
     .join("   ·   ");
@@ -235,14 +241,27 @@ function drawCard(
           ? C.amber
           : C.rose;
   const kpis: { label: string; value: string; sub?: string; color: string }[] = [
-    { label: "WINRATE", value: card.winrate != null ? `${Math.round(card.winrate)}%` : "—", color: winrateColor },
     {
-      label: "AVG PLACE",
+      label: t("users.profile.share.winrate"),
+      value: card.winrate != null ? `${Math.round(card.winrate)}%` : "—",
+      color: winrateColor
+    },
+    {
+      label: t("users.profile.share.avgPlace"),
       value: card.avgPlacement != null && Number.isFinite(card.avgPlacement) ? card.avgPlacement.toFixed(1) : "—",
       color: C.fg
     },
-    { label: "TITLES", value: `${card.titles}`, color: card.titles > 0 ? C.amber : C.fg },
-    { label: "MAPS WON", value: `${card.mapsWon}`, sub: `/${card.mapsTotal}`, color: C.fg }
+    {
+      label: t("users.profile.share.titles"),
+      value: `${card.titles}`,
+      color: card.titles > 0 ? C.amber : C.fg
+    },
+    {
+      label: t("users.profile.share.mapsWon"),
+      value: `${card.mapsWon}`,
+      sub: `/${card.mapsTotal}`,
+      color: C.fg
+    }
   ];
   const colW = (CARD_W - PAD * 2) / kpis.length;
   kpis.forEach((k, i) => {
@@ -251,7 +270,7 @@ function drawCard(
     ctx.textBaseline = "alphabetic";
     ctx.font = `600 17px ${mono}`;
     ctx.fillStyle = C.fgFaint;
-    ctx.fillText(k.label, x, 388);
+    ctx.fillText(k.label.toUpperCase(), x, 388);
     ctx.font = `700 60px ${onest}`;
     ctx.fillStyle = k.color;
     ctx.fillText(k.value, x, 448);
@@ -267,7 +286,7 @@ function drawCard(
   ctx.font = `600 16px ${mono}`;
   ctx.fillStyle = C.fgFaint;
   ctx.textAlign = "left";
-  ctx.fillText(`FORM · LAST ${card.form.length}`, PAD, 512);
+  ctx.fillText(t("users.profile.share.formLast", { count: card.form.length }).toUpperCase(), PAD, 512);
   const chip = 30;
   const gap = 8;
   const chipY = 526;
@@ -335,7 +354,6 @@ const SharePlayerCard = ({ card }: SharePlayerCardProps) => {
       const mono = resolveFamily("var(--aqt-mono)");
       const palette: Palette = {
         bg: token("--aqt-bg"),
-        card: token("--aqt-card"),
         border: token("--aqt-border"),
         fg: token("--aqt-fg"),
         fgMuted: token("--aqt-fg-muted"),
@@ -350,7 +368,7 @@ const SharePlayerCard = ({ card }: SharePlayerCardProps) => {
       };
       const origin = window.location.origin.replace(/^https?:\/\//, "");
       const profileUrl = `${origin}${window.location.pathname}`;
-      drawCard(ctx, card, onest, mono, palette, profileUrl);
+      drawCard(ctx, card, onest, mono, palette, profileUrl, t);
     };
     void render();
     return () => {
@@ -415,7 +433,7 @@ const SharePlayerCard = ({ card }: SharePlayerCardProps) => {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger className={BTN} title={t("users.profile.toolbar.share")}>
-        <Share2 size={13} />
+        <Share2 size={13} aria-hidden />
         {t("users.profile.toolbar.share")}
       </DialogTrigger>
       <DialogContent className="max-w-[680px] border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg)]">
@@ -439,15 +457,15 @@ const SharePlayerCard = ({ card }: SharePlayerCardProps) => {
 
         <div className="flex flex-wrap items-center gap-2 pt-1">
           <button type="button" onClick={handleCopyImage} className={BTN}>
-            {copyState === "img" ? <Check size={13} /> : <Copy size={13} />}
+            {copyState === "img" ? <Check size={13} aria-hidden /> : <Copy size={13} aria-hidden />}
             {copyState === "img" ? t("users.profile.toolbar.imageCopied") : t("users.profile.toolbar.copyImage")}
           </button>
           <button type="button" onClick={handleDownload} className={BTN}>
-            {copyState === "download" ? <Check size={13} /> : <Download size={13} />}
+            {copyState === "download" ? <Check size={13} aria-hidden /> : <Download size={13} aria-hidden />}
             {copyState === "download" ? t("users.profile.toolbar.downloaded") : t("users.profile.toolbar.download")}
           </button>
           <button type="button" onClick={handleCopyLink} className={BTN} title={t("users.profile.toolbar.copyLink")}>
-            {copyState === "link" ? <Check size={13} /> : <Link2 size={13} />}
+            {copyState === "link" ? <Check size={13} aria-hidden /> : <Link2 size={13} aria-hidden />}
             {copyState === "link" ? t("users.profile.toolbar.copied") : t("users.profile.toolbar.copyLinkShort")}
           </button>
         </div>

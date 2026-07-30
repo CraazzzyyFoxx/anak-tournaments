@@ -52,7 +52,7 @@ const HeroBestGames = ({ hero }: { hero: HeroWithUserStats }) => {
   if (records.length === 0) return null;
 
   return (
-    <CardSurface title={t("users.heroes.careerBest")} icon={<Trophy size={15} />} subtitle={t("users.heroes.bestGamesSubtitle", { hero: hero.hero.name })}>
+    <CardSurface title={t("users.heroes.careerBest")} icon={<Trophy aria-hidden size={15} />} subtitle={t("users.heroes.bestGamesSubtitle", { hero: hero.hero.name })}>
       <TooltipProvider delayDuration={120}>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {records.map(({ name, best, isGlobalRecord }) => (
@@ -64,7 +64,13 @@ const HeroBestGames = ({ hero }: { hero: HeroWithUserStats }) => {
                 >
                   <span className="flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-[0.12em] text-[color:var(--aqt-fg-faint)]">
                     {getHumanizedStats(name)}
-                    {isGlobalRecord ? <Crown className="h-3 w-3" style={{ color: "var(--aqt-amber)" }} aria-label={t("users.heroes.allTimeBest")} /> : null}
+                    {isGlobalRecord ? (
+                      <Crown
+                        role="img"
+                        aria-label={t("users.heroes.allTimeBest")}
+                        className="h-3 w-3 text-[color:var(--aqt-amber)]"
+                      />
+                    ) : null}
                   </span>
                   <span className="aqt-display text-[24px] font-bold leading-none text-[color:var(--aqt-fg)]">
                     {formatStatValue(name, best.value)}

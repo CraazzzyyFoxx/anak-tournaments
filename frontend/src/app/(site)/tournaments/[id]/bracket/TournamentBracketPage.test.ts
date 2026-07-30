@@ -180,6 +180,7 @@ describe("TournamentBracketPage", () => {
     expect(source).toContain("[stagesQuery.refetch()]");
     expect(source).toContain("requests.push(encountersQuery.refetch(), standingsQuery.refetch())");
     expect(source).toContain("loadState.isUpdating");
-    expect(source).toContain('t("tournamentDetail.pageState.updating")');
+    // The badge markup itself now lives in the one shared `UpdatingBadge`.
+    expect(source).toContain("<UpdatingBadge />");
   });
 });

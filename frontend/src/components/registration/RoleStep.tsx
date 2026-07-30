@@ -296,11 +296,11 @@ export default function RoleStep({
             onClick={handleSelectAllAdditionalRoles}
             className={cn(
               "shrink-0 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors",
-              !canEditSecondaryRoles && "cursor-default border-[color:var(--aqt-border-2)] bg-white/[0.02] text-[color:var(--aqt-fg-dim)]",
+              !canEditSecondaryRoles && "cursor-default border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-1)] text-[color:var(--aqt-fg-dim)]",
               canEditSecondaryRoles
                 && (areAllAdditionalSelected
                   ? "border-violet-400/50 bg-violet-500/12 text-violet-200"
-                  : "border-[color:var(--aqt-border-2)] bg-white/[0.03] text-[color:var(--aqt-fg-muted)] hover:bg-white/[0.06] hover:text-[color:var(--aqt-fg-muted)]"),
+                  : "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg-muted)]"),
             )}
           >
             {areAllAdditionalSelected
@@ -388,7 +388,7 @@ export default function RoleStep({
                 <HeroPickerGroup
                   roleCode={primaryRoleDef.code}
                   label={primaryRoleDef.display}
-                  icon={<PlayerRoleIcon role={getRoleIconName(primaryRoleDef.code)} size={16} />}
+                  icon={<PlayerRoleIcon role={getRoleIconName(primaryRoleDef.code)} size={16} decorative />}
                   heroes={heroesForRole(primaryRoleDef.code)}
                   selected={primaryRoleHeroes}
                   max={maxHeroes}
@@ -409,7 +409,7 @@ export default function RoleStep({
                     key={entry.code}
                     roleCode={def.code}
                     label={def.display}
-                    icon={<PlayerRoleIcon role={getRoleIconName(def.code)} size={16} />}
+                    icon={<PlayerRoleIcon role={getRoleIconName(def.code)} size={16} decorative />}
                     heroes={heroesForRole(def.code)}
                     selected={entry.topHeroes}
                     max={maxHeroes}
@@ -449,7 +449,7 @@ function HeroPickerGroup({
   onChange: (slugs: string[]) => void;
 }) {
   return (
-    <div className="space-y-2 rounded-xl border border-[color:var(--aqt-border-2)] bg-white/[0.02] p-2.5">
+    <div className="space-y-2 rounded-xl border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-1)] p-2.5">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span

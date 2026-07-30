@@ -9,7 +9,7 @@ import { useTranslations } from "next-intl";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
 import { formatTiebreakOrder, tiebreakerLabel, type TiebreakerMetricId } from "@/lib/tiebreakers";
 import tournamentService from "@/services/tournament.service";
-import styles from "@/app/(site)/tournaments/[id]/TournamentDetail.module.css";
+import styles from "./StandingsTable.module.css";
 
 export interface StandingTableProps {
   standings: Standings[];
@@ -264,13 +264,13 @@ const StandingsTable = ({
                             <span className="l">{standing.lose}</span>
                           </span>
                         </td>
-                        <td className="r font-mono text-[var(--fg-muted)]">
+                        <td className="r font-mono tabular-nums text-[color:var(--fg-muted)]">
                           {standing.points.toFixed(1)}
                         </td>
-                        <td className="r font-mono text-[var(--fg-dim)]">
+                        <td className="r font-mono tabular-nums text-[color:var(--fg-dim)]">
                           {standing.tb ? standing.tb : "—"}
                         </td>
-                        <td className="r font-mono text-[var(--fg-dim)]">
+                        <td className="r font-mono tabular-nums text-[color:var(--fg-dim)]">
                           {standing.buchholz != null ? standing.buchholz.toFixed(1) : "—"}
                         </td>
                         <td className="r">

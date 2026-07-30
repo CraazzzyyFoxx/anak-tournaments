@@ -153,3 +153,26 @@ export interface RegistrationUpdateInput {
   notes?: string;
   custom_fields?: Record<string, unknown>;
 }
+
+/**
+ * Registration / balancer status metadata. Lives here rather than in
+ * `balancer-admin.types` because the public status badges render it — they had
+ * no business importing an admin-only type module.
+ */
+export type StatusScope = "registration" | "balancer";
+export type StatusKind = "builtin" | "custom";
+
+export interface StatusMeta {
+  value: string;
+  scope: StatusScope;
+  is_builtin: boolean;
+  kind: StatusKind;
+  is_override: boolean;
+  can_edit: boolean;
+  can_delete: boolean;
+  can_reset: boolean;
+  icon_slug: string | null;
+  icon_color: string | null;
+  name: string;
+  description: string | null;
+}

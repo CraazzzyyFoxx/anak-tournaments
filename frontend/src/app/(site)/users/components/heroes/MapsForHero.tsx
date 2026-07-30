@@ -20,7 +20,7 @@ const MapsForHero = ({ heroName, heroMaps }: { heroName: string; heroMaps: HeroM
   <CardSurface
     flush
     title={t("users.heroes.mapsFor", { hero: heroName })}
-    icon={<MapIcon size={15} />}
+    icon={<MapIcon aria-hidden size={15} />}
     subtitle={heroMaps.length > 0 ? t("users.heroes.mapsSubtitle", { count: heroMaps.length }) : undefined}
   >
     {heroMaps.length > 0 ? (

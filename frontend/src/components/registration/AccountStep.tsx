@@ -5,7 +5,7 @@ import type { SocialAccount } from "@/types/user.types";
 import AccountCombobox from "./AccountCombobox";
 import VerifiedAccountSelect from "./VerifiedAccountSelect";
 import SmurfTagsInput from "./SmurfTagsInput";
-import FieldLabel from "./FieldLabel";
+import FormField from "./FormField";
 import { ArrowRight, Link2, UserRound } from "lucide-react";
 
 interface AccountStepProps {
@@ -74,7 +74,7 @@ export default function AccountStep({
         <button
           type="button"
           onClick={onLinkAccounts}
-          className="flex w-full items-start gap-3 rounded-lg border border-[color:var(--aqt-border-2)] bg-white/3 p-3 text-left transition-colors hover:bg-white/6"
+          className="flex w-full items-start gap-3 rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-3 text-left transition-colors hover:bg-[color:var(--aqt-overlay-3)]"
         >
           <Link2 className="mt-0.5 size-4 shrink-0 text-[color:var(--aqt-fg-muted)]" />
           <div className="space-y-0.5">
@@ -93,16 +93,13 @@ export default function AccountStep({
       )}
 
       {mode === "admin" && onDisplayNameChange && (
-        <div className="space-y-1.5">
-          <FieldLabel label="Display Name" icon={<UserRound className="size-3.5 opacity-50" />} />
-          <input
-            type="text"
-            placeholder="Display name"
-            value={displayName ?? ""}
-            onChange={(e) => onDisplayNameChange(e.target.value)}
-            className="h-9 w-full rounded-lg border border-[color:var(--aqt-border-2)] bg-white/3 px-3 text-sm text-[color:var(--aqt-fg)] placeholder-white/30 outline-none transition-colors focus:border-[color:var(--aqt-border-2)]"
-          />
-        </div>
+        <FormField
+          label="Display Name"
+          icon={<UserRound className="size-3.5 opacity-50" />}
+          placeholder="Display name"
+          value={displayName ?? ""}
+          onChange={onDisplayNameChange}
+        />
       )}
 
 

@@ -45,16 +45,18 @@ export function RankTaskHistory({ onSelectUser }: RankTaskHistoryProps) {
   return (
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0">
-        <CardTitle className="flex items-center gap-2">
-          Task history
-          <span className="flex items-center gap-1 text-xs font-normal text-emerald-400">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
+        <div className="flex items-center gap-2">
+          <CardTitle asChild>
+            <h2>Task history</h2>
+          </CardTitle>
+          <span className="flex items-center gap-1 text-xs font-normal text-success">
+            <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-success" />
             live
           </span>
-        </CardTitle>
+        </div>
         <div className="flex items-center gap-2">
           <Select value={status} onValueChange={setStatus}>
-            <SelectTrigger className="h-8 w-[140px] text-xs">
+            <SelectTrigger className="h-8 w-36 text-xs" aria-label="Filter by status">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -66,7 +68,7 @@ export function RankTaskHistory({ onSelectUser }: RankTaskHistoryProps) {
             </SelectContent>
           </Select>
           <Select value={source} onValueChange={setSource}>
-            <SelectTrigger className="h-8 w-[150px] text-xs">
+            <SelectTrigger className="h-8 w-40 text-xs" aria-label="Filter by source">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -83,9 +85,12 @@ export function RankTaskHistory({ onSelectUser }: RankTaskHistoryProps) {
         {query.isLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No fetch tasks recorded yet.</p>
+          <p className="rounded-md border border-dashed border-border/60 p-4 text-sm text-muted-foreground">
+            No fetch tasks recorded yet. The worker logs a row here each time it queries OverFast —
+            resume collection or collect a single player to see activity.
+          </p>
         ) : (
-          <div className="max-h-[420px] overflow-y-auto">
+          <div className="max-h-96 overflow-y-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -99,18 +104,36 @@ export function RankTaskHistory({ onSelectUser }: RankTaskHistoryProps) {
               </TableHeader>
               <TableBody>
                 {rows.map((row) => {
-                  const clickable = row.user_id != null;
+                  const userId = row.user_id;
+                  const clickable = userId != null;
+                  const open = () => onSelectUser(userId as number, row.battle_tag);
                   return (
                     <TableRow
                       key={row.id}
                       className={cn(clickable && "cursor-pointer hover:bg-muted/50")}
-                      onClick={clickable ? () => onSelectUser(row.user_id as number, row.battle_tag) : undefined}
+                      onClick={clickable ? open : undefined}
                     >
                       <TableCell className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">
                         {formatDate(row.created_at)}
                       </TableCell>
-                      <TableCell className={cn("font-medium", clickable && "text-[color:var(--aqt-teal)] underline-offset-2 hover:underline")}>
-                        {row.battle_tag}
+                      <TableCell className="font-medium">
+                        {clickable ? (
+                          // The row is clickable for the mouse; this button is what
+                          // keyboard users reach. `stopPropagation` keeps the row
+                          // handler from firing the same open twice.
+                          <button
+                            type="button"
+                            className="text-primary underline-offset-2 hover:underline"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              open();
+                            }}
+                          >
+                            {row.battle_tag}
+                          </button>
+                        ) : (
+                          row.battle_tag
+                        )}
                       </TableCell>
                       <TableCell>
                         <StatusBadge status={row.status} />
@@ -118,7 +141,7 @@ export function RankTaskHistory({ onSelectUser }: RankTaskHistoryProps) {
                       <TableCell className="text-xs text-muted-foreground">{row.source}</TableCell>
                       <TableCell className="text-right text-sm tabular-nums">{row.snapshots_written || "—"}</TableCell>
                       <TableCell
-                        className="max-w-[260px] truncate text-xs text-rose-300/70"
+                        className="max-w-64 truncate text-xs text-danger"
                         title={row.error ?? undefined}
                       >
                         {row.error ?? "—"}

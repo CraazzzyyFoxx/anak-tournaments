@@ -51,7 +51,6 @@ import { ScheduleStep } from "./steps/ScheduleStep";
 import {
   buildDraftCreateInput,
   buildDraftUpdateInput,
-  canCreateNow,
   canNavigateToWizardStep,
   findResumableDraft,
   nextWizardStep,
@@ -93,10 +92,17 @@ const STEP_META: Record<
     icon: UsersRound
   },
   review: {
-    label: "Review & Create",
+    label: "Review & create",
     description: "Check the configuration and create the tournament.",
     icon: ClipboardCheck
   }
+};
+
+/** `validateWizardStep` returns codes; the wizard turns them into a fix. */
+const BASICS_ERRORS: Record<string, string> = {
+  name_required: "Enter a tournament name.",
+  challonge_slug_required: "Enter a Challonge URL or slug.",
+  dates_required: "Pick a start and an end date."
 };
 
 const emptyForm: WizardFormData = {
@@ -201,10 +207,9 @@ export default function NewTournamentPage() {
     startDate: form.start_date,
     endDate: form.end_date
   };
-  const createNowReady = canCreateNow(basics);
 
   /** ensureSession pattern (DraftSetupWizard): first caller POSTs the hidden
-   * draft, everyone after — including retries of Create now / publish —
+   * draft, everyone after — including retries of Save as draft / publish —
    * reuses the same tournament and only PATCHes it. */
   const ensureDraft = (): Promise<Tournament> => {
     if (draftRef.current) return Promise.resolve(draftRef.current);
@@ -285,9 +290,20 @@ export default function NewTournamentPage() {
 
   const createTournament = (publish: boolean) => finishMutation.mutate(publish);
 
+  // Validation runs on submit, so every action stays reachable and explains itself.
+  const saveAsDraft = () => {
+    const problems = validateWizardStep("basics", basics);
+    if (problems.length > 0) {
+      notify.warning(problems.map((code) => BASICS_ERRORS[code] ?? code).join(" "));
+      return;
+    }
+    createTournament(false);
+  };
+
   const next = () => {
-    if (validateWizardStep(activeStep, basics).length > 0) {
-      notify.warning("Fill in the required fields to continue");
+    const problems = validateWizardStep(activeStep, basics);
+    if (problems.length > 0) {
+      notify.warning(problems.map((code) => BASICS_ERRORS[code] ?? code).join(" "));
       return;
     }
     const target = nextWizardStep(steps, activeStep);
@@ -304,32 +320,32 @@ export default function NewTournamentPage() {
   return (
     <div className="space-y-5">
       <AdminPageHeader
-        title="New Tournament"
+        title="New tournament"
         description="Set up a tournament step by step. Only the basics are required."
       />
 
       <AlertDialog open={showResumePrompt}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Continue setup?</AlertDialogTitle>
+            <AlertDialogTitle>Resume draft?</AlertDialogTitle>
             <AlertDialogDescription>
-              “{resumable?.name}” is an Unpublished draft you started earlier. Continue setting it
-              up, or start a new tournament from scratch.
+              “{resumable?.name}” is an Unpublished draft you started earlier. Resume it where you
+              left off, or start a new tournament from scratch.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setResumeDismissed(true)}>
-              Start new
+              Start a new tournament
             </AlertDialogCancel>
             <AlertDialogAction onClick={() => resumable && resumeDraft(resumable)}>
-              Continue setup
+              Resume draft
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
       <div className="overflow-x-auto pb-1">
-        <ol className="flex min-w-[640px] items-center gap-2" aria-label="Creation steps">
+        <ol className="flex min-w-[640px] items-center gap-2" aria-label="Tournament setup steps">
           {steps.map((entry, index) => {
             const Icon = STEP_META[entry].icon;
             const complete = index < activeIndex;
@@ -352,14 +368,18 @@ export default function NewTournamentPage() {
                   )}
                 >
                   <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-muted/40">
-                    {complete ? <Check className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
+                    {complete ? (
+                      <Check className="h-4 w-4" aria-hidden />
+                    ) : (
+                      <Icon className="h-4 w-4" aria-hidden />
+                    )}
                   </span>
                   <span className="truncate text-xs font-medium">
                     {index + 1}. {STEP_META[entry].label}
                   </span>
                 </button>
                 {index < steps.length - 1 && (
-                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/50" />
+                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
                 )}
               </li>
             );
@@ -369,7 +389,7 @@ export default function NewTournamentPage() {
 
       <Card className="border-border/40 bg-card/50 overflow-hidden py-0">
         <div className="border-b border-border/40 px-5 py-5 sm:px-7">
-          <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-primary">
+          <p className="font-mono text-xs font-semibold uppercase tracking-wider tabular-nums text-primary">
             Step {activeIndex + 1} of {steps.length}
           </p>
           <h2 className="mt-2 text-2xl font-semibold">{STEP_META[activeStep].label}</h2>
@@ -429,7 +449,7 @@ export default function NewTournamentPage() {
             disabled={activeIndex === 0}
             onClick={() => setStep(previousWizardStep(steps, activeStep))}
           >
-            <ChevronLeft className="mr-2 h-4 w-4" />
+            <ChevronLeft className="mr-2 h-4 w-4" aria-hidden />
             Back
           </Button>
           <div className="flex items-center gap-2">
@@ -437,10 +457,10 @@ export default function NewTournamentPage() {
               <Button
                 type="button"
                 variant="outline"
-                disabled={!createNowReady || finishMutation.isPending}
-                onClick={() => createTournament(false)}
+                disabled={finishMutation.isPending}
+                onClick={saveAsDraft}
               >
-                Create now
+                {finishMutation.isPending ? "Saving…" : "Save as draft"}
               </Button>
             )}
             {activeStep === "review" ? (
@@ -454,7 +474,7 @@ export default function NewTournamentPage() {
             ) : (
               <Button type="button" onClick={next}>
                 Continue
-                <ChevronRight className="ml-2 h-4 w-4" />
+                <ChevronRight className="ml-2 h-4 w-4" aria-hidden />
               </Button>
             )}
           </div>

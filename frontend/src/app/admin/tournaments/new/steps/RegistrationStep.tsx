@@ -66,20 +66,19 @@ export function RegistrationStep({ value, onChange, draftId }: RegistrationStepP
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">
-          Custom fields and built-in field configuration live in the full form builder.
+          Custom fields and built-in field configuration live in the form builder.
         </p>
         {draftId ? (
           <Button asChild type="button" variant="outline" size="sm">
             <Link href={`/admin/tournaments/${draftId}/registration/form`}>
-              Open full form builder
-              <ExternalLink className="ml-2 h-3.5 w-3.5" />
+              Open form builder
+              <ExternalLink className="ml-2 h-3.5 w-3.5" aria-hidden />
             </Link>
           </Button>
         ) : (
-          <Button type="button" variant="outline" size="sm" disabled>
-            Open full form builder
-            <ExternalLink className="ml-2 h-3.5 w-3.5" />
-          </Button>
+          <p className="text-xs text-muted-foreground">
+            The form builder opens once the draft is saved.
+          </p>
         )}
       </div>
     </div>

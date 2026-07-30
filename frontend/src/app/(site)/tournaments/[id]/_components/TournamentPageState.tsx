@@ -3,6 +3,7 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { cn } from "@/lib/utils";
 
 import styles from "../TournamentDetail.module.css";
@@ -43,6 +44,14 @@ type TournamentPageStateProps =
       isUpdating?: never;
     });
 
+/**
+ * Tournament-flavoured wrapper over the site-wide `PageStateCard`.
+ *
+ * The three terminal states are the shared card verbatim, so the tournament
+ * pages no longer carry their own empty/error design. `refresh-error` stays
+ * bespoke on purpose: it is the only state that must render *below* stale
+ * content rather than replace it, so it keeps the module-CSS strip layout.
+ */
 export function TournamentPageState(props: TournamentPageStateProps) {
   const t = useTranslations();
 
@@ -69,34 +78,42 @@ export function TournamentPageState(props: TournamentPageStateProps) {
     );
   }
 
-  const copyKey =
-    props.state === "initial-error"
-      ? "initialError"
-      : props.state === "filtered-empty"
-        ? "filteredEmpty"
-        : "empty";
-  const title = props.title ?? t(`tournamentDetail.pageState.${copyKey}.title`);
-  const description = props.description ?? t(`tournamentDetail.pageState.${copyKey}.description`);
-  const titleId = `tournament-page-state-${props.state}-title`;
+  if (props.state === "initial-error") {
+    return (
+      <PageStateCard
+        state="error"
+        title={props.title ?? t("tournamentDetail.pageState.initialError.title")}
+        description={
+          props.description ?? t("tournamentDetail.pageState.initialError.description")
+        }
+        actionLabel={t("tournamentDetail.pageState.retry")}
+        onAction={props.onRetry}
+        className={props.className}
+      />
+    );
+  }
+
+  if (props.state === "filtered-empty") {
+    return (
+      <PageStateCard
+        state="filtered-empty"
+        title={props.title ?? t("tournamentDetail.pageState.filteredEmpty.title")}
+        description={
+          props.description ?? t("tournamentDetail.pageState.filteredEmpty.description")
+        }
+        actionLabel={t("tournamentDetail.pageState.resetFilters")}
+        onAction={props.onReset}
+        className={props.className}
+      />
+    );
+  }
 
   return (
-    <section
-      className={cn(styles.stateCard, props.className)}
-      role={props.state === "initial-error" ? "alert" : "status"}
-      aria-labelledby={titleId}
-    >
-      <h2 id={titleId}>{title}</h2>
-      <p>{description}</p>
-      {props.state === "initial-error" ? (
-        <button type="button" className={styles.stateAction} onClick={props.onRetry}>
-          {t("tournamentDetail.pageState.retry")}
-        </button>
-      ) : null}
-      {props.state === "filtered-empty" ? (
-        <button type="button" className={styles.stateAction} onClick={props.onReset}>
-          {t("tournamentDetail.pageState.resetFilters")}
-        </button>
-      ) : null}
-    </section>
+    <PageStateCard
+      state="empty"
+      title={props.title ?? t("tournamentDetail.pageState.empty.title")}
+      description={props.description ?? t("tournamentDetail.pageState.empty.description")}
+      className={props.className}
+    />
   );
 }

@@ -35,17 +35,17 @@ function ReportCard({
   const t = useTranslations();
 
   return (
-    <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/40 p-3">
+    <div className="rounded-xl border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-3">
       <div className="flex items-baseline justify-between gap-2">
-        <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500">{title}</p>
-        <p className="truncate text-xs font-semibold text-zinc-300">{teamName}</p>
+        <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[color:var(--aqt-fg-dim)]">{title}</p>
+        <p className="truncate text-xs font-semibold text-[color:var(--aqt-fg-muted)]">{teamName}</p>
       </div>
       {report ? (
-        <div className="mt-2 space-y-1.5 text-sm text-zinc-200">
-          <div className="font-mono text-base font-bold text-white">
+        <div className="mt-2 space-y-1.5 text-sm text-[color:var(--aqt-fg-muted)]">
+          <div className="font-mono text-base font-bold text-[color:var(--aqt-fg)]">
             {report.home_score} - {report.away_score}
           </div>
-          <div className="text-xs text-zinc-400">
+          <div className="text-xs text-[color:var(--aqt-fg-muted)]">
             {t("matchReport.matchQuality")}: {report.closeness}/10
           </div>
           {report.map_codes.length > 0 && (
@@ -54,18 +54,18 @@ function ReportCard({
                 .slice()
                 .sort((a, b) => a.map_index - b.map_index)
                 .map((mapCode) => (
-                  <li key={mapCode.id} className="flex items-center gap-2 text-xs text-zinc-400">
-                    <span className="text-zinc-500">
+                  <li key={mapCode.id} className="flex items-center gap-2 text-xs text-[color:var(--aqt-fg-muted)]">
+                    <span className="text-[color:var(--aqt-fg-dim)]">
                       {t("matchReport.mapLabel", { index: String(mapCode.map_index) })}
                     </span>
-                    <span className="font-mono text-zinc-200">{mapCode.code}</span>
+                    <span className="font-mono text-[color:var(--aqt-fg-muted)]">{mapCode.code}</span>
                   </li>
                 ))}
             </ul>
           )}
         </div>
       ) : (
-        <p className="mt-2 text-xs italic text-zinc-500">{t("matchReport.noReportYet")}</p>
+        <p className="mt-2 text-xs italic text-[color:var(--aqt-fg-dim)]">{t("matchReport.noReportYet")}</p>
       )}
     </div>
   );
@@ -82,7 +82,7 @@ export function CaptainReportsView({ encounter, reports, className }: CaptainRep
 
   return (
     <div className={cn("space-y-2", className)}>
-      <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500">
+      <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[color:var(--aqt-fg-dim)]">
         {t("matchReport.bothReportsTitle")}
       </p>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -90,7 +90,7 @@ export function CaptainReportsView({ encounter, reports, className }: CaptainRep
         <ReportCard title={t("matchReport.awayReport")} teamName={awayLabel} report={awayReport} />
       </div>
       {avgCloseness != null && (
-        <p className="text-xs text-zinc-400">
+        <p className="text-xs text-[color:var(--aqt-fg-muted)]">
           {t("matchReport.avgCloseness")}: {avgCloseness.toFixed(1)}/10
         </p>
       )}

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
-import { Plus, Trash2, CheckCircle, XCircle, Crown, Trophy } from "lucide-react";
+import { Plus, Trash2, CheckCircle, CircleDot, Crown, Trophy } from "lucide-react";
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { StatusIcon } from "@/components/admin/StatusIcon";
@@ -103,18 +103,26 @@ export default function TournamentsPage() {
         row.getValue("is_finished") ? (
           <StatusIcon icon={CheckCircle} label="Finished" variant="muted" />
         ) : (
-          <StatusIcon icon={XCircle} label="Active" variant="success" />
+          <StatusIcon icon={CircleDot} label="Active" variant="success" />
         )
     },
     {
       accessorKey: "start_date",
-      header: "Start Date",
-      cell: ({ row }) => new Date(row.getValue("start_date")).toLocaleDateString()
+      header: "Start date",
+      cell: ({ row }) => (
+        <span className="tabular-nums">
+          {new Date(row.getValue("start_date")).toLocaleDateString()}
+        </span>
+      )
     },
     {
       accessorKey: "end_date",
-      header: "End Date",
-      cell: ({ row }) => new Date(row.getValue("end_date")).toLocaleDateString()
+      header: "End date",
+      cell: ({ row }) => (
+        <span className="tabular-nums">
+          {new Date(row.getValue("end_date")).toLocaleDateString()}
+        </span>
+      )
     },
     {
       accessorKey: "stages",
@@ -130,7 +138,7 @@ export default function TournamentsPage() {
 
         return (
           <div className="max-w-80">
-            <div className="font-medium">
+            <div className="font-medium tabular-nums">
               {stages.length} {stages.length === 1 ? "stage" : "stages"}
             </div>
             <div className="truncate text-xs text-muted-foreground" title={stagesLabel}>
@@ -146,13 +154,13 @@ export default function TournamentsPage() {
         canDelete ? (
           <div className="flex items-center gap-2">
             <Button
-              aria-label={`Delete ${row.original.name}`}
+              aria-label={`Delete tournament ${row.original.name}`}
               variant="ghost"
               size="icon"
               onClick={() => handleDelete(row.original)}
               className="text-destructive"
             >
-              <Trash2 className="h-4 w-4" />
+              <Trash2 className="h-4 w-4" aria-hidden />
             </Button>
           </div>
         ) : null
@@ -167,8 +175,8 @@ export default function TournamentsPage() {
         actions={
           canCreate ? (
             <Button onClick={() => router.push("/admin/tournaments/new")}>
-              <Plus className="mr-2 h-4 w-4" />
-              Create Tournament
+              <Plus className="mr-2 h-4 w-4" aria-hidden />
+              Create tournament
             </Button>
           ) : null
         }
@@ -192,8 +200,8 @@ export default function TournamentsPage() {
           })
         }
         columns={columns}
-        searchPlaceholder="Search tournaments..."
-        emptyMessage="No tournaments found."
+        searchPlaceholder="Search tournaments…"
+        emptyMessage="No tournaments yet. Create one to start adding stages, teams and encounters."
         onRowClick={(row) => handleRowClick(row.original)}
       />
 
@@ -206,9 +214,9 @@ export default function TournamentsPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Continue tournament setup?</AlertDialogTitle>
+            <AlertDialogTitle>Resume tournament setup?</AlertDialogTitle>
             <AlertDialogDescription>
-              {`"${draftPromptTournament?.name}" is an unpublished draft without stages. Continue setup in the wizard, or open the tournament hub directly.`}
+              {`"${draftPromptTournament?.name}" is an unpublished draft without stages. Resume setup in the wizard, or open the tournament hub directly.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -219,10 +227,10 @@ export default function TournamentsPage() {
                 }
               }}
             >
-              Open hub
+              Open tournament hub
             </AlertDialogCancel>
             <AlertDialogAction onClick={() => router.push("/admin/tournaments/new")}>
-              Continue setup
+              Resume in wizard
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -234,8 +242,8 @@ export default function TournamentsPage() {
           open={deleteDialogOpen}
           onOpenChange={setDeleteDialogOpen}
           onConfirm={handleConfirmDelete}
-          title="Delete Tournament"
-          description={`Are you sure you want to delete "${selectedTournament?.name}"? This action cannot be undone.`}
+          title="Delete tournament"
+          description={`Deleting "${selectedTournament?.name}" also removes its stages, teams, encounters and standings. This cannot be undone.`}
           cascadeInfo={[
             "All tournament stages",
             "All teams in this tournament",

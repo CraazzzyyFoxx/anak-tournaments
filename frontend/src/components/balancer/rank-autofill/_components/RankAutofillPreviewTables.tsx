@@ -2,7 +2,7 @@
 
 import { useTranslations } from "next-intl";
 
-import PlayerDivisionIcon from "@/components/PlayerDivisionIcon";
+import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
@@ -111,8 +111,8 @@ export function RankAutofillRolePill({ role }: { role: RegistrationRankAutofillR
         .filter(Boolean)
         .join("\n")}
     >
-      <span className="shrink-0" aria-hidden="true">
-        <PlayerRoleIcon role={getRoleIconName(role.role)} size={14} color="currentColor" />
+      <span className="shrink-0">
+        <PlayerRoleIcon role={getRoleIconName(role.role)} size={14} color="currentColor" decorative />
       </span>
       <span className="sr-only">{roleLabel}</span>
 
@@ -123,14 +123,14 @@ export function RankAutofillRolePill({ role }: { role: RegistrationRankAutofillR
           {showsTransition && (
             <>
               {currentDivision != null && (
-                <PlayerDivisionIcon division={currentDivision} width={16} height={16} />
+                <DivisionIcon division={currentDivision} width={16} height={16} />
               )}
               <span className="tabular-nums opacity-50">{role.current_rank_value}</span>
               <span className="opacity-40">→</span>
             </>
           )}
           {primaryDivision != null && (
-            <PlayerDivisionIcon division={primaryDivision} width={16} height={16} />
+            <DivisionIcon division={primaryDivision} width={16} height={16} />
           )}
           <span className="tabular-nums">{primaryRank ?? "-"}</span>
           {isUnverified && <span className="opacity-60">{t("rankAutofill.pillUnverified")}</span>}

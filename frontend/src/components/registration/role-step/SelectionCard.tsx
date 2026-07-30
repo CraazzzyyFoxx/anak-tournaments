@@ -46,12 +46,12 @@ export function SelectionCard({
   return (
     <div
       className={cn(
-        "flex flex-col rounded-xl border bg-white/[0.02] transition-all",
+        "flex flex-col rounded-xl border bg-[color:var(--aqt-overlay-1)] transition-all",
         selected
           ? visuals.selectedCard
           : disabled
-            ? "border-[color:var(--aqt-border-2)] bg-white/[0.015] opacity-55"
-            : "border-[color:var(--aqt-border-2)] hover:border-[color:var(--aqt-border-2)] hover:bg-white/[0.04]",
+            ? "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-1)] opacity-55"
+            : "border-[color:var(--aqt-border-2)] hover:border-[color:var(--aqt-border-2)] hover:bg-[color:var(--aqt-overlay-3)]",
       )}
     >
       <button
@@ -70,7 +70,7 @@ export function SelectionCard({
           <RoleIconTile
             roleCode={roleCode}
             compact={compact}
-            icon={icon ?? <PlayerRoleIcon role={getRoleIconName(roleCode)} size={18} />}
+            icon={icon ?? <PlayerRoleIcon role={getRoleIconName(roleCode)} size={18} decorative />}
           />
           <div className="min-w-0 text-left">
             <p className={cn("text-[12px] font-semibold", disabled ? "text-[color:var(--aqt-fg-muted)]" : "text-[color:var(--aqt-fg)]")}>

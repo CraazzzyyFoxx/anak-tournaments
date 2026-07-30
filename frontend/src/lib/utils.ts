@@ -5,31 +5,38 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatDateRange(startDate: Date, endDate: Date, locale: string = "ru"): string {
+/**
+ * Localized inclusive date range, e.g. `Jan 15 – 20, 2026` / `15–20 янв. 2026 г.`
+ *
+ * `locale` is REQUIRED on purpose. It used to default to `"ru"`, and the two
+ * call sites that omitted it rendered Russian dates inside the English UI —
+ * next to an English date in the very same table row. Making it required lets
+ * the compiler find every such site.
+ *
+ * `Intl.DateTimeFormat.formatRange` collapses the shared month/year itself and
+ * uses the locale's own range separator, so no manual string assembly is
+ * needed. It has been Baseline since 2021; the `formatRange`-less path is kept
+ * only as a defensive fallback.
+ */
+export function formatDateRange(
+  startDate: Date | string,
+  endDate: Date | string,
+  locale: string
+): string {
   const start = new Date(startDate);
   const end = new Date(endDate);
-  const isRu = locale.startsWith("ru");
-  const formatLocale = isRu ? "ru-RU" : "en-US";
+  const resolved = locale.startsWith("ru") ? "ru-RU" : "en-US";
 
-  const options: Intl.DateTimeFormatOptions = {
-    month: 'short',
-    day: 'numeric',
-  };
+  const formatter = new Intl.DateTimeFormat(resolved, {
+    day: "numeric",
+    month: "short",
+    year: "numeric"
+  });
 
-  // Same month: "Jan 15 - 20, 2026" or "15 - 20 янв. 2026 г."
-  if (start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear()) {
-    if (isRu) {
-      const monthName = start.toLocaleDateString('ru-RU', { month: 'short' });
-      return `${start.getDate()} - ${end.getDate()} ${monthName} ${end.getFullYear()}`;
-    }
-    const startStr = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    return `${startStr} - ${end.getDate()}, ${end.getFullYear()}`;
+  if (typeof formatter.formatRange === "function") {
+    return formatter.formatRange(start, end);
   }
-
-  // Different months: "Jan 15 - Feb 20, 2026" or "15 янв. - 20 февр. 2026"
-  const startStr = start.toLocaleDateString(formatLocale, options);
-  const endStr = end.toLocaleDateString(formatLocale, options);
-  return `${startStr} - ${endStr}, ${end.getFullYear()}`;
+  return `${formatter.format(start)} – ${formatter.format(end)}`;
 }
 
 export function getStatusColor(isFinished: boolean) {

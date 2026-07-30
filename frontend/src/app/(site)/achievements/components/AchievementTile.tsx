@@ -4,11 +4,15 @@ import React from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ScrollText } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
 import type { Achievement } from "@/types/achievement.types";
-import { classifyRarity, rarityVarClass } from "@/app/(site)/users/components/achievements/rarity";
+import {
+  classifyRarity,
+  localizedText,
+  rarityVarClass
+} from "@/app/(site)/users/components/achievements/rarity";
 
 interface AchievementTileProps {
   achievement: Achievement;
@@ -25,10 +29,11 @@ interface AchievementTileProps {
  */
 const AchievementTile = ({ achievement, onViewRules }: AchievementTileProps) => {
   const t = useTranslations();
+  const locale = useLocale();
   const rarity = classifyRarity(achievement.rarity * 100);
   const hasRules = Boolean(achievement.condition_tree);
   const imgSrc = achievement.image_url ?? `/achievements/${achievement.slug}.webp`;
-  const description = achievement.description_ru || achievement.description_en;
+  const description = localizedText(locale, achievement.description_ru, achievement.description_en);
 
   return (
     <div className={cn("aqt-ach-tile group", rarityVarClass(rarity))}>
@@ -45,10 +50,12 @@ const AchievementTile = ({ achievement, onViewRules }: AchievementTileProps) => 
 
       <div className="aqt-ach-tile__name">{achievement.name}</div>
 
-      <span className="aqt-ach-tile__rarity">{(achievement.rarity * 100).toFixed(2)}%</span>
+      <span className="aqt-ach-tile__rarity tabular-nums">
+        {(achievement.rarity * 100).toFixed(2)}%
+      </span>
 
       {(achievement.count ?? 0) > 0 ? (
-        <span className="aqt-ach-tile__count">×{achievement.count}</span>
+        <span className="aqt-ach-tile__count tabular-nums">×{achievement.count}</span>
       ) : null}
 
       {description ? (

@@ -1,4 +1,5 @@
-import type { BalancerCustomStatus, StatusMeta, StatusScope } from "@/types/balancer-admin.types";
+import type { BalancerCustomStatus } from "@/types/balancer-admin.types";
+import type { StatusMeta, StatusScope } from "@/types/registration.types";
 
 const BUILTIN_STATUS_META: Record<StatusScope, StatusMeta[]> = {
   registration: [

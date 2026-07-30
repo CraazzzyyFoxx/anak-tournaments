@@ -14,7 +14,8 @@ import {
   isRegistrationIncludedInBalancer,
   type PlayerValidationIssue,
 } from "@/app/balancer/components/workspace-helpers";
-import type { AdminRegistration, BalancerApplication, BalancerPlayerRecord, StatusMeta, StatusScope } from "@/types/balancer-admin.types";
+import type { AdminRegistration, BalancerApplication, BalancerPlayerRecord } from "@/types/balancer-admin.types";
+import type { StatusMeta, StatusScope } from "@/types/registration.types";
 
 type TestFunction = () => void | Promise<void>;
 type Expectation<T> = {

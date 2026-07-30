@@ -6,7 +6,6 @@ import { useTranslations } from "next-intl";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { notify } from "@/lib/notify";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
 import draftService from "@/services/draft.service";
@@ -46,27 +45,22 @@ export function DraftSessionDashboard({ tournamentId, canManage }: DraftSessionD
   }
   if (boardQuery.isError) {
     return (
-      <Card className="border-destructive/30">
-        <CardHeader>
-          <CardTitle>{t("loadFailed")}</CardTitle>
-          <CardDescription>{t("loadFailedHint")}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button variant="outline" onClick={() => boardQuery.refetch()}>
-            {t("retry")}
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed border-destructive/40 px-4 py-3 text-sm text-muted-foreground">
+        <span className="min-w-0">
+          <span className="font-medium text-foreground">{t("loadFailed")}</span>{" "}
+          {t("loadFailedHint")}
+        </span>
+        <Button variant="outline" size="sm" onClick={() => boardQuery.refetch()}>
+          {t("retry")}
+        </Button>
+      </div>
     );
   }
   if (!canManage) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("title")}</CardTitle>
-          <CardDescription>{t("noPermission")}</CardDescription>
-        </CardHeader>
-      </Card>
+      <p className="rounded-lg border border-dashed border-border/70 px-4 py-3 text-sm text-muted-foreground">
+        {t("noPermission")}
+      </p>
     );
   }
 
@@ -79,34 +73,31 @@ export function DraftSessionDashboard({ tournamentId, canManage }: DraftSessionD
   return (
     <div className="space-y-4">
       {terminalSession && (
-        <Card className="border-border/60">
-          <CardHeader>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  {t("previousDraft")}
-                  <Badge variant="secondary">{t(`statuses.${terminalSession.status}`)}</Badge>
-                </CardTitle>
-                <CardDescription className="mt-2">{t("previousDraftHint")}</CardDescription>
-              </div>
-              <div className="flex gap-2">
-                <Button asChild variant="outline">
-                  <Link href={`/draft/${tournamentId}`} target="_blank">
-                    {t("openBoard")}
-                  </Link>
-                </Button>
-                {terminalSession.status === "completed" && (
-                  <Button
-                    disabled={lifecycleMutation.isPending}
-                    onClick={() => lifecycleMutation.mutate("export")}
-                  >
-                    {t("actions.export")}
-                  </Button>
-                )}
-              </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 px-4 py-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              {t("previousDraft")}
+              <Badge variant="secondary">{t(`statuses.${terminalSession.status}`)}</Badge>
             </div>
-          </CardHeader>
-        </Card>
+            <p className="mt-1 text-xs text-muted-foreground">{t("previousDraftHint")}</p>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/draft/${tournamentId}`} target="_blank">
+                {t("openBoard")}
+              </Link>
+            </Button>
+            {terminalSession.status === "completed" && (
+              <Button
+                size="sm"
+                disabled={lifecycleMutation.isPending}
+                onClick={() => lifecycleMutation.mutate("export")}
+              >
+                {t("actions.export")}
+              </Button>
+            )}
+          </div>
+        </div>
       )}
       <DraftSetupWizard
         tournamentId={tournamentId}

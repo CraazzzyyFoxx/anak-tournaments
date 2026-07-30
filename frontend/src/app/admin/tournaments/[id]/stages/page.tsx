@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
 import { tabFallback } from "../hubQueries";
 
-// StageManager moved here as-is from inside TournamentSetupTab (T5, SK-O9).
+// Stage editing lives on its own hub route; the old combined setup tab is gone.
 const StageManager = dynamic(
   () =>
     import("../components/StageManager").then((module) => ({

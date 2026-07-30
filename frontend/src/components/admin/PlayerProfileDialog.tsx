@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/dialog";
 
 import adminService from "@/services/admin.service";
-import { SocialAccountsEditor } from "@/components/social/SocialAccountsEditor";
+import { SocialAccountsEditor } from "@/components/admin/SocialAccountsEditor";
 import { revalidateUser } from "@/app/actions/users";
 import { notify } from "@/lib/notify";
 import { MAX_AVATAR_BYTES } from "@/lib/avatar";
@@ -68,10 +68,11 @@ function AvatarSection({ user, canEdit, onUserUpdated }: AvatarSectionProps) {
       />
 
       {(uploadMutation.isError || deleteMutation.isError) && (
-        <p className="text-xs text-destructive text-center max-w-[200px]">
+        <p className="max-w-[200px] text-center text-xs text-destructive">
+          Could not update the avatar.{" "}
           {(uploadMutation.error ?? deleteMutation.error) instanceof Error
             ? ((uploadMutation.error ?? deleteMutation.error) as Error).message
-            : "Avatar operation failed"}
+            : "Try again."}
         </p>
       )}
     </div>
@@ -90,6 +91,7 @@ function NameSection({ user, canEdit, onUserUpdated }: NameSectionProps) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(user.name);
+  const [nameError, setNameError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -109,22 +111,30 @@ function NameSection({ user, canEdit, onUserUpdated }: NameSectionProps) {
 
   const handleSave = () => {
     const trimmed = name.trim();
-    if (!trimmed || trimmed === user.name) {
+    if (!trimmed) {
+      setNameError("Enter a player name.");
+      return;
+    }
+    if (trimmed === user.name) {
       setEditing(false);
+      setNameError(null);
       setName(user.name);
       return;
     }
+    setNameError(null);
     updateMutation.mutate();
   };
 
   const handleCancel = () => {
     setEditing(false);
     setName(user.name);
+    setNameError(null);
     updateMutation.reset();
   };
 
   const handleStartEditing = () => {
     setName(user.name);
+    setNameError(null);
     updateMutation.reset();
     setEditing(true);
   };
@@ -133,31 +143,39 @@ function NameSection({ user, canEdit, onUserUpdated }: NameSectionProps) {
     return (
       <div className="space-y-2">
         <Label htmlFor="player-name" className="text-xs text-muted-foreground">
-          Player Name
+          Player name
         </Label>
         <div className="flex items-center gap-2">
           <Input
             id="player-name"
             ref={inputRef}
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            aria-invalid={nameError ? true : undefined}
+            onChange={(e) => {
+              setName(e.target.value);
+              setNameError(null);
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter") handleSave();
               if (e.key === "Escape") handleCancel();
             }}
             disabled={updateMutation.isPending}
-            className="h-9 flex-1"
+            className="h-9 flex-1 aria-invalid:border-destructive"
             autoFocus
           />
           <Button
             size="icon"
             variant="ghost"
-            className="h-8 w-8 text-green-500 hover:text-green-400 hover:bg-green-500/10"
+            className="h-8 w-8 text-success hover:bg-success/10 hover:text-success"
             onClick={handleSave}
-            disabled={updateMutation.isPending || !name.trim()}
-            aria-label="Save name"
+            disabled={updateMutation.isPending}
+            aria-label="Save player name"
           >
-            {updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            {updateMutation.isPending ? (
+              <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
+            ) : (
+              <Check aria-hidden className="h-4 w-4" />
+            )}
           </Button>
           <Button
             size="icon"
@@ -165,13 +183,20 @@ function NameSection({ user, canEdit, onUserUpdated }: NameSectionProps) {
             className="h-8 w-8 text-muted-foreground hover:text-foreground"
             onClick={handleCancel}
             disabled={updateMutation.isPending}
-            aria-label="Cancel"
+            aria-label="Cancel name edit"
           >
-            <X className="h-4 w-4" />
+            <X aria-hidden className="h-4 w-4" />
           </Button>
         </div>
+        {nameError ? (
+          <p role="alert" className="text-xs text-destructive">
+            {nameError}
+          </p>
+        ) : null}
         {updateMutation.isError && updateMutation.error instanceof Error && (
-          <p className="text-xs text-destructive">{updateMutation.error.message}</p>
+          <p role="alert" className="text-xs text-destructive">
+            Could not save the player name. {updateMutation.error.message}
+          </p>
         )}
       </div>
     );
@@ -184,11 +209,11 @@ function NameSection({ user, canEdit, onUserUpdated }: NameSectionProps) {
         <Button
           size="icon"
           variant="ghost"
-          className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+          className="h-7 w-7 opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
           onClick={handleStartEditing}
-          aria-label="Edit name"
+          aria-label="Edit player name"
         >
-          <Pencil className="h-3.5 w-3.5" />
+          <Pencil aria-hidden className="h-3.5 w-3.5" />
         </Button>
       )}
     </div>
@@ -237,8 +262,8 @@ export function PlayerProfileDialog({
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="max-w-md">
         <DialogHeader className="sr-only">
-          <DialogTitle>Player Profile</DialogTitle>
-          <DialogDescription>Manage player profile, avatar, and social identities.</DialogDescription>
+          <DialogTitle>Player profile</DialogTitle>
+          <DialogDescription>Manage the player profile, avatar, and social identities.</DialogDescription>
         </DialogHeader>
 
         {/* ── Avatar + Name header ──────────────────────── */}
@@ -248,8 +273,8 @@ export function PlayerProfileDialog({
           <span className="text-xs text-muted-foreground tabular-nums">ID: {user.id}</span>
           {canMerge && onMergeRequested ? (
             <Button type="button" variant="outline" size="sm" onClick={() => onMergeRequested(user)}>
-              <ArrowRightLeft className="mr-2 h-4 w-4" />
-              Merge Into Another Profile
+              <ArrowRightLeft aria-hidden className="mr-2 h-4 w-4" />
+              Merge into another profile
             </Button>
           ) : null}
         </div>
@@ -257,7 +282,7 @@ export function PlayerProfileDialog({
         {/* ── Social identities ─────────────────────────── */}
         <div className="pt-2">
           <div className="flex items-center gap-2 mb-3">
-            <h4 className="text-sm font-medium text-muted-foreground">Social Identities</h4>
+            <h4 className="text-sm font-medium text-muted-foreground">Social identities</h4>
             <Badge variant="outline" className="tabular-nums font-normal text-xs">
               {user.social_accounts?.length ?? 0}
             </Badge>

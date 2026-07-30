@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
@@ -11,7 +11,6 @@ import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { TeamRosterEditorDialog } from "@/components/admin/teams/TeamRosterEditorDialog";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -55,6 +54,7 @@ export default function TeamsPage() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
+  const createHintId = useId();
 
   const selectedTournamentId = parseTournamentQueryParam(searchParams.get(TOURNAMENT_QUERY_PARAM));
 
@@ -107,7 +107,11 @@ export default function TeamsPage() {
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
   };
 
-  const canOpenCreateDialog = canCreateTeam && canCreatePlayer && selectedTournamentId != null;
+  const canCreateRoster = canCreateTeam && canCreatePlayer;
+  const createBlockedReason =
+    canCreateRoster && selectedTournamentId == null
+      ? "Pick a tournament first — a roster belongs to one tournament."
+      : null;
   const canOpenEditDialog = canUpdateTeam || canCreatePlayer || canUpdatePlayer || canDeletePlayer;
 
   const columns: ColumnDef<Team>[] = [
@@ -119,20 +123,20 @@ export default function TeamsPage() {
     {
       accessorKey: "avg_sr",
       header: "Avg SR",
-      cell: ({ row }) => <div>{row.getValue<number>("avg_sr").toFixed(0)}</div>
+      cell: ({ row }) => <div className="tabular-nums">{row.getValue<number>("avg_sr").toFixed(0)}</div>
     },
     {
       accessorKey: "total_sr",
       header: "Total SR",
-      cell: ({ row }) => <div>{row.getValue("total_sr")}</div>
+      cell: ({ row }) => <div className="tabular-nums">{row.getValue("total_sr")}</div>
     },
     {
       accessorKey: "players",
       header: "Players",
       enableSorting: false,
       cell: ({ row }) => (
-        <div className="flex items-center gap-1">
-          <Users className="h-4 w-4" />
+        <div className="flex items-center gap-1 tabular-nums">
+          <Users className="h-4 w-4" aria-hidden />
           {row.getValue<any[]>("players")?.length || 0}
         </div>
       )
@@ -190,39 +194,25 @@ export default function TeamsPage() {
         title="Teams"
         description="Manage teams and their rosters"
         actions={
-          canOpenCreateDialog ? (
-            <Button onClick={() => setCreateDialogOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Create Team
-            </Button>
+          canCreateRoster ? (
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {createBlockedReason ? (
+                <span id={createHintId} className="text-sm text-muted-foreground">
+                  {createBlockedReason}
+                </span>
+              ) : null}
+              <Button
+                onClick={() => setCreateDialogOpen(true)}
+                disabled={createBlockedReason != null}
+                aria-describedby={createBlockedReason ? createHintId : undefined}
+              >
+                <Plus className="mr-2 h-4 w-4" aria-hidden />
+                Create team
+              </Button>
+            </div>
           ) : null
         }
       />
-
-      <div className="flex flex-wrap items-center gap-4">
-        <Label htmlFor="tournament-filter">Filter by Tournament:</Label>
-        <Select
-          value={selectedTournamentId?.toString() || "all"}
-          onValueChange={handleTournamentFilterChange}
-        >
-          <SelectTrigger className="w-[300px]">
-            <SelectValue placeholder="All Tournaments" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Tournaments</SelectItem>
-            {tournamentsData?.results.map((tournament) => (
-              <SelectItem key={tournament.id} value={tournament.id.toString()}>
-                {tournament.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {canCreateTeam && !selectedTournamentId ? (
-          <span className="text-sm text-muted-foreground">
-            Select a tournament to create a team roster.
-          </span>
-        ) : null}
-      </div>
 
       <AdminDataTable
         queryKey={(page, search, pageSize, sortField, sortDir) => [
@@ -244,8 +234,30 @@ export default function TeamsPage() {
           return paginateResults(sorted, page, pageSize);
         }}
         columns={columns}
-        searchPlaceholder="Search teams..."
-        emptyMessage="No teams found."
+        searchPlaceholder="Search teams…"
+        emptyMessage={
+          selectedTournamentId
+            ? "No teams in this tournament yet. Use “Create team” to add the first roster."
+            : "No teams yet. Pick a tournament to see or create its rosters."
+        }
+        actions={
+          <Select
+            value={selectedTournamentId?.toString() ?? "all"}
+            onValueChange={handleTournamentFilterChange}
+          >
+            <SelectTrigger className="w-[220px]" aria-label="Filter by tournament">
+              <SelectValue placeholder="Filter by tournament" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All tournaments</SelectItem>
+              {tournamentsData?.results.map((tournament) => (
+                <SelectItem key={tournament.id} value={tournament.id.toString()}>
+                  {tournament.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        }
         onRowClick={(row) => router.push(`/admin/teams/${row.original.id}`)}
       />
 
@@ -292,8 +304,8 @@ export default function TeamsPage() {
           open={deleteDialogOpen}
           onOpenChange={setDeleteDialogOpen}
           onConfirm={handleConfirmDelete}
-          title="Delete Team"
-          description={`Are you sure you want to delete "${selectedTeam?.name}"? This action cannot be undone.`}
+          title="Delete team"
+          description={`Deleting “${selectedTeam?.name}” removes the roster from its tournament along with every player and match statistic below. This cannot be undone.`}
           cascadeInfo={["All players in this team", "All related match statistics"]}
           isDeleting={deleteMutation.isPending}
         />

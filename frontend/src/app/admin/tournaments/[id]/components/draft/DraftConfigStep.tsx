@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import { ChevronDown, Clock3, ShieldCheck, Users } from "lucide-react";
 import { useTranslations } from "next-intl";
 
@@ -15,6 +16,7 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { TONE_CLASS } from "@/components/admin/tone";
 import { cn } from "@/lib/utils";
 import type { DraftAutopickStrategy, DraftFormat } from "@/types/draft.types";
 
@@ -33,6 +35,9 @@ const FORMATS: DraftFormat[] = ["snake", "linear", "custom"];
 export function DraftConfigStep({ value, onChange, locked = false }: DraftConfigStepProps) {
   const t = useTranslations("draftAdmin");
   const rounds = roundsForTeamSize(value.teamSize);
+  const pickTimeLabelId = useId();
+  const formatLabelId = useId();
+  const roundRulesLabelId = useId();
 
   const patch = (next: Partial<DraftSetupConfig>) => onChange({ ...value, ...next });
   const setTeamSize = (teamSize: number) => {
@@ -49,7 +54,7 @@ export function DraftConfigStep({ value, onChange, locked = false }: DraftConfig
   return (
     <div className="space-y-6">
       {locked && (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-900 dark:text-amber-100">
+        <div className={cn("rounded-xl border px-4 py-3 text-sm", TONE_CLASS.warning)}>
           {t("configLocked")}
         </div>
       )}
@@ -58,7 +63,10 @@ export function DraftConfigStep({ value, onChange, locked = false }: DraftConfig
         <div className="space-y-2">
           <Label htmlFor="draft-team-size">{t("teamSize")}</Label>
           <div className="relative">
-            <Users className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Users
+              className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground"
+              aria-hidden
+            />
             <NumberInput
               id="draft-team-size"
               className="pl-9"
@@ -70,7 +78,7 @@ export function DraftConfigStep({ value, onChange, locked = false }: DraftConfig
               onValueChange={(next) => setTeamSize(next ?? 2)}
             />
           </div>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs tabular-nums text-muted-foreground">
             {t("roundsDerived", { rounds })}
           </p>
         </div>
@@ -91,18 +99,22 @@ export function DraftConfigStep({ value, onChange, locked = false }: DraftConfig
 
       <div className="space-y-3">
         <div className="flex items-center gap-2">
-          <Clock3 className="h-4 w-4 text-muted-foreground" />
-          <Label htmlFor="draft-pick-time">{t("pickTime")}</Label>
+          <Clock3 className="h-4 w-4 text-muted-foreground" aria-hidden />
+          <span id={pickTimeLabelId} className="text-sm font-medium leading-none">
+            {t("pickTime")}
+          </span>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2" role="group" aria-labelledby={pickTimeLabelId}>
           {PICK_TIME_PRESETS.map((seconds) => (
             <Button
               key={seconds}
               type="button"
               size="sm"
               disabled={locked}
+              aria-pressed={value.pickTimeSeconds === seconds}
               variant={value.pickTimeSeconds === seconds ? "default" : "outline"}
               onClick={() => patch({ pickTimeSeconds: seconds })}
+              className="tabular-nums"
             >
               {seconds}s
             </Button>
@@ -122,12 +134,16 @@ export function DraftConfigStep({ value, onChange, locked = false }: DraftConfig
       </div>
 
       <div className="space-y-3">
-        <Label>{t("format")}</Label>
-        <div className="grid gap-3 md:grid-cols-3">
+        <span id={formatLabelId} className="text-sm font-medium leading-none">
+          {t("format")}
+        </span>
+        <div className="grid gap-3 md:grid-cols-3" role="radiogroup" aria-labelledby={formatLabelId}>
           {FORMATS.map((format) => (
             <button
               key={format}
               type="button"
+              role="radio"
+              aria-checked={value.format === format}
               disabled={locked}
               onClick={() => patch({ format })}
               className={cn(
@@ -146,7 +162,7 @@ export function DraftConfigStep({ value, onChange, locked = false }: DraftConfig
                   <span
                     key={seat}
                     className={cn(
-                      "grid h-6 w-6 place-items-center rounded-md bg-muted text-[10px] font-semibold",
+                      "grid h-6 w-6 place-items-center rounded-md bg-muted text-xs font-semibold tabular-nums",
                       format === "snake" && index > 1 && "bg-primary/15 text-primary"
                     )}
                   >
@@ -166,7 +182,7 @@ export function DraftConfigStep({ value, onChange, locked = false }: DraftConfig
           value={value.autopickStrategy}
           onValueChange={(next) => patch({ autopickStrategy: next as DraftAutopickStrategy })}
         >
-          <SelectTrigger id="draft-autopick">
+          <SelectTrigger id="draft-autopick" aria-label={t("autopick")}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -183,7 +199,7 @@ export function DraftConfigStep({ value, onChange, locked = false }: DraftConfig
       <details className="group rounded-xl border border-border/70 bg-muted/20">
         <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-medium">
           {t("advanced")}
-          <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+          <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" aria-hidden />
         </summary>
         <div className="space-y-4 border-t border-border/60 px-4 py-4">
           <div className="flex items-start justify-between gap-4">
@@ -201,11 +217,19 @@ export function DraftConfigStep({ value, onChange, locked = false }: DraftConfig
           {value.format === "custom" && (
             <div className="space-y-3">
               <div className="flex items-center gap-2">
-                <ShieldCheck className="h-4 w-4 text-muted-foreground" />
-                <Label>{t("roundRules")}</Label>
-                <Badge variant="secondary">{rounds}</Badge>
+                <ShieldCheck className="h-4 w-4 text-muted-foreground" aria-hidden />
+                <span id={roundRulesLabelId} className="text-sm font-medium leading-none">
+                  {t("roundRules")}
+                </span>
+                <Badge variant="secondary" className="tabular-nums">
+                  {rounds}
+                </Badge>
               </div>
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div
+                className="grid gap-2 sm:grid-cols-2"
+                role="group"
+                aria-labelledby={roundRulesLabelId}
+              >
                 {Array.from({ length: rounds }, (_, index) => (
                   <Select
                     key={index}

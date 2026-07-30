@@ -120,7 +120,7 @@ Principle: tab switching should not jump the layout. The active tab syncs to URL
 
 Prefer skeletons that preserve layout over centered spinners.
 
-- Home skeletons: `frontend/src/app/home-skeletons.tsx`.
+- Dashboard skeletons (home, `/statistics`, `/workspace/[slug]`): `frontend/src/components/skeletons/dashboard-skeletons.tsx`.
 - User profile skeletons: `frontend/src/app/users/[slug]/page.tsx`.
 
 Goal: reduce perceived latency and prevent content jumping.

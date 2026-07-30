@@ -64,15 +64,17 @@ export function VetoRoom({ encounterId }: VetoRoomProps) {
     return byId;
   }, [mapsQuery.data]);
 
-  const [selectedMapId, setSelectedMapId] = useState<number | null>(null);
+  const [pickedMapId, setSelectedMapId] = useState<number | null>(null);
 
   // A committed step (ours or the opponent's, incl. an admin reset) can strand
-  // the selection on a map that is no longer available — drop it.
-  useEffect(() => {
-    if (selectedMapId == null || !state) return;
-    const entry = state.pool.find((candidate) => candidate.map_id === selectedMapId);
-    if (!entry || entry.status !== "available") setSelectedMapId(null);
-  }, [state, selectedMapId]);
+  // the selection on a map that is no longer available. Deriving the effective
+  // id drops it in the same render, instead of an effect that first shows the
+  // stale selection and then clears it.
+  const selectedMapId =
+    pickedMapId != null &&
+    state?.pool.some((entry) => entry.map_id === pickedMapId && entry.status === "available")
+      ? pickedMapId
+      : null;
 
   const vetoMutation = useMutation({
     mutationFn: (input: { map_id: number; action: MapVetoAction }) =>

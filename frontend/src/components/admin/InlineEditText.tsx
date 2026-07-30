@@ -34,13 +34,20 @@ export function InlineEditText({
 }: InlineEditTextProps) {
   const [draft, setDraft] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const commit = async () => {
     const next = draft?.trim() ?? "";
-    if (!next || next === value) {
-      setDraft(null);
+    if (!next) {
+      setError(`Enter a ${label.toLowerCase()}.`);
       return;
     }
+    if (next === value) {
+      setDraft(null);
+      setError(null);
+      return;
+    }
+    setError(null);
     setIsSaving(true);
     try {
       await onSave(next);
@@ -59,6 +66,7 @@ export function InlineEditText({
     } else if (event.key === "Escape") {
       event.preventDefault();
       setDraft(null);
+      setError(null);
     }
   };
 
@@ -75,7 +83,7 @@ export function InlineEditText({
             title={`Edit ${label}`}
             onClick={() => setDraft(value)}
           >
-            <Pencil />
+            <Pencil aria-hidden />
           </Button>
         ) : null}
       </div>
@@ -87,10 +95,14 @@ export function InlineEditText({
       <Input
         autoFocus
         aria-label={label}
+        aria-invalid={error ? true : undefined}
         value={draft}
         disabled={isSaving}
-        className={cn("h-7", inputClassName)}
-        onChange={(event) => setDraft(event.target.value)}
+        className={cn("h-7 aria-invalid:border-destructive", inputClassName)}
+        onChange={(event) => {
+          setDraft(event.target.value);
+          setError(null);
+        }}
         onKeyDown={handleKeyDown}
       />
       <Button
@@ -98,10 +110,10 @@ export function InlineEditText({
         variant="ghost"
         className="size-7 shrink-0 [&_svg]:size-3.5"
         aria-label={`Save ${label}`}
-        disabled={isSaving || !draft.trim()}
+        disabled={isSaving}
         onClick={() => void commit()}
       >
-        {isSaving ? <Loader2 className="animate-spin" /> : <Check />}
+        {isSaving ? <Loader2 aria-hidden className="animate-spin" /> : <Check aria-hidden />}
       </Button>
       <Button
         size="icon"
@@ -109,10 +121,18 @@ export function InlineEditText({
         className="size-7 shrink-0 text-muted-foreground [&_svg]:size-3.5"
         aria-label={`Cancel ${label} edit`}
         disabled={isSaving}
-        onClick={() => setDraft(null)}
+        onClick={() => {
+          setDraft(null);
+          setError(null);
+        }}
       >
-        <X />
+        <X aria-hidden />
       </Button>
+      {error ? (
+        <span role="alert" className="sr-only">
+          {error}
+        </span>
+      ) : null}
     </div>
   );
 }

@@ -14,7 +14,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -34,8 +34,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { notify } from "@/lib/notify";
 import type { DraftBoard, DraftPickOption, DraftPickOptionsResponse } from "@/types/draft.types";
-import type { DraftLifecycleAction } from "@/app/(site)/tournaments/[id]/draft/_hooks/useDraftData";
-import { useDraftMutations } from "@/app/(site)/tournaments/[id]/draft/_hooks/useDraftData";
+import type { DraftLifecycleAction } from "@/hooks/useDraftData";
+import { useDraftMutations } from "@/hooks/useDraftData";
 
 import { buildOverrideRequest } from "./admin-control-model";
 
@@ -105,7 +105,11 @@ export function LifecycleControls({ tournamentId, board, options }: LifecycleCon
     (option) => `${option.player_id}:${option.role}` === overrideValue
   );
   const runOverride = () => {
-    if (!currentPick || !selectedOverride || !overrideNote.trim()) return;
+    if (!currentPick) return;
+    if (!selectedOverride || !overrideNote.trim()) {
+      notify.warning(t("overrideIncomplete"));
+      return;
+    }
     const request = buildOverrideRequest(selectedOverride, currentPick.version, overrideNote);
     mutations.override.mutate(
       {
@@ -137,41 +141,48 @@ export function LifecycleControls({ tournamentId, board, options }: LifecycleCon
       <div className="flex flex-wrap gap-2">
         {session.status === "live" && (
           <Button variant="outline" disabled={lifecycleBusy} onClick={() => runDirect("pause")}>
-            <Pause className="mr-2 h-4 w-4" />{t("actions.pause")}
+            <Pause className="mr-2 h-4 w-4" aria-hidden />
+            {t("actions.pause")}
           </Button>
         )}
         {session.status === "paused" && (
           <Button disabled={lifecycleBusy} onClick={() => runDirect("resume")}>
-            <Play className="mr-2 h-4 w-4" />{t("actions.resume")}
+            <Play className="mr-2 h-4 w-4" aria-hidden />
+            {t("actions.resume")}
           </Button>
         )}
         {session.status === "live" && currentPick && (
           <>
             <Button variant="outline" onClick={() => setConfirmedAction("autopick")}>
-              <Sparkles className="mr-2 h-4 w-4" />{t("actions.autopick")}
+              <Sparkles className="mr-2 h-4 w-4" aria-hidden />
+              {t("actions.autopick")}
             </Button>
             <Button
               variant="outline"
               disabled={!session.allow_admin_override || safeOptions.length === 0}
               onClick={() => setOverrideOpen(true)}
             >
-              <ShieldCheck className="mr-2 h-4 w-4" />{t("actions.override")}
+              <ShieldCheck className="mr-2 h-4 w-4" aria-hidden />
+              {t("actions.override")}
             </Button>
           </>
         )}
         {resolvedCount > 0 && ["live", "paused", "completed"].includes(session.status) && (
           <Button variant="outline" onClick={() => setConfirmedAction("rollback")}>
-            <RotateCcw className="mr-2 h-4 w-4" />{t("actions.rollback")}
+            <RotateCcw className="mr-2 h-4 w-4" aria-hidden />
+            {t("actions.rollback")}
           </Button>
         )}
         {["live", "paused", "ready"].includes(session.status) && (
           <Button variant="destructive" onClick={() => setConfirmedAction("cancel")}>
-            <Ban className="mr-2 h-4 w-4" />{t("actions.cancel")}
+            <Ban className="mr-2 h-4 w-4" aria-hidden />
+            {t("actions.cancel")}
           </Button>
         )}
         {session.status === "completed" && (
           <Button onClick={() => setConfirmedAction("export")}>
-            <Download className="mr-2 h-4 w-4" />{t("actions.export")}
+            <Download className="mr-2 h-4 w-4" aria-hidden />
+            {t("actions.export")}
           </Button>
         )}
       </div>
@@ -193,12 +204,15 @@ export function LifecycleControls({ tournamentId, board, options }: LifecycleCon
             <AlertDialogCancel>{t("dismiss")}</AlertDialogCancel>
             <AlertDialogAction
               disabled={mutations.lifecycle.isPending || mutations.autopick.isPending}
+              className={
+                confirmedAction === "cancel" ? buttonVariants({ variant: "destructive" }) : undefined
+              }
               onClick={(event) => {
                 event.preventDefault();
                 runConfirmed();
               }}
             >
-              {t("confirmAction")}
+              {confirmedAction ? t(`actions.${confirmedAction}`) : ""}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -214,7 +228,9 @@ export function LifecycleControls({ tournamentId, board, options }: LifecycleCon
             <div className="space-y-2">
               <Label htmlFor="override-option">{t("overrideOption")}</Label>
               <Select value={overrideValue} onValueChange={setOverrideValue}>
-                <SelectTrigger id="override-option"><SelectValue placeholder={t("overrideSelect")} /></SelectTrigger>
+                <SelectTrigger id="override-option" aria-label={t("overrideOption")}>
+                  <SelectValue placeholder={t("overrideSelect")} />
+                </SelectTrigger>
                 <SelectContent>
                   {safeOptions.map((option) => (
                     <SelectItem
@@ -238,10 +254,7 @@ export function LifecycleControls({ tournamentId, board, options }: LifecycleCon
             </div>
           </div>
           <DialogFooter>
-            <Button
-              disabled={!selectedOverride || !overrideNote.trim() || mutations.override.isPending}
-              onClick={runOverride}
-            >
+            <Button disabled={mutations.override.isPending} onClick={runOverride}>
               {t("actions.override")}
             </Button>
           </DialogFooter>

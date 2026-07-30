@@ -8,7 +8,6 @@ import {
   LayoutDashboard,
   Map,
   type LucideIcon,
-  Palette,
   Settings2,
   Shield,
   Swords,
@@ -19,6 +18,15 @@ import {
 } from "lucide-react";
 
 import type { AppPermission } from "@/hooks/usePermissions";
+import {
+  accessAdminPermissions,
+  accessApiKeysPermissions,
+  accessPermissionsPermissions,
+  accessRolesPermissions,
+  accessUsersPermissions,
+  adminEntryPermissions,
+  overviewPermissions,
+} from "@/lib/admin-permissions";
 
 export type AdminNavItem = {
   title: string;
@@ -38,33 +46,6 @@ export type AdminNavGroup = {
   items: AdminNavItem[];
   superuserOnly?: boolean;
 };
-
-export const overviewPermissions: AppPermission[] = [
-  "tournament.read",
-  "team.read",
-  "player.read",
-  "match.read",
-  "standing.read",
-  "user.read",
-  "analytics.read",
-];
-
-export const accessUsersPermissions: AppPermission[] = ["auth_user.read"];
-export const accessRolesPermissions: AppPermission[] = ["role.read"];
-export const accessPermissionsPermissions: AppPermission[] = ["permission.read"];
-export const accessApiKeysPermissions: AppPermission[] = ["team.import"];
-export const accessAdminPermissions: AppPermission[] = [
-  ...accessUsersPermissions,
-  ...accessRolesPermissions,
-  ...accessPermissionsPermissions,
-  ...accessApiKeysPermissions,
-];
-
-export const adminEntryPermissions: AppPermission[] = [
-  ...overviewPermissions,
-  ...accessAdminPermissions,
-  "achievement.read",
-];
 
 export const adminNavigationGroups: AdminNavGroup[] = [
   {
@@ -136,7 +117,7 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         workspaceAdminVisible: true,
       },
       {
-        title: "Balancer Statuses",
+        title: "Balancer statuses",
         href: "/admin/balancer",
         icon: Settings2,
         description: "Manage workspace-specific registration and balancer statuses.",
@@ -156,17 +137,10 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         description: "Manage workspace member access and roles.",
         workspaceAdminVisible: true,
       },
-      {
-        title: "Branding",
-        href: "/admin/workspaces",
-        icon: Palette,
-        description: "Workspace branding, domains, and metadata.",
-        workspaceAdminVisible: true,
-      },
     ],
   },
   {
-    title: "Game Content",
+    title: "Game content",
     items: [
       {
         title: "Heroes",
@@ -195,24 +169,24 @@ export const adminNavigationGroups: AdminNavGroup[] = [
     title: "Administration",
     items: [
       {
-        title: "Staff Access",
+        title: "Staff access",
         href: "/admin/access",
         icon: Shield,
         description: "Staff accounts, roles, permissions, API keys, and sessions.",
         permissions: accessAdminPermissions,
         workspaceAdminVisible: true,
-        aliases: ["users", "access"],
+        aliases: ["staff", "roles", "permissions", "api keys", "sessions"],
       },
       {
-        title: "Player Identities",
+        title: "Player identities",
         href: "/admin/users",
         icon: UserCircle,
         description: "Resolve Discord, BattleTag, and Twitch identities.",
         permissions: ["user.read"],
-        aliases: ["users"],
+        aliases: ["identities", "discord", "battletag", "twitch"],
       },
       {
-        title: "Rank Collection",
+        title: "Rank collection",
         href: "/admin/rank",
         icon: Activity,
         description: "OverFast rank collection status and manual re-fetch per player.",
@@ -253,6 +227,7 @@ export const adminRoutePermissions: Array<{
   { prefix: "/admin/encounters", permissions: ["match.read"] },
   { prefix: "/admin/standings", permissions: ["standing.read"] },
   { prefix: "/admin/users", permissions: ["user.read"] },
+  { prefix: "/admin/rank", permissions: ["user.read"] },
   { prefix: "/admin/heroes", permissions: [], superuserOnly: true },
   { prefix: "/admin/gamemodes", permissions: [], superuserOnly: true },
   { prefix: "/admin/maps", permissions: [], superuserOnly: true },
@@ -269,14 +244,6 @@ export function getMatchingAdminRoute(pathname: string) {
 
     return pathname === route.prefix || pathname.startsWith(`${route.prefix}/`);
   });
-}
-
-export function isAdminNavItemActive(pathname: string, href: string) {
-  if (href === "/admin") {
-    return pathname === "/admin";
-  }
-
-  return pathname === href || pathname.startsWith(`${href}/`);
 }
 
 /**
@@ -315,18 +282,6 @@ export function getVisibleAdminNavigationGroups(
       items: group.items.filter((item) => canAccessItem(item)),
     }))
     .filter((group) => group.items.length > 0);
-}
-
-export function getActiveAdminNavigation(pathname: string, groups: AdminNavGroup[]) {
-  for (const group of groups) {
-    for (const item of group.items) {
-      if (isAdminNavItemActive(pathname, item.href)) {
-        return { group, item };
-      }
-    }
-  }
-
-  return null;
 }
 
 /** Search haystack for the admin command palette: title + description + aliases (D11). */

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import {
   Archive,
@@ -73,6 +73,7 @@ export function DivisionGridLibrary({
   onSelect,
   onChanged
 }: Props) {
+  const gridFieldId = useId();
   const portableInputRef = useRef<HTMLInputElement>(null);
   const [forceDeleteOpen, setForceDeleteOpen] = useState(false);
   const activeGrid = grids.find((grid) =>
@@ -160,8 +161,9 @@ export function DivisionGridLibrary({
       portableImportMutation.mutate(JSON.parse(await file.text()) as DivisionGridPortableDocument);
     } catch (parseError) {
       notify.error("Invalid division grid JSON", {
-        description:
+        description: `Nothing was imported. ${
           parseError instanceof Error ? parseError.message : "The file is not valid JSON."
+        } Export a grid from another workspace and import that file unchanged.`
       });
     } finally {
       if (portableInputRef.current) portableInputRef.current.value = "";
@@ -174,9 +176,13 @@ export function DivisionGridLibrary({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <CardDescription>Active division grid</CardDescription>
-            <CardTitle className="mt-1 flex flex-wrap items-center gap-2">
-              {activeGrid?.name ?? "No active division grid"}
-              {activeVersion && <Badge>v{activeVersion.version} active</Badge>}
+            <CardTitle asChild>
+              <h2 className="mt-1 flex flex-wrap items-center gap-2">
+                {activeGrid?.name ?? "No active division grid"}
+                {activeVersion && (
+                  <Badge className="tabular-nums">v{activeVersion.version} active</Badge>
+                )}
+              </h2>
             </CardTitle>
             <CardDescription className="mt-1">
               {activeVersion
@@ -192,6 +198,8 @@ export function DivisionGridLibrary({
                   type="file"
                   accept="application/json,.json"
                   className="hidden"
+                  tabIndex={-1}
+                  aria-hidden
                   onChange={(event) => {
                     const file = event.target.files?.[0];
                     if (file) void importPortable(file);
@@ -202,13 +210,13 @@ export function DivisionGridLibrary({
                   onClick={() => portableInputRef.current?.click()}
                   disabled={portableImportMutation.isPending}
                 >
-                  <Upload className="mr-2 h-4 w-4" /> Import JSON
+                  <Upload aria-hidden className="mr-2 h-4 w-4" /> Import JSON
                 </Button>
               </>
             )}
             {permissions.create && (
               <Button onClick={() => createMutation.mutate()} disabled={createMutation.isPending}>
-                <Plus className="mr-2 h-4 w-4" /> New grid
+                <Plus aria-hidden className="mr-2 h-4 w-4" /> Create grid
               </Button>
             )}
           </div>
@@ -219,14 +227,17 @@ export function DivisionGridLibrary({
           <Alert variant="destructive">
             <AlertTitle>Division grids unavailable</AlertTitle>
             <AlertDescription>
+              Reload the page to try again.{" "}
               {error instanceof Error ? error.message : "Division grids could not be loaded."}
             </AlertDescription>
           </Alert>
         )}
 
         <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
-          <label className="grid gap-2 text-sm font-medium">
-            Grid
+          <div className="grid gap-2">
+            <label className="text-sm font-medium" htmlFor={gridFieldId}>
+              Division grid
+            </label>
             <Select
               value={selectedGrid?.id.toString() ?? ""}
               onValueChange={(value) => {
@@ -235,7 +246,7 @@ export function DivisionGridLibrary({
               }}
               disabled={loading || visibleGrids.length === 0}
             >
-              <SelectTrigger>
+              <SelectTrigger id={gridFieldId}>
                 <SelectValue placeholder={loading ? "Loading…" : "Choose grid"} />
               </SelectTrigger>
               <SelectContent>
@@ -247,7 +258,7 @@ export function DivisionGridLibrary({
                 ))}
               </SelectContent>
             </Select>
-          </label>
+          </div>
 
           <Button
             variant="outline"
@@ -256,7 +267,7 @@ export function DivisionGridLibrary({
               if (selectedGrid) onSelect(selectedGrid.id, selectedGrid.versions.at(-1)?.id);
             }}
           >
-            <FolderOpen className="mr-2 h-4 w-4" /> Open
+            <FolderOpen aria-hidden className="mr-2 h-4 w-4" /> Open grid
           </Button>
         </div>
 
@@ -271,7 +282,7 @@ export function DivisionGridLibrary({
                 inputClassName="max-w-sm"
                 onSave={(name) => updateMutation.mutateAsync({ name })}
               />
-              <div className="mt-1 text-xs text-muted-foreground">
+              <div className="mt-1 text-xs tabular-nums text-muted-foreground">
                 {selectedGrid.slug} · {selectedGrid.versions.length} version(s)
                 {selectedGrid.archived_at ? " · archived" : ""}
               </div>
@@ -279,7 +290,7 @@ export function DivisionGridLibrary({
             <div className="flex flex-wrap gap-1">
               {permissions.export && (
                 <Button variant="ghost" size="sm" onClick={() => void exportPortable()}>
-                  <Download className="mr-2 h-4 w-4" /> Export
+                  <Download aria-hidden className="mr-2 h-4 w-4" /> Export JSON
                 </Button>
               )}
               {permissions.update && (
@@ -290,11 +301,11 @@ export function DivisionGridLibrary({
                   disabled={updateMutation.isPending}
                 >
                   {selectedGrid.archived_at ? (
-                    <RotateCcw className="mr-2 h-4 w-4" />
+                    <RotateCcw aria-hidden className="mr-2 h-4 w-4" />
                   ) : (
-                    <Archive className="mr-2 h-4 w-4" />
+                    <Archive aria-hidden className="mr-2 h-4 w-4" />
                   )}
-                  {selectedGrid.archived_at ? "Restore" : "Archive"}
+                  {selectedGrid.archived_at ? "Restore grid" : "Archive grid"}
                 </Button>
               )}
               {permissions.delete && (
@@ -307,7 +318,7 @@ export function DivisionGridLibrary({
                         className="text-destructive hover:text-destructive"
                         disabled={deleteMutation.isPending}
                       >
-                        <Trash2 className="mr-2 h-4 w-4" /> Delete
+                        <Trash2 aria-hidden className="mr-2 h-4 w-4" /> Delete grid
                       </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
@@ -344,7 +355,7 @@ export function DivisionGridLibrary({
                           className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                           onClick={() => deleteMutation.mutate(true)}
                         >
-                          Force delete
+                          Force delete grid
                         </AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>
@@ -362,6 +373,8 @@ export function DivisionGridLibrary({
 function showMutationError(title: string) {
   return (error: unknown) =>
     notify.error(title, {
-      description: error instanceof Error ? error.message : "The division grid operation failed."
+      description: `Nothing changed. ${
+        error instanceof Error ? error.message : "The division grid operation failed."
+      } Retry, or reload the page if it keeps failing.`
     });
 }

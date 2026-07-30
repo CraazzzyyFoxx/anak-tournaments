@@ -37,14 +37,22 @@ const DIRECTION_META: Record<
   ForecastDirection,
   { key: "up" | "down" | "hold"; cls: string; Icon: typeof ArrowUp }
 > = {
-  promote: { key: "up", cls: "border-emerald-500/40 text-emerald-300 bg-emerald-500/10", Icon: ArrowUp },
-  demote: { key: "down", cls: "border-rose-500/40 text-rose-300 bg-rose-500/10", Icon: ArrowDown },
+  promote: {
+    key: "up",
+    cls: "border-[color:color-mix(in_srgb,var(--aqt-emerald)_40%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-emerald)_10%,transparent)] text-[color:var(--aqt-emerald)]",
+    Icon: ArrowUp
+  },
+  demote: {
+    key: "down",
+    cls: "border-[color:color-mix(in_srgb,var(--aqt-rose)_40%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-rose)_10%,transparent)] text-[color:var(--aqt-rose)]",
+    Icon: ArrowDown
+  },
   flat: { key: "hold", cls: "border-border text-muted-foreground bg-muted/40", Icon: Minus },
 };
 
 const TONE_CLS: Record<"high" | "medium" | "low", string> = {
-  high: "text-emerald-300",
-  medium: "text-amber-300",
+  high: "text-[color:var(--aqt-emerald)]",
+  medium: "text-[color:var(--aqt-amber)]",
   low: "text-muted-foreground",
 };
 

@@ -245,12 +245,6 @@
   border-bottom: 0;
 }
 
-.skeletonGrid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1rem;
-}
-
 .teamsSkeletonGrid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -290,33 +284,6 @@
   min-height: 3.4rem;
   padding: 0.55rem 1rem;
   border-bottom: 1px solid var(--aqt-border);
-}
-
-.stateCard {
-  display: grid;
-  justify-items: start;
-  gap: 0.55rem;
-  padding: 1.25rem;
-  border: 1px solid var(--aqt-border);
-  border-left: 2px solid var(--aqt-teal);
-  border-radius: var(--aqt-radius-sm);
-  background: var(--aqt-card);
-}
-
-.stateCard h2,
-.stateCard p {
-  margin: 0;
-}
-
-.stateCard h2 {
-  font-family: var(--aqt-onest);
-  font-size: 1rem;
-  letter-spacing: 0.02em;
-}
-
-.stateCard p {
-  color: var(--aqt-fg-muted);
-  font-size: 0.8125rem;
 }
 
 .stateAction {
@@ -386,6 +353,33 @@
   gap: 1rem;
 }
 
+/* Grid items default to `min-width: auto`, i.e. their min-content width, so any
+   intrinsically wide descendant (a bracket, a wide table) grows this grid past
+   the viewport and takes the whole document's horizontal scrollbar with it, no
+   matter how many `overflow: hidden` ancestors sit in between. Pinning items to
+   0 keeps every overflow owner local. */
+.publicDataPage > * {
+  min-width: 0;
+}
+
+/* The bracket canvas is intrinsically wider than any viewport. It owns its own
+   horizontal scroll so the page never scrolls sideways; the caller marks it as
+   a focusable labelled region so keyboard users can reach that scroll.
+   Deliberately no `contain`/`transform` here: the bracket's fullscreen mode is
+   `position: fixed` and a containment ancestor would clip it. */
+.bracketScroller {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+}
+
+.bracketScroller:focus-visible {
+  outline: 2px solid var(--aqt-teal);
+  outline-offset: 2px;
+}
+
 .controlRail,
 .stageNavigation {
   min-width: 0;
@@ -404,35 +398,6 @@
 
 .controlRail > * {
   flex: 0 0 auto;
-}
-
-.tableViewport,
-.standingsViewport {
-  width: 100%;
-  min-width: 0;
-  max-width: 100%;
-  overflow-x: auto;
-  overflow-y: clip;
-  overscroll-behavior-inline: contain;
-  scrollbar-width: thin;
-}
-
-.tableViewport {
-  overflow-x: auto;
-}
-
-.standingsViewport {
-  overflow-x: auto;
-}
-
-.tableViewport:focus-visible,
-.standingsViewport:focus-visible {
-  outline: 1px solid var(--aqt-teal);
-  outline-offset: -2px;
-}
-
-.matchesTable {
-  min-width: 58rem;
 }
 
 .heroList {
@@ -462,29 +427,6 @@
   display: grid;
   min-width: 0;
   gap: 1rem;
-}
-
-.standingsViewport {
-  position: relative;
-}
-
-.standingsTable {
-  min-width: 46rem;
-}
-
-.stickyTeamColumn {
-  position: sticky;
-  left: 0;
-  z-index: 2;
-  background: var(--aqt-card, var(--card)) !important;
-  box-shadow: 1px 0 var(--aqt-border);
-}
-
-thead .stickyTeamColumn {
-  z-index: 3;
-  /* Opaque header-row color: card lifted a touch, kept opaque so scrolled
-     content can't bleed through. Derived from the token so branding follows. */
-  background: color-mix(in srgb, var(--aqt-card, var(--card)) 98%, white) !important;
 }
 
 .stageEmpty {
@@ -705,12 +647,6 @@ thead .stickyTeamColumn {
   }
 }
 
-@media (max-width: 900px) {
-  .skeletonGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
 @media (max-width: 640px) {
   .navItem {
     padding-inline: 0.7rem;
@@ -723,14 +659,6 @@ thead .stickyTeamColumn {
 
   .heroList {
     padding: 0.85rem;
-  }
-
-  .matchesTable {
-    min-width: 52rem;
-  }
-
-  .skeletonGrid {
-    grid-template-columns: minmax(0, 1fr);
   }
 
   .skeletonRow {

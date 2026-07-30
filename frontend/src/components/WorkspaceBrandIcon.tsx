@@ -31,7 +31,7 @@ const WorkspaceBrandIcon = ({ name, iconUrl, className }: WorkspaceBrandIconProp
   ) : (
     <span
       className={cn(
-        "grid shrink-0 place-items-center bg-(--aqt-teal) font-semibold text-black",
+        "grid shrink-0 place-items-center bg-(--aqt-teal) font-semibold text-[color:var(--aqt-bg)]",
         className
       )}
     >

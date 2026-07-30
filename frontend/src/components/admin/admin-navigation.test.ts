@@ -44,7 +44,7 @@ describe("admin navigation lifecycle grouping (D12, §5)", () => {
       "Tournaments",
       "Data browser",
       "Workspace",
-      "Game Content",
+      "Game content",
       "Administration",
     ]);
   });
@@ -66,7 +66,6 @@ describe("admin navigation lifecycle grouping (D12, §5)", () => {
       "/admin/balancer",
       "/admin/achievements",
       "/admin/workspaces/members",
-      "/admin/workspaces",
     ]);
   });
 
@@ -99,11 +98,24 @@ describe("admin administration entry and palette aliases (D10, D11)", () => {
     expect(getMatchingAdminRoute("/admin/access")?.workspaceAdminVisible).toBe(true);
   });
 
-  it("aliases 'users' to both the identity and staff access entries", () => {
-    const items = adminNavigationGroups.flatMap((g) => g.items);
-    const usersItems = items.filter((item) => item.aliases?.includes("users"));
+  it("registers each destination exactly once across the whole navigation", () => {
+    const hrefs = adminNavigationGroups.flatMap((g) => g.items.map((item) => item.href));
 
-    expect(usersItems.map((item) => item.href).sort()).toEqual(["/admin/access", "/admin/users"]);
+    expect(hrefs).toEqual([...new Set(hrefs)]);
+    expect(hrefs.filter((href) => href === "/admin/workspaces")).toHaveLength(1);
+  });
+
+  it("keeps palette aliases unambiguous — one alias never hits two entries", () => {
+    const aliases = adminNavigationGroups.flatMap((g) =>
+      g.items.flatMap((item) => item.aliases ?? []),
+    );
+
+    expect(aliases).toEqual([...new Set(aliases)]);
+  });
+
+  it("gates /admin/rank by user.read instead of the broad admin entry", () => {
+    expect(getMatchingAdminRoute("/admin/rank")?.permissions).toEqual(["user.read"]);
+    expect(getMatchingAdminRoute("/admin/rank/anything")?.permissions).toEqual(["user.read"]);
   });
 
   it("aliases 'settings' to rank collection only", () => {

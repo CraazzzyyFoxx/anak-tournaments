@@ -32,9 +32,7 @@ export function RulesStep({
     <div className="space-y-5">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <Label htmlFor="wizard-team-formation" className="text-xs">
-            Team formation
-          </Label>
+          <Label htmlFor="wizard-team-formation">Team formation</Label>
           <Select
             value={value.team_formation ?? "balancer"}
             onValueChange={(nextValue) => onChange({ ...value, team_formation: nextValue })}
@@ -50,9 +48,7 @@ export function RulesStep({
         </div>
 
         <div>
-          <Label htmlFor="wizard-division-grid-version" className="text-xs">
-            Division Grid Version
-          </Label>
+          <Label htmlFor="wizard-division-grid-version">Division grid version</Label>
           <Select
             value={value.division_grid_version_id?.toString() ?? "none"}
             onValueChange={(nextValue) =>
@@ -64,7 +60,7 @@ export function RulesStep({
           >
             <SelectTrigger id="wizard-division-grid-version" className="mt-1.5">
               <SelectValue
-                placeholder={divisionGridLoading ? "Loading division grids..." : "Select version"}
+                placeholder={divisionGridLoading ? "Loading division grids…" : "Select version"}
               />
             </SelectTrigger>
             <SelectContent>
@@ -80,39 +76,33 @@ export function RulesStep({
       </div>
 
       <div>
-        <p className="mb-3 text-sm font-medium">Scoring Points</p>
+        <h3 className="mb-3 text-sm font-medium">Scoring points</h3>
         <div className="grid grid-cols-3 gap-3">
           <div>
-            <Label htmlFor="wizard-win-points" className="text-xs">
-              Win
-            </Label>
+            <Label htmlFor="wizard-win-points">Win</Label>
             <NumberInput
               id="wizard-win-points"
               value={value.win_points ?? 1}
               onValueChange={(next) => onChange({ ...value, win_points: next ?? 0 })}
-              className="mt-1.5"
+              className="mt-1.5 tabular-nums"
             />
           </div>
           <div>
-            <Label htmlFor="wizard-draw-points" className="text-xs">
-              Draw
-            </Label>
+            <Label htmlFor="wizard-draw-points">Draw</Label>
             <NumberInput
               id="wizard-draw-points"
               value={value.draw_points ?? 0.5}
               onValueChange={(next) => onChange({ ...value, draw_points: next ?? 0 })}
-              className="mt-1.5"
+              className="mt-1.5 tabular-nums"
             />
           </div>
           <div>
-            <Label htmlFor="wizard-loss-points" className="text-xs">
-              Loss
-            </Label>
+            <Label htmlFor="wizard-loss-points">Loss</Label>
             <NumberInput
               id="wizard-loss-points"
               value={value.loss_points ?? 0}
               onValueChange={(next) => onChange({ ...value, loss_points: next ?? 0 })}
-              className="mt-1.5"
+              className="mt-1.5 tabular-nums"
             />
           </div>
         </div>
