@@ -61,14 +61,21 @@ export function DataPagination({
   summary
 }: DataPaginationProps) {
   const t = useTranslations();
-  if (totalPages <= 1) return summary ? <div className={className}>{summary}</div> : null;
 
+  const hasControls = totalPages > 1;
+  if (!hasControls && !summary) return null;
+
+  // One shell for both branches. These used to diverge: with a single page the
+  // component returned a bare `<div className={className}>{summary}</div>`, so
+  // the summary lost the size and muted color it gets alongside the page
+  // buttons and rendered as full-size default text flush against the card edge.
+  const Shell = hasControls ? "nav" : "div";
   const safePage = Math.min(Math.max(page, 1), totalPages);
-  const pageWindow = buildPageWindow(safePage, totalPages);
+  const pageWindow = hasControls ? buildPageWindow(safePage, totalPages) : [];
 
   return (
-    <nav
-      aria-label={t("common.pagination.label")}
+    <Shell
+      aria-label={hasControls ? t("common.pagination.label") : undefined}
       className={cn("flex flex-wrap items-center justify-between gap-3", className)}
     >
       {summary ? (
@@ -76,61 +83,63 @@ export function DataPagination({
       ) : (
         <span />
       )}
-      <div className="flex flex-wrap items-center gap-1.5">
-        <button
-          type="button"
-          className={cn(
-            buttonClass,
-            "border-[color:var(--aqt-border)] text-[color:var(--aqt-fg-muted)] hover:enabled:text-[color:var(--aqt-fg)]"
-          )}
-          disabled={safePage <= 1}
-          aria-label={t("common.pagination.previous")}
-          onClick={() => onPageChange(safePage - 1)}
-        >
-          <ChevronLeft aria-hidden className="size-4" />
-        </button>
+      {hasControls ? (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            className={cn(
+              buttonClass,
+              "border-[color:var(--aqt-border)] text-[color:var(--aqt-fg-muted)] hover:enabled:text-[color:var(--aqt-fg)]"
+            )}
+            disabled={safePage <= 1}
+            aria-label={t("common.pagination.previous")}
+            onClick={() => onPageChange(safePage - 1)}
+          >
+            <ChevronLeft aria-hidden className="size-4" />
+          </button>
 
-        {pageWindow.map((entry, index) =>
-          entry === null ? (
-            <span
-              key={`gap-${index}`}
-              aria-hidden
-              className="px-1 text-[13px] text-[color:var(--aqt-fg-faint)]"
-            >
-              &hellip;
-            </span>
-          ) : (
-            <button
-              key={entry}
-              type="button"
-              aria-current={entry === safePage ? "page" : undefined}
-              aria-label={t("common.pagination.goToPage", { page: entry })}
-              className={cn(
-                buttonClass,
-                entry === safePage
-                  ? "border-[color:color-mix(in_srgb,var(--aqt-teal)_30%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_12%,transparent)] text-[color:var(--aqt-teal)]"
-                  : "border-[color:var(--aqt-border)] text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-fg)]"
-              )}
-              onClick={() => onPageChange(entry)}
-            >
-              {entry}
-            </button>
-          )
-        )}
-
-        <button
-          type="button"
-          className={cn(
-            buttonClass,
-            "border-[color:var(--aqt-border)] text-[color:var(--aqt-fg-muted)] hover:enabled:text-[color:var(--aqt-fg)]"
+          {pageWindow.map((entry, index) =>
+            entry === null ? (
+              <span
+                key={`gap-${index}`}
+                aria-hidden
+                className="px-1 text-[13px] text-[color:var(--aqt-fg-faint)]"
+              >
+                &hellip;
+              </span>
+            ) : (
+              <button
+                key={entry}
+                type="button"
+                aria-current={entry === safePage ? "page" : undefined}
+                aria-label={t("common.pagination.goToPage", { page: entry })}
+                className={cn(
+                  buttonClass,
+                  entry === safePage
+                    ? "border-[color:color-mix(in_srgb,var(--aqt-teal)_30%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_12%,transparent)] text-[color:var(--aqt-teal)]"
+                    : "border-[color:var(--aqt-border)] text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-fg)]"
+                )}
+                onClick={() => onPageChange(entry)}
+              >
+                {entry}
+              </button>
+            )
           )}
-          disabled={safePage >= totalPages}
-          aria-label={t("common.pagination.next")}
-          onClick={() => onPageChange(safePage + 1)}
-        >
-          <ChevronRight aria-hidden className="size-4" />
-        </button>
-      </div>
-    </nav>
+
+          <button
+            type="button"
+            className={cn(
+              buttonClass,
+              "border-[color:var(--aqt-border)] text-[color:var(--aqt-fg-muted)] hover:enabled:text-[color:var(--aqt-fg)]"
+            )}
+            disabled={safePage >= totalPages}
+            aria-label={t("common.pagination.next")}
+            onClick={() => onPageChange(safePage + 1)}
+          >
+            <ChevronRight aria-hidden className="size-4" />
+          </button>
+        </div>
+      ) : null}
+    </Shell>
   );
 }

@@ -36,7 +36,7 @@ const OwalSeasonFilter = ({ seasons, selectedSeason }: OwalSeasonFilterProps) =>
     <div className="flex items-center gap-3">
       <span className="text-sm text-muted-foreground">{t("owal.season")}</span>
       <Select value={selectedSeason} onValueChange={onValueChange}>
-        <SelectTrigger className="w-full sm:w-[260px]">
+        <SelectTrigger className="w-full sm:w-[260px]" aria-label={t("owal.season")}>
           <SelectValue placeholder={t("owal.selectSeason")} />
         </SelectTrigger>
         <SelectContent>

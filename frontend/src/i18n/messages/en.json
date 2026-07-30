@@ -1727,7 +1727,8 @@
     "wins": "W",
     "losses": "L",
     "draws": "D",
-    "winRatio": "Win ratio"
+    "winRatio": "Win ratio",
+    "title": "OWAL"
   },
   "notConfigured": {
     "title": "Workspace not configured",

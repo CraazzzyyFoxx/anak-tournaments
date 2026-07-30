@@ -72,6 +72,7 @@ const SearchableImageSelect = ({
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          aria-label={placeholder}
           disabled={disabled}
           className={cn(
             "h-10 w-full justify-between font-normal",

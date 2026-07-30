@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { ArrowRight, Users } from "lucide-react";
 
 import {
@@ -20,6 +20,7 @@ const FeaturedTournamentCard = ({
   small?: boolean;
 }) => {
   const t = useTranslations();
+  const locale = useLocale();
   const { tournament, current, encounters } = group;
 
   const stageName = current.stage?.name ?? null;
@@ -120,7 +121,7 @@ const FeaturedTournamentCard = ({
         <div className="left">
           <span className="lead-team">
             {t("tournamentsList.featured.started", {
-              time: relativeTime(current.started_at, t)
+              time: relativeTime(current.started_at, t, locale)
             })}
           </span>
         </div>

@@ -490,12 +490,12 @@ function MatchCard({
 
   const getRowClasses = (side: "home" | "away") => {
     if (data.winner === side) {
-      return "bg-[color:color-mix(in_srgb,var(--aqt-teal)_10%,transparent)] text-[var(--aqt-fg)] font-semibold";
+      return "bg-[color:color-mix(in_srgb,var(--aqt-teal)_10%,transparent)] text-[color:var(--aqt-fg)] font-semibold";
     }
     if (data.winner && data.winner !== side) {
-      return "text-[var(--aqt-fg-dim)]";
+      return "text-[color:var(--aqt-fg-dim)]";
     }
-    return "text-[var(--aqt-fg-muted)]";
+    return "text-[color:var(--aqt-fg-muted)]";
   };
 
   const getTeamId = (side: "home" | "away") =>
@@ -533,7 +533,7 @@ function MatchCard({
           side === "home" && "border-b border-[var(--aqt-border)]",
           getRowClasses(side),
           isHighlighted(side) &&
-            "bg-[color:color-mix(in_srgb,var(--aqt-teal)_16%,transparent)] text-[var(--aqt-fg)]"
+            "bg-[color:color-mix(in_srgb,var(--aqt-teal)_16%,transparent)] text-[color:var(--aqt-fg)]"
         )}
         data-team-id={getTeamId(side) ?? undefined}
         data-team-highlighted={isHighlighted(side) || undefined}
@@ -544,7 +544,7 @@ function MatchCard({
         <span
           className={cn(
             "min-w-0 truncate",
-            isTbdSlot(side) ? "text-[11px] italic text-[var(--aqt-fg-faint)]" : "text-[12.5px]"
+            isTbdSlot(side) ? "text-[11px] italic text-[color:var(--aqt-fg-faint)]" : "text-[12.5px]"
           )}
         >
           {getDisplayName(side)}
@@ -552,7 +552,7 @@ function MatchCard({
         <span
           className={cn(
             "shrink-0 text-[13px] font-semibold tabular-nums",
-            won ? "text-[var(--aqt-teal)]" : "text-[var(--aqt-fg-muted)]"
+            won ? "text-[color:var(--aqt-teal)]" : "text-[color:var(--aqt-fg-muted)]"
           )}
         >
           {hasVisibleScore ? score : "-"}
@@ -596,7 +596,7 @@ function MatchCard({
           <span
             className={cn(
               "flex items-center gap-1 font-mono text-[10px] font-semibold uppercase tracking-wide",
-              meta.isLive ? "text-[var(--aqt-rose)]" : "text-[var(--aqt-fg-muted)]"
+              meta.isLive ? "text-[color:var(--aqt-rose)]" : "text-[color:var(--aqt-fg-muted)]"
             )}
           >
             {meta.isLive && (
@@ -816,7 +816,7 @@ export function BracketView({
                   {reportable && (
                     <button
                       type="button"
-                      className="rounded-md border border-[color:color-mix(in_srgb,var(--aqt-teal)_30%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_16%,transparent)] p-1 text-[var(--aqt-teal)] hover:bg-[color:color-mix(in_srgb,var(--aqt-teal)_24%,transparent)]"
+                      className="rounded-md border border-[color:color-mix(in_srgb,var(--aqt-teal)_30%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_16%,transparent)] p-1 text-[color:var(--aqt-teal)] hover:bg-[color:color-mix(in_srgb,var(--aqt-teal)_24%,transparent)]"
                       aria-label={t("bracket.reportMatch")}
                       onClick={(e) => {
                         e.stopPropagation();

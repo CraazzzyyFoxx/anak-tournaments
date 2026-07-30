@@ -1727,7 +1727,8 @@
     "wins": "W",
     "losses": "L",
     "draws": "D",
-    "winRatio": "Винрейт"
+    "winRatio": "Винрейт",
+    "title": "OWAL"
   },
   "notConfigured": {
     "title": "Рабочее пространство не настроено",

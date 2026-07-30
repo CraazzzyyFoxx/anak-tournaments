@@ -19,21 +19,22 @@ const TournamentRow = ({ tournament }: { tournament: Tournament }) => {
   const players = tournament.participants_count ?? 0;
 
   return (
-    <tr className="relative">
+    <tr>
       <td>
-        {/* Row-wide stretched link. The row *looks* clickable (`cursor: pointer`
-            in the shared table CSS) and used to be driven by `onClick` on the
-            <tr>, which made it unreachable by keyboard and invisible to AT.
-            This keeps the whole-row target while being a real, focusable,
-            announced link whose focus ring outlines the entire row. */}
-        <Link
-          href={`/tournaments/${tournament.id}`}
-          aria-label={t("tournamentsList.row.openAria", { name: tournament.name })}
-          className="absolute inset-0 z-[1] rounded-[2px] outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]"
-        />
         <div className="tn-name-cell">
           <span className="nm">
-            {tournament.name}
+            {/* A plain link on the name, not a row-wide `position:absolute`
+                overlay. A `<tr>` is not a valid containing block for absolutely
+                positioned children, so the overlay's width leaked past the
+                table's scroll container and dragged the whole document sideways
+                (+408px at 375px wide). The name link is the boring, correct
+                target: focusable, announced, and contained. */}
+            <Link
+              href={`/tournaments/${tournament.id}`}
+              className="rounded-[2px] outline-none hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]"
+            >
+              {tournament.name}
+            </Link>
             {(tournament.status === "live" || tournament.status === "playoffs") && (
               <span className="status-pill live" style={{ fontSize: "8.5px", padding: "2px 7px" }}>
                 <span aria-hidden className="dot" />
@@ -103,13 +104,11 @@ const TournamentRow = ({ tournament }: { tournament: Tournament }) => {
       </td>
       <td className="r">
         <span className="tn-id">
-          {relativeTime(tournament.updated_at ?? tournament.start_date, t)}
+          {relativeTime(tournament.updated_at ?? tournament.start_date, t, locale)}
         </span>
       </td>
       <td className="r">
-        {/* z-[2] keeps these above the stretched row link so they stay
-            independently clickable. */}
-        <div className="tn-actions relative z-[2]">
+        <div className="tn-actions">
           <Link
             href={`/tournaments/${tournament.id}/bracket`}
             className="icon-btn"
@@ -149,7 +148,17 @@ const TournamentsTable = ({ tournaments, page, pageSize, onPageChange }: Tournam
 
   return (
     <section className="tn-card">
-      <table className="tn">
+      {/* Labelled, focusable scroll region. Without it the 780px table is
+          clipped by the card at narrow widths — the last three columns were
+          simply unreachable on a phone — and the row-wide overlay link leaked
+          its width into the document, scrolling the whole page sideways. */}
+      <div
+        className="tn-table-scroll"
+        role="region"
+        aria-label={t("common.tournaments")}
+        tabIndex={0}
+      >
+        <table className="tn">
         <thead>
           <tr>
             <th scope="col">{t("common.tournament")}</th>
@@ -175,10 +184,11 @@ const TournamentsTable = ({ tournaments, page, pageSize, onPageChange }: Tournam
             <TournamentRow key={tournament.id} tournament={tournament} />
           ))}
         </tbody>
-      </table>
+        </table>
+      </div>
 
       <DataPagination
-        className="pagination"
+        className="border-t border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-[18px] py-3.5"
         page={safePage}
         totalPages={totalPages}
         onPageChange={onPageChange}

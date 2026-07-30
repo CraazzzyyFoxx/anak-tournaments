@@ -897,6 +897,7 @@
 
 /* achievement rarity rank */
 .aqt-ach-rank {
+  flex-wrap: wrap;
   display: flex;
   align-items: stretch;
   gap: 1px;
@@ -2330,8 +2331,28 @@
   border-radius: 12px;
   overflow: hidden;
 }
+/* The card clips (`overflow: hidden`), so the table needs its own scroll
+   region or its narrow-viewport columns become unreachable rather than
+   scrollable. `overscroll-behavior-inline: contain` keeps a horizontal swipe
+   inside the table instead of triggering browser back-navigation. */
+.aqt-tn .tn-table-scroll {
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  /* `contain: paint` is load-bearing, not decoration. A <table>'s intrinsic
+     width propagates to the document's scroll width in Chromium even through
+     an `overflow-x: auto` ancestor, so without it the 780px table scrolls the
+     whole page sideways at 375px (measured: html.scrollWidth 783 vs 375).
+     Safe here: nothing inside the table escapes its box — the action controls
+     are plain links and every overlay renders through a portal on <body>. */
+  contain: paint;
+}
+.aqt-tn .tn-table-scroll:focus-visible {
+  outline: 2px solid var(--aqt-teal);
+  outline-offset: -2px;
+}
 .aqt-tn table.tn {
   width: 100%;
+  min-width: 780px;
   border-collapse: collapse;
 }
 .aqt-tn table.tn th {
@@ -2357,8 +2378,10 @@
   font-size: 13px;
   vertical-align: middle;
 }
+/* No `cursor: pointer` here: the row itself is not a control. The tournament
+   name and the two action icons are the real links, and each carries its own
+   hover and focus affordance. */
 .aqt-tn table.tn tbody tr {
-  cursor: pointer;
   transition: 0.12s;
 }
 .aqt-tn table.tn tbody tr:hover td {

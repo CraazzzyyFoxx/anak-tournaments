@@ -186,7 +186,10 @@ const OverviewLastTournamentCard = ({ tournament, tournaments, userId }: Props) 
       action={
         tournaments.length > 0 ? (
           <Select value={String(tournament.id)} onValueChange={onSelectTournament}>
-            <SelectTrigger className="h-7 w-44 border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-[12.5px]">
+            <SelectTrigger
+              aria-label={t("users.overview.lastTournament.selectTournament")}
+              className="h-7 w-44 border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-[12.5px]"
+            >
               <SelectValue placeholder={t("users.overview.lastTournament.selectTournament")} />
             </SelectTrigger>
             <SelectContent className="liquid-glass-panel max-h-[min(var(--radix-select-content-available-height),20rem)]">

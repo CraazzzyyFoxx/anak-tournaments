@@ -65,8 +65,8 @@ export default function LanguageSwitcher({ className }: { className?: string }) 
             className={cn(
               "aqt-mono relative z-10 flex h-full w-9 items-center justify-center rounded-[calc(var(--aqt-radius-sm)-3px)] text-[11px] font-semibold uppercase tracking-wide outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--aqt-teal)]",
               isActive
-                ? "text-[var(--aqt-teal)]"
-                : "text-[var(--aqt-fg-muted)] hover:text-[var(--aqt-fg)]"
+                ? "text-[color:var(--aqt-teal)]"
+                : "text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-fg)]"
             )}
           >
             {loc}

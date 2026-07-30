@@ -258,7 +258,9 @@ const AchievementsPage = () => {
           ) : null}
         </FilterChipGroup>
 
-        <div className="ml-auto flex items-center gap-2">
+        {/* Wraps at narrow widths: as one no-wrap row the count + sort + search
+            reached 400px inside a 375px viewport and scrolled the page. */}
+        <div className="flex flex-wrap items-center gap-2 sm:ml-auto sm:flex-nowrap">
           <span className="aqt-mono text-[12px] tabular-nums text-[color:var(--aqt-fg-dim)]">
             {t("achievements.results", { count: visibleCount })}
           </span>
@@ -280,7 +282,7 @@ const AchievementsPage = () => {
             onValueChange={(value) => setParams({ q: value })}
             label={t("common.searchLabel")}
             placeholder={t("achievements.searchPlaceholder")}
-            containerClassName="min-w-[180px]"
+            containerClassName="w-full sm:w-auto sm:min-w-[180px]"
             className="h-8"
           />
         </div>
