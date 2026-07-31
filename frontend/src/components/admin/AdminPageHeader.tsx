@@ -3,6 +3,12 @@ interface AdminPageHeaderProps {
   description?: string;
   actions?: React.ReactNode;
   meta?: React.ReactNode;
+  /**
+   * Keep the `<h1>` for the document outline but drop it from the layout.
+   * For an entity page whose breadcrumb already resolves the same name,
+   * rendering it twice costs a row and says nothing new.
+   */
+  titleHidden?: boolean;
   /** Extra line below the title for counts and dates. */
   footer?: React.ReactNode;
 }
@@ -17,20 +23,27 @@ export function AdminPageHeader({
   description,
   actions,
   meta,
+  titleHidden = false,
   footer,
 }: AdminPageHeaderProps) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-3">
-            {/* `title` exposes the full string once truncation kicks in. */}
-            <h1
-              title={title}
-              className="truncate text-lg font-semibold tracking-tight text-foreground"
-            >
-              {title}
-            </h1>
+        {/* `flex-1` keeps the shrink-0 actions on this row: a long title or a
+            wide meta line used to push them onto a row of their own. */}
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            {titleHidden ? (
+              <h1 className="sr-only">{title}</h1>
+            ) : (
+              // `title` exposes the full string once truncation kicks in.
+              <h1
+                title={title}
+                className="truncate text-lg font-semibold tracking-tight text-foreground"
+              >
+                {title}
+              </h1>
+            )}
             {meta}
           </div>
           {description && (

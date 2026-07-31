@@ -48,6 +48,10 @@ function formatMetricCount(value: MetricCount, isLoading: boolean) {
  * "Back to tournaments" and "Edit tournament" are gone too: the breadcrumb and
  * sidebar already reach the list, and the edit button only pushed to the
  * Settings tab that sits in the tab bar two rows below it.
+ *
+ * The name is screen-reader-only and the dates/counts share the action row:
+ * the breadcrumb resolves the same tournament name one line above, so printing
+ * it again bought a heading row and no information.
  */
 export function TournamentWorkspaceHeader({
   tournament,
@@ -76,10 +80,38 @@ export function TournamentWorkspaceHeader({
   return (
     <AdminPageHeader
       title={tournament.name}
+      titleHidden
       meta={
-        <Badge variant="outline" className={TONE_CLASS[tournament.is_league ? "info" : "neutral"]}>
-          {tournament.is_league ? "League" : "Tournament"}
-        </Badge>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+          <Badge
+            variant="outline"
+            className={TONE_CLASS[tournament.is_league ? "info" : "neutral"]}
+          >
+            {tournament.is_league ? "League" : "Tournament"}
+          </Badge>
+          <span className="flex items-center gap-1.5">
+            <CalendarDays className="size-3.5" aria-hidden />
+            <span className="tabular-nums">
+              {formatDate(tournament.start_date)} — {formatDate(tournament.end_date)}
+            </span>
+          </span>
+          <span className="flex items-center gap-1.5">
+            <Users className="size-3.5" aria-hidden />
+            <span className="tabular-nums">
+              {formatMetricCount(teamsCount, teamsCountLoading)} teams /{" "}
+              {formatMetricCount(tournament.participants_count ?? teamsCount, teamsCountLoading)}{" "}
+              participants
+            </span>
+          </span>
+          <span className="flex items-center gap-1.5">
+            <Layers3 className="size-3.5" aria-hidden />
+            <span className="tabular-nums">
+              {tournament.stages.length} stages /{" "}
+              {formatMetricCount(encountersCount, encountersCountLoading)} encounters /{" "}
+              {formatMetricCount(standingsCount, standingsCountLoading)} standings
+            </span>
+          </span>
+        </div>
       }
       actions={
         <>
@@ -106,32 +138,6 @@ export function TournamentWorkspaceHeader({
             </Button>
           ) : null}
         </>
-      }
-      footer={
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-muted-foreground">
-          <span className="flex items-center gap-1.5">
-            <CalendarDays className="size-3.5" aria-hidden />
-            <span className="tabular-nums">
-              {formatDate(tournament.start_date)} — {formatDate(tournament.end_date)}
-            </span>
-          </span>
-          <span className="flex items-center gap-1.5">
-            <Users className="size-3.5" aria-hidden />
-            <span className="tabular-nums">
-              {formatMetricCount(teamsCount, teamsCountLoading)} teams /{" "}
-              {formatMetricCount(tournament.participants_count ?? teamsCount, teamsCountLoading)}{" "}
-              participants
-            </span>
-          </span>
-          <span className="flex items-center gap-1.5">
-            <Layers3 className="size-3.5" aria-hidden />
-            <span className="tabular-nums">
-              {tournament.stages.length} stages /{" "}
-              {formatMetricCount(encountersCount, encountersCountLoading)} encounters /{" "}
-              {formatMetricCount(standingsCount, standingsCountLoading)} standings
-            </span>
-          </span>
-        </div>
       }
     />
   );
