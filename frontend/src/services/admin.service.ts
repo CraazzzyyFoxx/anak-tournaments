@@ -81,6 +81,8 @@ import {
   DiscordChannelInput,
   LogHistoryResponse,
   LogProcessingRecord,
+  LogProcessingStats,
+  LogProcessingStatus,
   LogUploadResponse,
   QueueDepth,
   SeedResultRead,
@@ -1107,15 +1109,41 @@ class AdminService {
 
   async getLogHistory(
     tournamentId?: number,
-    params?: { encounterId?: number; workspaceId?: number | null; limit?: number; offset?: number }
+    params?: {
+      encounterId?: number;
+      workspaceId?: number | null;
+      /** Server-side status filter; omit for every status. */
+      status?: LogProcessingStatus;
+      /** Server-side match across filename, error, uploader and encounter name. */
+      search?: string;
+      limit?: number;
+      offset?: number;
+    }
   ): Promise<LogHistoryResponse> {
+    const search = params?.search?.trim();
     const response = await apiFetch("/api/v1/admin/logs/history", {
       query: {
         ...(tournamentId != null && { tournament_id: tournamentId }),
         ...(params?.encounterId != null && { encounter_id: params.encounterId }),
         ...(params?.workspaceId != null && { workspace_id: params.workspaceId }),
+        ...(params?.status && { status: params.status }),
+        ...(search && { search }),
         limit: params?.limit ?? 50,
         offset: params?.offset ?? 0
+      }
+    });
+    return response.json();
+  }
+
+  async getLogStats(
+    tournamentId?: number,
+    params?: { encounterId?: number; workspaceId?: number | null }
+  ): Promise<LogProcessingStats> {
+    const response = await apiFetch("/api/v1/admin/logs/stats", {
+      query: {
+        ...(tournamentId != null && { tournament_id: tournamentId }),
+        ...(params?.encounterId != null && { encounter_id: params.encounterId }),
+        ...(params?.workspaceId != null && { workspace_id: params.workspaceId })
       }
     });
     return response.json();

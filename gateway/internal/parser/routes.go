@@ -19,6 +19,7 @@ var Routes = []edge.RouteSpec{
 	// match-log admin (src/routes/admin/logs.py); JSON reads/writes.
 	{Method: "GET", Pattern: "/api/v1/admin/logs/queue-status", Queue: "rpc.parser.logs.queue_status", Auth: edge.AuthRequired},
 	{Method: "GET", Pattern: "/api/v1/admin/logs/history", Queue: "rpc.parser.logs.history", AllQuery: true, Auth: edge.AuthRequired},
+	{Method: "GET", Pattern: "/api/v1/admin/logs/stats", Queue: "rpc.parser.logs.stats", AllQuery: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/admin/logs/{id}/retry", Queue: "rpc.parser.logs.retry", IDParam: "id", Auth: edge.AuthRequired},
 	// match-log enqueue (src/routes/match_logs.py); admin-role gated in the handler.
 	{Method: "POST", Pattern: "/api/v1/logs/{id}", Queue: "rpc.parser.logs.process_tournament", IDParam: "id", Auth: edge.AuthRequired},

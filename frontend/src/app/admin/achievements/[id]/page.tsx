@@ -50,6 +50,7 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { InfiniteScrollFooter } from "@/components/ui/infinite-scroll";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -225,7 +226,8 @@ export default function AchievementDetailPage() {
     data: usersData,
     fetchNextPage,
     hasNextPage,
-    isFetchingNextPage
+    isFetchingNextPage,
+    isError: usersError
   } = useInfiniteQuery({
     queryKey: [
       "admin",
@@ -738,17 +740,18 @@ export default function AchievementDetailPage() {
               )}
             </TableBody>
           </Table>
-          {hasNextPage && (
-            <div className="flex justify-center mt-4">
-              <Button
-                variant="outline"
-                onClick={() => fetchNextPage()}
-                disabled={isFetchingNextPage}
-              >
-                {isFetchingNextPage ? "Loading…" : "Load more"}
-              </Button>
-            </div>
-          )}
+          {totalUsers > 0 ? (
+            <InfiniteScrollFooter
+              className="mt-4"
+              loaded={usersData?.pages.reduce((count, page) => count + page.results.length, 0) ?? 0}
+              total={totalUsers}
+              unit="users"
+              hasNextPage={hasNextPage}
+              isFetchingNextPage={isFetchingNextPage}
+              fetchNextPage={fetchNextPage}
+              isError={usersError}
+            />
+          ) : null}
         </CardContent>
       </Card>
 

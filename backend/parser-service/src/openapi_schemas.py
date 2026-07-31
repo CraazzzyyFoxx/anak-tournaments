@@ -24,8 +24,18 @@ OPERATIONS: dict[str, Op] = {
             QueryParam("tournament_id", "integer"),
             QueryParam("encounter_id", "integer"),
             QueryParam("workspace_id", "integer"),
+            QueryParam("status"),
+            QueryParam("search"),
             QueryParam("limit", "integer"),
             QueryParam("offset", "integer"),
+        ),
+    ),
+    "rpc.parser.logs.stats": Op(
+        response=admin_logs_schemas.LogStatsRead,
+        query_params=(
+            QueryParam("tournament_id", "integer"),
+            QueryParam("encounter_id", "integer"),
+            QueryParam("workspace_id", "integer"),
         ),
     ),
     "rpc.parser.logs.retry": Op(response=admin_logs_schemas.LogRecordRead),

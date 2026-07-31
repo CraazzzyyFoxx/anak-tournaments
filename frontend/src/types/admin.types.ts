@@ -884,6 +884,17 @@ export interface LogHistoryResponse {
   total: number;
 }
 
+/** Aggregate over the whole scope, not the page the console happens to show. */
+export interface LogProcessingStats {
+  total: number;
+  pending: number;
+  processing: number;
+  done: number;
+  failed: number;
+  avg_duration_seconds: number | null;
+  last_created_at: string | null;
+}
+
 export interface LogUploadItem {
   record_id: number;
   filename: string;

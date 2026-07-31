@@ -18,6 +18,7 @@ export default defineConfig({
       "src/app/admin/tournaments/new/**/*.test.ts",
       "src/app/admin/divisions/**/*.test.tsx",
       "src/app/admin/tournaments/**/components/*.test.ts",
+      "src/app/admin/tournaments/**/components/*.test.tsx",
       "src/app/admin/tournaments/[id]/tab-guards.test.ts",
       "src/app/admin/players/**/*.test.ts",
       "src/app/balancer/components/balance-import.test.ts",
@@ -29,7 +30,9 @@ export default defineConfig({
       "src/components/admin/**/*.test.tsx",
       "src/components/admin/**/*.test.ts",
       "src/components/ui/data-pagination.test.tsx",
+      "src/components/ui/infinite-scroll.test.tsx",
       "src/components/site/**/*.test.tsx",
+      "src/components/ui/toggle-group.test.tsx",
     ],
   },
 });

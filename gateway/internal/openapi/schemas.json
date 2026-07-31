@@ -3091,6 +3091,10 @@
       },
       "summary": "Upsert tournament balancer config"
     },
+    "rpc.balancer.admin.tournament_summary_get": {
+      "description": "Returns the tournament id/name/status/workspace_id for the balancer tool context; requires workspace team-read and includes hidden tournaments.",
+      "summary": "Get tournament summary"
+    },
     "rpc.balancer.admin.workspace_config_get": {
       "description": "Returns the workspace-level balancer config (rank-delta threshold and pool-hide flag) for members with workspace read permission.",
       "response": {
@@ -4597,7 +4601,7 @@
       "summary": "Create Challonge encounters"
     },
     "rpc.parser.logs.history": {
-      "description": "Lists match-log processing records filtered by tournament, encounter or workspace with pagination; permission is gated per filter argument.",
+      "description": "Lists match-log processing records filtered by tournament, encounter or workspace, plus optional status and free-text search, with pagination; permission is gated per filter argument.",
       "query_params": [
         {
           "name": "tournament_id",
@@ -4618,6 +4622,20 @@
           "required": false,
           "schema": {
             "type": "integer"
+          }
+        },
+        {
+          "name": "status",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "search",
+          "required": false,
+          "schema": {
+            "type": "string"
           }
         },
         {
@@ -4660,6 +4678,37 @@
         "ref": "parser.LogRecordRead"
       },
       "summary": "Retry log processing"
+    },
+    "rpc.parser.logs.stats": {
+      "description": "Returns scope-wide processing counts per status, average completed duration and the newest record timestamp for a tournament, encounter or workspace; permission is gated per filter argument like history.",
+      "query_params": [
+        {
+          "name": "tournament_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "encounter_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "workspace_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "parser.LogStatsRead"
+      },
+      "summary": "Log processing stats"
     },
     "rpc.parser.logs.upload": {
       "description": "Multipart (base64) upload of one or more log files for a tournament, storing each to S3 and enqueueing processing, with per-file errors collected; requires log.upload.",
@@ -22193,6 +22242,65 @@
         "finished_at"
       ],
       "title": "LogRecordRead",
+      "type": "object"
+    },
+    "parser.LogStatsRead": {
+      "description": "Scope-wide processing aggregate, computed in one SQL round trip.\n\nThe admin console used to derive these from the page it happened to be\nshowing, so \"Failed: 0\" only ever meant \"none on this page\".",
+      "properties": {
+        "avg_duration_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Avg Duration Seconds"
+        },
+        "done": {
+          "title": "Done",
+          "type": "integer"
+        },
+        "failed": {
+          "title": "Failed",
+          "type": "integer"
+        },
+        "last_created_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Created At"
+        },
+        "pending": {
+          "title": "Pending",
+          "type": "integer"
+        },
+        "processing": {
+          "title": "Processing",
+          "type": "integer"
+        },
+        "total": {
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total",
+        "pending",
+        "processing",
+        "done",
+        "failed",
+        "avg_duration_seconds",
+        "last_created_at"
+      ],
+      "title": "LogStatsRead",
       "type": "object"
     },
     "parser.LogUploadError": {

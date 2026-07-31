@@ -32,6 +32,7 @@ export default function LogsTabPage() {
   return (
     <TournamentLogsTab
       tournamentId={tournamentId}
+      workspaceId={workspaceId}
       encounters={encountersQuery.data?.results ?? []}
       canUploadLogs={canAccessPermission("match.update", workspaceId)}
       enabled

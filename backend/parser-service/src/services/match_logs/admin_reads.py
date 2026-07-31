@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import httpx
 from loguru import logger
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import http_status as status
@@ -94,6 +94,50 @@ def _record_to_dict(record: models.LogProcessingRecord) -> dict:
         "started_at": record.started_at.isoformat() if record.started_at else None,
         "finished_at": record.finished_at.isoformat() if record.finished_at else None,
     }
+
+
+def history_scope_conditions(
+    *,
+    tournament_id: int | None,
+    encounter_id: int | None,
+    workspace_id: int | None,
+) -> list[ColumnElement[bool]]:
+    """WHERE terms selecting the record set a history/stats read is scoped to.
+
+    The workspace term is an EXISTS on the ``tournament`` relationship rather than
+    a join so the same list composes into a plain ``SELECT``, a ``count()`` and the
+    stats aggregate without three different FROM shapes.
+    """
+    conditions: list[ColumnElement[bool]] = []
+    if tournament_id is not None:
+        conditions.append(models.LogProcessingRecord.tournament_id == tournament_id)
+    if encounter_id is not None:
+        conditions.append(models.LogProcessingRecord.attached_encounter_id == encounter_id)
+    if workspace_id is not None:
+        conditions.append(models.LogProcessingRecord.tournament.has(models.Tournament.workspace_id == workspace_id))
+    return conditions
+
+
+def history_search_condition(search: str | None) -> ColumnElement[bool] | None:
+    """Case-insensitive match across the fields the console renders per row.
+
+    Searching used to happen in the browser over the current page only, so a term
+    matching a record two pages down found nothing. Uploader/encounter names live
+    on related rows and are matched with EXISTS for the same composability reason
+    as the workspace scope.
+    """
+    term = (search or "").strip()
+    if not term:
+        return None
+
+    # Escape LIKE wildcards so a filename containing "_" stays a literal match.
+    pattern = "%{}%".format(term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_"))
+    return or_(
+        models.LogProcessingRecord.filename.ilike(pattern, escape="\\"),
+        models.LogProcessingRecord.error_message.ilike(pattern, escape="\\"),
+        models.LogProcessingRecord.uploader.has(models.User.name.ilike(pattern, escape="\\")),
+        models.LogProcessingRecord.attached_encounter.has(models.Encounter.name.ilike(pattern, escape="\\")),
+    )
 
 
 async def _validate_attached_encounter(
