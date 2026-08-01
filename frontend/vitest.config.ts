@@ -5,8 +5,8 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   resolve: {
     alias: {
-      "@": fileURLToPath(new URL("./src", import.meta.url)),
-    },
+      "@": fileURLToPath(new URL("./src", import.meta.url))
+    }
   },
   test: {
     environment: "node",
@@ -27,12 +27,13 @@ export default defineConfig({
       "src/app/balancer/redirect-map.test.ts",
       "src/app/**/users/compare/**/*.test.ts",
       "src/components/tournaments/**/*.test.ts",
+      "src/components/balancer/registrations/**/*.test.tsx",
       "src/components/admin/**/*.test.tsx",
       "src/components/admin/**/*.test.ts",
       "src/components/ui/data-pagination.test.tsx",
       "src/components/ui/infinite-scroll.test.tsx",
       "src/components/site/**/*.test.tsx",
-      "src/components/ui/toggle-group.test.tsx",
-    ],
-  },
+      "src/components/ui/toggle-group.test.tsx"
+    ]
+  }
 });

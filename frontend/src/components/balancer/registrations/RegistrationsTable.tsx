@@ -24,14 +24,17 @@ import {
   ChevronDown,
   ChevronRight,
   Clock,
+  FileCog,
   Globe,
   Loader2,
   Lock,
   MessageSquareText,
+  MoreHorizontal,
   Search,
   RadioTower,
   Pencil,
   ShieldBan,
+  Sheet,
   ShieldX,
   Sparkles,
   Trash2,
@@ -59,7 +62,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -69,6 +72,14 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -644,6 +655,12 @@ export default function RegistrationsTable({
   const pendingCount = registrations.filter(
     (registration) => registration.status === "pending"
   ).length;
+
+  // Sub-route links keep the current query string so the legacy balancer route
+  // (tournament id in the query) still resolves after navigating.
+  const queryString = searchParams.toString();
+  const withSearchParams = (path: string) => (queryString ? `${path}?${queryString}` : path);
+
   if (!tournamentId) {
     return (
       <Alert>
@@ -658,81 +675,9 @@ export default function RegistrationsTable({
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
       <Card className="flex min-h-0 flex-col overflow-hidden">
-        <CardHeader className="gap-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <CardTitle>Registrations</CardTitle>
-              <CardDescription>
-                {pendingCount > 0 ? `${pendingCount} pending. ` : null}
-                Showing {filteredRegistrations.length} of {registrations.length}.
-              </CardDescription>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" asChild>
-                <Link
-                  href={
-                    searchParams.toString()
-                      ? `${basePath}/rank-autofill?${searchParams.toString()}`
-                      : `${basePath}/rank-autofill`
-                  }
-                >
-                  <Sparkles className="mr-2 h-4 w-4" />
-                  Autofill ranks
-                </Link>
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => exportToUsersMutation.mutate()}
-                disabled={exportToUsersMutation.isPending}
-              >
-                {exportToUsersMutation.isPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Upload className="mr-2 h-4 w-4" />
-                )}
-                Export to analytics
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setCreateOpen(true);
-                }}
-              >
-                <UserPlus className="mr-2 h-4 w-4" />
-                Create registration
-              </Button>
-              {selectedIds.size > 0 ? (
-                <>
-                  <Button
-                    onClick={() => bulkApproveMutation.mutate()}
-                    disabled={bulkApproveMutation.isPending}
-                  >
-                    {bulkApproveMutation.isPending ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Check className="mr-2 h-4 w-4" />
-                    )}
-                    Approve {selectedIds.size}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => bulkAddToBalancerMutation.mutate()}
-                    disabled={bulkAddToBalancerMutation.isPending}
-                  >
-                    {bulkAddToBalancerMutation.isPending ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Check className="mr-2 h-4 w-4" />
-                    )}
-                    Add to Balancer {selectedIds.size}
-                  </Button>
-                </>
-              ) : null}
-            </div>
-          </div>
-
+        <CardHeader className="p-4 pb-3">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="relative min-w-[220px] flex-1">
+            <div className="relative min-w-[200px] flex-1">
               <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[color:var(--aqt-fg-dim)]" />
               <Input
                 value={searchQuery}
@@ -741,8 +686,35 @@ export default function RegistrationsTable({
                 className="pl-9"
               />
             </div>
+
+            <span
+              className="shrink-0 text-xs tabular-nums text-muted-foreground"
+              title={`${filteredRegistrations.length} shown of ${registrations.length} registrations`}
+            >
+              {filteredRegistrations.length === registrations.length
+                ? registrations.length
+                : `${filteredRegistrations.length}/${registrations.length}`}
+            </span>
+            {pendingCount > 0 ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className={cn("shrink-0 gap-1.5", STATUS_CONFIG.pending.className)}
+                aria-pressed={statusFilter === "pending"}
+                onClick={() => setStatusFilter(statusFilter === "pending" ? "all" : "pending")}
+                title={
+                  statusFilter === "pending"
+                    ? "Clear the pending filter"
+                    : `Show only the ${pendingCount} pending registrations`
+                }
+              >
+                <Clock className="h-3.5 w-3.5" aria-hidden />
+                {pendingCount} pending
+              </Button>
+            ) : null}
+
             <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value)}>
-              <SelectTrigger className="w-[170px]">
+              <SelectTrigger className="w-[150px]">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -771,7 +743,7 @@ export default function RegistrationsTable({
               value={inclusionFilter}
               onValueChange={(value) => setInclusionFilter(value as InclusionFilter)}
             >
-              <SelectTrigger className="w-[170px]">
+              <SelectTrigger className="w-[150px]">
                 <SelectValue placeholder="Participation" />
               </SelectTrigger>
               <SelectContent>
@@ -784,7 +756,7 @@ export default function RegistrationsTable({
               value={sourceFilter}
               onValueChange={(value) => setSourceFilter(value as SourceFilter)}
             >
-              <SelectTrigger className="w-[170px]">
+              <SelectTrigger className="w-[140px]">
                 <SelectValue placeholder="Source" />
               </SelectTrigger>
               <SelectContent>
@@ -797,7 +769,7 @@ export default function RegistrationsTable({
               value={groupBy}
               onValueChange={(value) => setGroupBy(value as RegistrationGroupingMode)}
             >
-              <SelectTrigger className="w-[190px]">
+              <SelectTrigger className="w-[160px]">
                 <SelectValue placeholder="Group by" />
               </SelectTrigger>
               <SelectContent>
@@ -813,6 +785,89 @@ export default function RegistrationsTable({
               onToggle={toggleColumn}
               onReset={resetToDefaults}
             />
+
+            <div className="ml-auto flex items-center gap-2">
+              {selectedIds.size > 0 ? (
+                <>
+                  <Button
+                    onClick={() => bulkApproveMutation.mutate()}
+                    disabled={bulkApproveMutation.isPending}
+                  >
+                    {bulkApproveMutation.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Check className="mr-2 h-4 w-4" />
+                    )}
+                    Approve {selectedIds.size}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => bulkAddToBalancerMutation.mutate()}
+                    disabled={bulkAddToBalancerMutation.isPending}
+                  >
+                    {bulkAddToBalancerMutation.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Check className="mr-2 h-4 w-4" />
+                    )}
+                    Add to Balancer {selectedIds.size}
+                  </Button>
+                </>
+              ) : null}
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setCreateOpen(true);
+                }}
+              >
+                <UserPlus className="mr-2 h-4 w-4" />
+                Create registration
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" aria-label="Advanced registration actions">
+                    <MoreHorizontal className="h-4 w-4" aria-hidden />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>Registration setup</DropdownMenuLabel>
+                  <DropdownMenuItem asChild>
+                    <Link href={withSearchParams(`${basePath}/form`)}>
+                      <FileCog className="mr-2 h-4 w-4" aria-hidden />
+                      Form settings
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href={withSearchParams(`${basePath}/feed`)}>
+                      <Sheet className="mr-2 h-4 w-4" aria-hidden />
+                      Google Sheets feed
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>Bulk tools</DropdownMenuLabel>
+                  <DropdownMenuItem asChild>
+                    <Link href={withSearchParams(`${basePath}/rank-autofill`)}>
+                      <Sparkles className="mr-2 h-4 w-4" aria-hidden />
+                      Autofill ranks
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={exportToUsersMutation.isPending}
+                    onSelect={(event) => {
+                      event.preventDefault();
+                      exportToUsersMutation.mutate();
+                    }}
+                  >
+                    {exportToUsersMutation.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+                    ) : (
+                      <Upload className="mr-2 h-4 w-4" aria-hidden />
+                    )}
+                    Export to analytics
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
         </CardHeader>
 
@@ -1167,7 +1222,9 @@ export default function RegistrationsTable({
                                         Details
                                       </div>
                                       <div>
-                                        <dt className="mb-1 text-[color:var(--aqt-fg-dim)]">Declared roles</dt>
+                                        <dt className="mb-1 text-[color:var(--aqt-fg-dim)]">
+                                          Declared roles
+                                        </dt>
                                         <dd>
                                           <RolesCell
                                             roles={registration.roles}
@@ -1185,7 +1242,9 @@ export default function RegistrationsTable({
                                       ) : null}
                                       {registration.discord_nick || registration.twitch_nick ? (
                                         <div className="flex justify-between gap-3">
-                                          <dt className="text-[color:var(--aqt-fg-dim)]">Contact</dt>
+                                          <dt className="text-[color:var(--aqt-fg-dim)]">
+                                            Contact
+                                          </dt>
                                           <dd className="text-right">
                                             {[registration.discord_nick, registration.twitch_nick]
                                               .filter(Boolean)
@@ -1198,14 +1257,18 @@ export default function RegistrationsTable({
                                         <dd className="text-right">{registration.source}</dd>
                                       </div>
                                       <div className="flex justify-between gap-3">
-                                        <dt className="text-[color:var(--aqt-fg-dim)]">Submitted</dt>
+                                        <dt className="text-[color:var(--aqt-fg-dim)]">
+                                          Submitted
+                                        </dt>
                                         <dd className="text-right">
                                           {formatSubmittedAt(registration.submitted_at)}
                                         </dd>
                                       </div>
                                       {registration.reviewed_at ? (
                                         <div className="flex justify-between gap-3">
-                                          <dt className="text-[color:var(--aqt-fg-dim)]">Reviewed</dt>
+                                          <dt className="text-[color:var(--aqt-fg-dim)]">
+                                            Reviewed
+                                          </dt>
                                           <dd className="text-right">
                                             {formatSubmittedAt(registration.reviewed_at)}
                                             {registration.reviewed_by_username
@@ -1222,7 +1285,9 @@ export default function RegistrationsTable({
                                       ) : null}
                                       {registration.admin_notes ? (
                                         <div>
-                                          <dt className="text-[color:var(--aqt-fg-dim)]">Admin notes</dt>
+                                          <dt className="text-[color:var(--aqt-fg-dim)]">
+                                            Admin notes
+                                          </dt>
                                           <dd className="mt-0.5">{registration.admin_notes}</dd>
                                         </div>
                                       ) : null}
