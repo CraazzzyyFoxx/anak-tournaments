@@ -93,9 +93,9 @@ export default function RegistrationFormBuilder({
     });
   }, [formQuery.data, hasChanges]);
 
-  // The PlayerSubRole catalog (with row ids) is fetched directly so it can be
-  // managed (create/remove) here; the form's embedded subrole_catalog only
-  // carries {slug,label} for the public wizard.
+  // The workspace `PlayerSubRole` catalog is fetched with row ids so the tab can
+  // key its chips; managing it lives on `/admin/sub-roles`. The form's embedded
+  // `subrole_catalog` only carries {slug,label} for the public wizard.
   const workspaceId = formQuery.data?.workspace_id ?? currentWorkspaceId ?? null;
 
   const catalogQuery = useQuery({
@@ -116,33 +116,6 @@ export default function RegistrationFormBuilder({
     }
     return grouped;
   }, [catalogQuery.data]);
-
-  const invalidateCatalog = async () => {
-    // Only refetch the catalog (fast, drives this tab). Do NOT await/refetch the
-    // form query here: returning a slow promise from onSuccess keeps the mutation
-    // stuck in `isPending` (and re-hydrating the form is unnecessary — the tab
-    // reads the live catalog, and the public wizard fetches the form on its own).
-    await queryClient.invalidateQueries({ queryKey: ["admin", "player-sub-roles", workspaceId] });
-  };
-
-  const createSubroleMutation = useMutation({
-    mutationFn: ({ role, label }: { role: string; label: string }) => {
-      if (workspaceId === null) throw new Error("No workspace selected");
-      return adminService.createPlayerSubRole({ workspace_id: workspaceId, role, label });
-    },
-    onSuccess: async () => {
-      await invalidateCatalog();
-      notify.success("Sub-role added");
-    }
-  });
-
-  const deleteSubroleMutation = useMutation({
-    mutationFn: (id: number) => adminService.deletePlayerSubRole(id),
-    onSuccess: async () => {
-      await invalidateCatalog();
-      notify.success("Sub-role removed");
-    }
-  });
 
   const saveMutation = useMutation({
     mutationFn: () => {
@@ -403,10 +376,7 @@ export default function RegistrationFormBuilder({
               catalog={subroleCatalog}
               selection={subroleSelection}
               onToggleOffered={handleToggleSubrole}
-              onCreate={(role, label) => createSubroleMutation.mutate({ role, label })}
-              onDelete={(entry) => deleteSubroleMutation.mutate(entry.id)}
               isLoading={catalogQuery.isLoading}
-              isMutating={createSubroleMutation.isPending || deleteSubroleMutation.isPending}
             />
           </TabsContent>
 
