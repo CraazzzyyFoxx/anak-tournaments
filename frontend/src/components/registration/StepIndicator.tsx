@@ -43,7 +43,7 @@ export default function StepIndicator({ steps, current }: StepIndicatorProps) {
                     ? "bg-[color:var(--aqt-teal)] text-[color:var(--aqt-bg)]"
                     : isCompleted
                       ? "bg-[color:var(--aqt-overlay-3)] text-[color:var(--aqt-fg-muted)]"
-                      : "bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg-faint)]",
+                    : "bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg-muted)]",
                 )}
               >
                 {isCompleted ? <Check className="size-3.5" aria-hidden /> : i + 1}
@@ -51,7 +51,7 @@ export default function StepIndicator({ steps, current }: StepIndicatorProps) {
               <span
                 className={cn(
                   "hidden text-xs font-medium sm:inline",
-                  isActive ? "text-[color:var(--aqt-fg)]" : isCompleted ? "text-[color:var(--aqt-fg-muted)]" : "text-[color:var(--aqt-fg-faint)]",
+                  isActive ? "text-[color:var(--aqt-fg)]" : "text-[color:var(--aqt-fg-muted)]",
                 )}
               >
                 {step.label}

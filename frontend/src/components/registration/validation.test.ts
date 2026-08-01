@@ -44,22 +44,6 @@ describe("registration validation helpers", () => {
     ).toBe("Discord format is invalid.");
   });
 
-  it("hides the footer validation message when the same problem is already shown inline", () => {
-    expect(
-      registrationValidation.getStepDisplayValidationError(
-        "BattleTag format is invalid.",
-        "BattleTag format is invalid.",
-      ),
-    ).toBeNull();
-
-    expect(
-      registrationValidation.getStepDisplayValidationError(
-        null,
-        "BattleTag is required.",
-      ),
-    ).toBe("BattleTag is required.");
-  });
-
   it("uses the default BattleTag mask when the form has no explicit battle_tag validation", () => {
     expect(
       registrationValidation.getBuiltInValueValidationError(

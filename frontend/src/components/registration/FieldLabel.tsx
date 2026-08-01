@@ -40,7 +40,7 @@ export default function FieldLabel({
         {label}
       </span>
       {required && (
-        <span className="rounded-full border border-warning/25 bg-warning/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-warning">
+        <span className="rounded-full border border-warning/25 bg-warning/10 px-1.5 py-0.5 text-[11px] font-medium uppercase tracking-wide text-warning">
           {t("common.required")}
         </span>
       )}

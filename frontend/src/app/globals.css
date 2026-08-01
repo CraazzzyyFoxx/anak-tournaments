@@ -1600,8 +1600,11 @@
   --aqt-border-3: hsl(216 16% 26%);
   --aqt-fg: hsl(214 33% 96%);
   --aqt-fg-muted: hsl(212 13% 65%);
-  --aqt-fg-dim: hsl(213 9% 46%);
-  --aqt-fg-faint: hsl(214 10% 34%);
+  /* Lifted from 46%/34%: at the old values, tertiary copy measured 3.96:1 and
+     placeholders 2.37:1 against the card surface — both below WCAG AA 4.5:1.
+     54%/46% keep the four-tier ramp (96 / 65 / 54 / 46) ordered. */
+  --aqt-fg-dim: hsl(213 9% 54%);
+  --aqt-fg-faint: hsl(214 10% 46%);
   --aqt-teal: hsl(172 70% 49%);
   --aqt-teal-deep: hsl(173 81% 32%);
   --aqt-emerald: hsl(150 57% 52%);

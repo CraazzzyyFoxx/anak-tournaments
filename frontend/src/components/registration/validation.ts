@@ -241,14 +241,3 @@ export function getFirstLiveValidationError(
 
   return null;
 }
-
-export function getStepDisplayValidationError(
-  liveValidationError: string | null,
-  stepValidationError: string | null,
-): string | null {
-  if (liveValidationError) {
-    return null;
-  }
-
-  return stepValidationError;
-}

@@ -257,9 +257,6 @@
     "wizard": {
       "title": "Register",
       "titleFor": "Register for {name}",
-      "step1Desc": "Step 1 - Verify your game accounts.",
-      "step2Desc": "Step 2 - Pick your preferred role.",
-      "step3Desc": "Step 3 - Any additional info for organizers.",
       "steps": {
         "accounts": "Accounts",
         "roles": "Roles",
@@ -282,8 +279,6 @@
       }
     },
     "accounts": {
-      "title": "Your Accounts",
-      "desc": "We've pre-filled your linked accounts. Change them if needed.",
       "battleTag": "BattleTag",
       "smurfs": "Smurf Accounts",
       "discord": "Discord",
@@ -307,42 +302,33 @@
       "noAccountsHintCta": "Link accounts in profile settings"
     },
     "roles": {
-      "title": "Choose Your Role",
-      "desc": "Set your primary role first. Then choose secondary roles we can assign you to if a team is short on them during balancing.",
       "primary": {
-        "title": "Primary Role",
-        "desc": "This is the role we should place you on by default."
+        "title": "Primary Role"
       },
-      "secondary": {
-        "title": "Secondary Roles",
-        "required": "Required",
-        "optional": "Optional",
-        "clearAll": "Clear all",
-        "selectAll": "Select all",
-        "descEmptyPrimary": "Pick a primary role first to reveal your fallback role options.",
-        "descFlex": "Flex already covers all roles, so no fallback roles are needed.",
-        "descFallback": "These are fallback roles. If a team is missing one of them, we may place you there during balancing.",
-        "emptyStateFlex": "Flex already covers every role, so fallback roles are not needed for this registration.",
-        "emptyStateChoosePrimary": "Choose a primary role first. We will then show the two fallback roles you can also be assigned to."
-      },
-      "flex": {
-        "title": "Flex",
-        "desc": "All roles, equal priority"
+      "matrix": {
+        "hint": "Mark the roles you can play. Fallback roles are used during balancing when a team is short on one.",
+        "hintRequired": "Mark your main role and at least one fallback role. Fallback roles are used during balancing when a team is short on one.",
+        "columnRole": "Role",
+        "columnPriority": "Priority",
+        "off": "Skip",
+        "fallback": "Fallback",
+        "main": "Main",
+        "priorityLabel": "{role} priority",
+        "flexPreset": "Play any role",
+        "heroesLabel": "Top heroes for {role}: {count} of {max} selected",
+        "heroesPickerLabel": "Choose top heroes for {role}",
+        "heroesAtMax": "Maximum of {max} heroes selected. Remove one to swap."
       },
       "specialization": "Specialization",
       "roleSpecialization": "{role} specialization",
       "any": "Any",
       "topHeroes": {
         "title": "Top Heroes",
-        "desc": "Pick up to {max} hero(es) you play best for each role.",
-        "anyRole": "Any role",
+        "desc": "Pick up to {max} heroes you play best in this role.",
         "count": "{count}/{max}"
       }
     },
     "details": {
-      "title": "Additional Details",
-      "descWithFields": "Almost done! Fill in any extra info.",
-      "descNoFields": "No additional fields required. You're ready to submit!",
       "streamPov": "Stream POV",
       "streamPovLabel": "I will stream my POV",
       "notes": "Notes",

@@ -59,17 +59,6 @@ export default function AccountStep({
 
   return (
     <div className="grid gap-4">
-      <div className="space-y-1">
-        <h3 className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--aqt-fg-muted)]">
-          {mode === "admin" ? "Identity and Contact Handles" : t("registration.accounts.title")}
-        </h3>
-        <p className="text-xs leading-5 text-[color:var(--aqt-fg-dim)]">
-          {mode === "admin"
-            ? "Only the registration identity fields that matter in admin editing."
-            : t("registration.accounts.desc")}
-        </p>
-      </div>
-
       {mode === "public" && accounts.length === 0 && onLinkAccounts && (
         <button
           type="button"

@@ -71,24 +71,8 @@ export default function DetailsStep({
     onFieldValidationChange("notes", notesValidationError);
   }, [notesValidationError, onFieldValidationChange]);
 
-  const hasCustomFields = form.custom_fields.length > 0;
-  const hasAnyField = showNotes || showStreamPov || (mode === "public" && hasCustomFields);
-
   return (
     <div className="grid gap-4">
-      <div className="space-y-1">
-        <h3 className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--aqt-fg-muted)]">
-          {mode === "admin" ? "Details and Notes" : t("registration.details.title")}
-        </h3>
-        <p className="text-xs leading-5 text-[color:var(--aqt-fg-dim)]">
-          {mode === "admin"
-            ? "Final step for notes and status updates."
-            : hasAnyField
-              ? t("registration.details.descWithFields")
-              : t("registration.details.descNoFields")}
-        </p>
-      </div>
-
       {showStreamPov && (
         <div className="space-y-2">
           <FieldLabel

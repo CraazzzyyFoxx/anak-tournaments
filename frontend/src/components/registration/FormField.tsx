@@ -15,8 +15,8 @@ import FieldLabel from "./FieldLabel";
  * flow. The replacement is a real `focus-visible:` ring.
  */
 export const fieldControlClass =
-  "w-full rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-3 text-sm " +
-  "text-[color:var(--aqt-fg)] shadow-none placeholder:text-[color:var(--aqt-fg-faint)] transition-colors " +
+  "w-full rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-3 text-base sm:text-sm " +
+  "text-[color:var(--aqt-fg)] shadow-none placeholder:text-[color:var(--aqt-fg-dim)] transition-colors " +
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 " +
   "focus-visible:ring-offset-background";
 
