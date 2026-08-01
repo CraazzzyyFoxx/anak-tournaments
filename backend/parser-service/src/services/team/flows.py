@@ -588,7 +588,7 @@ async def _fetch_challonge_participant_rows(
     if not plans:
         return []
 
-    # Commit (and thereby release the pgBouncer/NullPool-backed connection)
+    # Commit (and thereby release the pgBouncer-backed connection)
     # before the rate-limited Challonge round-trips: holding a transaction open
     # across third-party HTTP pins a scarce backend slot for the whole network
     # wait. expire_on_commit=False keeps the already-loaded tournament/teams

@@ -182,7 +182,7 @@ async def create_groups(
     challonge_tournament: schemas.ChallongeTournament,
 ) -> models.Tournament:
     # Release the DB connection before the Challonge round-trip: under
-    # pgBouncer/NullPool an open transaction pins a backend slot for the whole
+    # pgBouncer transaction pooling an open transaction pins a backend slot for the whole
     # network wait. expire_on_commit=False keeps ``tournament`` usable.
     await session.commit()
     matches = await challonge_service.fetch_matches(challonge_tournament.id)

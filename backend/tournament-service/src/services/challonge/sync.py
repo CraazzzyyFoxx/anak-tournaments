@@ -1423,7 +1423,7 @@ async def import_tournament(session: AsyncSession, tournament_id: int, *, dry_ru
         }
 
         # Release the DB connection before the (potentially slow, rate-limited)
-        # Challonge HTTP round-trips: under NullPool + pgBouncer transaction
+        # Challonge HTTP round-trips: under pgBouncer transaction
         # pooling an open transaction pins a scarce backend slot for the whole
         # network wait, and statement_timeout does not bound idle-in-transaction
         # time. expire_on_commit=False keeps the loaded ``tournament`` (and its
