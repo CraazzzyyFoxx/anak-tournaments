@@ -18,8 +18,6 @@ import adminService from "@/services/admin.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { PlayerSubRole } from "@/types/admin.types";
 
-const SUB_ROLES_QUERY_KEY = "admin-sub-roles";
-
 /**
  * Workspace sub-role catalog (`PlayerSubRole`). This used to live inside a
  * tournament's registration form builder, where creating or removing an entry
@@ -39,7 +37,11 @@ export default function AdminSubRolesPage() {
   const canDeactivate = canAccessPermission("player.delete", workspaceId);
 
   const catalogQuery = useQuery({
-    queryKey: [SUB_ROLES_QUERY_KEY, workspaceId],
+    // Same key family every sub-role picker uses, with an `"all"` leaf because
+    // this page is the only reader that wants the deactivated rows too. Sharing
+    // the prefix means one `invalidateQueries` refreshes this page *and* every
+    // picker in the app.
+    queryKey: ["admin", "player-sub-roles", workspaceId, "all"],
     // Inactive entries are included so a deactivated sub-role can be restored;
     // the tournament form builder only ever sees the active ones.
     queryFn: () =>
@@ -50,17 +52,8 @@ export default function AdminSubRolesPage() {
     enabled: workspaceId !== null
   });
 
-  /**
-   * Both query keys have to go: this page reads `admin-sub-roles` (inactive
-   * included) while every picker in the app reads `["admin", "player-sub-roles"]`
-   * (active only), and a rename has to reach both.
-   */
-  const invalidateCatalog = async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: [SUB_ROLES_QUERY_KEY, workspaceId] }),
-      queryClient.invalidateQueries({ queryKey: ["admin", "player-sub-roles"] })
-    ]);
-  };
+  const invalidateCatalog = () =>
+    queryClient.invalidateQueries({ queryKey: ["admin", "player-sub-roles"] });
 
   const createMutation = useMutation({
     mutationFn: ({ role, label }: { role: string; label: string }) => {
@@ -191,9 +184,7 @@ export default function AdminSubRolesPage() {
                             setActiveMutation.mutate({ id: entry.id, isActive })
                           }
                           aria-label={
-                            entry.is_active
-                              ? `Deactivate ${entry.label}`
-                              : `Restore ${entry.label}`
+                            entry.is_active ? `Deactivate ${entry.label}` : `Restore ${entry.label}`
                           }
                         />
                       </li>
@@ -242,8 +233,8 @@ export default function AdminSubRolesPage() {
 
       <p className="text-xs text-muted-foreground">
         Deactivating a sub-role hides it from every picker but keeps it on the players already
-        assigned to it. Which of these a specific tournament offers is chosen in that tournament&apos;s
-        registration form.
+        assigned to it. Which of these a specific tournament offers is chosen in that
+        tournament&apos;s registration form.
       </p>
     </div>
   );
