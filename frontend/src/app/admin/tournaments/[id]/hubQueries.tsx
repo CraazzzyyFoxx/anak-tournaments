@@ -8,7 +8,7 @@ import encounterService from "@/services/encounter.service";
 import teamService from "@/services/team.service";
 import tournamentService from "@/services/tournament.service";
 import workspaceService from "@/services/workspace.service";
-import type { Stage, Tournament } from "@/types/tournament.types";
+import type { Tournament } from "@/types/tournament.types";
 import type { DivisionGridEntity, DivisionGridVersion } from "@/types/workspace.types";
 import { getTournamentWorkspaceQueryKeys } from "./components/tournamentWorkspace.queryKeys";
 
@@ -105,12 +105,3 @@ export function flattenDivisionGridVersions(
     .sort((left, right) => right.version - left.version);
 }
 
-/** A tournament sources its bracket from Challonge — lockstep across overview/teams/matches. */
-export function hasChallongeSource(
-  tournament: Tournament | undefined,
-  stages: Stage[]
-): boolean {
-  return Boolean(
-    tournament?.challonge_slug || stages.some((stage) => Boolean(stage.challonge_slug))
-  );
-}

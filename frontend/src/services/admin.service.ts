@@ -84,7 +84,6 @@ import {
   LogProcessingStats,
   LogProcessingStatus,
   LogUploadResponse,
-  QueueDepth,
   SeedResultRead,
   PlayerSubRole,
   PlayerSubRoleCreateInput,
@@ -1167,11 +1166,6 @@ class AdminService {
       method: "POST",
       body: formData
     });
-    return response.json();
-  }
-
-  async getQueueStatus(): Promise<QueueDepth[]> {
-    const response = await apiFetch("/api/v1/admin/logs/queue-status");
     return response.json();
   }
 

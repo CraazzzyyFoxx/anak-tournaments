@@ -9373,8 +9373,20 @@
     },
     "app.DashboardIssues": {
       "properties": {
+        "encounters_awaiting_result": {
+          "title": "Encounters Awaiting Result",
+          "type": "integer"
+        },
         "encounters_missing_logs": {
           "title": "Encounters Missing Logs",
+          "type": "integer"
+        },
+        "encounters_pending_confirmation": {
+          "title": "Encounters Pending Confirmation",
+          "type": "integer"
+        },
+        "stage_slots_empty": {
+          "title": "Stage Slots Empty",
           "type": "integer"
         },
         "teams_without_players": {
@@ -9394,7 +9406,10 @@
         "encounters_missing_logs",
         "teams_without_players",
         "tournaments_without_stages",
-        "users_without_identities"
+        "users_without_identities",
+        "encounters_awaiting_result",
+        "encounters_pending_confirmation",
+        "stage_slots_empty"
       ],
       "title": "DashboardIssues",
       "type": "object"
@@ -9410,6 +9425,10 @@
               "type": "null"
             }
           ]
+        },
+        "encounters_completed": {
+          "title": "Encounters Completed",
+          "type": "integer"
         },
         "encounters_total": {
           "title": "Encounters Total",
@@ -9442,6 +9461,10 @@
           "title": "Tournaments Active",
           "type": "integer"
         },
+        "tournaments_registration_open": {
+          "title": "Tournaments Registration Open",
+          "type": "integer"
+        },
         "tournaments_total": {
           "title": "Tournaments Total",
           "type": "integer"
@@ -9453,6 +9476,8 @@
         "teams_total",
         "players_total",
         "encounters_total",
+        "tournaments_registration_open",
+        "encounters_completed",
         "heroes_total",
         "gamemodes_total",
         "maps_total",

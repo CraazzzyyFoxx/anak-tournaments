@@ -1,5 +1,5 @@
 import type { TournamentReadiness } from "@/types/admin.types";
-import type { TournamentStatus } from "@/types/tournament.types";
+import type { StageSummary, Tournament, TournamentStatus } from "@/types/tournament.types";
 
 /**
  * Living-checklist model for the Overview tab (design §3, D22, D16).
@@ -10,6 +10,21 @@ import type { TournamentStatus } from "@/types/tournament.types";
  * "no-access". Hrefs point at the FINAL tab addresses (D20) — `registration`
  * ships in T8, `matches?tab=logs` in Phase 2 — links are already correct.
  */
+
+/**
+ * A tournament sources its bracket from Challonge — its own registration form
+ * does not apply. Lockstep across the hub's overview/teams/matches/settings
+ * tabs and the admin dashboard, so it lives beside `ChecklistContext` rather
+ * than in a route module.
+ */
+export function hasChallongeSource(
+  tournament: Tournament | undefined,
+  stages: readonly StageSummary[]
+): boolean {
+  return Boolean(
+    tournament?.challonge_slug || stages.some((stage) => Boolean(stage.challonge_slug))
+  );
+}
 
 export type ChecklistState = "done" | "todo" | "warn" | "skipped" | "no-access";
 

@@ -3,8 +3,8 @@
 import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
 import { usePermissions } from "@/hooks/usePermissions";
+import { hasChallongeSource } from "@/components/admin/tournament-checklist";
 import {
-  hasChallongeSource,
   tabFallback,
   useHubEncountersQuery,
   useHubStagesQuery,

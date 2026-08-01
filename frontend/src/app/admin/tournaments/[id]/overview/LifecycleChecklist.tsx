@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { EYEBROW_CLASS, TONE_CLASS, type Tone } from "@/components/admin/tone";
 import { cn } from "@/lib/utils";
-import type { ChecklistItem, ChecklistPhase, ChecklistState } from "./checklist-model";
+import type { ChecklistItem, ChecklistPhase, ChecklistState } from "@/components/admin/tournament-checklist";
 
 const PHASE_TITLES: Record<ChecklistPhase, string> = {
   setup: "Setup",

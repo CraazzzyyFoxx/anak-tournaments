@@ -6,9 +6,9 @@ import { useQuery } from "@tanstack/react-query";
 import { usePermissions } from "@/hooks/usePermissions";
 import adminService from "@/services/admin.service";
 import { getTournamentWorkspaceQueryKeys } from "../components/tournamentWorkspace.queryKeys";
+import { hasChallongeSource } from "@/components/admin/tournament-checklist";
 import {
   flattenDivisionGridVersions,
-  hasChallongeSource,
   tabFallback,
   useHubDivisionGridsQuery,
   useHubStagesQuery,

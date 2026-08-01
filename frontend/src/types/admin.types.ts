@@ -911,20 +911,6 @@ export interface LogUploadResponse {
   errors: LogUploadError[];
 }
 
-export interface QueueDepth {
-  name: string;
-  messages_ready: number;
-  messages_unacknowledged: number;
-  consumers: number;
-  status: "ok" | "not_found" | "error";
-}
-
-export interface LogStreamEvent {
-  timestamp: string;
-  queues: QueueDepth[];
-  recent_logs: LogProcessingRecord[];
-}
-
 // ─── Bulk Operations ─────────────────────────────────────────────────────────
 
 export interface CsvConfig {

@@ -10,8 +10,8 @@ import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
 import type { Tone } from "@/components/admin/tone";
 import adminService from "@/services/admin.service";
 import { getTournamentWorkspaceQueryKeys } from "../components/tournamentWorkspace.queryKeys";
-import { hasChallongeSource, tabFallback, useHubStagesQuery, useHubTournamentQuery } from "../hubQueries";
-import { buildChecklist } from "./checklist-model";
+import { tabFallback, useHubStagesQuery, useHubTournamentQuery } from "../hubQueries";
+import { buildChecklist, hasChallongeSource } from "@/components/admin/tournament-checklist";
 import { LifecycleChecklist } from "./LifecycleChecklist";
 import { PhaseStepper } from "./PhaseStepper";
 

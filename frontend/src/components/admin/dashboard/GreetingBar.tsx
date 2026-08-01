@@ -5,7 +5,9 @@ import { Plus } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
+import { cn } from "@/lib/utils";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
 function getGreeting(): string {
@@ -42,7 +44,10 @@ export function GreetingBar({ canCreateTournament }: GreetingBarProps) {
           </p>
         </div>
         {currentWorkspace && (
-          <Badge variant="outline" className="rounded-full px-2.5 py-0.5 text-xs uppercase tracking-widest text-muted-foreground shrink-0">
+          <Badge
+            variant="outline"
+            className={cn(EYEBROW_CLASS, "shrink-0 rounded-full px-2.5 py-0.5")}
+          >
             {currentWorkspace.name}
           </Badge>
         )}

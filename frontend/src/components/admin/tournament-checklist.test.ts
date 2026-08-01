@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { TournamentReadiness } from "@/types/admin.types";
 
-import { buildChecklist, type ChecklistContext, type ChecklistItem } from "./checklist-model";
+import { buildChecklist, type ChecklistContext, type ChecklistItem } from "./tournament-checklist";
 
 function readiness(overrides: Partial<TournamentReadiness> = {}): TournamentReadiness {
   return {

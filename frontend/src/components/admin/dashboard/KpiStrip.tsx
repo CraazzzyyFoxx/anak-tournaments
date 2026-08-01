@@ -1,6 +1,7 @@
-import { Swords, Trophy, UserCircle, Users, type LucideIcon } from "lucide-react";
+import { ClipboardList, ScrollText, Swords, Trophy, type LucideIcon } from "lucide-react";
 
 import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
+import type { Tone } from "@/components/admin/tone";
 
 /**
  * Column class for `count` KPI tiles. Exported so the dashboard's loading
@@ -13,34 +14,73 @@ export function kpiColumnsClass(count: number): string {
 }
 
 interface KpiStripProps {
+  /** Tournaments the reader can act on now, against the lifetime total. */
   tournaments: { active: number; total: number } | null;
-  teams: number | null;
-  players: number | null;
-  encounters: number | null;
+  /** Tournaments currently accepting entries. */
+  registrationOpen: number | null;
+  /** Bracket progress of every visible tournament. */
+  matches: { completed: number; total: number } | null;
+  /** Encounters carrying parsed logs, against every encounter. */
+  logs: { covered: number; total: number } | null;
 }
 
-export function KpiStrip({ tournaments, teams, players, encounters }: KpiStripProps) {
-  const items: { icon: LucideIcon; value: number; label: string; detail?: string }[] = [];
+/**
+ * The dashboard's four decision metrics.
+ *
+ * These used to be lifetime totals (tournaments / teams / players /
+ * encounters) — numbers that only ever grow and answer no question an admin
+ * arrives with. Each tile now states where the current cycle stands.
+ */
+export function KpiStrip({ tournaments, registrationOpen, matches, logs }: KpiStripProps) {
+  const items: {
+    icon: LucideIcon;
+    value: string | number;
+    label: string;
+    detail?: string;
+    tone?: Tone;
+  }[] = [];
 
   if (tournaments !== null) {
     items.push({
       icon: Trophy,
-      value: tournaments.total,
-      label: "Tournaments",
-      detail: `${tournaments.active} active`,
+      value: tournaments.active,
+      label: "Active tournaments",
+      detail: `${tournaments.total} in total`,
+      tone: tournaments.active > 0 ? "accent" : "neutral",
     });
   }
 
-  if (teams !== null) {
-    items.push({ icon: Users, value: teams, label: "Teams" });
+  if (registrationOpen !== null) {
+    items.push({
+      icon: ClipboardList,
+      value: registrationOpen,
+      label: "Registration open",
+      detail: registrationOpen > 0 ? "Accepting entries" : "Nothing open",
+      tone: registrationOpen > 0 ? "info" : "neutral",
+    });
   }
 
-  if (players !== null) {
-    items.push({ icon: UserCircle, value: players, label: "Players" });
+  if (matches !== null) {
+    const remaining = matches.total - matches.completed;
+    items.push({
+      icon: Swords,
+      value: `${matches.completed} / ${matches.total}`,
+      label: "Matches played",
+      detail: remaining > 0 ? `${remaining} still to play` : "Bracket complete",
+      tone: matches.total > 0 && remaining === 0 ? "success" : "neutral",
+    });
   }
 
-  if (encounters !== null) {
-    items.push({ icon: Swords, value: encounters, label: "Encounters" });
+  if (logs !== null) {
+    const percent = logs.total > 0 ? Math.round((logs.covered / logs.total) * 100) : 100;
+    const missing = logs.total - logs.covered;
+    items.push({
+      icon: ScrollText,
+      value: `${percent}%`,
+      label: "Log coverage",
+      detail: missing > 0 ? `${missing} without logs` : "Every match covered",
+      tone: missing > 0 ? "warning" : "success",
+    });
   }
 
   if (items.length === 0) return null;
@@ -54,6 +94,7 @@ export function KpiStrip({ tournaments, teams, players, encounters }: KpiStripPr
           value={item.value}
           detail={item.detail}
           icon={item.icon}
+          tone={item.tone}
         />
       ))}
     </StatTileGrid>

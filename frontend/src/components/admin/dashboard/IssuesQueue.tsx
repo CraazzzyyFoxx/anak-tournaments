@@ -6,7 +6,8 @@ import { AlertCircle, AlertTriangle, Info, type LucideIcon } from "lucide-react"
 import { Badge } from "@/components/ui/badge";
 import { CardDescription, CardTitle } from "@/components/ui/card";
 import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
-import type { Tone } from "@/components/admin/tone";
+import { TONE_CLASS, type Tone } from "@/components/admin/tone";
+import { cn } from "@/lib/utils";
 import { SurfaceCard, SurfaceCardContent, SurfaceCardHeader } from "./SurfaceCard";
 
 export type AttentionTone = "critical" | "warning" | "info";
@@ -33,6 +34,16 @@ interface IssuesQueueProps {
 }
 
 export function IssuesQueue({ items }: IssuesQueueProps) {
+  // The count badge takes the worst severity present. It used to be
+  // `variant="destructive"` unconditionally, so an info-only list raised a red
+  // alarm. `aria-hidden` because the CardDescription below states the same
+  // count in words — a bare number is not an accessible name.
+  const worstTone: Tone = items.some((item) => item.tone === "critical")
+    ? "danger"
+    : items.some((item) => item.tone === "warning")
+      ? "warning"
+      : "info";
+
   return (
     <SurfaceCard>
       <SurfaceCardHeader>
@@ -46,7 +57,11 @@ export function IssuesQueue({ items }: IssuesQueueProps) {
             </CardTitle>
           </div>
           {items.length > 0 && (
-            <Badge variant="destructive" className="tabular-nums">
+            <Badge
+              variant="outline"
+              className={cn("tabular-nums", TONE_CLASS[worstTone])}
+              aria-hidden
+            >
               {items.length}
             </Badge>
           )}
