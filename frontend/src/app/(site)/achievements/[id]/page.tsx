@@ -3,7 +3,7 @@ import React from "react";
 import achievementsService from "@/services/achievements.service";
 import { cn } from "@/lib/utils";
 import { classifyRarity, rarityVarClass } from "@/app/(site)/users/components/achievements/rarity";
-import AchievementUsers from "@/app/(site)/achievements/[id]/components/AchiementUsers";
+import AchievementUsers from "@/app/(site)/achievements/[id]/components/AchievementUsers";
 import AchievementDetailHeader from "@/app/(site)/achievements/[id]/components/AchievementDetailHeader";
 import AchievementConditionsCard from "@/app/(site)/achievements/[id]/components/AchievementConditionsCard";
 

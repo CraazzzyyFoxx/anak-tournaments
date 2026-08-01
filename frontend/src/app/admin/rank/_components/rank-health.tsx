@@ -1,11 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Loader2, Pause, Play, RotateCcw, Settings } from "lucide-react";
+import { AlertTriangle, Loader2, Pause, Play, RotateCcw } from "lucide-react";
 
+import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
+import { EYEBROW_CLASS, TONE_CLASS } from "@/components/admin/tone";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
@@ -26,12 +27,18 @@ function formatInterval(seconds: number): string {
   return `${seconds}s`;
 }
 
+/**
+ * Stacked distribution of battle tags per collection status.
+ *
+ * The bar is `aria-hidden`: the legend directly under it repeats every segment
+ * as `<status> <count>` text, so the state is never carried by colour alone.
+ */
 function StatusBar({ stats }: { stats: RankCollectionStats }) {
   const total = stats.total || 1;
   const counts = stats.by_status;
   return (
     <div className="space-y-2">
-      <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-white/5">
+      <div aria-hidden className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted/20">
         {STATUS_ORDER.map((s) =>
           counts[s] ? (
             <div
@@ -47,7 +54,7 @@ function StatusBar({ stats }: { stats: RankCollectionStats }) {
         {STATUS_ORDER.map((s) =>
           counts[s] ? (
             <span key={s} className="inline-flex items-center gap-1.5 text-muted-foreground">
-              <span className={cn("h-2 w-2 rounded-full", STATUS_BAR[s])} />
+              <span aria-hidden className={cn("h-2 w-2 rounded-full", STATUS_BAR[s])} />
               {s} <span className="tabular-nums text-foreground">{counts[s]}</span>
             </span>
           ) : null
@@ -75,7 +82,8 @@ export function RankHealthDashboard() {
       notify.success(`Re-enabled ${result.reenabled} disabled battle tag(s)`);
       queryClient.invalidateQueries({ queryKey: ["admin", "rank"] });
     },
-    onError: (error) => notify.apiError(error, { title: "Failed to re-enable" })
+    onError: (error) =>
+      notify.apiError(error, { title: "Could not re-enable the disabled tags — try again" })
   });
 
   const toggleMutation = useMutation({
@@ -88,14 +96,21 @@ export function RankHealthDashboard() {
       notify.success(stats?.enabled ? "Collection paused" : "Collection resumed");
       queryClient.invalidateQueries({ queryKey: ["admin", "rank", "stats"] });
     },
-    onError: (error) => notify.apiError(error, { title: "Failed to update" })
+    onError: (error) =>
+      notify.apiError(error, { title: "Could not change the collection state — try again" })
   });
 
   if (statsQuery.isLoading || !stats) {
     return (
-      <Card>
-        <CardContent className="py-8 text-center text-sm text-muted-foreground">Loading collection health…</CardContent>
-      </Card>
+      <div className="space-y-3">
+        <Skeleton className="h-9 w-full" />
+        <StatTileGrid>
+          <Skeleton className="h-28" />
+          <Skeleton className="h-28" />
+          <Skeleton className="h-28" />
+          <Skeleton className="h-28" />
+        </StatTileGrid>
+      </div>
     );
   }
 
@@ -106,119 +121,107 @@ export function RankHealthDashboard() {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2 text-sm">
+        {/* Polls every 10s — announce the pause/resume flip and the pacing. */}
+        <div role="status" className="flex flex-wrap items-center gap-2 text-sm">
           <span
             className={cn(
               "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-medium",
-              stats.enabled
-                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                : "border-white/10 bg-white/5 text-white/60"
+              stats.enabled ? TONE_CLASS.success : TONE_CLASS.neutral
             )}
           >
-            <span className={cn("h-1.5 w-1.5 rounded-full", stats.enabled ? "bg-emerald-400" : "bg-white/40")} />
+            <span
+              aria-hidden
+              className={cn(
+                "h-1.5 w-1.5 rounded-full",
+                stats.enabled ? "bg-success" : "bg-muted-foreground/40"
+              )}
+            />
             {stats.enabled ? "Collecting" : "Paused"}
           </span>
           <span className="text-muted-foreground">
-            scope <b className="text-foreground">{stats.scope}</b> · every {formatInterval(stats.interval_seconds)} ·{" "}
-            {stats.rate_limit_per_minute}/min
+            scope <b className="text-foreground">{stats.scope}</b> · every{" "}
+            <span className="tabular-nums">{formatInterval(stats.interval_seconds)}</span> ·{" "}
+            <span className="tabular-nums">{stats.rate_limit_per_minute}</span>/min
           </span>
         </div>
-        <div className="flex items-center gap-2">
-          {isSuperuser && (
-            <Button variant="outline" size="sm" disabled={toggleMutation.isPending} onClick={() => toggleMutation.mutate()}>
-              {toggleMutation.isPending ? (
-                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-              ) : stats.enabled ? (
-                <Pause className="mr-1.5 h-4 w-4" />
-              ) : (
-                <Play className="mr-1.5 h-4 w-4" />
-              )}
-              {stats.enabled ? "Pause" : "Resume"}
-            </Button>
-          )}
-          <Button variant="ghost" size="sm" asChild>
-            <Link href="/admin/settings">
-              <Settings className="mr-1.5 h-4 w-4" />
-              Settings
-            </Link>
-          </Button>
-        </div>
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <Card>
-          <CardContent className="space-y-3 p-4">
-            <div className="flex items-baseline justify-between">
-              <span className="text-sm text-muted-foreground">Battle tags</span>
-              <span className="text-2xl font-bold tabular-nums">{stats.total}</span>
-            </div>
-            <StatusBar stats={stats} />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="space-y-1 p-4">
-            <span className="text-sm text-muted-foreground">Coverage (snapshots)</span>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold tabular-nums">{stats.coverage_24h}</span>
-              <span className="text-sm text-muted-foreground">/ 24h · {pct(stats.coverage_24h, stats.total)}</span>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              7d: <span className="tabular-nums text-foreground">{stats.coverage_7d}</span> distinct accounts
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="space-y-1 p-4">
-            <span className="text-sm text-muted-foreground">Fetches (24h)</span>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold tabular-nums">{stats.fetch_24h_total}</span>
-              <span className={cn("text-sm font-medium", errRate >= 20 ? "text-rose-400" : "text-muted-foreground")}>
-                {errRate}% err
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              ok {stats.fetch_24h.ok} · nf {stats.fetch_24h.not_found} · err {errCount}
-            </p>
-            <p className="text-xs text-muted-foreground">last ✓ {formatRelative(stats.last_success_at)}</p>
-          </CardContent>
-        </Card>
-
-        <Card className={cn(disabled > 0 && "border-rose-500/40 bg-rose-500/5")}>
-          <CardContent className="flex h-full flex-col justify-between gap-2 p-4">
-            <div className="flex items-center justify-between">
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1.5 text-sm",
-                  disabled > 0 ? "text-rose-300" : "text-muted-foreground"
-                )}
-              >
-                {disabled > 0 && <AlertTriangle className="h-4 w-4" />} Disabled
-              </span>
-              <span className={cn("text-2xl font-bold tabular-nums", disabled > 0 && "text-rose-300")}>{disabled}</span>
-            </div>
-            {disabled > 0 ? (
-              <Button
-                variant="outline"
-                size="sm"
-                className="border-rose-500/40 text-rose-200 hover:bg-rose-500/10"
-                disabled={reenableMutation.isPending}
-                onClick={() => reenableMutation.mutate()}
-              >
-                {reenableMutation.isPending ? (
-                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                ) : (
-                  <RotateCcw className="mr-1.5 h-4 w-4" />
-                )}
-                Re-enable all
-              </Button>
+        {isSuperuser && (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={toggleMutation.isPending}
+            onClick={() => toggleMutation.mutate()}
+          >
+            {toggleMutation.isPending ? (
+              <Loader2 aria-hidden className="mr-1.5 h-4 w-4 animate-spin" />
+            ) : stats.enabled ? (
+              <Pause aria-hidden className="mr-1.5 h-4 w-4" />
             ) : (
-              <p className="text-xs text-muted-foreground">No auto-disabled tags.</p>
+              <Play aria-hidden className="mr-1.5 h-4 w-4" />
             )}
-          </CardContent>
-        </Card>
+            {stats.enabled ? "Pause collection" : "Resume collection"}
+          </Button>
+        )}
       </div>
+
+      <StatTileGrid>
+        {/* Not a StatTile: the tile owns a stacked distribution bar below the value. */}
+        <div className="space-y-3 rounded-xl border border-border/60 bg-card/70 p-4">
+          <div className="flex items-baseline justify-between gap-3">
+            <p className={EYEBROW_CLASS}>Battle tags</p>
+            <p className="text-2xl font-semibold tabular-nums">{stats.total}</p>
+          </div>
+          <StatusBar stats={stats} />
+        </div>
+
+        <StatTile
+          label="Coverage (snapshots)"
+          value={stats.coverage_24h}
+          detail={`${pct(stats.coverage_24h, stats.total)} of all tags in 24h · ${stats.coverage_7d} distinct accounts in 7d`}
+        />
+
+        <StatTile
+          label="Fetches (24h)"
+          value={stats.fetch_24h_total}
+          detail={`${errRate}% errors · ok ${stats.fetch_24h.ok} · not found ${stats.fetch_24h.not_found} · errors ${errCount} · last success ${formatRelative(stats.last_success_at)}`}
+          tone={errRate >= 20 ? "danger" : "neutral"}
+          icon={errRate >= 20 ? AlertTriangle : undefined}
+        />
+
+        {/* Not a StatTile: the tile owns the bulk re-enable action. */}
+        <div
+          className={cn(
+            "flex flex-col justify-between gap-2 rounded-xl border p-4",
+            disabled > 0 ? "border-danger/40 bg-danger/10" : "border-border/60 bg-card/70"
+          )}
+        >
+          <div className="flex items-baseline justify-between gap-3">
+            <p className={cn(EYEBROW_CLASS, disabled > 0 && "text-danger")}>Auto-disabled tags</p>
+            <p className={cn("text-2xl font-semibold tabular-nums", disabled > 0 && "text-danger")}>
+              {disabled}
+            </p>
+          </div>
+          {disabled > 0 ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-danger/40 text-danger hover:bg-danger/10"
+              disabled={reenableMutation.isPending}
+              onClick={() => reenableMutation.mutate()}
+            >
+              {reenableMutation.isPending ? (
+                <Loader2 aria-hidden className="mr-1.5 h-4 w-4 animate-spin" />
+              ) : (
+                <RotateCcw aria-hidden className="mr-1.5 h-4 w-4" />
+              )}
+              Re-enable all tags
+            </Button>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              No tags disabled after repeated fetch failures.
+            </p>
+          )}
+        </div>
+      </StatTileGrid>
     </div>
   );
 }

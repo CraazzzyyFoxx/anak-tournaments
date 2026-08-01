@@ -1,32 +1,47 @@
-export type AdditionalRole = {
-  code: string;
-  subrole: string;
-  /** Ordered hero slugs (top picks) for this additional role. */
-  topHeroes: string[];
-};
+import type { RoleCode } from "@/lib/roles";
 
-export interface WizardState {
-  step: number;
-  values: Record<string, string>;
-  smurfTags: string[];
-  isFlex: boolean;
-  primaryRole: string;
+/**
+ * How willing the registrant is to play a role.
+ *
+ * `main` is what the backend calls `is_primary`; a submission where every role
+ * is `main` is what it derives as a flex registration
+ * (`_is_flex_submission`, tournament-service `validation.py`).
+ */
+export type RolePriority = "off" | "fallback" | "main";
+
+export interface RoleSelection {
+  priority: RolePriority;
   subrole: string;
-  /** Ordered hero slugs (top picks) for the primary role. */
-  primaryRoleHeroes: string[];
-  /** Ordered hero slugs (top picks) for a flex registration (any class). */
-  flexHeroes: string[];
-  additionalRoles: AdditionalRole[];
+  /** Ordered hero slugs (top picks) for this role. */
+  topHeroes: string[];
 }
 
-export type WizardAction =
-  | { type: "SET_STEP"; step: number }
-  | { type: "SET_VALUE"; key: string; value: string }
-  | { type: "SET_SMURF_TAGS"; tags: string[] }
-  | { type: "SET_FLEX"; isFlex: boolean }
-  | { type: "SET_PRIMARY_ROLE"; role: string }
-  | { type: "SET_SUBROLE"; subrole: string }
-  | { type: "SET_ADDITIONAL_ROLES"; roles: AdditionalRole[] }
-  | { type: "SET_PRIMARY_ROLE_HEROES"; heroes: string[] }
-  | { type: "SET_FLEX_HEROES"; heroes: string[] }
-  | { type: "INIT_VALUES"; values: Record<string, string> };
+/**
+ * One entry per role, always present.
+ *
+ * The wizard used to model roles as `primaryRole` + `additionalRoles[]` +
+ * three separate hero lists, so choosing a role had to *reveal* the controls
+ * that belonged to it. A fixed per-role map makes the role step a matrix whose
+ * shape never changes with the selection.
+ */
+export type RoleSelections = Record<RoleCode, RoleSelection>;
+
+export const EMPTY_ROLE_SELECTION: RoleSelection = {
+  priority: "off",
+  subrole: "",
+  topHeroes: [],
+};
+
+export function createRoleSelections(): RoleSelections {
+  return {
+    tank: { ...EMPTY_ROLE_SELECTION },
+    dps: { ...EMPTY_ROLE_SELECTION },
+    support: { ...EMPTY_ROLE_SELECTION },
+  };
+}
+
+/** A flex registration is every role marked `main` — mirrors the backend rule. */
+export function isFlexSelection(selections: RoleSelections): boolean {
+  const active = Object.values(selections).filter((entry) => entry.priority !== "off");
+  return active.length > 1 && active.every((entry) => entry.priority === "main");
+}

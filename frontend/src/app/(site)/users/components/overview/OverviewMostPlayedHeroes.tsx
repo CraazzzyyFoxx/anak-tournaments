@@ -1,9 +1,10 @@
 import React from "react";
 import { getTranslations } from "next-intl/server";
-import { Star } from "lucide-react";
+import { ArrowRight, Star } from "lucide-react";
 import Link from "next/link";
 import { HeroPlaytime } from "@/types/hero.types";
-import { CardSurface, normalizeRole } from "@/app/(site)/users/components/shared/atoms";
+import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
+import { normalizeRole } from "@/components/hero/heroRole";
 import HeroImage from "@/components/hero/HeroImage";
 import HeroUserStatsPopover from "@/components/hero/HeroUserStatsPopover";
 
@@ -37,7 +38,8 @@ const OverviewMostPlayedHeroes = async ({ heroes, userSlug, totalCount, limit = 
       icon={<Star size={15} />}
       action={
         <Link href={`/users/${userSlug}?tab=heroes`} className="aqt-seeall">
-          {t("common.all")} {totalCount} →
+          {t("common.all")} {totalCount}
+          <ArrowRight aria-hidden className="size-3" />
         </Link>
       }
     >

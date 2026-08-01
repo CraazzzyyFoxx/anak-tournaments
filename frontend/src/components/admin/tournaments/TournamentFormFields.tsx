@@ -37,6 +37,13 @@ export type TournamentFormFieldsValue = {
   team_formation?: string;
 };
 
+/** Visual required marker; `required` on the control carries the semantics. */
+const requiredMark = (
+  <span aria-hidden className="ml-0.5 text-danger">
+    *
+  </span>
+);
+
 interface TournamentFormFieldsProps<T extends TournamentFormFieldsValue> {
   value: T;
   onChange: (next: T) => void;
@@ -72,7 +79,9 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
     <div className="grid gap-5">
       {showSeparateChallonge ? (
         <div className="col-span-full">
-          <Label htmlFor={`${idPrefix}-challonge-separate`}>Challonge URL or Slug *</Label>
+          <Label htmlFor={`${idPrefix}-challonge-separate`}>
+            Challonge URL or slug{requiredMark}
+          </Label>
           <Input
             id={`${idPrefix}-challonge-separate`}
             placeholder="e.g. my-tournament or https://challonge.com/my-tournament"
@@ -90,7 +99,10 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
 
       {mode !== "challonge-create" ? (
         <div className="col-span-full">
-          <Label htmlFor={`${idPrefix}-name`}>{mode === "manual-create" ? "Name *" : "Name"}</Label>
+          <Label htmlFor={`${idPrefix}-name`}>
+            Name
+            {mode === "manual-create" ? requiredMark : null}
+          </Label>
           <Input
             id={`${idPrefix}-name`}
             value={value.name}
@@ -152,7 +164,7 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
 
           {showDivisionGrid ? (
             <div>
-              <Label htmlFor={`${idPrefix}-division-grid-version`}>Division Grid Version</Label>
+              <Label htmlFor={`${idPrefix}-division-grid-version`}>Division grid version</Label>
               <Select
                 value={value.division_grid_version_id?.toString() ?? "none"}
                 onValueChange={(nextValue) =>
@@ -164,7 +176,7 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
               >
                 <SelectTrigger id={`${idPrefix}-division-grid-version`} className="mt-1.5">
                   <SelectValue
-                    placeholder={divisionGridLoading ? "Loading division grids..." : "Select version"}
+                    placeholder={divisionGridLoading ? "Loading division grids…" : "Select version"}
                   />
                 </SelectTrigger>
                 <SelectContent>
@@ -191,7 +203,7 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
               onCheckedChange={(checked) => onChange({ ...value, is_league: checked === true })}
             />
             <Label htmlFor={`${idPrefix}-is-league`} className="cursor-pointer text-sm font-medium">
-              {mode === "workspace-edit" ? "Treat as league season" : "Is League"}
+              Treat as league season
             </Label>
           </div>
 
@@ -203,9 +215,7 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
                 onCheckedChange={(checked) => onChange({ ...value, is_finished: checked === true })}
               />
               <Label htmlFor={`${idPrefix}-is-finished`} className="cursor-pointer text-sm font-medium">
-                {mode === "workspace-edit"
-                  ? "Mark tournament as finished"
-                  : "Is Finished"}
+                Mark tournament as finished
               </Label>
             </div>
           ) : null}
@@ -215,7 +225,8 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
       <div className="col-span-full">
         <Field>
           <FieldLabel htmlFor={`${idPrefix}-date-range`}>
-            {mode === "manual-create" || mode === "challonge-create" ? "Date Range *" : "Date Range"}
+            Date range
+            {mode === "manual-create" || mode === "challonge-create" ? requiredMark : null}
           </FieldLabel>
           <div className="mt-1.5">
             <DateRangePicker
@@ -230,7 +241,7 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
 
       {showScoring ? (
         <div className="col-span-full border-t border-border/40 pt-4">
-          <p className="mb-3 text-sm font-medium">Scoring Points</p>
+          <p className="mb-3 text-sm font-medium">Scoring points</p>
           <div className="grid grid-cols-3 gap-3">
             <div>
               <Label htmlFor={`${idPrefix}-win-points`}>Win</Label>
@@ -238,7 +249,7 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
                 id={`${idPrefix}-win-points`}
                 value={value.win_points ?? 0}
                 onValueChange={(next) => onChange({ ...value, win_points: next ?? 0 })}
-                className="mt-1.5"
+                className="mt-1.5 tabular-nums"
               />
             </div>
             <div>
@@ -247,7 +258,7 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
                 id={`${idPrefix}-draw-points`}
                 value={value.draw_points ?? 0}
                 onValueChange={(next) => onChange({ ...value, draw_points: next ?? 0 })}
-                className="mt-1.5"
+                className="mt-1.5 tabular-nums"
               />
             </div>
             <div>
@@ -256,7 +267,7 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
                 id={`${idPrefix}-loss-points`}
                 value={value.loss_points ?? 0}
                 onValueChange={(next) => onChange({ ...value, loss_points: next ?? 0 })}
-                className="mt-1.5"
+                className="mt-1.5 tabular-nums"
               />
             </div>
           </div>

@@ -2,15 +2,6 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 
-// ─── Shared primitives promoted to global components/ (re-exported here so
-//     existing profile imports keep working; new pages import from the homes). ──
-export { normalizeRole, heroVariantFromRole, heroInitials } from "@/components/hero/heroRole";
-export type { AqtRoleKey } from "@/components/hero/heroRole";
-export { StagePill, ResTag, ScoreCell, MvpPill, mvpRank, ordinal } from "@/components/match/cells";
-export type { StageKind, ResTagKind, ScoreKind, MvpRank } from "@/components/match/cells";
-export { DivisionHex } from "@/components/stats/DivisionHex";
-export { PlacementSpark } from "@/components/stats/PlacementSpark";
-
 // ─── Profile-only atoms (no cross-page consumer; kept local) ──────────────────
 
 export type FormResult = "W" | "L" | "D";

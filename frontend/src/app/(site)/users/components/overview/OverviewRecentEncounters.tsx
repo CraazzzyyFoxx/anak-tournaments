@@ -1,6 +1,6 @@
 import React from "react";
 import { getTranslations } from "next-intl/server";
-import { Swords } from "lucide-react";
+import { ArrowRight, Swords } from "lucide-react";
 import Link from "next/link";
 import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
 import MatchLogIndicator from "@/components/match/MatchLogIndicator";
@@ -8,6 +8,7 @@ import { HeroStrip } from "@/components/hero/HeroImage";
 import { EncounterWithUserStats, UserTournament } from "@/types/user.types";
 import { Hero } from "@/types/hero.types";
 import { cn } from "@/lib/utils";
+import { getPlayerSlug } from "@/utils/player";
 
 interface Props {
   encounters: EncounterWithUserStats[];
@@ -36,7 +37,7 @@ const getTeamLabels = (
 const OverviewRecentEncounters = async ({ encounters, userName, tournaments }: Props) => {
   if (encounters.length === 0) return null;
   const t = await getTranslations();
-  const userSlug = userName.replace("#", "-");
+  const userSlug = getPlayerSlug(userName);
   const teamIdByTournament = new Map(tournaments.map((tour) => [tour.id, tour.team_id]));
 
   return (
@@ -46,7 +47,8 @@ const OverviewRecentEncounters = async ({ encounters, userName, tournaments }: P
       icon={<Swords size={15} />}
       action={
         <Link href={`/users/${userSlug}?tab=matches`} className="aqt-seeall">
-          {t("users.overview.recent.allMatches")} →
+          {t("users.overview.recent.allMatches")}
+          <ArrowRight aria-hidden className="size-3" />
         </Link>
       }
     >
@@ -114,7 +116,7 @@ const OverviewRecentEncounters = async ({ encounters, userName, tournaments }: P
             <span className="hidden items-center sm:inline-flex">
               {encHeroes.length > 0 ? <HeroStrip heroes={encHeroes} size="sm" limit={4} /> : null}
             </span>
-            <span className="inline-flex gap-[3px]">
+            <span className="inline-flex gap-[3px]" aria-hidden>
               {pips.map((p, i) => (
                 <span key={i} className={cn("aqt-pip", p)} />
               ))}

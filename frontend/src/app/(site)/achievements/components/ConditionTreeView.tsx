@@ -75,13 +75,16 @@ function LeafNode({ node }: { node: { type: string; params?: Record<string, unkn
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-400 text-xs">
+      <Badge
+        variant="outline"
+        className="border-[color:color-mix(in_srgb,var(--aqt-emerald)_30%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-emerald)_10%,transparent)] text-xs text-[color:var(--aqt-emerald)]"
+      >
         {label}
       </Badge>
       {entries.map(([key, value]) => (
-        <span key={key} className="text-xs text-white/50">
-          <span className="text-white/30">{key.replace(/_/g, " ")}</span>{" "}
-          <span className="text-white/70">{formatParamValue(key, value, t)}</span>
+        <span key={key} className="text-xs text-[color:var(--aqt-fg-dim)]">
+          <span className="text-[color:var(--aqt-fg-faint)]">{key.replace(/_/g, " ")}</span>{" "}
+          <span className="text-[color:var(--aqt-fg-muted)]">{formatParamValue(key, value, t)}</span>
         </span>
       ))}
     </div>
@@ -93,8 +96,11 @@ function ConditionTreeNode({ node, depth = 0 }: { node: ConditionNode; depth?: n
 
   if ("AND" in node) {
     return (
-      <div className={depth > 0 ? "ml-4 border-l border-blue-500/20 pl-3" : ""}>
-        <Badge variant="outline" className="mb-1.5 border-blue-500/30 bg-blue-500/10 text-blue-400 text-xs">
+      <div className={depth > 0 ? "ml-4 border-l border-[color:color-mix(in_srgb,var(--aqt-blue)_20%,transparent)] pl-3" : ""}>
+        <Badge
+          variant="outline"
+          className="mb-1.5 border-[color:color-mix(in_srgb,var(--aqt-blue)_30%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-blue)_10%,transparent)] text-xs text-[color:var(--aqt-blue)]"
+        >
           {t("achievements.logic.and")}
         </Badge>
         <div className="flex flex-col gap-1.5">
@@ -108,8 +114,11 @@ function ConditionTreeNode({ node, depth = 0 }: { node: ConditionNode; depth?: n
 
   if ("OR" in node) {
     return (
-      <div className={depth > 0 ? "ml-4 border-l border-amber-500/20 pl-3" : ""}>
-        <Badge variant="outline" className="mb-1.5 border-amber-500/30 bg-amber-500/10 text-amber-400 text-xs">
+      <div className={depth > 0 ? "ml-4 border-l border-[color:color-mix(in_srgb,var(--aqt-amber)_20%,transparent)] pl-3" : ""}>
+        <Badge
+          variant="outline"
+          className="mb-1.5 border-[color:color-mix(in_srgb,var(--aqt-amber)_30%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-amber)_10%,transparent)] text-xs text-[color:var(--aqt-amber)]"
+        >
           {t("achievements.logic.or")}
         </Badge>
         <div className="flex flex-col gap-1.5">
@@ -123,8 +132,11 @@ function ConditionTreeNode({ node, depth = 0 }: { node: ConditionNode; depth?: n
 
   if ("NOT" in node) {
     return (
-      <div className={depth > 0 ? "ml-4 border-l border-red-500/20 pl-3" : ""}>
-        <Badge variant="outline" className="mb-1.5 border-red-500/30 bg-red-500/10 text-red-400 text-xs">
+      <div className={depth > 0 ? "ml-4 border-l border-[color:color-mix(in_srgb,var(--aqt-rose)_20%,transparent)] pl-3" : ""}>
+        <Badge
+          variant="outline"
+          className="mb-1.5 border-[color:color-mix(in_srgb,var(--aqt-rose)_30%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-rose)_10%,transparent)] text-xs text-[color:var(--aqt-rose)]"
+        >
           {t("achievements.logic.not")}
         </Badge>
         <ConditionTreeNode node={node.NOT} depth={depth + 1} />
@@ -136,7 +148,11 @@ function ConditionTreeNode({ node, depth = 0 }: { node: ConditionNode; depth?: n
     return <LeafNode node={node as { type: string; params?: Record<string, unknown> }} />;
   }
 
-  return <span className="text-xs text-white/30">{t("achievements.emptyCondition")}</span>;
+  return (
+    <span className="text-xs text-[color:var(--aqt-fg-faint)]">
+      {t("achievements.emptyCondition")}
+    </span>
+  );
 }
 
 interface ConditionTreeViewProps {

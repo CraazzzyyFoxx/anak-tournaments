@@ -9,10 +9,11 @@ import { cn } from "@/lib/utils";
 import userService from "@/services/user.service";
 import { UserMapsSummary } from "@/types/user.types";
 import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
-import { type SearchableImageOption } from "@/app/(site)/users/compare/components/SearchableImageSelect";
-import { KPI, PageBtn } from "@/app/(site)/users/components/maps/atoms";
+import { type SearchableImageOption } from "@/components/ui/searchable-image-select";
+import { KPI } from "@/app/(site)/users/components/maps/atoms";
 import MapRow from "@/app/(site)/users/components/maps/MapRow";
 import MapsFilters from "@/app/(site)/users/components/maps/MapsFilters";
+import { DataPagination } from "@/components/ui/data-pagination";
 import { LayoutGrid } from "lucide-react";
 import { getWinrateColor } from "@/utils/colors";
 
@@ -204,7 +205,7 @@ const MapsView = ({ userId }: Props) => {
               >
                 <div className="aqt-l">{b.mode}</div>
                 <div className="flex items-baseline justify-between gap-2">
-                  <div className="aqt-display text-[30px] font-bold leading-none">{wr.toFixed(0)}%</div>
+                  <div className="aqt-display text-[30px] font-bold leading-none tabular-nums">{wr.toFixed(0)}%</div>
                   <div className="aqt-mono text-[15px] text-[color:var(--aqt-fg-muted)]">
                     {b.win}-{b.loss}
                   </div>
@@ -262,28 +263,21 @@ const MapsView = ({ userId }: Props) => {
 
         {/* Pagination footer */}
         {perPage !== -1 && totalCount > 0 ? (
-          <div className="flex items-center justify-between border-t border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.012)] px-[18px] py-3.5">
-            <span className="aqt-mono text-[13px] text-[color:var(--aqt-fg-dim)]">
-              {t("common.showingRange", {
-                start: String((page - 1) * perPage + 1),
-                end: String(Math.min(page * perPage, totalCount)),
-                total: String(totalCount)
-              })}
-            </span>
-            <div className="flex gap-1">
-              <PageBtn disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>‹</PageBtn>
-              {Array.from({ length: Math.min(3, pages) }, (_, i) => i + 1).map((n) => (
-                <PageBtn key={n} active={n === page} onClick={() => setPage(n)}>{n}</PageBtn>
-              ))}
-              {pages > 3 ? (
-                <>
-                  {page > 4 ? <span className="aqt-mono px-2 text-[color:var(--aqt-fg-faint)]">…</span> : null}
-                  <PageBtn active={page === pages} onClick={() => setPage(pages)}>{pages}</PageBtn>
-                </>
-              ) : null}
-              <PageBtn disabled={page >= pages} onClick={() => setPage((p) => Math.min(pages, p + 1))}>›</PageBtn>
-            </div>
-          </div>
+          <DataPagination
+            page={page}
+            totalPages={pages}
+            onPageChange={setPage}
+            className="border-t border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.012)] px-[18px] py-3.5"
+            summary={
+              <span className="aqt-mono text-[13px] text-[color:var(--aqt-fg-dim)]">
+                {t("common.showingRange", {
+                  start: String((page - 1) * perPage + 1),
+                  end: String(Math.min(page * perPage, totalCount)),
+                  total: String(totalCount)
+                })}
+              </span>
+            }
+          />
         ) : null}
       </CardSurface>
     </div>

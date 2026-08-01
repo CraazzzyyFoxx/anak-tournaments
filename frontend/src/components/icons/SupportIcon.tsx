@@ -6,7 +6,7 @@ export interface SupportIconProps {
   color?: string;
 }
 
-const SupportIcon = ({ width = 24, height = 24, color = "white" }: SupportIconProps) => {
+const SupportIcon = ({ width = 24, height = 24, color = "currentColor" }: SupportIconProps) => {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"

@@ -2,10 +2,12 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
+import { ArrowDown, ArrowUp } from "lucide-react";
 
 import SearchableImageSelect, {
   type SearchableImageOption
-} from "@/app/(site)/users/compare/components/SearchableImageSelect";
+} from "@/components/ui/searchable-image-select";
+import { SearchField } from "@/components/ui/search-field";
 import { AqtSelect } from "@/app/(site)/users/components/maps/atoms";
 
 type SortKey = "winrate" | "count" | "name";
@@ -100,24 +102,22 @@ const MapsFilters = ({
       <button
         type="button"
         onClick={onOrderToggle}
-        title={order === "asc" ? t("common.ascending") : t("common.descending")}
-        className="aqt-mono inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-[14px] text-[color:var(--aqt-fg-muted)] transition-colors hover:text-[color:var(--aqt-fg)]"
+        aria-label={t("common.sortDirection", {
+          current: order === "asc" ? t("common.ascending") : t("common.descending"),
+          next: order === "asc" ? t("common.descending") : t("common.ascending")
+        })}
+        className="aqt-mono inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-[color:var(--aqt-fg-muted)] outline-none transition-colors hover:text-[color:var(--aqt-fg)] focus-visible:border-[color:var(--aqt-teal)] focus-visible:ring-2 focus-visible:ring-[color:color-mix(in_srgb,var(--aqt-teal)_25%,transparent)]"
       >
-        {order === "asc" ? "↑" : "↓"}
+        {order === "asc" ? <ArrowUp aria-hidden className="size-3.5" /> : <ArrowDown aria-hidden className="size-3.5" />}
       </button>
 
-      <div className="filter-search relative ml-auto min-w-[180px] max-w-[300px] flex-1">
-        <input
-          placeholder={t("users.maps.searchMaps")}
-          value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
-          className="w-full rounded-lg border border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] px-3 py-1.5 pl-8 text-[14px] outline-none"
-        />
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[color:var(--aqt-fg-faint)]">
-          <circle cx="11" cy="11" r="7" />
-          <path d="m20 20-3.5-3.5" />
-        </svg>
-      </div>
+      <SearchField
+        label={t("users.maps.searchLabel")}
+        placeholder={t("users.maps.searchMaps")}
+        value={search}
+        onValueChange={onSearchChange}
+        containerClassName="ml-auto min-w-[180px] max-w-[300px] flex-1"
+      />
     </div>
   );
 };

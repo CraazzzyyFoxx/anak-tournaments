@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { useTranslations } from "next-intl";
+import { ArrowDown, ArrowUp, BadgeCheck } from "lucide-react";
 import { User, UserProfile } from "@/types/user.types";
 import { hasVerifiedSocial } from "@/lib/social-providers";
 import { SocialAccountList } from "@/components/social/SocialAccountList";
@@ -83,7 +84,7 @@ const UserHeader = async ({ profile, user }: UserHeaderProps) => {
         <p className="aqt-mono m-0 text-[12px] uppercase tracking-[0.16em] text-[color:var(--aqt-fg-faint)]">
           <span aria-hidden className="mr-1.5 text-[color:var(--aqt-fg-dim)]">{"//"}</span>
           <Link href="/users" className="hover:text-[color:var(--aqt-fg-muted)]">{t("users.profile.breadcrumb")}</Link>
-          <span className="mx-1">·</span>
+          <span aria-hidden className="mx-1">·</span>
           <span className="text-[color:var(--aqt-fg-muted)]">{name}</span>
         </p>
         <ProfileToolbar
@@ -136,15 +137,19 @@ const UserHeader = async ({ profile, user }: UserHeaderProps) => {
             <span>{name}</span>
             {tag ? <span className="text-[22px] font-medium tracking-[0.04em] text-[color:var(--aqt-fg-faint)]">#{tag}</span> : null}
             {hasVerifiedSocial(user.social_accounts) ? (
-              <span className="text-[18px] text-[color:var(--aqt-teal)]" title={t("users.profile.header.verifiedIdentity")}>
-                ✓
+              <span
+                className="inline-flex items-center text-[18px] text-[color:var(--aqt-teal)]"
+                title={t("users.profile.header.verifiedIdentity")}
+              >
+                <BadgeCheck size={20} aria-hidden />
+                <span className="sr-only">{t("users.profile.header.verifiedIdentity")}</span>
               </span>
             ) : null}
           </h1>
           {primaryRole ? (
             <div className="aqt-mono flex flex-wrap items-center gap-1.5 text-[12px] uppercase tracking-[0.08em] text-[color:var(--aqt-fg-muted)]">
               <span className="inline-flex h-4 w-4 items-center justify-center">
-                <PlayerRoleIcon role={primaryRole.role} size={14} color={roleSwatchColor} />
+                <PlayerRoleIcon role={primaryRole.role} size={14} color={roleSwatchColor} decorative />
               </span>
               <span>{primaryRole.role}</span>
               <span>· {t("users.profile.header.tournamentsCount", { count: profile.tournaments_count })}</span>
@@ -221,7 +226,11 @@ const PfStat = ({ label, value, unit, valueSuffix, sub, delta }: PfStatProps) =>
         style={{ color: delta.good ? "var(--aqt-emerald)" : "var(--aqt-rose)" }}
         title={t("users.profile.stats.deltaTitle")}
       >
-        {delta.good ? "↑" : "↓"} {Math.abs(delta.value).toFixed(1)}
+        {delta.good ? <ArrowUp size={12} aria-hidden /> : <ArrowDown size={12} aria-hidden />}
+        <span className="sr-only">
+          {delta.good ? t("users.profile.stats.trendUp") : t("users.profile.stats.trendDown")}
+        </span>
+        {Math.abs(delta.value).toFixed(1)}
       </span>
     ) : null}
     {sub ? <span className="text-[12px] text-[color:var(--aqt-fg-dim)]">{sub}</span> : null}

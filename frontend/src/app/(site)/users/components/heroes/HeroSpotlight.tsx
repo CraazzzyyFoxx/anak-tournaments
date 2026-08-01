@@ -4,7 +4,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { HeroWithUserStats } from "@/types/hero.types";
 import { LogStatsName } from "@/types/stats.types";
-import type { AqtRoleKey } from "@/app/(site)/users/components/shared/atoms";
+import type { AqtRoleKey } from "@/components/hero/heroRole";
 import HeroImage from "@/components/hero/HeroImage";
 import { formatDelta, formatSeconds } from "@/app/(site)/users/components/heroes/utils";
 
@@ -69,7 +69,9 @@ const HeroSpotlight = ({
     <div
       className="relative z-[1] h-24 w-24 overflow-hidden rounded-[14px] border"
       style={{
-        borderColor: selected.hero.hero.color || `hsl(${heroVariant === "tank" ? "210" : heroVariant === "support" ? "142" : "340"} 50% 35%)`
+        borderColor:
+          selected.hero.hero.color ||
+          `color-mix(in srgb, var(--aqt-${heroVariant}) 55%, var(--aqt-bg))`
       }}
     >
       <HeroImage hero={selected.hero.hero} size={96} rounded="lg" />
@@ -91,7 +93,8 @@ const HeroSpotlight = ({
         <span
           className="aqt-mono inline-flex items-center gap-1.5 rounded-md border border-[color:var(--aqt-border-2)] bg-[hsl(0_0%_100%/0.06)] px-2 py-0.5 text-[12px]"
         >
-          ▎ {t("users.heroes.poolShare", { pct: (selected.share * 100).toFixed(0) })}
+          <span aria-hidden>▎</span>
+          {t("users.heroes.poolShare", { pct: (selected.share * 100).toFixed(0) })}
         </span>
       </div>
     </div>

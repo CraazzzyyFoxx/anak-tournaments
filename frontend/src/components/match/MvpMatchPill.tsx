@@ -2,18 +2,26 @@
 
 import React from "react";
 import { ArrowDown, ArrowUp } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { MvpPill, formatOverperformance, mvpRank, ordinal, resolveMvpPlacement } from "@/components/match/cells";
 import { cn } from "@/lib/utils";
 import type { MatchWithUserStats } from "@/types/user.types";
 
 /** One "<label> … <rank chip>" line in the card. Shows an em dash when the rank is absent. */
-const RankRow = ({ label, rank }: { label: string; rank: number | null | undefined }) => (
+const RankRow = ({
+  label,
+  rank,
+  locale
+}: {
+  label: string;
+  rank: number | null | undefined;
+  locale: string;
+}) => (
   <div className="flex items-center justify-between gap-3">
     <span className="text-xs text-muted-foreground">{label}</span>
     {rank != null ? (
-      <MvpPill rank={mvpRank(rank)} label={ordinal(rank)} />
+      <MvpPill rank={mvpRank(rank)} label={ordinal(rank, locale)} />
     ) : (
       <span className="text-xs tabular-nums text-muted-foreground">—</span>
     )}
@@ -31,6 +39,7 @@ const RankRow = ({ label, rank }: { label: string; rank: number | null | undefin
  */
 export const MvpMatchPill = ({ match }: { match: MatchWithUserStats }) => {
   const t = useTranslations();
+  const locale = useLocale();
   const placement = resolveMvpPlacement(match);
   if (placement == null) return null;
 
@@ -41,7 +50,7 @@ export const MvpMatchPill = ({ match }: { match: MatchWithUserStats }) => {
     <Tooltip>
       <TooltipTrigger asChild>
         <span className="cursor-default">
-          <MvpPill rank={mvpRank(placement)} label={ordinal(placement)} />
+          <MvpPill rank={mvpRank(placement)} label={ordinal(placement, locale)} />
         </span>
       </TooltipTrigger>
       {/* Override the tooltip's default solid-primary surface with the popover card look. */}
@@ -61,15 +70,15 @@ export const MvpMatchPill = ({ match }: { match: MatchWithUserStats }) => {
           <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             {t("users.matches.mvp.title")}
           </p>
-          <RankRow label={t("users.matches.mvp.newRank")} rank={match.impact_rank} />
-          <RankRow label={t("users.matches.mvp.oldRank")} rank={match.performance} />
+          <RankRow label={t("users.matches.mvp.newRank")} rank={match.impact_rank} locale={locale} />
+          <RankRow label={t("users.matches.mvp.oldRank")} rank={match.performance} locale={locale} />
           {over ? (
             <div className="flex items-center justify-between gap-3">
               <span className="text-xs text-muted-foreground">{t("users.matches.overperformanceBadge")}</span>
               <span
                 className={cn(
                   "inline-flex items-center gap-0.5 text-xs font-medium tabular-nums",
-                  over.raised ? "text-emerald-300" : "text-rose-300"
+                  over.raised ? "text-[color:var(--aqt-emerald)]" : "text-[color:var(--aqt-rose)]"
                 )}
               >
                 {over.raised ? (

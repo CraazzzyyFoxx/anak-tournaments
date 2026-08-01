@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -17,12 +17,11 @@ import {
   Panel,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { GripVertical, Maximize2, Minimize2, Plus, Search, Trash2, X } from "lucide-react";
+import { FolderPlus, GripVertical, Maximize2, Minimize2, Plus, Search, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NumberInput } from "@/components/ui/number-input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -30,7 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -43,42 +42,53 @@ const STATS = [
 ];
 
 const CONDITION_TYPES = [
-  { value: "stat_threshold", label: "Stat Threshold" },
-  { value: "match_criteria", label: "Match Criteria" },
-  { value: "match_win", label: "Match Win" },
-  { value: "standing_position", label: "Standing Position" },
-  { value: "standing_record", label: "Standing Record" },
-  { value: "div_change", label: "Division Change" },
-  { value: "div_level", label: "Division Level" },
-  { value: "is_captain", label: "Is Captain" },
-  { value: "is_newcomer", label: "Is Newcomer" },
-  { value: "tournament_type", label: "Tournament Type" },
-  { value: "hero_kd_best", label: "Hero K/D Best" },
-  { value: "hero_stat", label: "Hero Stat" },
-  { value: "team_players_match", label: "Team Players Match" },
-  { value: "captain_property", label: "Captain Property" },
-  { value: "player_role", label: "Player Role" },
-  { value: "player_sub_role", label: "Player Sub-role" },
-  { value: "player_div", label: "Player Division" },
-  { value: "player_flag", label: "Player Flag (Legacy)" },
-  { value: "encounter_score", label: "Encounter Score" },
-  { value: "encounter_revenge", label: "Encounter Revenge" },
-  { value: "bracket_path", label: "Bracket Path" },
-  { value: "tournament_format", label: "Tournament Format" },
-  { value: "match_mvp_check", label: "Match MVP Check" },
-  { value: "global_stat_sum", label: "Global Stat Sum" },
-  { value: "tournament_count", label: "Tournament Count" },
-  { value: "global_winrate", label: "Global Winrate" },
-  { value: "distinct_count", label: "Distinct Count" },
+  { value: "stat_threshold", label: "Stat threshold" },
+  { value: "match_criteria", label: "Match criteria" },
+  { value: "match_win", label: "Match win" },
+  { value: "standing_position", label: "Standing position" },
+  { value: "standing_record", label: "Standing record" },
+  { value: "div_change", label: "Division change" },
+  { value: "div_level", label: "Division level" },
+  { value: "is_captain", label: "Is captain" },
+  { value: "is_newcomer", label: "Is newcomer" },
+  { value: "tournament_type", label: "Tournament type" },
+  { value: "hero_kd_best", label: "Hero K/D best" },
+  { value: "hero_stat", label: "Hero stat" },
+  { value: "team_players_match", label: "Team players match" },
+  { value: "captain_property", label: "Captain property" },
+  { value: "player_role", label: "Player role" },
+  { value: "player_sub_role", label: "Player sub-role" },
+  { value: "player_div", label: "Player division" },
+  { value: "player_flag", label: "Player flag (legacy)" },
+  { value: "encounter_score", label: "Encounter score" },
+  { value: "encounter_revenge", label: "Encounter revenge" },
+  { value: "bracket_path", label: "Bracket path" },
+  { value: "tournament_format", label: "Tournament format" },
+  { value: "match_mvp_check", label: "Match MVP check" },
+  { value: "global_stat_sum", label: "Global stat sum" },
+  { value: "tournament_count", label: "Tournament count" },
+  { value: "global_winrate", label: "Global winrate" },
+  { value: "distinct_count", label: "Distinct count" },
   { value: "consecutive", label: "Consecutive" },
-  { value: "stable_streak", label: "Stable Streak" },
+  { value: "stable_streak", label: "Stable streak" },
 ];
 
+/**
+ * React Flow paints edge strokes, minimap swatches and node borders straight
+ * onto a canvas that Tailwind classes cannot reach, so the operator identities
+ * resolve the tone tokens through `hsl(var(--…))` rather than hard-coding the
+ * palette. Inline styles also outrank React Flow's own stylesheet, which is
+ * why none of these need an `!important` class.
+ */
 const LOGICAL_COLORS: Record<string, string> = {
-  AND: "#3b82f6",
-  OR: "#f59e0b",
-  NOT: "#ef4444",
+  AND: "hsl(var(--info))",
+  OR: "hsl(var(--warning))",
+  NOT: "hsl(var(--danger))",
 };
+
+/** Leaf conditions are the satisfied/valid end of the tree → success tone. */
+const LEAF_COLOR = "hsl(var(--success))";
+const HANDLE_COLOR = "hsl(var(--muted-foreground))";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -166,6 +176,89 @@ function flatToTree(nodes: FlatNode[], rootId: string): TreeNode {
   return result;
 }
 
+/**
+ * Positional path per node ("1.2.3"), used as the human handle for every
+ * control inside a node. React Flow renders the tree as an absolutely
+ * positioned flat list, so without a path an assistive-tech user meets thirty
+ * identically named "Operator" selects with no way to tell them apart.
+ */
+function buildNodePaths(nodes: FlatNode[]): Record<string, string> {
+  const paths: Record<string, string> = {};
+
+  const walk = (nodeId: string, path: string) => {
+    paths[nodeId] = path;
+    nodes
+      .filter((child) => child.parentId === nodeId)
+      .forEach((child, index) => walk(child.id, `${path}.${index + 1}`));
+  };
+
+  const root = nodes.find((node) => !node.parentId);
+  if (root) {
+    walk(root.id, "1");
+  }
+  return paths;
+}
+
+/**
+ * Screen-reader outline of the tree.
+ *
+ * The canvas nesting exists only visually — React Flow lays every node out as
+ * an absolutely positioned sibling and draws the parent/child relationship as
+ * an SVG edge, which assistive tech cannot follow. This mirrors the same data
+ * as a real nested list so the shape of the boolean expression is readable.
+ * It is deliberately read-only: the editable controls stay on the canvas and
+ * each one is named with its path so the two views line up.
+ */
+function TreeOutline({
+  nodes,
+  paths,
+}: {
+  nodes: FlatNode[];
+  paths: Record<string, string>;
+}) {
+  const headingId = useId();
+
+  const renderLevel = (parentId: string | undefined) => {
+    const children = nodes.filter((node) => node.parentId === parentId);
+    if (children.length === 0) {
+      return null;
+    }
+    return (
+      <ul>
+        {children.map((node) => {
+          const path = paths[node.id] ?? "?";
+          let description: string;
+          if (node.type === "logical") {
+            description = `${path} ${node.logicalOp ?? "AND"} group`;
+          } else {
+            const label =
+              CONDITION_TYPES.find((ct) => ct.value === node.conditionType)?.label ??
+              node.conditionType ??
+              "condition";
+            const summary = formatParamsSummary(node.conditionType ?? "", node.params ?? {});
+            description = summary ? `${path} ${label} · ${summary}` : `${path} ${label}`;
+          }
+          return (
+            <li key={node.id}>
+              {description}
+              {renderLevel(node.id)}
+            </li>
+          );
+        })}
+      </ul>
+    );
+  };
+
+  return (
+    <div className="sr-only">
+      <p id={headingId}>Condition tree outline</p>
+      <div role="group" aria-labelledby={headingId}>
+        {renderLevel(undefined)}
+      </div>
+    </div>
+  );
+}
+
 function layoutNodes(flatNodes: FlatNode[]): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
@@ -217,7 +310,7 @@ function layoutNodes(flatNodes: FlatNode[]): { nodes: Node[]; edges: Edge[] } {
         source: fn.parentId,
         target: fn.id,
         style: {
-          stroke: LOGICAL_COLORS[flatNodes.find((n) => n.id === fn.parentId)?.logicalOp ?? "AND"] ?? "#666",
+          stroke: LOGICAL_COLORS[flatNodes.find((n) => n.id === fn.parentId)?.logicalOp ?? "AND"] ?? HANDLE_COLOR,
           strokeWidth: 2,
         },
         animated: true,
@@ -245,24 +338,36 @@ function layoutNodes(flatNodes: FlatNode[]): { nodes: Node[]; edges: Edge[] } {
 // ─── Custom Nodes ────────────────────────────────────────────────────────────
 
 function LogicalNode({ data, id }: NodeProps) {
-  const d = data as unknown as FlatNode & { readOnly?: boolean; onChangeOp?: (id: string, op: string) => void; onAddChild?: (id: string, type: string) => void; onDelete?: (id: string) => void };
-  const color = LOGICAL_COLORS[d.logicalOp ?? "AND"];
+  const d = data as unknown as FlatNode & {
+    path?: string;
+    readOnly?: boolean;
+    onChangeOp?: (id: string, op: string) => void;
+    onAddChild?: (id: string, type: string) => void;
+    onDelete?: (id: string) => void;
+  };
+  const op = d.logicalOp ?? "AND";
+  const color = LOGICAL_COLORS[op];
+  // Every control below is named by tree position, never by `id` — a node id
+  // like "node_7" is a DOM detail and says nothing about which group is meant.
+  const groupName = `group ${d.path ?? "1"}`;
 
   return (
     <div
       className="rounded-lg border-2 px-4 py-2 bg-card shadow-md"
       style={{ borderColor: color }}
     >
-      <Handle type="target" position={Position.Left} className="!bg-muted-foreground" />
+      <Handle type="target" position={Position.Left} aria-hidden style={{ background: HANDLE_COLOR }} />
       <div className="flex items-center gap-2">
+        <span className="text-xs tabular-nums text-muted-foreground">{d.path ?? "1"}</span>
         {d.readOnly ? (
-          <span className="text-xs font-bold px-2" style={{ color }}>{d.logicalOp}</span>
+          <span className="text-xs font-bold px-2" style={{ color }}>{op}</span>
         ) : (
-          <Select
-            value={d.logicalOp ?? "AND"}
-            onValueChange={(val) => d.onChangeOp?.(id, val)}
-          >
-            <SelectTrigger className="w-20 h-8 text-xs font-bold" style={{ color }}>
+          <Select value={op} onValueChange={(val) => d.onChangeOp?.(id, val)}>
+            <SelectTrigger
+              className="w-20 h-8 text-xs font-bold"
+              style={{ color }}
+              aria-label={`Logic operator for ${groupName}`}
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -281,8 +386,9 @@ function LogicalNode({ data, id }: NodeProps) {
               className="h-6 w-6"
               onClick={() => d.onAddChild?.(id, "leaf")}
               title="Add condition"
+              aria-label={`Add condition inside ${groupName}`}
             >
-              <Plus className="h-3.5 w-3.5" />
+              <Plus className="h-3.5 w-3.5" aria-hidden />
             </Button>
             <Button
               variant="ghost"
@@ -290,8 +396,9 @@ function LogicalNode({ data, id }: NodeProps) {
               className="h-6 w-6"
               onClick={() => d.onAddChild?.(id, "logical")}
               title="Add group"
+              aria-label={`Add nested group inside ${groupName}`}
             >
-              <Badge variant="outline" className="text-[10px] px-1 py-0 cursor-pointer">+G</Badge>
+              <FolderPlus className="h-3.5 w-3.5" aria-hidden />
             </Button>
             {d.parentId && (
               <Button
@@ -299,14 +406,15 @@ function LogicalNode({ data, id }: NodeProps) {
                 size="icon"
                 className="h-6 w-6"
                 onClick={() => d.onDelete?.(id)}
+                aria-label={`Delete ${groupName} and every condition inside it`}
               >
-                <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                <Trash2 className="h-3.5 w-3.5 text-destructive" aria-hidden />
               </Button>
             )}
           </>
         )}
       </div>
-      <Handle type="source" position={Position.Right} className="!bg-muted-foreground" />
+      <Handle type="source" position={Position.Right} aria-hidden style={{ background: HANDLE_COLOR }} />
     </div>
   );
 }
@@ -324,7 +432,7 @@ function formatParamsSummary(type: string, params: Record<string, unknown>): str
     parts.push(`${params.stat ?? "Performance"} top ${params.top_n ?? 3}, team in top ${params.op ?? "=="} ${params.value ?? 0}`);
   }
   if (type === "tournament_format") {
-    const fmtLabels: Record<string, string> = { double_elim: "Double Elim", single_elim: "Single Elim", round_robin: "Round Robin", has_bracket: "Any Bracket" };
+    const fmtLabels: Record<string, string> = { double_elim: "Double elim", single_elim: "Single elim", round_robin: "Round robin", has_bracket: "Any bracket" };
     parts.push(fmtLabels[(params.format as string) ?? "double_elim"] ?? String(params.format));
   }
   if (type === "bracket_path") {
@@ -354,7 +462,13 @@ function formatParamsSummary(type: string, params: Record<string, unknown>): str
 }
 
 function LeafNode({ data, id }: NodeProps) {
-  const d = data as unknown as FlatNode & { readOnly?: boolean; onChangeType?: (id: string, type: string) => void; onChangeParam?: (id: string, key: string, value: unknown) => void; onDelete?: (id: string) => void };
+  const d = data as unknown as FlatNode & {
+    path?: string;
+    readOnly?: boolean;
+    onChangeType?: (id: string, type: string) => void;
+    onChangeParam?: (id: string, key: string, value: unknown) => void;
+    onDelete?: (id: string) => void;
+  };
   const params = d.params ?? {};
   const lostInRoundParam = params.lost_in_round;
   const lostInRound =
@@ -372,27 +486,44 @@ function LeafNode({ data, id }: NodeProps) {
 
   const setParam = (key: string, value: unknown) => d.onChangeParam?.(id, key, value);
   const label = CONDITION_TYPES.find((ct) => ct.value === d.conditionType)?.label ?? d.conditionType;
+  const path = d.path ?? "1";
+  /**
+   * Accessible name for one field inside this node. Thirty-odd param controls
+   * share the same handful of field names ("Operator", "Value"), so each one
+   * has to carry both its own field and the condition it belongs to.
+   */
+  const controlName = (field: string) => `${field} for ${label} condition ${path}`;
 
   if (d.readOnly) {
     const summary = formatParamsSummary(d.conditionType ?? "", params);
     return (
-      <div className="rounded-lg border-2 border-green-500/50 px-3 py-2 bg-card shadow-md">
-        <Handle type="target" position={Position.Left} className="!bg-green-500" />
-        <p className="text-xs font-medium">{label}</p>
+      <div
+        className="rounded-lg border-2 px-3 py-2 bg-card shadow-md"
+        style={{ borderColor: LEAF_COLOR }}
+      >
+        <Handle type="target" position={Position.Left} aria-hidden style={{ background: LEAF_COLOR }} />
+        <p className="text-xs font-medium">
+          <span className="mr-1.5 tabular-nums text-muted-foreground">{path}</span>
+          {label}
+        </p>
         {summary && <p className="text-xs text-muted-foreground mt-0.5">{summary}</p>}
       </div>
     );
   }
 
   return (
-    <div className="rounded-lg border-2 border-green-500/50 px-3 py-2 bg-card shadow-md space-y-2">
-      <Handle type="target" position={Position.Left} className="!bg-green-500" />
+    <div
+      className="rounded-lg border-2 px-3 py-2 bg-card shadow-md space-y-2"
+      style={{ borderColor: LEAF_COLOR }}
+    >
+      <Handle type="target" position={Position.Left} aria-hidden style={{ background: LEAF_COLOR }} />
       <div className="flex items-center gap-2">
+        <span className="text-xs tabular-nums text-muted-foreground">{path}</span>
         <Select
           value={d.conditionType ?? "match_win"}
           onValueChange={(val) => d.onChangeType?.(id, val)}
         >
-          <SelectTrigger className="h-7 text-xs flex-1">
+          <SelectTrigger className="h-7 text-xs flex-1" aria-label={`Condition type for condition ${path}`}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -402,8 +533,14 @@ function LeafNode({ data, id }: NodeProps) {
           </SelectContent>
         </Select>
         {d.parentId && (
-          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => d.onDelete?.(id)}>
-            <Trash2 className="h-3.5 w-3.5 text-destructive" />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            onClick={() => d.onDelete?.(id)}
+            aria-label={`Delete ${label} condition ${path}`}
+          >
+            <Trash2 className="h-3.5 w-3.5 text-destructive" aria-hidden />
           </Button>
         )}
       </div>
@@ -413,39 +550,39 @@ function LeafNode({ data, id }: NodeProps) {
         {(d.conditionType === "stat_threshold" || d.conditionType === "global_stat_sum") && (
           <>
             <Select value={(params.stat as string) ?? ""} onValueChange={(v) => setParam("stat", v)}>
-              <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Stat..." /></SelectTrigger>
+              <SelectTrigger className="h-7 text-xs" aria-label={controlName("Stat")}><SelectValue placeholder="Stat…" /></SelectTrigger>
               <SelectContent>{STATS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
             </Select>
             <div className="flex gap-1">
               <Select value={(params.op as string) ?? ">="} onValueChange={(v) => setParam("op", v)}>
-                <SelectTrigger className="h-7 text-xs w-16"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-7 text-xs w-16" aria-label={controlName("Operator")}><SelectValue /></SelectTrigger>
                 <SelectContent>{OPERATORS.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
               </Select>
-              <NumberInput className="h-7 text-xs" value={(params.value as number) ?? 0} onValueChange={(next) => setParam("value", next ?? 0)} />
+              <NumberInput className="h-7 text-xs" aria-label={controlName("Threshold value")} value={(params.value as number) ?? 0} onValueChange={(next) => setParam("value", next ?? 0)} />
             </div>
           </>
         )}
         {d.conditionType === "match_criteria" && (
           <>
             <Select value={(params.field as string) ?? ""} onValueChange={(v) => setParam("field", v)}>
-              <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Field..." /></SelectTrigger>
+              <SelectTrigger className="h-7 text-xs" aria-label={controlName("Field")}><SelectValue placeholder="Field…" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="closeness">Closeness</SelectItem>
-                <SelectItem value="match_time">Match Time</SelectItem>
+                <SelectItem value="match_time">Match time</SelectItem>
               </SelectContent>
             </Select>
             <div className="flex gap-1">
               <Select value={(params.op as string) ?? ">="} onValueChange={(v) => setParam("op", v)}>
-                <SelectTrigger className="h-7 text-xs w-16"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-7 text-xs w-16" aria-label={controlName("Operator")}><SelectValue /></SelectTrigger>
                 <SelectContent>{OPERATORS.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
               </Select>
-              <NumberInput className="h-7 text-xs" value={(params.value as number) ?? 0} onValueChange={(next) => setParam("value", next ?? 0)} />
+              <NumberInput className="h-7 text-xs" aria-label={controlName("Threshold value")} value={(params.value as number) ?? 0} onValueChange={(next) => setParam("value", next ?? 0)} />
             </div>
           </>
         )}
         {d.conditionType === "player_role" && (
           <Select value={(params.role as string) ?? "Damage"} onValueChange={(v) => setParam("role", v)}>
-            <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-7 text-xs" aria-label={controlName("Role")}><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="Tank">Tank</SelectItem>
               <SelectItem value="Damage">Damage</SelectItem>
@@ -456,6 +593,7 @@ function LeafNode({ data, id }: NodeProps) {
         {d.conditionType === "player_sub_role" && (
           <Input
             className="h-7 text-xs"
+            aria-label={controlName("Sub-role")}
             value={(params.sub_role as string) ?? ""}
             placeholder="e.g. hitscan"
             onChange={(e) => setParam("sub_role", e.target.value)}
@@ -463,7 +601,7 @@ function LeafNode({ data, id }: NodeProps) {
         )}
         {d.conditionType === "player_flag" && (
           <Select value={(params.flag as string) ?? "primary"} onValueChange={(v) => setParam("flag", v)}>
-            <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-7 text-xs" aria-label={controlName("Flag")}><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="primary">Primary</SelectItem>
               <SelectItem value="secondary">Secondary</SelectItem>
@@ -473,27 +611,27 @@ function LeafNode({ data, id }: NodeProps) {
         {d.conditionType === "player_div" && (
           <div className="flex gap-1">
             <Select value={(params.op as string) ?? "=="} onValueChange={(v) => setParam("op", v)}>
-              <SelectTrigger className="h-7 text-xs w-16"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-7 text-xs w-16" aria-label={controlName("Operator")}><SelectValue /></SelectTrigger>
               <SelectContent>{OPERATORS.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
             </Select>
-            <NumberInput integer className="h-7 text-xs" value={(params.value as number) ?? 1} onValueChange={(next) => setParam("value", next ?? 1)} />
+            <NumberInput integer className="h-7 text-xs" aria-label={controlName("Division")} value={(params.value as number) ?? 1} onValueChange={(next) => setParam("value", next ?? 1)} />
           </div>
         )}
         {/* ── op + value conditions ── */}
         {(d.conditionType === "standing_position" || d.conditionType === "tournament_count" || d.conditionType === "div_level") && (
           <div className="flex gap-1">
             <Select value={(params.op as string) ?? "=="} onValueChange={(v) => setParam("op", v)}>
-              <SelectTrigger className="h-7 text-xs w-16"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-7 text-xs w-16" aria-label={controlName("Operator")}><SelectValue /></SelectTrigger>
               <SelectContent>{OPERATORS.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
             </Select>
-            <NumberInput integer className="h-7 text-xs" value={(params.value as number) ?? 1} onValueChange={(next) => setParam("value", next ?? 1)} />
+            <NumberInput integer className="h-7 text-xs" aria-label={controlName("Value")} value={(params.value as number) ?? 1} onValueChange={(next) => setParam("value", next ?? 1)} />
           </div>
         )}
         {/* ── standing_record: field + op + value ── */}
         {d.conditionType === "standing_record" && (
           <>
             <Select value={(params.field as string) ?? "wins"} onValueChange={(v) => setParam("field", v)}>
-              <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Field..." /></SelectTrigger>
+              <SelectTrigger className="h-7 text-xs" aria-label={controlName("Field")}><SelectValue placeholder="Field…" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="wins">Wins</SelectItem>
                 <SelectItem value="losses">Losses</SelectItem>
@@ -505,10 +643,10 @@ function LeafNode({ data, id }: NodeProps) {
             </Select>
             <div className="flex gap-1">
               <Select value={(params.op as string) ?? ">="} onValueChange={(v) => setParam("op", v)}>
-                <SelectTrigger className="h-7 text-xs w-16"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-7 text-xs w-16" aria-label={controlName("Operator")}><SelectValue /></SelectTrigger>
                 <SelectContent>{OPERATORS.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
               </Select>
-              <NumberInput className="h-7 text-xs" value={(params.value as number) ?? 0} onValueChange={(next) => setParam("value", next ?? 0)} />
+              <NumberInput className="h-7 text-xs" aria-label={controlName("Value")} value={(params.value as number) ?? 0} onValueChange={(next) => setParam("value", next ?? 0)} />
             </div>
           </>
         )}
@@ -516,39 +654,39 @@ function LeafNode({ data, id }: NodeProps) {
         {d.conditionType === "div_change" && (
           <div className="flex gap-1">
             <Select value={(params.direction as string) ?? "up"} onValueChange={(v) => setParam("direction", v)}>
-              <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-7 text-xs" aria-label={controlName("Direction")}><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="up">Up</SelectItem>
                 <SelectItem value="down">Down</SelectItem>
               </SelectContent>
             </Select>
-            <NumberInput integer className="h-7 text-xs" placeholder="min shift" value={(params.min_shift as number) ?? 1} onValueChange={(next) => setParam("min_shift", next ?? 1)} />
+            <NumberInput integer className="h-7 text-xs" aria-label={controlName("Minimum shift")} placeholder="Min shift" value={(params.min_shift as number) ?? 1} onValueChange={(next) => setParam("min_shift", next ?? 1)} />
           </div>
         )}
         {/* ── hero_stat: hero + stat + op + value ── */}
         {d.conditionType === "hero_stat" && (
           <>
-            <Input className="h-7 text-xs" placeholder="hero slug (e.g. dva)" value={(params.hero_slug as string) ?? ""} onChange={(e) => setParam("hero_slug", e.target.value)} />
+            <Input className="h-7 text-xs" aria-label={controlName("Hero slug")} placeholder="Hero slug (e.g. dva)" value={(params.hero_slug as string) ?? ""} onChange={(e) => setParam("hero_slug", e.target.value)} />
             <Select value={(params.stat as string) ?? ""} onValueChange={(v) => setParam("stat", v)}>
-              <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Stat..." /></SelectTrigger>
+              <SelectTrigger className="h-7 text-xs" aria-label={controlName("Stat")}><SelectValue placeholder="Stat…" /></SelectTrigger>
               <SelectContent>{STATS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
             </Select>
             <div className="flex gap-1">
               <Select value={(params.op as string) ?? ">="} onValueChange={(v) => setParam("op", v)}>
-                <SelectTrigger className="h-7 text-xs w-16"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-7 text-xs w-16" aria-label={controlName("Operator")}><SelectValue /></SelectTrigger>
                 <SelectContent>{OPERATORS.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
               </Select>
-              <NumberInput className="h-7 text-xs" value={(params.value as number) ?? 0} onValueChange={(next) => setParam("value", next ?? 0)} />
+              <NumberInput className="h-7 text-xs" aria-label={controlName("Threshold value")} value={(params.value as number) ?? 0} onValueChange={(next) => setParam("value", next ?? 0)} />
             </div>
           </>
         )}
         {/* ── hero_kd_best ── */}
         {d.conditionType === "hero_kd_best" && (
           <>
-            <Input className="h-7 text-xs" placeholder="hero slug" value={(params.hero_slug as string) ?? ""} onChange={(e) => setParam("hero_slug", e.target.value)} />
+            <Input className="h-7 text-xs" aria-label={controlName("Hero slug")} placeholder="Hero slug" value={(params.hero_slug as string) ?? ""} onChange={(e) => setParam("hero_slug", e.target.value)} />
             <div className="flex gap-1">
-              <NumberInput integer className="h-7 text-xs" placeholder="min time" value={(params.min_time as number) ?? 600} onValueChange={(next) => setParam("min_time", next ?? 600)} />
-              <NumberInput integer className="h-7 text-xs" placeholder="min matches" value={(params.min_matches as number) ?? 3} onValueChange={(next) => setParam("min_matches", next ?? 3)} />
+              <NumberInput integer className="h-7 text-xs" aria-label={controlName("Minimum time played in seconds")} placeholder="Min time (s)" value={(params.min_time as number) ?? 600} onValueChange={(next) => setParam("min_time", next ?? 600)} />
+              <NumberInput integer className="h-7 text-xs" aria-label={controlName("Minimum matches")} placeholder="Min matches" value={(params.min_matches as number) ?? 3} onValueChange={(next) => setParam("min_matches", next ?? 3)} />
             </div>
           </>
         )}
@@ -557,23 +695,23 @@ function LeafNode({ data, id }: NodeProps) {
           <>
             <div className="flex gap-1">
               <Select value={(params.order as string) ?? "desc"} onValueChange={(v) => setParam("order", v)}>
-                <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-7 text-xs" aria-label={controlName("Ranking end")}><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="desc">Top</SelectItem>
                   <SelectItem value="asc">Bottom</SelectItem>
                 </SelectContent>
               </Select>
-              <NumberInput integer className="h-7 text-xs" placeholder="limit" value={(params.limit as number) ?? 20} onValueChange={(next) => setParam("limit", next ?? 20)} />
+              <NumberInput integer className="h-7 text-xs" aria-label={controlName("Ranking limit")} placeholder="Limit" value={(params.limit as number) ?? 20} onValueChange={(next) => setParam("limit", next ?? 20)} />
             </div>
             <div className="flex gap-1">
               <Select value={(params.op as string) ?? "none"} onValueChange={(v) => setParam("op", v === "none" ? undefined : v)}>
-                <SelectTrigger className="h-7 text-xs w-16"><SelectValue placeholder="Op" /></SelectTrigger>
+                <SelectTrigger className="h-7 text-xs w-16" aria-label={controlName("Winrate operator")}><SelectValue placeholder="Op" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">None</SelectItem>
                   {OPERATORS.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
                 </SelectContent>
               </Select>
-              {Boolean(params.op) && <NumberInput className="h-7 text-xs w-16" placeholder="rate" value={(params.value as number) ?? 0.5} onValueChange={(next) => setParam("value", next ?? 0.5)} />}
+              {Boolean(params.op) && <NumberInput className="h-7 text-xs w-16" aria-label={controlName("Winrate")} placeholder="Rate" value={(params.value as number) ?? 0.5} onValueChange={(next) => setParam("value", next ?? 0.5)} />}
             </div>
           </>
         )}
@@ -582,22 +720,22 @@ function LeafNode({ data, id }: NodeProps) {
           <>
             <div className="flex gap-1">
               <Select value={(params.metric as string) ?? "win"} onValueChange={(v) => setParam("metric", v)}>
-                <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-7 text-xs" aria-label={controlName("Streak metric")}><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="win">Win</SelectItem>
-                  <SelectItem value="day_two">Day Two</SelectItem>
+                  <SelectItem value="day_two">Day two</SelectItem>
                 </SelectContent>
               </Select>
-              <NumberInput integer className="h-7 text-xs" placeholder="streak" value={(params.min_streak as number) ?? 2} onValueChange={(next) => setParam("min_streak", next ?? 2)} />
+              <NumberInput integer className="h-7 text-xs" aria-label={controlName("Minimum streak")} placeholder="Streak" value={(params.min_streak as number) ?? 2} onValueChange={(next) => setParam("min_streak", next ?? 2)} />
             </div>
             {(params.metric as string) === "day_two" && (
               <div className="flex gap-1 items-center">
-                <p className="text-muted-foreground text-[10px] shrink-0">Position</p>
+                <p className="text-muted-foreground text-xs shrink-0">Position</p>
                 <Select value={(params.position_op as string) ?? "<"} onValueChange={(v) => setParam("position_op", v)}>
-                  <SelectTrigger className="h-7 text-xs w-16"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-7 text-xs w-16" aria-label={controlName("Position operator")}><SelectValue /></SelectTrigger>
                   <SelectContent>{OPERATORS.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
                 </Select>
-                <NumberInput integer className="h-7 text-xs w-14" value={(params.position_value as number) ?? 7} onValueChange={(next) => setParam("position_value", next ?? 7)} />
+                <NumberInput integer className="h-7 text-xs w-14" aria-label={controlName("Position")} value={(params.position_value as number) ?? 7} onValueChange={(next) => setParam("position_value", next ?? 7)} />
               </div>
             )}
           </>
@@ -617,7 +755,7 @@ function LeafNode({ data, id }: NodeProps) {
                 }
               }}
             >
-              <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-7 text-xs" aria-label={controlName("Newcomer mode")}><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="bool">Is newcomer</SelectItem>
                 <SelectItem value="count">Count tournaments</SelectItem>
@@ -626,10 +764,10 @@ function LeafNode({ data, id }: NodeProps) {
             {params.op !== undefined && (
               <>
                 <Select value={(params.op as string) ?? ">="} onValueChange={(v) => setParam("op", v)}>
-                  <SelectTrigger className="h-7 text-xs w-16"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-7 text-xs w-16" aria-label={controlName("Tournament count operator")}><SelectValue /></SelectTrigger>
                   <SelectContent>{OPERATORS.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
                 </Select>
-                <NumberInput integer className="h-7 text-xs w-14" value={(params.value as number) ?? 1} onValueChange={(next) => setParam("value", next ?? 1)} />
+                <NumberInput integer className="h-7 text-xs w-14" aria-label={controlName("Tournament count")} value={(params.value as number) ?? 1} onValueChange={(next) => setParam("value", next ?? 1)} />
               </>
             )}
           </div>
@@ -640,11 +778,11 @@ function LeafNode({ data, id }: NodeProps) {
             value={params.is_league === null || params.is_league === undefined ? "any" : String(params.is_league)}
             onValueChange={(v) => setParam("is_league", v === "any" ? null : v === "true")}
           >
-            <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-7 text-xs" aria-label={controlName("Tournament type")}><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="any">Any</SelectItem>
               <SelectItem value="true">League</SelectItem>
-              <SelectItem value="false">Not League</SelectItem>
+              <SelectItem value="false">Not league</SelectItem>
             </SelectContent>
           </Select>
         )}
@@ -653,14 +791,14 @@ function LeafNode({ data, id }: NodeProps) {
           <>
             <div className="flex gap-1">
               <Select value={(params.round_type as string) ?? "any"} onValueChange={(v) => setParam("round_type", v)}>
-                <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-7 text-xs" aria-label={controlName("Round type")}><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="any">Any round</SelectItem>
                   <SelectItem value="final">Final</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={String(params.winner ?? true)} onValueChange={(v) => setParam("winner", v === "true")}>
-                <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-7 text-xs" aria-label={controlName("Which side counts")}><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="true">Winner only</SelectItem>
                   <SelectItem value="false">Both teams</SelectItem>
@@ -668,30 +806,47 @@ function LeafNode({ data, id }: NodeProps) {
               </Select>
             </div>
             <div className="space-y-1">
-              <p className="text-muted-foreground text-[10px]">Score patterns (home-away)</p>
+              <p className="text-muted-foreground text-xs">Score patterns (home–away)</p>
               {((params.scores as number[][]) ?? [[2, 3]]).map((pair, i) => (
                 <div key={i} className="flex gap-1 items-center">
-                  <NumberInput integer className="h-7 text-xs w-12" value={pair[0]} onValueChange={(next) => {
+                  <NumberInput integer className="h-7 text-xs w-12" aria-label={controlName(`Home score of pattern ${i + 1}`)} value={pair[0]} onValueChange={(next) => {
                     const scores = [...((params.scores as number[][]) ?? [[2, 3]])];
                     scores[i] = [next ?? 0, scores[i][1]];
                     setParam("scores", scores);
                   }} />
-                  <span className="text-xs text-muted-foreground">-</span>
-                  <NumberInput integer className="h-7 text-xs w-12" value={pair[1]} onValueChange={(next) => {
+                  <span className="text-xs text-muted-foreground" aria-hidden>–</span>
+                  <NumberInput integer className="h-7 text-xs w-12" aria-label={controlName(`Away score of pattern ${i + 1}`)} value={pair[1]} onValueChange={(next) => {
                     const scores = [...((params.scores as number[][]) ?? [[2, 3]])];
                     scores[i] = [scores[i][0], next ?? 0];
                     setParam("scores", scores);
                   }} />
-                  <button type="button" className="text-destructive text-xs" onClick={() => {
-                    const scores = ((params.scores as number[][]) ?? [[2, 3]]).filter((_, idx) => idx !== i);
-                    setParam("scores", scores.length > 0 ? scores : [[0, 0]]);
-                  }}>x</button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    aria-label={controlName(`Remove score pattern ${i + 1}`)}
+                    onClick={() => {
+                      const scores = ((params.scores as number[][]) ?? [[2, 3]]).filter((_, idx) => idx !== i);
+                      setParam("scores", scores.length > 0 ? scores : [[0, 0]]);
+                    }}
+                  >
+                    <X className="h-3 w-3 text-destructive" aria-hidden />
+                  </Button>
                 </div>
               ))}
-              <button type="button" className="text-xs text-primary hover:underline" onClick={() => {
-                const scores = [...((params.scores as number[][]) ?? [[2, 3]]), [0, 0]];
-                setParam("scores", scores);
-              }}>+ Add score pattern</button>
+              <button
+                type="button"
+                className="flex items-center gap-1 text-xs text-primary hover:underline"
+                aria-label={controlName("Add score pattern")}
+                onClick={() => {
+                  const scores = [...((params.scores as number[][]) ?? [[2, 3]]), [0, 0]];
+                  setParam("scores", scores);
+                }}
+              >
+                <Plus className="h-3 w-3" aria-hidden />
+                Add score pattern
+              </button>
             </div>
           </>
         )}
@@ -700,11 +855,11 @@ function LeafNode({ data, id }: NodeProps) {
           <>
             <div className="flex gap-1">
               <Select value={(params.stat as string) ?? "Performance"} onValueChange={(v) => setParam("stat", v)}>
-                <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Stat..." /></SelectTrigger>
+                <SelectTrigger className="h-7 text-xs" aria-label={controlName("Stat")}><SelectValue placeholder="Stat…" /></SelectTrigger>
                 <SelectContent>{STATS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
               </Select>
               <Select value={(params.sort_order as string) ?? "auto"} onValueChange={(v) => setParam("sort_order", v)}>
-                <SelectTrigger className="h-7 text-xs w-20"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-7 text-xs w-20" aria-label={controlName("Sort order")}><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="auto">Auto</SelectItem>
                   <SelectItem value="desc">Desc</SelectItem>
@@ -713,14 +868,14 @@ function LeafNode({ data, id }: NodeProps) {
               </Select>
             </div>
             <div className="flex gap-1 items-center">
-              <p className="text-muted-foreground text-[10px] shrink-0">Top</p>
-              <NumberInput integer className="h-7 text-xs w-12" min={1} value={(params.top_n as number) ?? 3} onValueChange={(next) => setParam("top_n", next ?? 3)} />
-              <p className="text-muted-foreground text-[10px] shrink-0">team in top</p>
+              <p className="text-muted-foreground text-xs shrink-0">Top</p>
+              <NumberInput integer className="h-7 text-xs w-12" aria-label={controlName("Top N players")} min={1} value={(params.top_n as number) ?? 3} onValueChange={(next) => setParam("top_n", next ?? 3)} />
+              <p className="text-muted-foreground text-xs shrink-0">team in top</p>
               <Select value={(params.op as string) ?? "=="} onValueChange={(v) => setParam("op", v)}>
-                <SelectTrigger className="h-7 text-xs w-16"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-7 text-xs w-16" aria-label={controlName("Teammates in top operator")}><SelectValue /></SelectTrigger>
                 <SelectContent>{OPERATORS.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
               </Select>
-              <NumberInput integer className="h-7 text-xs w-12" min={0} value={(params.value as number) ?? 0} onValueChange={(next) => setParam("value", next ?? 0)} />
+              <NumberInput integer className="h-7 text-xs w-12" aria-label={controlName("Teammates in top")} min={0} value={(params.value as number) ?? 0} onValueChange={(next) => setParam("value", next ?? 0)} />
             </div>
           </>
         )}
@@ -740,7 +895,7 @@ function LeafNode({ data, id }: NodeProps) {
                   }
                 }}
               >
-                <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-7 text-xs" aria-label={controlName("Bracket path")}><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="lower">Lower bracket</SelectItem>
                   <SelectItem value="upper">Upper bracket only</SelectItem>
@@ -750,20 +905,20 @@ function LeafNode({ data, id }: NodeProps) {
             {(params.played_lower_bracket ?? true) && (
               <>
                 <div className="flex gap-1 items-center">
-                  <p className="text-muted-foreground text-[10px] shrink-0">Min LB wins</p>
-                  <NumberInput integer className="h-7 text-xs w-14" value={(params.min_lower_bracket_wins as number) ?? null} placeholder="any" onValueChange={(next) => setParam("min_lower_bracket_wins", next ?? undefined)} />
+                  <p className="text-muted-foreground text-xs shrink-0">Min LB wins</p>
+                  <NumberInput integer className="h-7 text-xs w-14" aria-label={controlName("Minimum lower-bracket wins")} value={(params.min_lower_bracket_wins as number) ?? null} placeholder="Any" onValueChange={(next) => setParam("min_lower_bracket_wins", next ?? undefined)} />
                 </div>
                 <div className="flex gap-1 items-center">
-                  <p className="text-muted-foreground text-[10px] shrink-0">Lost in round</p>
+                  <p className="text-muted-foreground text-xs shrink-0">Lost in round</p>
                   <Select value={lostInRoundOp ?? "any"} onValueChange={(v) => setParam("lost_in_round", v !== "any" ? { op: v, value: lostInRoundValue } : undefined)}>
-                    <SelectTrigger className="h-7 text-xs w-16"><SelectValue placeholder="any" /></SelectTrigger>
+                    <SelectTrigger className="h-7 text-xs w-16" aria-label={controlName("Lost-in-round operator")}><SelectValue placeholder="Any" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="any">Any</SelectItem>
                       {OPERATORS.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
                     </SelectContent>
                   </Select>
                   {lostInRoundOp && (
-                    <NumberInput integer className="h-7 text-xs w-14" value={lostInRoundValue} onValueChange={(next) => setParam("lost_in_round", { ...lostInRound, value: next ?? 1 })} />
+                    <NumberInput integer className="h-7 text-xs w-14" aria-label={controlName("Lost-in-round number")} value={lostInRoundValue} onValueChange={(next) => setParam("lost_in_round", { ...lostInRound, value: next ?? 1 })} />
                   )}
                 </div>
               </>
@@ -773,12 +928,12 @@ function LeafNode({ data, id }: NodeProps) {
         {/* ── tournament_format: double_elim / single_elim / round_robin ── */}
         {d.conditionType === "tournament_format" && (
           <Select value={(params.format as string) ?? "double_elim"} onValueChange={(v) => setParam("format", v)}>
-            <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-7 text-xs" aria-label={controlName("Tournament format")}><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="double_elim">Double Elimination</SelectItem>
-              <SelectItem value="single_elim">Single Elimination</SelectItem>
-              <SelectItem value="round_robin">Round Robin</SelectItem>
-              <SelectItem value="has_bracket">Any Bracket</SelectItem>
+              <SelectItem value="double_elim">Double elimination</SelectItem>
+              <SelectItem value="single_elim">Single elimination</SelectItem>
+              <SelectItem value="round_robin">Round robin</SelectItem>
+              <SelectItem value="has_bracket">Any bracket</SelectItem>
             </SelectContent>
           </Select>
         )}
@@ -787,7 +942,7 @@ function LeafNode({ data, id }: NodeProps) {
           <>
             <div className="flex gap-1">
               <Select value={(params.field as string) ?? ""} onValueChange={(v) => setParam("field", v)}>
-                <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Field" /></SelectTrigger>
+                <SelectTrigger className="h-7 text-xs" aria-label={controlName("Field")}><SelectValue placeholder="Field" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="role">Role</SelectItem>
                   <SelectItem value="hero">Hero</SelectItem>
@@ -795,21 +950,21 @@ function LeafNode({ data, id }: NodeProps) {
                 </SelectContent>
               </Select>
               <Select value={(params.op as string) ?? ">="} onValueChange={(v) => setParam("op", v)}>
-                <SelectTrigger className="h-7 text-xs w-16"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-7 text-xs w-16" aria-label={controlName("Operator")}><SelectValue /></SelectTrigger>
                 <SelectContent>{OPERATORS.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
               </Select>
-              <NumberInput integer className="h-7 text-xs w-16" value={(params.value as number) ?? 1} onValueChange={(next) => setParam("value", next ?? 1)} />
+              <NumberInput integer className="h-7 text-xs w-16" aria-label={controlName("Distinct count")} value={(params.value as number) ?? 1} onValueChange={(next) => setParam("value", next ?? 1)} />
             </div>
             <div className="flex gap-1">
               <Select value={(params.scope as string) ?? "global"} onValueChange={(v) => setParam("scope", v)}>
-                <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-7 text-xs" aria-label={controlName("Counting scope")}><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="global">Global</SelectItem>
                   <SelectItem value="tournament">Per tournament</SelectItem>
                 </SelectContent>
               </Select>
               {(params.field as string) === "hero" && (
-                <NumberInput integer className="h-7 text-xs w-20" placeholder="min time (s)" value={(params.min_playtime as number) ?? null} onValueChange={(next) => setParam("min_playtime", next ?? undefined)} />
+                <NumberInput integer className="h-7 text-xs w-20" aria-label={controlName("Minimum hero playtime in seconds")} placeholder="Min time (s)" value={(params.min_playtime as number) ?? null} onValueChange={(next) => setParam("min_playtime", next ?? undefined)} />
               )}
             </div>
           </>
@@ -817,8 +972,8 @@ function LeafNode({ data, id }: NodeProps) {
         {d.conditionType === "stable_streak" && (
           <>
             <div className="space-y-1">
-              <p className="text-muted-foreground">Fields</p>
-              <div className="flex flex-wrap gap-1">
+              <p className="text-muted-foreground" id={`${id}-streak-fields`}>Fields</p>
+              <div className="flex flex-wrap gap-1" role="group" aria-labelledby={`${id}-streak-fields`}>
                 {["role", "division", "team", "hero"].map((f) => {
                   const fields = (params.fields as string[]) ?? [];
                   const active = fields.includes(f);
@@ -826,7 +981,9 @@ function LeafNode({ data, id }: NodeProps) {
                     <button
                       key={f}
                       type="button"
-                      className={`px-1.5 py-0.5 rounded text-[10px] border transition-colors ${active ? "bg-primary text-primary-foreground border-primary" : "bg-muted border-border hover:bg-accent"}`}
+                      aria-pressed={active}
+                      aria-label={controlName(`Track ${f}`)}
+                      className={`px-1.5 py-0.5 rounded text-xs border transition-colors ${active ? "bg-primary text-primary-foreground border-primary" : "bg-muted border-border hover:bg-accent"}`}
                       onClick={() => {
                         const next = active ? fields.filter((x) => x !== f) : [...fields, f];
                         setParam("fields", next);
@@ -840,7 +997,7 @@ function LeafNode({ data, id }: NodeProps) {
             </div>
             <div className="flex gap-1 items-center">
               <p className="text-muted-foreground shrink-0">Min streak</p>
-              <NumberInput integer className="h-7 text-xs w-16" min={2} value={(params.min_streak as number) ?? 2} onValueChange={(next) => setParam("min_streak", next ?? 2)} />
+              <NumberInput integer className="h-7 text-xs w-16" aria-label={controlName("Minimum streak")} min={2} value={(params.min_streak as number) ?? 2} onValueChange={(next) => setParam("min_streak", next ?? 2)} />
             </div>
           </>
         )}
@@ -852,11 +1009,18 @@ function LeafNode({ data, id }: NodeProps) {
   );
 }
 
-// ─── Main Component ──────────────────────────────────────────────────────────
+// ─── Sidebar items ───────────────────────────────────────────────────────────
 
-// ─── Sidebar items for drag-and-drop ─────────────────────────────────────────
+interface SidebarItem {
+  type: "logical" | "leaf";
+  label: string;
+  logicalOp?: string;
+  conditionType?: string;
+  /** Logical operators only — leaves all share the success tone. */
+  color?: string;
+}
 
-const SIDEBAR_GROUPS = [
+const SIDEBAR_GROUPS: { label: string; items: SidebarItem[] }[] = [
   {
     label: "Logic",
     items: [
@@ -868,11 +1032,11 @@ const SIDEBAR_GROUPS = [
   {
     label: "Match",
     items: [
-      { type: "leaf", conditionType: "stat_threshold", label: "Stat Threshold" },
-      { type: "leaf", conditionType: "match_criteria", label: "Match Criteria" },
-      { type: "leaf", conditionType: "match_win", label: "Match Win" },
-      { type: "leaf", conditionType: "hero_stat", label: "Hero Stat" },
-      { type: "leaf", conditionType: "match_mvp_check", label: "MVP Check" },
+      { type: "leaf", conditionType: "stat_threshold", label: "Stat threshold" },
+      { type: "leaf", conditionType: "match_criteria", label: "Match criteria" },
+      { type: "leaf", conditionType: "match_win", label: "Match win" },
+      { type: "leaf", conditionType: "hero_stat", label: "Hero stat" },
+      { type: "leaf", conditionType: "match_mvp_check", label: "MVP check" },
     ],
   },
   {
@@ -880,34 +1044,40 @@ const SIDEBAR_GROUPS = [
     items: [
       { type: "leaf", conditionType: "standing_position", label: "Position" },
       { type: "leaf", conditionType: "standing_record", label: "Record" },
-      { type: "leaf", conditionType: "div_change", label: "Division Change" },
-      { type: "leaf", conditionType: "div_level", label: "Division Level" },
-      { type: "leaf", conditionType: "is_captain", label: "Is Captain" },
-      { type: "leaf", conditionType: "is_newcomer", label: "Is Newcomer" },
-      { type: "leaf", conditionType: "tournament_type", label: "Tournament Type" },
-      { type: "leaf", conditionType: "hero_kd_best", label: "Hero K/D Best" },
-      { type: "leaf", conditionType: "team_players_match", label: "Team Players" },
-      { type: "leaf", conditionType: "captain_property", label: "Captain Prop" },
-      { type: "leaf", conditionType: "encounter_score", label: "Encounter Score" },
-      { type: "leaf", conditionType: "encounter_revenge", label: "Encounter Revenge" },
-      { type: "leaf", conditionType: "bracket_path", label: "Bracket Path" },
+      { type: "leaf", conditionType: "div_change", label: "Division change" },
+      { type: "leaf", conditionType: "div_level", label: "Division level" },
+      { type: "leaf", conditionType: "is_captain", label: "Is captain" },
+      { type: "leaf", conditionType: "is_newcomer", label: "Is newcomer" },
+      { type: "leaf", conditionType: "tournament_type", label: "Tournament type" },
+      { type: "leaf", conditionType: "hero_kd_best", label: "Hero K/D best" },
+      { type: "leaf", conditionType: "team_players_match", label: "Team players" },
+      { type: "leaf", conditionType: "captain_property", label: "Captain property" },
+      { type: "leaf", conditionType: "encounter_score", label: "Encounter score" },
+      { type: "leaf", conditionType: "encounter_revenge", label: "Encounter revenge" },
+      { type: "leaf", conditionType: "bracket_path", label: "Bracket path" },
       { type: "leaf", conditionType: "tournament_format", label: "Format" },
     ],
   },
   {
     label: "Global",
     items: [
-      { type: "leaf", conditionType: "global_stat_sum", label: "Global Stat Sum" },
-      { type: "leaf", conditionType: "tournament_count", label: "Tournament Count" },
-      { type: "leaf", conditionType: "global_winrate", label: "Global Winrate" },
-      { type: "leaf", conditionType: "distinct_count", label: "Distinct Count" },
+      { type: "leaf", conditionType: "global_stat_sum", label: "Global stat sum" },
+      { type: "leaf", conditionType: "tournament_count", label: "Tournament count" },
+      { type: "leaf", conditionType: "global_winrate", label: "Global winrate" },
+      { type: "leaf", conditionType: "distinct_count", label: "Distinct count" },
       { type: "leaf", conditionType: "consecutive", label: "Consecutive" },
-      { type: "leaf", conditionType: "stable_streak", label: "Stable Streak" },
+      { type: "leaf", conditionType: "stable_streak", label: "Stable streak" },
     ],
   },
 ];
 
-function DragSidebar() {
+/**
+ * Node palette. Dragging onto the canvas is the mouse affordance; every row is
+ * also a real button, because a drag gesture is the one interaction a keyboard
+ * cannot perform. Clicking appends to the top-level group — the same place a
+ * drop lands — after which the node's own buttons move it around.
+ */
+function DragSidebar({ onAdd }: { onAdd: (item: SidebarItem) => void }) {
   const [search, setSearch] = useState("");
   const lc = search.toLowerCase();
 
@@ -916,7 +1086,7 @@ function DragSidebar() {
     items: g.items.filter((i) => i.label.toLowerCase().includes(lc)),
   })).filter((g) => g.items.length > 0);
 
-  const onDragStart = (e: React.DragEvent, item: (typeof SIDEBAR_GROUPS)[0]["items"][0]) => {
+  const onDragStart = (e: React.DragEvent, item: SidebarItem) => {
     e.dataTransfer.setData("application/condition-node", JSON.stringify(item));
     e.dataTransfer.effectAllowed = "move";
   };
@@ -924,34 +1094,45 @@ function DragSidebar() {
   return (
     <div className="w-44 h-full overflow-y-auto bg-card/95 backdrop-blur border-r p-2 space-y-2 text-xs">
       <div className="relative">
-        <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+        <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" aria-hidden />
         <Input
           className="h-7 pl-7 text-xs"
-          placeholder="Search nodes..."
+          placeholder="Search nodes…"
+          aria-label="Search condition nodes"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
       </div>
+      <p className="text-xs text-muted-foreground">
+        Drag onto the canvas, or click to append to the top-level group.
+      </p>
+      {filtered.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          No nodes match “{search}”. Try a shorter word such as “stat” or “div”.
+        </p>
+      ) : null}
       {filtered.map((group) => (
         <div key={group.label}>
-          <p className="text-[10px] uppercase text-muted-foreground font-medium tracking-wider mb-1">
-            {group.label}
-          </p>
+          <p className={`${EYEBROW_CLASS} mb-1`}>{group.label}</p>
           <div className="space-y-0.5">
             {group.items.map((item) => (
-              <div
+              <button
                 key={item.label}
-                className="flex items-center gap-1.5 px-2 py-1 rounded cursor-grab hover:bg-accent/50 active:cursor-grabbing transition-colors"
+                type="button"
                 draggable
                 onDragStart={(e) => onDragStart(e, item)}
+                onClick={() => onAdd(item)}
+                aria-label={`Add ${item.label} to the condition tree`}
+                className="flex w-full items-center gap-1.5 px-2 py-1 rounded text-left cursor-grab hover:bg-accent/50 active:cursor-grabbing transition-colors"
               >
-                <GripVertical className="h-3 w-3 text-muted-foreground/50" />
-                <div
+                <GripVertical className="h-3 w-3 text-muted-foreground" aria-hidden />
+                <span
                   className="w-2 h-2 rounded-full shrink-0"
-                  style={{ backgroundColor: (item as { color?: string }).color ?? "#22c55e" }}
+                  style={{ backgroundColor: item.color ?? LEAF_COLOR }}
+                  aria-hidden
                 />
                 <span className="truncate">{item.label}</span>
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -960,7 +1141,7 @@ function DragSidebar() {
   );
 }
 
-// ─── Main Component (inner, needs ReactFlowProvider) ─────────────────────────
+// ─── Main component ──────────────────────────────────────────────────────────
 
 export function ConditionFlowEditor(props: ConditionFlowEditorProps) {
   if (props.readOnly) {
@@ -1053,10 +1234,13 @@ function ConditionFlowEditorInner({ value, onChange, readOnly = false }: Conditi
     });
   }, [onChange]);
 
+  const nodePaths = useMemo(() => buildNodePaths(flatNodes), [flatNodes]);
+
   // Build React Flow nodes/edges with callbacks injected into data
   const { nodes: flowNodes, edges: flowEdges } = useMemo(() => {
     const enriched = flatNodes.map((fn) => ({
       ...fn,
+      path: nodePaths[fn.id],
       readOnly,
       onChangeOp: readOnly ? undefined : handleChangeOp,
       onChangeType: readOnly ? undefined : handleChangeType,
@@ -1075,7 +1259,7 @@ function ConditionFlowEditorInner({ value, onChange, readOnly = false }: Conditi
       })),
       edges: layout.edges,
     };
-  }, [flatNodes, readOnly, handleChangeOp, handleChangeType, handleChangeParam, handleAddChild, handleDelete]);
+  }, [flatNodes, nodePaths, readOnly, handleChangeOp, handleChangeType, handleChangeParam, handleAddChild, handleDelete]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(flowNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(flowEdges);
@@ -1091,30 +1275,20 @@ function ConditionFlowEditorInner({ value, onChange, readOnly = false }: Conditi
     leafNode: LeafNode,
   }), []);
 
-  // ─── Drag-and-drop from sidebar ───────────────────────────────────────────
-
-  const wrapperRef = useRef<HTMLDivElement>(null);
+  // ─── Adding nodes from the palette ────────────────────────────────────────
 
   const onDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
   }, []);
 
-  const onDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      const raw = e.dataTransfer.getData("application/condition-node");
-      if (!raw) return;
-
-      const item = JSON.parse(raw) as { type: string; logicalOp?: string; conditionType?: string };
-
-      // Find the closest logical parent to attach to.
-      // Default: attach to the root node.
+  /** Appends a palette item to the root group. Shared by drop and click. */
+  const addPaletteItem = useCallback(
+    (item: SidebarItem) => {
       const root = flatNodes.find((n) => !n.parentId);
       if (!root) return;
 
-      // If root is a leaf and we're adding, wrap root in AND first
-      let parentId = root.id;
+      // A bare leaf root cannot take children, so wrap it in an AND first.
       if (root.type === "leaf") {
         const newRootId = getNextNodeId(flatNodes, 1);
         const newChildId = getNextNodeId(flatNodes, 2);
@@ -1131,15 +1305,25 @@ function ConditionFlowEditorInner({ value, onChange, readOnly = false }: Conditi
         return;
       }
 
-      // Attach to root logical node
       const newId = getNextNodeId(flatNodes);
       const newNode: FlatNode = item.type === "logical"
-        ? { id: newId, type: "logical", logicalOp: item.logicalOp ?? "AND", parentId }
-        : { id: newId, type: "leaf", conditionType: item.conditionType ?? "match_win", params: {}, parentId };
+        ? { id: newId, type: "logical", logicalOp: item.logicalOp ?? "AND", parentId: root.id }
+        : { id: newId, type: "leaf", conditionType: item.conditionType ?? "match_win", params: {}, parentId: root.id };
 
       syncTree([...flatNodes, newNode]);
     },
     [flatNodes, syncTree],
+  );
+
+  const onDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      const raw = e.dataTransfer.getData("application/condition-node");
+      if (!raw) return;
+      // Serialised by DragSidebar a moment ago, so the shape is ours.
+      addPaletteItem(JSON.parse(raw) as SidebarItem);
+    },
+    [addPaletteItem],
   );
 
   // ─── Fullscreen ──────────────────────────────────────────────────────────────
@@ -1169,12 +1353,13 @@ function ConditionFlowEditorInner({ value, onChange, readOnly = false }: Conditi
 
   const containerClass = fullscreen
     ? "fixed inset-0 z-50 bg-background flex"
-    : `${readOnly ? "h-[300px]" : "h-[500px]"} w-full rounded-lg border bg-background flex`;
+    : `${readOnly ? "h-75" : "h-125"} w-full rounded-lg border bg-background flex`;
 
   return (
     <div className={containerClass}>
-      {!readOnly && <DragSidebar />}
-      <div className="flex-1 relative" ref={wrapperRef}>
+      <TreeOutline nodes={flatNodes} paths={nodePaths} />
+      {!readOnly && <DragSidebar onAdd={addPaletteItem} />}
+      <div className="flex-1 relative">
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -1200,7 +1385,7 @@ function ConditionFlowEditorInner({ value, onChange, readOnly = false }: Conditi
                 if (node.type === "logicalNode") {
                   return LOGICAL_COLORS[(node.data as unknown as FlatNode).logicalOp ?? "AND"];
                 }
-                return "#22c55e";
+                return LEAF_COLOR;
               }}
               maskColor="rgba(0,0,0,0.2)"
             />
@@ -1212,8 +1397,9 @@ function ConditionFlowEditorInner({ value, onChange, readOnly = false }: Conditi
               className="h-8 w-8 bg-background/80 backdrop-blur"
               onClick={() => setFullscreen((v) => !v)}
               title={fullscreen ? "Exit fullscreen (Esc)" : "Fullscreen"}
+              aria-label={fullscreen ? "Exit fullscreen, or press Escape" : "Show the condition tree fullscreen"}
             >
-              {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+              {fullscreen ? <Minimize2 className="h-4 w-4" aria-hidden /> : <Maximize2 className="h-4 w-4" aria-hidden />}
             </Button>
           </Panel>
         </ReactFlow>

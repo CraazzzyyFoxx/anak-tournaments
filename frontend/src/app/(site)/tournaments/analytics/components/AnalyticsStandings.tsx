@@ -213,46 +213,50 @@ const TeamDetail = ({
         <table className={styles.detailTable}>
           <thead>
             <tr>
-              <th>{t("analytics.standings.colRole")}</th>
-              <th>{t("analytics.standings.colBattleTag")}</th>
-              <th className={styles.center}>{t("analytics.standings.colCurrent")}</th>
-              <th className={styles.center}>{t("analytics.standings.colForecast")}</th>
-              <th className={styles.center}>
+              <th scope="col">{t("analytics.standings.colRole")}</th>
+              <th scope="col">{t("analytics.standings.colBattleTag")}</th>
+              <th scope="col" className={styles.center}>
+                {t("analytics.standings.colCurrent")}
+              </th>
+              <th scope="col" className={styles.center}>
+                {t("analytics.standings.colForecast")}
+              </th>
+              <th scope="col" className={styles.center}>
                 <MetricTooltip term="recent_moves" showIcon>
                   {t("analytics.standings.colMove2")}
                 </MetricTooltip>
               </th>
-              <th className={styles.center}>
+              <th scope="col" className={styles.center}>
                 <MetricTooltip term="recent_moves" showIcon>
                   {t("analytics.standings.colMove1")}
                 </MetricTooltip>
               </th>
-              <th className={styles.center}>
+              <th scope="col" className={styles.center}>
                 <MetricTooltip term="points" showIcon>
                   {t("analytics.standings.colSignal")}
                 </MetricTooltip>
               </th>
-              <th className={styles.center}>
+              <th scope="col" className={styles.center}>
                 <MetricTooltip term="impact" showIcon>
                   {t("analytics.standings.colImpact")}
                 </MetricTooltip>
               </th>
-              <th className={styles.center}>
+              <th scope="col" className={styles.center}>
                 <MetricTooltip term="vs_local" showIcon>
                   {t("analytics.standings.colVsLocal")}
                 </MetricTooltip>
               </th>
-              <th className={styles.center}>
+              <th scope="col" className={styles.center}>
                 <MetricTooltip term="confidence" showIcon>
                   {t("analytics.standings.colConfidence")}
                 </MetricTooltip>
               </th>
-              <th className={styles.center}>
+              <th scope="col" className={styles.center}>
                 <MetricTooltip term="shift" showIcon>
                   {t("analytics.standings.colManual")}
                 </MetricTooltip>
               </th>
-              <th>{t("analytics.standings.colFlags")}</th>
+              <th scope="col">{t("analytics.standings.colFlags")}</th>
             </tr>
           </thead>
           <tbody>
@@ -265,7 +269,7 @@ const TeamDetail = ({
                 <tr key={player.id}>
                   <td>
                     <div className="flex items-center gap-2">
-                      <PlayerRoleIcon role={player.role} size={18} />
+                      <PlayerRoleIcon role={player.role} size={18} decorative />
                       <span className="text-muted-foreground">{player.role}</span>
                     </div>
                   </td>
@@ -405,8 +409,8 @@ const RoleLane = ({ team }: { team: TeamAnalytics }) => {
 };
 
 const CONFIDENCE_TONE_CLASS: Record<"high" | "medium" | "low", string> = {
-  high: "text-emerald-300",
-  medium: "text-amber-300",
+  high: "text-[color:var(--aqt-emerald)]",
+  medium: "text-[color:var(--aqt-amber)]",
   low: "text-muted-foreground"
 };
 

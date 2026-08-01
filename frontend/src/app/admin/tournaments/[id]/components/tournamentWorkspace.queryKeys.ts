@@ -12,6 +12,7 @@ export function getTournamentWorkspaceQueryKeys(tournamentId: number) {
     encounters: ["admin", "tournament", tournamentId, "encounters"] as const,
     stages: ["admin", "stages", tournamentId] as const,
     discordChannel: ["admin", "tournament", tournamentId, "discord-channel"] as const,
+    readiness: ["admin", "tournament", tournamentId, "readiness"] as const,
     logHistory: ["admin", "tournament", tournamentId, "log-history"] as const,
     // Public collections consumed by non-admin pages (the bracket view reads
     // these; without invalidation the public grid goes stale after admin edits).

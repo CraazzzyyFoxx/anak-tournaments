@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useId } from "react";
 import { Check, ShieldCheck, ExternalLink } from "lucide-react";
 import type { SocialAccount, SocialProvider } from "@/types/user.types";
 
@@ -14,8 +14,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
+import { cn, hexToRgba } from "@/lib/utils";
 import FieldLabel from "./FieldLabel";
+import { fieldControlClass, fieldInvalidClass } from "./FormField";
 
 interface VerifiedAccountSelectProps {
   label: string;
@@ -44,6 +45,9 @@ export default function VerifiedAccountSelect({
   error = null,
 }: VerifiedAccountSelectProps) {
   const t = useTranslations();
+  const controlId = useId();
+  const errorId = `${controlId}-error`;
+  const hintId = `${controlId}-hint`;
   const config = getSocialProviderConfig(provider);
   const verified = accounts.filter((a) => a.provider === provider && a.is_verified);
   const usernames = verified.map((a) => a.username);
@@ -68,34 +72,34 @@ export default function VerifiedAccountSelect({
     return (
       <div className="space-y-1.5">
         <FieldLabel label={label} required={required} icon={iconEl} />
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
-          <p className="text-xs text-amber-200/80">
+        <div className="rounded-lg border border-warning/30 bg-warning/5 p-3">
+          <p className="text-xs text-warning">
             {t("registration.accounts.verifiedNone", { label })}
           </p>
           <a
             href={connectHref}
-            className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-[color:var(--aqt-border-2)] bg-white/5 px-2.5 py-1.5 text-xs font-medium text-[color:var(--aqt-fg)] transition-colors hover:bg-white/10"
-            style={{ borderColor: `${config.color}55` }}
+            className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-3)] px-2.5 py-1.5 text-xs font-medium text-[color:var(--aqt-fg)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            style={{ borderColor: hexToRgba(config.color, 0.33) ?? undefined }}
           >
             <SocialIcon provider={provider} size={13} />
             {t("registration.accounts.verifiedLink", { label })}
-            <ExternalLink className="size-3 opacity-60" />
+            <ExternalLink className="size-3 opacity-60" aria-hidden />
           </a>
         </div>
-        {error && <p className="text-xs text-red-400">{error}</p>}
+        {error && <p className="text-xs text-destructive">{error}</p>}
       </div>
     );
   }
 
   return (
     <div className="space-y-1.5">
-      <FieldLabel label={label} required={required} icon={iconEl} />
+      <FieldLabel label={label} htmlFor={controlId} required={required} icon={iconEl} />
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger
-          className={cn(
-            "h-9 w-full border-[color:var(--aqt-border-2)] bg-white/3 text-sm",
-            error && "border-red-500/70",
-          )}
+          id={controlId}
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? errorId : hintId}
+          className={cn(fieldControlClass, "h-9", error && fieldInvalidClass)}
         >
           <SelectValue placeholder={config.placeholder} />
         </SelectTrigger>
@@ -105,15 +109,20 @@ export default function VerifiedAccountSelect({
               <span className="flex items-center gap-2">
                 <SocialIcon provider={provider} size={13} />
                 <span className="truncate">{account.username}</span>
-                <ShieldCheck className="size-3.5 text-emerald-400" aria-label={t("registration.accounts.verified")} />
-                {value === account.username && <Check className="size-3.5 opacity-60" />}
+                <ShieldCheck
+                  className="size-3.5 text-[color:var(--aqt-emerald)]"
+                  aria-label={t("registration.accounts.verified")}
+                />
+                {value === account.username && <Check className="size-3.5 opacity-60" aria-hidden />}
               </span>
             </SelectItem>
           ))}
         </SelectContent>
       </Select>
-      <p className="text-[11px] text-[color:var(--aqt-fg-dim)]">{t("registration.accounts.verifiedHint")}</p>
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      <p id={hintId} className="text-[11px] text-[color:var(--aqt-fg-dim)]">
+        {t("registration.accounts.verifiedHint")}
+      </p>
+      {error && <p id={errorId} className="text-xs text-destructive">{error}</p>}
     </div>
   );
 }

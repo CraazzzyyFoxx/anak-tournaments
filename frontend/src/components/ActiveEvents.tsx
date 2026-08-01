@@ -40,16 +40,16 @@ export default function ActiveEvents() {
   const activeGroups = useMemo<WorkspaceGroup[]>(() => {
     if (!allTournaments?.results || workspaces.length === 0) return [];
 
-    const active = allTournaments.results.filter((t) =>
-      isTournamentStatusActive(t.status)
+    const active = allTournaments.results.filter((tournament) =>
+      isTournamentStatusActive(tournament.status)
     );
     if (active.length === 0) return [];
 
     const byWorkspace = new Map<number, Tournament[]>();
-    for (const t of active) {
-      const list = byWorkspace.get(t.workspace_id) ?? [];
-      list.push(t);
-      byWorkspace.set(t.workspace_id, list);
+    for (const tournament of active) {
+      const list = byWorkspace.get(tournament.workspace_id) ?? [];
+      list.push(tournament);
+      byWorkspace.set(tournament.workspace_id, list);
     }
 
     const groups: WorkspaceGroup[] = [];
@@ -64,9 +64,9 @@ export default function ActiveEvents() {
             new Date(a.start_date).getTime()
         ),
         totalRegistrations: tournaments.reduce(
-          (sum, t) => sum + (t.registrations_count ?? 0),
+          (sum, tournament) => sum + (tournament.registrations_count ?? 0),
           0
-        ),
+        )
       });
     }
 
@@ -84,20 +84,24 @@ export default function ActiveEvents() {
     <Popover>
       <PopoverTrigger asChild>
         <button
+          type="button"
+          aria-label={t("nav.activeEvents.badge", { count: totalActive })}
           className={cn(
             "relative flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium",
             "transition-colors hover:bg-accent",
             "outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           )}
         >
-          <span className="relative flex size-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-            <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
+          <span aria-hidden className="relative flex size-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[color:var(--aqt-emerald)] opacity-75" />
+            <span className="relative inline-flex size-2 rounded-full bg-[color:var(--aqt-emerald)]" />
           </span>
-          <span className="hidden sm:inline text-emerald-400">
+          <span aria-hidden className="hidden text-[color:var(--aqt-emerald)] sm:inline">
             {t("nav.activeEvents.badge", { count: totalActive })}
           </span>
-          <span className="sm:hidden text-emerald-400">{totalActive}</span>
+          <span aria-hidden className="text-[color:var(--aqt-emerald)] tabular-nums sm:hidden">
+            {totalActive}
+          </span>
         </button>
       </PopoverTrigger>
 
@@ -122,25 +126,25 @@ export default function ActiveEvents() {
                 </span>
                 <span className="ml-auto text-[10px] text-muted-foreground tabular-nums">
                   {group.totalRegistrations}
-                  <Users className="inline ml-0.5 size-2.5" />
+                  <Users className="ml-0.5 inline size-2.5" aria-hidden />
                 </span>
               </div>
 
               <div className="flex flex-col gap-0.5">
-                {group.tournaments.map((t) => {
-                  const statusMeta = getTournamentStatusMeta(t.status);
+                {group.tournaments.map((tournament) => {
+                  const statusMeta = getTournamentStatusMeta(tournament.status);
                   return (
                     <Link
-                      key={t.id}
-                      href={`/tournaments/${t.id}`}
+                      key={tournament.id}
+                      href={`/tournaments/${tournament.id}`}
                       className={cn(
                         "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm",
                         "transition-colors hover:bg-accent"
                       )}
                     >
-                      <Radio className="size-3 shrink-0 text-emerald-400" />
+                      <Radio className="size-3 shrink-0 text-[color:var(--aqt-emerald)]" aria-hidden />
                       <div className="min-w-0 flex-1">
-                        <span className="block truncate">{t.name}</span>
+                        <span className="block truncate">{tournament.name}</span>
                         <span
                           className={cn(
                             "block text-[10px] uppercase tracking-wide",
@@ -150,9 +154,9 @@ export default function ActiveEvents() {
                           {statusMeta.badgeLabel}
                         </span>
                       </div>
-                      <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
-                        {t.registrations_count ?? 0}
-                        <Users className="inline ml-0.5 size-2.5" />
+                      <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+                        {tournament.registrations_count ?? 0}
+                        <Users className="ml-0.5 inline size-2.5" aria-hidden />
                       </span>
                     </Link>
                   );

@@ -29,15 +29,26 @@ interface EntityFormDialogProps {
   title: string;
   description?: string;
   onSubmit: (e: React.FormEvent) => void;
-  onCancel?: () => void;
   submitLabel?: string;
   cancelLabel?: string;
   isSubmitting?: boolean;
   submittingLabel?: string;
   errorMessage?: string;
+  /**
+   * Per-field validation messages keyed by field name. Listed in the dialog's
+   * error region so every problem is announced in one pass; pair the same
+   * message with `aria-invalid` / `aria-describedby` on the field itself.
+   */
+  fieldErrors?: Record<string, string>;
   isDirty?: boolean;
   dirtyTitle?: string;
   dirtyDescription?: string;
+  /**
+   * While the form is dirty, intercept internal link clicks anywhere in the
+   * document so leaving the page goes through the discard prompt. Defaults to
+   * `true`; pass `false` when this dialog should not reach outside itself.
+   */
+  guardNavigation?: boolean;
   contentClassName?: string;
   children: React.ReactNode;
   isReadOnly?: boolean;
@@ -49,15 +60,16 @@ export function EntityFormDialog({
   title,
   description,
   onSubmit,
-  onCancel,
   submitLabel = "Save",
   cancelLabel = "Cancel",
   isSubmitting = false,
   submittingLabel = "Saving…",
   errorMessage,
+  fieldErrors,
   isDirty = false,
   dirtyTitle = "Discard unsaved changes?",
   dirtyDescription = "You have unsaved changes in this form. Leave now and the current edits will be lost.",
+  guardNavigation = true,
   contentClassName,
   children,
   isReadOnly = false,
@@ -91,7 +103,7 @@ export function EntityFormDialog({
   }, [isDirty, open]);
 
   useEffect(() => {
-    if (!open || !isDirty || isSubmitting || isReadOnly) {
+    if (!open || !isDirty || isSubmitting || isReadOnly || !guardNavigation) {
       return;
     }
 
@@ -135,15 +147,7 @@ export function EntityFormDialog({
     return () => {
       document.removeEventListener("click", handleDocumentClick, true);
     };
-  }, [isDirty, isSubmitting, open, isReadOnly]);
-
-  const closeDialog = () => {
-    if (onCancel) {
-      onCancel();
-    } else {
-      onOpenChange(false);
-    }
-  };
+  }, [guardNavigation, isDirty, isSubmitting, open, isReadOnly]);
 
   const handleCancel = () => {
     if (isSubmitting) {
@@ -155,7 +159,7 @@ export function EntityFormDialog({
       return;
     }
 
-    closeDialog();
+    onOpenChange(false);
   };
 
   const handleOpenChange = (nextOpen: boolean) => {
@@ -171,11 +175,13 @@ export function EntityFormDialog({
     setDiscardDialogOpen(false);
     const nextHref = pendingNavigationHref;
     setPendingNavigationHref(null);
-    closeDialog();
+    onOpenChange(false);
     if (nextHref) {
       router.push(nextHref);
     }
   };
+
+  const fieldErrorEntries = Object.entries(fieldErrors ?? {});
 
   return (
     <>
@@ -196,29 +202,35 @@ export function EntityFormDialog({
               <div className="space-y-4 py-4">{children}</div>
             </div>
 
-            {errorMessage ? (
+            {errorMessage || fieldErrorEntries.length > 0 ? (
               <div
-                aria-live="polite"
                 role="alert"
                 className="mt-4 flex shrink-0 items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
               >
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <AlertTriangle aria-hidden className="mt-0.5 h-4 w-4 shrink-0" />
                 <div className="space-y-1">
-                  <p className="font-medium">Save failed</p>
-                  <p>{errorMessage}</p>
+                  <p className="font-medium">Could not save your changes.</p>
+                  {errorMessage ? <p>{errorMessage}</p> : null}
+                  {fieldErrorEntries.length > 0 ? (
+                    <ul className="list-inside list-disc space-y-0.5">
+                      {fieldErrorEntries.map(([field, message]) => (
+                        <li key={field}>{message}</li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </div>
               </div>
             ) : null}
 
             <DialogFooter className="mt-4 shrink-0 border-t border-border/60 pt-4">
               <Button type="button" variant="outline" onClick={handleCancel} disabled={isSubmitting}>
-                {isReadOnly ? (cancelLabel === "Cancel" ? "Close" : cancelLabel) : cancelLabel}
+                {isReadOnly && cancelLabel === "Cancel" ? "Close" : cancelLabel}
               </Button>
               {!isReadOnly && (
                 <Button type="submit" disabled={isSubmitting}>
                   {isSubmitting ? (
                     <>
-                      <LoaderCircle className="h-4 w-4 animate-spin" />
+                      <LoaderCircle aria-hidden className="h-4 w-4 animate-spin" />
                       {submittingLabel}
                     </>
                   ) : (

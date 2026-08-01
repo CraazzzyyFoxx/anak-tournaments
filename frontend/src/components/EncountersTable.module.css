@@ -1,0 +1,111 @@
+/*
+ * Layout styles owned by `EncountersTable`.
+ *
+ * These used to be imported from `(site)/tournaments/[id]/TournamentDetail.module.css`
+ * — a shared component reaching into a route's CSS module. The row/cell
+ * presentation still lives in the global `.aqt-matches` scope in `globals.css`;
+ * only the scroll container, the intrinsic table width and the two columns that
+ * are exclusive to the standalone `/encounters` list live here.
+ */
+
+.tableViewport {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: clip;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+}
+
+.tableViewport:focus-visible {
+  outline: 1px solid var(--aqt-teal);
+  outline-offset: -2px;
+}
+
+.matchesTable {
+  min-width: 58rem;
+}
+
+/* The standalone /encounters list adds the maps and status columns. */
+.matchesTableWide {
+  min-width: 70rem;
+}
+
+@media (max-width: 640px) {
+  .matchesTable {
+    min-width: 52rem;
+  }
+
+  .matchesTableWide {
+    min-width: 62rem;
+  }
+}
+
+/* ── Maps column: one pip per played map ── */
+.pips {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.pip {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.pipHome {
+  background: var(--aqt-teal);
+}
+
+.pipAway {
+  background: color-mix(in srgb, var(--aqt-rose) 80%, transparent);
+}
+
+/* ── Status column ── */
+.statusPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--aqt-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.statusLive {
+  color: var(--aqt-rose);
+  background: color-mix(in srgb, var(--aqt-rose) 10%, transparent);
+  border-color: color-mix(in srgb, var(--aqt-rose) 28%, transparent);
+}
+
+.statusUpcoming {
+  color: var(--aqt-amber);
+  background: color-mix(in srgb, var(--aqt-amber) 10%, transparent);
+  border-color: color-mix(in srgb, var(--aqt-amber) 28%, transparent);
+}
+
+.statusFinal {
+  color: var(--aqt-fg-muted);
+  background: var(--aqt-overlay-2);
+  border-color: var(--aqt-border-2);
+}
+
+.statusOpen {
+  color: var(--aqt-teal);
+  background: color-mix(in srgb, var(--aqt-teal) 10%, transparent);
+  border-color: color-mix(in srgb, var(--aqt-teal) 26%, transparent);
+}
+
+.statusUpset {
+  color: var(--aqt-violet);
+  background: color-mix(in srgb, var(--aqt-violet) 12%, transparent);
+  border-color: color-mix(in srgb, var(--aqt-violet) 30%, transparent);
+}

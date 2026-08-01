@@ -3,7 +3,7 @@
 import React from "react";
 
 import type { Tournament } from "@/types/tournament.types";
-import { cn } from "@/lib/utils";
+import { cn, formatDateRange } from "@/lib/utils";
 import { useTranslations, useLocale } from "next-intl";
 import { getTournamentStatusMeta } from "@/lib/tournament-status";
 import { stageProgress } from "@/app/(site)/tournaments/components/tournaments-helpers";
@@ -25,26 +25,6 @@ interface TournamentHeroProps {
   totals?: HeroTotals | null;
   /** Analytics picker controls, rendered in the right rail under the KPI blocks. */
   controlsSlot?: React.ReactNode;
-}
-
-function formatDateRange(start: Date | string, end: Date | string, locale: "en" | "ru"): string {
-  const startDate = new Date(start);
-  const endDate = new Date(end);
-  if (Number.isNaN(startDate.getTime())) return "";
-  const loc = locale === "ru" ? "ru-RU" : "en-US";
-  const formatter = new Intl.DateTimeFormat(loc, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-  if (Number.isNaN(endDate.getTime())) return formatter.format(startDate);
-  const withRange = formatter as Intl.DateTimeFormat & {
-    formatRange?: (start: Date, end: Date) => string;
-  };
-  if (typeof withRange.formatRange === "function") {
-    return withRange.formatRange(startDate, endDate);
-  }
-  return `${formatter.format(startDate)} – ${formatter.format(endDate)}`;
 }
 
 /**

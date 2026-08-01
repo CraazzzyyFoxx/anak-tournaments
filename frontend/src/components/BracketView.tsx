@@ -1,11 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Pencil, FileEdit, Maximize2, Minimize2, Search } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { Pencil, FileEdit, Maximize2, Search } from "lucide-react";
 import Link from "next/link";
 
 import { useTranslations } from "next-intl";
 
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import type { Encounter } from "@/types/encounter.types";
 import type { StageType } from "@/types/tournament.types";
@@ -483,12 +490,12 @@ function MatchCard({
 
   const getRowClasses = (side: "home" | "away") => {
     if (data.winner === side) {
-      return "bg-[color:color-mix(in_srgb,var(--aqt-teal)_10%,transparent)] text-[var(--aqt-fg)] font-semibold";
+      return "bg-[color:color-mix(in_srgb,var(--aqt-teal)_10%,transparent)] text-[color:var(--aqt-fg)] font-semibold";
     }
     if (data.winner && data.winner !== side) {
-      return "text-[var(--aqt-fg-dim)]";
+      return "text-[color:var(--aqt-fg-dim)]";
     }
-    return "text-[var(--aqt-fg-muted)]";
+    return "text-[color:var(--aqt-fg-muted)]";
   };
 
   const getTeamId = (side: "home" | "away") =>
@@ -526,7 +533,7 @@ function MatchCard({
           side === "home" && "border-b border-[var(--aqt-border)]",
           getRowClasses(side),
           isHighlighted(side) &&
-            "bg-[color:color-mix(in_srgb,var(--aqt-teal)_16%,transparent)] text-[var(--aqt-fg)]"
+            "bg-[color:color-mix(in_srgb,var(--aqt-teal)_16%,transparent)] text-[color:var(--aqt-fg)]"
         )}
         data-team-id={getTeamId(side) ?? undefined}
         data-team-highlighted={isHighlighted(side) || undefined}
@@ -537,7 +544,7 @@ function MatchCard({
         <span
           className={cn(
             "min-w-0 truncate",
-            isTbdSlot(side) ? "text-[11px] italic text-[var(--aqt-fg-faint)]" : "text-[12.5px]"
+            isTbdSlot(side) ? "text-[11px] italic text-[color:var(--aqt-fg-faint)]" : "text-[12.5px]"
           )}
         >
           {getDisplayName(side)}
@@ -545,7 +552,7 @@ function MatchCard({
         <span
           className={cn(
             "shrink-0 text-[13px] font-semibold tabular-nums",
-            won ? "text-[var(--aqt-teal)]" : "text-[var(--aqt-fg-muted)]"
+            won ? "text-[color:var(--aqt-teal)]" : "text-[color:var(--aqt-fg-muted)]"
           )}
         >
           {hasVisibleScore ? score : "-"}
@@ -575,21 +582,21 @@ function MatchCard({
         <div className="flex items-center gap-2">
           <Link
             href={`/encounters/${encounter.id}`}
-            className="flex items-center justify-center rounded p-0.5 text-[var(--aqt-fg-muted)] hover:bg-white/10 hover:text-[var(--aqt-fg)] transition-colors"
-            title={t("bracket.viewMatch")}
+            className="flex items-center justify-center rounded p-0.5 text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
+            aria-label={t("bracket.viewMatch")}
             onClick={(e) => {
-              // Предотвращаем срабатывание других кликов на карточке, если они будут добавлены
+              // Keep any future card-level click handler from also firing.
               e.stopPropagation();
             }}
           >
-            <Search className="size-3.5" />
+            <Search className="size-3.5" aria-hidden />
           </Link>
         </div>
         {meta.timeLabel && (
           <span
             className={cn(
               "flex items-center gap-1 font-mono text-[10px] font-semibold uppercase tracking-wide",
-              meta.isLive ? "text-[var(--aqt-rose)]" : "text-[var(--aqt-fg-muted)]"
+              meta.isLive ? "text-[color:var(--aqt-rose)]" : "text-[color:var(--aqt-fg-muted)]"
             )}
           >
             {meta.isLive && (
@@ -618,13 +625,14 @@ function resultStatusBadge(encounter: Encounter, t: Translate) {
         : status;
   const color =
     status === "pending_confirmation"
-      ? "bg-amber-500/80"
+      ? "var(--aqt-amber)"
       : status === "disputed"
-        ? "bg-red-500/80"
-        : "bg-white/40";
+        ? "var(--aqt-rose)"
+        : "var(--aqt-fg-faint)";
   return (
     <span
-      className={`absolute left-1 top-1 rounded px-1 text-[9px] font-semibold uppercase text-white ${color}`}
+      className="absolute left-1 top-1 rounded px-1 text-[9px] font-semibold uppercase"
+      style={{ background: color, color: "var(--aqt-bg)" }}
     >
       {label}
     </span>
@@ -641,60 +649,48 @@ export function BracketView({
 }: BracketViewProps) {
   const t = useTranslations();
   const [hoveredTeamId, setHoveredTeamId] = useState<number | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const panRef = useRef({ active: false, startX: 0, startY: 0, left: 0, top: 0 });
+  const panRef = useRef<{
+    active: boolean;
+    startX: number;
+    startY: number;
+    left: number;
+    top: number;
+    el: HTMLDivElement | null;
+  }>({ active: false, startX: 0, startY: 0, left: 0, top: 0, el: null });
   const [isGrabbing, setIsGrabbing] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  useEffect(() => {
-    if (!isFullscreen) return;
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setIsFullscreen(false);
-    };
-    document.addEventListener("keydown", handleEsc);
-    return () => document.removeEventListener("keydown", handleEsc);
-  }, [isFullscreen]);
-
-  useEffect(() => {
-    if (isFullscreen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [isFullscreen]);
-
   const layout = useMemo(() => buildLayout(encounters, type, t), [encounters, type, t]);
 
-  // Drag-to-pan with the mouse; touch keeps native scrolling.
+  // Drag-to-pan with the mouse; touch keeps native scrolling. The scroller is
+  // the event target, so the same handlers serve the inline and the fullscreen
+  // copy without a shared ref pointing at whichever mounted last.
   const handlePanStart = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.pointerType !== "mouse" || event.button !== 0) return;
     if ((event.target as HTMLElement).closest("button, a")) return;
-    const el = scrollRef.current;
-    if (!el) return;
+    const el = event.currentTarget;
     panRef.current = {
       active: true,
       startX: event.clientX,
       startY: event.clientY,
       left: el.scrollLeft,
-      top: el.scrollTop
+      top: el.scrollTop,
+      el
     };
     el.setPointerCapture?.(event.pointerId);
     setIsGrabbing(true);
   };
   const handlePanMove = (event: React.PointerEvent<HTMLDivElement>) => {
     const pan = panRef.current;
-    const el = scrollRef.current;
-    if (!pan.active || !el) return;
-    el.scrollLeft = pan.left - (event.clientX - pan.startX);
-    el.scrollTop = pan.top - (event.clientY - pan.startY);
+    if (!pan.active || !pan.el) return;
+    pan.el.scrollLeft = pan.left - (event.clientX - pan.startX);
+    pan.el.scrollTop = pan.top - (event.clientY - pan.startY);
   };
   const handlePanEnd = (event: React.PointerEvent<HTMLDivElement>) => {
-    const el = scrollRef.current;
+    const el = panRef.current.el;
     if (el?.hasPointerCapture?.(event.pointerId)) el.releasePointerCapture(event.pointerId);
     panRef.current.active = false;
+    panRef.current.el = null;
     setIsGrabbing(false);
   };
 
@@ -704,172 +700,177 @@ export function BracketView({
     );
   }
 
-  return (
+  const bracketTitle =
+    type === "double_elimination"
+      ? t("bracket.doubleElimination")
+      : type === "single_elimination"
+        ? t("bracket.singleElimination")
+        : t("common.bracket");
+
+  const canvas = (fullscreen: boolean) => (
     <div
       className={cn(
-        "relative overflow-hidden rounded-2xl border border-[var(--aqt-border)] bg-[var(--aqt-bg-2)] transition-all duration-300",
-        isFullscreen && "fixed inset-0 z-50 rounded-none border-none bg-[var(--aqt-bg)] p-6 flex flex-col h-screen w-screen"
+        "select-none overflow-auto",
+        fullscreen ? "h-full w-full flex-1" : "max-h-[78vh]",
+        isGrabbing ? "cursor-grabbing" : "cursor-grab"
       )}
+      onPointerDown={handlePanStart}
+      onPointerMove={handlePanMove}
+      onPointerUp={handlePanEnd}
+      onPointerCancel={handlePanEnd}
     >
-      {isFullscreen && (
-        <div className="mb-4 flex items-center justify-between border-b border-[var(--aqt-border)] pb-3">
-          <div>
-            <h2 className="text-xl font-bold text-white uppercase tracking-wider">
-              {type === "double_elimination"
-                ? t("bracket.doubleElimination")
-                : type === "single_elimination"
-                  ? t("bracket.singleElimination")
-                  : t("common.bracket")}
-            </h2>
-            <p className="text-xs text-[var(--aqt-fg-muted)]">
-              {t("common.bracketInstructions")}
-            </p>
-          </div>
-          <button
-            type="button"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--aqt-border)] bg-[hsl(0_0%_0%/0.25)] text-[var(--aqt-fg-muted)] hover:text-white transition-colors"
-            onClick={() => setIsFullscreen(false)}
-            title={t("common.bracketExitFullscreen")}
-          >
-            <Minimize2 className="h-4.5 w-4.5" />
-          </button>
-        </div>
-      )}
+      <div
+        className="relative min-w-full"
+        style={{
+          width: layout.width,
+          height: layout.height,
+          backgroundImage:
+            "radial-gradient(circle at 1px 1px, hsl(0 0% 100% / 0.05) 1px, transparent 0)",
+          backgroundSize: "22px 22px"
+        }}
+      >
+        <svg
+          className="pointer-events-none absolute inset-0"
+          width={layout.width}
+          height={layout.height}
+          viewBox={`0 0 ${layout.width} ${layout.height}`}
+          fill="none"
+          aria-hidden
+        >
+          {layout.edges.map((edge) => (
+            <path
+              key={edge.id}
+              d={edge.path}
+              stroke={
+                edge.isCompleted
+                  ? "color-mix(in srgb, var(--aqt-teal) 55%, transparent)"
+                  : "hsl(0 0% 100% / 0.12)"
+              }
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          ))}
+        </svg>
 
-      {!isFullscreen && (
+        {layout.headers.map((header) => (
+          <div
+            key={header.id}
+            className="absolute"
+            style={{ left: header.x, top: header.y, width: CARD_WIDTH }}
+          >
+            <div className="inline-flex items-center gap-2 rounded-full border border-[color:var(--aqt-border-2)] bg-[hsl(0_0%_0%/0.45)] px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--aqt-fg-muted)]">
+              <span
+                aria-hidden
+                className="h-2 w-2 rounded-full"
+                style={{
+                  background: header.section === "upper" ? "var(--aqt-teal)" : "var(--aqt-blue)"
+                }}
+              />
+              <span>{header.label}</span>
+            </div>
+          </div>
+        ))}
+
+        {layout.nodes.map((node) => {
+          const editable = onEdit && (canEdit?.(node.encounter) ?? true);
+          const reportable = onReport && (canReport?.(node.encounter) ?? false);
+          return (
+            <div
+              key={node.id}
+              className="group absolute"
+              style={{ left: node.x, top: node.y, width: CARD_WIDTH, height: CARD_HEIGHT }}
+            >
+              <MatchCard
+                data={node.data}
+                encounter={node.encounter}
+                hoveredTeamId={hoveredTeamId}
+                onHoveredTeamChange={setHoveredTeamId}
+              />
+              <div
+                className="pointer-events-none absolute top-1/2 -translate-y-1/2"
+                style={{ left: CARD_WIDTH + 6 }}
+              >
+                <span className="font-mono text-[12px] font-semibold tabular-nums text-[color:var(--aqt-fg-muted)]">
+                  {node.data.matchLabel}
+                </span>
+              </div>
+              {resultStatusBadge(node.encounter, t)}
+              {(editable || reportable) && (
+                // Revealed on focus as well as hover: `opacity-0` alone leaves
+                // these focusable but invisible, so keyboard focus vanished here.
+                <div className="absolute right-1 top-1 flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                  {editable && (
+                    <button
+                      type="button"
+                      className="rounded-md border border-[color:var(--aqt-border-2)] bg-[hsl(0_0%_0%/0.6)] p-1 text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-fg)]"
+                      aria-label={t("bracket.editMatch")}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEdit?.(node.encounter);
+                      }}
+                    >
+                      <Pencil className="h-3 w-3" aria-hidden />
+                    </button>
+                  )}
+                  {reportable && (
+                    <button
+                      type="button"
+                      className="rounded-md border border-[color:color-mix(in_srgb,var(--aqt-teal)_30%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_16%,transparent)] p-1 text-[color:var(--aqt-teal)] hover:bg-[color:color-mix(in_srgb,var(--aqt-teal)_24%,transparent)]"
+                      aria-label={t("bracket.reportMatch")}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onReport?.(node.encounter);
+                      }}
+                    >
+                      <FileEdit className="h-3 w-3" aria-hidden />
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  return (
+    <>
+      <div className="relative overflow-hidden rounded-2xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)]">
         <div className="absolute right-4 top-4 z-10">
           <button
             type="button"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--aqt-border)] bg-[hsl(0_0%_0%/0.6)] text-[var(--aqt-fg-muted)] hover:text-white transition-colors"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[color:var(--aqt-border)] bg-[hsl(0_0%_0%/0.6)] text-[color:var(--aqt-fg-muted)] outline-none transition-colors hover:text-[color:var(--aqt-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
             onClick={() => setIsFullscreen(true)}
-            title={t("common.bracketFullscreen")}
+            aria-label={t("common.bracketFullscreen")}
           >
-            <Maximize2 className="h-4.5 w-4.5" />
+            <Maximize2 className="h-4.5 w-4.5" aria-hidden />
           </button>
         </div>
-      )}
 
-      <div
-        ref={scrollRef}
-        className={cn(
-          "select-none overflow-auto",
-          isFullscreen ? "flex-1 w-full h-full" : "max-h-[78vh]",
-          isGrabbing ? "cursor-grabbing" : "cursor-grab"
-        )}
-        onPointerDown={handlePanStart}
-        onPointerMove={handlePanMove}
-        onPointerUp={handlePanEnd}
-        onPointerCancel={handlePanEnd}
-      >
-        <div
-          className="relative min-w-full"
-          style={{
-            width: layout.width,
-            height: layout.height,
-            backgroundImage:
-              "radial-gradient(circle at 1px 1px, hsl(0 0% 100% / 0.05) 1px, transparent 0)",
-            backgroundSize: "22px 22px"
-          }}
-        >
-          <svg
-            className="pointer-events-none absolute inset-0"
-            width={layout.width}
-            height={layout.height}
-            viewBox={`0 0 ${layout.width} ${layout.height}`}
-            fill="none"
-          >
-            {layout.edges.map((edge) => (
-              <path
-                key={edge.id}
-                d={edge.path}
-                stroke={
-                  edge.isCompleted ? "color-mix(in srgb, var(--aqt-teal) 55%, transparent)" : "hsl(0 0% 100% / 0.12)"
-                }
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            ))}
-          </svg>
-
-          {layout.headers.map((header) => (
-            <div
-              key={header.id}
-              className="absolute"
-              style={{ left: header.x, top: header.y, width: CARD_WIDTH }}
-            >
-              <div className="inline-flex items-center gap-2 rounded-full border border-[var(--aqt-border-2)] bg-[hsl(0_0%_0%/0.45)] px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--aqt-fg-muted)]">
-                <span
-                  className="h-2 w-2 rounded-full"
-                  style={{
-                    background:
-                      header.section === "upper" ? "var(--aqt-teal)" : "var(--aqt-blue)"
-                  }}
-                />
-                <span>{header.label}</span>
-              </div>
-            </div>
-          ))}
-
-          {layout.nodes.map((node) => {
-            const editable = onEdit && (canEdit?.(node.encounter) ?? true);
-            const reportable = onReport && (canReport?.(node.encounter) ?? false);
-            return (
-              <div
-                key={node.id}
-                className="group absolute"
-                style={{ left: node.x, top: node.y, width: CARD_WIDTH, height: CARD_HEIGHT }}
-              >
-                <MatchCard
-                  data={node.data}
-                  encounter={node.encounter}
-                  hoveredTeamId={hoveredTeamId}
-                  onHoveredTeamChange={setHoveredTeamId}
-                />
-                <div
-                  className="pointer-events-none absolute top-1/2 -translate-y-1/2"
-                  style={{ left: CARD_WIDTH + 6 }}
-                >
-                  <span className="font-mono text-[12px] font-semibold text-[var(--aqt-fg-muted)]">
-                    {node.data.matchLabel}
-                  </span>
-                </div>
-                {resultStatusBadge(node.encounter, t)}
-                {(editable || reportable) && (
-                  <div className="absolute right-1 top-1 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                    {editable && (
-                      <button
-                        type="button"
-                        className="rounded-md border border-[var(--aqt-border-2)] bg-[hsl(0_0%_0%/0.6)] p-1 text-[var(--aqt-fg-muted)] hover:text-[var(--aqt-fg)]"
-                        aria-label={t("bracket.editMatch")}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onEdit?.(node.encounter);
-                        }}
-                      >
-                        <Pencil className="h-3 w-3" />
-                      </button>
-                    )}
-                    {reportable && (
-                      <button
-                        type="button"
-                        className="rounded-md border border-[color:color-mix(in_srgb,var(--aqt-teal)_30%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_16%,transparent)] p-1 text-[var(--aqt-teal)] hover:bg-[color:color-mix(in_srgb,var(--aqt-teal)_24%,transparent)]"
-                        aria-label={t("bracket.reportMatch")}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onReport?.(node.encounter);
-                        }}
-                      >
-                        <FileEdit className="h-3 w-3" />
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        {canvas(false)}
       </div>
-    </div>
+
+      {/* Radix owns the modal contract the hand-rolled overlay never had:
+          role="dialog", aria-modal, a focus trap, focus restore on close and
+          scroll locking. Escape came for free there; nothing else did. */}
+      <Dialog open={isFullscreen} onOpenChange={setIsFullscreen}>
+        <DialogContent className="left-0 top-0 flex h-screen w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-none border-none bg-[color:var(--aqt-bg)] p-6">
+          <DialogHeader className="mb-4 flex-row items-start justify-between gap-4 space-y-0 border-b border-[color:var(--aqt-border)] pb-3 pr-12 text-left">
+            <div>
+              <DialogTitle className="text-xl font-bold uppercase tracking-wider text-[color:var(--aqt-fg)]">
+                {bracketTitle}
+              </DialogTitle>
+              <DialogDescription className="text-xs text-[color:var(--aqt-fg-muted)]">
+                {t("common.bracketInstructions")}
+              </DialogDescription>
+            </div>
+          </DialogHeader>
+
+          {isFullscreen ? canvas(true) : null}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

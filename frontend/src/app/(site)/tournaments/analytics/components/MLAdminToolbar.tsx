@@ -43,23 +43,23 @@ type JobMutationVariables = {
 function statusTone(status: AnalyticsJob["status"]): string {
   switch (status) {
     case "running":
-      return "border-blue-400/40 text-blue-100";
+      return "border-[color:color-mix(in_srgb,var(--aqt-blue)_40%,transparent)] text-[color:var(--aqt-blue)]";
     case "succeeded":
-      return "border-emerald-400/40 text-emerald-100";
+      return "border-[color:color-mix(in_srgb,var(--aqt-emerald)_40%,transparent)] text-[color:var(--aqt-emerald)]";
     case "failed":
-      return "border-red-500/50 text-red-100";
+      return "border-[color:color-mix(in_srgb,var(--aqt-rose)_50%,transparent)] text-[color:var(--aqt-rose)]";
     default:
-      return "border-amber-400/40 text-amber-100";
+      return "border-[color:color-mix(in_srgb,var(--aqt-amber)_40%,transparent)] text-[color:var(--aqt-amber)]";
   }
 }
 
 function StageRow({ name, stage }: { name: string; stage: AnalyticsJobProgressStage }) {
   const tone =
     stage.state === "done"
-      ? "text-emerald-200"
+      ? "text-[color:var(--aqt-emerald)]"
       : stage.state === "failed"
-        ? "text-red-200"
-        : "text-blue-200";
+        ? "text-[color:var(--aqt-rose)]"
+        : "text-[color:var(--aqt-blue)]";
 
   return (
     <li className="flex items-center justify-between gap-3 text-xs">

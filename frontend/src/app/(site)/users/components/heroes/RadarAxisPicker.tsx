@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { LogStatsName } from "@/types/stats.types";
 import { getHumanizedStats } from "@/utils/stats";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { SearchField } from "@/components/ui/search-field";
 
 const MIN_AXES = 3;
 const MAX_AXES = 8;
@@ -40,16 +41,16 @@ const RadarAxisPicker = ({ selected, candidates, onToggle }: Props) => {
   return (
     <div className="flex flex-wrap items-center justify-center gap-1.5">
       {selected.map((name) => (
-        <span key={name} className="aqt-filter-chip active inline-flex items-center" title={getHumanizedStats(name)}>
+        <span key={name} className="aqt-filter-chip active inline-flex items-center">
           {getHumanizedStats(name)}
           {canRemove ? (
             <button
               type="button"
               onClick={() => onToggle(name)}
               className="-mr-0.5 inline-flex items-center justify-center rounded-sm text-(--aqt-fg-muted) hover:text-[color:var(--aqt-fg)]"
-              aria-label={t("common.remove")}
+              aria-label={t("users.heroes.removeAxis", { stat: getHumanizedStats(name) })}
             >
-              <X className="h-3 w-3" />
+              <X aria-hidden className="h-3 w-3" />
             </button>
           ) : null}
         </span>
@@ -66,7 +67,7 @@ const RadarAxisPicker = ({ selected, candidates, onToggle }: Props) => {
             )}
             title={canAdd ? t("users.heroes.addAxis") : t("users.heroes.upToAxes", { count: MAX_AXES })}
           >
-            <Plus className="h-3 w-3" />
+            <Plus aria-hidden className="h-3 w-3" />
             {t("common.add")}
           </button>
         </PopoverTrigger>
@@ -75,12 +76,12 @@ const RadarAxisPicker = ({ selected, candidates, onToggle }: Props) => {
           className="w-56 border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg)] p-0"
         >
           <div className="border-b border-[color:var(--aqt-border)] p-2">
-            <input
+            <SearchField
               autoFocus
+              label={t("users.heroes.searchStats")}
               placeholder={t("users.heroes.searchStats")}
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="w-full rounded-md border border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.025)] px-2.5 py-1.5 text-[13px] text-[color:var(--aqt-fg)] outline-none"
+              onValueChange={setQuery}
             />
           </div>
           <div className="max-h-64 overflow-y-auto py-1">

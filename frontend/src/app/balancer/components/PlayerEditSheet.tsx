@@ -53,7 +53,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import Cookies from "js-cookie";
-import PlayerDivisionIcon from "@/components/PlayerDivisionIcon";
+import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { useCurrentWorkspaceId, useDivisionGrid, useDivisionGridVersion } from "@/hooks/useCurrentWorkspace";
 import { useQuery } from "@tanstack/react-query";
@@ -82,7 +82,7 @@ import {
 } from "@/app/balancer/components/workspace-helpers";
 import { getRegistrationBattleTags } from "./balancer-page-helpers";
 import { BattleTagCopyButton, SmurfTagStrip } from "./BattleTagCopyControls";
-import BattleTagRankHistory from "@/components/BattleTagRankHistory";
+import RankHistory from "@/components/RankHistory";
 
 const ROLE_OPTIONS: Array<{ value: BalancerRoleCode; label: string }> = [
   { value: "tank", label: "Tank" },
@@ -388,7 +388,7 @@ function SortableRoleEntry({
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5">
-            <PlayerRoleIcon role={ROLE_DISPLAY[entry.role]} size={15} />
+            <PlayerRoleIcon role={ROLE_DISPLAY[entry.role]} size={15} decorative />
             <span
               className={cn(
                 "text-xs font-semibold",
@@ -541,7 +541,7 @@ function SortableRoleEntry({
             >
               {divisionNumber != null ? (
                 <>
-                  <PlayerDivisionIcon division={divisionNumber} width={20} height={20} />
+                  <DivisionIcon division={divisionNumber} width={20} height={20} />
                   <div className="min-w-0">
                     <div className="truncate text-[12px] font-medium text-[color:var(--aqt-fg-muted)]">
                       {divisionName ?? `Division ${divisionNumber}`}
@@ -571,7 +571,7 @@ function SortableRoleEntry({
             <Sparkles className="h-3 w-3 shrink-0 text-amber-300/70" />
             <span className="text-[9px] font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-dim)]">OW</span>
             {owSuggestionDivision != null ? (
-              <PlayerDivisionIcon division={owSuggestionDivision} width={16} height={16} />
+              <DivisionIcon division={owSuggestionDivision} width={16} height={16} />
             ) : null}
             <span className="truncate text-[11px] font-medium text-[color:var(--aqt-fg-muted)]">
               {owSuggestionName ?? `Division ${owSuggestionDivision}`}
@@ -639,7 +639,7 @@ function HistoryPreviewCard({
       <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-2">
-            <PlayerRoleIcon role={ROLE_DISPLAY[entry.role]} size={18} />
+            <PlayerRoleIcon role={ROLE_DISPLAY[entry.role]} size={18} decorative />
             <span className={cn("text-sm font-semibold", accent.text)}>
               {ROLE_DISPLAY[entry.role]}
             </span>
@@ -651,7 +651,7 @@ function HistoryPreviewCard({
           {originalDivisionName ? (
             <div className="flex items-center gap-1.5 rounded-full border border-[color:var(--aqt-border-2)] bg-black/15 px-2 py-1 text-[color:var(--aqt-fg)]">
               {entry.original_division_number != null ? (
-                <PlayerDivisionIcon
+                <DivisionIcon
                   division={entry.original_division_number}
                   width={16}
                   height={16}
@@ -667,7 +667,7 @@ function HistoryPreviewCard({
               <span className="text-[11px] text-[color:var(--aqt-fg-dim)]">→</span>
               <div className="flex items-center gap-1.5 rounded-full border border-[color:var(--aqt-border-2)] bg-white/5 px-2 py-1 text-[color:var(--aqt-fg)]">
                 {entry.division_number != null ? (
-                  <PlayerDivisionIcon division={entry.division_number} width={16} height={16} />
+                  <DivisionIcon division={entry.division_number} width={16} height={16} />
                 ) : null}
                 <span className="text-[11px] font-medium">{divisionName}</span>
               </div>
@@ -1248,7 +1248,11 @@ export function PlayerEditModal({
           <div className="space-y-2">
             <Label className="text-xs font-medium text-[color:var(--aqt-fg)]">Live rank (OverFast)</Label>
             <div className="rounded-lg border border-[color:var(--aqt-border-2)] bg-white/[0.03] p-2.5">
-              <BattleTagRankHistory userId={player.user_id} battleTag={primaryBattleTag} />
+              {player.user_id != null ? (
+                <RankHistory userId={player.user_id} />
+              ) : (
+                <RankHistory battleTag={primaryBattleTag} />
+              )}
             </div>
           </div>
 

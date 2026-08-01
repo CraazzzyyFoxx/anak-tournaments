@@ -1,10 +1,11 @@
 "use client";
 
 import React from "react";
-import { Search } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { TOURNAMENT_STATUS_ORDER } from "@/lib/tournament-status";
+import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
+import { SearchField } from "@/components/ui/search-field";
+import { TOURNAMENT_STATUS_ORDER, getTournamentStatusMeta } from "@/lib/tournament-status";
 import type { TournamentStatus } from "@/types/tournament.types";
 import {
   Select,
@@ -17,6 +18,18 @@ import {
 export type StatusFilter = "all" | TournamentStatus;
 export type TypeFilter = "all" | "standard" | "league";
 export type SortBy = "latest" | "oldest" | "participants";
+
+/**
+ * Dot colour per status bucket. Which bucket a status belongs to is a domain
+ * fact (`getTournamentStatusMeta(...).variant`); what colour that bucket wears
+ * is presentation, so it stays here.
+ */
+const VARIANT_DOT: Record<"live" | "upcoming" | "finished" | "draft", string> = {
+  live: "var(--aqt-rose)",
+  upcoming: "var(--aqt-amber)",
+  finished: "var(--aqt-fg-dim)",
+  draft: "var(--aqt-blue)"
+};
 
 interface TournamentsFiltersProps {
   total: number;
@@ -52,69 +65,62 @@ const TournamentsFilters = ({
     onTypeChange(typeFilter === value ? "all" : value);
 
   return (
-    <div className="filters">
-      <button
-        type="button"
-        className={`filter-chip${statusFilter === "all" ? " active" : ""}`}
+    <FilterChipGroup label={t("common.filters")} className="filters">
+      <FilterChip
+        active={statusFilter === "all"}
+        count={total}
         onClick={() => onStatusChange("all")}
       >
-        {t("common.all")} <span className="count">{total}</span>
-      </button>
+        {t("common.all")}
+      </FilterChip>
 
       {TOURNAMENT_STATUS_ORDER.map((status) => {
         const count = statusCounts[status] ?? 0;
         if (count === 0 && statusFilter !== status) return null;
 
-        const designClass =
-          status === "live" || status === "playoffs"
-            ? "live"
-            : status === "registration" || status === "check_in"
-              ? "upcoming"
-              : status === "completed" || status === "archived"
-                ? "finished"
-                : "draft";
-
         return (
-          <button
+          <FilterChip
             key={status}
-            type="button"
-            className={`filter-chip${statusFilter === status ? " active" : ""}`}
+            active={statusFilter === status}
+            count={count}
+            dotColor={VARIANT_DOT[getTournamentStatusMeta(status).variant]}
             onClick={() => onStatusChange(status)}
           >
-            <span className={`dot ${designClass}`} />
-            {t(`common.statusBadge.${status}`)} <span className="count">{count}</span>
-          </button>
+            {t(`common.statusBadge.${status}`)}
+          </FilterChip>
         );
       })}
 
-      <div className="filter-divider" />
+      <div aria-hidden className="aqt-filter-divider" />
 
-      <button
-        type="button"
-        className={`filter-chip${typeFilter === "standard" ? " active" : ""}`}
+      <FilterChip
+        active={typeFilter === "standard"}
+        count={standardCount}
         onClick={() => toggleType("standard")}
       >
-        {t("tournamentsList.filters.standard")} <span className="count">{standardCount}</span>
-      </button>
-      <button
-        type="button"
-        className={`filter-chip${typeFilter === "league" ? " active" : ""}`}
+        {t("tournamentsList.filters.standard")}
+      </FilterChip>
+      <FilterChip
+        active={typeFilter === "league"}
+        count={leagueCount}
         onClick={() => toggleType("league")}
       >
-        {t("common.league")} <span className="count">{leagueCount}</span>
-      </button>
+        {t("common.league")}
+      </FilterChip>
 
-      <div className="filter-search">
-        <Search width={13} height={13} />
-        <input
-          value={search}
-          onChange={(event) => onSearchChange(event.target.value)}
-          placeholder={t("tournamentsList.filters.searchPlaceholder")}
-        />
-      </div>
+      <SearchField
+        value={search}
+        onValueChange={onSearchChange}
+        label={t("common.searchLabel")}
+        placeholder={t("tournamentsList.filters.searchPlaceholder")}
+        containerClassName="ml-auto min-w-[200px] max-w-[300px] flex-1"
+      />
 
       <Select value={sortBy} onValueChange={(value) => onSortChange(value as SortBy)}>
-        <SelectTrigger className="filter-sort h-8 w-[155px] shadow-none focus:ring-0 focus:ring-offset-0">
+        <SelectTrigger
+          aria-label={t("common.sortBy")}
+          className="filter-sort h-8 w-[155px] shadow-none focus:ring-0 focus:ring-offset-0"
+        >
           <SelectValue placeholder={t("common.sortBy")} />
         </SelectTrigger>
         <SelectContent>
@@ -125,7 +131,7 @@ const TournamentsFilters = ({
           </SelectItem>
         </SelectContent>
       </Select>
-    </div>
+    </FilterChipGroup>
   );
 };
 

@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useId } from "react";
 import { useTranslations } from "next-intl";
 import type { CustomFieldDefinition } from "@/types/registration.types";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import FieldLabel from "./FieldLabel";
+import FormField, { fieldControlClass, fieldInvalidClass } from "./FormField";
 import { getCustomFieldValidationError } from "./validation";
 
 interface CustomFieldProps {
@@ -22,6 +23,8 @@ export default function CustomField({
   onValidationChange,
 }: CustomFieldProps) {
   const t = useTranslations();
+  const id = useId();
+  const errorId = `${id}-error`;
   const inputType = definition.type === "number" ? "number" : definition.type === "url" ? "url" : "text";
   const validationError = getCustomFieldValidationError(definition, value);
 
@@ -29,20 +32,30 @@ export default function CustomField({
     onValidationChange?.(validationError);
   }, [onValidationChange, validationError]);
 
+  const errorNode = validationError ? (
+    <p id={errorId} className="text-xs text-destructive">
+      {validationError}
+    </p>
+  ) : null;
+
   if (definition.type === "select" && definition.options) {
     return (
       <div className="space-y-1.5">
-        <FieldLabel label={definition.label} required={definition.required} />
+        <FieldLabel label={definition.label} htmlFor={id} required={definition.required} />
         <select
+          id={id}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="h-9 w-full rounded-lg border border-[color:var(--aqt-border-2)] bg-white/3 px-3 text-sm text-[color:var(--aqt-fg)] outline-none"
+          aria-invalid={Boolean(validationError)}
+          aria-describedby={validationError ? errorId : undefined}
+          className={cn(fieldControlClass, "h-9", validationError && fieldInvalidClass)}
         >
           <option value="">{t("common.selectPlaceholder")}</option>
           {definition.options.map((opt) => (
             <option key={opt} value={opt}>{opt}</option>
           ))}
         </select>
+        {errorNode}
       </div>
     );
   }
@@ -50,33 +63,33 @@ export default function CustomField({
   if (definition.type === "checkbox") {
     return (
       <div className="space-y-2">
-        <label className="flex items-center gap-3">
+        {/* Radix Switch renders a <button>, so a wrapping <label> would not
+            associate. The id/htmlFor pair does. */}
+        <div className="flex items-center gap-3">
           <Switch
+            id={id}
             checked={value === "true"}
             onCheckedChange={(checked) => onChange(checked ? "true" : "false")}
+            aria-invalid={Boolean(validationError)}
+            aria-describedby={validationError ? errorId : undefined}
           />
-          <FieldLabel label={definition.label} required={definition.required} />
-        </label>
+          <FieldLabel label={definition.label} htmlFor={id} required={definition.required} />
+        </div>
+        {errorNode}
       </div>
     );
   }
 
   return (
-    <div className="space-y-1.5">
-      <FieldLabel label={definition.label} required={definition.required} />
-      <input
-        type={inputType}
-        placeholder={definition.placeholder ?? ""}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={cn(
-          "h-9 w-full rounded-lg border border-[color:var(--aqt-border-2)] bg-white/3 px-3 text-sm text-[color:var(--aqt-fg)] placeholder-white/30 outline-none transition-colors focus:border-[color:var(--aqt-border-2)]",
-          validationError && "border-red-500/70 text-red-100 placeholder:text-red-200/60 focus:border-red-500/70",
-        )}
-      />
-      {validationError && (
-        <p className="text-xs text-red-400">{validationError}</p>
-      )}
-    </div>
+    <FormField
+      id={id}
+      label={definition.label}
+      required={definition.required}
+      type={inputType}
+      placeholder={definition.placeholder ?? ""}
+      value={value}
+      onChange={onChange}
+      error={validationError}
+    />
   );
 }

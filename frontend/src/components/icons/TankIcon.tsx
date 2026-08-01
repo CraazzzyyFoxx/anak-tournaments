@@ -6,7 +6,7 @@ export interface TankIconProps {
   color?: string;
 }
 
-const TankIcon = ({ width = 24, height = 24, color = "white" }: TankIconProps) => {
+const TankIcon = ({ width = 24, height = 24, color = "currentColor" }: TankIconProps) => {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"

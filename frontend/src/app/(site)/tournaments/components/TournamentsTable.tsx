@@ -2,39 +2,42 @@
 
 import React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { LayoutGrid, ArrowUpRight } from "lucide-react";
 
 import type { Tournament } from "@/types/tournament.types";
 import { cn, formatDateRange } from "@/lib/utils";
+import { getTournamentStatusMeta } from "@/lib/tournament-status";
+import { DataPagination } from "@/components/ui/data-pagination";
 import { relativeTime, stageProgress } from "./tournaments-helpers";
-
-const stopPropagation = (event: React.MouseEvent) => event.stopPropagation();
 
 const TournamentRow = ({ tournament }: { tournament: Tournament }) => {
   const t = useTranslations();
-  const router = useRouter();
-  const designClass =
-    tournament.status === "live" || tournament.status === "playoffs"
-      ? "live"
-      : tournament.status === "registration" || tournament.status === "check_in"
-        ? "upcoming"
-        : tournament.status === "completed" || tournament.status === "archived"
-          ? "finished"
-          : "draft";
+  const locale = useLocale();
+  const { variant } = getTournamentStatusMeta(tournament.status);
   const stage = stageProgress(tournament, tournament.status, t);
   const players = tournament.participants_count ?? 0;
 
   return (
-    <tr onClick={() => router.push(`/tournaments/${tournament.id}`)}>
+    <tr>
       <td>
         <div className="tn-name-cell">
           <span className="nm">
-            {tournament.name}
+            {/* A plain link on the name, not a row-wide `position:absolute`
+                overlay. A `<tr>` is not a valid containing block for absolutely
+                positioned children, so the overlay's width leaked past the
+                table's scroll container and dragged the whole document sideways
+                (+408px at 375px wide). The name link is the boring, correct
+                target: focusable, announced, and contained. */}
+            <Link
+              href={`/tournaments/${tournament.id}`}
+              className="rounded-[2px] outline-none hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]"
+            >
+              {tournament.name}
+            </Link>
             {(tournament.status === "live" || tournament.status === "playoffs") && (
               <span className="status-pill live" style={{ fontSize: "8.5px", padding: "2px 7px" }}>
-                <span className="dot" />
+                <span aria-hidden className="dot" />
                 {t("common.live")}
               </span>
             )}
@@ -54,7 +57,7 @@ const TournamentRow = ({ tournament }: { tournament: Tournament }) => {
             )}
           </span>
           <span className="sub">
-            {formatDateRange(tournament.start_date, tournament.end_date)}
+            {formatDateRange(tournament.start_date, tournament.end_date, locale)}
             {tournament.is_league && (
               <>
                 <span className="sep">·</span>
@@ -71,8 +74,8 @@ const TournamentRow = ({ tournament }: { tournament: Tournament }) => {
         </div>
       </td>
       <td>
-        <span className={`tn-status ${designClass}`}>
-          <span className="dot" />
+        <span className={`tn-status ${variant}`}>
+          <span aria-hidden className="dot" />
           {t(`common.statusBadge.${tournament.status}`)}
         </span>
       </td>
@@ -94,14 +97,14 @@ const TournamentRow = ({ tournament }: { tournament: Tournament }) => {
       <td>
         <div className="tn-teams">
           <div className="stack">
-            <span className="big">{players}</span>
+            <span className="big tabular-nums">{players}</span>
             <span className="sub">{t("common.players")}</span>
           </div>
         </div>
       </td>
       <td className="r">
         <span className="tn-id">
-          {relativeTime(tournament.updated_at ?? tournament.start_date, t)}
+          {relativeTime(tournament.updated_at ?? tournament.start_date, t, locale)}
         </span>
       </td>
       <td className="r">
@@ -109,18 +112,16 @@ const TournamentRow = ({ tournament }: { tournament: Tournament }) => {
           <Link
             href={`/tournaments/${tournament.id}/bracket`}
             className="icon-btn"
-            title={t("common.bracket")}
-            onClick={stopPropagation}
+            aria-label={t("tournamentsList.row.bracketAria", { name: tournament.name })}
           >
-            <LayoutGrid width={13} height={13} />
+            <LayoutGrid aria-hidden width={13} height={13} />
           </Link>
           <Link
             href={`/tournaments/${tournament.id}`}
             className="icon-btn"
-            title={t("common.open")}
-            onClick={stopPropagation}
+            aria-label={t("tournamentsList.row.openAria", { name: tournament.name })}
           >
-            <ArrowUpRight width={13} height={13} />
+            <ArrowUpRight aria-hidden width={13} height={13} />
           </Link>
         </div>
       </td>
@@ -147,17 +148,35 @@ const TournamentsTable = ({ tournaments, page, pageSize, onPageChange }: Tournam
 
   return (
     <section className="tn-card">
-      <table className="tn">
+      {/* Labelled, focusable scroll region. Without it the 780px table is
+          clipped by the card at narrow widths — the last three columns were
+          simply unreachable on a phone — and the row-wide overlay link leaked
+          its width into the document, scrolling the whole page sideways. */}
+      <div
+        className="tn-table-scroll"
+        role="region"
+        aria-label={t("common.tournaments")}
+        tabIndex={0}
+      >
+        <table className="tn">
         <thead>
           <tr>
-            <th>{t("common.tournament")}</th>
-            <th style={{ width: 120 }}>{t("common.status")}</th>
-            <th style={{ width: 170 }}>{t("common.stage")}</th>
-            <th style={{ width: 110 }}>{t("common.playersLabel")}</th>
-            <th className="r" style={{ width: 110 }}>
+            <th scope="col">{t("common.tournament")}</th>
+            <th scope="col" style={{ width: 120 }}>
+              {t("common.status")}
+            </th>
+            <th scope="col" style={{ width: 170 }}>
+              {t("common.stage")}
+            </th>
+            <th scope="col" style={{ width: 110 }}>
+              {t("common.playersLabel")}
+            </th>
+            <th scope="col" className="r" style={{ width: 110 }}>
               {t("common.updated")}
             </th>
-            <th className="r" style={{ width: 80 }} />
+            <th scope="col" className="r" style={{ width: 80 }}>
+              <span className="sr-only">{t("common.actions")}</span>
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -165,45 +184,20 @@ const TournamentsTable = ({ tournaments, page, pageSize, onPageChange }: Tournam
             <TournamentRow key={tournament.id} tournament={tournament} />
           ))}
         </tbody>
-      </table>
-
-      <div className="pagination">
-        <span className="page-info">
-          {t("common.showingRange", {
-            start: String(rangeStart),
-            end: String(rangeEnd),
-            total: String(total)
-          })}
-        </span>
-        <div className="page-controls">
-          <button
-            type="button"
-            className={cn("page-btn", safePage <= 1 && "disabled")}
-            onClick={() => safePage > 1 && onPageChange(safePage - 1)}
-            disabled={safePage <= 1}
-          >
-            ←
-          </button>
-          {Array.from({ length: totalPages }, (_, index) => index + 1).map((pageNumber) => (
-            <button
-              key={pageNumber}
-              type="button"
-              className={cn("page-btn", pageNumber === safePage && "active")}
-              onClick={() => onPageChange(pageNumber)}
-            >
-              {pageNumber}
-            </button>
-          ))}
-          <button
-            type="button"
-            className={cn("page-btn", safePage >= totalPages && "disabled")}
-            onClick={() => safePage < totalPages && onPageChange(safePage + 1)}
-            disabled={safePage >= totalPages}
-          >
-            →
-          </button>
-        </div>
+        </table>
       </div>
+
+      <DataPagination
+        className="border-t border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-[18px] py-3.5"
+        page={safePage}
+        totalPages={totalPages}
+        onPageChange={onPageChange}
+        summary={t("common.showingRange", {
+          start: String(rangeStart),
+          end: String(rangeEnd),
+          total: String(total)
+        })}
+      />
     </section>
   );
 };

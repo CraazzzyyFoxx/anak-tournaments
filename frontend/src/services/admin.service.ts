@@ -23,6 +23,7 @@ import {
   TournamentUpdateInput,
   TournamentPreviewAccessEntry,
   TournamentStatusTransitionInput,
+  TournamentReadiness,
   TournamentPhaseScheduleEntryInput,
   StageCreateInput,
   StageUpdateInput,
@@ -80,8 +81,9 @@ import {
   DiscordChannelInput,
   LogHistoryResponse,
   LogProcessingRecord,
+  LogProcessingStats,
+  LogProcessingStatus,
   LogUploadResponse,
-  QueueDepth,
   SeedResultRead,
   PlayerSubRole,
   PlayerSubRoleCreateInput,
@@ -143,6 +145,12 @@ class AdminService {
 
   async getTournament(id: number): Promise<Tournament> {
     const response = await apiFetch(`/api/v1/admin/tournaments/${id}`);
+    return response.json();
+  }
+
+  /** Readiness aggregate for the hub living checklist (D13, §7.1). */
+  async getTournamentReadiness(id: number): Promise<TournamentReadiness> {
+    const response = await apiFetch(`/api/v1/admin/tournaments/${id}/readiness`);
     return response.json();
   }
 
@@ -1100,15 +1108,41 @@ class AdminService {
 
   async getLogHistory(
     tournamentId?: number,
-    params?: { encounterId?: number; workspaceId?: number | null; limit?: number; offset?: number }
+    params?: {
+      encounterId?: number;
+      workspaceId?: number | null;
+      /** Server-side status filter; omit for every status. */
+      status?: LogProcessingStatus;
+      /** Server-side match across filename, error, uploader and encounter name. */
+      search?: string;
+      limit?: number;
+      offset?: number;
+    }
   ): Promise<LogHistoryResponse> {
+    const search = params?.search?.trim();
     const response = await apiFetch("/api/v1/admin/logs/history", {
       query: {
         ...(tournamentId != null && { tournament_id: tournamentId }),
         ...(params?.encounterId != null && { encounter_id: params.encounterId }),
         ...(params?.workspaceId != null && { workspace_id: params.workspaceId }),
+        ...(params?.status && { status: params.status }),
+        ...(search && { search }),
         limit: params?.limit ?? 50,
         offset: params?.offset ?? 0
+      }
+    });
+    return response.json();
+  }
+
+  async getLogStats(
+    tournamentId?: number,
+    params?: { encounterId?: number; workspaceId?: number | null }
+  ): Promise<LogProcessingStats> {
+    const response = await apiFetch("/api/v1/admin/logs/stats", {
+      query: {
+        ...(tournamentId != null && { tournament_id: tournamentId }),
+        ...(params?.encounterId != null && { encounter_id: params.encounterId }),
+        ...(params?.workspaceId != null && { workspace_id: params.workspaceId })
       }
     });
     return response.json();
@@ -1132,11 +1166,6 @@ class AdminService {
       method: "POST",
       body: formData
     });
-    return response.json();
-  }
-
-  async getQueueStatus(): Promise<QueueDepth[]> {
-    const response = await apiFetch("/api/v1/admin/logs/queue-status");
     return response.json();
   }
 

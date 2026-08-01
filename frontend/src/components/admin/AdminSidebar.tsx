@@ -27,7 +27,7 @@ import {
   SidebarBackToSite,
   SidebarUserDropdown,
   SidebarWorkspaceLogoItem
-} from "@/components/sidebar/sidebar-shared";
+} from "@/components/admin/sidebar-shared";
 import { cn } from "@/lib/utils";
 
 export function AdminSidebar() {
@@ -45,9 +45,7 @@ export function AdminSidebar() {
     })
   );
   const adminToolsGroup = navigationGroups.find((group) => group.title === "Administration");
-  const primaryGroups = navigationGroups.filter(
-    (group) => group.title !== "Administration" && group.title !== "Overview"
-  );
+  const primaryGroups = navigationGroups.filter((group) => group.title !== "Administration");
   const { open: commandOpen, setOpen: setCommandOpen } = useCommandPalette();
 
   const allHrefs = navigationGroups.flatMap((g) => g.items.map((i) => i.href));
@@ -63,12 +61,19 @@ export function AdminSidebar() {
         <button
           type="button"
           onClick={() => setCommandOpen(true)}
-          className="mt-1 flex h-8 w-full items-center gap-2 rounded-lg border border-sidebar-border/60 bg-sidebar-accent/40 px-2.5 text-[12px] text-sidebar-foreground/35 transition-colors hover:border-sidebar-border hover:text-sidebar-foreground/50 cursor-pointer group-data-[collapsible=icon]:hidden"
+          aria-label="Search admin pages (Ctrl or Cmd + K)"
+          aria-keyshortcuts="Control+K Meta+K"
+          className="mt-1 flex h-8 w-full cursor-pointer items-center gap-2 rounded-lg border border-sidebar-border/60 bg-sidebar-accent/40 px-2.5 text-sm text-sidebar-foreground/50 transition-colors hover:border-sidebar-border hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
         >
-          <Search className="size-3.5 shrink-0" />
-          <span>Search...</span>
-          <kbd className="ml-auto rounded border border-sidebar-border/70 bg-sidebar/80 px-1 py-0.5 text-[10px] font-medium leading-none text-sidebar-foreground/30">
-            /
+          <Search aria-hidden className="size-3.5 shrink-0" />
+          <span aria-hidden className="group-data-[collapsible=icon]:hidden">
+            Search…
+          </span>
+          <kbd
+            aria-hidden
+            className="ml-auto rounded border border-sidebar-border/70 bg-sidebar/80 px-1 py-0.5 text-xs font-medium leading-none text-sidebar-foreground/40 group-data-[collapsible=icon]:hidden"
+          >
+            Ctrl K
           </kbd>
         </button>
       </SidebarHeader>
@@ -82,9 +87,9 @@ export function AdminSidebar() {
               <div className="mx-2 my-2 h-px bg-sidebar-border/40 group-data-[collapsible=icon]:mx-1" />
             )}
 
-            {/* Group label — subtle, lowercase-style */}
+            {/* Group label — subtle, sentence case */}
             <div className="flex items-center gap-2 px-3 py-1.5 group-data-[collapsible=icon]:hidden">
-              <span className="text-[11px] font-medium text-sidebar-foreground/30">
+              <span className="text-xs font-medium text-sidebar-foreground/30">
                 {group.title}
               </span>
             </div>
@@ -100,18 +105,19 @@ export function AdminSidebar() {
                         isActive={isActive}
                         tooltip={item.title}
                         className={cn(
-                          "relative h-[30px] rounded-md px-2.5 text-[13px] transition-all",
+                          "relative h-8 rounded-md px-2.5 text-sm transition-all",
                           "text-sidebar-foreground/55 hover:text-sidebar-foreground hover:bg-sidebar-accent/60",
                           isActive && [
                             "bg-sidebar-accent text-sidebar-foreground font-medium",
                             // Left accent bar
                             "before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2",
-                            "before:h-4 before:w-[2px] before:rounded-full before:bg-sidebar-primary"
+                            "before:h-4 before:w-0.5 before:rounded-full before:bg-sidebar-primary"
                           ]
                         )}
                       >
-                        <Link href={item.href}>
+                        <Link href={item.href} aria-current={isActive ? "page" : undefined}>
                           <item.icon
+                            aria-hidden
                             className={cn(
                               "size-5",
                               isActive ? "text-sidebar-primary" : "text-sidebar-foreground/40"
@@ -146,19 +152,20 @@ export function AdminSidebar() {
                       isActive={isActive}
                       tooltip={item.title}
                       className={cn(
-                        "relative h-[28px] rounded-md px-2.5 text-[12px]",
+                        "relative h-7 rounded-md px-2.5 text-sm",
                         "text-sidebar-foreground/40 hover:text-sidebar-foreground/70 hover:bg-sidebar-accent/40",
                         isActive && [
                           "bg-sidebar-accent/60 text-sidebar-foreground/80 font-medium",
                           "before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2",
-                          "before:h-3 before:w-[2px] before:rounded-full before:bg-sidebar-primary/70"
+                          "before:h-3 before:w-0.5 before:rounded-full before:bg-sidebar-primary/70"
                         ]
                       )}
                     >
-                      <Link href={item.href}>
+                      <Link href={item.href} aria-current={isActive ? "page" : undefined}>
                         <item.icon
+                          aria-hidden
                           className={cn(
-                            "size-4.5",
+                            "size-4",
                             isActive ? "text-sidebar-primary/70" : "text-sidebar-foreground/30"
                           )}
                         />

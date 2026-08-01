@@ -1,9 +1,9 @@
 import React from "react";
 import { CheckCircle2, Circle, Clock, Lock, Unlock, XCircle } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
 import StatusMetaBadge from "@/components/status/StatusMetaBadge";
-import type { StatusMeta } from "@/types/balancer-admin.types";
+import { StatusIconBadge } from "@/components/status/StatusIconBadge";
+import type { StatusMeta } from "@/types/registration.types";
 
 interface StatusBadgeProps {
   status?: string | null;
@@ -42,20 +42,14 @@ interface CheckInStatusBadgeProps {
 export function CheckInStatusBadge({ checkedIn, className }: CheckInStatusBadgeProps) {
   const t = useTranslations();
   const isCheckedIn = checkedIn === true;
-  const label = isCheckedIn ? t("common.checkedIn") : t("common.notCheckedIn");
 
   return (
-    <span
-      title={label}
-      aria-label={label}
-      className={cn(
-        "inline-flex size-5 items-center justify-center",
-        isCheckedIn ? "text-emerald-400" : "text-white/35",
-        className
-      )}
-    >
-      {isCheckedIn ? <CheckCircle2 className="size-4" /> : <Circle className="size-4" />}
-    </span>
+    <StatusIconBadge
+      icon={isCheckedIn ? CheckCircle2 : Circle}
+      label={isCheckedIn ? t("common.checkedIn") : t("common.notCheckedIn")}
+      tone={isCheckedIn ? "positive" : "neutral"}
+      className={className}
+    />
   );
 }
 
@@ -104,40 +98,33 @@ export function AdmissionStatusBadge({
   const isApprovedAndReady =
     registrationStatus === "approved" && balancerStatus === "ready" && !isProfileClosed;
 
-  let status: "admitted" | "pending_check_in" | "not_admitted";
   if (!isApprovedAndReady) {
-    status = "not_admitted";
-  } else if (checkedIn === true) {
-    status = "admitted";
-  } else {
-    status = "pending_check_in";
+    return (
+      <StatusIconBadge
+        icon={XCircle}
+        label={t("common.admissionStatus.notAdmitted")}
+        tone="negative"
+        className={className}
+      />
+    );
   }
-
-  let label = "";
-  if (status === "admitted") {
-    label = t("common.admissionStatus.admitted");
-  } else if (status === "pending_check_in") {
-    label = t("common.admissionStatus.pendingCheckIn");
-  } else {
-    label = t("common.admissionStatus.notAdmitted");
+  if (checkedIn === true) {
+    return (
+      <StatusIconBadge
+        icon={CheckCircle2}
+        label={t("common.admissionStatus.admitted")}
+        tone="positive"
+        className={className}
+      />
+    );
   }
-
   return (
-    <span
-      title={label}
-      aria-label={label}
-      className={cn(
-        "inline-flex size-5 items-center justify-center",
-        status === "admitted" && "text-emerald-400",
-        status === "pending_check_in" && "text-amber-400",
-        status === "not_admitted" && "text-red-400",
-        className
-      )}
-    >
-      {status === "admitted" && <CheckCircle2 className="size-4" />}
-      {status === "pending_check_in" && <Clock className="size-4" />}
-      {status === "not_admitted" && <XCircle className="size-4" />}
-    </span>
+    <StatusIconBadge
+      icon={Clock}
+      label={t("common.admissionStatus.pendingCheckIn")}
+      tone="warning"
+      className={className}
+    />
   );
 }
 
@@ -149,34 +136,33 @@ interface ProfileStatusBadgeProps {
 
 export function ProfileStatusBadge({ profilesOpen, className }: ProfileStatusBadgeProps) {
   const t = useTranslations();
-  const label =
-    profilesOpen === true
-      ? t("common.profileOpen")
-      : profilesOpen === false
-        ? t("common.profileClosed")
-        : t("common.profileNotChecked");
 
+  if (profilesOpen === true) {
+    return (
+      <StatusIconBadge
+        icon={Unlock}
+        label={t("common.profileOpen")}
+        tone="positive"
+        className={className}
+      />
+    );
+  }
+  if (profilesOpen === false) {
+    return (
+      <StatusIconBadge
+        icon={Lock}
+        label={t("common.profileClosed")}
+        tone="negative"
+        className={className}
+      />
+    );
+  }
   return (
-    <span
-      title={label}
-      aria-label={label}
-      className={cn(
-        "inline-flex size-5 items-center justify-center",
-        profilesOpen === true
-          ? "text-emerald-400"
-          : profilesOpen === false
-            ? "text-red-400"
-            : "text-white/35",
-        className
-      )}
-    >
-      {profilesOpen === true ? (
-        <Unlock className="size-4" />
-      ) : profilesOpen === false ? (
-        <Lock className="size-4" />
-      ) : (
-        <Circle className="size-4" />
-      )}
-    </span>
+    <StatusIconBadge
+      icon={Circle}
+      label={t("common.profileNotChecked")}
+      tone="neutral"
+      className={className}
+    />
   );
 }

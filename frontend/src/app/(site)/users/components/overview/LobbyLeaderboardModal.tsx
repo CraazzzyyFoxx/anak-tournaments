@@ -12,6 +12,7 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 import userService from "@/services/user.service";
+import { getPlayerSlug } from "@/utils/player";
 import type { LobbyLeaderboard } from "@/types/user.types";
 
 // Stats where a lower value is better (rank 1 = lowest). Mirrors the backend's
@@ -135,7 +136,7 @@ const LobbyLeaderboardModal = ({ userId, tournamentId, stat, statLabel, onClose 
                       </td>
                       <td className="px-3 py-2 align-middle">
                         <Link
-                          href={`/users/${e.name.replace("#", "-")}`}
+                          href={`/users/${getPlayerSlug(e.name)}`}
                           className="font-semibold text-[color:var(--aqt-fg)] hover:text-[color:var(--aqt-teal)]"
                         >
                           {e.name}

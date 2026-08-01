@@ -3,10 +3,14 @@
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { Users } from "lucide-react";
+import { ArrowRight, Users } from "lucide-react";
 import { UserBestTeammate } from "@/types/user.types";
 import { LogStatsName } from "@/types/stats.types";
-import { CardSurface, heroInitials } from "@/app/(site)/users/components/shared/atoms";
+import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
+import { heroInitials } from "@/components/hero/heroRole";
+import { getPlayerSlug } from "@/utils/player";
+import { DataPagination } from "@/components/ui/data-pagination";
+import { SearchField } from "@/components/ui/search-field";
 import {
   Dialog,
   DialogContent,
@@ -31,8 +35,6 @@ const TEAMMATE_COLORS = [
   "linear-gradient(135deg, hsl(0 80% 70%), hsl(0 62% 46%))"
 ];
 
-const playerSlug = (name: string) => name.replace(/#/g, "-");
-
 const formatStat = (value: number | null | undefined, digits: number) =>
   value != null && Number.isFinite(value) ? value.toFixed(digits) : "—";
 
@@ -55,7 +57,8 @@ const OverviewTeammatesSynergy = ({ teammates, totalCount, totalMaps }: Props) =
         <Dialog>
           <DialogTrigger asChild>
             <button type="button" className="aqt-seeall">
-              {t("common.all")} →
+              {t("common.all")}
+              <ArrowRight aria-hidden className="size-3" />
             </button>
           </DialogTrigger>
           <DialogContent className="max-w-2xl border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg)] p-0">
@@ -101,7 +104,7 @@ const TeammateRows = ({
         return (
           <Link
             key={tm.user.id}
-            href={`/users/${playerSlug(tm.user.name)}`}
+            href={`/users/${getPlayerSlug(tm.user.name)}`}
             className="group grid grid-cols-[26px_minmax(0,1fr)_auto] items-center gap-2.5 border-b border-[color:var(--aqt-border)] px-[18px] py-2.5 transition-colors last:border-b-0 hover:bg-[hsl(0_0%_100%/0.02)]"
           >
             <span
@@ -175,18 +178,12 @@ const AllTeammatesTable = ({
   return (
     <div className="flex min-h-0 flex-col">
       <div className="border-b border-[color:var(--aqt-border)] px-5 py-3">
-        <div className="relative">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[color:var(--aqt-fg-faint)]">
-            <circle cx="11" cy="11" r="7" />
-            <path d="m20 20-3.5-3.5" />
-          </svg>
-          <input
-            placeholder={t("users.overview.teammates.searchPlaceholder")}
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full rounded-lg border border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.025)] px-3 py-1.5 pl-8 text-[14px] text-[color:var(--aqt-fg)] outline-none"
-          />
-        </div>
+        <SearchField
+          label={t("users.overview.teammates.searchLabel")}
+          placeholder={t("users.overview.teammates.searchPlaceholder")}
+          value={search}
+          onValueChange={onSearchChange}
+        />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
         <table className="aqt-tnum w-full border-collapse text-[13.5px]">
@@ -212,7 +209,7 @@ const AllTeammatesTable = ({
               return (
                 <tr key={tm.user.id} className="border-b border-[color:var(--aqt-border)] last:border-b-0 hover:bg-[hsl(0_0%_100%/0.02)]">
                   <td className="px-3 py-2">
-                    <Link href={`/users/${playerSlug(tm.user.name)}`} className="inline-flex items-center gap-1.5 hover:text-[color:var(--aqt-teal)]">
+                    <Link href={`/users/${getPlayerSlug(tm.user.name)}`} className="inline-flex items-center gap-1.5 hover:text-[color:var(--aqt-teal)]">
                       <span className="font-semibold text-[color:var(--aqt-fg)]">{tmName}</span>
                       {tmTag ? <span className="aqt-mono text-[11px] text-[color:var(--aqt-fg-faint)]">#{tmTag}</span> : null}
                     </Link>
@@ -245,36 +242,21 @@ const AllTeammatesTable = ({
         </table>
       </div>
       {filtered.length > perPage ? (
-        <div className="flex items-center justify-between border-t border-[color:var(--aqt-border)] px-5 py-2.5">
-          <span className="aqt-mono text-[12px] text-[color:var(--aqt-fg-dim)]">
-            {t("users.overview.teammates.pageRange", {
-              start: String((safePage - 1) * perPage + 1),
-              end: String(Math.min(safePage * perPage, filtered.length)),
-              total: String(filtered.length)
-            })}
-          </span>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              disabled={safePage <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="aqt-mono inline-flex h-7 min-w-[28px] items-center justify-center rounded-[6px] border border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-[14px] text-[color:var(--aqt-fg-muted)] transition-colors hover:text-[color:var(--aqt-fg)] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              ‹
-            </button>
-            <span className="aqt-mono px-1.5 text-[13px] text-[color:var(--aqt-fg-muted)]">
-              {safePage} / {pages}
+        <DataPagination
+          page={safePage}
+          totalPages={pages}
+          onPageChange={setPage}
+          className="border-t border-[color:var(--aqt-border)] px-5 py-2.5"
+          summary={
+            <span className="aqt-mono text-[12px] text-[color:var(--aqt-fg-dim)]">
+              {t("users.overview.teammates.pageRange", {
+                start: String((safePage - 1) * perPage + 1),
+                end: String(Math.min(safePage * perPage, filtered.length)),
+                total: String(filtered.length)
+              })}
             </span>
-            <button
-              type="button"
-              disabled={safePage >= pages}
-              onClick={() => setPage((p) => Math.min(pages, p + 1))}
-              className="aqt-mono inline-flex h-7 min-w-[28px] items-center justify-center rounded-[6px] border border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-[14px] text-[color:var(--aqt-fg-muted)] transition-colors hover:text-[color:var(--aqt-fg)] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              ›
-            </button>
-          </div>
-        </div>
+          }
+        />
       ) : null}
     </div>
   );

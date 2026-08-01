@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { useAuthProfile } from "@/hooks/useAuthProfile";
+import { getApiErrorMessage } from "@/lib/api-error";
 import registrationService from "@/services/registration.service";
 import meService from "@/services/me.service";
 import type { RegistrationForm } from "@/types/registration.types";
@@ -52,13 +53,16 @@ export default function RegistrationWizard({
       });
       onClose();
     },
-    onError: (err: Error) => setError(err.message),
+    onError: (err: unknown) => setError(getApiErrorMessage(err)),
   });
 
   return (
     <div className="flex flex-col gap-4">
       {error && (
-        <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
+        <div
+          role="alert"
+          className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"
+        >
           {error}
         </div>
       )}

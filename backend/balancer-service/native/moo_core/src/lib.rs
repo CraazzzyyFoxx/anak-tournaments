@@ -40,6 +40,9 @@ fn default_internal_role_spread_weight() -> f64 {
 fn default_team_max_pain_weight() -> f64 {
     1.0
 }
+fn default_low_rank_collision_weight() -> f64 {
+    250.0
+}
 fn default_rank_comfort_tilt() -> f64 {
     0.5
 }
@@ -98,6 +101,15 @@ struct ConfigSpec {
     team_max_pain_weight: f64,
     role_line_balance_weight: f64,
     sub_role_collision_weight: f64,
+    /// Порог «низкорангового» игрока в канонической шкале рейтингов
+    /// (rating_scale_ceiling, обычно 3500). 0 = механика выключена.
+    /// Игрок низкоранговый, если максимум его рейтингов ≤ порога.
+    #[serde(default)]
+    low_rank_threshold: f64,
+    /// Штраф за каждую пару низкоранговых игроков в одной команде;
+    /// нормируется на число команд, входит в balance-объектив.
+    #[serde(default = "default_low_rank_collision_weight")]
+    low_rank_collision_weight: f64,
     use_captains: bool,
     #[serde(default = "default_tank_impact")]
     tank_impact_weight: f64,
@@ -183,6 +195,7 @@ struct PlayerData {
     first_preference: Option<usize>,
     seed_role: usize,
     captain_team: Option<usize>,
+    is_low_rank: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -212,6 +225,7 @@ struct TeamStats {
     intra_std: f64,
     max_pain: i32,
     subrole_collisions: i32,
+    low_rank_pairs: i32,
     role_totals: Vec<f64>,
     role_counts: Vec<usize>,
     internal_role_spread: f64,

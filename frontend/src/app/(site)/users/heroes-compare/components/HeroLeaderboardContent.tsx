@@ -8,7 +8,7 @@ import { useTranslations } from "next-intl";
 
 import heroService from "@/services/hero.service";
 import tournamentService from "@/services/tournament.service";
-import { type SearchableImageOption } from "@/app/(site)/users/compare/components/SearchableImageSelect";
+import { type SearchableImageOption } from "@/components/ui/searchable-image-select";
 
 import {
   COL,
@@ -91,34 +91,58 @@ const HeroLeaderboardContent = () => {
   );
 
   const heroRole = selectedHero?.type ?? selectedHero?.role ?? undefined;
-  const defaultKeys = getDefaultColumnKeys(heroRole);
-  const columnKeys: StatKey[] = Array.from({ length: NUM_COLUMNS }, (_, i) => {
-    const v = searchParams.get(`col${i}`);
-    return v && COL[v] ? v : defaultKeys[i] ?? defaultKeys[0];
-  });
+  const defaultKeys = useMemo(() => getDefaultColumnKeys(heroRole), [heroRole]);
 
-  const sortDirs = columnKeys.map((key, i): "asc" | "desc" => {
-    const v = searchParams.get(`dir${i}`);
-    if (v === "asc" || v === "desc") return v;
-    return (COL[key]?.ascending ?? false) ? "asc" : "desc";
-  });
+  // Memoized so the table's per-column bar scales and its memoized rows stay
+  // stable across renders that only change hover state.
+  const columnKeys = useMemo<StatKey[]>(
+    () =>
+      Array.from({ length: NUM_COLUMNS }, (_, i) => {
+        const v = searchParams.get(`col${i}`);
+        return v && COL[v] ? v : defaultKeys[i] ?? defaultKeys[0];
+      }),
+    [searchParams, defaultKeys]
+  );
+
+  // A single active column drives the shared row order of the whole table.
+  const rawSortIndex = Number(searchParams.get("sort"));
+  const sortIndex =
+    Number.isInteger(rawSortIndex) && rawSortIndex >= 0 && rawSortIndex < NUM_COLUMNS
+      ? rawSortIndex
+      : 0;
+
+  const dirParam = searchParams.get("dir");
+  const sortDir: "asc" | "desc" =
+    dirParam === "asc" || dirParam === "desc"
+      ? dirParam
+      : (COL[columnKeys[sortIndex]]?.ascending ?? false)
+        ? "asc"
+        : "desc";
 
   const handleColumnSelect = (colIndex: number, key: StatKey) => {
+    const updates: Record<string, string | number | undefined> = { [`col${colIndex}`]: key };
+    // Swapping the stat the sorted column shows resets to that stat's natural direction.
+    if (colIndex === sortIndex) {
+      updates.dir = (COL[key]?.ascending ?? false) ? "asc" : "desc";
+    }
+    updateParams(updates);
+  };
+
+  const handleSortChange = (colIndex: number) => {
+    if (colIndex === sortIndex) {
+      updateParams({ dir: sortDir === "asc" ? "desc" : "asc" });
+      return;
+    }
     updateParams({
-      [`col${colIndex}`]: key,
-      [`dir${colIndex}`]: (COL[key]?.ascending ?? false) ? "asc" : "desc",
+      sort: colIndex,
+      dir: (COL[columnKeys[colIndex]]?.ascending ?? false) ? "asc" : "desc",
     });
   };
 
-  const handleToggleSort = (colIndex: number) => {
-    updateParams({ [`dir${colIndex}`]: sortDirs[colIndex] === "asc" ? "desc" : "asc" });
-  };
-
   const handleResetColumns = () => {
-    const updates: Record<string, undefined> = {};
+    const updates: Record<string, undefined> = { sort: undefined, dir: undefined };
     for (let i = 0; i < NUM_COLUMNS; i++) {
       updates[`col${i}`] = undefined;
-      updates[`dir${i}`] = undefined;
     }
     updateParams(updates);
   };
@@ -145,9 +169,9 @@ const HeroLeaderboardContent = () => {
       />
 
       {heroId === undefined ? (
-        <div className="flex flex-col items-center justify-center gap-3.5 rounded-[var(--aqt-radius)] border border-[var(--aqt-border)] bg-[var(--aqt-card)] py-[90px] text-center">
-          <Sword className="h-10 w-10 text-[var(--aqt-fg-faint)] opacity-50" />
-          <p className="max-w-sm text-sm leading-relaxed text-[var(--aqt-fg-dim)]">
+        <div className="flex flex-col items-center justify-center gap-3.5 rounded-[var(--aqt-radius)] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] py-[90px] text-center">
+          <Sword aria-hidden className="h-10 w-10 text-[color:var(--aqt-fg-faint)] opacity-50" />
+          <p className="max-w-sm text-sm leading-relaxed text-[color:var(--aqt-fg-dim)]">
             {t("users.heroesCompare.selectHeroPrompt")}
           </p>
         </div>
@@ -159,9 +183,10 @@ const HeroLeaderboardContent = () => {
           rows={rows}
           isLoading={leaderboardQuery.isLoading}
           columnKeys={columnKeys}
-          sortDirs={sortDirs}
+          sortIndex={sortIndex}
+          sortDir={sortDir}
           onColumnSelect={handleColumnSelect}
-          onToggleSort={handleToggleSort}
+          onSortChange={handleSortChange}
         />
       )}
     </div>

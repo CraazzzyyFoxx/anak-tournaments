@@ -19,15 +19,15 @@ const chartConfig = {
   },
   avg_sr: {
     label: "Avg. team value",
-    color: "#2563eb"
+    color: "var(--aqt-teal)"
   },
   players_count: {
     label: "Players count",
-    color: "#f28e1c"
+    color: "var(--aqt-amber)"
   },
   avg_closeness: {
     label: "Avg. match balance",
-    color: "#6d398b"
+    color: "var(--aqt-violet)"
   }
 } satisfies ChartConfig;
 

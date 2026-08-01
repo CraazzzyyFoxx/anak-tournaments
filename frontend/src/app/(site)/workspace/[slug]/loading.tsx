@@ -5,7 +5,7 @@ import {
   PopularHeroesCardSkeleton,
   StatsGridSkeleton,
   TableCardSkeleton,
-} from "@/app/home-skeletons";
+} from "@/components/skeletons/dashboard-skeletons";
 
 export default function Loading() {
   return (

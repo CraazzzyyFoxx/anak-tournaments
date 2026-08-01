@@ -1,4 +1,5 @@
 import type { Statistics as BalancerStatistics } from "@/types/balancer.types";
+import type { StatusKind, StatusMeta, StatusScope } from "@/types/registration.types";
 
 export type BalancerRoleCode = "tank" | "dps" | "support";
 export type BalancerRosterKey = "Tank" | "Damage" | "Support";
@@ -145,6 +146,14 @@ export interface BalancerTournamentConfig {
 
 export interface BalancerTournamentConfigUpsertInput {
   config_json?: Record<string, unknown> | null;
+}
+
+/** Response of `GET /api/balancer/tournaments/{id}/summary` (D29 tool-context resolver). */
+export interface BalancerTournamentSummary {
+  id: number;
+  name: string;
+  status: string;
+  workspace_id: number;
 }
 
 export interface TournamentSheetUpsertInput {
@@ -364,23 +373,6 @@ export interface AdminRegistrationRole {
 }
 
 export type BalancerStatus = string;
-export type StatusScope = "registration" | "balancer";
-export type StatusKind = "builtin" | "custom";
-
-export interface StatusMeta {
-  value: string;
-  scope: StatusScope;
-  is_builtin: boolean;
-  kind: StatusKind;
-  is_override: boolean;
-  can_edit: boolean;
-  can_delete: boolean;
-  can_reset: boolean;
-  icon_slug: string | null;
-  icon_color: string | null;
-  name: string;
-  description: string | null;
-}
 
 export interface BalancerCustomStatus {
   id: number;

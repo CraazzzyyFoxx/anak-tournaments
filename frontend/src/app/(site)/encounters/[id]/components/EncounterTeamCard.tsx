@@ -30,9 +30,10 @@ const EncounterTeamCard = ({
   const t = useTranslations();
   const titleColor = isHome ? "text-[color:var(--aqt-teal)]" : "text-[color:var(--aqt-rose)]";
   const sortedPlayers = sortTeamPlayers(team.players);
-  const backgroundColor = isHome
-    ? "bg-[#104e48] hover:bg-[#104e48]"
-    : "bg-[#4c2332] hover:bg-[#4c2332]";
+  // Derived from the same side token the title uses, instead of the two invented
+  // hex values (#104e48 / #4c2332) that used to sit beside it.
+  const sideAccent = isHome ? "var(--aqt-teal)" : "var(--aqt-rose)";
+  const headerBackground = `color-mix(in srgb, ${sideAccent} 22%, var(--aqt-card))`;
 
   return (
     <Card>
@@ -49,68 +50,67 @@ const EncounterTeamCard = ({
       <ScrollArea>
         <Table>
           <TableHeader>
-            <TableRow className={backgroundColor}>
-              <TableHead className="text-white">{t("encounters.team.colName")}</TableHead>
-              <TableHead className="text-center text-white">
+            <TableRow style={{ backgroundColor: headerBackground }}>
+              <TableHead scope="col">{t("encounters.team.colName")}</TableHead>
+              <TableHead scope="col" className="text-center">
                 {t("encounters.team.colDivision")}
               </TableHead>
-              <TableHead className="text-center text-white">{t("encounters.team.colNew")}</TableHead>
-              <TableHead className="text-center text-white">
+              <TableHead scope="col" className="text-center">
+                {t("encounters.team.colNew")}
+              </TableHead>
+              <TableHead scope="col" className="text-center">
                 {t("encounters.team.colNewRole")}
               </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {sortedPlayers.map((player, index) => {
-              const color = isHome ? "from-[#104e48]" : "from-[#4c2332]";
-
-              return (
-                <TableRow key={player.id} className="hover:bg-background">
-                  <TableCell
-                    className={`flex flex-row items-center gap-2 bg-gradient-to-r ${color} via-background to-background ${index == sortedPlayers.length - 1 ? "rounded-b-lg" : ""}`}
-                  >
-                    <div className="flex flex-row items-center gap-2">
-                      {player.is_substitution ? (
-                        <div>
-                          <Recycle />
-                        </div>
-                      ) : (
-                        <PlayerRoleIcon role={player.role} />
-                      )}
-                      <PlayerName player={player} includeSpecialization={true} />
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-center">
-                      <DivisionIcon
-                        division={player.division}
-                        width={32}
-                        height={32}
-                        tournamentGrid={tournamentGrid}
-                      />
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-center">
-                      {player.is_newcomer ? (
-                        <CirclePlus className="text-[color:var(--aqt-amber)]" />
-                      ) : (
-                        <CircleMinus className="text-[color:var(--aqt-fg-faint)]" />
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-center">
-                      {player.is_newcomer_role ? (
-                        <CirclePlus className="text-[color:var(--aqt-amber)]" />
-                      ) : (
-                        <CircleMinus className="text-[color:var(--aqt-fg-faint)]" />
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
+            {sortedPlayers.map((player, index) => (
+              <TableRow key={player.id} className="hover:bg-background">
+                <TableCell
+                  className={`flex flex-row items-center gap-2 ${index === sortedPlayers.length - 1 ? "rounded-b-lg" : ""}`}
+                  style={{
+                    background: `linear-gradient(to right, color-mix(in srgb, ${sideAccent} 20%, var(--aqt-card)), var(--aqt-card) 60%)`
+                  }}
+                >
+                  <div className="flex flex-row items-center gap-2">
+                    {player.is_substitution ? (
+                      <Recycle aria-label={t("encounters.team.substitution")} />
+                    ) : (
+                      <PlayerRoleIcon role={player.role} />
+                    )}
+                    <PlayerName player={player} includeSpecialization={true} />
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="flex justify-center">
+                    <DivisionIcon
+                      division={player.division}
+                      width={32}
+                      height={32}
+                      tournamentGrid={tournamentGrid}
+                    />
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="flex justify-center">
+                    {player.is_newcomer ? (
+                      <CirclePlus className="text-[color:var(--aqt-amber)]" />
+                    ) : (
+                      <CircleMinus className="text-[color:var(--aqt-fg-faint)]" />
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="flex justify-center">
+                    {player.is_newcomer_role ? (
+                      <CirclePlus className="text-[color:var(--aqt-amber)]" />
+                    ) : (
+                      <CircleMinus className="text-[color:var(--aqt-fg-faint)]" />
+                    )}
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
           </TableBody>
         </Table>
         <ScrollBar orientation="horizontal" />

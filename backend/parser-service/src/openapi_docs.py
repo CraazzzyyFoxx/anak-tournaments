@@ -12,7 +12,11 @@ DOCS: dict[str, dict] = {
     },
     "rpc.parser.logs.history": {
         "summary": "List log processing records",
-        "description": "Lists match-log processing records filtered by tournament, encounter or workspace with pagination; permission is gated per filter argument.",
+        "description": "Lists match-log processing records filtered by tournament, encounter or workspace, plus optional status and free-text search, with pagination; permission is gated per filter argument.",
+    },
+    "rpc.parser.logs.stats": {
+        "summary": "Log processing stats",
+        "description": "Returns scope-wide processing counts per status, average completed duration and the newest record timestamp for a tournament, encounter or workspace; permission is gated per filter argument like history.",
     },
     "rpc.parser.logs.retry": {
         "summary": "Retry log processing",

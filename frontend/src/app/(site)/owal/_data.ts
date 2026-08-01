@@ -1,7 +1,5 @@
 import tournamentService from "@/services/tournament.service";
 import { OwalStack, OwalStandings } from "@/types/tournament.types";
-import { EMPTY_OWAL_STACKS, EMPTY_OWAL_STANDINGS } from "./_constants";
-import { resolveSeason } from "./_utils";
 
 export type OwalPageSearchParams = {
   season?: string;
@@ -12,6 +10,15 @@ export type OwalPageData = {
   selectedSeason: string | undefined;
   standings: OwalStandings;
   stacks: OwalStack[];
+};
+
+const EMPTY_STANDINGS: OwalStandings = { days: [], standings: [] };
+const EMPTY_STACKS: OwalStack[] = [];
+
+/** Falls back to the newest season whenever the requested one does not exist. */
+const resolveSeason = (requestedSeason: string | undefined, seasons: string[]) => {
+  if (!requestedSeason || seasons.length === 0) return seasons[0];
+  return seasons.includes(requestedSeason) ? requestedSeason : seasons[0];
 };
 
 export const getOwalPageData = async (
@@ -28,8 +35,8 @@ export const getOwalPageData = async (
     return {
       seasons,
       selectedSeason,
-      standings: EMPTY_OWAL_STANDINGS,
-      stacks: EMPTY_OWAL_STACKS
+      standings: EMPTY_STANDINGS,
+      stacks: EMPTY_STACKS
     };
   }
 

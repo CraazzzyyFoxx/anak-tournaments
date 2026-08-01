@@ -112,7 +112,7 @@ export default function WorkspacesPage() {
     {
       accessorKey: "id",
       header: "ID",
-      cell: ({ row }) => <div className="font-mono text-xs">{row.getValue("id")}</div>
+      cell: ({ row }) => <div className="font-mono text-xs tabular-nums">{row.getValue("id")}</div>
     },
     {
       id: "icon",
@@ -120,7 +120,7 @@ export default function WorkspacesPage() {
       cell: ({ row }) => {
         const ws = row.original;
         return ws.icon_url ? (
-          <img src={ws.icon_url} alt={ws.name} className="h-8 w-8 rounded-md border object-cover" />
+          <img src={ws.icon_url} alt="" aria-hidden className="h-8 w-8 rounded-md border object-cover" />
         ) : (
           <div className="h-8 w-8 rounded-md border bg-muted flex items-center justify-center text-muted-foreground text-xs font-medium">
             {ws.name.charAt(0).toUpperCase()}
@@ -161,7 +161,7 @@ export default function WorkspacesPage() {
               variant="ghost"
               size="icon"
               onClick={() => router.push(`/admin/workspaces/${ws.id}`)}
-              aria-label="Edit"
+              aria-label={`Edit ${ws.name}`}
             >
               <Pencil className="h-4 w-4" />
             </Button>
@@ -171,7 +171,7 @@ export default function WorkspacesPage() {
                 size="icon"
                 onClick={() => handleDelete(ws)}
                 className="text-destructive"
-                aria-label="Delete"
+                aria-label={`Delete ${ws.name}`}
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
@@ -190,8 +190,8 @@ export default function WorkspacesPage() {
         actions={
           isSuperuser ? (
             <Button onClick={handleCreate}>
-              <Plus className="mr-2 h-4 w-4" />
-              Create Workspace
+              <Plus className="mr-2 h-4 w-4" aria-hidden />
+              Create workspace
             </Button>
           ) : null
         }
@@ -219,22 +219,26 @@ export default function WorkspacesPage() {
           };
         }}
         columns={columns}
-        searchPlaceholder="Search workspaces..."
-        emptyMessage="No workspaces found."
+        searchPlaceholder="Search workspaces…"
+        emptyMessage={
+          isSuperuser
+            ? "No workspaces yet. Use “Create workspace” to add the first one."
+            : "No workspaces yet. The ones you administer will show up here."
+        }
       />
 
       {/* Create Dialog */}
       <EntityFormDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
-        title="Create Workspace"
+        title="Create workspace"
         description="Create a new isolated workspace for tournaments"
         onSubmit={(e) => {
           e.preventDefault();
           createMutation.mutate(formData);
         }}
         isSubmitting={createMutation.isPending}
-        submittingLabel="Creating..."
+        submittingLabel="Creating workspace…"
         errorMessage={createMutation.isError ? createMutation.error.message : undefined}
         isDirty={isCreateDirty}
       >
@@ -277,7 +281,7 @@ export default function WorkspacesPage() {
             />
           </div>
           <div>
-            <Label>Icon</Label>
+            <p className="text-sm font-medium leading-none">Icon</p>
             <div className="mt-1.5">
               <EditableAvatar
                 src={iconPreview}
@@ -308,8 +312,8 @@ export default function WorkspacesPage() {
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
         onConfirm={() => selected && deleteMutation.mutate(selected.id)}
-        title="Delete Workspace"
-        description={`Are you sure you want to delete "${selected?.name}"? This will remove all tournaments and data in this workspace.`}
+        title="Delete workspace"
+        description={`Deleting “${selected?.name}” permanently removes every tournament, team, player, match and member inside it. This cannot be undone.`}
         cascadeInfo={[
           "All tournaments in this workspace",
           "All teams, players, matches, and statistics",

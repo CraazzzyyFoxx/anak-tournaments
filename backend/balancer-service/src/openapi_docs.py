@@ -17,6 +17,10 @@ DOCS: dict[str, dict] = {
         "summary": "Upsert tournament balancer config",
         "description": "Creates or updates the per-tournament balancer config (requires workspace team-import) and emits a balancer config-changed realtime event.",
     },
+    "rpc.balancer.admin.tournament_summary_get": {
+        "summary": "Get tournament summary",
+        "description": "Returns the tournament id/name/status/workspace_id for the balancer tool context; requires workspace team-read and includes hidden tournaments.",
+    },
     "rpc.balancer.admin.balance_get": {
         "summary": "Get saved balance",
         "description": "Returns the saved team balance for a tournament for admins with workspace team-read permission, or null when none exists.",

@@ -2,19 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronsUpDown, Loader2, UserMinus } from "lucide-react";
+import { Loader2, UserMinus } from "lucide-react";
+import { AdminCombobox } from "@/components/admin/AdminCombobox";
 import { Button } from "@/components/ui/button";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList
-} from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { CommandGroup, CommandItem } from "@/components/ui/command";
 import { notify } from "@/lib/notify";
-import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import { rbacService } from "@/services/rbac.service";
 
@@ -35,6 +27,7 @@ export function TournamentPreviewAllowlist({
 }: TournamentPreviewAllowlistProps) {
   const queryClient = useQueryClient();
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [candidateSearch, setCandidateSearch] = useState("");
 
   const accessQueryKey = ["tournament-preview-access", tournamentId] as const;
 
@@ -43,7 +36,7 @@ export function TournamentPreviewAllowlist({
     queryFn: () => adminService.getTournamentPreviewAccess(tournamentId)
   });
 
-  const { data: candidates } = useQuery({
+  const { data: candidates, isLoading: candidatesLoading } = useQuery({
     queryKey: ["rbac-users", workspaceId, "all"],
     queryFn: () => rbacService.listUsersAll({ workspace_id: workspaceId })
   });
@@ -85,48 +78,46 @@ export function TournamentPreviewAllowlist({
 
   return (
     <div className="space-y-3">
-      <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
-            role="combobox"
-            size="sm"
-            className="justify-between w-full"
-            disabled={addMutation.isPending}
-          >
-            <span className="truncate text-muted-foreground">Add a user to the allowlist…</span>
-            <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-          <Command>
-            <CommandInput placeholder="Search user by name…" />
-            <CommandList>
-              <CommandEmpty>No users found.</CommandEmpty>
-              <CommandGroup>
-                {selectableCandidates.map((user) => (
-                  <CommandItem
-                    key={user.id}
-                    value={`${user.username} ${user.email}`}
-                    onSelect={() => {
-                      addMutation.mutate(user.id);
-                      setPickerOpen(false);
-                    }}
-                  >
-                    <Check className="mr-2 size-4 opacity-0" />
-                    <span className="truncate">{user.username || user.email || `#${user.id}`}</span>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
+      <AdminCombobox
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        label="Add a user to the allowlist…"
+        disabled={addMutation.isPending}
+        searchValue={candidateSearch}
+        onSearchValueChange={setCandidateSearch}
+        searchLabel="Search workspace users"
+        searchPlaceholder="Search user by name…"
+        emptyMessage={
+          candidatesLoading ? (
+            <span className="flex items-center justify-center gap-2 text-muted-foreground">
+              <Loader2 className="size-3.5 animate-spin" aria-hidden />
+              Loading workspace users…
+            </span>
+          ) : (
+            "No matching users. Only workspace members can be added."
+          )
+        }
+      >
+        <CommandGroup>
+          {selectableCandidates.map((user) => (
+            <CommandItem
+              key={user.id}
+              value={`${user.username} ${user.email}`}
+              onSelect={() => {
+                addMutation.mutate(user.id);
+                setPickerOpen(false);
+                setCandidateSearch("");
+              }}
+            >
+              <span className="truncate">{user.username || user.email || `#${user.id}`}</span>
+            </CommandItem>
+          ))}
+        </CommandGroup>
+      </AdminCombobox>
 
       {entriesLoading ? (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Loader2 className="size-3.5 animate-spin" />
+          <Loader2 className="size-3.5 animate-spin" aria-hidden />
           Loading allowlist…
         </div>
       ) : (entries ?? []).length === 0 ? (
@@ -135,26 +126,29 @@ export function TournamentPreviewAllowlist({
         </p>
       ) : (
         <ul className="flex flex-col gap-1.5">
-          {(entries ?? []).map((entry) => (
-            <li
-              key={entry.id}
-              className="flex items-center justify-between gap-2 rounded-md border border-border/50 bg-muted/20 px-3 py-1.5"
-            >
-              <span className="truncate text-sm">
-                {nameByAuthUserId.get(entry.auth_user_id) ?? `User #${entry.auth_user_id}`}
-              </span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2 text-destructive hover:text-destructive"
-                onClick={() => removeMutation.mutate(entry.auth_user_id)}
-                disabled={removeMutation.isPending}
+          {(entries ?? []).map((entry) => {
+            const displayName =
+              nameByAuthUserId.get(entry.auth_user_id) ?? `User #${entry.auth_user_id}`;
+            return (
+              <li
+                key={entry.id}
+                className="flex items-center justify-between gap-2 rounded-md border border-border/50 bg-muted/20 px-3 py-1.5"
               >
-                <UserMinus className="size-3.5" />
-              </Button>
-            </li>
-          ))}
+                <span className="truncate text-sm">{displayName}</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-label={`Remove ${displayName} from the preview allowlist`}
+                  className="h-7 px-2 text-destructive hover:text-destructive"
+                  onClick={() => removeMutation.mutate(entry.auth_user_id)}
+                  disabled={removeMutation.isPending}
+                >
+                  <UserMinus className="size-3.5" aria-hidden />
+                </Button>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

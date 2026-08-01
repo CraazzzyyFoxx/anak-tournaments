@@ -2,7 +2,8 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { cn } from "@/lib/utils";
+import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
+import { SearchField } from "@/components/ui/search-field";
 
 export type Filter = "all" | "wins" | "losses" | "draws" | "group" | "playoffs" | "finals" | "mvp1" | "has_logs";
 
@@ -27,31 +28,21 @@ const MatchesFilterBar = ({ activeFilter, onApplyFilter, search, onSearchChange 
     { key: "has_logs", label: t("users.matches.filters.hasLogs") }
   ];
   return (
-    <div className="aqt-filters mb-3.5">
+    <FilterChipGroup label={t("common.filters")} className="mb-3.5">
       {filters.map((f) => (
-        <span
-          key={f.key}
-          className={cn("aqt-filter-chip", activeFilter === f.key && "active")}
-          onClick={() => onApplyFilter(f.key)}
-          role="button"
-          tabIndex={0}
-        >
+        <FilterChip key={f.key} active={activeFilter === f.key} onClick={() => onApplyFilter(f.key)}>
           {f.label}
-        </span>
+        </FilterChip>
       ))}
-      <div className="filter-search relative ml-auto min-w-[200px] max-w-[300px] flex-1">
-        <input
-          placeholder={t("users.matches.searchOpponent")}
-          value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
-          className="aqt-tnum w-full rounded-lg border border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] px-3 py-1.5 pl-8 text-[14px] text-[color:var(--aqt-fg)] outline-none"
-        />
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[color:var(--aqt-fg-faint)]">
-          <circle cx="11" cy="11" r="7" />
-          <path d="m20 20-3.5-3.5" />
-        </svg>
-      </div>
-    </div>
+      <SearchField
+        label={t("users.matches.searchOpponentLabel")}
+        placeholder={t("users.matches.searchOpponent")}
+        value={search}
+        onValueChange={onSearchChange}
+        containerClassName="ml-auto min-w-[200px] max-w-[300px] flex-1"
+        className="aqt-tnum"
+      />
+    </FilterChipGroup>
   );
 };
 

@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AlertCircle, CheckCircle2, Download, LoaderCircle } from "lucide-react";
 
+import { TONE_TEXT } from "@/components/admin/tone";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,6 +30,12 @@ interface Props {
 }
 
 export function DivisionGridImportWizard({ workspaceId, canImport, onImported }: Props) {
+  const fieldId = useId();
+  const workspaceFieldId = `${fieldId}-workspace`;
+  const gridFieldId = `${fieldId}-grid`;
+  const versionFieldId = `${fieldId}-version`;
+  const mappingsFieldId = `${fieldId}-mappings`;
+  const iconsFieldId = `${fieldId}-icons`;
   const [sourceWorkspaceId, setSourceWorkspaceId] = useState<number | null>(null);
   const [sourceGridId, setSourceGridId] = useState<number | null>(null);
   const [sourceVersionId, setSourceVersionId] = useState<number | null>(null);
@@ -81,7 +88,9 @@ export function DivisionGridImportWizard({ workspaceId, canImport, onImported }:
     },
     onError: (error) =>
       notify.error("Import could not start", {
-        description: error instanceof Error ? error.message : "The import request failed."
+        description: `The version was not copied, so nothing changed in this workspace. ${
+          error instanceof Error ? error.message : "The import request failed."
+        } Re-check the workspace, grid and version, then try again.`
       })
   });
 
@@ -108,7 +117,9 @@ export function DivisionGridImportWizard({ workspaceId, canImport, onImported }:
   return (
     <Card id="import">
       <CardHeader>
-        <CardTitle>Import one version</CardTitle>
+        <CardTitle asChild>
+          <h2>Import one version</h2>
+        </CardTitle>
         <CardDescription>
           Copy a specific division-grid version from another workspace. The imported version is not
           activated automatically.
@@ -117,9 +128,10 @@ export function DivisionGridImportWizard({ workspaceId, canImport, onImported }:
       <CardContent className="space-y-5">
         {workspacesQuery.isError && (
           <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
+            <AlertCircle aria-hidden className="h-4 w-4" />
             <AlertTitle>Workspaces could not be loaded</AlertTitle>
             <AlertDescription>
+              Reload the page to try again.{" "}
               {workspacesQuery.error instanceof Error
                 ? workspacesQuery.error.message
                 : "The workspace list is unavailable."}
@@ -127,9 +139,20 @@ export function DivisionGridImportWizard({ workspaceId, canImport, onImported }:
           </Alert>
         )}
 
+        {!workspacesQuery.isLoading &&
+          !workspacesQuery.isError &&
+          (workspacesQuery.data ?? []).length === 0 && (
+            <p className="rounded-lg border border-dashed border-border/60 p-4 text-sm text-muted-foreground">
+              No other workspace exposes a division grid you can import. Ask a workspace owner to
+              publish one, or build a grid from scratch instead.
+            </p>
+          )}
+
         <div className="grid gap-4 lg:grid-cols-3">
-          <label className="grid gap-2 text-sm font-medium">
-            Source workspace
+          <div className="grid gap-2">
+            <label className="text-sm font-medium" htmlFor={workspaceFieldId}>
+              Source workspace
+            </label>
             <Select
               value={sourceWorkspaceId?.toString() ?? ""}
               onValueChange={(value) => {
@@ -139,7 +162,7 @@ export function DivisionGridImportWizard({ workspaceId, canImport, onImported }:
               }}
               disabled={isRunning}
             >
-              <SelectTrigger>
+              <SelectTrigger id={workspaceFieldId}>
                 <SelectValue
                   placeholder={workspacesQuery.isLoading ? "Loading…" : "Choose workspace"}
                 />
@@ -152,10 +175,12 @@ export function DivisionGridImportWizard({ workspaceId, canImport, onImported }:
                 ))}
               </SelectContent>
             </Select>
-          </label>
+          </div>
 
-          <label className="grid gap-2 text-sm font-medium">
-            Division grid
+          <div className="grid gap-2">
+            <label className="text-sm font-medium" htmlFor={gridFieldId}>
+              Division grid
+            </label>
             <Select
               value={sourceGridId?.toString() ?? ""}
               onValueChange={(value) => {
@@ -164,7 +189,7 @@ export function DivisionGridImportWizard({ workspaceId, canImport, onImported }:
               }}
               disabled={sourceWorkspaceId === null || gridsQuery.isLoading || isRunning}
             >
-              <SelectTrigger>
+              <SelectTrigger id={gridFieldId}>
                 <SelectValue placeholder={gridsQuery.isLoading ? "Loading…" : "Choose grid"} />
               </SelectTrigger>
               <SelectContent>
@@ -175,16 +200,18 @@ export function DivisionGridImportWizard({ workspaceId, canImport, onImported }:
                 ))}
               </SelectContent>
             </Select>
-          </label>
+          </div>
 
-          <label className="grid gap-2 text-sm font-medium">
-            Version
+          <div className="grid gap-2">
+            <label className="text-sm font-medium" htmlFor={versionFieldId}>
+              Version
+            </label>
             <Select
               value={sourceVersionId?.toString() ?? ""}
               onValueChange={(value) => setSourceVersionId(Number(value))}
               disabled={selectedGrid === null || isRunning}
             >
-              <SelectTrigger>
+              <SelectTrigger id={versionFieldId}>
                 <SelectValue placeholder="Choose version" />
               </SelectTrigger>
               <SelectContent>
@@ -198,26 +225,32 @@ export function DivisionGridImportWizard({ workspaceId, canImport, onImported }:
                   ))}
               </SelectContent>
             </Select>
-          </label>
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-x-6 gap-y-3 rounded-lg border bg-muted/20 p-4">
-          <label className="flex items-center gap-2 text-sm">
+          <div className="flex items-center gap-2">
             <Checkbox
+              id={mappingsFieldId}
               checked={includeOwRankMappings}
               onCheckedChange={(checked) => setIncludeOwRankMappings(checked === true)}
               disabled={isRunning}
             />
-            OW rank mappings
-          </label>
-          <label className="flex items-center gap-2 text-sm">
+            <label className="text-sm" htmlFor={mappingsFieldId}>
+              OW rank mappings
+            </label>
+          </div>
+          <div className="flex items-center gap-2">
             <Checkbox
+              id={iconsFieldId}
               checked={includeIcons}
               onCheckedChange={(checked) => setIncludeIcons(checked === true)}
               disabled={isRunning}
             />
-            Copy tier icons
-          </label>
+            <label className="text-sm" htmlFor={iconsFieldId}>
+              Copy tier icons
+            </label>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -226,35 +259,41 @@ export function DivisionGridImportWizard({ workspaceId, canImport, onImported }:
             disabled={!request || importMutation.isPending || isRunning}
           >
             {importMutation.isPending || isRunning ? (
-              <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+              <LoaderCircle aria-hidden className="mr-2 h-4 w-4 animate-spin" />
             ) : (
-              <Download className="mr-2 h-4 w-4" />
+              <Download aria-hidden className="mr-2 h-4 w-4" />
             )}
             Import version
           </Button>
           {job && (
             <span
-              className="flex items-center gap-2 text-sm text-muted-foreground"
+              className="flex items-center gap-2 text-sm tabular-nums text-muted-foreground"
               aria-live="polite"
             >
-              {job.status === "completed" && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
-              {job.status === "failed" && <AlertCircle className="h-4 w-4 text-destructive" />}
-              Import #{job.id}: {job.status}
+              {job.status === "completed" && (
+                <CheckCircle2 aria-hidden className={`h-4 w-4 ${TONE_TEXT.success}`} />
+              )}
+              {job.status === "failed" && (
+                <AlertCircle aria-hidden className={`h-4 w-4 ${TONE_TEXT.danger}`} />
+              )}
+              Import #{job.id} · {job.status}
             </span>
           )}
           {(job?.status === "completed" || job?.status === "failed") && (
             <Button variant="ghost" onClick={reset}>
-              Import another
+              Import another version
             </Button>
           )}
         </div>
 
         {job?.status === "failed" && (
           <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
+            <AlertCircle aria-hidden className="h-4 w-4" />
             <AlertTitle>Import failed</AlertTitle>
             <AlertDescription>
-              {job.error ?? "The import worker did not return an error."}
+              Nothing was copied into this workspace.{" "}
+              {job.error ??
+                "The import worker did not report a reason — retry the import, and ask an administrator to check the worker logs if it fails again."}
             </AlertDescription>
           </Alert>
         )}

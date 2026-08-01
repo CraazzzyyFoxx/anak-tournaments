@@ -62,7 +62,8 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
         ? t("encounters.detail.winner")
         : t("encounters.detail.loser");
   const name = encounter.tournament.name;
-  const stageLabel = encounter.stage_item?.name ?? encounter.stage?.name ?? t("encounters.unassigned");
+  const stageLabel =
+    encounter.stage_item?.name ?? encounter.stage?.name ?? t("common.unassignedStage");
   const tournamentGrid = encounter.tournament.division_grid_version ?? null;
 
   return (
@@ -127,7 +128,7 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
           </CardHeader>
           <CardContent className="grid xs:grid-cols-1 xs1:grid-cols-2 md:grid-cols-3 xl:grid-cols-2 gap-4">
             {encounter.matches.map((match) => (
-              <EncounterMatch key={match.id} match={match} />
+              <EncounterMatch key={match.id} match={match} tournamentGrid={tournamentGrid} />
             ))}
           </CardContent>
         </Card>

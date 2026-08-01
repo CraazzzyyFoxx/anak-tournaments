@@ -5,17 +5,14 @@ import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useSidebar } from "@/components/ui/sidebar";
 import workspaceService from "@/services/workspace.service";
 import { useAuthProfileStore } from "@/stores/auth-profile.store";
 import type { WorkspaceMember } from "@/types/workspace.types";
-import { cn } from "@/lib/utils";
 import { memberDisplayName } from "@/lib/workspace-member";
 
-/** Portal target rendered by {@link BalancerSidebar} in its footer. */
+/** Portal target rendered by {@link BalancerToolTopBar}. */
 const PRESENCE_SLOT_ID = "balancer-presence-slot";
-const MAX_VISIBLE_EXPANDED = 5;
-const MAX_VISIBLE_COLLAPSED = 3;
+const MAX_VISIBLE = 5;
 
 type BalancerPresenceStackProps = {
   /** auth_user_id values currently connected to this tournament's balancer. */
@@ -36,21 +33,16 @@ function initials(name: string): string {
 
 /**
  * Live avatar stack of users currently viewing this tournament's balancer page.
- * Rendered into the balancer sidebar footer via a portal so it stays out of the
- * already-crowded top control bar. User ids come from the realtime presence
- * frame; profiles are resolved from the workspace member list. Adapts its layout
- * to the sidebar's collapsed (icon) state.
+ * Rendered into the tool top-bar via a portal (D30). User ids come from the
+ * realtime presence frame; profiles are resolved from the workspace member list.
  */
 export function BalancerPresenceStack({ userIds, workspaceId }: BalancerPresenceStackProps) {
-  const { state } = useSidebar();
-  const collapsed = state === "collapsed";
-
   // The presence frame is broadcast to every viewer and includes ourselves;
   // hide the current user so the stack only shows *other* people viewing.
   const currentUserId = useAuthProfileStore((store) => store.user?.id ?? null);
 
   const [slot, setSlot] = useState<HTMLElement | null>(null);
-  /* eslint-disable react-hooks/set-state-in-effect -- The portal target lives in the sidebar, outside this component, and is only available after hydration. */
+  /* eslint-disable react-hooks/set-state-in-effect -- The portal target lives in the top-bar, outside this component, and is only available after hydration. */
   useEffect(() => {
     setSlot(document.getElementById(PRESENCE_SLOT_ID));
   }, []);
@@ -83,52 +75,36 @@ export function BalancerPresenceStack({ userIds, workspaceId }: BalancerPresence
     return null;
   }
 
-  const maxVisible = collapsed ? MAX_VISIBLE_COLLAPSED : MAX_VISIBLE_EXPANDED;
-  const visible = uniqueUserIds.slice(0, maxVisible);
+  const visible = uniqueUserIds.slice(0, MAX_VISIBLE);
   const overflow = uniqueUserIds.length - visible.length;
 
   const content = (
-    <div className={cn("flex flex-col gap-1.5", collapsed ? "items-center" : "px-1")}>
-      {!collapsed ? (
-        <span className="px-1 text-[11px] font-medium text-sidebar-foreground/30">Viewing now</span>
-      ) : null}
-      <div
-        className={cn(
-          "flex",
-          collapsed
-            ? "flex-col items-center -space-y-2"
-            : "items-center -space-x-2"
-        )}
-        title={collapsed ? `${uniqueUserIds.length} viewing` : undefined}
-      >
-        {visible.map((userId) => {
-          const member = membersById.get(userId);
-          const name = memberDisplayName(member, userId);
-          return (
-            <Avatar
-              key={userId}
-              title={name}
-              className="h-7 w-7 border-2 border-sidebar bg-sidebar-accent text-xs"
-            >
-              {member?.avatar_url ? <AvatarImage src={member.avatar_url} alt={name} /> : null}
-              <AvatarFallback className="text-[10px] font-medium text-sidebar-foreground">
-                {initials(name)}
-              </AvatarFallback>
-            </Avatar>
-          );
-        })}
-        {overflow > 0 ? (
-          <span
-            className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-sidebar bg-sidebar-accent text-[10px] font-medium text-sidebar-foreground/70"
-            title={`${overflow} more viewer${overflow === 1 ? "" : "s"}`}
+    <div
+      className="flex items-center -space-x-2"
+      title={`${uniqueUserIds.length} viewing`}
+    >
+      {visible.map((userId) => {
+        const member = membersById.get(userId);
+        const name = memberDisplayName(member, userId);
+        return (
+          <Avatar
+            key={userId}
+            title={name}
+            className="h-7 w-7 border-2 border-background bg-muted text-xs"
           >
-            +{overflow}
-          </span>
-        ) : null}
-      </div>
-      {!collapsed ? (
-        <span className="px-1 text-xs text-sidebar-foreground/55">
-          {uniqueUserIds.length} viewing
+            {member?.avatar_url ? <AvatarImage src={member.avatar_url} alt={name} /> : null}
+            <AvatarFallback className="text-[10px] font-medium text-foreground">
+              {initials(name)}
+            </AvatarFallback>
+          </Avatar>
+        );
+      })}
+      {overflow > 0 ? (
+        <span
+          className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-background bg-muted text-[10px] font-medium text-muted-foreground"
+          title={`${overflow} more viewer${overflow === 1 ? "" : "s"}`}
+        >
+          +{overflow}
         </span>
       ) : null}
     </div>

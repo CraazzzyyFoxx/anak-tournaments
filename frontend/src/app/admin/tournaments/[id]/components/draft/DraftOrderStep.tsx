@@ -21,6 +21,7 @@ import { useTranslations } from "next-intl";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -76,14 +77,12 @@ export function DraftOrderStep({
     <div className="space-y-6">
       <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
         <div className="space-y-2">
-          <label htmlFor="captain-order" className="text-sm font-medium">
-            {t("captainOrder")}
-          </label>
+          <Label htmlFor="captain-order">{t("captainOrder")}</Label>
           <Select
             value={value.order}
             onValueChange={(order) => onChange({ ...value, order: order as DraftCaptainOrder })}
           >
-            <SelectTrigger id="captain-order">
+            <SelectTrigger id="captain-order" aria-label={t("captainOrder")}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -97,8 +96,8 @@ export function DraftOrderStep({
         </div>
         {value.order === "random" && (
           <div className="flex items-center gap-2 rounded-xl border border-border/70 bg-muted/20 px-3 py-2">
-            <LockKeyhole className="h-4 w-4 text-muted-foreground" />
-            <span className="font-mono text-xs">{value.randomSeed}</span>
+            <LockKeyhole className="h-4 w-4 text-muted-foreground" aria-hidden />
+            <span className="font-mono text-xs tabular-nums">{value.randomSeed}</span>
             <Button
               type="button"
               variant="ghost"
@@ -109,7 +108,7 @@ export function DraftOrderStep({
               }
               aria-label={t("newRandomSeed")}
             >
-              <RefreshCw className="h-3.5 w-3.5" />
+              <RefreshCw className="h-3.5 w-3.5" aria-hidden />
             </Button>
           </div>
         )}
@@ -145,14 +144,16 @@ export function DraftOrderStep({
                 key={id}
                 className="flex items-center gap-3 rounded-xl border border-border/70 bg-card px-4 py-3"
               >
-                <Badge className="grid h-7 w-7 place-items-center rounded-full p-0">{index + 1}</Badge>
+                <Badge className="grid h-7 w-7 place-items-center rounded-full p-0 tabular-nums">
+                  {index + 1}
+                </Badge>
                 {value.order === "random" ? (
-                  <Dices className="h-4 w-4 text-muted-foreground" />
+                  <Dices className="h-4 w-4 text-muted-foreground" aria-hidden />
                 ) : null}
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">
                   {registrationLabel(registration)}
                 </span>
-                <span className="font-mono text-xs text-muted-foreground">
+                <span className="font-mono text-xs tabular-nums text-muted-foreground">
                   {summarizeRegistration(registration).rank ?? "—"}
                 </span>
               </div>
@@ -200,13 +201,16 @@ function SortableCaptain({ id, position, label, rank }: SortableCaptainProps) {
         {...listeners}
         aria-label={t("moveCaptain", { name: label })}
       >
-        <GripVertical className="h-4 w-4" />
+        <GripVertical className="h-4 w-4" aria-hidden />
       </Button>
-      <Badge variant="secondary" className="grid h-7 w-7 place-items-center rounded-full p-0">
+      <Badge
+        variant="secondary"
+        className="grid h-7 w-7 place-items-center rounded-full p-0 tabular-nums"
+      >
         {position}
       </Badge>
       <span className="min-w-0 flex-1 truncate text-sm font-medium">{label}</span>
-      <span className="font-mono text-xs text-muted-foreground">{rank ?? "—"}</span>
+      <span className="font-mono text-xs tabular-nums text-muted-foreground">{rank ?? "—"}</span>
     </div>
   );
 }

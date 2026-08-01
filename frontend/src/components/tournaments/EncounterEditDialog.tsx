@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Star } from "lucide-react";
 
-import { EncounterScoreControls } from "@/components/admin/EncounterScoreControls";
+import { EncounterScoreControls } from "@/components/tournaments/EncounterScoreControls";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -132,20 +132,20 @@ function EncounterEditDialogBody({
   });
 
   return (
-    <DialogContent className="max-w-md bg-[#0c0d0f] border-zinc-800/80 text-white rounded-2xl p-6 shadow-2xl [&>button]:text-zinc-400 [&>button]:hover:text-white [&>button]:hover:bg-zinc-900">
+    <DialogContent className="max-w-md">
       <DialogHeader className="space-y-1">
-        <DialogTitle className="flex items-center gap-2 text-white text-lg font-bold tracking-tight">
+        <DialogTitle className="flex items-center gap-2 text-[color:var(--aqt-fg)] text-lg font-bold tracking-tight">
           {t("matchEdit.title")}
           {encounter.result_status === "pending_confirmation" && (
-            <Badge className="bg-amber-500/80 text-white border-0">
+            <Badge className="border-0 bg-warning text-warning-foreground">
               {t("matchEdit.pendingConfirmation")}
             </Badge>
           )}
           {encounter.result_status === "disputed" && (
-            <Badge className="bg-red-500/80 text-white border-0">{t("matchEdit.disputed")}</Badge>
+            <Badge className="border-0 bg-destructive text-destructive-foreground">{t("matchEdit.disputed")}</Badge>
           )}
         </DialogTitle>
-        <DialogDescription className="text-zinc-400 text-sm font-semibold mt-1">
+        <DialogDescription className="text-[color:var(--aqt-fg-muted)] text-sm font-semibold mt-1">
           {encounter.home_team?.name} vs {encounter.away_team?.name}
         </DialogDescription>
       </DialogHeader>
@@ -170,17 +170,17 @@ function EncounterEditDialogBody({
         />
 
         <div className="space-y-1.5">
-          <Label className="text-[13px] font-bold text-zinc-300">{t("matchEdit.bestOf")}</Label>
+          <Label className="text-[13px] font-bold text-[color:var(--aqt-fg-muted)]">{t("matchEdit.bestOf")}</Label>
           <Select value={String(bestOf)} onValueChange={(value) => setBestOf(Number(value))}>
-            <SelectTrigger className="w-full bg-zinc-950 border-zinc-800/85 text-white font-semibold rounded-lg focus:ring-0 focus:ring-offset-0 focus:border-zinc-300">
+            <SelectTrigger className="w-full rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] font-semibold text-[color:var(--aqt-fg)]">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="bg-[#0c0d0f] border-zinc-800 text-white">
+            <SelectContent>
               {BEST_OF_OPTIONS.map((n) => (
                 <SelectItem
                   key={n}
                   value={String(n)}
-                  className="focus:bg-zinc-800 focus:text-white hover:bg-zinc-800 text-zinc-200 cursor-pointer"
+                  className="cursor-pointer"
                 >
                   {`BO${n}`}
                 </SelectItem>
@@ -190,19 +190,19 @@ function EncounterEditDialogBody({
         </div>
 
         <div className="space-y-1.5">
-          <Label className="text-[13px] font-bold text-zinc-300">{t("matchEdit.status")}</Label>
+          <Label className="text-[13px] font-bold text-[color:var(--aqt-fg-muted)]">{t("matchEdit.status")}</Label>
           <Select value={status} onValueChange={setStatus}>
-            <SelectTrigger className="w-full bg-zinc-950 border-zinc-800/85 text-white font-semibold rounded-lg focus:ring-0 focus:ring-offset-0 focus:border-zinc-300">
+            <SelectTrigger className="w-full rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] font-semibold text-[color:var(--aqt-fg)]">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="bg-[#0c0d0f] border-zinc-800 text-white">
+            <SelectContent>
               {ENCOUNTER_STATUSES.map((item) => (
                 <SelectItem
                   key={item}
                   value={item}
-                  className="focus:bg-zinc-800 focus:text-white hover:bg-zinc-800 text-zinc-200 cursor-pointer"
+                  className="cursor-pointer"
                 >
-                  {item}
+                  {t(`matchEdit.statuses.${item}`)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -210,7 +210,7 @@ function EncounterEditDialogBody({
         </div>
 
         <div className="space-y-1.5">
-          <Label className="text-[13px] font-bold text-zinc-300">
+          <Label className="text-[13px] font-bold text-[color:var(--aqt-fg-muted)]">
             {t("matchEdit.matchCloseness")}
           </Label>
           <div className="flex items-center gap-1.5">
@@ -219,24 +219,26 @@ function EncounterEditDialogBody({
                 key={n}
                 type="button"
                 onClick={() => setStars(n === stars ? 0 : n)}
-                className="p-0.5 hover:scale-110 transition-transform focus-visible:outline-none"
+                aria-pressed={n <= stars}
                 aria-label={t("matchEdit.starsAria", { count: n })}
+                className="rounded p-0.5 transition-opacity hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
                 <Star
+                  aria-hidden
                   className={cn(
                     "h-5 w-5 transition-colors duration-150",
                     n <= stars
-                      ? "fill-yellow-400 text-yellow-400"
-                      : "text-zinc-700 hover:text-zinc-600"
+                      ? "fill-[color:var(--aqt-gold)] text-[color:var(--aqt-gold)]"
+                      : "text-[color:var(--aqt-fg-faint)]"
                   )}
                 />
               </button>
             ))}
-            <span className="ml-2 text-xs font-bold text-zinc-400">
+            <span className="ml-2 text-xs font-bold text-[color:var(--aqt-fg-muted)]">
               {stars > 0 ? `${stars}/10` : t("matchEdit.notSet")}
             </span>
           </div>
-          <p className="text-[11px] text-zinc-500 font-medium leading-normal mt-1">
+          <p className="text-[11px] text-[color:var(--aqt-fg-dim)] font-medium leading-normal mt-1">
             {t("matchEdit.closenessHint")}
           </p>
         </div>
@@ -245,14 +247,14 @@ function EncounterEditDialogBody({
           <CaptainReportsView encounter={encounter} reports={reportsQuery.data ?? []} />
         )}
 
-        {validationError && <p className="text-sm text-red-500 font-semibold">{validationError}</p>}
+        {validationError && <p className="text-sm text-destructive font-semibold">{validationError}</p>}
       </div>
 
       <DialogFooter className="mt-6 flex flex-row items-center justify-end gap-2">
         <Button
           variant="outline"
           onClick={() => onOpenChange(false)}
-          className="border-zinc-800 bg-transparent text-white font-semibold rounded-lg hover:bg-zinc-900 hover:text-white transition-colors h-10 px-5"
+          className="h-10 px-5 font-semibold"
         >
           {t("matchEdit.cancel")}
         </Button>
@@ -262,7 +264,7 @@ function EncounterEditDialogBody({
             variant="secondary"
             onClick={() => confirmMutation.mutate()}
             disabled={confirmMutation.isPending}
-            className="bg-zinc-800 text-white font-semibold rounded-lg hover:bg-zinc-700 transition-colors h-10 px-5"
+            className="h-10 px-5 font-semibold"
           >
             {confirmMutation.isPending ? t("matchEdit.confirming") : t("matchEdit.confirmResult")}
           </Button>
@@ -270,7 +272,7 @@ function EncounterEditDialogBody({
         <Button
           onClick={() => saveMutation.mutate()}
           disabled={!!validationError || saveMutation.isPending}
-          className="bg-white text-zinc-950 font-bold rounded-lg hover:bg-zinc-200 transition-colors h-10 px-5"
+          className="h-10 px-5 font-bold"
         >
           {saveMutation.isPending ? t("matchEdit.saving") : t("matchEdit.save")}
         </Button>

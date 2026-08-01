@@ -97,11 +97,11 @@ const HeroRadar = ({ radarData }: { radarData: RadarPoint[] | null }) => {
     ) : null}
     <div className="flex gap-3.5 pt-1.5 text-[12px] text-[color:var(--aqt-fg-muted)]">
       <span className="inline-flex items-center gap-1.5">
-        <span className="h-2.5 w-2.5 rounded-sm" style={{ background: "var(--aqt-teal)" }} />
+        <span aria-hidden className="h-2.5 w-2.5 rounded-sm" style={{ background: "var(--aqt-teal)" }} />
         {t("users.heroes.you")}
       </span>
       <span className="inline-flex items-center gap-1.5">
-        <span className="h-2.5 w-2.5 rounded-sm" style={{ background: "hsl(220 12% 55%)" }} />
+        <span aria-hidden className="h-2.5 w-2.5 rounded-sm" style={{ background: "hsl(220 12% 55%)" }} />
         {t("users.heroes.globalAvg")}
       </span>
     </div>

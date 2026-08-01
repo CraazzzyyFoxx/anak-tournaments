@@ -43,8 +43,8 @@ function FeedbackButtons({
         className={cn(
           "rounded p-0.5 transition-colors disabled:opacity-50",
           current === "confirmed"
-            ? "text-emerald-400"
-            : "text-muted-foreground hover:text-emerald-300",
+            ? "text-[color:var(--aqt-emerald)]"
+            : "text-muted-foreground hover:text-[color:var(--aqt-emerald)]",
         )}
       >
         <Check className="h-3 w-3" aria-hidden="true" />
@@ -58,8 +58,8 @@ function FeedbackButtons({
         className={cn(
           "rounded p-0.5 transition-colors disabled:opacity-50",
           current === "dismissed"
-            ? "text-red-400"
-            : "text-muted-foreground hover:text-red-300",
+            ? "text-[color:var(--aqt-rose)]"
+            : "text-muted-foreground hover:text-[color:var(--aqt-rose)]",
         )}
       >
         <X className="h-3 w-3" aria-hidden="true" />
@@ -69,21 +69,23 @@ function FeedbackButtons({
 }
 
 function scoreColor(score: number): string {
-  if (score >= 75) return "bg-emerald-500/20 text-emerald-200";
-  if (score >= 50) return "bg-amber-400/20 text-amber-100";
-  return "bg-red-500/20 text-red-100";
+  if (score >= 75)
+    return "bg-[color:color-mix(in_srgb,var(--aqt-emerald)_20%,transparent)] text-[color:var(--aqt-emerald)]";
+  if (score >= 50)
+    return "bg-[color:color-mix(in_srgb,var(--aqt-amber)_20%,transparent)] text-[color:var(--aqt-amber)]";
+  return "bg-[color:color-mix(in_srgb,var(--aqt-rose)_20%,transparent)] text-[color:var(--aqt-rose)]";
 }
 
 function anomalyTone(kind: AnomalyKind): string {
   switch (kind) {
     case "smurf":
-      return "border-amber-400/50 text-amber-200";
+      return "border-[color:color-mix(in_srgb,var(--aqt-amber)_50%,transparent)] text-[color:var(--aqt-amber)]";
     case "troll":
-      return "border-red-500/50 text-red-200";
+      return "border-[color:color-mix(in_srgb,var(--aqt-rose)_50%,transparent)] text-[color:var(--aqt-rose)]";
     case "throw":
-      return "border-purple-500/50 text-purple-200";
+      return "border-[color:color-mix(in_srgb,var(--aqt-violet)_50%,transparent)] text-[color:var(--aqt-violet)]";
     case "sandbag":
-      return "border-fuchsia-500/50 text-fuchsia-200";
+      return "border-[color:color-mix(in_srgb,var(--aqt-damage)_50%,transparent)] text-[color:var(--aqt-damage)]";
     default:
       return "";
   }

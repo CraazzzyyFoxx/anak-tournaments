@@ -167,10 +167,6 @@ const EventBody = ({ t, selfUserId }: { t: UserTournament; selfUserId: number })
           players={t.players ?? []}
           tournamentGrid={t.division_grid_version}
           highlightUserId={selfUserId}
-          youLabel={tr("users.tournaments.you")}
-          avgMvpLabel={tr("users.tournaments.roster.avgMvp")}
-          heroesLabel={tr("users.tournaments.roster.heroes")}
-          signatureHeroesLabel={tr("users.tournaments.roster.signatureHeroes")}
         />
       </div>
       <div>

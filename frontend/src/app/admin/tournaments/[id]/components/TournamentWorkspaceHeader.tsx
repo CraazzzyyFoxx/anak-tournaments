@@ -1,41 +1,16 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  ArrowLeft,
-  BarChart3,
-  CalendarDays,
-  CheckCircle,
-  CheckCircle2,
-  Layers3,
-  Pencil,
-  ShieldAlert,
-  Trash2,
-  Users,
-  XCircle
-} from "lucide-react";
-import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
-import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
-import { StatusIcon } from "@/components/admin/StatusIcon";
-import { TournamentFormFields } from "@/components/admin/tournaments/TournamentFormFields";
+import { BarChart3, CalendarDays, CheckCircle2, Layers3, Loader2, Users } from "lucide-react";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { hasUnsavedChanges } from "@/lib/form-change";
-import { normalizeChallongeSlug } from "@/lib/challonge";
+import { TONE_CLASS } from "@/components/admin/tone";
 import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
-import type { TournamentUpdateInput } from "@/types/admin.types";
 import type { Tournament } from "@/types/tournament.types";
-import type { DivisionGridVersion } from "@/types/workspace.types";
-import {
-  formatDate,
-  getTournamentForm,
-  type TournamentFormState
-} from "./tournamentWorkspace.helpers";
-import { TournamentStatusControl } from "./TournamentStatusControl";
+import { formatDate } from "./tournamentWorkspace.helpers";
 import { invalidateTournamentWorkspace } from "./tournamentWorkspace.queryKeys";
 
 type MetricCount = number | null;
@@ -50,12 +25,7 @@ interface TournamentWorkspaceHeaderProps {
   standingsCount: MetricCount;
   standingsCountLoading: boolean;
   canReadAnalytics: boolean;
-  canUpdateTournament: boolean;
-  canDeleteTournament: boolean;
   canToggleFinished: boolean;
-  divisionGridVersions: DivisionGridVersion[];
-  divisionGridLoading: boolean;
-  onEditClick: () => void;
 }
 
 function formatMetricCount(value: MetricCount, isLoading: boolean) {
@@ -63,9 +33,26 @@ function formatMetricCount(value: MetricCount, isLoading: boolean) {
     return value.toString();
   }
 
-  return isLoading ? "..." : "-";
+  return isLoading ? "…" : "—";
 }
 
+/**
+ * Tournament hub title bar.
+ *
+ * Deliberately carries NO status readout. It used to state the same status
+ * four contradictory ways at once — an `XCircle` glyph labelled "Live ops" in
+ * the success colour, a "Draft" badge, an "Active · Tournament" meta line, and
+ * the stepper's current phase. Phase now lives only in `PhaseStepper`, which
+ * also owns the single `TournamentStatusControl`.
+ *
+ * "Back to tournaments" and "Edit tournament" are gone too: the breadcrumb and
+ * sidebar already reach the list, and the edit button only pushed to the
+ * Settings tab that sits in the tab bar two rows below it.
+ *
+ * The name is screen-reader-only and the dates/counts share the action row:
+ * the breadcrumb resolves the same tournament name one line above, so printing
+ * it again bought a heading row and no information.
+ */
 export function TournamentWorkspaceHeader({
   tournament,
   tournamentId,
@@ -76,111 +63,82 @@ export function TournamentWorkspaceHeader({
   standingsCount,
   standingsCountLoading,
   canReadAnalytics,
-  canUpdateTournament,
-  canDeleteTournament,
-  canToggleFinished,
-  divisionGridVersions,
-  divisionGridLoading,
-  onEditClick
+  canToggleFinished
 }: TournamentWorkspaceHeaderProps) {
-  const router = useRouter();
   const queryClient = useQueryClient();
 
   const toggleFinishedMutation = useMutation({
     mutationFn: () => adminService.toggleTournamentFinished(tournamentId),
     onSuccess: () => {
       invalidateTournamentWorkspace(queryClient, tournamentId);
-      notify.success("Tournament status updated");
+      notify.success(
+        tournament.is_finished ? "Tournament reopened" : "Tournament marked as finished"
+      );
     }
   });
 
   return (
-    <>
-      <Card className="border-border/40">
-        <CardHeader className="pb-3">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="min-w-0">
-              <div className="flex items-center gap-3">
-                <CardTitle className="truncate text-lg font-semibold tracking-tight">
-                  {tournament.name}
-                </CardTitle>
-                {tournament.is_finished ? (
-                  <StatusIcon icon={CheckCircle} label="Finished" variant="muted" />
-                ) : (
-                  <StatusIcon icon={XCircle} label="Live ops" variant="success" />
-                )}
-              </div>
-              <CardDescription className="mt-1">
-                Manage tournament settings, stages, teams, encounters, and standings in one
-                workspace.
-              </CardDescription>
-            </div>
-            <div className="flex shrink-0 flex-wrap gap-2">
-              <Button asChild variant="outline">
-                <Link href="/admin/tournaments">
-                  <ArrowLeft className="mr-2 h-4 w-4" />
-                  Back to Tournaments
-                </Link>
-              </Button>
-              {canReadAnalytics ? (
-                <Button asChild variant="outline">
-                  <Link href={`/tournaments/analytics?tournamentId=${tournament.id}`}>
-                    <BarChart3 className="mr-2 h-4 w-4" />
-                    Open Analytics
-                  </Link>
-                </Button>
-              ) : null}
-              {canUpdateTournament ? (
-                <Button variant="outline" onClick={onEditClick}>
-                  <Pencil className="mr-2 h-4 w-4" />
-                  Edit Tournament
-                </Button>
-              ) : null}
-              {canToggleFinished ? (
-                <Button
-                  onClick={() => toggleFinishedMutation.mutate()}
-                  disabled={toggleFinishedMutation.isPending}
-                >
-                  <CheckCircle2 className="mr-2 h-4 w-4" />
-                  {tournament.is_finished ? "Reopen Tournament" : "Mark as Finished"}
-                </Button>
-              ) : null}
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="pt-0">
-          <div className="border-t border-border/40 pt-3">
-            {canUpdateTournament ? (
-              <div className="mb-3">
-                <TournamentStatusControl tournament={tournament} />
-              </div>
-            ) : null}
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[13px] text-muted-foreground">
-              <span className="flex items-center gap-1.5">
-                <ShieldAlert className="size-3.5" />
-                {tournament.is_finished ? "Finished" : "Active"} ·{" "}
-                {tournament.is_league ? "League" : "Tournament"}
-              </span>
-              <span className="flex items-center gap-1.5">
-                <CalendarDays className="size-3.5" />
-                {formatDate(tournament.start_date)} — {formatDate(tournament.end_date)}
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Users className="size-3.5" />
-                {formatMetricCount(teamsCount, teamsCountLoading)} teams /{" "}
-                {formatMetricCount(tournament.participants_count ?? teamsCount, teamsCountLoading)}{" "}
-                participants
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Layers3 className="size-3.5" />
-                {tournament.stages.length} stages /{" "}
-                {formatMetricCount(encountersCount, encountersCountLoading)} encounters /{" "}
-                {formatMetricCount(standingsCount, standingsCountLoading)} standings
-              </span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </>
+    <AdminPageHeader
+      title={tournament.name}
+      titleHidden
+      meta={
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+          <Badge
+            variant="outline"
+            className={TONE_CLASS[tournament.is_league ? "info" : "neutral"]}
+          >
+            {tournament.is_league ? "League" : "Tournament"}
+          </Badge>
+          <span className="flex items-center gap-1.5">
+            <CalendarDays className="size-3.5" aria-hidden />
+            <span className="tabular-nums">
+              {formatDate(tournament.start_date)} — {formatDate(tournament.end_date)}
+            </span>
+          </span>
+          <span className="flex items-center gap-1.5">
+            <Users className="size-3.5" aria-hidden />
+            <span className="tabular-nums">
+              {formatMetricCount(teamsCount, teamsCountLoading)} teams /{" "}
+              {formatMetricCount(tournament.participants_count ?? teamsCount, teamsCountLoading)}{" "}
+              participants
+            </span>
+          </span>
+          <span className="flex items-center gap-1.5">
+            <Layers3 className="size-3.5" aria-hidden />
+            <span className="tabular-nums">
+              {tournament.stages.length} stages /{" "}
+              {formatMetricCount(encountersCount, encountersCountLoading)} encounters /{" "}
+              {formatMetricCount(standingsCount, standingsCountLoading)} standings
+            </span>
+          </span>
+        </div>
+      }
+      actions={
+        <>
+          {canReadAnalytics ? (
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/tournaments/analytics?tournamentId=${tournament.id}`}>
+                <BarChart3 className="mr-2 size-4" aria-hidden />
+                Open analytics
+              </Link>
+            </Button>
+          ) : null}
+          {canToggleFinished ? (
+            <Button
+              size="sm"
+              onClick={() => toggleFinishedMutation.mutate()}
+              disabled={toggleFinishedMutation.isPending}
+            >
+              {toggleFinishedMutation.isPending ? (
+                <Loader2 className="mr-2 size-4 animate-spin" aria-hidden />
+              ) : (
+                <CheckCircle2 className="mr-2 size-4" aria-hidden />
+              )}
+              {tournament.is_finished ? "Reopen tournament" : "Mark as finished"}
+            </Button>
+          ) : null}
+        </>
+      }
+    />
   );
 }

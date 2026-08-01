@@ -58,7 +58,7 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
   const stageLabel =
     match?.encounter?.stage_item?.name ??
     match?.encounter?.stage?.name ??
-    t("matches.unassignedStage");
+    t("common.unassignedStage");
 
   return (
     <div className="flex flex-col gap-4">

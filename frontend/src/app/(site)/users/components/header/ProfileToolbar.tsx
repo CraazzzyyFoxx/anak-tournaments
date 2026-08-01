@@ -28,8 +28,8 @@ const ProfileToolbar = ({ card, comparePath = "/users/compare" }: ProfileToolbar
   return (
     <div className="flex items-center gap-2">
       <SharePlayerCard card={card} />
-      <Link href={comparePath} className={BTN} title={t("users.profile.toolbar.comparePlayers")}>
-        <GitCompare size={13} />
+      <Link href={comparePath} className={BTN} aria-label={t("users.profile.toolbar.comparePlayers")}>
+        <GitCompare size={13} aria-hidden />
         {t("users.profile.toolbar.compare")}
       </Link>
     </div>

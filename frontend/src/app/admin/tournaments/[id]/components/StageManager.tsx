@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useId, useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   CheckCircle2,
   ChevronDown,
+  ChevronUp,
   GitBranch,
   GitMerge,
   Link2,
@@ -22,6 +23,7 @@ import {
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { InlineEditText } from "@/components/admin/InlineEditText";
+import { EYEBROW_CLASS, TONE_CLASS, TONE_TEXT } from "@/components/admin/tone";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,6 +32,7 @@ import { Input } from "@/components/ui/input";
 import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -66,9 +69,9 @@ const STAGE_TYPE_LABELS: Record<StageType, string> = {
 
 const STAGE_ITEM_TYPE_LABELS: Record<StageItemType, string> = {
   group: "Group",
-  bracket_upper: "Upper Bracket",
-  bracket_lower: "Lower Bracket",
-  single_bracket: "Single Bracket"
+  bracket_upper: "Upper bracket",
+  bracket_lower: "Lower bracket",
+  single_bracket: "Single bracket"
 };
 
 const DEFAULT_SWISS_TIEBREAKERS = [
@@ -108,6 +111,17 @@ interface StageManagerProps {
 interface StageItemDraft {
   name: string;
   type: StageItemType;
+}
+
+/** Shape of `Stage.settings_json` as this screen reads and writes it. */
+interface StageSettings {
+  ranking_preset?: string;
+  tiebreak_order?: string[];
+  scoring?: { win?: number; draw?: number; loss?: number };
+  swiss_bye_points?: number;
+  de_grand_final_type?: "no_reset" | "with_reset";
+  best_of?: StageBestOfConfig;
+  [key: string]: unknown;
 }
 
 function getStageTeamSlots(stage: Stage) {
@@ -195,9 +209,9 @@ function getStageStatus(stage: Stage) {
 }
 
 function getStageStatusClass(stage: Stage) {
-  if (stage.is_completed) return "border-emerald-700/60 bg-emerald-950/20 text-emerald-300";
-  if (stage.is_active) return "border-primary/50 bg-primary/15 text-primary";
-  return "border-border/70 bg-muted/30 text-muted-foreground";
+  if (stage.is_completed) return TONE_CLASS.success;
+  if (stage.is_active) return TONE_CLASS.accent;
+  return TONE_CLASS.neutral;
 }
 
 function getInputDisplayLabel(
@@ -248,6 +262,9 @@ export function StageManager({ tournamentId }: StageManagerProps) {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [stageToDelete, setStageToDelete] = useState<Stage | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [seedStageConfirm, setSeedStageConfirm] = useState<Stage | null>(null);
+  const [mergeStageConfirm, setMergeStageConfirm] = useState<Stage | null>(null);
+  const [forceActivateStage, setForceActivateStage] = useState<Stage | null>(null);
   const [newStageName, setNewStageName] = useState("");
   const [newStageType, setNewStageType] = useState<StageType>("round_robin");
   const [newStageMaxRounds, setNewStageMaxRounds] = useState("5");
@@ -273,6 +290,20 @@ export function StageManager({ tournamentId }: StageManagerProps) {
   const [editingInputTeamDraft, setEditingInputTeamDraft] = useState("");
   const [stageSplitLbDrafts, setStageSplitLbDrafts] = useState<Record<number, boolean>>({});
   const [stageBestOfDrafts, setStageBestOfDrafts] = useState<Record<number, StageBestOfConfig>>({});
+
+  const fieldIdPrefix = useId();
+  const stageTypeFieldId = `${fieldIdPrefix}-stage-type`;
+  const swissRoundsFieldId = `${fieldIdPrefix}-swiss-rounds`;
+  const grandFinalFieldId = `${fieldIdPrefix}-grand-final`;
+  const groupSeedingFieldId = `${fieldIdPrefix}-group-seeding`;
+  const advanceCountFieldId = `${fieldIdPrefix}-advance-count`;
+  const rankingPresetFieldId = `${fieldIdPrefix}-ranking-preset`;
+  const swissByePointsFieldId = `${fieldIdPrefix}-swiss-bye-points`;
+  const winPointsFieldId = `${fieldIdPrefix}-win-points`;
+  const drawPointsFieldId = `${fieldIdPrefix}-draw-points`;
+  const lossPointsFieldId = `${fieldIdPrefix}-loss-points`;
+  const bestOfDefaultId = `${fieldIdPrefix}-best-of-default`;
+  const bestOfFinalId = `${fieldIdPrefix}-best-of-final`;
 
   const { data: stages = [], isLoading } = useQuery({
     queryKey: ["admin", "stages", tournamentId],
@@ -440,7 +471,8 @@ export function StageManager({ tournamentId }: StageManagerProps) {
       notify.success(`Updated best-of on ${updated} match${updated === 1 ? "" : "es"}`);
       invalidateStageData();
     },
-    onError: (error) => notify.apiError(error, { title: "Failed to apply best-of" })
+    onError: (error) =>
+      notify.apiError(error, { title: "Could not apply best-of to existing matches" })
   });
 
   const deleteMutation = useMutation({
@@ -467,6 +499,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
         target_name: targetName
       }),
     onSuccess: (stage) => {
+      setMergeStageConfirm(null);
       setSelectedStageId(stage.id);
       invalidateStageData();
     }
@@ -507,7 +540,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
     mutationFn: ({ stageItemId, name }: { stageItemId: number; name: string }) =>
       adminService.updateStageItem(stageItemId, { name }),
     onSuccess: () => invalidateStageData(),
-    onError: (error) => notify.apiError(error, { title: "Failed to rename structure item" })
+    onError: (error) => notify.apiError(error, { title: "Could not rename this structure item" })
   });
 
   const updateInputMutation = useMutation({
@@ -546,31 +579,29 @@ export function StageManager({ tournamentId }: StageManagerProps) {
   });
 
   const activateAndGenerateMutation = useMutation({
-    mutationFn: async (stageId: number) => {
-      try {
-        return await adminService.activateAndGenerateStage(stageId);
-      } catch (error) {
-        const detail = (error as { detail?: unknown })?.detail;
-        if (
-          typeof detail === "object" &&
-          detail !== null &&
-          "code" in detail &&
-          (detail as { code: string }).code === "upstream_stages_not_completed"
-        ) {
-          const proceed = window.confirm(
-            "Upstream stages still have pending encounters. Activate anyway?\n\n" +
-              "Playoff seeds may freeze before groups are actually finished."
-          );
-          if (!proceed) {
-            throw error;
-          }
-          return adminService.activateAndGenerateStage(stageId, { force: true });
-        }
-        throw error;
-      }
-    },
+    mutationFn: ({ stageId, force }: { stageId: number; force?: boolean }) =>
+      adminService.activateAndGenerateStage(stageId, force ? { force: true } : undefined),
     onSuccess: () => {
+      setForceActivateStage(null);
       invalidateStageData();
+    },
+    onError: (error, variables) => {
+      const detail = (error as { detail?: unknown })?.detail;
+      const upstreamPending =
+        typeof detail === "object" &&
+        detail !== null &&
+        "code" in detail &&
+        (detail as { code: string }).code === "upstream_stages_not_completed";
+      if (upstreamPending && !variables.force) {
+        setForceActivateStage(
+          orderedStages.find((stage) => stage.id === variables.stageId) ?? null
+        );
+        return;
+      }
+      setForceActivateStage(null);
+      notify.apiError(error, {
+        title: "Could not activate and generate this stage"
+      });
     }
   });
 
@@ -586,8 +617,11 @@ export function StageManager({ tournamentId }: StageManagerProps) {
       return adminService.seedTeams(stageId, { team_ids: teamIds, mode });
     },
     onSuccess: () => {
+      setSeedStageConfirm(null);
       invalidateStageData();
-    }
+    },
+    onError: (error) =>
+      notify.apiError(error, { title: "Could not seed teams into this stage" })
   });
 
   const handleCreateStageSubmit = (event: FormEvent) => {
@@ -601,7 +635,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
       ...current,
       [stageId]: value
     }));
-    
+
     let newOrder = defaultTiebreakOrder;
     if (value === "challonge_swiss") {
       newOrder = DEFAULT_SWISS_TIEBREAKERS;
@@ -610,7 +644,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
     } else if (value === "bracket_default") {
       newOrder = DEFAULT_BRACKET_TIEBREAKERS;
     }
-    
+
     setStageTiebreakOrderDrafts((current) => ({
       ...current,
       [stageId]: newOrder
@@ -618,12 +652,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
   };
 
   const selectedStageProgress = selectedStage ? progressByStageId.get(selectedStage.id) : null;
-  const selectedStageSlots = selectedStage ? getStageTeamSlots(selectedStage) : 0;
-  const selectedStageAssignedTeams = selectedStage ? getStageAssignedTeams(selectedStage) : 0;
   const selectedStageAssignedTeamIds = selectedStage ? getAssignedTeamIds(selectedStage) : new Set<number>();
-  const selectedStageProgressPercent = selectedStageProgress
-    ? getProgressPercent(selectedStageProgress.completed, selectedStageProgress.total)
-    : 0;
   const selectedStageTypeDraft = selectedStage
     ? stageTypeDrafts[selectedStage.id] ?? selectedStage.stage_type
     : "round_robin";
@@ -650,7 +679,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
   const selectedStageAdvanceCountDraft = selectedStage
     ? stageAdvanceCountDrafts[selectedStage.id] ?? currentAdvanceCount
     : "";
-  const selectedStageSettings = (selectedStage?.settings_json || {}) as Record<string, any>;
+  const selectedStageSettings = (selectedStage?.settings_json ?? {}) as StageSettings;
   const selectedStageRankingPresetDraft = selectedStage
     ? stageRankingPresetDrafts[selectedStage.id] ?? (selectedStageSettings.ranking_preset || "default")
     : "default";
@@ -700,24 +729,6 @@ export function StageManager({ tournamentId }: StageManagerProps) {
     }));
   };
 
-  const isStageDirty =
-    Boolean(selectedStage) &&
-    (selectedStageTypeDraft !== selectedStage?.stage_type ||
-      maxRoundsDraftValue !== (selectedStage?.max_rounds ?? 5) ||
-      selectedStageAdvanceCountDraft !== currentAdvanceCount ||
-      (selectedStageTypeDraft === "double_elimination" &&
-        selectedStageDeGfTypeDraft !== currentDeGfType) ||
-      (selectedStageTypeDraft === "double_elimination" &&
-        selectedStageSplitLbDraft !== currentSplitLowerBracket) ||
-      selectedStageRankingPresetDraft !== (selectedStageSettings.ranking_preset || "default") ||
-      selectedStageSwissByePointsDraft !== String(selectedStageSettings.swiss_bye_points ?? "") ||
-      selectedStageScoringWinDraft !== String(selectedStageSettings.scoring?.win ?? "") ||
-      selectedStageScoringDrawDraft !== String(selectedStageSettings.scoring?.draw ?? "") ||
-      selectedStageScoringLossDraft !== String(selectedStageSettings.scoring?.loss ?? "") ||
-      JSON.stringify(selectedStageTiebreakOrderDraft) !== JSON.stringify(selectedStageSettings.tiebreak_order || defaultTiebreakOrder) ||
-      JSON.stringify(buildBestOfSettings(selectedBestOfDraft) ?? null) !==
-        JSON.stringify(buildBestOfSettings(currentBestOf) ?? null)
-    );
   const selectedItemDraft = selectedStage
     ? stageItemDrafts[selectedStage.id] ?? {
         name: "",
@@ -745,14 +756,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
     newStageDeGrandFinalType !== "no_reset";
 
   if (isLoading) {
-    return (
-      <Card className="border-dashed">
-        <CardContent className="flex items-center gap-3 py-6 text-sm text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" />
-          Loading stages...
-        </CardContent>
-      </Card>
-    );
+    return <Skeleton className="h-72 w-full rounded-xl" />;
   }
 
   return (
@@ -762,8 +766,10 @@ export function StageManager({ tournamentId }: StageManagerProps) {
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <GitBranch className="size-4 text-primary" />
-                <CardTitle className="text-base">Tournament Flow</CardTitle>
+                <GitBranch className="size-4 text-primary" aria-hidden />
+                <CardTitle asChild className="text-base">
+                  <h2>Tournament flow</h2>
+                </CardTitle>
               </div>
               <CardDescription className="mt-1">
                 Build the bracket path one stage at a time, then use focused actions on the
@@ -771,28 +777,22 @@ export function StageManager({ tournamentId }: StageManagerProps) {
               </CardDescription>
             </div>
             <Button onClick={() => setCreateDialogOpen(true)}>
-              <Plus className="size-4" />
-              Add Stage
+              <Plus className="size-4" aria-hidden />
+              Add stage
             </Button>
           </div>
         </CardHeader>
 
         <CardContent className="pt-0">
           {orderedStages.length === 0 ? (
-            <div className="flex min-h-[320px] flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-border/70 bg-muted/10 p-6 text-center">
-              <div className="rounded-full border border-border/70 bg-background p-3">
-                <GitBranch className="size-6 text-primary" />
-              </div>
-              <div className="max-w-md">
-                <p className="text-sm font-semibold">No stages configured</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Start by adding the first tournament phase. Groups, playoffs, and finals will
-                  appear here as a readable flow.
-                </p>
-              </div>
-              <Button onClick={() => setCreateDialogOpen(true)}>
-                <Plus className="size-4" />
-                Add First Stage
+            <div className="rounded-xl border border-dashed border-border/70 bg-muted/10 p-6 text-center">
+              <p className="text-sm text-muted-foreground">
+                No stages yet. Add the first phase, then groups, playoffs and finals appear here as
+                a readable flow.
+              </p>
+              <Button className="mt-4" onClick={() => setCreateDialogOpen(true)}>
+                <Plus className="size-4" aria-hidden />
+                Add first stage
               </Button>
             </div>
           ) : (
@@ -800,12 +800,14 @@ export function StageManager({ tournamentId }: StageManagerProps) {
               <div className="rounded-xl border border-border/60 bg-background/40">
                 <div className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
                   <div>
-                    <p className="text-sm font-semibold">Flow Timeline</p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-sm font-semibold">Flow timeline</p>
+                    <p className="text-xs tabular-nums text-muted-foreground">
                       {orderedStages.length} stage{orderedStages.length === 1 ? "" : "s"}
                     </p>
                   </div>
-                  <Badge variant="outline">{teams.length} teams</Badge>
+                  <Badge variant="outline" className="tabular-nums">
+                    {teams.length} teams
+                  </Badge>
                 </div>
 
                 <div className="flex flex-col gap-2 p-2">
@@ -819,19 +821,18 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                     const isSelected = effectiveSelectedStageId === stage.id;
 
                     return (
-                      <button
+                      <div
                         key={stage.id}
-                        type="button"
                         className={cn(
-                          "group w-full rounded-lg border border-transparent p-3 text-left transition-colors hover:border-border/70 hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                          "relative rounded-lg border border-transparent p-3 transition-colors hover:border-border/70 hover:bg-muted/20 focus-within:ring-1 focus-within:ring-ring",
                           isSelected && "border-primary/50 bg-primary/10"
                         )}
-                        onClick={() => setSelectedStageId(stage.id)}
                       >
                         <div className="flex items-start gap-3">
                           <span
+                            aria-hidden
                             className={cn(
-                              "mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border text-xs font-semibold",
+                              "mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border text-xs font-semibold tabular-nums",
                               isSelected
                                 ? "border-primary/60 bg-primary/15 text-primary"
                                 : "border-border/70 bg-background text-muted-foreground"
@@ -841,34 +842,49 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                           </span>
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center justify-between gap-2">
-                              <p className="truncate text-sm font-semibold">{stage.name}</p>
-                              <Badge variant="outline" className={cn("shrink-0", getStageStatusClass(stage))}>
+                              <button
+                                type="button"
+                                aria-label={`Select stage ${stage.name}`}
+                                aria-current={isSelected ? "true" : undefined}
+                                className="min-w-0 truncate text-left text-sm font-semibold after:absolute after:inset-0 after:content-[''] focus-visible:outline-none"
+                                onClick={() => setSelectedStageId(stage.id)}
+                              >
+                                {stage.name}
+                              </button>
+                              <Badge
+                                variant="outline"
+                                className={cn("shrink-0", getStageStatusClass(stage))}
+                              >
                                 {getStageStatus(stage)}
                               </Badge>
                             </div>
-                            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                               <span>{STAGE_TYPE_LABELS[stage.stage_type]}</span>
-                              <span>|</span>
-                              <span>{stage.items.length} item(s)</span>
-                              <span>|</span>
-                              <span>
+                              <span aria-hidden>·</span>
+                              <span className="tabular-nums">{stage.items.length} item(s)</span>
+                              <span aria-hidden>·</span>
+                              <span className="tabular-nums">
                                 {assignedTeams}/{stageSlots} slots
                               </span>
                             </div>
                             {progress && progress.total > 0 ? (
                               <div className="mt-3">
-                                <div className="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
+                                <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
                                   <span>Matches</span>
-                                  <span>
+                                  <span className="tabular-nums">
                                     {progress.completed}/{progress.total}
                                   </span>
                                 </div>
-                                <Progress value={progressPercent} className="h-1.5" />
+                                <Progress
+                                  value={progressPercent}
+                                  className="h-1.5"
+                                  aria-label={`${progress.completed} of ${progress.total} matches complete`}
+                                />
                               </div>
                             ) : null}
                           </div>
                         </div>
-                      </button>
+                      </div>
                     );
                   })}
                 </div>
@@ -876,57 +892,19 @@ export function StageManager({ tournamentId }: StageManagerProps) {
 
               {selectedStage ? (
                 <div className="min-w-0 rounded-xl border border-border/60 bg-background/40">
-                  <div className="flex flex-col gap-3 border-b border-border/60 px-4 py-4 2xl:flex-row 2xl:items-start 2xl:justify-between">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="truncate text-lg font-semibold">{selectedStage.name}</h3>
-                        <Badge variant="outline">{STAGE_TYPE_LABELS[selectedStage.stage_type]}</Badge>
-                        <Badge variant="outline" className={getStageStatusClass(selectedStage)}>
-                          {getStageStatus(selectedStage)}
-                        </Badge>
-                        {selectedStage.challonge_slug ? (
-                          <a
-                            className="inline-flex items-center gap-1 rounded-full border border-primary/30 px-2 py-0.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
-                            href={`https://challonge.com/${selectedStage.challonge_slug}`}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            <Link2 className="size-3" />
-                            Challonge
-                          </a>
-                        ) : null}
-                      </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                        <span>{selectedStage.items.length} structure item(s)</span>
-                        <span>|</span>
-                        <span>
-                          {selectedStageAssignedTeams}/{selectedStageSlots} team slots filled
-                        </span>
-                        {selectedStage.stage_type === "swiss" ? (
-                          <>
-                            <span>|</span>
-                            <span>{selectedStage.max_rounds ?? 5} max round(s)</span>
-                          </>
-                        ) : null}
-                        {selectedStage.stage_type === "double_elimination" ? (
-                          <>
-                            <span>|</span>
-                            <span>
-                              GF: {currentDeGfType === "with_reset" ? "With Reset" : "No Reset"}
-                            </span>
-                          </>
-                        ) : null}
-                      </div>
-                      {selectedStageProgress && selectedStageProgress.total > 0 ? (
-                        <div className="mt-3 max-w-md">
-                          <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
-                            <span>Match completion</span>
-                            <span>
-                              {selectedStageProgress.completed}/{selectedStageProgress.total}
-                            </span>
-                          </div>
-                          <Progress value={selectedStageProgressPercent} />
-                        </div>
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 px-4 py-4">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <h3 className="truncate text-lg font-semibold">{selectedStage.name}</h3>
+                      {selectedStage.challonge_slug ? (
+                        <a
+                          className="inline-flex items-center gap-1 rounded-full border border-primary/30 px-2 py-0.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
+                          href={`https://challonge.com/${selectedStage.challonge_slug}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          <Link2 className="size-3" aria-hidden />
+                          Challonge
+                        </a>
                       ) : null}
                     </div>
 
@@ -935,169 +913,128 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                       size="sm"
                       onClick={() => setStageToDelete(selectedStage)}
                     >
-                      <Trash2 className="size-4" />
-                      Delete Stage
+                      <Trash2 className="size-4" aria-hidden />
+                      Delete stage
                     </Button>
                   </div>
 
                   <div className="flex flex-col gap-4 p-4">
-                    <section className="rounded-lg border border-border/60 bg-muted/10 p-3">
-                      <div className="mb-3 flex items-center justify-between gap-3">
-                        <div>
-                          <h4 className="text-sm font-semibold">Primary Actions</h4>
-                          <p className="text-xs text-muted-foreground">
-                            Use these when progressing the tournament flow.
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-4">
-                        {GROUP_STAGE_TYPES.includes(selectedStage.stage_type) &&
-                        teams.length > 0 &&
-                        selectedStage.items.length > 0 ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={
-                              seedTeamsMutation.isPending &&
-                              seedTeamsMutation.variables?.stageId === selectedStage.id
-                            }
-                            onClick={() => {
-                              const confirmed = window.confirm(
-                                `Distribute ${teams.length} teams into ${selectedStage.items.length} group(s) using snake-SR draft?\n\n` +
-                                  "Existing manual team assignments in this stage will be cleared."
-                              );
-                              if (!confirmed) return;
-                              seedTeamsMutation.mutate({
-                                stageId: selectedStage.id,
-                                mode: "snake_sr"
-                              });
-                            }}
-                            title="Auto-distribute teams into groups balanced by avg_sr"
-                          >
-                            {seedTeamsMutation.isPending &&
-                            seedTeamsMutation.variables?.stageId === selectedStage.id ? (
-                              <Loader2 className="size-4 animate-spin" />
-                            ) : (
-                              <Shuffle className="size-4" />
-                            )}
-                            Seed by SR
-                          </Button>
-                        ) : null}
-
-                        {mergeableGroupStageCandidates.length > 0 ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={
-                              mergeGroupStagesMutation.isPending &&
-                              mergeGroupStagesMutation.variables?.targetStageId ===
-                                selectedStage.id
-                            }
-                            onClick={() => {
-                              const sourceNames = mergeableGroupStageCandidates
-                                .map((stage) => stage.name)
-                                .join(", ");
-                              const confirmed = window.confirm(
-                                `Merge ${mergeableGroupStageCandidates.length + 1} ${STAGE_TYPE_LABELS[selectedStage.stage_type]} stages into "${mergedStageName}"?\n\n` +
-                                  `${sourceNames} will be removed from the timeline after their groups, matches, and standings move into this stage.`
-                              );
-                              if (!confirmed) return;
-                              mergeGroupStagesMutation.mutate({
-                                targetStageId: selectedStage.id,
-                                sourceStageIds: mergeableGroupStageCandidates.map((stage) => stage.id),
-                                targetName: mergedStageName
-                              });
-                            }}
-                            title="Merge legacy one-group stages into this grouped stage"
-                          >
-                            {mergeGroupStagesMutation.isPending &&
-                            mergeGroupStagesMutation.variables?.targetStageId === selectedStage.id ? (
-                              <Loader2 className="size-4 animate-spin" />
-                            ) : (
-                              <GitMerge className="size-4" />
-                            )}
-                            {mergeGroupStagesMutation.isPending &&
-                            mergeGroupStagesMutation.variables?.targetStageId === selectedStage.id
-                              ? "Merging..."
-                              : "Merge Groups"}
-                          </Button>
-                        ) : null}
-
-                        {!selectedStage.is_active ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={activateMutation.isPending}
-                            onClick={() => activateMutation.mutate(selectedStage.id)}
-                          >
-                            {activateMutation.isPending &&
-                            activateMutation.variables === selectedStage.id ? (
-                              <Loader2 className="size-4 animate-spin" />
-                            ) : (
-                              <PlayCircle className="size-4" />
-                            )}
-                            {activateMutation.isPending &&
-                            activateMutation.variables === selectedStage.id
-                              ? "Activating..."
-                              : "Activate"}
-                          </Button>
-                        ) : null}
-
+                    <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-4">
+                      {GROUP_STAGE_TYPES.includes(selectedStage.stage_type) &&
+                      teams.length > 0 &&
+                      selectedStage.items.length > 0 ? (
                         <Button
                           size="sm"
                           variant="outline"
-                          disabled={generateMutation.isPending}
-                          onClick={() => generateMutation.mutate(selectedStage.id)}
+                          disabled={
+                            seedTeamsMutation.isPending &&
+                            seedTeamsMutation.variables?.stageId === selectedStage.id
+                          }
+                          onClick={() => setSeedStageConfirm(selectedStage)}
                         >
-                          {generateMutation.isPending &&
-                          generateMutation.variables === selectedStage.id ? (
-                            <Loader2 className="size-4 animate-spin" />
+                          {seedTeamsMutation.isPending &&
+                          seedTeamsMutation.variables?.stageId === selectedStage.id ? (
+                            <Loader2 className="size-4 animate-spin" aria-hidden />
                           ) : (
-                            <Wand2 className="size-4" />
+                            <Shuffle className="size-4" aria-hidden />
                           )}
-                          {generateMutation.isPending &&
-                          generateMutation.variables === selectedStage.id
-                            ? "Generating..."
-                            : "Generate Bracket"}
+                          Seed by SR
                         </Button>
+                      ) : null}
 
-                        {BRACKET_STAGE_TYPES.includes(selectedStage.stage_type) ? (
-                          <Button
-                            size="sm"
-                            disabled={
-                              activateAndGenerateMutation.isPending &&
-                              activateAndGenerateMutation.variables === selectedStage.id
-                            }
-                            onClick={() => activateAndGenerateMutation.mutate(selectedStage.id)}
-                            title="Resolve tentative inputs from prior stage standings, then generate the bracket"
-                          >
-                            {activateAndGenerateMutation.isPending &&
-                            activateAndGenerateMutation.variables === selectedStage.id ? (
-                              <Loader2 className="size-4 animate-spin" />
-                            ) : (
-                              <Zap className="size-4" />
-                            )}
-                            {activateAndGenerateMutation.isPending &&
-                            activateAndGenerateMutation.variables === selectedStage.id
-                              ? "Working..."
-                              : "Activate & Generate"}
-                          </Button>
-                        ) : null}
-                      </div>
-                    </section>
+                      {mergeableGroupStageCandidates.length > 0 ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={
+                            mergeGroupStagesMutation.isPending &&
+                            mergeGroupStagesMutation.variables?.targetStageId === selectedStage.id
+                          }
+                          onClick={() => setMergeStageConfirm(selectedStage)}
+                        >
+                          {mergeGroupStagesMutation.isPending &&
+                          mergeGroupStagesMutation.variables?.targetStageId === selectedStage.id ? (
+                            <Loader2 className="size-4 animate-spin" aria-hidden />
+                          ) : (
+                            <GitMerge className="size-4" aria-hidden />
+                          )}
+                          {mergeGroupStagesMutation.isPending &&
+                          mergeGroupStagesMutation.variables?.targetStageId === selectedStage.id
+                            ? "Merging…"
+                            : "Merge groups"}
+                        </Button>
+                      ) : null}
+
+                      {!selectedStage.is_active ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={activateMutation.isPending}
+                          onClick={() => activateMutation.mutate(selectedStage.id)}
+                        >
+                          {activateMutation.isPending &&
+                          activateMutation.variables === selectedStage.id ? (
+                            <Loader2 className="size-4 animate-spin" aria-hidden />
+                          ) : (
+                            <PlayCircle className="size-4" aria-hidden />
+                          )}
+                          {activateMutation.isPending &&
+                          activateMutation.variables === selectedStage.id
+                            ? "Activating…"
+                            : "Activate stage"}
+                        </Button>
+                      ) : null}
+
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={generateMutation.isPending}
+                        onClick={() => generateMutation.mutate(selectedStage.id)}
+                      >
+                        {generateMutation.isPending &&
+                        generateMutation.variables === selectedStage.id ? (
+                          <Loader2 className="size-4 animate-spin" aria-hidden />
+                        ) : (
+                          <Wand2 className="size-4" aria-hidden />
+                        )}
+                        {generateMutation.isPending &&
+                        generateMutation.variables === selectedStage.id
+                          ? "Generating…"
+                          : "Generate bracket"}
+                      </Button>
+
+                      {BRACKET_STAGE_TYPES.includes(selectedStage.stage_type) ? (
+                        <Button
+                          size="sm"
+                          disabled={
+                            activateAndGenerateMutation.isPending &&
+                            activateAndGenerateMutation.variables?.stageId === selectedStage.id
+                          }
+                          onClick={() =>
+                            activateAndGenerateMutation.mutate({ stageId: selectedStage.id })
+                          }
+                          title="Resolve tentative inputs from prior stage standings, then generate the bracket"
+                        >
+                          {activateAndGenerateMutation.isPending &&
+                          activateAndGenerateMutation.variables?.stageId === selectedStage.id ? (
+                            <Loader2 className="size-4 animate-spin" aria-hidden />
+                          ) : (
+                            <Zap className="size-4" aria-hidden />
+                          )}
+                          {activateAndGenerateMutation.isPending &&
+                          activateAndGenerateMutation.variables?.stageId === selectedStage.id
+                            ? "Working…"
+                            : "Activate & generate"}
+                        </Button>
+                      ) : null}
+                    </div>
 
                     <section className="rounded-lg border border-border/60 bg-muted/10 p-3">
-                      <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                        <div>
-                          <h4 className="text-sm font-semibold">Structure</h4>
-                          <p className="text-xs text-muted-foreground">
-                            Manage groups, bracket lanes, and assigned teams for this stage.
-                          </p>
-                        </div>
-                        <Badge variant="outline" className="w-fit">
-                          {selectedStage.items.length} item(s), {selectedStageSlots} slot(s)
-                        </Badge>
+                      <div className="mb-3">
+                        <h3 className="text-sm font-semibold">Structure</h3>
+                        <p className="text-xs text-muted-foreground">
+                          Manage groups, bracket lanes, and assigned teams for this stage.
+                        </p>
                       </div>
 
                       {selectedStageProgress && selectedStageProgress.items.length > 1 ? (
@@ -1107,9 +1044,8 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                               key={itemProgress.stage_item_id}
                               variant="outline"
                               className={cn(
-                                "text-[11px]",
-                                itemProgress.is_completed &&
-                                  "border-emerald-700/60 bg-emerald-950/20 text-emerald-300"
+                                "text-xs tabular-nums",
+                                itemProgress.is_completed && TONE_CLASS.success
                               )}
                             >
                               {itemProgress.name}: {itemProgress.completed}/{itemProgress.total}
@@ -1138,7 +1074,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                       })
                                     }
                                   />
-                                  <p className="text-xs text-muted-foreground">
+                                  <p className="text-xs tabular-nums text-muted-foreground">
                                     {item.inputs.length} slot(s)
                                   </p>
                                 </div>
@@ -1153,7 +1089,10 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                         });
                                       }}
                                     >
-                                      <SelectTrigger className="h-8 w-36 text-[11px]">
+                                      <SelectTrigger
+                                        aria-label={`Structure type for ${item.name}`}
+                                        className="h-8 w-36 text-xs"
+                                      >
                                         <SelectValue />
                                       </SelectTrigger>
                                       <SelectContent>
@@ -1162,7 +1101,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                             <SelectItem
                                               key={value}
                                               value={value}
-                                              className="text-[11px]"
+                                              className="text-xs"
                                             >
                                               {label}
                                             </SelectItem>
@@ -1183,12 +1122,12 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                 ) : (
                                   <button
                                     type="button"
-                                    className="flex shrink-0 items-center gap-1 rounded-md border border-transparent px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:border-border hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                    className="flex shrink-0 items-center gap-1 rounded-md border border-transparent px-1.5 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:border-border hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                                     onClick={() => setEditingItemTypeId(item.id)}
-                                    title="Click to change type"
+                                    aria-label={`Change structure type of ${item.name}`}
                                   >
                                     {STAGE_ITEM_TYPE_LABELS[item.type]}
-                                    <Pencil className="size-2.5" />
+                                    <Pencil className="size-3.5" aria-hidden />
                                   </button>
                                 )}
                               </div>
@@ -1217,7 +1156,10 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                                 value={editingInputTeamDraft}
                                                 onValueChange={setEditingInputTeamDraft}
                                               >
-                                                <SelectTrigger className="h-7 w-40 text-[11px]">
+                                                <SelectTrigger
+                                                  aria-label={`Team for slot ${input.slot} of ${item.name}`}
+                                                  className="h-7 w-40 text-xs"
+                                                >
                                                   <SelectValue placeholder="Pick team" />
                                                 </SelectTrigger>
                                                 <SelectContent>
@@ -1230,7 +1172,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                                         team.id !== input.team_id &&
                                                         !canSwapAssignedTeams
                                                       }
-                                                      className="text-[11px]"
+                                                      className="text-xs"
                                                     >
                                                       {team.name}
                                                     </SelectItem>
@@ -1256,9 +1198,9 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                               >
                                                 {updateInputMutation.isPending &&
                                                 updateInputMutation.variables?.inputId === input.id ? (
-                                                  <Loader2 className="size-3 animate-spin" />
+                                                  <Loader2 className="size-3 animate-spin" aria-hidden />
                                                 ) : (
-                                                  <CheckCircle2 className="size-3" />
+                                                  <CheckCircle2 className="size-3" aria-hidden />
                                                 )}
                                               </Button>
                                               <Button
@@ -1279,9 +1221,9 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                               <Badge
                                                 variant="outline"
                                                 className={cn(
-                                                  "shrink-0 text-[10px]",
+                                                  "shrink-0 text-xs",
                                                   input.input_type === "tentative" &&
-                                                    "border-amber-700/50 text-amber-300"
+                                                    TONE_CLASS.warning
                                                 )}
                                               >
                                                 {input.input_type}
@@ -1290,10 +1232,10 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                                 <button
                                                   type="button"
                                                   className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                                                  title={
+                                                  aria-label={
                                                     input.input_type === "tentative"
-                                                      ? "Override team"
-                                                      : "Change team"
+                                                      ? `Override team in slot ${input.slot} of ${item.name}`
+                                                      : `Change team in slot ${input.slot} of ${item.name}`
                                                   }
                                                   onClick={() => {
                                                     setEditingInputId(input.id);
@@ -1302,7 +1244,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                                     );
                                                   }}
                                                 >
-                                                  <Pencil className="size-3" />
+                                                  <Pencil className="size-3.5" aria-hidden />
                                                 </button>
                                               ) : null}
                                             </>
@@ -1313,7 +1255,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                 </div>
                               ) : (
                                 <p className="rounded-md border border-dashed border-border/60 bg-background/40 px-3 py-2 text-xs text-muted-foreground">
-                                  No teams assigned yet.
+                                  No teams assigned yet. Pick a team below to fill the first slot.
                                 </p>
                               )}
 
@@ -1325,11 +1267,12 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                   }
                                   disabled={isTeamsLoading || teams.length === 0}
                                 >
-                                  <SelectTrigger className="h-9">
+                                  <SelectTrigger
+                                    aria-label={`Team to add to ${item.name}`}
+                                    className="h-9"
+                                  >
                                     <SelectValue
-                                      placeholder={
-                                        isTeamsLoading ? "Loading teams..." : "Select team"
-                                      }
+                                      placeholder={isTeamsLoading ? "Loading teams…" : "Select team"}
                                     />
                                   </SelectTrigger>
                                   <SelectContent>
@@ -1362,11 +1305,11 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                 >
                                   {createInputMutation.isPending &&
                                   createInputMutation.variables?.stageItemId === item.id ? (
-                                    <Loader2 className="size-4 animate-spin" />
+                                    <Loader2 className="size-4 animate-spin" aria-hidden />
                                   ) : (
-                                    <Plus className="size-4" />
+                                    <Plus className="size-4" aria-hidden />
                                   )}
-                                  Add Team
+                                  Add team
                                 </Button>
                               </div>
                             </div>
@@ -1447,14 +1390,14 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                         >
                           {createItemMutation.isPending &&
                           createItemMutation.variables?.stageId === selectedStage.id ? (
-                            <Loader2 className="size-4 animate-spin" />
+                            <Loader2 className="size-4 animate-spin" aria-hidden />
                           ) : (
-                            <Plus className="size-4" />
+                            <Plus className="size-4" aria-hidden />
                           )}
                           {createItemMutation.isPending &&
                           createItemMutation.variables?.stageId === selectedStage.id
-                            ? "Adding..."
-                            : "Add Structure"}
+                            ? "Adding…"
+                            : "Add structure"}
                         </Button>
                       </div>
                     </section>
@@ -1467,10 +1410,11 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                             className="flex h-auto w-full justify-between rounded-lg px-3 py-2.5"
                           >
                             <span className="flex items-center gap-2 text-sm font-semibold">
-                              <Shield className="size-4" />
+                              <Shield className="size-4" aria-hidden />
                               Advanced
                             </span>
                             <ChevronDown
+                              aria-hidden
                               className={cn(
                                 "size-4 transition-transform",
                                 advancedOpen && "rotate-180"
@@ -1481,17 +1425,19 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                         <CollapsibleContent>
                           <div className="border-t border-border/60 p-3 space-y-4">
                             <div className="mb-1 flex items-start gap-2 text-xs text-muted-foreground">
-                              <AlertTriangle className="mt-0.5 size-3.5 text-amber-300" />
+                              <AlertTriangle className={cn("mt-0.5 size-3.5", TONE_TEXT.warning)} aria-hidden />
                               <span>
                                 Advanced configurations for bracket generation, standings preset, tiebreaker criteria, and point scoring.
                               </span>
                             </div>
 
                             <div className="space-y-3">
-                              <h5 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Stage Properties</h5>
+                              <h4 className={EYEBROW_CLASS}>Stage properties</h4>
                               <div className="flex flex-col gap-2 sm:flex-row">
                                 <div className="flex-1">
-                                  <Label className="text-[10px] text-muted-foreground">Stage Type</Label>
+                                  <Label htmlFor={stageTypeFieldId} className="text-xs text-muted-foreground">
+                                    Stage type
+                                  </Label>
                                   <Select
                                     value={selectedStageTypeDraft}
                                     onValueChange={(value) =>
@@ -1502,7 +1448,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                     }
                                     disabled={!isSuperuser}
                                   >
-                                    <SelectTrigger className="h-9 w-full">
+                                    <SelectTrigger id={stageTypeFieldId} className="h-9 w-full">
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -1514,15 +1460,17 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                     </SelectContent>
                                   </Select>
                                   {!isSuperuser && (
-                                    <span className="text-[10px] text-muted-foreground">Only superusers can modify stage type after creation.</span>
+                                    <span className="text-xs text-muted-foreground">Only superusers can modify stage type after creation.</span>
                                   )}
                                 </div>
-                                
+
                                 {selectedStageTypeDraft === "swiss" ? (
                                   <div>
-                                    <Label className="text-[10px] text-muted-foreground">Swiss Max Rounds</Label>
+                                    <Label htmlFor={swissRoundsFieldId} className="text-xs text-muted-foreground">
+                                      Swiss max rounds
+                                    </Label>
                                     <NumberInput
-                                      aria-label="Swiss max rounds"
+                                      id={swissRoundsFieldId}
                                       className="h-9 w-full sm:w-[120px]"
                                       integer
                                       min={1}
@@ -1539,7 +1487,9 @@ export function StageManager({ tournamentId }: StageManagerProps) {
 
                                 {selectedStageTypeDraft === "double_elimination" ? (
                                   <div>
-                                    <Label className="text-[10px] text-muted-foreground">Grand Final Format</Label>
+                                    <Label htmlFor={grandFinalFieldId} className="text-xs text-muted-foreground">
+                                      Grand final format
+                                    </Label>
                                     <Select
                                       value={selectedStageDeGfTypeDraft}
                                       onValueChange={(value) =>
@@ -1549,12 +1499,12 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                         }))
                                       }
                                     >
-                                      <SelectTrigger className="h-9 w-full sm:w-[160px]">
+                                      <SelectTrigger id={grandFinalFieldId} className="h-9 w-full sm:w-[160px]">
                                         <SelectValue />
                                       </SelectTrigger>
                                       <SelectContent>
-                                        <SelectItem value="no_reset">No Reset</SelectItem>
-                                        <SelectItem value="with_reset">With Reset</SelectItem>
+                                        <SelectItem value="no_reset">No reset</SelectItem>
+                                        <SelectItem value="with_reset">With reset</SelectItem>
                                       </SelectContent>
                                     </Select>
                                   </div>
@@ -1562,7 +1512,9 @@ export function StageManager({ tournamentId }: StageManagerProps) {
 
                                 {selectedStageTypeDraft === "double_elimination" ? (
                                   <div>
-                                    <Label className="text-[10px] text-muted-foreground">Group seeding</Label>
+                                    <Label htmlFor={groupSeedingFieldId} className="text-xs text-muted-foreground">
+                                      Group seeding
+                                    </Label>
                                     <Select
                                       value={selectedStageSplitLbDraft ? "split" : "all_upper"}
                                       onValueChange={(value) =>
@@ -1572,7 +1524,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                         }))
                                       }
                                     >
-                                      <SelectTrigger className="h-9 w-full sm:w-[220px]">
+                                      <SelectTrigger id={groupSeedingFieldId} className="h-9 w-full sm:w-[220px]">
                                         <SelectValue />
                                       </SelectTrigger>
                                       <SelectContent>
@@ -1580,8 +1532,8 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                         <SelectItem value="split">Split: half Upper, half Lower</SelectItem>
                                       </SelectContent>
                                     </Select>
-                                    <span className="text-[10px] text-muted-foreground">
-                                      Uses the group stage&apos;s &quot;Teams Advancing to Playoff&quot; count; auto-wired on Activate &amp; Generate.
+                                    <span className="text-xs text-muted-foreground">
+                                      Uses the group stage&apos;s &quot;Teams advancing to playoff&quot; count; auto-wired on Activate &amp; generate.
                                     </span>
                                   </div>
                                 ) : null}
@@ -1591,11 +1543,14 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                             {GROUP_STAGE_TYPES.includes(selectedStageTypeDraft) && (
                               <>
                                 <div className="border-t border-border/40 pt-3 space-y-3">
-                                  <h5 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Standings & Scoring Settings</h5>
+                                  <h4 className={EYEBROW_CLASS}>Standings &amp; scoring settings</h4>
 
                                   <div>
-                                    <Label className="text-[10px] text-muted-foreground">Teams Advancing to Playoff (per group)</Label>
+                                    <Label htmlFor={advanceCountFieldId} className="text-xs text-muted-foreground">
+                                      Teams advancing to playoff (per group)
+                                    </Label>
                                     <NumberInput
+                                      id={advanceCountFieldId}
                                       integer
                                       min={1}
                                       placeholder="Auto (derive from bracket)"
@@ -1612,34 +1567,39 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                         }))
                                       }
                                     />
-                                    <span className="text-[10px] text-muted-foreground">
+                                    <span className="text-xs text-muted-foreground">
                                       Top N from each group advance. Leave empty to auto-derive from the bracket wiring.
                                     </span>
                                   </div>
 
                                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                     <div>
-                                      <Label className="text-[10px] text-muted-foreground">Standings Preset</Label>
+                                      <Label htmlFor={rankingPresetFieldId} className="text-xs text-muted-foreground">
+                                        Standings preset
+                                      </Label>
                                       <Select
                                         value={selectedStageRankingPresetDraft}
                                         onValueChange={(value) => handlePresetChange(selectedStage.id, value)}
                                       >
-                                        <SelectTrigger className="h-9 w-full">
-                                          <SelectValue placeholder="System Default" />
+                                        <SelectTrigger id={rankingPresetFieldId} className="h-9 w-full">
+                                          <SelectValue placeholder="System default" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                          <SelectItem value="default">System Default (Based on Type)</SelectItem>
+                                          <SelectItem value="default">System default (based on type)</SelectItem>
                                           <SelectItem value="challonge_swiss">Challonge Swiss (Buchholz first)</SelectItem>
                                           <SelectItem value="challonge_round_robin">Challonge Round Robin</SelectItem>
-                                          <SelectItem value="bracket_default">Default Bracket</SelectItem>
+                                          <SelectItem value="bracket_default">Default bracket</SelectItem>
                                         </SelectContent>
                                       </Select>
                                     </div>
 
                                     {selectedStageTypeDraft === "swiss" ? (
                                       <div>
-                                        <Label className="text-[10px] text-muted-foreground">Swiss Bye Points</Label>
+                                        <Label htmlFor={swissByePointsFieldId} className="text-xs text-muted-foreground">
+                                          Swiss bye points
+                                        </Label>
                                         <NumberInput
+                                          id={swissByePointsFieldId}
                                           placeholder={String(selectedStageScoringWinDraft || tournament?.win_points || 1.0)}
                                           className="h-9 w-full"
                                           value={
@@ -1655,13 +1615,16 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                           }
                                         />
                                       </div>
-                                    ) : <div></div>}
+                                    ) : null}
                                   </div>
 
                                   <div className="grid grid-cols-3 gap-3">
                                     <div>
-                                      <Label className="text-[10px] text-muted-foreground">Win Points Override</Label>
+                                      <Label htmlFor={winPointsFieldId} className="text-xs text-muted-foreground">
+                                        Win points override
+                                      </Label>
                                       <NumberInput
+                                        id={winPointsFieldId}
                                         placeholder={String(tournament?.win_points ?? 1.0)}
                                         className="h-9 w-full bg-background/30"
                                         value={
@@ -1678,8 +1641,11 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                       />
                                     </div>
                                     <div>
-                                      <Label className="text-[10px] text-muted-foreground">Draw Points Override</Label>
+                                      <Label htmlFor={drawPointsFieldId} className="text-xs text-muted-foreground">
+                                        Draw points override
+                                      </Label>
                                       <NumberInput
+                                        id={drawPointsFieldId}
                                         placeholder={String(tournament?.draw_points ?? 0.5)}
                                         className="h-9 w-full bg-background/30"
                                         value={
@@ -1696,8 +1662,11 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                       />
                                     </div>
                                     <div>
-                                      <Label className="text-[10px] text-muted-foreground">Loss Points Override</Label>
+                                      <Label htmlFor={lossPointsFieldId} className="text-xs text-muted-foreground">
+                                        Loss points override
+                                      </Label>
                                       <NumberInput
+                                        id={lossPointsFieldId}
                                         placeholder={String(tournament?.loss_points ?? 0.0)}
                                         className="h-9 w-full bg-background/30"
                                         value={
@@ -1718,17 +1687,17 @@ export function StageManager({ tournamentId }: StageManagerProps) {
 
                                 <div className="border-t border-border/40 pt-3 space-y-2">
                                   <div className="flex items-center justify-between">
-                                    <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Tiebreaker Evaluation Order</Label>
+                                    <h4 className={EYEBROW_CLASS}>Tiebreaker evaluation order</h4>
                                     {selectedStageRankingPresetDraft && (
                                       <Button
                                         type="button"
                                         variant="link"
-                                        className="h-auto p-0 text-[10px] text-primary"
+                                        className="h-auto p-0 text-xs text-primary"
                                         onClick={() => {
                                           handlePresetChange(selectedStage.id, selectedStageRankingPresetDraft);
                                         }}
                                       >
-                                        Reset to Preset Defaults
+                                        Reset to preset defaults
                                       </Button>
                                     )}
                                   </div>
@@ -1746,6 +1715,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                               variant="ghost"
                                               size="icon"
                                               className="size-6 text-muted-foreground hover:text-foreground"
+                                              aria-label={`Move ${metricLabel} up`}
                                               disabled={index === 0}
                                               onClick={() => {
                                                 const nextOrder = [...selectedStageTiebreakOrderDraft];
@@ -1758,13 +1728,14 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                                 }));
                                               }}
                                             >
-                                              ▲
+                                              <ChevronUp className="size-3.5" aria-hidden />
                                             </Button>
                                             <Button
                                               type="button"
                                               variant="ghost"
                                               size="icon"
                                               className="size-6 text-muted-foreground hover:text-foreground"
+                                              aria-label={`Move ${metricLabel} down`}
                                               disabled={index === selectedStageTiebreakOrderDraft.length - 1}
                                               onClick={() => {
                                                 const nextOrder = [...selectedStageTiebreakOrderDraft];
@@ -1777,7 +1748,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                                 }));
                                               }}
                                             >
-                                              ▼
+                                              <ChevronDown className="size-3.5" aria-hidden />
                                             </Button>
                                           </div>
                                         </div>
@@ -1790,7 +1761,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
 
                             <div className="space-y-3 border-t border-border/40 pt-3">
                               <div className="flex items-center justify-between gap-2">
-                                <Label className="text-xs font-semibold">Best-of per round</Label>
+                                <h4 className="text-xs font-semibold">Best-of per round</h4>
                                 <Button
                                   size="sm"
                                   variant="ghost"
@@ -1799,18 +1770,20 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                 >
                                   {applyBestOfMutation.isPending &&
                                   applyBestOfMutation.variables === selectedStage.id ? (
-                                    <Loader2 className="size-4 animate-spin" />
+                                    <Loader2 className="size-4 animate-spin" aria-hidden />
                                   ) : null}
                                   Apply to existing matches
                                 </Button>
                               </div>
-                              <p className="text-[11px] text-muted-foreground">
+                              <p className="text-xs text-muted-foreground">
                                 Baked into matches on (re)generation. Use &quot;Apply to existing
                                 matches&quot; to backfill without regenerating.
                               </p>
                               <div className="grid grid-cols-2 gap-3">
                                 <div className="space-y-1">
-                                  <Label className="text-[11px] text-muted-foreground">Default</Label>
+                                  <Label htmlFor={bestOfDefaultId} className="text-xs text-muted-foreground">
+                                    Default
+                                  </Label>
                                   <Select
                                     value={
                                       selectedBestOfDraft.default != null
@@ -1823,7 +1796,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                       })
                                     }
                                   >
-                                    <SelectTrigger>
+                                    <SelectTrigger id={bestOfDefaultId}>
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -1835,7 +1808,9 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                   </Select>
                                 </div>
                                 <div className="space-y-1">
-                                  <Label className="text-[11px] text-muted-foreground">Final</Label>
+                                  <Label htmlFor={bestOfFinalId} className="text-xs text-muted-foreground">
+                                    Final
+                                  </Label>
                                   <Select
                                     value={
                                       selectedBestOfDraft.final != null
@@ -1848,7 +1823,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                       })
                                     }
                                   >
-                                    <SelectTrigger>
+                                    <SelectTrigger id={bestOfFinalId}>
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -1864,9 +1839,13 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                 {Array.from({ length: maxRoundsDraftValue }, (_, index) => index + 1).map(
                                   (round) => {
                                     const value = selectedBestOfDraft.by_round?.[String(round)];
+                                    const roundFieldId = `${fieldIdPrefix}-best-of-round-${round}`;
                                     return (
                                       <div key={round} className="space-y-1">
-                                        <Label className="text-[11px] text-muted-foreground">
+                                        <Label
+                                          htmlFor={roundFieldId}
+                                          className="text-xs text-muted-foreground"
+                                        >
                                           Round {round}
                                         </Label>
                                         <Select
@@ -1878,7 +1857,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                             )
                                           }
                                         >
-                                          <SelectTrigger>
+                                          <SelectTrigger id={roundFieldId}>
                                             <SelectValue />
                                           </SelectTrigger>
                                           <SelectContent>
@@ -1899,18 +1878,14 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                               <Button
                                 size="sm"
                                 variant="secondary"
-                                disabled={
-                                  updateStageMutation.isPending ||
-                                  !isStageDirty ||
-                                  !selectedStage
-                                }
+                                disabled={updateStageMutation.isPending}
                                 onClick={() => {
-                                  const scoring: Record<string, number> = {};
+                                  const scoring: NonNullable<StageSettings["scoring"]> = {};
                                   if (selectedStageScoringWinDraft !== "") scoring.win = Number(selectedStageScoringWinDraft);
                                   if (selectedStageScoringDrawDraft !== "") scoring.draw = Number(selectedStageScoringDrawDraft);
                                   if (selectedStageScoringLossDraft !== "") scoring.loss = Number(selectedStageScoringLossDraft);
 
-                                  const nextSettings: Record<string, any> = {
+                                  const nextSettings: StageSettings = {
                                     ...selectedStageSettings,
                                     ranking_preset: selectedStageRankingPresetDraft === "default" ? undefined : (selectedStageRankingPresetDraft || undefined),
                                     tiebreak_order: selectedStageTiebreakOrderDraft,
@@ -1921,7 +1896,6 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                                   if (!nextSettings.ranking_preset) delete nextSettings.ranking_preset;
                                   if (!nextSettings.scoring) delete nextSettings.scoring;
                                   if (nextSettings.swiss_bye_points === undefined) delete nextSettings.swiss_bye_points;
-                                  
                                   if (selectedStageTypeDraft === "double_elimination") {
                                     nextSettings.de_grand_final_type = selectedStageDeGfTypeDraft;
                                   } else {
@@ -1955,12 +1929,12 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                               >
                                 {updateStageMutation.isPending &&
                                 updateStageMutation.variables?.stageId === selectedStage.id ? (
-                                  <Loader2 className="size-4 animate-spin" />
+                                  <Loader2 className="size-4 animate-spin" aria-hidden />
                                 ) : null}
                                 {updateStageMutation.isPending &&
                                 updateStageMutation.variables?.stageId === selectedStage.id
-                                  ? "Saving..."
-                                  : "Save Override"}
+                                  ? "Saving…"
+                                  : "Save override"}
                               </Button>
                             </div>
                           </div>
@@ -1984,10 +1958,10 @@ export function StageManager({ tournamentId }: StageManagerProps) {
             resetCreateStageForm();
           }
         }}
-        title="Add Stage"
+        title="Add stage"
         description="Create the next tournament phase and choose its initial generation format."
-        submitLabel="Add Stage"
-        submittingLabel="Adding..."
+        submitLabel="Add stage"
+        submittingLabel="Adding…"
         onSubmit={handleCreateStageSubmit}
         isSubmitting={createMutation.isPending}
         errorMessage={createMutation.isError ? createMutation.error.message : undefined}
@@ -1998,7 +1972,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
             <Label htmlFor="new-stage-name">Stage name</Label>
             <Input
               id="new-stage-name"
-              placeholder="Playoffs, Group A, Finals..."
+              placeholder="Playoffs, Group A, Finals…"
               value={newStageName}
               onChange={(event) => setNewStageName(event.target.value)}
             />
@@ -2035,7 +2009,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
 
           {newStageType === "double_elimination" ? (
             <div className="flex flex-col gap-2">
-              <Label htmlFor="new-stage-grand-final">Grand Final format</Label>
+              <Label htmlFor="new-stage-grand-final">Grand final format</Label>
               <Select
                 value={newStageDeGrandFinalType}
                 onValueChange={(value) =>
@@ -2046,9 +2020,9 @@ export function StageManager({ tournamentId }: StageManagerProps) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="no_reset">No Reset - UB winner wins after one GF win</SelectItem>
+                  <SelectItem value="no_reset">No reset · UB winner wins after one GF win</SelectItem>
                   <SelectItem value="with_reset">
-                    With Reset - LB champion can force a rematch
+                    With reset · LB champion can force a rematch
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -2067,7 +2041,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
             deleteMutation.mutate(stageToDelete.id);
           }
         }}
-        title="Delete Stage"
+        title="Delete stage"
         description={
           stageToDelete
             ? `Delete "${stageToDelete.name}"? This removes its structure and generated bracket data.`
@@ -2075,6 +2049,76 @@ export function StageManager({ tournamentId }: StageManagerProps) {
         }
         cascadeInfo={["Stage structure items", "Team input slots", "Generated stage matches"]}
         isDeleting={deleteMutation.isPending}
+      />
+
+      <DeleteConfirmDialog
+        open={Boolean(seedStageConfirm)}
+        onOpenChange={(open) => {
+          if (!open) setSeedStageConfirm(null);
+        }}
+        onConfirm={() => {
+          if (seedStageConfirm) {
+            seedTeamsMutation.mutate({ stageId: seedStageConfirm.id, mode: "snake_sr" });
+          }
+        }}
+        title="Reseed stage from SR"
+        description={
+          seedStageConfirm
+            ? `Distribute ${teams.length} teams across ${seedStageConfirm.items.length} group(s) of "${seedStageConfirm.name}" with a snake SR draft. Every manual assignment in this stage is cleared first.`
+            : undefined
+        }
+        cascadeInfo={["Manual team assignments in this stage"]}
+        confirmLabel="Seed teams"
+        confirmingLabel="Seeding…"
+        isDeleting={seedTeamsMutation.isPending}
+      />
+
+      <DeleteConfirmDialog
+        open={Boolean(mergeStageConfirm)}
+        onOpenChange={(open) => {
+          if (!open) setMergeStageConfirm(null);
+        }}
+        onConfirm={() => {
+          if (mergeStageConfirm) {
+            mergeGroupStagesMutation.mutate({
+              targetStageId: mergeStageConfirm.id,
+              sourceStageIds: mergeableGroupStageCandidates.map((stage) => stage.id),
+              targetName: mergedStageName
+            });
+          }
+        }}
+        title="Merge group stages"
+        description={
+          mergeStageConfirm
+            ? `Move the groups, matches and standings of ${mergeableGroupStageCandidates.length} stage(s) into "${mergedStageName}". The merged stages leave the timeline.`
+            : undefined
+        }
+        cascadeInfo={mergeableGroupStageCandidates.map((stage) => `Stage "${stage.name}"`)}
+        confirmLabel="Merge stages"
+        confirmingLabel="Merging…"
+        isDeleting={mergeGroupStagesMutation.isPending}
+      />
+
+      <DeleteConfirmDialog
+        open={Boolean(forceActivateStage)}
+        onOpenChange={(open) => {
+          if (!open) setForceActivateStage(null);
+        }}
+        onConfirm={() => {
+          if (forceActivateStage) {
+            activateAndGenerateMutation.mutate({ stageId: forceActivateStage.id, force: true });
+          }
+        }}
+        title="Activate before upstream stages finish"
+        description={
+          forceActivateStage
+            ? `Upstream stages still have pending encounters. Activating "${forceActivateStage.name}" now freezes its seeds from standings that can still change.`
+            : undefined
+        }
+        confirmLabel="Activate anyway"
+        confirmingLabel="Activating…"
+        confirmVariant="default"
+        isDeleting={activateAndGenerateMutation.isPending}
       />
     </>
   );

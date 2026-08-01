@@ -103,7 +103,7 @@ function RoleIconRow({ roleCodes }: { roleCodes: BalancerRoleCode[] }) {
           className="flex h-6 w-6 items-center justify-center rounded-full border border-border/60 bg-background/90"
           title={ROLE_LABELS[roleCode]}
         >
-          <PlayerRoleIcon role={ROLE_LABELS[roleCode]} size={14} />
+          <PlayerRoleIcon role={ROLE_LABELS[roleCode]} size={14} decorative />
         </span>
       ))}
       <span className="sr-only">{roleCodes.map((roleCode) => ROLE_LABELS[roleCode]).join(", ")}</span>

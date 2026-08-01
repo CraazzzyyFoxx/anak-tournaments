@@ -63,8 +63,8 @@ export default function TournamentRegisterButton({ tournament }: Props) {
 
   if (!isRegistrationOpen(tournament, form.is_open)) {
     return (
-      <div className="inline-flex items-center gap-2 rounded-lg border border-white/7 bg-white/2 px-4 py-2 text-sm text-white/40">
-        <Clock className="size-4" />
+      <div className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-4 py-2 text-sm text-[color:var(--aqt-fg-dim)]">
+        <Clock className="size-4" aria-hidden />
         {t("registration.button.closed")}
       </div>
     );
@@ -72,19 +72,42 @@ export default function TournamentRegisterButton({ tournament }: Props) {
 
   if (myReg) {
     const statusMap: Record<string, { icon: typeof Clock; label: string; className: string }> = {
-      pending: { icon: Clock, label: t("common.pendingReview"), className: "border-amber-500/20 bg-amber-500/10 text-amber-400" },
-      approved: { icon: CheckCircle2, label: t("common.approved"), className: "border-emerald-500/20 bg-emerald-500/10 text-emerald-400" },
-      rejected: { icon: XCircle, label: t("common.rejected"), className: "border-red-500/20 bg-red-500/10 text-red-400" },
-      withdrawn: { icon: XCircle, label: t("common.withdrawn"), className: "border-white/10 bg-white/5 text-white/55" },
+      pending: {
+        icon: Clock,
+        label: t("common.pendingReview"),
+        className:
+          "border-[color:color-mix(in_srgb,var(--aqt-amber)_20%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-amber)_10%,transparent)] text-[color:var(--aqt-amber)]"
+      },
+      approved: {
+        icon: CheckCircle2,
+        label: t("common.approved"),
+        className:
+          "border-[color:color-mix(in_srgb,var(--aqt-emerald)_20%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-emerald)_10%,transparent)] text-[color:var(--aqt-emerald)]"
+      },
+      rejected: {
+        icon: XCircle,
+        label: t("common.rejected"),
+        className:
+          "border-[color:color-mix(in_srgb,var(--aqt-rose)_20%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-rose)_10%,transparent)] text-[color:var(--aqt-rose)]"
+      },
+      withdrawn: {
+        icon: XCircle,
+        label: t("common.withdrawn"),
+        className:
+          "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-3)] text-[color:var(--aqt-fg-muted)]"
+      }
     };
     const config = statusMap[myReg.status] ?? statusMap.pending;
     const StatusIcon = config.icon;
     return (
       <Link
         href={`/tournaments/${tournamentId}/participants`}
-        className={cn("inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-opacity hover:opacity-80", config.className)}
+        className={cn(
+          "inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-opacity hover:opacity-80",
+          config.className
+        )}
       >
-        <StatusIcon className="size-4" />
+        <StatusIcon className="size-4" aria-hidden />
         {config.label}
       </Link>
     );
@@ -95,9 +118,9 @@ export default function TournamentRegisterButton({ tournament }: Props) {
       <button
         type="button"
         onClick={handleAuthClick}
-        className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/3 px-4 py-2 text-sm font-medium text-white/75 transition-colors hover:border-white/20 hover:bg-white/6 hover:text-white"
+        className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-4 py-2 text-sm font-medium text-[color:var(--aqt-fg-muted)] outline-none transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-bg)]"
       >
-        <LogIn className="size-4" />
+        <LogIn className="size-4" aria-hidden />
         {t("registration.button.loginToRegister")}
       </button>
     );
@@ -108,9 +131,9 @@ export default function TournamentRegisterButton({ tournament }: Props) {
       <button
         type="button"
         onClick={() => setShowModal(true)}
-        className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-medium text-black transition-opacity hover:opacity-90"
+        className="inline-flex items-center gap-2 rounded-lg bg-[color:var(--aqt-teal)] px-4 py-2 text-sm font-medium text-[color:var(--aqt-bg)] outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-bg)]"
       >
-        <UserPlus className="size-4" />
+        <UserPlus className="size-4" aria-hidden />
         {t("registration.button.register")}
       </button>
 

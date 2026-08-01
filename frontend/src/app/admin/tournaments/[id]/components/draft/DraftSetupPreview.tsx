@@ -40,7 +40,7 @@ export function DraftSetupPreview({
             key={entry.round}
             className="flex min-w-0 items-center gap-3 rounded-xl border border-border/70 bg-muted/20 px-3 py-2.5"
           >
-            <span className="w-16 shrink-0 text-xs font-medium text-muted-foreground">
+            <span className="w-16 shrink-0 text-xs font-medium tabular-nums text-muted-foreground">
               {t("roundNumber", { round: entry.round })}
             </span>
             <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
@@ -52,7 +52,7 @@ export function DraftSetupPreview({
                       {registration ? registrationLabel(registration) : `#${id}`}
                     </span>
                     {index < entry.teamIds.length - 1 && (
-                      <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                      <ArrowRight className="h-3 w-3 text-muted-foreground" aria-hidden />
                     )}
                   </span>
                 );

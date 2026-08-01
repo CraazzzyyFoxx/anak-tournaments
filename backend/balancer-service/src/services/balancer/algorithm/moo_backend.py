@@ -60,6 +60,8 @@ def _serialize_native_request(
             "intra_team_std_weight": config.intra_team_std_weight,
             "internal_role_spread_weight": config.internal_role_spread_weight,
             "sub_role_collision_weight": config.sub_role_collision_weight,
+            "low_rank_threshold": config.low_rank_threshold,
+            "low_rank_collision_weight": config.low_rank_collision_weight,
             "tank_impact_weight": config.tank_impact_weight,
             "dps_impact_weight": config.dps_impact_weight,
             "support_impact_weight": config.support_impact_weight,

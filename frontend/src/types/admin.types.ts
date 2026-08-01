@@ -133,6 +133,8 @@ export interface TournamentCreateInput {
   name: string;
   description?: string;
   is_league: boolean;
+  /** Lazy wizard drafts (D4) are created Unpublished and published later. */
+  is_hidden?: boolean;
   status?: TournamentStatus;
   start_date: string;
   end_date: string;
@@ -185,6 +187,41 @@ export interface TournamentPreviewAccessEntry {
 export interface TournamentStatusTransitionInput {
   status: TournamentStatus;
   force?: boolean;
+}
+
+/**
+ * Readiness aggregate for the hub living checklist (D13, §7.1).
+ * Mirrors backend/app-service/src/services/dashboard/readiness.py. Field
+ * groups are masked by the caller's permissions: `tournament.read` gates the
+ * setup/bracket/logs group, `team.read` gates the registration/pool/balance/
+ * draft group — a masked group arrives as `null` and the checklist renders
+ * "no-access" instead of zeros (D16).
+ */
+export interface TournamentReadiness {
+  tournament_id: number;
+  status: string;
+  team_formation: string;
+  // visible with tournament.read:
+  schedule_configured: boolean | null;
+  grid_selected: boolean | null;
+  stages_total: number | null;
+  stage_slots_filled: boolean | null;
+  bracket_generated: boolean | null;
+  encounters_total: number | null;
+  encounters_with_logs: number | null;
+  logs_used: boolean | null;
+  // visible with team.read:
+  registration_form_configured: boolean | null;
+  registration_open: boolean | null;
+  registrations_pending: number | null;
+  registrations_approved: number | null;
+  registrations_checked_in: number | null;
+  registrations_ranked: number | null;
+  pool_ready: number | null;
+  pool_need_fix: number | null;
+  balance_saved: boolean | null;
+  balance_exported_at: string | null;
+  draft_session_status: string | null;
 }
 
 // ─── Stage Admin ────────────────────────────────────────────────────────────
@@ -847,6 +884,17 @@ export interface LogHistoryResponse {
   total: number;
 }
 
+/** Aggregate over the whole scope, not the page the console happens to show. */
+export interface LogProcessingStats {
+  total: number;
+  pending: number;
+  processing: number;
+  done: number;
+  failed: number;
+  avg_duration_seconds: number | null;
+  last_created_at: string | null;
+}
+
 export interface LogUploadItem {
   record_id: number;
   filename: string;
@@ -861,20 +909,6 @@ export interface LogUploadError {
 export interface LogUploadResponse {
   uploaded: LogUploadItem[];
   errors: LogUploadError[];
-}
-
-export interface QueueDepth {
-  name: string;
-  messages_ready: number;
-  messages_unacknowledged: number;
-  consumers: number;
-  status: "ok" | "not_found" | "error";
-}
-
-export interface LogStreamEvent {
-  timestamp: string;
-  queues: QueueDepth[];
-  recent_logs: LogProcessingRecord[];
 }
 
 // ─── Bulk Operations ─────────────────────────────────────────────────────────

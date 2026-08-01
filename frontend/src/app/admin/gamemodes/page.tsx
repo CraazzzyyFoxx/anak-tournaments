@@ -1,12 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { ColumnDef } from "@tanstack/react-table";
-import { MoreHorizontal, Plus, Pencil, Trash2, RefreshCw } from "lucide-react";
+import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import {
+  CatalogToolbarActions,
+  entityFormError,
+  onEntityDialogClose
+} from "@/components/admin/CatalogToolbarActions";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { Button } from "@/components/ui/button";
@@ -31,6 +36,8 @@ const emptyGamemodeForm: GamemodeCreateInput = { name: "" };
 export default function GamemodesAdminPage() {
   const queryClient = useQueryClient();
   const { isSuperuser } = usePermissions();
+  const formId = useId();
+  const nameFieldId = `${formId}-name`;
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingGamemode, setEditingGamemode] = useState<Gamemode | null>(null);
   const [deletingGamemode, setDeletingGamemode] = useState<Gamemode | null>(null);
@@ -38,12 +45,17 @@ export default function GamemodesAdminPage() {
     ...emptyGamemodeForm,
   });
 
+  const closeForm = () => {
+    setCreateDialogOpen(false);
+    setEditingGamemode(null);
+    setFormData({ ...emptyGamemodeForm });
+  };
+
   const createMutation = useMutation({
     mutationFn: (data: GamemodeCreateInput) => adminService.createGamemode(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "gamemodes"] });
-      setCreateDialogOpen(false);
-      setFormData({ ...emptyGamemodeForm });
+      closeForm();
     },
   });
 
@@ -52,8 +64,7 @@ export default function GamemodesAdminPage() {
       adminService.updateGamemode(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "gamemodes"] });
-      setEditingGamemode(null);
-      setFormData({ ...emptyGamemodeForm });
+      closeForm();
     },
   });
 
@@ -89,6 +100,7 @@ export default function GamemodesAdminPage() {
       accessorKey: "id",
       header: "ID",
       size: 80,
+      cell: ({ row }) => <span className="tabular-nums">{row.original.id}</span>,
     },
     {
       accessorKey: "name",
@@ -106,11 +118,11 @@ export default function GamemodesAdminPage() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button aria-label={`Open actions for ${gamemode.name}`} variant="ghost" size="icon">
-                <MoreHorizontal className="h-4 w-4" />
+                <MoreHorizontal aria-hidden className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+              <DropdownMenuLabel className="truncate">{gamemode.name}</DropdownMenuLabel>
               <DropdownMenuItem
                 onClick={() => {
                   updateMutation.reset();
@@ -118,16 +130,16 @@ export default function GamemodesAdminPage() {
                   setFormData({ name: gamemode.name });
                 }}
               >
-                <Pencil className="mr-2 h-4 w-4" />
-                Edit
+                <Pencil aria-hidden className="mr-2 h-4 w-4" />
+                Edit gamemode
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={() => setDeletingGamemode(gamemode)}
                 className="text-destructive"
               >
-                <Trash2 className="mr-2 h-4 w-4" />
-                Delete
+                <Trash2 aria-hidden className="mr-2 h-4 w-4" />
+                Delete gamemode
               </DropdownMenuItem>
             </DropdownMenuContent>
            </DropdownMenu>
@@ -142,31 +154,19 @@ export default function GamemodesAdminPage() {
         title="Gamemodes"
         description="Manage game modes"
         actions={
-          isSuperuser ? (
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => syncMutation.mutate()}
-                disabled={syncMutation.isPending}
-              >
-                <RefreshCw
-                  className={`mr-2 h-4 w-4 ${syncMutation.isPending ? "animate-spin" : ""}`}
-                />
-                Sync from Game
-              </Button>
-              <Button
-                onClick={() => {
-                  createMutation.reset();
-                  updateMutation.reset();
-                  setFormData({ ...emptyGamemodeForm });
-                  setCreateDialogOpen(true);
-                }}
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Create Gamemode
-              </Button>
-            </div>
-          ) : null
+          <CatalogToolbarActions
+            canSync={isSuperuser}
+            isSyncing={syncMutation.isPending}
+            onSync={() => syncMutation.mutate()}
+            syncLabel="Sync gamemodes from game"
+            onCreate={() => {
+              createMutation.reset();
+              updateMutation.reset();
+              setFormData({ ...emptyGamemodeForm });
+              setCreateDialogOpen(true);
+            }}
+            createLabel="Create gamemode"
+          />
         }
       />
 
@@ -176,8 +176,8 @@ export default function GamemodesAdminPage() {
           adminService.getGamemodes({ page, search, per_page: pageSize, sort: sortField ?? undefined, order: sortDir })
         }
         columns={columns}
-        searchPlaceholder="Search gamemodes..."
-        emptyMessage="No gamemodes found."
+        searchPlaceholder="Search gamemodes…"
+        emptyMessage="No gamemodes yet. Use “Create gamemode” to add the first one."
         onRowDoubleClick={
           isSuperuser
             ? (row) => {
@@ -193,32 +193,27 @@ export default function GamemodesAdminPage() {
       {/* Create/Edit Dialog */}
       <EntityFormDialog
         open={createDialogOpen || !!editingGamemode}
-        onOpenChange={(open) => {
-          if (!open) {
-            setCreateDialogOpen(false);
-            setEditingGamemode(null);
-            setFormData({ ...emptyGamemodeForm });
-          }
-        }}
-        title={editingGamemode ? "Edit Gamemode" : "Create Gamemode"}
+        onOpenChange={onEntityDialogClose(closeForm)}
+        title={editingGamemode ? "Edit gamemode" : "Create gamemode"}
         description={
           editingGamemode ? "Update gamemode information" : "Create a new gamemode in the game"
         }
         onSubmit={handleSubmit}
         isSubmitting={createMutation.isPending || updateMutation.isPending}
         submittingLabel={editingGamemode ? "Updating gamemode…" : "Creating gamemode…"}
-        errorMessage={
-          (editingGamemode ? updateMutation.error : createMutation.error) instanceof Error
-            ? (editingGamemode ? updateMutation.error : createMutation.error)?.message
-            : undefined
-        }
+        errorMessage={entityFormError(
+          "gamemode",
+          !!editingGamemode,
+          updateMutation.error,
+          createMutation.error
+        )}
         isDirty={isFormDirty}
       >
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="name">Name</Label>
+            <Label htmlFor={nameFieldId}>Name *</Label>
             <Input
-              id="name"
+              id={nameFieldId}
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               placeholder="Gamemode name"
@@ -235,8 +230,8 @@ export default function GamemodesAdminPage() {
           onOpenChange={(open) => !open && setDeletingGamemode(null)}
           onConfirm={() => deleteMutation.mutate(deletingGamemode.id)}
           isDeleting={deleteMutation.isPending}
-          title={`Delete ${deletingGamemode.name}?`}
-          cascadeInfo={["All maps using this gamemode will also be affected"]}
+          title="Delete gamemode"
+          description={`“${deletingGamemode.name}” will be permanently removed. Reassign any maps still using it first, otherwise the delete will fail.`}
         />
       )}
     </div>

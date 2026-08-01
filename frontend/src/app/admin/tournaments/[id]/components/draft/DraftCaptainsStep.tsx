@@ -8,7 +8,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -16,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import { TONE_CLASS } from "@/components/admin/tone";
 import { cn } from "@/lib/utils";
 import type { AdminRegistration } from "@/types/balancer-admin.types";
 import type { DraftRole } from "@/types/draft.types";
@@ -58,15 +58,14 @@ export function DraftCaptainsStep({ pool, teamCount, value, onChange }: DraftCap
   return (
     <div className="space-y-5">
       <div
+        role="status"
         className={cn(
           "sticky top-2 z-10 flex items-center justify-between rounded-xl border px-4 py-3 shadow-sm backdrop-blur",
-          value.ids.length === teamCount
-            ? "border-emerald-500/30 bg-emerald-500/10"
-            : "border-amber-500/30 bg-background/95"
+          TONE_CLASS[value.ids.length === teamCount ? "success" : "warning"]
         )}
       >
         <div className="flex items-center gap-3">
-          <UserRoundCheck className="h-5 w-5" />
+          <UserRoundCheck className="h-5 w-5" aria-hidden />
           <span className="text-sm font-medium">{t("captainsSelected")}</span>
         </div>
         <strong className="tabular-nums">
@@ -78,11 +77,15 @@ export function DraftCaptainsStep({ pool, teamCount, value, onChange }: DraftCap
         <div className="space-y-3">
           <div className="flex gap-2">
             <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Search
+                className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground"
+                aria-hidden
+              />
               <Input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder={t("searchCaptains")}
+                aria-label={t("searchCaptains")}
                 className="pl-9"
               />
             </div>
@@ -99,7 +102,7 @@ export function DraftCaptainsStep({ pool, teamCount, value, onChange }: DraftCap
             </Select>
           </div>
 
-          <div className="max-h-[420px] divide-y divide-border/60 overflow-auto rounded-xl border border-border/70">
+          <div className="max-h-96 divide-y divide-border/60 overflow-auto rounded-xl border border-border/70">
             {filtered.map((registration) => {
               const summary = summarizeRegistration(registration);
               const selected = value.ids.includes(registration.id);
@@ -125,13 +128,13 @@ export function DraftCaptainsStep({ pool, teamCount, value, onChange }: DraftCap
                     </span>
                     <span className="mt-1 flex flex-wrap gap-1">
                       {summary.roles.map((entry) => (
-                        <Badge key={entry} variant="secondary" className="text-[10px]">
+                        <Badge key={entry} variant="secondary" className="text-xs">
                           {t(`roles.${entry}`)}
                         </Badge>
                       ))}
                     </span>
                   </span>
-                  <span className="font-mono text-xs text-muted-foreground">
+                  <span className="font-mono text-xs tabular-nums text-muted-foreground">
                     {summary.rank ?? "—"}
                   </span>
                 </label>
@@ -147,7 +150,7 @@ export function DraftCaptainsStep({ pool, teamCount, value, onChange }: DraftCap
 
         <div className="space-y-3">
           <div className="flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4 text-muted-foreground" />
+            <ShieldCheck className="h-4 w-4 text-muted-foreground" aria-hidden />
             <h3 className="text-sm font-semibold">{t("selectedTeams")}</h3>
           </div>
           {value.ids.length === 0 ? (
@@ -162,7 +165,7 @@ export function DraftCaptainsStep({ pool, teamCount, value, onChange }: DraftCap
                 return (
                   <div key={id} className="rounded-xl border border-border/70 bg-card p-3">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-sm font-medium">
+                      <span className="truncate text-sm font-medium tabular-nums">
                         {index + 1}. {registrationLabel(registration)}
                       </span>
                       <Button
@@ -173,16 +176,14 @@ export function DraftCaptainsStep({ pool, teamCount, value, onChange }: DraftCap
                         onClick={() => toggle(id)}
                         aria-label={t("removeCaptain", { name: registrationLabel(registration) })}
                       >
-                        <X className="h-4 w-4" />
+                        <X className="h-4 w-4" aria-hidden />
                       </Button>
                     </div>
-                    <Label htmlFor={`team-name-${id}`} className="sr-only">
-                      {t("teamName")}
-                    </Label>
                     <Input
                       id={`team-name-${id}`}
                       className="mt-2 h-8"
                       placeholder={t("teamName")}
+                      aria-label={`${registrationLabel(registration)} · ${t("teamName")}`}
                       value={value.teamNames[id] ?? ""}
                       onChange={(event) =>
                         onChange({

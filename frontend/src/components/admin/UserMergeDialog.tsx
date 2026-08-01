@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { AlertTriangle, ArrowRightLeft, RefreshCw } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -28,6 +28,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { EYEBROW_CLASS } from "@/components/admin/tone";
 import { SocialIcon } from "@/components/social/SocialIcon";
 import { getSocialProviderConfig } from "@/lib/social-providers";
 
@@ -51,23 +52,6 @@ const AFFECTED_RECORD_LABELS: Record<string, string> = {
   "players.user.auth_user_id": "Linked account"
 };
 
-function affectedRecordLabel(key: string): string {
-  return AFFECTED_RECORD_LABELS[key] ?? key;
-}
-
-function buildDefaultIdentitySelection(
-  preview: UserMergePreviewResponse
-): UserMergeIdentitySelection {
-  return { social_account_ids: preview.source.social_accounts.map((item) => item.id) };
-}
-
-function mergePreviewToFieldPolicy(preview: UserMergePreviewResponse): UserMergeFieldPolicy {
-  return {
-    name: "target",
-    avatar_url: "target"
-  };
-}
-
 function FieldChoiceButtons({
   label,
   fieldKey,
@@ -81,21 +65,25 @@ function FieldChoiceButtons({
   value: UserMergeFieldChoice;
   onChange: (value: UserMergeFieldChoice) => void;
 }) {
+  const groupId = useId();
   const sourceValue = preview.field_options[fieldKey].source ?? "Empty";
   const targetValue = preview.field_options[fieldKey].target ?? "Empty";
 
   return (
     <div className="space-y-2">
-      <Label className="text-sm">{label}</Label>
-      <div className="grid grid-cols-2 gap-2">
+      <p className="text-sm font-medium" id={groupId}>
+        {label}
+      </p>
+      <div className="grid grid-cols-2 gap-2" role="group" aria-labelledby={groupId}>
         <Button
           type="button"
           variant={value === "source" ? "default" : "outline"}
           className="h-auto justify-start whitespace-normal px-3 py-2 text-left"
+          aria-pressed={value === "source"}
           onClick={() => onChange("source")}
         >
           <div className="space-y-1">
-            <div className="text-xs uppercase tracking-wide opacity-70">Source</div>
+            <div className="text-xs uppercase tracking-wider opacity-70">Source</div>
             <div className="text-sm">{sourceValue}</div>
           </div>
         </Button>
@@ -103,10 +91,11 @@ function FieldChoiceButtons({
           type="button"
           variant={value === "target" ? "default" : "outline"}
           className="h-auto justify-start whitespace-normal px-3 py-2 text-left"
+          aria-pressed={value === "target"}
           onClick={() => onChange("target")}
         >
           <div className="space-y-1">
-            <div className="text-xs uppercase tracking-wide opacity-70">Target</div>
+            <div className="text-xs uppercase tracking-wider opacity-70">Target</div>
             <div className="text-sm">{targetValue}</div>
           </div>
         </Button>
@@ -126,38 +115,44 @@ function IdentitySelectionSection({
   selectedIds: number[];
   onToggle: (identityId: number, checked: boolean) => void;
 }) {
+  const groupId = useId();
+
   if (items.length === 0) {
     return (
       <div className="space-y-2">
-        <Label className="text-sm">{label}</Label>
-        <div className="rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground">
-          No source identities
-        </div>
+        <p className="text-sm font-medium">{label}</p>
+        <p className="rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground">
+          The source profile has no linked social accounts, so nothing moves across.
+        </p>
       </div>
     );
   }
 
   return (
     <div className="space-y-2">
-      <Label className="text-sm">{label}</Label>
-      <div className="space-y-2">
+      <p className="text-sm font-medium" id={groupId}>
+        {label}
+      </p>
+      <div className="space-y-2" role="group" aria-labelledby={groupId}>
         {items.map((item) => {
           const checked = selectedIds.includes(item.id);
+          const providerLabel = getSocialProviderConfig(item.provider).label;
           return (
-            <label
+            <div
               key={item.id}
-              className="flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2"
+              className="flex items-start gap-3 rounded-md border px-3 py-2"
             >
               <Checkbox
                 checked={checked}
                 onCheckedChange={(state) => onToggle(item.id, state === true)}
                 className="mt-0.5"
+                aria-label={`Move the ${providerLabel} identity ${item.value} to the target profile`}
               />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <SocialIcon provider={item.provider} size={14} />
                   <span className="truncate text-sm font-medium">{item.value}</span>
-                  <span className="text-xs text-muted-foreground">{getSocialProviderConfig(item.provider).label}</span>
+                  <span className="text-xs text-muted-foreground">{providerLabel}</span>
                   {item.duplicate_on_target ? (
                     <Badge variant="outline" className="text-xs">
                       Duplicate on target
@@ -165,7 +160,7 @@ function IdentitySelectionSection({
                   ) : null}
                 </div>
               </div>
-            </label>
+            </div>
           );
         })}
       </div>
@@ -189,6 +184,8 @@ export function UserMergeDialog({
     social_account_ids: []
   });
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const confirmId = useId();
 
   const previewMutation = useMutation({
     mutationFn: () =>
@@ -197,9 +194,12 @@ export function UserMergeDialog({
         target_user_id: targetUser!.id
       }),
     onSuccess: (preview) => {
-      setFieldPolicy(mergePreviewToFieldPolicy(preview));
-      setIdentitySelection(buildDefaultIdentitySelection(preview));
+      setFieldPolicy({ name: "target", avatar_url: "target" });
+      setIdentitySelection({
+        social_account_ids: preview.source.social_accounts.map((item) => item.id)
+      });
       setConfirmDelete(false);
+      setSubmitError(null);
       executeMutation.reset();
     }
   });
@@ -227,6 +227,7 @@ export function UserMergeDialog({
     setFieldPolicy({ name: "target", avatar_url: "target" });
     setIdentitySelection({ social_account_ids: [] });
     setConfirmDelete(false);
+    setSubmitError(null);
     previewMutation.reset();
     executeMutation.reset();
   };
@@ -239,8 +240,22 @@ export function UserMergeDialog({
     }));
   };
 
+  // Checked on submit rather than by disabling the button, so the reader is
+  // told which step is outstanding instead of meeting a dead control.
   const handleExecute = () => {
-    if (!preview || !targetUser) return;
+    if (!targetUser) {
+      setSubmitError("Choose the target profile the source should merge into.");
+      return;
+    }
+    if (!preview) {
+      setSubmitError("Run “Preview merge” first — the merge is checked against that preview.");
+      return;
+    }
+    if (!confirmDelete) {
+      setSubmitError("Tick the confirmation box to acknowledge that the source profile is deleted.");
+      return;
+    }
+    setSubmitError(null);
     executeMutation.mutate({
       source_user_id: sourceUser.id,
       target_user_id: targetUser.id,
@@ -257,35 +272,43 @@ export function UserMergeDialog({
       <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <ArrowRightLeft className="h-4 w-4" />
-            Merge Player Profiles
+            <ArrowRightLeft className="h-4 w-4" aria-hidden />
+            Merge player profiles
           </DialogTitle>
           <DialogDescription>
-            Merge source profile <strong>{sourceUser.name}</strong> into another existing player
-            profile.
+            Everything attached to <strong>{sourceUser.name}</strong> moves onto the target profile,
+            and the source profile is then deleted for good. Preview the merge before running it.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-5">
           <div className="grid gap-4 md:grid-cols-2">
             <div className="rounded-lg border px-4 py-3">
-              <div className="text-xs uppercase tracking-wide text-muted-foreground">Source</div>
-              <div className="mt-1 text-sm font-medium">{sourceUser.name}</div>
-              <div className="text-xs text-muted-foreground">User #{sourceUser.id}</div>
+              <p className={EYEBROW_CLASS}>Source</p>
+              <p className="mt-1 text-sm font-medium">{sourceUser.name}</p>
+              <p className="text-xs text-muted-foreground tabular-nums">User #{sourceUser.id}</p>
             </div>
             <div className="space-y-2 rounded-lg border px-4 py-3">
-              <div className="text-xs uppercase tracking-wide text-muted-foreground">Target</div>
+              <Label htmlFor="merge-target-user" className={EYEBROW_CLASS}>
+                Target
+              </Label>
               <UserSearchCombobox
+                id="merge-target-user"
                 value={targetUser?.id}
                 selectedName={targetUser?.name}
                 onSelect={handleTargetSelect}
                 placeholder="Select target profile"
-                searchPlaceholder="Search target user..."
+                searchPlaceholder="Search target user…"
               />
             </div>
           </div>
 
-          <div className="flex justify-end">
+          <div className="flex items-center justify-end gap-3">
+            {previewMutation.error instanceof Error && (
+              <p className="mr-auto text-sm text-danger">
+                The preview could not be built: {previewMutation.error.message}
+              </p>
+            )}
             <Button
               type="button"
               variant="outline"
@@ -294,8 +317,8 @@ export function UserMergeDialog({
             >
               {previewMutation.isPending ? (
                 <>
-                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                  Loading preview...
+                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+                  Loading preview…
                 </>
               ) : (
                 "Preview merge"
@@ -307,10 +330,11 @@ export function UserMergeDialog({
             <div className="space-y-5">
               {mergeBlocked ? (
                 <Alert variant="destructive">
-                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTriangle className="h-4 w-4" aria-hidden />
                   <AlertTitle>Merge blocked</AlertTitle>
                   <AlertDescription>
-                    {preview.conflicts.summary ?? "Both profiles are linked to auth accounts."}
+                    {preview.conflicts.summary ??
+                      "Both profiles are linked to a sign-in account. Unlink one of them before merging."}
                   </AlertDescription>
                 </Alert>
               ) : null}
@@ -334,8 +358,10 @@ export function UserMergeDialog({
                 </div>
 
                 <div className="space-y-3">
-                  <Label className="text-sm">Affected records</Label>
-                  <div className="rounded-lg border p-3">
+                  <p className="text-sm font-medium" id="merge-affected-records">
+                    Records moving to {targetUser?.name ?? "the target"}
+                  </p>
+                  <div className="rounded-lg border p-3" aria-labelledby="merge-affected-records">
                     {affectedEntries.length > 0 ? (
                       <div className="space-y-2">
                         {affectedEntries.map(([key, count]) => (
@@ -343,7 +369,9 @@ export function UserMergeDialog({
                             key={key}
                             className="flex items-center justify-between gap-3 text-sm"
                           >
-                            <span className="text-muted-foreground">{affectedRecordLabel(key)}</span>
+                            <span className="text-muted-foreground">
+                              {AFFECTED_RECORD_LABELS[key] ?? key}
+                            </span>
                             <Badge variant="secondary" className="tabular-nums">
                               {count}
                             </Badge>
@@ -351,9 +379,9 @@ export function UserMergeDialog({
                         ))}
                       </div>
                     ) : (
-                      <div className="text-sm text-muted-foreground">
-                        No linked records will be reassigned.
-                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Nothing is linked to the source profile, so no records get reassigned.
+                      </p>
                     )}
                   </div>
                 </div>
@@ -367,28 +395,37 @@ export function UserMergeDialog({
               />
 
               <div className="space-y-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
-                <label className="flex items-start gap-3">
+                <div className="flex items-start gap-3">
                   <Checkbox
+                    id={confirmId}
                     checked={confirmDelete}
                     onCheckedChange={(checked) => setConfirmDelete(checked === true)}
                     className="mt-0.5"
                   />
                   <div className="space-y-1">
-                    <div className="text-sm font-medium">
-                      I understand that the source profile will be permanently deleted after merge.
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      Source: {sourceUser.name} #{sourceUser.id}
-                      {targetUser ? ` -> Target: ${targetUser.name} #${targetUser.id}` : ""}
-                    </div>
+                    <Label htmlFor={confirmId} className="text-sm font-medium leading-snug">
+                      {targetUser
+                        ? `I understand that ${sourceUser.name} (#${sourceUser.id}) is deleted for good, and that its rosters, registrations, achievements and selected identities become part of ${targetUser.name} (#${targetUser.id}).`
+                        : `I understand that ${sourceUser.name} (#${sourceUser.id}) is deleted for good once the merge runs.`}
+                    </Label>
+                    <p className="text-xs text-muted-foreground tabular-nums">
+                      {sourceUser.name} #{sourceUser.id}
+                      {targetUser ? ` → ${targetUser.name} #${targetUser.id}` : ""}
+                    </p>
                   </div>
-                </label>
+                </div>
               </div>
             </div>
           ) : null}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+          {submitError && <p className="mr-auto text-sm text-danger">{submitError}</p>}
+          {executeMutation.error instanceof Error && (
+            <p className="mr-auto text-sm text-danger">
+              The merge did not run: {executeMutation.error.message}
+            </p>
+          )}
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
@@ -396,9 +433,9 @@ export function UserMergeDialog({
             type="button"
             variant="destructive"
             onClick={handleExecute}
-            disabled={!preview || mergeBlocked || !confirmDelete || executeMutation.isPending}
+            disabled={mergeBlocked || executeMutation.isPending}
           >
-            {executeMutation.isPending ? "Merging..." : "Execute merge"}
+            {executeMutation.isPending ? "Merging…" : "Merge and delete source"}
           </Button>
         </DialogFooter>
       </DialogContent>

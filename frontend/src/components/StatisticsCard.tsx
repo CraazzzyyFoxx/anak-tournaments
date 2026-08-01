@@ -1,5 +1,8 @@
+"use client";
+
 import React from "react";
 import type { ReactNode } from "react";
+import { useFormatter } from "next-intl";
 
 export interface StatisticsCardProps {
   name: string;
@@ -8,28 +11,33 @@ export interface StatisticsCardProps {
   iconClassName?: string;
 }
 
+/**
+ * Headline platform metric tile.
+ *
+ * Numbers go through next-intl's formatter, not a hardcoded `en-US`, so a
+ * Russian reader sees `1 557` rather than `1,557`.
+ */
 const StatisticsCard = ({
   name,
   value,
   icon,
-  iconClassName = "bg-white/5 text-white/40"
+  iconClassName = "bg-[color:var(--aqt-overlay-3)] text-[color:var(--aqt-fg-dim)]"
 }: StatisticsCardProps) => {
+  const format = useFormatter();
   const formattedValue =
-    typeof value === "number" && Number.isFinite(value)
-      ? new Intl.NumberFormat("en-US").format(value)
-      : value;
+    typeof value === "number" && Number.isFinite(value) ? format.number(value) : value;
 
   return (
-    <div className="relative rounded-xl border border-white/[0.07] bg-white/[0.02] px-5 py-4 flex flex-col gap-3 hover:bg-white/[0.04] transition-colors duration-200">
+    <div className="relative flex flex-col gap-3 rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-5 py-4 transition-colors duration-200 hover:bg-[color:var(--aqt-overlay-2)]">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-medium text-white/50">{name}</p>
+        <p className="text-sm font-medium text-[color:var(--aqt-fg-muted)]">{name}</p>
         {icon && (
           <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${iconClassName}`}>
             {icon}
           </div>
         )}
       </div>
-      <div className="text-3xl font-bold tabular-nums tracking-tight text-white">
+      <div className="text-3xl font-bold tabular-nums tracking-tight text-[color:var(--aqt-fg)]">
         {formattedValue}
       </div>
     </div>

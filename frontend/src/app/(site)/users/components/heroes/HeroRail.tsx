@@ -5,7 +5,8 @@ import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import type { Hero } from "@/types/hero.types";
 import HeroImage from "@/components/hero/HeroImage";
-import { CardSurface, normalizeRole, type AqtRoleKey } from "@/app/(site)/users/components/shared/atoms";
+import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
+import { normalizeRole, type AqtRoleKey } from "@/components/hero/heroRole";
 import { formatSeconds, formatStatValue } from "@/app/(site)/users/components/heroes/utils";
 import {
   Select,
@@ -14,6 +15,8 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
+import { SearchField } from "@/components/ui/search-field";
 
 export interface HeroRow {
   id: number;
@@ -106,38 +109,27 @@ const HeroRail = ({ rows, selectedId, onSelect }: Props) => {
       flush
       title={t("users.heroes.yourHeroes")}
       subtitle={t("users.heroes.tracked", { count: rows.length })}
-      className="xl:sticky xl:top-22"
+      className="xl:sticky xl:top-[var(--aqt-sticky-top)] xl:z-30"
     >
       <div className="flex flex-col gap-2 border-b border-[color:var(--aqt-border)] px-3 py-2.5">
-        <div className="flex flex-wrap gap-1.5">
+        <FilterChipGroup label={t("common.filters")}>
           {ROLE_FILTERS.map((rf) => (
-            <span
-              key={rf}
-              role="button"
-              tabIndex={0}
-              onClick={() => setRole(rf)}
-              className={cn("aqt-filter-chip", role === rf && "active")}
-            >
+            <FilterChip key={rf} active={role === rf} onClick={() => setRole(rf)}>
               {roleLabel(rf)}
-            </span>
+            </FilterChip>
           ))}
-        </div>
+        </FilterChipGroup>
         <div className="flex items-center gap-2">
-          <div className="relative flex-1">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[color:var(--aqt-fg-faint)]">
-              <circle cx="11" cy="11" r="7" />
-              <path d="m20 20-3.5-3.5" />
-            </svg>
-            <input
-              placeholder={t("common.search")}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="w-full rounded-lg border border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.025)] px-3 py-1.5 pl-8 text-[13.5px] text-[color:var(--aqt-fg)] outline-none"
-            />
-          </div>
+          <SearchField
+            label={t("users.heroes.searchHeroes")}
+            placeholder={t("common.search")}
+            value={query}
+            onValueChange={setQuery}
+            containerClassName="flex-1"
+          />
           <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
             <SelectTrigger
-              title={t("users.heroes.sortHeroes")}
+              aria-label={t("users.heroes.sortHeroes")}
               className="aqt-mono h-9 w-[116px] shrink-0 border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.025)] text-[12px] text-[color:var(--aqt-fg)] shadow-none"
             >
               <SelectValue />

@@ -3,19 +3,21 @@
 import { createElement } from "react";
 
 import { getStatusIcon } from "@/lib/status-icons";
+import { STATUS_TONE_PILL, type StatusTone } from "@/components/status/StatusIconBadge";
 import { cn, hexToRgba } from "@/lib/utils";
-import type { StatusMeta } from "@/types/balancer-admin.types";
+import type { StatusMeta } from "@/types/registration.types";
 
-function getFallbackClasses(scope: string, value: string) {
+/** Built-in status value → tone, used when the status carries no `icon_color`. */
+function getFallbackTone(scope: string, value: string): StatusTone {
   if (scope === "registration") {
-    if (value === "approved") return "border-emerald-500/20 bg-emerald-500/10 text-emerald-400";
-    if (value === "rejected" || value === "banned") return "border-red-500/20 bg-red-500/10 text-red-400";
-    if (value === "insufficient_data" || value === "pending") return "border-orange-500/20 bg-orange-500/10 text-orange-400";
-    return "border-white/10 bg-white/5 text-white/50";
+    if (value === "approved") return "positive";
+    if (value === "rejected" || value === "banned") return "negative";
+    if (value === "insufficient_data" || value === "pending") return "warning";
+    return "neutral";
   }
-  if (value === "ready") return "border-emerald-500/20 bg-emerald-500/10 text-emerald-400";
-  if (value === "incomplete") return "border-orange-500/20 bg-orange-500/10 text-orange-400";
-  return "border-white/10 bg-white/5 text-white/45";
+  if (value === "ready") return "positive";
+  if (value === "incomplete") return "warning";
+  return "neutral";
 }
 
 type StatusMetaBadgeProps = {
@@ -47,6 +49,7 @@ export default function StatusMetaBadge({
   };
   const iconElement = createElement(getStatusIcon(resolvedMeta.icon_slug), {
     className: "size-3",
+    "aria-hidden": true,
     style: resolvedMeta.icon_color ? { color: resolvedMeta.icon_color } : undefined,
   });
   const tintedStyle = resolvedMeta.icon_color
@@ -60,11 +63,10 @@ export default function StatusMetaBadge({
   return (
     <span
       title={resolvedMeta.description ?? resolvedMeta.name}
-      aria-label={resolvedMeta.name}
       style={tintedStyle}
       className={cn(
         "inline-flex items-center gap-1 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[11px] font-medium",
-        getFallbackClasses(resolvedMeta.scope, resolvedMeta.value),
+        STATUS_TONE_PILL[getFallbackTone(resolvedMeta.scope, resolvedMeta.value)],
         compact && "px-1.5",
         className,
       )}

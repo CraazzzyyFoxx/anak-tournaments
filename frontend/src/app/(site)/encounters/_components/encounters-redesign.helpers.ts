@@ -18,21 +18,6 @@ export function getTeamColor(name: string | null | undefined): TeamColor {
   return TEAM_COLOR_PALETTE[index];
 }
 
-export type StageBucket = "playoffs" | "group" | "finals" | "default";
-
-export function getStageBucket(stageName: string | null | undefined): StageBucket {
-  if (!stageName) return "default";
-  const lower = stageName.toLowerCase();
-  if (lower.includes("final") || lower.includes("grand")) return "finals";
-  if (lower.includes("playoff") || lower.includes("bracket") || lower.includes("knockout")) {
-    return "playoffs";
-  }
-  if (lower.includes("group") || lower.includes("swiss") || lower.includes("round robin")) {
-    return "group";
-  }
-  return "default";
-}
-
 export type EncounterFilterState = Required<
   Pick<EncounterFilters, "scope">
 > & {
@@ -89,20 +74,6 @@ export const BUILT_IN_VIEWS: readonly BuiltInViewMeta[] = [
   { id: "upsets", labelKey: "encounters.view.upsets", swatch: "violet" },
   { id: "with_logs", labelKey: "encounters.view.withLogs", swatch: "blue" },
 ] as const;
-
-export function buildPageList(currentPage: number, totalPages: number): Array<number | "ellipsis"> {
-  if (totalPages <= 1) return [1];
-  const pages = new Set<number>([1, totalPages, currentPage, currentPage - 1, currentPage + 1]);
-  const sorted = Array.from(pages)
-    .filter((value) => value >= 1 && value <= totalPages)
-    .sort((a, b) => a - b);
-  const result: Array<number | "ellipsis"> = [];
-  for (let i = 0; i < sorted.length; i += 1) {
-    if (i > 0 && sorted[i] - sorted[i - 1] > 1) result.push("ellipsis");
-    result.push(sorted[i]);
-  }
-  return result;
-}
 
 export function parseNumberParam(value: string | undefined): number | null {
   if (!value) return null;
@@ -186,36 +157,6 @@ export function applyBuiltInView(viewId: string, filters: EncounterFilterState):
   }
 }
 
-export function getPlayedAt(encounter: Encounter): string | Date | null {
-  return (
-    encounter.confirmed_at ??
-    encounter.ended_at ??
-    encounter.updated_at ??
-    encounter.created_at ??
-    null
-  );
-}
-
-// Returns a raw English state SENTINEL ("Live" | "Upcoming" | "Final" |
-// "Pending" | "Open"). This value is used for control flow (status styling,
-// live/upcoming branches) AND as a stable map key for the translated display
-// label — callers must translate it via `encounters.state.*` before rendering.
-export function getEncounterStateLabel(encounter: Encounter, now = new Date()): string {
-  const scheduledAt = encounter.scheduled_at ? new Date(encounter.scheduled_at) : null;
-  if (encounter.started_at && !encounter.ended_at) return "Live";
-  if (scheduledAt && scheduledAt.getTime() > now.getTime()) return "Upcoming";
-  if (encounter.status === "completed") return "Final";
-  if (encounter.status === "pending") return "Pending";
-  return "Open";
-}
-
-export function formatCompactDate(value: string | Date | null | undefined): string {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(date);
-}
-
 export function formatDuration(seconds: number | null | undefined): string {
   if (!seconds || seconds <= 0) return "-";
   const totalMinutes = Math.round(seconds / 60);
@@ -238,26 +179,4 @@ export function getTeamInitials(name: string | null | undefined): string {
   const words = name.trim().split(/\s+/);
   const value = words.length > 1 ? `${words[0][0]}${words[1][0]}` : name.slice(0, 2);
   return value.toUpperCase();
-}
-
-export function getWinnerSide(encounter: Encounter): "home" | "away" | null {
-  if (encounter.score.home > encounter.score.away) return "home";
-  if (encounter.score.away > encounter.score.home) return "away";
-  return null;
-}
-
-export type MediaSlotKey = "logs" | "vod" | "cast";
-
-export interface MediaSlot {
-  key: MediaSlotKey;
-  label: string;
-  enabled: boolean;
-}
-
-export function getMediaSlots(hasLogs: boolean): MediaSlot[] {
-  return [
-    { key: "logs", label: hasLogs ? "Game logs available" : "No game logs", enabled: hasLogs },
-    { key: "vod", label: "Coming with Twitch integration", enabled: false },
-    { key: "cast", label: "Coming with Twitch integration", enabled: false },
-  ];
 }

@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Star } from "lucide-react";
 
-import { EncounterScoreControls } from "@/components/admin/EncounterScoreControls";
+import { EncounterScoreControls } from "@/components/tournaments/EncounterScoreControls";
 import { getApiErrorMessage, isResultLockedError } from "@/lib/api-error";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
@@ -82,13 +82,15 @@ function MatchReportDialogBody({ encounter, onOpenChange }: Omit<MatchReportDial
   const awayTeamLabel = encounter.away_team?.name?.trim() || t("common.awayTeam");
   const isConfirmed = encounter.result_status === "confirmed";
 
-  const [homeScore, setHomeScore] = useState(() => encounter.score?.home ?? 0);
-  const [awayScore, setAwayScore] = useState(() => encounter.score?.away ?? 0);
-  const [closeness, setCloseness] = useState<MatchQuality>(() =>
-    closenessFloatToStars(encounter.closeness)
-  );
-  const [codes, setCodes] = useState<Record<number, string>>({});
-  const seededRef = useRef(false);
+  // The form holds only what the captain has actually edited. Everything else is
+  // DERIVED from the server data below, so there is nothing to copy in an effect
+  // and nothing that can clobber typed input when a query resolves late.
+  const [draft, setDraft] = useState<{
+    homeScore?: number;
+    awayScore?: number;
+    closeness?: MatchQuality;
+    codes?: Record<number, string>;
+  }>({});
 
   const reportsQuery = useQuery({
     queryKey: ["encounter", encounter.id, "reports"],
@@ -130,20 +132,20 @@ function MatchReportDialogBody({ encounter, onOpenChange }: Omit<MatchReportDial
     [reportsQuery.data, roleQuery.data?.side, encounter]
   );
 
-  // Prefill the editable form from the current captain's own report once the
-  // reports + role queries resolve (guarded so it never clobbers typed input).
-  useEffect(() => {
-    if (seededRef.current) return;
-    if (reportsQuery.isPending || roleQuery.isPending) return;
-    seededRef.current = true;
-    if (!ownReport) return;
-    setHomeScore(ownReport.home_score);
-    setAwayScore(ownReport.away_score);
-    setCloseness(clampCloseness(ownReport.closeness));
-    setCodes(
-      Object.fromEntries(ownReport.map_codes.map((code) => [code.map_index, code.code]))
+  // Effective form values: the captain's edit if there is one, else their own
+  // saved report, else the encounter's current score. Previously this was an
+  // effect that copied `ownReport` into four `useState`s behind a `seededRef`
+  // guard — a cascading render plus a race the guard existed to paper over.
+  const homeScore = draft.homeScore ?? ownReport?.home_score ?? encounter.score?.home ?? 0;
+  const awayScore = draft.awayScore ?? ownReport?.away_score ?? encounter.score?.away ?? 0;
+  const closeness =
+    draft.closeness ??
+    (ownReport ? clampCloseness(ownReport.closeness) : closenessFloatToStars(encounter.closeness));
+  const codes =
+    draft.codes ??
+    Object.fromEntries(
+      (ownReport?.map_codes ?? []).map((code) => [code.map_index, code.code])
     );
-  }, [ownReport, reportsQuery.isPending, roleQuery.isPending]);
 
   const refreshEncounterViews = async () => {
     await Promise.all([
@@ -203,19 +205,19 @@ function MatchReportDialogBody({ encounter, onOpenChange }: Omit<MatchReportDial
 
   if (isConfirmed) {
     return (
-      <DialogContent className="max-w-md bg-[#0c0d0f] border-zinc-800/80 text-white rounded-2xl p-6 shadow-2xl [&>button]:text-zinc-400 [&>button]:hover:text-white [&>button]:hover:bg-zinc-900">
+      <DialogContent className="max-w-md">
         <DialogHeader className="space-y-1">
-          <DialogTitle className="text-white text-lg font-bold tracking-tight">
+          <DialogTitle className="text-[color:var(--aqt-fg)] text-lg font-bold tracking-tight">
             {t("matchReport.confirmedLockedTitle")}
           </DialogTitle>
-          <DialogDescription className="text-zinc-400 text-sm font-semibold mt-1">
+          <DialogDescription className="text-[color:var(--aqt-fg-muted)] text-sm font-semibold mt-1">
             {t("matchReport.confirmedLockedBody")}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="mt-6 flex flex-row items-center justify-end gap-2">
           <Button
             onClick={() => onOpenChange(false)}
-            className="bg-white text-zinc-950 font-bold rounded-lg hover:bg-zinc-200 transition-colors h-10 px-5"
+            className="h-10 px-5 font-bold"
           >
             {t("matchEdit.cancel")}
           </Button>
@@ -225,12 +227,12 @@ function MatchReportDialogBody({ encounter, onOpenChange }: Omit<MatchReportDial
   }
 
   return (
-    <DialogContent className="max-w-lg bg-[#0c0d0f] border-zinc-800/80 text-white rounded-2xl p-6 shadow-2xl [&>button]:text-zinc-400 [&>button]:hover:text-white [&>button]:hover:bg-zinc-900">
+    <DialogContent className="max-w-lg">
       <DialogHeader className="space-y-1">
-        <DialogTitle className="text-white text-lg font-bold tracking-tight">
+        <DialogTitle className="text-[color:var(--aqt-fg)] text-lg font-bold tracking-tight">
           {t("matchReport.title")}
         </DialogTitle>
-        <DialogDescription className="text-zinc-400 text-sm font-semibold mt-1">
+        <DialogDescription className="text-[color:var(--aqt-fg-muted)] text-sm font-semibold mt-1">
           {encounter.home_team?.name} vs {encounter.away_team?.name}
         </DialogDescription>
       </DialogHeader>
@@ -244,23 +246,26 @@ function MatchReportDialogBody({ encounter, onOpenChange }: Omit<MatchReportDial
           awayLabel={awayTeamLabel}
           presetLabel={t("matchReport.quickResult")}
           bestOf={encounter.best_of}
-          onScoreChange={(score) => {
-            setHomeScore(score.homeScore);
-            setAwayScore(score.awayScore);
-          }}
+          onScoreChange={(score) =>
+            setDraft((prev) => ({
+              ...prev,
+              homeScore: score.homeScore,
+              awayScore: score.awayScore
+            }))
+          }
         />
 
-        <div className="space-y-3 rounded-xl border border-zinc-800/80 bg-zinc-950/40 p-4">
+        <div className="space-y-3 rounded-xl border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500">
+              <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[color:var(--aqt-fg-dim)]">
                 {t("matchReport.matchQuality")}
               </p>
-              <p className="mt-0.5 text-[11px] font-medium text-zinc-500">
+              <p className="mt-0.5 text-[11px] font-medium text-[color:var(--aqt-fg-dim)]">
                 {t("matchReport.howClose")}
               </p>
             </div>
-            <div className="rounded-lg border border-zinc-800 bg-[#09090b] px-3.5 py-1 text-xs font-bold text-white">
+            <div className="rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-3)] px-3.5 py-1 text-xs font-bold text-[color:var(--aqt-fg)]">
               {t(`matchReport.qualityDescriptions.${closeness}`)}
             </div>
           </div>
@@ -274,12 +279,12 @@ function MatchReportDialogBody({ encounter, onOpenChange }: Omit<MatchReportDial
                   key={val}
                   type="button"
                   className={cn(
-                    "flex min-h-12 flex-col items-center justify-center gap-1 rounded-lg border px-1.5 py-1.5 text-center transition-all duration-150 focus-visible:outline-none",
+                    "flex min-h-12 flex-col items-center justify-center gap-1 rounded-lg border px-1.5 py-1.5 text-center transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                     isSelected
-                      ? "border-yellow-500/50 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20"
-                      : "border-zinc-800 bg-zinc-900/40 text-zinc-400 hover:bg-zinc-800 hover:text-white hover:border-zinc-700"
+                      ? "border-[color:color-mix(in_srgb,var(--aqt-gold)_50%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-gold)_12%,transparent)] text-[color:var(--aqt-gold)] hover:bg-[color:color-mix(in_srgb,var(--aqt-gold)_20%,transparent)]"
+                      : "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
                   )}
-                  onClick={() => setCloseness(val)}
+                  onClick={() => setDraft((prev) => ({ ...prev, closeness: val }))}
                   aria-pressed={isSelected}
                   aria-label={t("matchReport.qualityAria", {
                     score: String(val),
@@ -287,11 +292,12 @@ function MatchReportDialogBody({ encounter, onOpenChange }: Omit<MatchReportDial
                   })}
                 >
                   <Star
+                    aria-hidden
                     className={cn(
                       "h-4.5 w-4.5 transition-colors duration-150",
                       isSelected
-                        ? "fill-yellow-400 text-yellow-400"
-                        : "text-zinc-600 hover:text-zinc-500"
+                        ? "fill-[color:var(--aqt-gold)] text-[color:var(--aqt-gold)]"
+                        : "text-[color:var(--aqt-fg-faint)]"
                     )}
                   />
                   <span className="text-[10.5px] font-bold font-mono">{val}/10</span>
@@ -300,14 +306,14 @@ function MatchReportDialogBody({ encounter, onOpenChange }: Omit<MatchReportDial
             })}
           </div>
 
-          <div className="flex items-center justify-between gap-3 text-[11px] text-zinc-500 font-medium pt-1">
+          <div className="flex items-center justify-between gap-3 text-[11px] text-[color:var(--aqt-fg-dim)] font-medium pt-1">
             <span>{t("matchReport.qualityLegend.oneSided")}</span>
             <span>{t("matchReport.qualityLegend.toTheEnd")}</span>
           </div>
         </div>
 
-        <div className="space-y-3 rounded-xl border border-zinc-800/80 bg-zinc-950/40 p-4">
-          <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500">
+        <div className="space-y-3 rounded-xl border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-4">
+          <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[color:var(--aqt-fg-dim)]">
             {t("matchReport.mapCodes")}
           </p>
           <div className="space-y-2">
@@ -317,7 +323,7 @@ function MatchReportDialogBody({ encounter, onOpenChange }: Omit<MatchReportDial
 
               return (
                 <div key={slot.mapIndex} className="flex items-center gap-3">
-                  <span className="w-28 shrink-0 truncate text-xs font-semibold text-zinc-400">
+                  <span className="w-28 shrink-0 truncate text-xs font-semibold text-[color:var(--aqt-fg-muted)]">
                     {label}
                   </span>
                   <Input
@@ -325,9 +331,12 @@ function MatchReportDialogBody({ encounter, onOpenChange }: Omit<MatchReportDial
                     maxLength={32}
                     placeholder={t("matchReport.mapCodePlaceholder")}
                     onChange={(e) =>
-                      setCodes((prev) => ({ ...prev, [slot.mapIndex]: e.target.value }))
+                      setDraft((prev) => ({
+                        ...prev,
+                        codes: { ...codes, [slot.mapIndex]: e.target.value }
+                      }))
                     }
-                    className="h-9 border-zinc-800 bg-[#09090b] font-mono text-sm text-white"
+                    className="h-9 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] font-mono text-sm text-[color:var(--aqt-fg)]"
                   />
                 </div>
               );
@@ -337,21 +346,21 @@ function MatchReportDialogBody({ encounter, onOpenChange }: Omit<MatchReportDial
 
         <CaptainReportsView encounter={encounter} reports={reportsQuery.data ?? []} />
 
-        {validationError && <p className="text-sm text-red-500 font-semibold">{validationError}</p>}
+        {validationError && <p className="text-sm text-destructive font-semibold">{validationError}</p>}
       </div>
 
       <DialogFooter className="mt-6 flex flex-row items-center justify-end gap-2">
         <Button
           variant="outline"
           onClick={() => onOpenChange(false)}
-          className="border-zinc-800 bg-transparent text-white font-semibold rounded-lg hover:bg-zinc-900 hover:text-white transition-colors h-10 px-5"
+          className="h-10 px-5 font-semibold"
         >
           {t("matchEdit.cancel")}
         </Button>
         <Button
           onClick={() => submitMutation.mutate()}
           disabled={!!validationError || submitMutation.isPending}
-          className="bg-white text-zinc-950 font-bold rounded-lg hover:bg-zinc-200 transition-colors h-10 px-5"
+          className="h-10 px-5 font-bold"
         >
           {submitMutation.isPending ? t("matchReport.submitting") : t("matchReport.submit")}
         </Button>

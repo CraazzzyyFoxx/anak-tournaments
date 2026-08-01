@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
 import { getPlayerRowDivisionGrid } from "@/app/admin/players/playerRowDivisionGrid";
 import type { DivisionGridVersion } from "@/types/workspace.types";

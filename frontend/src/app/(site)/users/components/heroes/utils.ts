@@ -1,44 +1,6 @@
 import { LogStatsName } from "@/types/stats.types";
 import { HeroWithUserStats } from "@/types/hero.types";
 
-export type RGB = { r: number; g: number; b: number };
-
-function clampByte(value: number) {
-  return Math.max(0, Math.min(255, Math.round(value)));
-}
-
-export function toCssVarRgb(rgb: RGB) {
-  return `${clampByte(rgb.r)} ${clampByte(rgb.g)} ${clampByte(rgb.b)}`;
-}
-
-export function mix(a: RGB, b: RGB, t: number): RGB {
-  return {
-    r: a.r + (b.r - a.r) * t,
-    g: a.g + (b.g - a.g) * t,
-    b: a.b + (b.b - a.b) * t
-  };
-}
-
-export function parseHexColor(hexRaw: string): RGB | null {
-  const raw = hexRaw.trim();
-  const hex = raw.startsWith("#") ? raw.slice(1) : raw;
-  if (hex.length === 3) {
-    const r = Number.parseInt(hex[0] + hex[0], 16);
-    const g = Number.parseInt(hex[1] + hex[1], 16);
-    const b = Number.parseInt(hex[2] + hex[2], 16);
-    if ([r, g, b].some((x) => Number.isNaN(x))) return null;
-    return { r, g, b };
-  }
-  if (hex.length === 6) {
-    const r = Number.parseInt(hex.slice(0, 2), 16);
-    const g = Number.parseInt(hex.slice(2, 4), 16);
-    const b = Number.parseInt(hex.slice(4, 6), 16);
-    if ([r, g, b].some((x) => Number.isNaN(x))) return null;
-    return { r, g, b };
-  }
-  return null;
-}
-
 const numberFmt = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2
 });

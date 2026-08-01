@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 
 import SearchableImageSelect, {
   type SearchableImageOption,
-} from "@/app/(site)/users/compare/components/SearchableImageSelect";
+} from "@/components/ui/searchable-image-select";
 
 interface HeroLeaderboardFiltersCardProps {
   heroId: number | undefined;
@@ -23,8 +23,8 @@ interface HeroLeaderboardFiltersCardProps {
 }
 
 const TRIGGER =
-  "border-[var(--aqt-border-2)] bg-[hsl(0_0%_100%/0.025)] text-[var(--aqt-fg)] hover:bg-[hsl(0_0%_100%/0.04)]";
-const LABEL = "text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--aqt-fg-faint)]";
+  "border-[color:var(--aqt-border-2)] bg-[hsl(0_0%_100%/0.025)] text-[color:var(--aqt-fg)] hover:bg-[hsl(0_0%_100%/0.04)]";
+const LABEL = "text-[10px] font-bold uppercase tracking-[0.14em] text-[color:var(--aqt-fg-faint)]";
 
 const HeroLeaderboardFiltersCard = ({
   heroId,
@@ -43,7 +43,7 @@ const HeroLeaderboardFiltersCard = ({
   const t = useTranslations();
 
   return (
-    <section className="grid items-end gap-3.5 rounded-[var(--aqt-radius)] border border-[var(--aqt-border)] bg-[var(--aqt-card)] px-5 py-[18px] sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto]">
+    <section className="grid items-end gap-3.5 rounded-[var(--aqt-radius)] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] px-5 py-[18px] sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto]">
       <div className="flex min-w-0 flex-col gap-2">
         <span className={LABEL}>{t("users.heroesCompare.filters.heroLabel")}</span>
         <SearchableImageSelect
@@ -77,9 +77,9 @@ const HeroLeaderboardFiltersCard = ({
         onClick={onResetColumns}
         disabled={resetDisabled}
         title={t("users.heroesCompare.filters.resetColumnsTitle")}
-        className="inline-flex h-10 items-center justify-center gap-2 rounded-[8px] border border-[var(--aqt-border-2)] bg-[hsl(0_0%_100%/0.025)] px-3 text-xs font-semibold text-[var(--aqt-fg-muted)] transition-colors hover:bg-[hsl(0_0%_100%/0.05)] hover:text-[var(--aqt-fg)] disabled:pointer-events-none disabled:opacity-40"
+        className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-[8px] border border-[color:var(--aqt-border-2)] bg-[hsl(0_0%_100%/0.025)] px-3 text-xs font-semibold text-[color:var(--aqt-fg-muted)] outline-none transition-colors hover:bg-[hsl(0_0%_100%/0.05)] hover:text-[color:var(--aqt-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] disabled:pointer-events-none disabled:opacity-40"
       >
-        <RotateCcw className="h-3.5 w-3.5" />
+        <RotateCcw aria-hidden className="h-3.5 w-3.5" />
         {t("users.heroesCompare.filters.resetColumns")}
       </button>
     </section>

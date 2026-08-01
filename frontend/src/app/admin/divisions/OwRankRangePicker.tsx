@@ -95,22 +95,29 @@ export function OwRankRangePicker({ min, max, disabled, onChange }: OwRankRangeP
     setOpen(false);
   }, [onChange]);
 
+  const valueText = label ?? "not set";
+  const hint =
+    anchor != null
+      ? `Anchored at ${rankLabel(anchor)}. Pick the other end of the range.`
+      : "Click the start rank, then the end rank.";
+
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
           disabled={disabled}
+          aria-label={`OW rank range: ${valueText}`}
           className={cn(
             "h-8 w-full justify-between px-2 text-xs font-normal",
             label == null && "text-muted-foreground"
           )}
         >
-          <span className="truncate">{label ?? "—"}</span>
-          <ChevronDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+          <span className="truncate tabular-nums">{label ?? "—"}</span>
+          <ChevronDown aria-hidden className="ml-1 h-3 w-3 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-auto p-2" align="start">
+      <PopoverContent className="w-auto p-2" align="start" aria-label="OW rank range">
         <div className="space-y-1" onMouseLeave={() => setHovered(null)}>
           {OW2_DIVISIONS_DESC.map((division) => (
             <div
@@ -130,9 +137,14 @@ export function OwRankRangePicker({ min, max, disabled, onChange }: OwRankRangeP
                   <button
                     key={tier}
                     type="button"
+                    // `aria-pressed` carries the in-range state for assistive tech;
+                    // the tint alone would make selection colour-only.
+                    aria-pressed={inRange}
+                    aria-label={`${divisionLabel(division)} ${tier}, rank ${value}`}
                     title={`${divisionLabel(division)} ${tier} · ${value}`}
                     onClick={() => handlePick(value)}
                     onMouseEnter={() => setHovered(value)}
+                    onFocus={() => setHovered(value)}
                     className={cn(
                       "h-7 min-w-9 rounded-md border text-xs tabular-nums transition-colors",
                       isEndpoint
@@ -150,8 +162,8 @@ export function OwRankRangePicker({ min, max, disabled, onChange }: OwRankRangeP
           ))}
         </div>
         <div className="mt-2 flex items-center justify-between gap-2 border-t pt-2">
-          <span className="text-xs text-muted-foreground">
-            {anchor != null ? "Pick the other end of the range" : "Click start, then end"}
+          <span className="text-xs text-muted-foreground" aria-live="polite">
+            <span className="tabular-nums">{valueText}</span> · {hint}
           </span>
           <Button
             variant="ghost"
@@ -160,8 +172,8 @@ export function OwRankRangePicker({ min, max, disabled, onChange }: OwRankRangeP
             onClick={handleClear}
             disabled={committedLow == null}
           >
-            <X className="mr-1 h-3 w-3" />
-            Clear
+            <X aria-hidden className="mr-1 h-3 w-3" />
+            Clear range
           </Button>
         </div>
       </PopoverContent>

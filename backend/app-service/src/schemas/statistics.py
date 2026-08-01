@@ -52,6 +52,12 @@ class DashboardIssues(BaseModel):
     teams_without_players: int
     tournaments_without_stages: int
     users_without_identities: int
+    # Encounters whose scheduled slot has passed with no recorded result.
+    encounters_awaiting_result: int
+    # Captain-submitted results still waiting on an admin confirmation.
+    encounters_pending_confirmation: int
+    # Bracket slots still on StageItemInputType.EMPTY.
+    stage_slots_empty: int
 
 
 class DashboardStats(BaseModel):
@@ -60,6 +66,9 @@ class DashboardStats(BaseModel):
     teams_total: int
     players_total: int
     encounters_total: int
+    # Decision metrics: how far the current cycle has progressed.
+    tournaments_registration_open: int
+    encounters_completed: int
     heroes_total: int
     gamemodes_total: int
     maps_total: int

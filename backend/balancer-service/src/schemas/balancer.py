@@ -52,6 +52,20 @@ class ConfigOverrides(BaseModel):
             "Penalty weight per pair of players in the same team sharing the same role subclass. Use 0 to disable."
         ),
     )
+    low_rank_threshold: int | None = Field(
+        None,
+        ge=0,
+        le=10000,
+        description=(
+            "Rating threshold (canonical scale) at or below which a player's best "
+            "role rating marks them low-rank. 0 disables the low-rank pair penalty."
+        ),
+    )
+    low_rank_collision_weight: float | None = Field(
+        None,
+        ge=0,
+        description="Penalty weight per pair of low-rank players in the same team.",
+    )
     team_max_pain_weight: float | None = Field(
         None,
         ge=0,

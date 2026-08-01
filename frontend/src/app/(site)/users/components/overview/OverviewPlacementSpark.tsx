@@ -70,6 +70,7 @@ const OverviewPlacementSpark = async ({ tournaments, limit = 12 }: Props) => {
         <span
           className="block rounded-full"
           style={{ width: 11, height: 11, background: p.color, boxShadow: "0 0 0 2px hsl(0 0% 100% / 0.3)" }}
+          aria-hidden
         />
       );
     }
@@ -78,10 +79,11 @@ const OverviewPlacementSpark = async ({ tournaments, limit = 12 }: Props) => {
         <span
           className="block rounded-full"
           style={{ width: 10, height: 10, background: "var(--aqt-bg)", border: "2px solid var(--aqt-rose)" }}
+          aria-hidden
         />
       );
     }
-    return <span className="block rounded-full" style={{ width: 9, height: 9, background: "var(--aqt-teal)" }} />;
+    return <span className="block rounded-full" style={{ width: 9, height: 9, background: "var(--aqt-teal)" }} aria-hidden />;
   };
 
   return (
@@ -145,17 +147,19 @@ const OverviewPlacementSpark = async ({ tournaments, limit = 12 }: Props) => {
           <span
             className="inline-block rounded-full"
             style={{ width: 10, height: 10, background: "var(--aqt-gold)", boxShadow: "0 0 0 1.5px hsl(0 0% 100% / 0.3)" }}
+            aria-hidden
           />
           {t("users.overview.placement.legend.podium")}
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block rounded-full" style={{ width: 9, height: 9, background: "var(--aqt-teal)" }} />
+          <span className="inline-block rounded-full" style={{ width: 9, height: 9, background: "var(--aqt-teal)" }} aria-hidden />
           {t("users.overview.placement.legend.mid")}
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span
             className="inline-block rounded-full"
             style={{ width: 9, height: 9, background: "var(--aqt-bg)", border: "2px solid var(--aqt-rose)" }}
+            aria-hidden
           />
           {t("users.overview.placement.legend.bottom")}
         </span>

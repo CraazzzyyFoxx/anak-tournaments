@@ -4,7 +4,7 @@ import { unstable_cache } from "next/cache";
 import userService from "@/services/user.service";
 import { SortDirection } from "@/types/pagination.types";
 import { resolveSiteMetadata } from "@/lib/site-metadata";
-import { toUserSlug } from "@/app/(site)/users/components/users-overview/utils";
+import { getPlayerSlug } from "@/utils/player";
 
 // This route is fully dynamic: `resolveSiteMetadata()` and the workspace lookup
 // below both read `headers()` so the URLs/entries reflect the current tenant
@@ -62,7 +62,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   const userNames = await getSitemapUsers(workspaceId);
   const userEntries: MetadataRoute.Sitemap = userNames.map((name) => ({
-    url: abs(`/users/${toUserSlug(name)}`),
+    url: abs(`/users/${getPlayerSlug(name)}`),
     changeFrequency: "weekly" as const,
     priority: 0.6
   }));

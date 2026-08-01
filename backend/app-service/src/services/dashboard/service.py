@@ -1,6 +1,7 @@
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.core import enums
 from src import models
 
 
@@ -34,6 +35,23 @@ async def get_counts(
         .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
         .where(*ws_filters)
     )
+    # Decision metrics. `encounters_completed` pairs with `encounters_total` so
+    # the dashboard can state bracket progress instead of a lifetime total, and
+    # `tournaments_registration_open` answers "is anyone able to sign up right
+    # now" — the number an organiser actually acts on.
+    encounters_completed = (
+        sa.select(sa.func.count(models.Encounter.id))
+        .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
+        .where(models.Encounter.status == enums.EncounterStatus.COMPLETED, *ws_filters)
+    )
+    tournaments_registration_open = (
+        sa.select(sa.func.count(models.Tournament.id))
+        .join(
+            models.BalancerRegistrationForm,
+            models.BalancerRegistrationForm.tournament_id == models.Tournament.id,
+        )
+        .where(models.BalancerRegistrationForm.is_open.is_(True), *ws_filters)
+    )
     heroes_total = sa.select(sa.func.count(models.Hero.id))
     gamemodes_total = sa.select(sa.func.count(models.Gamemode.id))
     maps_total = sa.select(sa.func.count(models.Map.id))
@@ -45,6 +63,8 @@ async def get_counts(
             teams_total.scalar_subquery(),
             players_total.scalar_subquery(),
             encounters_total.scalar_subquery(),
+            encounters_completed.scalar_subquery(),
+            tournaments_registration_open.scalar_subquery(),
             heroes_total.scalar_subquery(),
             gamemodes_total.scalar_subquery(),
             maps_total.scalar_subquery(),
@@ -57,9 +77,11 @@ async def get_counts(
         "teams_total": row[2] or 0,
         "players_total": row[3] or 0,
         "encounters_total": row[4] or 0,
-        "heroes_total": row[5] or 0,
-        "gamemodes_total": row[6] or 0,
-        "maps_total": row[7] or 0,
+        "encounters_completed": row[5] or 0,
+        "tournaments_registration_open": row[6] or 0,
+        "heroes_total": row[7] or 0,
+        "gamemodes_total": row[8] or 0,
+        "maps_total": row[9] or 0,
     }
 
 
@@ -99,6 +121,43 @@ async def get_issues(
         *ws_filters,
     )
 
+    # A scheduled slot that has passed with nothing recorded — the encounter is
+    # neither completed nor carrying a captain submission. Unscheduled matches
+    # are excluded: there is no deadline to be late against.
+    encounters_awaiting_result_q = (
+        sa.select(sa.func.count(models.Encounter.id))
+        .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
+        .where(
+            models.Encounter.status != enums.EncounterStatus.COMPLETED,
+            models.Encounter.result_status == enums.EncounterResultStatus.NONE,
+            models.Encounter.scheduled_at.is_not(None),
+            models.Encounter.scheduled_at < sa.func.now(),
+            *ws_filters,
+        )
+    )
+
+    # Captains reported, an admin still has to confirm.
+    encounters_pending_confirmation_q = (
+        sa.select(sa.func.count(models.Encounter.id))
+        .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
+        .where(
+            models.Encounter.result_status == enums.EncounterResultStatus.PENDING_CONFIRMATION,
+            *ws_filters,
+        )
+    )
+
+    # Bracket slots never wired to a team/winner source.
+    stage_slots_empty_q = (
+        sa.select(sa.func.count(models.StageItemInput.id))
+        .join(models.StageItem, models.StageItem.id == models.StageItemInput.stage_item_id)
+        .join(models.Stage, models.Stage.id == models.StageItem.stage_id)
+        .join(models.Tournament, models.Tournament.id == models.Stage.tournament_id)
+        .where(
+            models.StageItemInput.input_type == enums.StageItemInputType.EMPTY,
+            *ws_filters,
+        )
+    )
+
     # Users that have no social account (battle_tag / discord / twitch / …)
     users_without_identities_q = sa.select(sa.func.count(models.User.id)).where(
         ~sa.exists().where(models.SocialAccount.user_id == models.User.id)
@@ -110,6 +169,9 @@ async def get_issues(
             teams_without_players_q.scalar_subquery(),
             tournaments_without_stages_q.scalar_subquery(),
             users_without_identities_q.scalar_subquery(),
+            encounters_awaiting_result_q.scalar_subquery(),
+            encounters_pending_confirmation_q.scalar_subquery(),
+            stage_slots_empty_q.scalar_subquery(),
         )
     )
     row = results.one()
@@ -118,6 +180,9 @@ async def get_issues(
         "teams_without_players": row[1] or 0,
         "tournaments_without_stages": row[2] or 0,
         "users_without_identities": row[3] or 0,
+        "encounters_awaiting_result": row[4] or 0,
+        "encounters_pending_confirmation": row[5] or 0,
+        "stage_slots_empty": row[6] or 0,
     }
 
 

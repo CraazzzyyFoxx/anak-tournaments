@@ -88,7 +88,7 @@ export default function MyAccountSection() {
     <div className="space-y-8">
       {/* ── Avatar ─────────────────────────────────────── */}
       <section className="space-y-3">
-        <h4 className="text-sm font-medium text-slate-300">{t("avatar.title")}</h4>
+        <h4 className="text-sm font-medium text-[color:var(--aqt-fg-muted)]">{t("avatar.title")}</h4>
         <div className="flex items-center gap-4">
           <EditableAvatar
             src={user?.avatarUrl}
@@ -101,67 +101,86 @@ export default function MyAccountSection() {
             maxSizeBytes={MAX_AVATAR_BYTES}
             onError={(message) => notify.error(message)}
           />
-          {canAvatar ? (
-            <p className="text-xs text-slate-500">{t("avatar.hint")}</p>
-          ) : (
-            <p className="text-xs text-slate-500">{t("avatar.disabled")}</p>
-          )}
+          <p className="text-xs text-[color:var(--aqt-fg-dim)]">
+            {canAvatar ? t("avatar.hint") : t("avatar.disabled")}
+          </p>
         </div>
       </section>
 
       {/* ── Linked accounts ────────────────────────────── */}
       <section className="space-y-3">
-        <h4 className="text-sm font-medium text-slate-300">{t("linked.title")}</h4>
+        <h4 className="text-sm font-medium text-[color:var(--aqt-fg-muted)]">{t("linked.title")}</h4>
         {!canSocial ? (
-          <p className="text-xs text-slate-500">{t("linked.disabled")}</p>
+          <p className="text-xs text-[color:var(--aqt-fg-dim)]">{t("linked.disabled")}</p>
         ) : (
           <>
             <div className="space-y-1.5">
-              {socialQuery.isLoading && <Loader2 className="h-4 w-4 animate-spin text-slate-400" />}
+              {socialQuery.isLoading && (
+                <Loader2
+                  className="h-4 w-4 animate-spin text-[color:var(--aqt-fg-muted)]"
+                  aria-label={t("linked.title")}
+                />
+              )}
               {!socialQuery.isLoading && accounts.length === 0 && (
-                <p className="text-sm text-slate-500">{t("linked.empty")}</p>
+                <p className="text-sm text-[color:var(--aqt-fg-dim)]">{t("linked.empty")}</p>
               )}
               {accounts.map((account) => {
                 const visible = account.visible_global !== false;
                 return (
                   <div
                     key={account.id}
-                    className={`flex items-center gap-2 rounded-lg border border-white/5 bg-white/3 px-3 py-2 ${visible ? "" : "opacity-50"}`}
+                    className={`flex items-center gap-2 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-2)] px-3 py-2 ${visible ? "" : "opacity-50"}`}
                   >
                     <SocialIcon provider={account.provider} size={15} />
-                    <span className="flex-1 truncate text-sm text-white">{account.username}</span>
-                    {account.is_verified && <Check className="h-3.5 w-3.5 text-emerald-400" aria-label={t("linked.verifiedAria")} />}
+                    <span className="flex-1 truncate text-sm text-[color:var(--aqt-fg)]">
+                      {account.username}
+                    </span>
+                    {account.is_verified && (
+                      <Check
+                        className="h-3.5 w-3.5 text-[color:var(--aqt-emerald)]"
+                        aria-label={t("linked.verifiedAria")}
+                      />
+                    )}
                     {account.is_primary ? (
-                      <Star className="h-4 w-4 shrink-0 fill-amber-400 text-amber-400" aria-label={t("linked.primaryAria")} />
+                      <Star
+                        className="h-4 w-4 shrink-0 fill-[color:var(--aqt-amber)] text-[color:var(--aqt-amber)]"
+                        aria-label={t("linked.primaryAria")}
+                      />
                     ) : (
                       <Button
                         size="icon"
                         variant="ghost"
                         className="h-7 w-7"
-                        title={account.is_verified ? t("linked.makePrimary") : t("linked.primaryNeedsVerified")}
                         disabled={!account.is_verified || setPrimary.isPending}
                         onClick={() => setPrimary.mutate(account.id)}
+                        aria-label={
+                          account.is_verified
+                            ? t("linked.makePrimary")
+                            : t("linked.primaryNeedsVerified")
+                        }
                       >
-                        <Star className="h-3.5 w-3.5" />
+                        <Star className="h-3.5 w-3.5" aria-hidden />
                       </Button>
                     )}
                     <Button
                       size="icon"
                       variant="ghost"
-                      className="h-7 w-7 text-slate-400 hover:text-white"
-                      title={visible ? t("linked.hide") : t("linked.show")}
+                      className="h-7 w-7 text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-fg)]"
                       disabled={setVisibility.isPending}
                       onClick={() => setVisibility.mutate({ id: account.id, visible: !visible })}
                       aria-label={visible ? t("linked.hideAria", { name: account.username }) : t("linked.showAria", { name: account.username })}
                     >
-                      {visible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                      {visible ? (
+                        <Eye className="h-3.5 w-3.5" aria-hidden />
+                      ) : (
+                        <EyeOff className="h-3.5 w-3.5" aria-hidden />
+                      )}
                     </Button>
                     {account.is_verified && (
                       <Button
                         size="icon"
                         variant="ghost"
-                        className="h-7 w-7 text-slate-400 hover:text-red-400"
-                        title={t("linked.disconnect")}
+                        className="h-7 w-7 text-[color:var(--aqt-fg-muted)] hover:text-destructive"
                         disabled={unlinkAccount.isPending}
                         onClick={() => {
                           const label = getSocialProviderConfig(account.provider).label;
@@ -171,7 +190,7 @@ export default function MyAccountSection() {
                         }}
                         aria-label={t("linked.disconnectAria", { name: account.username })}
                       >
-                        <Unlink className="h-3.5 w-3.5" />
+                        <Unlink className="h-3.5 w-3.5" aria-hidden />
                       </Button>
                     )}
                   </div>
@@ -183,15 +202,15 @@ export default function MyAccountSection() {
                 <a
                   key={provider}
                   href={linkHref(provider)}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-white transition-colors hover:bg-white/10"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-3)] px-2.5 py-1.5 text-xs text-[color:var(--aqt-fg)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <Plus className="h-3 w-3" />
+                  <Plus className="h-3 w-3" aria-hidden />
                   <SocialIcon provider={provider} size={13} />
                   {getSocialProviderConfig(provider).label}
                 </a>
               ))}
             </div>
-            <p className="text-[11px] text-slate-500">{t("linked.footnote")}</p>
+            <p className="text-[11px] text-[color:var(--aqt-fg-dim)]">{t("linked.footnote")}</p>
           </>
         )}
       </section>

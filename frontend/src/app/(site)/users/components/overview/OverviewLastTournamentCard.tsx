@@ -186,7 +186,10 @@ const OverviewLastTournamentCard = ({ tournament, tournaments, userId }: Props) 
       action={
         tournaments.length > 0 ? (
           <Select value={String(tournament.id)} onValueChange={onSelectTournament}>
-            <SelectTrigger className="h-7 w-44 border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-[12.5px]">
+            <SelectTrigger
+              aria-label={t("users.overview.lastTournament.selectTournament")}
+              className="h-7 w-44 border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-[12.5px]"
+            >
               <SelectValue placeholder={t("users.overview.lastTournament.selectTournament")} />
             </SelectTrigger>
             <SelectContent className="liquid-glass-panel max-h-[min(var(--radix-select-content-available-height),20rem)]">
@@ -215,7 +218,7 @@ const OverviewLastTournamentCard = ({ tournament, tournaments, userId }: Props) 
               className="aqt-display flex items-center gap-1.5 text-[20px] font-bold uppercase leading-none"
               style={{ color: roleColor(tournament.role) }}
             >
-              <PlayerRoleIcon role={tournament.role} size={18} color={roleColor(tournament.role)} />
+              <PlayerRoleIcon role={tournament.role} size={18} color={roleColor(tournament.role)} decorative />
               {tournament.role}
             </div>
             <div className="aqt-mono mt-1 text-[13px] text-[color:var(--aqt-fg-muted)]">
@@ -264,8 +267,8 @@ const OverviewLastTournamentCard = ({ tournament, tournaments, userId }: Props) 
                   className="aqt-display inline-flex h-[20px] w-[20px] items-center justify-center rounded-[4px] text-[11px] font-bold"
                   style={{
                     color: "var(--aqt-emerald)",
-                    background: "hsl(150 57% 52% / 0.14)",
-                    border: "1px solid hsl(150 57% 52% / 0.35)"
+                    background: "color-mix(in srgb, var(--aqt-emerald) 14%, transparent)",
+                    border: "1px solid color-mix(in srgb, var(--aqt-emerald) 35%, transparent)"
                   }}
                   title={t("users.overview.lastTournament.mapWon")}
                 >

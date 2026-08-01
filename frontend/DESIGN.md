@@ -4,8 +4,9 @@ This document describes the UI/UX principles used in AQT (Anak tournament statis
 
 Anchor pages that define the product's visual language:
 
-- `frontend/src/app/page.tsx` - Dashboard home: modular analytics, stable grids, predictable states.
-- `frontend/src/app/users/[slug]/page.tsx` - User profile: a richer hero header and "Liquid Glass" as an accent.
+- `frontend/src/app/(site)/(home)/page.tsx` - Dashboard home: modular analytics, stable grids, predictable states.
+- `frontend/src/app/(site)/users/[slug]/page.tsx` - User profile: a richer hero header.
+- `frontend/src/app/(site)/tournaments/page.tsx` - List page: hero + filters + one scrollable table.
 
 ## TL;DR
 
@@ -39,11 +40,29 @@ Design priorities follow those goals:
 
 Principle: components should rely on semantic tokens (`bg-background`, `bg-card`, `text-muted-foreground`, `border-border`, ...) instead of inventing new colors.
 
+Two token families coexist and must not be confused:
+
+- shadcn tokens (`--background`, `--card`, `--border`, ...) hold bare **HSL
+  triplets**, because Tailwind wraps them as `hsl(var(--card))`.
+- `--aqt-*` tokens hold **complete colors** (`hsl(220 22% 8%)`), used directly.
+
+Never redefine a shadcn token name inside a scoped block. A rule like
+`.my-scope { --card: var(--aqt-card) }` makes `hsl(var(--card))` resolve to
+`hsl(hsl(...))`, which is invalid — every shadcn surface inside that scope
+silently renders transparent with a `currentColor` border. Scoped aliases must
+use their own prefix (`--tn-card`, `--u-fg`, ...).
+
+Never use raw hex, `white/N`, `slate-*` or `zinc-*`: workspace theming
+(`WorkspaceThemeSync`) cannot reach them, so white-label tenants render
+half-themed. Arbitrary Tailwind color values need the `color:` hint —
+`text-[color:var(--aqt-fg)]`, never `text-[var(--aqt-fg)]`, which is ambiguous
+with `font-size` in Tailwind v4.
+
 ### Typography
 
 - Base font is Inter (via next/font) in `frontend/src/app/layout.tsx`.
 - Use `tabular-nums` for metrics where stable alignment matters.
-  Examples: `frontend/src/components/StatisticsCard.tsx`, `frontend/src/app/users/components/UserHeader.tsx`.
+  Examples: `frontend/src/components/StatisticsCard.tsx`, `frontend/src/app/(site)/users/components/header/UserHeader.tsx`.
 
 ## Core building blocks
 
@@ -57,6 +76,22 @@ Cards are the default pattern for content blocks:
 Implementation: `frontend/src/components/ui/card.tsx`.
 
 Important: `Card` sets `data-ui="card"`. This is used for theming (notably Liquid Glass). Do not remove or rename this attribute.
+
+### Shared primitives — use these, do not re-roll them
+
+Every one of these replaced three to six hand-rolled copies. Reach for them
+before writing markup:
+
+| Need | Use |
+| --- | --- |
+| Filter chip | `components/ui/filter-chip.tsx` — `<FilterChip active count>` inside `<FilterChipGroup label>` |
+| Search input | `components/ui/search-field.tsx` — `label` is required (a placeholder is not a label) |
+| Pagination | `components/ui/data-pagination.tsx` — windowed, `aria-current`, real chevrons |
+| Empty / error / not-found | `components/ui/page-state-card.tsx` |
+| Data table | `components/ui/data-table.tsx` — header scope, scroll region, skeletons, keyboard rows |
+| Placement medal | `components/ui/place-badge.tsx` — `--aqt-medal-*` tokens |
+| Platform totals | `components/stats/PlatformStatsGrid.tsx` |
+| Filter/sort/page in the URL | `hooks/useQueryParams.ts` |
 
 ### Tabs, Button, and other primitives
 
@@ -82,7 +117,7 @@ Principle: AQT is "wide analytics". Tables and charts should not feel cramped.
 
 ### Grids
 
-The home page (`frontend/src/app/page.tsx`) uses simple, stable grids:
+The home page (`frontend/src/app/(site)/(home)/page.tsx`) uses simple, stable grids:
 
 - stats: `lg:grid-cols-4`
 - charts: `lg:grid-cols-2`
@@ -120,50 +155,60 @@ Principle: tab switching should not jump the layout. The active tab syncs to URL
 
 Prefer skeletons that preserve layout over centered spinners.
 
-- Home skeletons: `frontend/src/app/home-skeletons.tsx`.
+- Dashboard skeletons (home, `/statistics`, `/workspace/[slug]`): `frontend/src/components/skeletons/dashboard-skeletons.tsx`.
 - User profile skeletons: `frontend/src/app/users/[slug]/page.tsx`.
 
 Goal: reduce perceived latency and prevent content jumping.
 
-### Errors
+### Errors, empty and not-found
 
-On request failure, render a Card with a short message, without breaking grids.
-Example pattern: try/catch fallbacks in `frontend/src/app/page.tsx`.
+There is exactly one surface for these: `frontend/src/components/ui/page-state-card.tsx`.
 
-### Empty data
+```tsx
+<PageStateCard state="error" onAction={refetch} />
+<PageStateCard state="filtered-empty" onAction={clearFilters} />
+<PageStateCard state="empty" />
+```
 
-Tables/lists should explicitly render "No data" (or equivalent).
-Example: `frontend/src/components/ChampionsTable.tsx`.
+Rules:
 
-## Liquid Glass: where and how to use it
+- A query that can fail MUST destructure `isError` and render the `error` state.
+  Rendering the empty state on failure tells the user "there is nothing here"
+  when the truth is "we could not load it" — never do this.
+- Distinguish `empty` (nothing exists) from `filtered-empty` (filters exclude
+  everything). The latter always offers a way out.
+- Copy defaults come from the `common.pageState.*` messages; override only when
+  a page can say something more specific.
 
-Liquid Glass is an accent style for user-centric views (profiles). It is not the default look of the entire app.
+## Liquid Glass
 
-### How it works
+Only two class names survive: `liquid-glass-panel` and `liquid-glass-surface`
+(`frontend/src/app/globals.css`). They are thin surface aliases — a border, a
+radius and a card background. There is no blur, no context provider and no
+per-user aura.
 
-- Context + CSS variables: `frontend/src/app/users/components/UserLiquidGlassProvider.tsx`.
-- Theming hooks via `data-ui` selectors: `frontend/src/app/globals.css` (utilities under `.liquid-glass ...`).
-- Profile header panel: `liquid-glass-panel` in `frontend/src/app/users/components/UserHeader.tsx`.
-- Aura personalization: `frontend/src/app/users/components/UserAuraReporter.tsx` extracts dominant colors (avatar + division icon) and sets `--lg-a/--lg-b/--lg-c`.
+The previous system (a React context writing `--lg-a/--lg-b/--lg-c`, plus an
+"aura reporter" that sampled avatar colors) was removed: no CSS rule ever read
+those variables, so every inline `style={{ "--lg-a": ... }}` was inert markup.
+Do not reintroduce them.
 
-### Usage rules
-
-- Use on profile-like pages where identity and "presence" matters.
-- Do not apply everywhere (home and list pages should remain clean and metric-focused).
-- Blur/shadows must not reduce text contrast or legibility.
 
 ## Content: numbers, density, readability
 
 ### Numbers
 
-- Format large numbers using `Intl.NumberFormat`.
-  Example: `frontend/src/components/StatisticsCard.tsx`.
+- Format numbers and dates through next-intl (`useFormatter()`, or
+  `getFormatter()` on the server). Never construct `Intl.NumberFormat("en-US")`
+  or call `toLocaleDateString("en-US")`: the app's default locale is `ru`, and a
+  pinned formatter puts an English date next to a Russian one in the same table
+  row. `formatDateRange` in `lib/utils.ts` takes `locale` as a **required**
+  argument for exactly this reason.
 - Use `tabular-nums` for metrics.
 
 ### Truncation
 
 - Long names/handles should use `truncate` and keep the full value in `title`.
-  Example: `frontend/src/app/users/components/UserHeader.tsx`.
+  Example: `frontend/src/app/(site)/users/components/header/UserHeader.tsx`.
 
 ### Density
 
@@ -204,7 +249,12 @@ Suggested process:
 
 ## Anti-patterns to avoid
 
-- Emoji used as UI icons.
+- Emoji or bare glyphs (`←`, `→`, `↑`, `✓`, `×`, `‹`) used as icons: screen
+  readers read them literally. Use `lucide-react` with `aria-hidden`.
+- `<div onClick>` / `<span role="button">` for navigation or actions. A `<tr>`
+  is not a link; put a real `<a href>` in the row. Note that a `<tr>` is also
+  not a valid containing block for an absolutely positioned overlay link — the
+  overlay escapes its scroll container and scrolls the whole document sideways.
 - Hover effects that shift layout (scale/size changes instead of color/opacity).
 - Mixing inconsistent container widths/paddings within one page.
 - Rendering content without skeletons, causing layout jumps.
@@ -216,5 +266,11 @@ Suggested process:
 - Everything interactive has hover + visible focus.
 - Loading uses skeletons; layout stays stable.
 - Errors do not break the grid; messaging is clear.
-- No horizontal scroll on mobile; touch targets are reasonable.
+- No horizontal scroll at 375px: measure `document.documentElement.scrollWidth`
+  against `innerWidth`, do not eyeball it. A wide table needs its own
+  `overflow-x: auto` region (labelled, `tabIndex={0}`) — clipping it with
+  `overflow: hidden` hides columns instead of making them reachable.
+- Touch targets are at least 24x24.
+- Every interactive element has an accessible name. Verify with the browser's
+  accessibility tree, not by reading the JSX.
 - Contrast stays readable on dark theme (and on Liquid Glass surfaces).

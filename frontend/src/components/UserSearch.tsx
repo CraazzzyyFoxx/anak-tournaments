@@ -209,7 +209,10 @@ const UserSearch = () => {
       <Popover open={isOpen} onOpenChange={setIsOpen}>
         <PopoverAnchor asChild>
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+            <Search
+              aria-hidden
+              className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground"
+            />
             <Input
               id={inputId}
               ref={inputRef}
@@ -228,6 +231,7 @@ const UserSearch = () => {
               aria-expanded={isOpen}
               aria-controls={listId}
               aria-activedescendant={activeIndex >= 0 ? `${listId}-item-${activeIndex}` : undefined}
+              aria-label={t("nav.search.placeholder")}
               placeholder={t("nav.search.placeholder")}
               className={cn(
                 "h-10 rounded-xl border-border/60 bg-background/15 pl-9 pr-10 shadow-sm transition-all duration-200 hover:bg-background/20 focus-visible:ring-2 focus-visible:ring-ring/30 sm:w-[300px] md:w-[200px] lg:w-[300px]",
@@ -235,7 +239,10 @@ const UserSearch = () => {
               )}
             />
             {isSearching ? (
-              <Loader2 className="pointer-events-none absolute right-3 top-3 h-4 w-4 animate-spin text-muted-foreground" />
+              <Loader2
+                aria-hidden
+                className="pointer-events-none absolute right-3 top-3 h-4 w-4 animate-spin text-muted-foreground"
+              />
             ) : searchValue.length > 0 ? (
               <button
                 type="button"
@@ -244,7 +251,7 @@ const UserSearch = () => {
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={handleClear}
               >
-                <X className="h-3.5 w-3.5" />
+                <X className="h-3.5 w-3.5" aria-hidden />
               </button>
             ) : null}
           </div>

@@ -3,7 +3,8 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import AnalyticsPicker from "@/app/(site)/tournaments/analytics/components/AnalyticsPicker";
 import TournamentHero from "@/app/(site)/tournaments/analytics/components/TournamentHero";
@@ -104,7 +105,8 @@ const AnalyticsPage = () => {
   const {
     data: analytics,
     isLoading: loadingAnalytics,
-    isError: isErrorAnalytics
+    isError: isErrorAnalytics,
+    refetch: refetchAnalytics
   } = useQuery({
     queryKey: ["analytics", currentWorkspaceId ?? "global", tournamentId, algorithmId],
     queryFn: () => analyticsService.getAnalytics(tournamentId!, algorithmId!, currentWorkspaceId),
@@ -265,22 +267,27 @@ const AnalyticsPage = () => {
 
       {!isFiltersReady ? (
         <AnalyticsContentSkeleton />
-      ) : tournamentId == null || algorithmId == null ? null : isErrorAnalytics ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("analytics.page.unavailable")}</CardTitle>
-            <CardDescription>{t("analytics.page.unavailableDesc")}</CardDescription>
-          </CardHeader>
-        </Card>
+      ) : tournamentId == null || algorithmId == null ? (
+        <PageStateCard
+          state="empty"
+          title={t("analytics.page.chooseParams")}
+          description={t("analytics.page.chooseParamsDesc")}
+        />
+      ) : isErrorAnalytics ? (
+        <PageStateCard
+          state="error"
+          title={t("analytics.page.unavailable")}
+          description={t("analytics.page.unavailableDesc")}
+          onAction={() => void refetchAnalytics()}
+        />
       ) : loadingAnalytics || !analytics ? (
         <AnalyticsContentSkeleton />
       ) : isEmptyTeams ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("analytics.page.noTeams")}</CardTitle>
-            <CardDescription>{t("analytics.page.noTeamsDesc")}</CardDescription>
-          </CardHeader>
-        </Card>
+        <PageStateCard
+          state="empty"
+          title={t("analytics.page.noTeams")}
+          description={t("analytics.page.noTeamsDesc")}
+        />
       ) : viewModel ? (
         <>
           <VerdictBanner verdict={viewModel.verdict} onExplain={explain} />

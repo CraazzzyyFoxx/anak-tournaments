@@ -27,7 +27,7 @@ import {
   AlertDialogTitle
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { HeroFrame } from "@/components/site/PageHero";
 import { notify } from "@/lib/notify";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
@@ -380,7 +380,7 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
   return (
     <div className="space-y-5 text-[color:var(--aqt-fg)]">
       <div className="overflow-x-auto pb-1">
-        <ol className="flex min-w-[720px] items-center gap-2" aria-label={t("setupSteps")}>
+        <ol className="flex min-w-3xl items-center gap-2" aria-label={t("setupSteps")}>
           {SETUP_STEPS.map((entry, index) => {
             const Icon = STEP_ICONS[index];
             const complete = index < currentIndex;
@@ -405,17 +405,20 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
                 >
                   <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-[color:var(--aqt-card-2)]">
                     {complete ? (
-                      <Check className="h-4 w-4 text-[color:var(--aqt-support)]" />
+                      <Check className="h-4 w-4 text-[color:var(--aqt-support)]" aria-hidden />
                     ) : (
-                      <Icon className="h-4 w-4" />
+                      <Icon className="h-4 w-4" aria-hidden />
                     )}
                   </span>
-                  <span className="truncate text-xs font-medium">
+                  <span className="truncate text-xs font-medium tabular-nums">
                     {index + 1}. {t(`steps.${entry}`)}
                   </span>
                 </button>
                 {index < SETUP_STEPS.length - 1 && (
-                  <ChevronRight className="h-4 w-4 shrink-0 text-[color:var(--aqt-fg-faint)]" />
+                  <ChevronRight
+                    className="h-4 w-4 shrink-0 text-[color:var(--aqt-fg-faint)]"
+                    aria-hidden
+                  />
                 )}
               </li>
             );
@@ -427,7 +430,7 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
         <div className="border-b border-[color:var(--aqt-border)] px-5 py-5 sm:px-7">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-[color:var(--aqt-teal)]">
+              <p className="font-mono text-xs uppercase tracking-wider tabular-nums text-[color:var(--aqt-teal)]">
                 {t("stepOf", { current: currentIndex + 1, total: SETUP_STEPS.length })}
               </p>
               <h2 className="mt-2 font-onest text-2xl font-semibold">{t(`stepTitles.${step}`)}</h2>
@@ -438,7 +441,7 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
             {(session || canCancelSetup) && (
               <div className="flex flex-wrap items-center justify-end gap-2">
                 {session && (
-                  <Badge variant="outline">
+                  <Badge variant="outline" className="tabular-nums">
                     {t("sessionNumber", { id: session.id })} · v{session.version}
                   </Badge>
                 )}
@@ -451,8 +454,8 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
                     className="border-[color:var(--aqt-live)]/40 text-[color:var(--aqt-live)] hover:border-[color:var(--aqt-live)] hover:bg-[color:var(--aqt-live)]/10"
                     onClick={() => setCancelDialogOpen(true)}
                   >
-                    <XCircle className="mr-2 h-4 w-4" />
-                    {t("actions.cancel")}
+                    <XCircle className="mr-2 h-4 w-4" aria-hidden />
+                    {session ? t("actions.cancel") : t("discardSetup")}
                   </Button>
                 )}
               </div>
@@ -526,7 +529,7 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
               disabled={pending || step === "config"}
               onClick={back}
             >
-              <ChevronLeft className="mr-2 h-4 w-4" />
+              <ChevronLeft className="mr-2 h-4 w-4" aria-hidden />
               {t("back")}
             </Button>
             <Button
@@ -534,8 +537,8 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
               disabled={pending || (step === "review" && !reviewReady)}
               onClick={() => void next()}
             >
-              {step === "review" ? t(isReseed ? "confirmReseed" : "makeReady") : t("continue")}
-              {step !== "review" && <ChevronRight className="ml-2 h-4 w-4" />}
+              {step === "review" ? t("seedDraft") : t("continue")}
+              {step !== "review" && <ChevronRight className="ml-2 h-4 w-4" aria-hidden />}
             </Button>
           </div>
         )}
@@ -548,7 +551,7 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
             <AlertDialogDescription>{t("reseedConfirmDescription")}</AlertDialogDescription>
           </AlertDialogHeader>
           {preview && (
-            <div className="grid grid-cols-3 gap-2 rounded-xl bg-muted/50 p-3 text-center text-sm">
+            <div className="grid grid-cols-3 gap-2 rounded-xl bg-muted/50 p-3 text-center text-sm tabular-nums">
               <div>
                 {t("teams")}: {preview.diff.teams_before} → {preview.diff.teams_after}
               </div>
@@ -561,7 +564,7 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
             </div>
           )}
           <AlertDialogFooter>
-            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
+            <AlertDialogCancel>{t("keepEditing")}</AlertDialogCancel>
             <AlertDialogAction
               disabled={commitMutation.isPending}
               onClick={(event) => {
@@ -569,7 +572,7 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
                 commitMutation.mutate();
               }}
             >
-              {t("confirmReseed")}
+              {t("seedDraft")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -589,18 +592,18 @@ export function DraftSetupWizard({ tournamentId, board }: DraftSetupWizardProps)
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={cancelMutation.isPending}>
-              {t("controlRoom.dismiss")}
+              {t("keepEditing")}
             </AlertDialogCancel>
             <AlertDialogAction
               disabled={cancelMutation.isPending}
-              className="bg-[color:var(--aqt-live)] text-white hover:bg-[color:var(--aqt-live)]/90"
+              className={buttonVariants({ variant: "destructive" })}
               onClick={(event) => {
                 event.preventDefault();
                 if (session) cancelMutation.mutate();
                 else resetSetupState();
               }}
             >
-              {t("actions.cancel")}
+              {session ? t("actions.cancel") : t("discardSetup")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

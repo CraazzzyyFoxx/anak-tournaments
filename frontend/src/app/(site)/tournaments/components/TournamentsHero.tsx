@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 
 import { PageHero, HeroCoord, HeroStat } from "@/components/site/PageHero";
 
@@ -9,22 +9,28 @@ interface TournamentsHeroProps {
   workspaceName?: string | null;
   liveEvents: number;
   liveMatches: number;
-  totalTournaments: number;
-  activeTournaments: number;
   totalPlayers: number;
   totalTeams: number;
 }
 
+/**
+ * There is deliberately NO "total tournaments" stat here.
+ *
+ * The list section below states its own count, and the platform-wide total from
+ * `getOverallStatistics` counts a narrower set — so showing both put two
+ * disagreeing tournament counts in one viewport with no way to tell which
+ * answers "how many tournaments are there". The list owns that number on this
+ * page; `/` and `/statistics` own the platform total.
+ */
 const TournamentsHero = ({
   workspaceName,
   liveEvents,
   liveMatches,
-  totalTournaments,
-  activeTournaments,
   totalPlayers,
   totalTeams,
 }: TournamentsHeroProps) => {
   const t = useTranslations();
+  const format = useFormatter();
 
   return (
     <PageHero
@@ -44,7 +50,10 @@ const TournamentsHero = ({
             label={
               <span className="inline-flex items-center gap-1.5">
                 {liveEvents > 0 ? (
-                  <span className="h-1.5 w-1.5 rounded-full bg-[color:var(--aqt-rose)] [animation:aqtPulse_2s_ease-in-out_infinite]" />
+                  <span
+                    aria-hidden
+                    className="h-1.5 w-1.5 rounded-full bg-[color:var(--aqt-rose)] [animation:aqtPulse_2s_ease-in-out_infinite] motion-reduce:animate-none"
+                  />
                 ) : null}
                 {t("tournamentsList.hero.liveNow")}
               </span>
@@ -62,15 +71,12 @@ const TournamentsHero = ({
                 : t("tournamentsList.hero.noMatchesInFlight")
             }
           />
+          {/* Numbers go through the locale formatter: the raw value used to render
+              `1164` beside an ICU-formatted `1,453` in the very next tile. */}
+          <HeroStat label={t("common.playersLabel")} value={format.number(totalPlayers)} />
           <HeroStat
-            label={t("tournamentsList.hero.totalTournaments")}
-            value={totalTournaments}
-            sub={t("tournamentsList.hero.activeCount", { count: activeTournaments })}
-          />
-          <HeroStat
-            label={t("common.playersLabel")}
-            value={totalPlayers}
-            sub={t("tournamentsList.hero.teamsBalanced", { count: totalTeams })}
+            label={t("tournamentsList.hero.teamsBalancedLabel")}
+            value={format.number(totalTeams)}
           />
         </div>
       }

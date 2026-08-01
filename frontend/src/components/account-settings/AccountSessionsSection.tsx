@@ -9,7 +9,7 @@ import {
   Shield,
   ShieldOff
 } from "lucide-react";
-import { useLocale, useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -22,9 +22,18 @@ const STATUS_CLASS: Record<
   AccountSessionStatus,
   { dotClassName: string; textClassName: string }
 > = {
-  active: { dotClassName: "bg-emerald-400", textClassName: "text-emerald-200" },
-  revoked: { dotClassName: "bg-amber-300", textClassName: "text-amber-100" },
-  expired: { dotClassName: "bg-slate-400", textClassName: "text-slate-300" }
+  active: {
+    dotClassName: "bg-[color:var(--aqt-emerald)]",
+    textClassName: "text-[color:var(--aqt-emerald)]"
+  },
+  revoked: {
+    dotClassName: "bg-[color:var(--aqt-amber)]",
+    textClassName: "text-[color:var(--aqt-amber)]"
+  },
+  expired: {
+    dotClassName: "bg-[color:var(--aqt-fg-faint)]",
+    textClassName: "text-[color:var(--aqt-fg-dim)]"
+  }
 };
 
 const STATUS_KEY: Record<AccountSessionStatus, "statusActive" | "statusRevoked" | "statusExpired"> = {
@@ -33,15 +42,14 @@ const STATUS_KEY: Record<AccountSessionStatus, "statusActive" | "statusRevoked" 
   expired: "statusExpired"
 };
 
-function formatTimestamp(value: string | null | undefined, locale: string): string | null {
-  if (!value) return null;
+const SECTION_TITLE_CLASS =
+  "text-xs font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-dim)]";
+const EMPTY_CLASS =
+  "rounded-lg border border-dashed border-[color:var(--aqt-border-2)] px-4 py-5 text-sm text-[color:var(--aqt-fg-muted)]";
 
-  return new Date(value).toLocaleString(locale === "ru" ? "ru-RU" : "en-US", {
-    dateStyle: "medium",
-    timeStyle: "short"
-  });
-}
-
+// Browser and OS names are product names — they are not translated in any
+// locale, so they stay verbatim. Only the "unknown device" fallback and the
+// "{browser} on {platform}" template come from messages.
 function detectBrowser(userAgent: string): string | null {
   if (/Edg\//i.test(userAgent)) return "Edge";
   if (/OPR\//i.test(userAgent)) return "Opera";
@@ -66,7 +74,7 @@ function StatusText({ status }: { status: AccountSessionStatus }) {
 
   return (
     <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${meta.textClassName}`}>
-      <span className={`size-1.5 rounded-full ${meta.dotClassName}`} />
+      <span aria-hidden className={`size-1.5 rounded-full ${meta.dotClassName}`} />
       {t(STATUS_KEY[status])}
     </span>
   );
@@ -74,18 +82,22 @@ function StatusText({ status }: { status: AccountSessionStatus }) {
 
 function DetailCell({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0 rounded-lg border border-white/5 bg-black/10 px-3 py-2">
-      <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-0.5 truncate text-xs text-slate-300">{value}</p>
+    <div className="min-w-0 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-3 py-2">
+      <p className="text-[10px] font-medium uppercase tracking-wide text-[color:var(--aqt-fg-dim)]">
+        {label}
+      </p>
+      <p className="mt-0.5 truncate text-xs text-[color:var(--aqt-fg-muted)]">{value}</p>
     </div>
   );
 }
 
 function SummaryCell({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-      <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-1 text-lg font-semibold text-white">{value}</p>
+    <div className="rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-3)] px-3 py-2">
+      <p className="text-[10px] font-medium uppercase tracking-wide text-[color:var(--aqt-fg-dim)]">
+        {label}
+      </p>
+      <p className="mt-1 text-lg font-semibold tabular-nums text-[color:var(--aqt-fg)]">{value}</p>
     </div>
   );
 }
@@ -100,8 +112,15 @@ function SessionRow({
   onRevoke: (sessionId: string) => void;
 }) {
   const t = useTranslations("accountSettings.sessions");
-  const locale = useLocale();
+  // next-intl's formatter already carries the active locale, so the timestamps
+  // follow it. This file used to hand-map `locale === "ru" ? "ru-RU" : "en-US"`.
+  const format = useFormatter();
   const canRevoke = !session.is_current && session.status === "active";
+
+  const formatTimestamp = (value: string | null | undefined): string =>
+    value
+      ? format.dateTime(new Date(value), { dateStyle: "medium", timeStyle: "short" })
+      : t("unavailable");
 
   const ua = session.user_agent;
   const browser = ua ? detectBrowser(ua) : null;
@@ -113,26 +132,26 @@ function SessionRow({
       : (browser ?? platform ?? (ua.length > 72 ? `${ua.slice(0, 72)}...` : ua));
 
   return (
-    <li className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+    <li className="rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-3">
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div className="flex min-w-0 items-start gap-3">
-            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-slate-200">
-              <LaptopMinimal className="size-4" />
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-3)] text-[color:var(--aqt-fg-muted)]">
+              <LaptopMinimal className="size-4" aria-hidden />
             </div>
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-white">{device}</p>
-              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+              <p className="truncate text-sm font-semibold text-[color:var(--aqt-fg)]">{device}</p>
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[color:var(--aqt-fg-muted)]">
                 <StatusText status={session.status} />
                 {session.is_current ? (
-                  <span className="inline-flex items-center gap-1 text-sky-200">
-                    <Shield className="size-3.5" />
+                  <span className="inline-flex items-center gap-1 text-[color:var(--aqt-blue)]">
+                    <Shield className="size-3.5" aria-hidden />
                     {t("currentSession")}
                   </span>
                 ) : null}
                 {session.ip_address ? (
                   <span className="inline-flex min-w-0 items-center gap-1">
-                    <MapPin className="size-3.5 shrink-0" />
+                    <MapPin className="size-3.5 shrink-0" aria-hidden />
                     <span className="truncate">{session.ip_address}</span>
                   </span>
                 ) : null}
@@ -147,29 +166,29 @@ function SessionRow({
               disabled={isRevoking}
               onClick={() => onRevoke(session.session_id)}
             >
-              <ShieldOff className="size-4" />
+              <ShieldOff className="size-4" aria-hidden />
               {t("revoke")}
             </Button>
           ) : null}
         </div>
 
         <div className="grid gap-2 sm:grid-cols-2">
-          <DetailCell label={t("signedIn")} value={formatTimestamp(session.login_at, locale) ?? t("unavailable")} />
-          <DetailCell label={t("lastSeen")} value={formatTimestamp(session.last_seen_at, locale) ?? t("unavailable")} />
-          <DetailCell label={t("expires")} value={formatTimestamp(session.expires_at, locale) ?? t("unavailable")} />
+          <DetailCell label={t("signedIn")} value={formatTimestamp(session.login_at)} />
+          <DetailCell label={t("lastSeen")} value={formatTimestamp(session.last_seen_at)} />
+          <DetailCell label={t("expires")} value={formatTimestamp(session.expires_at)} />
           <DetailCell
             label={session.status === "revoked" ? t("revokedLabel") : t("sessionLabel")}
             value={
               session.status === "revoked"
-                ? (formatTimestamp(session.revoked_at, locale) ?? t("unavailable"))
+                ? formatTimestamp(session.revoked_at)
                 : session.session_id
             }
           />
         </div>
 
         {session.user_agent ? (
-          <div className="flex items-start gap-2 text-xs text-slate-500">
-            <Clock3 className="mt-0.5 size-3.5 shrink-0" />
+          <div className="flex items-start gap-2 text-xs text-[color:var(--aqt-fg-dim)]">
+            <Clock3 className="mt-0.5 size-3.5 shrink-0" aria-hidden />
             <span className="break-all">{session.user_agent}</span>
           </div>
         ) : null}
@@ -205,8 +224,8 @@ export default function AccountSessionsSection() {
   if (isLoading) {
     return (
       <div className="flex flex-col gap-3">
-        {Array.from({ length: 3 }).map((_, index) => (
-          <Skeleton key={index} className="h-24 rounded-lg bg-white/5" />
+        {["a", "b", "c"].map((key) => (
+          <Skeleton key={key} className="h-24 rounded-lg" />
         ))}
       </div>
     );
@@ -214,20 +233,23 @@ export default function AccountSessionsSection() {
 
   if (isError) {
     return (
-      <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+      <div
+        role="alert"
+        className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive"
+      >
         <p className="flex items-center gap-2">
-          <AlertCircle className="size-4" />
+          <AlertCircle className="size-4" aria-hidden />
           {getApiErrorMessage(error, t("loadFailed"))}
         </p>
         <Button
           variant="outline"
           size="sm"
-          className="mt-3 border-red-500/50 hover:bg-red-500/20 hover:text-red-100"
+          className="mt-3 border-destructive/50 hover:bg-destructive/20"
           onClick={() => {
             void refetch();
           }}
         >
-          <RefreshCw className="size-4" />
+          <RefreshCw className="size-4" aria-hidden />
           {t("retry")}
         </Button>
       </div>
@@ -244,9 +266,7 @@ export default function AccountSessionsSection() {
 
       {currentSession ? (
         <section className="flex flex-col gap-2">
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            {t("currentSectionTitle")}
-          </h4>
+          <h4 className={SECTION_TITLE_CLASS}>{t("currentSectionTitle")}</h4>
           <ul className="flex flex-col gap-2">
             <SessionRow session={currentSession} isRevoking={false} onRevoke={handleRevoke} />
           </ul>
@@ -254,9 +274,7 @@ export default function AccountSessionsSection() {
       ) : null}
 
       <section className="flex flex-col gap-2">
-        <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          {t("otherActiveTitle")}
-        </h4>
+        <h4 className={SECTION_TITLE_CLASS}>{t("otherActiveTitle")}</h4>
         {otherActiveSessions.length > 0 ? (
           <ul className="flex flex-col gap-2">
             {otherActiveSessions.map((session) => (
@@ -272,16 +290,12 @@ export default function AccountSessionsSection() {
             ))}
           </ul>
         ) : (
-          <div className="rounded-lg border border-dashed border-white/10 px-4 py-5 text-sm text-slate-400">
-            {t("noOtherActive")}
-          </div>
+          <div className={EMPTY_CLASS}>{t("noOtherActive")}</div>
         )}
       </section>
 
       <section className="flex flex-col gap-2">
-        <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          {t("historyTitle")}
-        </h4>
+        <h4 className={SECTION_TITLE_CLASS}>{t("historyTitle")}</h4>
         {sessionHistory.length > 0 ? (
           <ul className="flex flex-col gap-2">
             {sessionHistory.map((session) => (
@@ -294,9 +308,7 @@ export default function AccountSessionsSection() {
             ))}
           </ul>
         ) : (
-          <div className="rounded-lg border border-dashed border-white/10 px-4 py-5 text-sm text-slate-400">
-            {t("noHistory")}
-          </div>
+          <div className={EMPTY_CLASS}>{t("noHistory")}</div>
         )}
       </section>
     </div>

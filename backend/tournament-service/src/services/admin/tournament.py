@@ -13,6 +13,7 @@ from shared.core.enums import StageType, TournamentStatus
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.services import division_grid_cache
 from shared.services.division_grid_access import get_workspace_division_grid_version_id
+from shared.services.draft_guards import assert_no_active_draft_session
 from src import models
 from src.schemas.admin import tournament as admin_schemas
 from src.services.admin import stage as stage_service
@@ -194,6 +195,9 @@ async def update_tournament(
 
     # Update fields
     update_data = data.model_dump(exclude_unset=True)
+    if "team_formation" in update_data and update_data["team_formation"] != tournament.team_formation:
+        await assert_no_active_draft_session(session, tournament_id)
+
     if "challonge_slug" in update_data:
         raw_slug = update_data.pop("challonge_slug")
         if raw_slug:
