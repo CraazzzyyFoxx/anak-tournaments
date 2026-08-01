@@ -42,6 +42,12 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { usePermissions } from "@/hooks/usePermissions";
+import {
+  PLAYER_ROLE_OPTIONS,
+  filterSubRoleOptions,
+  normalizePlayerRole,
+  type PlayerRoleOption
+} from "@/lib/player-role";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import { MinimizedUser } from "@/types/user.types";
 import { paginateResults, sortArray } from "@/lib/paginate-results";
@@ -64,44 +70,6 @@ interface PlayerFormData {
 }
 
 type PlayerRow = Player & { team: Team };
-
-type PlayerRoleOption = "Tank" | "Damage" | "Support";
-
-const PLAYER_ROLE_OPTIONS: PlayerRoleOption[] = ["Tank", "Damage", "Support"];
-
-function normalizePlayerRole(role: string | null | undefined): PlayerRoleOption {
-  const normalized = role?.trim().toLowerCase();
-
-  if (normalized === "tank") {
-    return "Tank";
-  }
-
-  if (normalized === "dps" || normalized === "damage") {
-    return "Damage";
-  }
-
-  if (normalized === "support") {
-    return "Support";
-  }
-
-  return "Damage";
-}
-
-function normalizeSubRoleCatalogRole(role: string | null | undefined) {
-  const normalized = normalizePlayerRole(role);
-  if (normalized === "Damage") {
-    return "damage";
-  }
-  if (normalized === "Support") {
-    return "support";
-  }
-  return "tank";
-}
-
-function filterSubRoleOptions(subRoles: PlayerSubRole[] | undefined, role: string) {
-  const catalogRole = normalizeSubRoleCatalogRole(role);
-  return (subRoles ?? []).filter((subRole) => subRole.role === catalogRole);
-}
 
 function RoleOptionContent({ role }: { role: PlayerRoleOption }) {
   return (

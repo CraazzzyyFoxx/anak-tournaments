@@ -42,7 +42,6 @@ export default function TeamsTabPage() {
   return (
     <TournamentTeamsTab
       tournamentId={tournamentId}
-      workspaceId={workspaceId}
       teams={teamsQuery.data?.results ?? []}
       stagesCount={stages.length}
       hasChallongeSource={hasChallongeSource(tournament, stages)}

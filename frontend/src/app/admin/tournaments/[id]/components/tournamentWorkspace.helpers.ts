@@ -33,11 +33,6 @@ export type TournamentFormState = {
   team_formation: string;
 };
 
-export type TeamFormState = {
-  name: string;
-  captain_id: number;
-};
-
 export type EncounterFormState = {
   name: string;
   stage_id: number | null;
@@ -153,20 +148,6 @@ export function getTournamentForm(tournament: Tournament, timezone: string): Tou
     phase_schedule: getPhaseScheduleForm(tournament, timezone),
     division_grid_version_id: tournament.division_grid_version_id ?? null,
     team_formation: tournament.team_formation ?? "balancer"
-  };
-}
-
-export function getEmptyTeamForm(): TeamFormState {
-  return {
-    name: "",
-    captain_id: 0
-  };
-}
-
-export function getTeamForm(team: Team): TeamFormState {
-  return {
-    name: team.name,
-    captain_id: team.captain_id
   };
 }
 

@@ -4,12 +4,12 @@ import { useId, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
-import { Pencil, Plus, Trash2, Users } from "lucide-react";
+import { Plus, Trash2, Users } from "lucide-react";
 
 import { AdminDataTable } from "@/components/admin/AdminDataTable";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { TeamRosterEditorDialog } from "@/components/admin/teams/TeamRosterEditorDialog";
+import { TeamCreateDialog } from "@/components/admin/teams/TeamCreateDialog";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -44,14 +44,9 @@ export default function TeamsPage() {
   const queryClient = useQueryClient();
 
   const canCreateTeam = canAccessPermission("team.create", workspaceId);
-  const canUpdateTeam = canAccessPermission("team.update", workspaceId);
   const canDeleteTeam = canAccessPermission("team.delete", workspaceId);
-  const canCreatePlayer = canAccessPermission("player.create", workspaceId);
-  const canUpdatePlayer = canAccessPermission("player.update", workspaceId);
-  const canDeletePlayer = canAccessPermission("player.delete", workspaceId);
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
   const createHintId = useId();
@@ -62,9 +57,6 @@ export default function TeamsPage() {
     queryKey: ["tournaments"],
     queryFn: () => tournamentService.getAll(null)
   });
-
-  const selectedTournament =
-    tournamentsData?.results.find((tournament) => tournament.id === selectedTournamentId) ?? null;
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => adminService.deleteTeam(id),
@@ -107,12 +99,10 @@ export default function TeamsPage() {
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
   };
 
-  const canCreateRoster = canCreateTeam && canCreatePlayer;
   const createBlockedReason =
-    canCreateRoster && selectedTournamentId == null
+    canCreateTeam && selectedTournamentId == null
       ? "Pick a tournament first — a roster belongs to one tournament."
       : null;
-  const canOpenEditDialog = canUpdateTeam || canCreatePlayer || canUpdatePlayer || canDeletePlayer;
 
   const columns: ColumnDef<Team>[] = [
     {
@@ -157,32 +147,20 @@ export default function TeamsPage() {
     {
       id: "actions",
       cell: ({ row }) =>
-        canOpenEditDialog || canDeleteTeam ? (
-          <div className="flex items-center gap-2">
-            {canOpenEditDialog ? (
-              <Button
-                aria-label={`Edit ${row.original.name}`}
-                variant="ghost"
-                size="icon"
-                onClick={() => {
-                  setSelectedTeam(row.original);
-                  setEditDialogOpen(true);
-                }}
-              >
-                <Pencil className="h-4 w-4" />
-              </Button>
-            ) : null}
-            {canDeleteTeam ? (
-              <Button
-                aria-label={`Delete ${row.original.name}`}
-                variant="ghost"
-                size="icon"
-                onClick={() => handleDelete(row.original)}
-                className="text-destructive"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            ) : null}
+        canDeleteTeam ? (
+          <div className="flex items-center justify-end">
+            <Button
+              aria-label={`Delete ${row.original.name}`}
+              variant="ghost"
+              size="icon"
+              onClick={(event) => {
+                event.stopPropagation();
+                handleDelete(row.original);
+              }}
+              className="text-destructive"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
           </div>
         ) : null
     }
@@ -192,9 +170,9 @@ export default function TeamsPage() {
     <div className="flex flex-col gap-6">
       <AdminPageHeader
         title="Teams"
-        description="Manage teams and their rosters"
+        description="Open a team to edit its name, captain and roster."
         actions={
-          canCreateRoster ? (
+          canCreateTeam ? (
             <div className="flex flex-wrap items-center justify-end gap-2">
               {createBlockedReason ? (
                 <span id={createHintId} className="text-sm text-muted-foreground">
@@ -262,40 +240,10 @@ export default function TeamsPage() {
       />
 
       {selectedTournamentId != null ? (
-        <TeamRosterEditorDialog
-          key={`team-create-${selectedTournamentId}-${createDialogOpen ? "open" : "closed"}`}
+        <TeamCreateDialog
           open={createDialogOpen}
           onOpenChange={setCreateDialogOpen}
-          mode="create"
           tournamentId={selectedTournamentId}
-          workspaceId={selectedTournament?.workspace_id ?? workspaceId}
-          canCreateTeam={canCreateTeam}
-          canUpdateTeam={canUpdateTeam}
-          canCreatePlayer={canCreatePlayer}
-          canUpdatePlayer={canUpdatePlayer}
-          canDeletePlayer={canDeletePlayer}
-        />
-      ) : null}
-
-      {selectedTeam ? (
-        <TeamRosterEditorDialog
-          key={`team-edit-${selectedTeam.id}-${editDialogOpen ? "open" : "closed"}`}
-          open={editDialogOpen}
-          onOpenChange={(open) => {
-            setEditDialogOpen(open);
-            if (!open) {
-              setSelectedTeam(null);
-            }
-          }}
-          mode="edit"
-          tournamentId={selectedTeam.tournament_id}
-          workspaceId={selectedTeam.tournament?.workspace_id ?? workspaceId}
-          team={selectedTeam}
-          canCreateTeam={canCreateTeam}
-          canUpdateTeam={canUpdateTeam}
-          canCreatePlayer={canCreatePlayer}
-          canUpdatePlayer={canUpdatePlayer}
-          canDeletePlayer={canDeletePlayer}
         />
       ) : null}
 

@@ -14,7 +14,7 @@
 | `/admin` | Dashboard | KPI, активный турнир, лог-очередь, IssuesQueue (deep-links на проблемы), QuickAccess | overview-права |
 | `/admin/tournaments` | Tournaments | Список + create (Manual / From Challonge), edit, delete | `tournament.*` |
 | `/admin/tournaments/[id]` | Tournament Workspace | 7 вкладок, детали ниже (§2) | `tournament.read` |
-| `/admin/teams` (+`/[id]`) | Teams | Команды, фильтр `?tournament=`, TeamRosterEditorDialog; detail — read-only карточка | `team.*` |
+| `/admin/teams` (+`/[id]`) | Teams | Список + фильтр `?tournament=`, TeamCreateDialog (имя + капитан); detail — **инлайн-редактор** (имя, капитан, ростер: роль/ранг/сабролью/флаги пишутся по изменению; «Replace» добавляет замену) | `team.*` |
 | `/admin/players` | Players | Все игроки (клиентская сборка из ростеров!), CRUD c привязкой к identity | `player.*` |
 | `/admin/encounters` | Encounters | Матчи: stage/stage-item, счёт, closeness-звёзды, статус, has_logs | `match.*` |
 | `/admin/standings` | Standings | Scope-табы, realtime, edit/delete/recalculate | `standing.*` |
