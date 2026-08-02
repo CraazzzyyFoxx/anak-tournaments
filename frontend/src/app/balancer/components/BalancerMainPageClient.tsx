@@ -705,7 +705,8 @@ export function BalancerMainPageClient() {
       {/* Renders into the tool top-bar via a portal; returns null when nobody is viewing. */}
       <BalancerPresenceStack userIds={presenceUserIds} workspaceId={workspaceId} />
 
-      <div className="flex min-h-0 w-full flex-1 flex-col gap-3 pb-4">
+      {/* The shell already insets the tool with `p-3 md:p-4`; a second bottom pad just wasted space. */}
+      <div className="flex min-h-0 w-full flex-1 flex-col gap-3">
         <div
           className={cn(
             "grid min-h-0 flex-1 gap-3",
