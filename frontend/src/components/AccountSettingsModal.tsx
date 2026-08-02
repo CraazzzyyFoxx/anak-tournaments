@@ -69,7 +69,7 @@ const AccountSettingsModal = () => {
           className="flex min-h-0 flex-1 flex-col md:flex-row"
         >
           {/* Sidebar — a left column on desktop, a horizontal tab strip on mobile */}
-          <div className="relative z-10 shrink-0 border-b border-border/40 bg-[color:var(--aqt-overlay-1)] md:flex md:w-1/3 md:max-w-[280px] md:flex-col md:items-end md:border-b-0 md:pb-8 md:pt-14">
+          <div className="shrink-0 border-b border-border/40 bg-[color:var(--aqt-overlay-1)] md:flex md:w-1/3 md:max-w-[280px] md:flex-col md:items-end md:border-b-0 md:pb-8 md:pt-14">
             <div className="w-full px-3 py-3 md:max-w-[220px] md:space-y-1 md:py-0">
               <h2 className="hidden px-3 pb-2 text-xs font-bold uppercase tracking-wider text-[color:var(--aqt-fg-muted)] md:block">
                 {t("sidebarHeading")}
@@ -98,7 +98,7 @@ const AccountSettingsModal = () => {
           </div>
 
           {/* Content Area */}
-          <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden bg-transparent">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-transparent">
             <div className="w-full flex-1 overflow-y-auto px-4 pb-12 pt-8 sm:px-8 md:pb-20 md:pt-14 xl:px-16">
               <div className="max-w-2xl">
                 <TabsContent value="profile" className={PANEL_CLASS}>

@@ -1537,16 +1537,6 @@
   .liquid-glass-surface {
     background: hsl(var(--background));
   }
-
-  .liquid-glass [data-ui="card"] {
-    background: hsl(var(--card));
-    border-color: hsl(var(--border));
-  }
-
-  .liquid-glass [data-ui="tabs-list"] {
-    background: hsl(var(--muted));
-    border: 1px solid hsl(var(--border));
-  }
 }
 
 /* ── Popover surface (design request) ──────────────────────────────────────
