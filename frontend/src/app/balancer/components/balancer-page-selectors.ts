@@ -26,7 +26,6 @@ export type BalancerPageCollections = {
   playerValidationStates: PlayerValidationState[];
   readyPlayers: BalancerPlayerRecord[];
   invalidPlayerStates: PlayerValidationState[];
-  missingRankPlayerStates: PlayerValidationState[];
   addableApplications: BalancerApplication[];
   flexPoolCount: number;
 };
@@ -62,9 +61,6 @@ export function buildBalancerPageCollections(
     .filter((state) => state.issues.length === 0)
     .map((state) => state.player);
   const invalidPlayerStates = playerValidationStates.filter((state) => state.issues.length > 0);
-  const missingRankPlayerStates = invalidPlayerStates.filter((state) =>
-    state.issues.some((issue) => issue.code === "missing_ranked_role"),
-  );
   const addableApplications = applications.filter(
     (application) => application.is_active && application.player === null,
   );
@@ -81,7 +77,6 @@ export function buildBalancerPageCollections(
     playerValidationStates,
     readyPlayers,
     invalidPlayerStates,
-    missingRankPlayerStates,
     addableApplications,
     flexPoolCount,
   };

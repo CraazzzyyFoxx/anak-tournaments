@@ -1,5 +1,3 @@
-// eslint-disable-next-line no-mixed-spaces-and-tabs
-
 import type { Config } from "tailwindcss";
 import colors from "tailwindcss/colors";
 

@@ -105,7 +105,7 @@ function getStatusName(statusOptions: StatusOptionGroups | undefined, value: str
 
 function RoleIconStrip({ roleCodes }: { roleCodes: BalancerRoleCode[] }) {
   if (roleCodes.length === 0) {
-    return <span className="text-[11px] text-[color:var(--aqt-fg-faint)]">No roles</span>;
+    return <span className="text-[11px] text-[color:var(--aqt-fg-dim)]">No roles</span>;
   }
 
   return (
@@ -267,7 +267,7 @@ export function PoolPlayerCompactList({
                     onSelectPlayer?.(player.id);
                   }}
                   className={cn(
-                    "group grid w-full cursor-pointer grid-cols-[24px_minmax(0,1fr)] items-start gap-2 rounded-xl border px-2.5 py-2 text-left transition-all",
+                    "group grid w-full cursor-pointer grid-cols-[24px_minmax(0,1fr)] items-start gap-2 rounded-xl border px-2.5 py-2 text-left transition-colors",
                     "border-[color:var(--aqt-border)] bg-white/[0.02] hover:border-[color:var(--aqt-border-2)] hover:bg-white/[0.04]",
                     isSelected && "border-primary/45 bg-primary/[0.08]",
                     isBulkSelected && !isSelected && "border-cyan-400/35 bg-cyan-500/[0.06]",
@@ -280,7 +280,7 @@ export function PoolPlayerCompactList({
                     aria-label={isBulkSelected ? `Unselect ${player.battle_tag}` : `Select ${player.battle_tag}`}
                     onClick={() => onToggleBulkSelection?.(player.id)}
                     className={cn(
-                      "mt-0.5 flex h-5 w-5 items-center justify-center rounded-md border text-[10px] transition",
+                      "mt-0.5 flex h-6 w-6 items-center justify-center rounded-md border text-[10px] transition-colors",
                       isBulkSelected
                         ? "border-cyan-300/50 bg-cyan-500/18 text-cyan-100"
                         : "border-[color:var(--aqt-border-2)] bg-black/15 text-[color:var(--aqt-fg-dim)] hover:border-[color:var(--aqt-border-2)] hover:text-[color:var(--aqt-fg-muted)]",
@@ -289,12 +289,20 @@ export function PoolPlayerCompactList({
                     {isBulkSelected ? <Check className="h-3 w-3" /> : <Circle className="h-2.5 w-2.5 fill-current stroke-none" />}
                   </button>
 
-                  <div className="min-w-0" title="Double-click to edit player">
+                  <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <div className="flex min-w-0 flex-1 items-center gap-1.5">
                         <RoleIconStrip roleCodes={rankedRoleCodes} />
-                        <span className="truncate text-[13px] font-medium text-[color:var(--aqt-fg)]">{name}</span>
-                        {suffix ? <span className="shrink-0 text-[12px] text-[color:var(--aqt-fg-faint)]">{suffix}</span> : null}
+                        <button
+                          type="button"
+                          data-card-action
+                          onClick={() => onSelectPlayer?.(player.id)}
+                          title={`Edit ${primaryBattleTag}`}
+                          className="flex min-w-0 items-baseline gap-1 rounded text-left"
+                        >
+                          <span className="truncate text-[13px] font-medium text-[color:var(--aqt-fg)]">{name}</span>
+                          {suffix ? <span className="shrink-0 text-[12px] text-[color:var(--aqt-fg-dim)]">{suffix}</span> : null}
+                        </button>
                       </div>
 
                       <div className="flex shrink-0 items-center gap-1" data-card-action>
@@ -314,7 +322,7 @@ export function PoolPlayerCompactList({
                               {primaryEntry.rank_value}
                             </span>
                           ) : (
-                            <span className="text-[12px] text-[color:var(--aqt-fg-faint)]">-</span>
+                            <span className="text-[12px] text-[color:var(--aqt-fg-dim)]">-</span>
                           )}
                         </div>
 

@@ -13,7 +13,7 @@ const groups = vi.hoisted(() => ({ value: [] as TestNavGroup[] }));
 
 vi.mock("./useVisibleNavGroups", () => ({ useVisibleNavGroups: () => groups.value }));
 
-// eslint-disable-next-line import/first -- must follow the hoisted vi.mock calls above
+// Must follow the hoisted vi.mock calls above.
 import { SiteNav } from "./SiteNav";
 
 const messages = {

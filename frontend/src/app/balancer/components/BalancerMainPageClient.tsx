@@ -267,7 +267,6 @@ export function BalancerMainPageClient() {
     readyPlayers,
     poolPlayers,
     invalidPlayerStates,
-    missingRankPlayerStates,
     flexPoolCount
   } = useMemo(
     () => buildBalancerPageCollections(registrations, divisionGrid),
@@ -734,7 +733,6 @@ export function BalancerMainPageClient() {
             onBulkBalancerStatus={handleBulkBalancerStatus}
             isAddingPlayer={addPlayerMutation.isPending}
             actionsDisabled={quickPoolActionsPending}
-            missingRankCount={missingRankPlayerStates.length}
             workspaceId={workspaceId ?? undefined}
             workspaceBalancerConfig={workspaceBalancerConfig}
           />
