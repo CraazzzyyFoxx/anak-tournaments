@@ -454,7 +454,13 @@ export function PoolPlayerCompactList({
   };
 
   return (
-    <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-2">
+    // Below `xl` the balancer shell drops its `h-svh`/`overflow-hidden`, so `flex-1` alone would
+    // resolve to the full virtual height and push a scrollbar onto the document. The cap keeps the
+    // pool its own scroll region; at `xl` the flex track is smaller and the cap never applies.
+    <div
+      ref={scrollRef}
+      className="min-h-0 max-h-[calc(100svh-16rem)] flex-1 overflow-y-auto overflow-x-hidden pr-2"
+    >
       {shouldVirtualize ? (
         <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
           {virtualizer.getVirtualItems().map((virtualRow) => (

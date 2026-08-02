@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Sparkles } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -49,8 +49,14 @@ export function BalancerToolTopBar({ summary }: BalancerToolTopBarProps) {
       <div id="balancer-presence-slot" className="flex shrink-0 items-center empty:hidden" />
       {/* PresetRunPanel portals the Run controls here — this container must always exist (D30). */}
       <div id="balancer-header-slot" className="ml-auto flex min-w-0 items-center gap-2" />
-      <Button asChild variant="outline" size="sm" className="shrink-0">
+      {/* Sits beside the controls PresetRunPanel portals into the slot above — same chrome. */}
+      <Button
+        asChild
+        variant="outline"
+        className="h-8 shrink-0 rounded-lg border-[color:var(--aqt-border-2)] bg-black/15 px-3 text-sm text-[color:var(--aqt-fg-muted)] hover:bg-white/[0.05] hover:text-[color:var(--aqt-fg)]"
+      >
         <Link href={`/admin/tournaments/${summary.id}/registration/rank-autofill`}>
+          <Sparkles className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
           Rank autofill
         </Link>
       </Button>

@@ -3,7 +3,6 @@
 import { Plus } from "lucide-react";
 
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import type { BalancerApplication, BalancerRoleCode } from "@/types/balancer-admin.types";
 import { ROLE_LABELS, buildApplicationSearchIndex } from "@/app/balancer/components/workspace-helpers";
 
@@ -61,8 +60,10 @@ export function PoolAvailableList({
   }
 
   return (
-    <ScrollArea className="h-full min-h-0">
-      <div className="space-y-1.5 pr-2">
+    // Same containment as the pool list: below `xl` the shell has no definite height, so an
+    // uncapped scroller would grow to its content and push a scrollbar onto the document.
+    <div className="min-h-0 max-h-[calc(100svh-16rem)] flex-1 overflow-y-auto overflow-x-hidden pr-2">
+      <div className="space-y-1.5">
         {matches.map((application) => {
           const roleCodes = [application.primary_role, ...application.additional_roles_json]
             .map(normalizeApplicationRole)
@@ -100,6 +101,6 @@ export function PoolAvailableList({
           );
         })}
       </div>
-    </ScrollArea>
+    </div>
   );
 }

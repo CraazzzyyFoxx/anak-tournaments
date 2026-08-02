@@ -384,20 +384,20 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
                 placeholder="Search BattleTag or role"
                 aria-label="Search the Balancing Pool"
                 autoComplete="off"
-                className="h-9 rounded-lg border-[color:var(--aqt-border-2)] bg-black/15 pl-9 text-[13px]"
+                className="h-9 rounded-lg border-[color:var(--aqt-border-2)] bg-black/15 pl-9 text-sm"
               />
             </div>
             {isAvailableView ? null : (
               <Select value={poolSort} onValueChange={(value) => setPoolSort(value as PoolSortValue)}>
                 <SelectTrigger
                   aria-label="Sort players"
-                  className="h-9 w-[9.5rem] shrink-0 rounded-lg border-[color:var(--aqt-border-2)] bg-black/15 text-xs"
+                  className="h-9 w-[10.5rem] shrink-0 rounded-lg border-[color:var(--aqt-border-2)] bg-black/15 text-sm text-[color:var(--aqt-fg)]"
                 >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {SORT_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value} className="text-xs">
+                    <SelectItem key={option.value} value={option.value}>
                       {option.label}
                     </SelectItem>
                   ))}
