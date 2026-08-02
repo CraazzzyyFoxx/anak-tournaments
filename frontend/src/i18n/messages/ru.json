@@ -2104,6 +2104,19 @@
         "recentForm": "Недавняя форма",
         "mapsTitle": "{label}: {count, plural, one {# карта} few {# карты} many {# карт} other {# карты}}"
       },
+      "empty": {
+        "eyebrow": "Карьера · не начата",
+        "title": "Пока ни одного <em>турнира</em>",
+        "description": "{name} ещё не участвовал ни в одном турнире, поэтому статистику показать нечего. После первого турнира профиль заполнится сам.",
+        "unlocks": {
+          "tournaments": "Места",
+          "matches": "История матчей",
+          "heroes": "Статистика героев",
+          "achievements": "Достижения"
+        },
+        "browseTournaments": "Смотреть турниры",
+        "browsePlayers": "Все игроки"
+      },
       "share": {
         "heading": "Карточка игрока OWT",
         "rolePlayer": "Игрок",

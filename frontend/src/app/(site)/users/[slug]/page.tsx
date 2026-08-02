@@ -25,6 +25,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import UserTabsClient from "@/app/(site)/users/components/tabs/UserTabsClient";
 import UserHeaderSkeleton from "@/app/(site)/users/components/header/UserHeaderSkeleton";
 import { ProfileJsonLd } from "@/app/(site)/users/components/shared/profile-jsonld";
+import UserProfileEmpty from "@/app/(site)/users/components/shared/UserProfileEmpty";
 
 // The route still renders dynamically (api-fetch reads the workspace cookie),
 // but we no longer force `fetchCache: force-no-store` — public, workspace-scoped
@@ -246,7 +247,12 @@ const resolveTabContent = ({
   }
 };
 
-const TabsWithBadges = async ({
+/**
+ * The profile body: either the tab strip (with its count badges) or — for a
+ * player with no tournament history — the single empty-career panel. Both
+ * branches need the resolved profile, so they share one Suspense boundary.
+ */
+const ProfileBody = async ({
   userAndProfile,
   activeTab,
   children
@@ -255,7 +261,12 @@ const TabsWithBadges = async ({
   activeTab: UserTab;
   children: React.ReactNode;
 }) => {
-  const { profile } = await userAndProfile;
+  const { user, profile } = await userAndProfile;
+
+  if ((profile.tournaments_count ?? 0) === 0) {
+    return <UserProfileEmpty name={user.name} />;
+  }
+
   const heroesCount = profile.heroes_count ?? null;
   const tournamentsCount = profile.tournaments_count ?? null;
   // Maps badge: not always available — approximate via maps_total
@@ -336,13 +347,13 @@ export default async function UserPage({
           </UserTabsClient>
         }
       >
-        <TabsWithBadges userAndProfile={userAndProfile} activeTab={activeTab}>
+        <ProfileBody userAndProfile={userAndProfile} activeTab={activeTab}>
           <Suspense fallback={tabContent.fallback}>
             <TabsContent value={tabContent.value} className="mt-0">
               {tabContent.content}
             </TabsContent>
           </Suspense>
-        </TabsWithBadges>
+        </ProfileBody>
       </Suspense>
     </>
   );

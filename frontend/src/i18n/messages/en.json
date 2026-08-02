@@ -2104,6 +2104,19 @@
         "recentForm": "Recent form",
         "mapsTitle": "{label}: {count, plural, one {# map} other {# maps}}"
       },
+      "empty": {
+        "eyebrow": "Career · not started",
+        "title": "No <em>tournaments</em> yet",
+        "description": "{name} has not entered a tournament yet, so there is nothing to chart here. Once they play their first event, this profile fills in on its own.",
+        "unlocks": {
+          "tournaments": "Placements",
+          "matches": "Match history",
+          "heroes": "Hero stats",
+          "achievements": "Achievements"
+        },
+        "browseTournaments": "Browse tournaments",
+        "browsePlayers": "All players"
+      },
       "share": {
         "heading": "OWT player card",
         "rolePlayer": "Player",
