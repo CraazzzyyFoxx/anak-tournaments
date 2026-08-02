@@ -20,6 +20,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
+import { MUTED_BUTTON_CLASS } from "@/app/balancer/components/balancer-page-helpers";
 import balancerAdminService from "@/services/balancer-admin.service";
 import type {
   RegistrationRankAutofillRequest,
@@ -210,7 +211,7 @@ export default function RankAutofillPage({
           <h1 className="text-2xl font-semibold tracking-tight">{t("rankAutofill.title")}</h1>
           <p className="text-sm text-muted-foreground">{t("rankAutofill.subtitle")}</p>
         </div>
-        <Button variant="outline" asChild>
+        <Button variant="outline" asChild className={MUTED_BUTTON_CLASS}>
           <Link href={registrationsHref}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             {t("rankAutofill.backToRegistrations")}
@@ -229,7 +230,7 @@ export default function RankAutofillPage({
               type="button"
               variant="ghost"
               size="icon"
-              className="shrink-0"
+              className="h-8 w-8 shrink-0 rounded-lg border border-[color:var(--aqt-border)] bg-black/15 text-[color:var(--aqt-fg-muted)] hover:bg-white/5 hover:text-[color:var(--aqt-fg)]"
               onClick={() => setChainOpen((open) => !open)}
               aria-label={t("rankAutofill.toggleChainAria")}
               aria-expanded={chainOpen}
@@ -359,7 +360,11 @@ export default function RankAutofillPage({
           <span className="text-xs text-[color:var(--aqt-fg-dim)]">
             {t("rankAutofill.selectedCount", { count: selectedIds.size })}
           </span>
-          <Button onClick={() => applyMutation.mutate()} disabled={applyDisabled}>
+          <Button
+            className="rounded-xl bg-primary text-primary-foreground hover:bg-primary/90"
+            onClick={() => applyMutation.mutate()}
+            disabled={applyDisabled}
+          >
             {applyMutation.isPending ? (
               <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
             ) : (

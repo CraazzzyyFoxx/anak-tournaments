@@ -10,6 +10,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { notify } from "@/lib/notify";
+import { MUTED_BUTTON_CLASS } from "@/app/balancer/components/balancer-page-helpers";
 import { ROLES, canonicalToRegistrationRole } from "@/lib/roles";
 import adminService from "@/services/admin.service";
 import balancerAdminService from "@/services/balancer-admin.service";
@@ -280,7 +281,7 @@ export default function RegistrationFormBuilder({
               Configure registration form fields, admission rules, sub-roles, and custom inputs.
             </p>
           </div>
-          <Button variant="outline" asChild>
+          <Button variant="outline" asChild className={MUTED_BUTTON_CLASS}>
             <Link href={registrationsHref}>
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back to registrations
@@ -395,6 +396,7 @@ export default function RegistrationFormBuilder({
         {hasChanges ? <span className="text-xs text-muted-foreground">Unsaved changes</span> : null}
         <Button
           size="lg"
+          className="rounded-xl bg-primary text-primary-foreground hover:bg-primary/90"
           onClick={() => saveMutation.mutate()}
           disabled={saveMutation.isPending || (!hasChanges && formExists)}
         >

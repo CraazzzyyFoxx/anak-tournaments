@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useImperativeHandle, useMemo, useState } from "react";
+import { forwardRef, useCallback, useImperativeHandle, useMemo, useState } from "react";
 import { Check, Columns3, Kanban, PanelLeftClose, PanelLeftOpen, PlusCircle, Search, Settings2, ShieldX, Tag, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -33,11 +33,11 @@ type PoolFilterOption = { value: PoolView; label: string; announcedLabel?: strin
 type StatusOptionGroups = { system: StatusMeta[]; custom: StatusMeta[] };
 
 const SORT_OPTIONS: Array<{ value: PoolSortValue; label: string }> = [
+  { value: "division_asc", label: "Highest division" },
+  { value: "division_desc", label: "Lowest division" },
+  { value: "name_asc", label: "Name A-Z" },
   { value: "added_asc", label: "Oldest in pool" },
   { value: "added_desc", label: "Newest in pool" },
-  { value: "name_asc", label: "Name A-Z" },
-  { value: "division_asc", label: "Highest division first" },
-  { value: "division_desc", label: "Lowest division first" },
 ];
 
 const ICON_BUTTON_CLASS =
@@ -135,7 +135,7 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
   ) {
     const [poolView, setPoolView] = useState<PoolView>("all");
     const [configDialogOpen, setConfigDialogOpen] = useState(false);
-    const [poolSort, setPoolSort] = useState<PoolSortValue>("added_asc");
+    const [poolSort, setPoolSort] = useState<PoolSortValue>("division_asc");
     const [searchQuery, setSearchQuery] = useState("");
     const [isTriageBoardOpen, setIsTriageBoardOpen] = useState(false);
     const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
@@ -247,7 +247,8 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
 
     const visibleCount = isAvailableView ? addableApplications.length : filteredPoolPlayerStates.length;
 
-    const toggleSelectedPlayer = (playerId: number) => {
+    // Stable identity keeps the memoized pool rows from re-rendering on every sidebar update.
+    const toggleSelectedPlayer = useCallback((playerId: number) => {
       setSelectedIds((current) => {
         const next = new Set(current);
         if (next.has(playerId)) {
@@ -257,7 +258,7 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
         }
         return next;
       });
-    };
+    }, []);
 
     const selectAllVisible = () =>
       setSelectedIds(new Set(filteredPoolPlayerStates.map(({ player }) => player.id)));
@@ -390,13 +391,13 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
               <Select value={poolSort} onValueChange={(value) => setPoolSort(value as PoolSortValue)}>
                 <SelectTrigger
                   aria-label="Sort players"
-                  className="h-9 w-[10rem] shrink-0 rounded-lg border-[color:var(--aqt-border-2)] bg-black/15 text-[11px]"
+                  className="h-9 w-[9.5rem] shrink-0 rounded-lg border-[color:var(--aqt-border-2)] bg-black/15 text-xs"
                 >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {SORT_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
+                    <SelectItem key={option.value} value={option.value} className="text-xs">
                       {option.label}
                     </SelectItem>
                   ))}
@@ -516,7 +517,6 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
               onSetPoolMembership={onSetPoolMembership}
               onSetBalancerStatus={onSetBalancerStatus}
               actionsDisabled={quickActionsDisabled}
-              maxHeightClassName="h-full"
               emptyTitle={filteredPoolEmptyState.title}
               emptyDescription={filteredPoolEmptyState.description}
             />

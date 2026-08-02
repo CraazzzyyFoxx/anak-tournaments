@@ -8,6 +8,7 @@ import {
   Download,
   Info,
   Loader2,
+  MoreHorizontal,
   Shuffle,
   Sparkles,
   Upload,
@@ -16,6 +17,12 @@ import {
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
 import type { InternalBalancePayload } from "@/types/balancer-admin.types";
 import type { FeasibilityReport } from "@/types/balancer.types";
 import { MUTED_BUTTON_CLASS } from "./balancer-page-helpers";
@@ -229,36 +236,33 @@ export function BalanceActionsBar({
           )}
           {isBalanceExported ? "Exported" : "Export to Tournament"}
         </Button>
-        <Button
-          type="button"
-          variant="outline"
-          className={cn("rounded-xl", MUTED_BUTTON_CLASS)}
-          onClick={onDownloadJson}
-          disabled={!activeVariant}
-        >
-          <Download className="mr-2 h-4 w-4" />
-          Download JSON
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          className={cn("rounded-xl", MUTED_BUTTON_CLASS)}
-          onClick={onCopyNames}
-          disabled={!activeVariant}
-        >
-          <Copy className="mr-2 h-4 w-4" />
-          Copy
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          className={cn("rounded-xl", MUTED_BUTTON_CLASS)}
-          onClick={onScreenshot}
-          disabled={!activeVariant}
-        >
-          <Camera className="mr-2 h-4 w-4" />
-          Image
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              className={cn("rounded-xl", MUTED_BUTTON_CLASS)}
+              disabled={!activeVariant}
+            >
+              <MoreHorizontal className="mr-2 h-4 w-4" aria-hidden="true" />
+              Advanced
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-52">
+            <DropdownMenuItem onClick={onDownloadJson}>
+              <Download className="h-4 w-4" aria-hidden="true" />
+              Download JSON
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onCopyNames}>
+              <Copy className="h-4 w-4" aria-hidden="true" />
+              Copy names
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onScreenshot}>
+              <Camera className="h-4 w-4" aria-hidden="true" />
+              Save as image
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   );
