@@ -41,6 +41,30 @@ PROXY_CONF = settings.proxy_url
 _OAUTH_STATE_KEY = key_derivation.oauth_state_key(settings.JWT_SECRET_KEY)
 
 
+# One pooled client per process: OAuth token/userinfo calls are short and bursty, so a
+# fresh TCP+TLS handshake (through the SOCKS proxy) per request dominates their latency.
+# All provider calls share the same proxy and 30s timeout, so a single client suffices.
+_HTTP_LIMITS = httpx.Limits(max_keepalive_connections=20, max_connections=100)
+_HTTP_TIMEOUT = httpx.Timeout(30.0)
+
+_client: httpx.AsyncClient | None = None
+
+
+def _http_client() -> httpx.AsyncClient:
+    global _client
+    if _client is None or _client.is_closed:
+        _client = httpx.AsyncClient(proxy=PROXY_CONF, limits=_HTTP_LIMITS, timeout=_HTTP_TIMEOUT)
+    return _client
+
+
+async def close_http_client() -> None:
+    """Release pooled provider connections on worker shutdown."""
+    global _client
+    if _client is not None:
+        await _client.aclose()
+        _client = None
+
+
 class OAuthProviderBase(ABC):
     """Base class for OAuth providers"""
 
@@ -89,19 +113,16 @@ class DiscordOAuthProvider(OAuthProviderBase):
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
         try:
-            async with httpx.AsyncClient(proxy=PROXY_CONF) as client:
-                response = await client.post(settings.DISCORD_TOKEN_URL, data=data, headers=headers, timeout=30.0)
+            response = await _http_client().post(settings.DISCORD_TOKEN_URL, data=data, headers=headers)
 
-                if response.status_code != 200:
-                    logger.warning(
-                        "Discord token exchange failed",
-                        status_code=response.status_code,
-                    )
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to exchange Discord code"
-                    )
+            if response.status_code != 200:
+                logger.warning(
+                    "Discord token exchange failed",
+                    status_code=response.status_code,
+                )
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to exchange Discord code")
 
-                return response.json()
+            return response.json()
         except httpx.TimeoutException as exc:
             logger.error("Discord API timeout")
             raise HTTPException(
@@ -120,31 +141,28 @@ class DiscordOAuthProvider(OAuthProviderBase):
         headers = {"Authorization": f"Bearer {access_token}"}
 
         try:
-            async with httpx.AsyncClient(proxy=PROXY_CONF) as client:
-                response = await client.get(f"{settings.DISCORD_API_URL}/users/@me", headers=headers, timeout=30.0)
+            response = await _http_client().get(f"{settings.DISCORD_API_URL}/users/@me", headers=headers)
 
-                if response.status_code != 200:
-                    logger.warning(
-                        "Discord user info request failed",
-                        status_code=response.status_code,
-                    )
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to get Discord user info"
-                    )
-
-                user_data = response.json()
-
-                return schemas.OAuthUserInfo(
-                    provider=schemas.OAuthProvider.DISCORD,
-                    provider_user_id=str(user_data["id"]),
-                    email=user_data.get("email"),
-                    username=user_data["username"],
-                    display_name=user_data.get("global_name") or user_data["username"],
-                    avatar_url=f"https://cdn.discordapp.com/avatars/{user_data['id']}/{user_data['avatar']}.png"
-                    if user_data.get("avatar")
-                    else None,
-                    raw_data=user_data,
+            if response.status_code != 200:
+                logger.warning(
+                    "Discord user info request failed",
+                    status_code=response.status_code,
                 )
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to get Discord user info")
+
+            user_data = response.json()
+
+            return schemas.OAuthUserInfo(
+                provider=schemas.OAuthProvider.DISCORD,
+                provider_user_id=str(user_data["id"]),
+                email=user_data.get("email"),
+                username=user_data["username"],
+                display_name=user_data.get("global_name") or user_data["username"],
+                avatar_url=f"https://cdn.discordapp.com/avatars/{user_data['id']}/{user_data['avatar']}.png"
+                if user_data.get("avatar")
+                else None,
+                raw_data=user_data,
+            )
         except httpx.TimeoutException as exc:
             logger.error("Discord API timeout")
             raise HTTPException(
@@ -185,15 +203,14 @@ class TwitchOAuthProvider(OAuthProviderBase):
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
         try:
-            async with httpx.AsyncClient(proxy=PROXY_CONF) as client:
-                response = await client.post(settings.TWITCH_TOKEN_URL, data=data, headers=headers, timeout=30.0)
-                if response.status_code != 200:
-                    logger.warning("Twitch token exchange failed", status_code=response.status_code)
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Failed to exchange Twitch code",
-                    )
-                return response.json()
+            response = await _http_client().post(settings.TWITCH_TOKEN_URL, data=data, headers=headers)
+            if response.status_code != 200:
+                logger.warning("Twitch token exchange failed", status_code=response.status_code)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Failed to exchange Twitch code",
+                )
+            return response.json()
         except httpx.TimeoutException as exc:
             logger.error("Twitch API timeout")
             raise HTTPException(
@@ -216,41 +233,40 @@ class TwitchOAuthProvider(OAuthProviderBase):
         }
 
         try:
-            async with httpx.AsyncClient(proxy=PROXY_CONF) as client:
-                response = await client.get(f"{settings.TWITCH_API_URL}/users", headers=headers, timeout=30.0)
+            response = await _http_client().get(f"{settings.TWITCH_API_URL}/users", headers=headers)
 
-                if response.status_code != 200:
-                    logger.warning("Twitch user info request failed", status_code=response.status_code)
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Failed to get Twitch user info",
-                    )
-
-                payload = response.json()
-                users = payload.get("data") or []
-                if not users:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Twitch user profile is empty",
-                    )
-
-                user_data = users[0]
-                username = user_data.get("login") or user_data.get("display_name")
-                if not username:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Twitch username is missing",
-                    )
-
-                return schemas.OAuthUserInfo(
-                    provider=schemas.OAuthProvider.TWITCH,
-                    provider_user_id=str(user_data["id"]),
-                    email=user_data.get("email"),
-                    username=username,
-                    display_name=user_data.get("display_name") or username,
-                    avatar_url=user_data.get("profile_image_url"),
-                    raw_data=user_data,
+            if response.status_code != 200:
+                logger.warning("Twitch user info request failed", status_code=response.status_code)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Failed to get Twitch user info",
                 )
+
+            payload = response.json()
+            users = payload.get("data") or []
+            if not users:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Twitch user profile is empty",
+                )
+
+            user_data = users[0]
+            username = user_data.get("login") or user_data.get("display_name")
+            if not username:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Twitch username is missing",
+                )
+
+            return schemas.OAuthUserInfo(
+                provider=schemas.OAuthProvider.TWITCH,
+                provider_user_id=str(user_data["id"]),
+                email=user_data.get("email"),
+                username=username,
+                display_name=user_data.get("display_name") or username,
+                avatar_url=user_data.get("profile_image_url"),
+                raw_data=user_data,
+            )
         except httpx.TimeoutException as exc:
             logger.error("Twitch API timeout")
             raise HTTPException(
@@ -296,23 +312,21 @@ class BattleNetOAuthProvider(OAuthProviderBase):
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
         try:
-            async with httpx.AsyncClient(proxy=PROXY_CONF) as client:
-                response = await client.post(
-                    f"{self._oauth_base_url()}/token",
-                    data=data,
-                    headers=headers,
-                    auth=(settings.BATTLENET_CLIENT_ID, settings.BATTLENET_CLIENT_SECRET),
-                    timeout=30.0,
+            response = await _http_client().post(
+                f"{self._oauth_base_url()}/token",
+                data=data,
+                headers=headers,
+                auth=(settings.BATTLENET_CLIENT_ID, settings.BATTLENET_CLIENT_SECRET),
+            )
+
+            if response.status_code != 200:
+                logger.warning("Battle.net token exchange failed", status_code=response.status_code)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Failed to exchange Battle.net code",
                 )
 
-                if response.status_code != 200:
-                    logger.warning("Battle.net token exchange failed", status_code=response.status_code)
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Failed to exchange Battle.net code",
-                    )
-
-                return response.json()
+            return response.json()
         except httpx.TimeoutException as exc:
             logger.error("Battle.net API timeout")
             raise HTTPException(
@@ -332,40 +346,39 @@ class BattleNetOAuthProvider(OAuthProviderBase):
         headers = {"Authorization": f"Bearer {access_token}"}
 
         try:
-            async with httpx.AsyncClient(proxy=PROXY_CONF) as client:
-                response = await client.get(f"{self._oauth_base_url()}/userinfo", headers=headers, timeout=30.0)
+            response = await _http_client().get(f"{self._oauth_base_url()}/userinfo", headers=headers)
 
-                if response.status_code != 200:
-                    logger.warning("Battle.net user info request failed", status_code=response.status_code)
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Failed to get Battle.net user info",
-                    )
-
-                user_data = response.json()
-                provider_user_id = str(user_data.get("sub") or "")
-                if not provider_user_id:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Battle.net user id is missing",
-                    )
-
-                battletag = (
-                    user_data.get("battletag")
-                    or user_data.get("battle_tag")
-                    or user_data.get("preferred_username")
-                    or provider_user_id
+            if response.status_code != 200:
+                logger.warning("Battle.net user info request failed", status_code=response.status_code)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Failed to get Battle.net user info",
                 )
 
-                return schemas.OAuthUserInfo(
-                    provider=schemas.OAuthProvider.BATTLENET,
-                    provider_user_id=provider_user_id,
-                    email=user_data.get("email"),
-                    username=battletag,
-                    display_name=battletag,
-                    avatar_url=None,
-                    raw_data=user_data,
+            user_data = response.json()
+            provider_user_id = str(user_data.get("sub") or "")
+            if not provider_user_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Battle.net user id is missing",
                 )
+
+            battletag = (
+                user_data.get("battletag")
+                or user_data.get("battle_tag")
+                or user_data.get("preferred_username")
+                or provider_user_id
+            )
+
+            return schemas.OAuthUserInfo(
+                provider=schemas.OAuthProvider.BATTLENET,
+                provider_user_id=provider_user_id,
+                email=user_data.get("email"),
+                username=battletag,
+                display_name=battletag,
+                avatar_url=None,
+                raw_data=user_data,
+            )
         except httpx.TimeoutException as exc:
             logger.error("Battle.net API timeout")
             raise HTTPException(

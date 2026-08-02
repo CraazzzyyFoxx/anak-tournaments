@@ -7,7 +7,9 @@ Milestone 1A ships `rpc.identity.validate_token`; 1B+ add login/refresh/oauth/et
 
 from __future__ import annotations
 
+import asyncio
 import base64
+import sys
 from collections.abc import Awaitable, Callable
 from typing import Any
 from uuid import UUID
@@ -36,11 +38,21 @@ from src.services import (
     auth_flows,
     avatar_flows,
     oauth_flows,
+    oauth_service,
     player_flows,
     rbac_flows,
     service_flows,
 )
 from src.services.token_validation import validate_token
+
+
+def _install_uvloop() -> None:
+    """Swap in uvloop where it ships (see the `platform_system == 'Linux'` dep marker)."""
+    if sys.platform != "linux":
+        return
+    import uvloop
+
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 
 def _validation_detail(exc: ValidationError) -> str:
@@ -84,6 +96,8 @@ logger = setup_logging(
     json_output=settings.json_logging,
 )
 
+_install_uvloop()
+
 broker = make_rabbit_broker(settings.rabbitmq_url, logger=logger, prefetch_count=settings.rpc_prefetch_count)
 app = FastStream(broker)
 
@@ -120,6 +134,7 @@ async def setup_worker() -> None:
 @app.on_shutdown
 async def teardown_worker() -> None:
     await s3_client.close()
+    await oauth_service.close_http_client()
     await close_redis()
 
 
