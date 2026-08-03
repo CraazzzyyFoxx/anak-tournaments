@@ -55,6 +55,8 @@ Grep `require_open_profile` before you start and again before you finish. Anythi
 - **Never fan out `fetch_member` across a list view.** Discord buckets rate limits per `guild_id`, so N users in one guild serialize behind one bucket. List views read the persisted `entitlement` table only.
 - **Store challenge codes as `sha256` only.** Same rule the codebase already applies to `csrf` and `guard_hash` in `OAuthService.StatePayload`: raw secrets are never persisted.
 - **Never coerce `unknown` to a boolean before composing a multi-provider requirement.** This is the single most likely bug in the whole feature. `any[refused, unknown]` must be `undetermined` (pass), and `all[refused, unknown]` must be `refused` (block). Reaching for `bool(...)` anywhere in `requirement.py` means you have lost the distinction. Task 4 exists to pin this down; do not shortcut it.
+- **There is NO `pytest-asyncio` in this repo.** A bare `async def test_…` inside a plain class is collected and then silently NOT awaited — it reports as passing while asserting nothing. Async tests MUST subclass `unittest.IsolatedAsyncioTestCase`, the convention `shared/tests/test_rpc_crud.py` documents ("Runs under stdlib unittest (no pytest-asyncio needed), matching the repo's IsolatedAsyncioTestCase convention"). Every provider/resolver test in Phase 3 is affected.
+- **`db.DateTime` is not mypy-legal.** `shared.core.db` does not list `DateTime` in `__all__`, so `--strict` rejects `db.DateTime` (88 pre-existing errors across 28 model files prove the point). Import `DateTime` straight from `sqlalchemy`, as `shared/models/tenancy/workspace.py` already does.
 
 ### Commands
 
