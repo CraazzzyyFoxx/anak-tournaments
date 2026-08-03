@@ -7,7 +7,7 @@ provider outage is never mistaken for a cancelled subscription.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Final, Literal, Protocol
 
@@ -42,6 +42,12 @@ class SubscriptionVerdict:
     tournament's ``min_tier_rank``. ``None`` on an ``active`` verdict means the
     provider proved a subscription but not its level — treated as level 1.
     ``tier_label`` is display-only and never compared.
+
+    ``evidence`` is the audit trail persisted to ``entitlement.evidence_json``:
+    which role matched, whether a Twitch sub was gifted, and — crucially — WHY a
+    verdict is ``unknown``. The UI branches on ``evidence["reason"]`` to show the
+    right call to action (link Discord vs reconnect Twitch), so an ``unknown``
+    without a reason is a bug, not merely unhelpful.
     """
 
     state: Literal["active", "inactive", "unknown"]
@@ -50,6 +56,7 @@ class SubscriptionVerdict:
     source: str
     checked_at: datetime
     expires_at: datetime | None
+    evidence: dict[str, Any] = field(default_factory=dict)
 
 
 class ResolveContext(Protocol):
