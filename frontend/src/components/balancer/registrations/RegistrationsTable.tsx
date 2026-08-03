@@ -344,10 +344,11 @@ export default function RegistrationsTable({
   const subroleCatalog = roleForm.subrole_catalog;
 
   const requireOpenProfile = formQuery.data?.require_open_profile ?? false;
+  const requireSubscription = formQuery.data?.require_subscription ?? false;
 
   const allColumns = useMemo(
-    () => buildBalancerRegistrationColumns(subroleCatalog, requireOpenProfile),
-    [subroleCatalog, requireOpenProfile]
+    () => buildBalancerRegistrationColumns(subroleCatalog, requireOpenProfile, requireSubscription),
+    [subroleCatalog, requireOpenProfile, requireSubscription]
   );
   const { visibleColumns, visibility, toggleColumn, resetToDefaults } = useColumnVisibility(
     "balancer-registrations-table-columns",

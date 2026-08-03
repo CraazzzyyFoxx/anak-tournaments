@@ -10,6 +10,7 @@ import {
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import {
   AdmissionStatusBadge,
+  SubscriptionStatusBadge,
   BalancerStatusBadge,
   CheckInStatusBadge,
   ProfileStatusBadge,
@@ -262,6 +263,7 @@ function ExclusionCell({ registration }: { registration: AdminRegistration }) {
 export function buildBalancerRegistrationColumns(
   subroleCatalog?: SubroleCatalog,
   requireOpenProfile = false,
+  requireSubscription = false,
 ): BalancerRegistrationColumnDefinition[] {
   return [
     {
@@ -336,6 +338,26 @@ export function buildBalancerRegistrationColumns(
       render: (registration) => <CheckInStatusBadge checkedIn={registration.checked_in} />,
       searchValue: (registration) => (registration.checked_in ? "checked in" : "not checked in"),
     },
+    ...(requireSubscription
+      ? [
+          {
+            // ONE column with the COMPOSED outcome. One column per provider would
+            // not scale, and under `any` mode a red provider cell next to a green
+            // one reads as a failure when it is not.
+            id: "subscription",
+            label: "Subscription",
+            category: "meta" as const,
+            defaultVisible: true,
+            responsive: "md" as const,
+            align: "center" as const,
+            render: (registration: AdminRegistration) => (
+              <SubscriptionStatusBadge outcome={registration.subscription_outcome} />
+            ),
+            searchValue: (registration: AdminRegistration) =>
+              registration.subscription_outcome ?? "unknown",
+          },
+        ]
+      : []),
     {
       id: "admission",
       label: "Admission",
@@ -350,14 +372,19 @@ export function buildBalancerRegistrationColumns(
           checkedIn={registration.checked_in}
           requireOpenProfile={requireOpenProfile}
           profilesOpen={registration.profiles_open}
+          requireSubscription={requireSubscription}
+          subscriptionOutcome={registration.subscription_outcome}
         />
       ),
       searchValue: (registration) => {
         const isProfileClosed = requireOpenProfile && registration.profiles_open === false;
+        const isSubscriptionRefused =
+          requireSubscription && registration.subscription_outcome === "refused";
         const isApprovedAndReady =
           registration.status === "approved" &&
           registration.balancer_status === "ready" &&
-          !isProfileClosed;
+          !isProfileClosed &&
+          !isSubscriptionRefused;
         if (!isApprovedAndReady) return "not admitted";
         return registration.checked_in ? "admitted" : "check-in pending";
       },

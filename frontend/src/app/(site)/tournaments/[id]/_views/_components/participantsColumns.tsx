@@ -30,6 +30,7 @@ import {
   BalancerStatusBadge,
   CheckInStatusBadge,
   ProfileStatusBadge,
+  SubscriptionStatusBadge,
   RegistrationStatusBadge,
 } from "@/components/status/RegistrationBadges";
 import TournamentHistoryCell from "./TournamentHistoryCell";
@@ -770,6 +771,21 @@ export function buildParticipantColumns(
     });
   }
 
+  // Meta: subscription — only when the tournament requires it. ONE column with
+  // the COMPOSED outcome, not one per provider: under `any` mode a red provider
+  // cell beside a green one reads as a failure when it is not.
+  if (form?.require_subscription) {
+    columns.push({
+      id: "_subscription",
+      label: t("common.subscriptionColumn"),
+      category: "meta",
+      defaultVisible: true,
+      responsive: "always",
+      align: "center",
+      render: (reg) => <SubscriptionStatusBadge outcome={reg.subscription_outcome} />,
+    });
+  }
+
   // Meta: admission composite — always last (rightmost)
   columns.push({
     id: "_admission",
@@ -785,6 +801,8 @@ export function buildParticipantColumns(
         checkedIn={reg.checked_in}
         requireOpenProfile={form?.require_open_profile ?? false}
         profilesOpen={reg.profiles_open}
+        requireSubscription={form?.require_subscription ?? false}
+        subscriptionOutcome={reg.subscription_outcome}
       />
     ),
   });
