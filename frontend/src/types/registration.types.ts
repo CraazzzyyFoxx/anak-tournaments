@@ -38,6 +38,48 @@ export interface SubroleOption {
 /** Workspace sub-role catalog keyed by registration role code (tank/dps/support). */
 export type SubroleCatalog = Record<string, SubroleOption[]>;
 
+/** Composed admission answer over the tournament's subscription requirement.
+ *  Only `refused` blocks — `undetermined` fails open, exactly like an unknown
+ *  `profiles_open`. Mirrors `shared.subscriptions.Outcome` on the backend. */
+export type SubscriptionOutcome = "satisfied" | "refused" | "undetermined";
+
+/** Tri-state verdict for one provider. `unknown` never blocks. */
+export type SubscriptionState = "active" | "inactive" | "unknown";
+
+export interface SubscriptionProviderVerdict {
+  state: SubscriptionState;
+  tier_rank?: number | null;
+  tier_label?: string | null;
+  /** Why a verdict is `unknown`; drives the call to action (link Discord vs
+   *  reconnect Twitch). Never carries internal evidence like guild/role ids. */
+  reason?: string | null;
+}
+
+/** One `{provider, min_tier_rank}` row of the tournament's requirement. */
+export interface SubscriptionProviderRequirement {
+  provider: string;
+  min_tier_rank?: number;
+}
+
+/** `{mode, requirements}` as stored in `subscription_requirement_json`.
+ *  `any` = one provider is enough, `all` = every listed provider. Each provider
+ *  carries its own threshold: Boosty "Уровень 2" and Twitch "Tier 2" are
+ *  unrelated scales. */
+export interface SubscriptionRequirement {
+  mode?: "any" | "all";
+  requirements?: SubscriptionProviderRequirement[];
+}
+
+/** Response of `GET /tournaments/{id}/subscription/me`. */
+export interface SubscriptionStatus {
+  required: boolean;
+  mode?: "any" | "all" | null;
+  outcome?: SubscriptionOutcome | null;
+  /** Human-readable rule, e.g. `Boosty уровень 2 или Twitch`. */
+  rule?: string | null;
+  verdicts: Record<string, SubscriptionProviderVerdict>;
+}
+
 export interface RegistrationForm {
   id: number;
   tournament_id: number;
@@ -46,6 +88,8 @@ export interface RegistrationForm {
   require_open_profile?: boolean;
   open_profile_scope?: "main" | "all";
   show_ranks?: boolean;
+  require_subscription?: boolean;
+  subscription_requirement_json?: SubscriptionRequirement;
   built_in_fields: Record<string, BuiltInFieldConfig>;
   custom_fields: CustomFieldDefinition[];
   subrole_catalog?: SubroleCatalog;
@@ -100,6 +144,8 @@ export interface Registration {
   balancer_status_meta?: StatusMeta;
   checked_in?: boolean;
   profiles_open?: boolean | null;
+  subscription_outcome?: SubscriptionOutcome | null;
+  subscription_verdicts?: Record<string, SubscriptionProviderVerdict> | null;
   submitted_at: string | null;
   reviewed_at: string | null;
   /** Capped to the most recent few entries; see `tournament_history_count` for the true total. */

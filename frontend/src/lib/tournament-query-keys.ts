@@ -40,6 +40,8 @@ export const tournamentQueryKeys = {
     ["registrations-list", workspaceId, tournamentId] as const,
   registrationForm: (workspaceId: number, tournamentId: number) =>
     ["registration-form", workspaceId, tournamentId] as const,
+  subscriptionStatus: (tournamentId: number) =>
+    ["subscription-status", tournamentId] as const,
   draftBoard: (tournamentId: number) => ["draft", tournamentId, "board"] as const,
   draftSession: (sessionId: number) => ["draft", "session", sessionId] as const,
   draftSuggestions: (sessionId: number) =>

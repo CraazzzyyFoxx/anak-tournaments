@@ -1,5 +1,12 @@
 import type { Statistics as BalancerStatistics } from "@/types/balancer.types";
-import type { StatusKind, StatusMeta, StatusScope } from "@/types/registration.types";
+import type {
+  StatusKind,
+  StatusMeta,
+  StatusScope,
+  SubscriptionOutcome,
+  SubscriptionProviderVerdict,
+  SubscriptionRequirement,
+} from "@/types/registration.types";
 
 export type BalancerRoleCode = "tank" | "dps" | "support";
 export type BalancerRosterKey = "Tank" | "Damage" | "Support";
@@ -345,6 +352,8 @@ export interface AdminRegistrationForm {
   require_open_profile?: boolean;
   open_profile_scope?: "main" | "all";
   show_ranks?: boolean;
+  require_subscription?: boolean;
+  subscription_requirement_json?: SubscriptionRequirement;
   built_in_fields: Record<string, BuiltInFieldConfig>;
   custom_fields: AdminCustomFieldDef[];
   subrole_catalog?: SubroleCatalog;
@@ -356,6 +365,8 @@ export interface AdminRegistrationFormUpsert {
   require_open_profile?: boolean;
   open_profile_scope?: "main" | "all";
   show_ranks?: boolean;
+  require_subscription?: boolean;
+  subscription_requirement_json?: SubscriptionRequirement;
   built_in_fields: Record<string, BuiltInFieldConfig>;
   custom_fields: AdminCustomFieldDef[];
 }
@@ -440,6 +451,8 @@ export interface AdminRegistration {
   reviewed_by_username: string | null;
   balancer_profile_overridden_at: string | null;
   profiles_open?: boolean | null;
+  subscription_outcome?: SubscriptionOutcome | null;
+  subscription_verdicts?: Record<string, SubscriptionProviderVerdict> | null;
 }
 
 export interface AdminRegistrationCreateInput {
