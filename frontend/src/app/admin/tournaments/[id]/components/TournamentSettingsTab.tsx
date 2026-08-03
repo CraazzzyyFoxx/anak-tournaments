@@ -3,7 +3,7 @@
 import { useState, type FormEvent, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Save, RotateCcw, Trash2, Info, CalendarDays, Wrench } from "lucide-react";
+import { Save, RotateCcw, Trash2, Info, CalendarDays, EyeOff, Wrench } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -258,7 +258,7 @@ export function TournamentSettingsTab({
             </CardContent>
           </Card>
 
-          {/* Format rules, scoring and public visibility */}
+          {/* Format rules and scoring */}
           <Card className="border-border/40 bg-card/50">
             <CardHeader className="pb-4">
               <div className="flex items-center gap-2">
@@ -268,8 +268,7 @@ export function TournamentSettingsTab({
                 </CardTitle>
               </div>
               <CardDescription className="text-xs">
-                Adjust grid versions, team formation, scoring points, league status and public
-                visibility.
+                Adjust grid versions, team formation, scoring points and league status.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
@@ -405,63 +404,76 @@ export function TournamentSettingsTab({
                   </div>
                 </div>
               </section>
-
-              <section className="space-y-3 border-t border-border/30 pt-4">
-                <h3 className={EYEBROW_CLASS}>Visibility</h3>
-                <p className="text-xs text-muted-foreground">
-                  Hide this tournament and all its data from the public site. Only workspace admins
-                  and the preview allowlist below can see a hidden tournament.
-                </p>
-                <div className="flex items-center gap-2 bg-muted/20 border border-border/50 rounded-lg p-3.5">
-                  <Checkbox
-                    id="settings-is-hidden"
-                    checked={formData.is_hidden}
-                    onCheckedChange={(checked) =>
-                      setFormData({ ...formData, is_hidden: checked === true })
-                    }
-                  />
-                  <Label
-                    htmlFor="settings-is-hidden"
-                    className="cursor-pointer text-sm font-medium"
-                  >
-                    Hidden (preview) — not visible to the public
-                  </Label>
-                </div>
-
-                <div className="space-y-2">
-                  <h4 className={EYEBROW_CLASS}>Preview allowlist</h4>
-                  {formData.is_hidden ? (
-                    <TournamentPreviewAllowlist
-                      tournamentId={tournamentId}
-                      workspaceId={tournament.workspace_id}
-                    />
-                  ) : (
-                    <p className="rounded-lg border border-dashed border-border/70 px-3 py-2 text-xs text-muted-foreground">
-                      Tick “Hidden (preview)” above to choose who may view this tournament while it
-                      is still private.
-                    </p>
-                  )}
-                </div>
-              </section>
             </CardContent>
           </Card>
         </div>
 
-        {/* Right column: every external connection, and the Challonge link
-            field it needs. Its buttons fire their own mutations, so they carry
-            an explicit type inside this form. */}
-        <TournamentIntegrationsPanel
-          tournamentId={tournamentId}
-          tournament={tournament}
-          hasChallongeSource={hasChallongeSource}
-          canUpdateTournament={canUpdateTournament}
-          discordChannel={discordChannel}
-          discordChannelLoading={discordChannelLoading}
-          challongeSlug={formData.challonge_slug}
-          onChallongeSlugChange={(value) => setFormData({ ...formData, challonge_slug: value })}
-        />
+        {/* Right column: what points outward — external connections and public
+            visibility. The integration buttons fire their own mutations, so they
+            carry an explicit type inside this form. */}
+        <div className="flex flex-col gap-6">
+          <TournamentIntegrationsPanel
+            tournamentId={tournamentId}
+            tournament={tournament}
+            hasChallongeSource={hasChallongeSource}
+            canUpdateTournament={canUpdateTournament}
+            discordChannel={discordChannel}
+            discordChannelLoading={discordChannelLoading}
+            challongeSlug={formData.challonge_slug}
+            onChallongeSlugChange={(value) => setFormData({ ...formData, challonge_slug: value })}
+          />
 
-        {/* Schedule: full width so the phase grid can lay out as rows */}
+          {/* Public visibility is its own card, not a third section of the rules
+            card: it is the one setting here that decides what the outside world
+            sees, it owns a sub-list, and stacked under the integrations it
+            balances the two columns instead of leaving 480px of nothing. */}
+          <Card className="border-border/40 bg-card/50">
+            <CardHeader className="pb-4">
+              <div className="flex items-center gap-2">
+                <EyeOff className="size-4 text-primary" aria-hidden />
+                <CardTitle asChild className="text-sm font-semibold">
+                  <h2>Visibility</h2>
+                </CardTitle>
+              </div>
+              <CardDescription className="text-xs">
+                Hide this tournament and all its data from the public site. Only workspace admins
+                and the preview allowlist can see a hidden tournament.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-center gap-2 bg-muted/20 border border-border/50 rounded-lg p-3.5">
+                <Checkbox
+                  id="settings-is-hidden"
+                  checked={formData.is_hidden}
+                  onCheckedChange={(checked) =>
+                    setFormData({ ...formData, is_hidden: checked === true })
+                  }
+                />
+                <Label htmlFor="settings-is-hidden" className="cursor-pointer text-sm font-medium">
+                  Hidden (preview) — not visible to the public
+                </Label>
+              </div>
+
+              <div className="space-y-2">
+                <h3 className={EYEBROW_CLASS}>Preview allowlist</h3>
+                {formData.is_hidden ? (
+                  <TournamentPreviewAllowlist
+                    tournamentId={tournamentId}
+                    workspaceId={tournament.workspace_id}
+                  />
+                ) : (
+                  <p className="rounded-lg border border-dashed border-border/70 px-3 py-2 text-xs text-muted-foreground">
+                    Tick “Hidden (preview)” above to choose who may view this tournament while it is
+                    still private.
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Schedule: full width so the phase grid can lay out as rows. In half a
+            grid it needs 780px of columns and overflows the card. */}
         <Card className="xl:col-span-2 border-border/40 bg-card/50">
           <CardHeader className="pb-4">
             <div className="flex items-center gap-2">
@@ -597,6 +609,7 @@ export function TournamentSettingsTab({
             </div>
           </CardContent>
         </Card>
+
         {/* Full width, so the action sits beside its warning rather than under
             it: a destructive button stretched across the whole grid is a
             1500px-wide target for the one irreversible action on the page. */}
