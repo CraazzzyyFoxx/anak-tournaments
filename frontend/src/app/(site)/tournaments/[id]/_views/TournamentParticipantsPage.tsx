@@ -285,7 +285,8 @@ function MyRegistrationCard({
   isCheckingIn,
   isWithdrawing,
   tournament,
-  requireOpenProfile
+  requireOpenProfile,
+  requireSubscription
 }: {
   registration: Registration;
   canCheckIn: boolean;
@@ -295,6 +296,7 @@ function MyRegistrationCard({
   isWithdrawing: boolean;
   tournament: Tournament;
   requireOpenProfile: boolean;
+  requireSubscription: boolean;
 }) {
   const t = useTranslations();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -365,6 +367,28 @@ function MyRegistrationCard({
       }
     : null;
 
+  // Subscription step: only a CONFIRMED refusal is a failure. An undetermined
+  // verdict shows as still-pending, matching the gate that fails open.
+  const subscriptionStep: RegistrationStep | null = requireSubscription
+    ? {
+        key: "subscription",
+        label:
+          registration.subscription_outcome === "satisfied"
+            ? t("common.subscription.satisfied")
+            : registration.subscription_outcome === "refused"
+              ? t("common.subscription.refused")
+              : t("common.subscription.undetermined"),
+        tone:
+          registration.subscription_outcome === "satisfied"
+            ? "done"
+            : registration.subscription_outcome === "refused"
+              ? "failed"
+              : isTerminal
+                ? "idle"
+                : "active"
+      }
+    : null;
+
   const steps: RegistrationStep[] = [
     {
       key: "submitted",
@@ -382,6 +406,7 @@ function MyRegistrationCard({
       tone: isApproved || isCheckedIn ? "done" : isTerminal ? "failed" : "active"
     },
     ...(profileStep ? [profileStep] : []),
+    ...(subscriptionStep ? [subscriptionStep] : []),
     {
       key: "balancing",
       label: t("registration.myCard.steps.balancing"),
@@ -1028,6 +1053,7 @@ function TournamentParticipantsView({ tournament }: { tournament: Tournament }) 
           isWithdrawing={withdrawMutation.isPending}
           tournament={tournament}
           requireOpenProfile={formQuery.data?.require_open_profile ?? false}
+          requireSubscription={formQuery.data?.require_subscription ?? false}
         />
       )}
 

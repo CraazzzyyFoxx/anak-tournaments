@@ -57,25 +57,39 @@ Grep `require_open_profile` before you start and again before you finish. Anythi
 - **Never coerce `unknown` to a boolean before composing a multi-provider requirement.** This is the single most likely bug in the whole feature. `any[refused, unknown]` must be `undetermined` (pass), and `all[refused, unknown]` must be `refused` (block). Reaching for `bool(...)` anywhere in `requirement.py` means you have lost the distinction. Task 4 exists to pin this down; do not shortcut it.
 - **There is NO `pytest-asyncio` in this repo.** A bare `async def test_…` inside a plain class is collected and then silently NOT awaited — it reports as passing while asserting nothing. Async tests MUST subclass `unittest.IsolatedAsyncioTestCase`, the convention `shared/tests/test_rpc_crud.py` documents ("Runs under stdlib unittest (no pytest-asyncio needed), matching the repo's IsolatedAsyncioTestCase convention"). Every provider/resolver test in Phase 3 is affected.
 - **`db.DateTime` is not mypy-legal.** `shared.core.db` does not list `DateTime` in `__all__`, so `--strict` rejects `db.DateTime` (88 pre-existing errors across 28 model files prove the point). Import `DateTime` straight from `sqlalchemy`, as `shared/models/tenancy/workspace.py` already does.
+- **The frontend has TWO test runners, split by file extension.** `.test.ts` files import from `bun:test` and run under `bun test`; `.test.tsx` files import from `vitest`, need `happy-dom` for `document`, and run under `bun run vitest run` — and only if their path is in the explicit `include` list in `vitest.config.ts`. A vitest test outside that list is silently NOT collected ("No test files found"), and a `.tsx` test run under `bun test` fails with `document is not defined`. Do not broaden the vitest glob to sweep a directory: `src/lib/**` and `src/components/balancer/registrations/**/*.test.ts` are `bun:test` territory and break under vitest. (9 pre-existing vitest tests are already outside the include list and never run; that is not this feature's doing.)
+- **`pnpm` is not installed.** `package.json` declares pnpm-style scripts but the machine runs **bun**. Use `bun run lint`, `bun run vitest run`, `bun test`, `bunx tsc --noEmit`.
+- **Never run two services' pytest suites in one invocation.** `identity-service/tests` and `tournament-service/tests` both insert their own `src` package on `sys.path`, so together they produce 15 collection errors. Pre-existing; run them separately.
 
 ### Commands
 
 ```bash
-# Backend tests, single file
+# Backend — one file / one service. NEVER two services in one invocation
+# (both add their own `src` to sys.path; together they collide).
 cd backend && uv run pytest shared/tests/test_subscription_tiers.py -v
+cd backend && uv run pytest shared/tests -q
+cd backend && uv run pytest tournament-service/tests -q
+cd backend && uv run pytest identity-service/tests -q
 
-# Backend tests, one service
-cd backend && uv run pytest tournament-service/tests -v
-
-# Lint
+# Backend lint + types
 cd backend && uv run ruff check . && uv run mypy shared/subscriptions
 
-# Migration
-cd backend && uv run alembic heads && uv run alembic upgrade heads
+# Migration — target the revision, not `heads` (other branches exist)
+cd backend && uv run alembic heads && uv run alembic upgrade subs0002
 
-# Frontend — lint only, NEVER `next build` (see AGENTS.md)
-cd frontend && pnpm lint
-cd frontend && pnpm test
+# Store integration coverage (opt-in; needs a reachable Postgres)
+cd backend && SUBSCRIPTIONS_IT_DSN=postgresql+psycopg://USER:PW@127.0.0.1:15432/anak_dev \
+    uv run pytest shared/tests/test_subscription_store_integration.py -v
+
+# Frontend — bun, not pnpm. Lint only, NEVER `next build` (see AGENTS.md)
+cd frontend && bun run lint
+cd frontend && bunx tsc --noEmit -p tsconfig.json
+cd frontend && bun run vitest run              # .test.tsx + include-listed .test.ts
+cd frontend && bun test src/lib                # bun:test files
+cd frontend && bun test src/components/balancer/registrations/_components
+
+# Gateway
+cd gateway && go build ./... && go test ./internal/tournament/...
 ```
 
 ---

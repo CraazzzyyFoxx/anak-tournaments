@@ -637,8 +637,9 @@ export default function RegistrationsTable({
     });
   }, [allColumns, registrations, searchQuery, sortField, sortDescending, requireOpenProfile]);
   const groupedRegistrations = useMemo(
-    () => groupRegistrations(filteredRegistrations, groupBy, requireOpenProfile),
-    [filteredRegistrations, groupBy, requireOpenProfile]
+    () =>
+      groupRegistrations(filteredRegistrations, groupBy, requireOpenProfile, requireSubscription),
+    [filteredRegistrations, groupBy, requireOpenProfile, requireSubscription]
   );
 
   const selectableIds = useMemo(

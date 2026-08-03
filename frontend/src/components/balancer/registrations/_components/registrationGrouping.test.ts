@@ -165,4 +165,50 @@ describe("registration grouping", () => {
       ["not_admitted", "Not admitted", [2]]
     ]);
   });
+
+  it("groups a confirmed subscription refusal as not admitted", () => {
+    const admitted = {
+      status: "approved",
+      balancer_status: "ready",
+      checked_in: true
+    } as Partial<AdminRegistration>;
+    const groups = groupRegistrations(
+      [
+        createRegistration(1, { ...admitted, subscription_outcome: "satisfied" }),
+        createRegistration(2, { ...admitted, subscription_outcome: "refused" }),
+        // Undetermined fails open, exactly like the server gate: a provider
+        // outage must not silently move players out of the admitted group.
+        createRegistration(3, { ...admitted, subscription_outcome: "undetermined" }),
+        createRegistration(4, { ...admitted, subscription_outcome: null })
+      ],
+      "admission",
+      false,
+      true
+    );
+
+    expect(
+      groups.map((group) => [group.key, group.registrations.map((item) => item.id)])
+    ).toEqual([
+      ["admitted", [1, 3, 4]],
+      ["not_admitted", [2]]
+    ]);
+  });
+
+  it("ignores the subscription outcome when the tournament does not require one", () => {
+    const groups = groupRegistrations(
+      [
+        createRegistration(1, {
+          status: "approved",
+          balancer_status: "ready",
+          checked_in: true,
+          subscription_outcome: "refused"
+        })
+      ],
+      "admission",
+      false,
+      false
+    );
+
+    expect(groups.map((group) => group.key)).toEqual(["admitted"]);
+  });
 });

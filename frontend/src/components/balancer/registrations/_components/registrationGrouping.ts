@@ -21,25 +21,25 @@ const BALANCER_STATUS_ORDER = new Map<string, number>([
   ["not_in_balancer", 2]
 ]);
 
-const isAdmitted = (registration: AdminRegistration, requireOpenProfile = false): boolean => {
-  if (
-    registration.status !== "approved" ||
-    registration.balancer_status !== "ready" ||
-    registration.checked_in !== true
-  ) {
-    return false;
-  }
-  if (requireOpenProfile && registration.profiles_open === false) {
-    return false;
-  }
-  return true;
-};
-
+/**
+ * Admission status for grouping.
+ *
+ * Mirrors `isAdmitted` in RegistrationBadges: a requirement blocks only on a
+ * CONFIRMED refusal, so an undetermined subscription verdict (provider down,
+ * account unlinked) groups as pending/admitted rather than "not admitted".
+ *
+ * A second, subscription-unaware copy of this rule used to sit here as dead
+ * code; it was deleted rather than extended.
+ */
 const getAdmissionStatus = (
   registration: AdminRegistration,
   requireOpenProfile = false,
+  requireSubscription = false,
 ): "admitted" | "pending_check_in" | "not_admitted" => {
   if (requireOpenProfile && registration.profiles_open === false) {
+    return "not_admitted";
+  }
+  if (requireSubscription && registration.subscription_outcome === "refused") {
     return "not_admitted";
   }
   if (registration.status === "approved" && registration.balancer_status === "ready") {
@@ -58,7 +58,8 @@ const humanizeStatusValue = (value: string): string =>
 const getGroupMeta = (
   registration: AdminRegistration,
   mode: RegistrationGroupingMode,
-  requireOpenProfile = false
+  requireOpenProfile = false,
+  requireSubscription = false,
 ): { key: string; label: string; sortOrder: number } => {
   if (mode === "check_in") {
     return registration.checked_in
@@ -76,7 +77,7 @@ const getGroupMeta = (
   }
 
   if (mode === "admission") {
-    const status = getAdmissionStatus(registration, requireOpenProfile);
+    const status = getAdmissionStatus(registration, requireOpenProfile, requireSubscription);
     if (status === "admitted") {
       return { key: "admitted", label: "Admitted", sortOrder: 0 };
     }
@@ -99,7 +100,8 @@ export const normalizeRegistrationGroupingMode = (
 export const groupRegistrations = (
   registrations: AdminRegistration[],
   mode: RegistrationGroupingMode,
-  requireOpenProfile = false
+  requireOpenProfile = false,
+  requireSubscription = false,
 ): RegistrationGroup[] => {
   if (mode === "none") {
     return [{ key: "all", label: "All registrations", registrations }];
@@ -111,7 +113,7 @@ export const groupRegistrations = (
   >();
 
   registrations.forEach((registration, index) => {
-    const meta = getGroupMeta(registration, mode, requireOpenProfile);
+    const meta = getGroupMeta(registration, mode, requireOpenProfile, requireSubscription);
     const existingGroup = groups.get(meta.key);
 
     if (existingGroup) {

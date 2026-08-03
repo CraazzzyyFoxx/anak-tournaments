@@ -75,6 +75,10 @@ from src.services.encounter import map_veto as map_veto_service
 from src.services.registration import service as reg_service
 from src.services.registration.subscription_codes import redeem_challenge_code
 from src.services.registration.subscription_gate import assert_subscription_allows_check_in
+from src.services.registration.subscription_reads import (
+    build_subscription_reads,
+    serialize_verdicts,
+)
 from src.services.registration.subscription_status import (
     assert_redeem_attempt_allowed,
     subscription_status_for_user,
@@ -277,6 +281,14 @@ def register(broker: Any, logger: Any) -> None:
                 if form is not None and form.require_open_profile
                 else None
             )
+            # The registrant's own read carries the same verdicts the public list
+            # does, so their card can show why they are (not) admitted.
+            subscription_reads = await build_subscription_reads(
+                form=form,
+                auth_user_id_by_registration={reg.id: user.id},
+                resolver=_subscription_resolver(session),
+            )
+            own = subscription_reads.get(reg.id)
             workspace_id = (
                 form.workspace_id if form is not None else await _resolve_tournament_workspace(session, tournament_id)
             )
@@ -288,6 +300,8 @@ def register(broker: Any, logger: Any) -> None:
                     status_meta_map=status_meta_map,
                     show_ranks=show_ranks,
                     profiles_open=profiles_open,
+                    subscription_outcome=own.outcome.value if own is not None else None,
+                    subscription_verdicts=(serialize_verdicts(own.verdicts) if own is not None else None),
                 )
             )
 
