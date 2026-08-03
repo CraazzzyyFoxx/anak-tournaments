@@ -9,13 +9,13 @@ from shared.messaging.config import (
 )
 from shared.messaging.outbox import enqueue_outbox_event
 from shared.schemas.events import (
-    EncounterCompletedEvent,
     RegistrationApprovedEvent,
     RegistrationRejectedEvent,
     TournamentChangedEvent,
     TournamentChangedReason,
     TournamentStateChangedEvent,
 )
+from shared.services.encounter import events as shared_encounter_events
 from src import models
 from src.services.computation.jobs import request_standings_recalculation
 from src.services.tournament.realtime_commit import register_tournament_realtime_update
@@ -51,24 +51,8 @@ async def enqueue_encounter_completed(
     session: AsyncSession,
     encounter: models.Encounter,
 ) -> None:
-    winner_team_id: int | None = None
-    if encounter.home_score > encounter.away_score:
-        winner_team_id = encounter.home_team_id
-    elif encounter.away_score > encounter.home_score:
-        winner_team_id = encounter.away_team_id
-
-    await enqueue_outbox_event(
-        session,
-        EncounterCompletedEvent(
-            tournament_id=encounter.tournament_id,
-            encounter_id=encounter.id,
-            home_team_id=encounter.home_team_id,
-            away_team_id=encounter.away_team_id,
-            winner_team_id=winner_team_id,
-            source_service="tournament-service",
-        ),
-        exchange=TOURNAMENT_EVENTS_EXCHANGE,
-        routing_key="tournament.encounter.completed",
+    await shared_encounter_events.enqueue_encounter_completed(
+        session, encounter, source_service="tournament-service"
     )
 
 
