@@ -39,7 +39,7 @@ from shared.balancer_subrole_catalog import resolve_subrole_catalog
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.identity import rehydrate_user
 from shared.services.profile_visibility import resolve_profiles_open
-from shared.services.subscription_wiring import build_resolver
+from shared.services.subscription_wiring import build_resolver, build_store
 from shared.services.tournament_visibility import assert_tournament_viewable
 from src import models, schemas
 from src.core.config import settings
@@ -61,6 +61,7 @@ from src.schemas.registration import (
     RegistrationCreate,
     RegistrationStatusResponse,
     RegistrationUpdate,
+    SubscriptionRedeemRequest,
 )
 from src.schemas.registration_build import (
     _form_to_read,
@@ -72,11 +73,31 @@ from src.services.encounter import captain as captain_service
 from src.services.encounter import flows as encounter_flows
 from src.services.encounter import map_veto as map_veto_service
 from src.services.registration import service as reg_service
+from src.services.registration.subscription_codes import redeem_challenge_code
 from src.services.registration.subscription_gate import assert_subscription_allows_check_in
+from src.services.registration.subscription_status import (
+    assert_redeem_attempt_allowed,
+    subscription_status_for_user,
+)
 from src.services.registration.validation import (
     validate_registration_input,
     validate_verified_identity,
 )
+
+
+def _subscription_resolver(session: Any) -> Any:
+    """Resolver wired with this service's provider credentials.
+
+    Built per request: the Discord strategy memoizes a guild's role list, and that
+    memo must not outlive the request that filled it.
+    """
+    return build_resolver(
+        session,
+        discord_bot_token=settings.discord_token,
+        twitch_client_id=settings.twitch_client_id,
+        proxy=settings.proxy_url,
+    )
+
 
 # --- helpers -----------------------------------------------------------------
 
@@ -361,12 +382,7 @@ def register(broker: Any, logger: Any) -> None:
             await assert_subscription_allows_check_in(
                 form=form,
                 auth_user_id=user.id,
-                resolver=build_resolver(
-                    session,
-                    discord_bot_token=settings.discord_token,
-                    twitch_client_id=settings.twitch_client_id,
-                    proxy=settings.proxy_url,
-                ),
+                resolver=_subscription_resolver(session),
             )
 
             # check_in_registration commits internally.
@@ -383,6 +399,65 @@ def register(broker: Any, logger: Any) -> None:
                     workspace_id=workspace_id,
                     status_meta_map=status_meta_map,
                     show_ranks=form.show_ranks if form else False,
+                )
+            )
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.sub_me")
+    async def _sub_me(data: dict, msg: RabbitMessage) -> dict:
+        """The caller's own subscription standing for this tournament.
+
+        Read-only and non-forcing: the registration form polls it to render the
+        per-provider chips, so it must not spend a provider call per page view.
+        """
+
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            tournament_id = _path_int(data, "tournament_id")
+            await assert_tournament_viewable(session, user, tournament_id)
+            form = await reg_service.get_registration_form(session, tournament_id)
+            return _dump(
+                await subscription_status_for_user(
+                    form=form,
+                    auth_user_id=user.id,
+                    resolver=_subscription_resolver(session),
+                )
+            )
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.sub_redeem_code")
+    async def _sub_redeem_code(data: dict, msg: RabbitMessage) -> dict:
+        """Redeem a challenge code published in a subscriber-only post.
+
+        Rate-limited per user: this endpoint is a guessing oracle, and the codes
+        are short enough to brute-force without a ceiling.
+        """
+
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            tournament_id = _path_int(data, "tournament_id")
+            await assert_tournament_viewable(session, user, tournament_id)
+            body = SubscriptionRedeemRequest.model_validate(_payload(data))
+            form = await reg_service.get_registration_form(session, tournament_id)
+            if form is None:
+                raise HTTPException(status_code=404, detail="Registration form not found")
+
+            await assert_redeem_attempt_allowed(workspace_id=form.workspace_id, auth_user_id=user.id)
+            await redeem_challenge_code(
+                store=build_store(session),
+                workspace_id=form.workspace_id,
+                auth_user_id=user.id,
+                provider=body.provider,
+                submitted_code=body.code,
+            )
+            await session.commit()
+            return _dump(
+                await subscription_status_for_user(
+                    form=form,
+                    auth_user_id=user.id,
+                    resolver=_subscription_resolver(session),
                 )
             )
 

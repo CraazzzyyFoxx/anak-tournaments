@@ -182,6 +182,47 @@ class TournamentHistoryEntry(BaseModel):
     division_grid_version_id: int | None = None
 
 
+class SubscriptionRedeemRequest(BaseModel):
+    """Body of the challenge-code redemption endpoint.
+
+    ``provider`` defaults to ``boosty`` because the challenge code exists
+    specifically for it -- Twitch has a real API and needs no code.
+    """
+
+    code: str = Field(min_length=1, max_length=128)
+    provider: str = "boosty"
+
+
+class SubscriptionProviderVerdictRead(BaseModel):
+    """One provider's verdict, as shown to the patron.
+
+    Deliberately narrow: ``evidence`` may hold guild ids and role ids, so only
+    ``reason`` is exposed -- the UI branches on it to pick a call to action
+    ("link Discord" vs "reconnect Twitch").
+    """
+
+    state: str
+    tier_rank: int | None = None
+    tier_label: str | None = None
+    reason: str | None = None
+
+
+class SubscriptionStatusRead(BaseModel):
+    """The caller's own subscription standing for one tournament.
+
+    ``outcome`` is the COMPOSED answer over the tournament's requirement;
+    ``verdicts`` is per provider so the form can render a chip per account row.
+    ``required`` is false when the tournament does not gate on a subscription, in
+    which case the rest is informational only.
+    """
+
+    required: bool = False
+    mode: str | None = None
+    outcome: str | None = None
+    rule: str | None = None
+    verdicts: dict[str, SubscriptionProviderVerdictRead] = Field(default_factory=dict)
+
+
 class RegistrationListRead(RegistrationRead):
     # Capped to the most recent ``HISTORY_LIMIT`` entries; ``tournament_history_count``
     # holds the true total so the UI can render an accurate count badge.
