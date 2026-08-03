@@ -182,12 +182,19 @@ class TwitchOAuthProvider(OAuthProviderBase):
 
     provider_name = "twitch"
 
+    # ``user:read:subscriptions`` lets the subscription-entitlement module call
+    # Helix ``GET /subscriptions/user`` with this user's own token. Newly added:
+    # connections created before this change carry only ``user:read:email``, so
+    # the Twitch provider resolves them as ``unknown`` (fails open) with
+    # ``evidence.reason == "missing_scope"`` and the UI offers a reconnect.
+    SCOPES = "user:read:email user:read:subscriptions"
+
     def get_authorization_url(self, state: str) -> str:
         params = {
             "client_id": settings.TWITCH_CLIENT_ID,
             "redirect_uri": settings.OAUTH_REDIRECT,
             "response_type": "code",
-            "scope": "user:read:email",
+            "scope": self.SCOPES,
             "state": state,
         }
         return f"{settings.TWITCH_OAUTH_URL}?{urlencode(params)}"
