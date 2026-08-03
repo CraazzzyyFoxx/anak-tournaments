@@ -55,6 +55,7 @@ function record(id: number, overrides: Partial<LogProcessingRecord> = {}): LogPr
     source: "upload",
     uploader_name: "operator",
     error_message: null,
+    attempts: 1,
     created_at: "2026-07-30T17:00:00Z",
     started_at: "2026-07-30T17:00:00Z",
     finished_at: "2026-07-30T17:00:04Z",
@@ -66,7 +67,8 @@ function record(id: number, overrides: Partial<LogProcessingRecord> = {}): LogPr
 const FIRST_PAGE: LogHistoryResponse = {
   items: [
     record(1, { status: "failed", error_message: "502: gateway timeout" }),
-    ...Array.from({ length: 24 }, (_unused, index) => record(index + 2))
+    record(99, { status: "pending", attempts: 3, started_at: null, finished_at: null }),
+    ...Array.from({ length: 23 }, (_unused, index) => record(index + 2))
   ],
   total: 128
 };
@@ -142,6 +144,20 @@ describe("TournamentLogsTab", () => {
 
     expect(scope.textContent).toContain("gateway timeout");
     expect(scope.textContent).toContain("Retry 1 loaded");
+  });
+
+  it("offers a requeue for a queued row the worker dropped", async () => {
+    const scope = await mount();
+
+    // "Queued" rows used to have no control at all: only `failed` got a button,
+    // so a log whose queue message expired was stuck with no way out.
+    const labels = [...scope.querySelectorAll("button[aria-label]")].map((node) =>
+      node.getAttribute("aria-label")
+    );
+    expect(labels).toContain("Requeue log round_99.txt");
+    expect(labels).toContain("Retry log round_1.txt");
+    // Attempt count surfaces the requeue loop on the row itself.
+    expect(scope.textContent).toContain("×3");
   });
 
   it("points forward when the tournament has no logs at all", async () => {

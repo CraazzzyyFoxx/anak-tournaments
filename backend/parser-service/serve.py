@@ -63,6 +63,7 @@ from src.rpc import (
 from src.services.achievement.engine.consumer import handle_achievement_evaluate
 from src.services.match_logs import flows as logs_flows
 from src.services.match_logs import realtime as logs_realtime
+from src.services.match_logs import reaper as logs_reaper
 from src.services.match_logs import uploads as upload_service
 from src.services.match_logs.result_events import publish_match_log_result
 from src.services.overwatch_rank import scheduler as rank_scheduler
@@ -137,12 +138,16 @@ async def start_worker() -> None:
     # replicas, admin-settings-gated — no-ops while collection is disabled). Lives
     # in the worker now that the HTTP service is decommissioned.
     rank_scheduler.start_scheduler()
+    # Requeue match-log records the queue dropped (expired ProcessMatchLogEvent,
+    # worker killed mid-parse). Redis leader-locked across worker replicas.
+    logs_reaper.start_scheduler(redis=_clients.realtime_redis, broker=broker)
     logger.info("Parser worker started")
 
 
 @app.on_shutdown
 async def stop_worker() -> None:
     rank_scheduler.shutdown_scheduler()
+    logs_reaper.shutdown_scheduler()
     await s3_client.close()
     await rank_tasks.rank_client.close()
     await rank_tasks.close_redis()

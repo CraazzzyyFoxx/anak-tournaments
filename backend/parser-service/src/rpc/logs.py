@@ -226,6 +226,9 @@ def register(broker: Any, logger: Any) -> None:
             record.error_message = None
             record.started_at = None
             record.finished_at = None
+            # An operator asking for a retry gets a fresh budget, so a record the
+            # stall reaper retired can be driven again.
+            record.attempts = 0
             await session.commit()
             await session.refresh(record)
 

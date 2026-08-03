@@ -17,6 +17,19 @@ class AppConfig(BaseServiceSettings):
     max_match_log_bytes: int = 25 * 1024 * 1024
     max_match_log_lines: int = 500_000
 
+    # Match-log stall recovery (src/services/match_logs/reaper.py). The
+    # process_match_log queue TTLs messages after 5 minutes, so a record whose
+    # event expired or whose worker died is only recoverable from the row.
+    log_reaper_enabled: bool = True
+    log_reaper_tick_seconds: int = 300
+    # Must stay above the 5-minute queue TTL: inside that window a message can
+    # still be waiting on a busy consumer, and requeueing would double-parse.
+    log_reaper_pending_after_seconds: int = 900
+    # A parse still running after this long has no live worker behind it.
+    log_reaper_processing_after_seconds: int = 1800
+    log_reaper_max_attempts: int = 5
+    log_reaper_batch_size: int = 25
+
     redis_url: RedisDsn
 
     # OverFast API (self-hosted instance) — base URL for Overwatch stats/metadata.

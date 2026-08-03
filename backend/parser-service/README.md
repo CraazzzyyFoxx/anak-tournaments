@@ -22,6 +22,10 @@ The RPC surface is grouped as representative `rpc.parser.*` methods served behin
   tournament encounter-completed, rank fetch (+ priority), and registration-approved rank check.
 - **OverFast rank fetch** — a Redis leader-locked APScheduler that fetches player ranks from the
   external OverFast API (via the outbound proxy).
+- **Match-log stall recovery** — a Redis leader-locked APScheduler that republishes
+  `LogProcessingRecord`s the queue dropped (`process_match_log` expires messages after 5 minutes, and
+  a worker killed mid-parse leaves a record on `processing`). See
+  `src/services/match_logs/reaper.py`.
 - **Typed reads / admin** — parser-unique reads and admin operations (logs, rank, achievements,
   misc, bootstrap, impact).
 

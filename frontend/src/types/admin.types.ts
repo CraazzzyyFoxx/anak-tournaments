@@ -874,6 +874,8 @@ export interface LogProcessingRecord {
   source: LogProcessingSource;
   uploader_name: string | null;
   error_message: string | null;
+  /** Times the record entered processing; >1 means the stall reaper requeued it. */
+  attempts: number;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;

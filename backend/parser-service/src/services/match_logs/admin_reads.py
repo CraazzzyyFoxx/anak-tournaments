@@ -90,6 +90,7 @@ def _record_to_dict(record: models.LogProcessingRecord) -> dict:
         "source": record.source.value if hasattr(record.source, "value") else record.source,
         "uploader_name": record.uploader.name if record.uploader else None,
         "error_message": record.error_message,
+        "attempts": record.attempts or 0,
         "created_at": record.created_at.isoformat() if record.created_at else None,
         "started_at": record.started_at.isoformat() if record.started_at else None,
         "finished_at": record.finished_at.isoformat() if record.finished_at else None,

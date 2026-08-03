@@ -77,6 +77,9 @@ async def upsert_log_record(
         record.error_message = None
         record.started_at = None
         record.finished_at = None
+        # Fresh upload of this filename: content may differ from whatever
+        # exhausted the previous retry budget, so the reaper starts over.
+        record.attempts = 0
         if uploader_id is not None:
             record.uploader_id = uploader_id
 
@@ -112,6 +115,7 @@ async def set_processing(
             status=LogProcessingStatus.processing,
             started_at=datetime.now(UTC),
             content_hash=content_hash,
+            attempts=1,
         )
         session.add(record)
     else:
@@ -119,6 +123,7 @@ async def set_processing(
         record.started_at = datetime.now(UTC)
         record.error_message = None
         record.finished_at = None
+        record.attempts = (record.attempts or 0) + 1
         if content_hash is not None:
             record.content_hash = content_hash
 

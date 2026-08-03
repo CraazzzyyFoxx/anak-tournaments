@@ -2,7 +2,7 @@ import enum
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, String, Text
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db
@@ -70,6 +70,12 @@ class LogProcessingRecord(db.TimeStampIntegerMixin):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    # Times this record actually entered processing. Bumped by
+    # log_records.set_processing and reset when the file is re-uploaded or an
+    # operator retries. The stall reaper stops requeueing a record once the
+    # budget is spent, so a log that kills the worker before it can mark itself
+    # failed cannot cycle forever.
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
     # Relations
     tournament: Mapped["Tournament"] = relationship(lazy="selectin")

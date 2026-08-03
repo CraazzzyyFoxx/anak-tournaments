@@ -265,6 +265,7 @@ export function TournamentLogsTab({
               </div>
               <CardDescription className="mt-1 text-pretty">
                 Track uploaded and Discord/S3 match logs, isolate failures, and queue retries.
+                Stalled logs are requeued automatically.
               </CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-1">
@@ -480,6 +481,11 @@ export function TournamentLogsTab({
                   const fileName = getLogFileName(record.filename);
                   const errorSummary = getErrorSummary(record.error_message);
                   const retrying = isRetrying(record.id);
+                  // "Queued"/"Processing" rows go stale when the worker drops
+                  // their queue message; the reaper requeues them on its own
+                  // schedule, this is the operator's shortcut past the wait.
+                  const canRequeue = record.status !== "done";
+                  const requeueLabel = record.status === "failed" ? "Retry log" : "Requeue log";
 
                   return (
                     <li
@@ -497,7 +503,7 @@ export function TournamentLogsTab({
                       */}
                       <div
                         className="flex flex-wrap items-center gap-x-3 gap-y-0.5"
-                        title={`${record.filename}\n${SOURCE_LABELS[record.source]} by ${record.uploader_name ?? "unknown uploader"}`}
+                        title={`${record.filename}\n${SOURCE_LABELS[record.source]} by ${record.uploader_name ?? "unknown uploader"}${record.attempts > 1 ? `\n${record.attempts} processing attempts` : ""}`}
                       >
                         <p className="min-w-0 flex-1 basis-48 truncate font-mono text-xs">
                           {fileName}
@@ -505,8 +511,13 @@ export function TournamentLogsTab({
                         <p className="min-w-0 flex-1 basis-40 truncate text-xs text-muted-foreground">
                           {record.attached_encounter_name ?? "Not attached"}
                         </p>
-                        <div className="w-24 shrink-0">
+                        <div className="flex w-28 shrink-0 items-center gap-1.5">
                           <LogStatusBadge status={record.status} />
+                          {record.attempts > 1 ? (
+                            <span className="text-[11px] tabular-nums text-muted-foreground">
+                              ×{record.attempts}
+                            </span>
+                          ) : null}
                         </div>
                         <p className="w-28 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
                           {formatLogTime(record.created_at)}
@@ -515,14 +526,14 @@ export function TournamentLogsTab({
                           {formatDuration(record)}
                         </p>
                         <div className="flex w-8 shrink-0 justify-end">
-                          {record.status === "failed" ? (
+                          {canRequeue ? (
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <Button
                                   variant="ghost"
                                   size="icon"
                                   className="size-8"
-                                  aria-label={`Retry processing ${fileName}`}
+                                  aria-label={`${requeueLabel} ${fileName}`}
                                   disabled={retrying}
                                   onClick={() => retryLogMutation.mutate(record.id)}
                                 >
@@ -533,7 +544,7 @@ export function TournamentLogsTab({
                                   )}
                                 </Button>
                               </TooltipTrigger>
-                              <TooltipContent>Retry log</TooltipContent>
+                              <TooltipContent>{requeueLabel}</TooltipContent>
                             </Tooltip>
                           ) : null}
                         </div>
