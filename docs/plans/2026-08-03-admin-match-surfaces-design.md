@@ -488,22 +488,51 @@ Passing: criteria 2, 3, 4 and 8; `ruff check .` clean; every backend suite green
 analytics 155, discord 12); `go build` + `go vet` + `go test ./...` green;
 `tsc --noEmit` clean, vitest 232/232, eslint 0 errors.
 
-**Not verified — no environment for it:**
+**Applied for real (2026-08-03).** Both revisions ran against `anak_dev` on the
+deployment host, taking it from `subs0002` to `mtchlog001`. A verified `pg_dump`
+was taken first (`/root/aqt-backups/anak_dev-pre-encres0001-*.dump`).
 
-- **Criterion 1 and both migrations are unapplied.** `encres0001` and
-  `mtchlog001` have never run against a database. There is no local Postgres
-  (nothing listening on 5432/15432/54320) and the only reachable DSN in
-  `backend/.env` is a remote shared host — applying a revision that drops three
-  columns there is not an option. The metadata tests
-  (`test_encres0001_migration_matches_models.py`,
-  `test_mtchlog001_migration_matches_models.py`) pin the DDL, the enum storage
-  forms and the invariant expression, but **the backfills, the pre-constraint
-  assertion and the FK join are unexercised**. Both must be applied to a scratch
-  database before deploy; the opt-in pattern in
-  `tournament-service/tests/test_check_in_gate_integration.py`
-  (`SUBSCRIPTIONS_IT_DSN`) is the precedent for wiring that.
-- **Criteria 5 and 6 (browser smoke, permission masking)** need a running stack.
-  They also cover surfaces that Phases 1–2 have not built yet.
+Note the deployment moved: `backend/.env` still points at `194.87.202.217`, which
+is now a rebuilt machine whose Postgres silently drops connections. The live
+stack — `owt-*`, `db_postgres` (PG 18.1) and pgbouncer — runs on `95.179.157.197`
+(`dd-new`). Migrations are applied by mounting `alembic.ini` + `migrations/` into
+a container off `registry.craazzzyyfoxx.me/aqt-tournament:latest` on the
+`postgres_pg_network` network; the image itself ships neither.
+
+**Each revision aborted on its first run.** Both faults are of a kind no
+metadata test can reach, because those compile DDL against the model instead of
+executing anything:
+
+- `encres0001` declared the audit-action ENUM without `create_type=False`, so
+  `op.create_table` emitted a second `CREATE TYPE` after the explicit
+  `.create()` — `DuplicateObject`, full rollback.
+- `mtchlog001` put a `LATERAL` in the `UPDATE`'s `FROM` and referenced the update
+  target from inside it, which Postgres rejects outright.
+
+Fixed in `36594ed0`; both tests now pin the fault rather than the phrasing.
+
+**Criterion 1 holds on real data.** The backfill cleared **5242** violating rows
+(5272 `COMPLETED` against only 30 `confirmed`) and the CHECK constraint then
+applied cleanly: violations 0, `confirmed` == `COMPLETED` == 5272, all three
+columns dropped. The audit seeded 0 rows, which is correct rather than a gap —
+it is scoped to `confirmed_by_id IS NOT NULL` and no row in this database had
+one, so no provenance was lost.
+
+**The FK backfill resolved 368 of 6620 matches**, and that is the true extent of
+available provenance, not a defective join. The 368 links use 368 distinct
+records — a clean 1:1, so the tie-break never had to arbitrate destructively —
+and **no unlinked match has a basename present in any log record at all**, so
+the tournament scoping cost nothing. The split is chronological and does not
+overlap: linked matches run 2026-04-08 to 2026-04-26, unlinked run 2025-01-09 to
+2026-03-15. `log_processing.record` simply did not exist before April 2026.
+
+**Still not verified — needs a running stack:**
+
+- **Criteria 5 and 6 (browser smoke, permission masking).** They also cover
+  surfaces that Phases 1–2 have not built yet.
+- **The revisions have not been applied to `anak_v5` (production).** Its data
+  differs and the backfill counts above do not transfer; re-check the violation
+  count there before deploying.
 
 ---
 
