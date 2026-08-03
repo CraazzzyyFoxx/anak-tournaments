@@ -51,7 +51,9 @@ class EncounterResultAudit(db.TimeStampIntegerMixin):
         {"schema": "tournament"},
     )
 
-    encounter_id: Mapped[int] = mapped_column(ForeignKey(Encounter.id, ondelete="CASCADE"), index=True)
+    # No standalone index: the composite (encounter_id, created_at) below already
+    # serves every lookup, and this table only grows.
+    encounter_id: Mapped[int] = mapped_column(ForeignKey(Encounter.id, ondelete="CASCADE"))
     # NULL = machine actor. SET NULL so a deleted account leaves the trail intact.
     actor_user_id: Mapped[int | None] = mapped_column(ForeignKey(User.id, ondelete="SET NULL"), nullable=True)
     action: Mapped[enums.EncounterResultAuditAction] = mapped_column(ENCOUNTER_RESULT_AUDIT_ACTION_ENUM)
