@@ -49,7 +49,7 @@ Grep `require_open_profile` before you start and again before you finish. Anythi
 
 ### Things that will bite you
 
-- **Alembic has 4 heads** (`ml1a2b3c4d5e`, `rbacws0001`, `realtime0001`, `statidx001`). Do **not** hardcode `down_revision`. Run `alembic heads`, pick the appropriate lineage head, and use `alembic upgrade heads` (plural) to apply.
+- **Never hardcode `down_revision`, and never chain off an uncommitted revision.** Run `alembic heads` — it is authoritative. (An earlier draft of this plan claimed four heads based on a naive text scan of `down_revision` lines; alembic itself reported a single head, `logretry0001`, which turned out to be *uncommitted* local work. `subs0001` therefore chains off `statidx001`, the last committed revision on that lineage: referencing an untracked revision would leave the migration dangling for anyone checking out the commit without that WIP.) Apply with `alembic upgrade heads` (plural) — branched heads are normal here.
 - **`SocialProvider.BOOSTY` must stay out of `OAUTH_PROVIDERS`.** `backend/shared/tests/test_social.py:19` asserts `not is_oauth_provider(SocialProvider.BOOSTY)`. That assertion is correct and stays. Boosty is not an OAuth provider and never will be.
 - **The Discord bot must use `fetch_member`, not `get_member`.** `get_member` reads a cache that is only populated via the privileged `GUILD_MEMBERS` intent, which the bot does not have; it will silently return `None` for everyone. `fetch_member` is a REST call with no intent guard. This was verified against `discord.py` source — see the design doc's fact table.
 - **Never fan out `fetch_member` across a list view.** Discord buckets rate limits per `guild_id`, so N users in one guild serialize behind one bucket. List views read the persisted `entitlement` table only.
@@ -1170,7 +1170,10 @@ git commit -m "feat(subscriptions): add provider_config and entitlement models"
 ```bash
 cd backend && uv run alembic heads
 ```
-This repo currently reports **four** heads. Pick the one on the lineage you are extending and put its revision id in `down_revision`. Record which you chose in the docstring.
+Do not trust a text scan of the migration files for this — `alembic heads` is the only
+authoritative answer, and it may report a head that is not committed yet. Chain off the newest
+**committed** revision on the lineage you are extending, never off someone's uncommitted WIP,
+and record the choice and the reason in the docstring.
 
 **Step 2: Write the migration**
 
