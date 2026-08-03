@@ -22,7 +22,9 @@ from shared.rbac import assign_workspace_system_role
 from shared.repository import get_or_create_workspace_member
 from shared.services import social_identity
 from shared.services.profile_visibility import resolve_profiles_open
+from shared.services.subscription_wiring import build_resolver
 from src import models
+from src.core.config import settings
 from src.schemas.registration import (
     RegistrationCreate,
     RegistrationFormUpsert,
@@ -35,6 +37,11 @@ from src.schemas.registration_build import (
     _reg_to_read,
     _resolve_top_heroes_config,
     _resolve_tournament_workspace,
+)
+from src.services.registration.subscription_reads import (
+    build_subscription_reads,
+    load_auth_user_ids_by_registration,
+    serialize_verdicts,
 )
 from src.services.registration.validation import validate_registration_input, validate_verified_identity
 from src.services.registration.windows import is_check_in_window_active, is_registration_open
@@ -776,6 +783,22 @@ async def build_public_registration_list(
     )
     show_ranks = form.show_ranks if form is not None else False
 
+    # Subscription verdicts for the whole batch in a single pass; `force_refresh`
+    # stays False here (only check-in forces a fresh look). Returns {} and costs
+    # nothing when the tournament does not require a subscription.
+    subscription_reads = await build_subscription_reads(
+        form=form,
+        auth_user_id_by_registration=await load_auth_user_ids_by_registration(session, registrations)
+        if form is not None and form.require_subscription
+        else {},
+        resolver=build_resolver(
+            session,
+            discord_bot_token=settings.discord_token,
+            twitch_client_id=settings.twitch_client_id,
+            proxy=settings.proxy_url,
+        ),
+    )
+
     history_map, history_count_map, division_grids = await _build_tournament_history(
         session,
         registrations,
@@ -795,6 +818,10 @@ async def build_public_registration_list(
                 # _reg_to_read.
                 include_private=False,
                 profiles_open=profiles_open_map.get(r.id),
+                subscription_outcome=(subscription_reads[r.id].outcome.value if r.id in subscription_reads else None),
+                subscription_verdicts=(
+                    serialize_verdicts(subscription_reads[r.id].verdicts) if r.id in subscription_reads else None
+                ),
             ).model_dump(),
             tournament_history=history_map.get(r.id, []),
             tournament_history_count=history_count_map.get(r.id, 0),

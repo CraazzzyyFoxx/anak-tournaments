@@ -8,6 +8,8 @@ envelope. This module must NOT import fastapi.
 
 from __future__ import annotations
 
+from typing import Any
+
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -119,6 +121,8 @@ def _reg_to_read(
     show_ranks: bool = False,
     include_private: bool = True,
     profiles_open: bool | None = None,
+    subscription_outcome: str | None = None,
+    subscription_verdicts: dict[str, Any] | None = None,
 ) -> RegistrationRead:
     """Serialize a registration for public API responses.
 
@@ -173,6 +177,8 @@ def _reg_to_read(
         or build_unknown_status_meta("balancer", reg.balancer_status),
         checked_in=reg.checked_in,
         profiles_open=profiles_open,
+        subscription_outcome=subscription_outcome,
+        subscription_verdicts=subscription_verdicts,
         submitted_at=reg.submitted_at,
         reviewed_at=reg.reviewed_at,
     )

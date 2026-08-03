@@ -160,6 +160,14 @@ class RegistrationRead(BaseModel):
     # All-profiles-open verdict when the tournament requires it:
     # True = public, False = closed, None = unknown / not required.
     profiles_open: bool | None = None
+    # Subscription admission verdict when the tournament requires one.
+    # ``subscription_outcome`` is the COMPOSED answer ("satisfied"/"refused"/
+    # "undetermined"); only "refused" blocks, mirroring ``profiles_open is False``.
+    # ``subscription_verdicts`` is per provider and drives the per-row chips —
+    # under ``any`` mode one red chip next to a green one is still a pass, which is
+    # why the composed outcome is sent separately rather than derived client-side.
+    subscription_outcome: str | None = None
+    subscription_verdicts: dict[str, Any] | None = None
     submitted_at: datetime | None = None
     reviewed_at: datetime | None = None
 
