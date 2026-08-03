@@ -464,6 +464,81 @@ export interface EncounterResultAuditRead {
   created_at: string;
 }
 
+/**
+ * One captain's report inside an admin reports row. Mirrors the backend
+ * `CaptainReportRead` — the same shape the public encounter read returns, plus
+ * `reporter_name`.
+ */
+export interface AdminCaptainReport {
+  id: number;
+  encounter_id: number;
+  team_id: number;
+  side: "home" | "away" | null;
+  reporter_user_id: number | null;
+  reporter_name: string | null;
+  home_score: number;
+  away_score: number;
+  closeness: number;
+  map_codes: Array<{ id: number; map_index: number; map_id: number | null; code: string }>;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface EncounterReportsRow {
+  id: number;
+  name: string;
+  tournament_id: number;
+  tournament_name: string | null;
+  stage_name: string | null;
+  round: number;
+  best_of: number;
+  status: string;
+  result_status: string;
+  scheduled_at: string | null;
+  home_team: { id: number; name: string | null } | null;
+  away_team: { id: number; name: string | null } | null;
+  home_report: AdminCaptainReport | null;
+  away_report: AdminCaptainReport | null;
+  reported_count: number;
+  /**
+   * Three-valued on purpose: `null` until both sides have reported. "They
+   * disagree" and "only one answered" call for different actions, so the UI
+   * must not collapse them into a boolean.
+   */
+  scores_match: boolean | null;
+  /** Advisory — reports predate per-round best-of, so a mismatch is a hint. */
+  series_score_valid: boolean;
+  last_resolution: {
+    action: EncounterResultAuditAction;
+    actor_user_id: number | null;
+    actor_name: string | null;
+    created_at: string;
+  } | null;
+}
+
+export interface EncounterReportsStats {
+  by_result_status: Record<string, number>;
+  mismatch_count: number;
+  awaiting_second_count: number;
+}
+
+/**
+ * Filters shared by the list and its counters. The server applies the scope
+ * fields to both but the chip fields only to the list, so a chip reports how
+ * many rows it would select rather than how many it already has.
+ */
+export interface EncounterReportsQuery {
+  workspace_id: number;
+  page?: number;
+  per_page?: number;
+  query?: string;
+  tournament_id?: number | null;
+  stage_id?: number | null;
+  result_status?: string[];
+  mismatch_only?: boolean;
+  reported_count?: number | null;
+}
+
 export interface EncounterCreateInput {
   tournament_id: number;
   tournament_group_id?: number | null;

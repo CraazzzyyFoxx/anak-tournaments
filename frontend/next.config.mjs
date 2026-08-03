@@ -32,6 +32,28 @@ const nextConfig = {
       destination: `${gateway}${prefix}/:path*`,
     }));
   },
+  async redirects() {
+    // Framework-level so these are real HTTP redirects. The same `redirect()`
+    // call inside a page returns 200 with the redirect encoded in the RSC
+    // stream — the browser still follows it, but a crawler, a bookmark or a
+    // link checker sees a successful empty page instead of a moved one.
+    return [
+      {
+        // `/matches` is a container, not a view: its content is now the
+        // `results` sub-tab. Temporary, because the landing sub-tab is a UI
+        // decision we may revisit.
+        source: "/admin/tournaments/:id/matches",
+        destination: "/admin/tournaments/:id/matches/results",
+        permanent: false,
+      },
+      {
+        // Logs stopped being a top-level tab. This move is settled, so 308.
+        source: "/admin/tournaments/:id/logs",
+        destination: "/admin/tournaments/:id/matches/logs",
+        permanent: true,
+      },
+    ];
+  },
   images: {
     unoptimized: true,
     qualities: [25, 50, 75, 100],

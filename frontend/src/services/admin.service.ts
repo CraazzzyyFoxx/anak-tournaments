@@ -99,7 +99,31 @@ import {
   EncounterResultAuditRead,
   EncounterResultRead,
   EncounterSetResultInput,
+  EncounterReportsQuery,
+  EncounterReportsRow,
+  EncounterReportsStats,
 } from "@/types/admin.types";
+
+/**
+ * Serialise the reports filter set once — the list and its counters must send
+ * an identical scope or the chips would count a different population than the
+ * table shows.
+ */
+function buildEncounterReportsQuery(params: EncounterReportsQuery): string {
+  const search = new URLSearchParams();
+  search.set("workspace_id", String(params.workspace_id));
+  if (params.page != null) search.set("page", String(params.page));
+  if (params.per_page != null) search.set("per_page", String(params.per_page));
+  if (params.query) search.set("query", params.query);
+  if (params.tournament_id != null) search.set("tournament_id", String(params.tournament_id));
+  if (params.stage_id != null) search.set("stage_id", String(params.stage_id));
+  if (params.mismatch_only) search.set("mismatch_only", "true");
+  if (params.reported_count != null) search.set("reported_count", String(params.reported_count));
+  // Repeated, not comma-joined: the backend field is a list and the gateway
+  // forwards every occurrence.
+  for (const status of params.result_status ?? []) search.append("result_status", status);
+  return search.toString();
+}
 
 class AdminService {
   private async getTournamentJob(jobId: number): Promise<TournamentComputationJob> {
@@ -413,6 +437,32 @@ class AdminService {
   /** Every recorded transition of this encounter's result, newest first. */
   async getEncounterResultAudit(id: number): Promise<EncounterResultAuditRead[]> {
     const response = await apiFetch(`/api/v1/admin/encounters/${id}/result-audit`);
+    return response.json();
+  }
+
+  /**
+   * Cross-tournament captain reports, scoped to one workspace.
+   *
+   * `result_status` repeats as a query param rather than joining with commas —
+   * the gateway forwards every value and the backend model is a list.
+   */
+  async listEncounterReports(
+    params: EncounterReportsQuery
+  ): Promise<PaginatedResponse<EncounterReportsRow>> {
+    const response = await apiFetch(
+      `/api/v1/admin/encounter-reports?${buildEncounterReportsQuery(params)}`
+    );
+    return response.json();
+  }
+
+  /**
+   * Counters behind the filter chips. Takes the same params as the list; the
+   * server ignores the chip filters so each chip counts what it would select.
+   */
+  async getEncounterReportStats(params: EncounterReportsQuery): Promise<EncounterReportsStats> {
+    const response = await apiFetch(
+      `/api/v1/admin/encounter-reports/stats?${buildEncounterReportsQuery(params)}`
+    );
     return response.json();
   }
 

@@ -1,6 +1,16 @@
 import { describe, expect, test } from "vitest";
 
-import { allowedTab, isTabKey, TAB_KEYS, type TabKey } from "./tab-guards";
+import {
+  allowedMatchesSubTab,
+  allowedTab,
+  isMatchesSubTab,
+  isTabKey,
+  MATCHES_DEFAULT_SUB_TAB,
+  MATCHES_SUB_TAB_KEYS,
+  TAB_KEYS,
+  type MatchesSubTab,
+  type TabKey
+} from "./tab-guards";
 
 const NO_PERMS = {
   canUpdateTournament: false,
@@ -67,5 +77,39 @@ describe("isTabKey", () => {
     expect(isTabKey("settings")).toBe(true);
     expect(isTabKey("rank-autofill")).toBe(false);
     expect(isTabKey("")).toBe(false);
+  });
+});
+
+describe("matches sub-tabs", () => {
+  test("the landing segment is a real sub-tab", () => {
+    // The bare /matches path and every rejected segment redirect here, so a
+    // typo in the constant would send both into a 404 loop.
+    expect(MATCHES_SUB_TAB_KEYS).toContain(MATCHES_DEFAULT_SUB_TAB);
+  });
+
+  test.each<MatchesSubTab>([...MATCHES_SUB_TAB_KEYS])(
+    "%s needs match.read and nothing more",
+    (tab) => {
+      expect(allowedMatchesSubTab(tab, { canReadMatch: true })).toBe(true);
+      expect(allowedMatchesSubTab(tab, { canReadMatch: false })).toBe(false);
+    }
+  );
+
+  test("isMatchesSubTab rejects the parent tab and unknown segments", () => {
+    // "matches" is the parent, not a sub-tab: accepting it would make
+    // /matches/matches resolve instead of redirecting.
+    expect(isMatchesSubTab("matches")).toBe(false);
+    expect(isMatchesSubTab("results")).toBe(true);
+    expect(isMatchesSubTab("reports")).toBe(true);
+    expect(isMatchesSubTab("logs")).toBe(true);
+    expect(isMatchesSubTab("maps")).toBe(false);
+    expect(isMatchesSubTab("")).toBe(false);
+  });
+
+  test("logs stays a top-level key so its permanent redirect resolves", () => {
+    // It is gone from the tab bar but the old /logs path still exists and 308s;
+    // dropping the key would make the shell bounce that request to overview
+    // before the redirect could run.
+    expect(isTabKey("logs")).toBe(true);
   });
 });

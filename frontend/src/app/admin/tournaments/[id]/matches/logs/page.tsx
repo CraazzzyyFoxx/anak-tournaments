@@ -3,11 +3,11 @@
 import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
 import { usePermissions } from "@/hooks/usePermissions";
-import { tabFallback, useHubEncountersQuery, useHubTournamentQuery } from "../hubQueries";
+import { tabFallback, useHubEncountersQuery, useHubTournamentQuery } from "../../hubQueries";
 
 const TournamentLogsTab = dynamic(
   () =>
-    import("../components/TournamentLogsTab").then((module) => ({
+    import("../../components/TournamentLogsTab").then((module) => ({
       default: module.TournamentLogsTab
     })),
   { loading: () => tabFallback }

@@ -11,11 +11,11 @@ import {
   useHubStandingsQuery,
   useHubTeamsQuery,
   useHubTournamentQuery
-} from "../hubQueries";
+} from "../../hubQueries";
 
 const TournamentMatchesTab = dynamic(
   () =>
-    import("../components/TournamentMatchesTab").then((module) => ({
+    import("../../components/TournamentMatchesTab").then((module) => ({
       default: module.TournamentMatchesTab
     })),
   { loading: () => tabFallback }

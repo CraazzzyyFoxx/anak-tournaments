@@ -45,3 +45,37 @@ export function allowedTab(
       return true;
   }
 }
+
+/**
+ * Sub-tabs of the `matches` hub tab.
+ *
+ * `results` is the landing segment: `/matches` redirects to it, and anything
+ * unknown or unpermitted bounces there too. `logs` used to be a top-level tab
+ * and keeps a permanent redirect from its old path.
+ */
+export const MATCHES_SUB_TAB_KEYS = ["results", "reports", "logs"] as const;
+
+export type MatchesSubTab = (typeof MATCHES_SUB_TAB_KEYS)[number];
+
+export const MATCHES_DEFAULT_SUB_TAB: MatchesSubTab = "results";
+
+export function isMatchesSubTab(value: string): value is MatchesSubTab {
+  return (MATCHES_SUB_TAB_KEYS as readonly string[]).includes(value);
+}
+
+/**
+ * Reading a sub-tab needs `match.read`; the write actions inside each one gate
+ * themselves. Kept as a predicate rather than inlined so the tab bar and the
+ * route guard cannot drift — a hidden tab that is still reachable by URL is the
+ * bug this shape prevents.
+ */
+export function allowedMatchesSubTab(tab: MatchesSubTab, p: { canReadMatch: boolean }): boolean {
+  switch (tab) {
+    case "results":
+    case "reports":
+    case "logs":
+      return p.canReadMatch;
+    default:
+      return false;
+  }
+}

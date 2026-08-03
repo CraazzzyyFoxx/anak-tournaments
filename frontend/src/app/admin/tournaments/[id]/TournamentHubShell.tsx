@@ -24,8 +24,13 @@ import {
 import { allowedTab, isTabKey, type TabKey } from "./tab-guards";
 
 /**
- * Hub tab bar (D2, D20). `draft`/`veto`/`logs` are transitional and retire in
- * Phase 2 with permanent redirects.
+ * Hub tab bar (D2, D20). `draft`/`veto` are transitional and retire in Phase 2
+ * with permanent redirects.
+ *
+ * `logs` is absent on purpose: it became a sub-tab of Play & Results and its old
+ * top-level path now 308s. The key stays in `TAB_KEYS` so the shell still
+ * resolves that path to a real tab while the redirect runs, instead of flashing
+ * the overview guard on the way through.
  */
 const TAB_BAR: ReadonlyArray<{ key: TabKey; label: string }> = [
   { key: "overview", label: "Overview" },
@@ -33,7 +38,6 @@ const TAB_BAR: ReadonlyArray<{ key: TabKey; label: string }> = [
   { key: "teams", label: "Teams" },
   { key: "stages", label: "Stages" },
   { key: "matches", label: "Play & Results" },
-  { key: "logs", label: "Logs" },
   { key: "draft", label: "Draft" },
   { key: "veto", label: "Map Veto" },
   { key: "settings", label: "Settings" }
