@@ -212,6 +212,28 @@ DOCS: dict[str, dict] = {
             "409 when there is no recorded result. Requires match-update permission on the encounter's workspace."
         ),
     },
+    "rpc.tournament.admin_encounter_reports_list": {
+        "summary": "List captain reports",
+        "description": (
+            "Every encounter in the workspace with the pair of captain reports filed against it. "
+            "The row is the encounter, not the report, because a dispute spans two reports and the "
+            "action that settles it is per-encounter. `scores_match` is null until both sides have "
+            "reported \u2014 that is a different state from disagreeing. `series_score_valid` is "
+            "advisory: reports predate per-round best-of, so a mismatch is information, not an error. "
+            "Filter with `tournament_id`, `stage_id`, `result_status`, `mismatch_only`, "
+            "`reported_count` and a free-text `query` over team and encounter names. "
+            "Requires `match.read` on the workspace named by `workspace_id`."
+        ),
+    },
+    "rpc.tournament.admin_encounter_reports_stats": {
+        "summary": "Captain report counters",
+        "description": (
+            "Counts behind the list's filter chips. Scoped by `tournament_id`, `stage_id` and "
+            "`query`, but deliberately NOT by the chip filters themselves \u2014 each chip reports "
+            "how many rows it would select, so selecting one does not zero the others. "
+            "Requires `match.read` on the workspace named by `workspace_id`."
+        ),
+    },
     "rpc.tournament.encounter_result_audit": {
         "summary": "Get encounter result history",
         "description": (

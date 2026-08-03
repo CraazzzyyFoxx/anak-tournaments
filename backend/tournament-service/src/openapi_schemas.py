@@ -268,4 +268,13 @@ OPERATIONS: dict[str, Op] = {
     ),
     "rpc.tournament.encounter_reopen_result": Op(response=admin_encounter.EncounterResultRead),
     "rpc.tournament.encounter_result_audit": Op(response=admin_encounter.EncounterResultAuditRead, response_array=True),
+    # ── captain reports admin list (cross-tournament, workspace-scoped) ────
+    "rpc.tournament.admin_encounter_reports_list": Op(
+        response=Paginated[admin_reports.EncounterReportsRow],
+        query=admin_reports.EncounterReportsQueryParams,
+    ),
+    "rpc.tournament.admin_encounter_reports_stats": Op(
+        response=admin_reports.EncounterReportsStats,
+        query=admin_reports.EncounterReportsQueryParams,
+    ),
 }

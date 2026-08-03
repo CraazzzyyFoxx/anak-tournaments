@@ -5291,6 +5291,320 @@
       },
       "summary": "Update tournament"
     },
+    "rpc.tournament.admin_encounter_reports_list": {
+      "description": "Every encounter in the workspace with the pair of captain reports filed against it. The row is the encounter, not the report, because a dispute spans two reports and the action that settles it is per-encounter. `scores_match` is null until both sides have reported \u2014 that is a different state from disagreeing. `series_score_valid` is advisory: reports predate per-round best-of, so a mismatch is information, not an error. Filter with `tournament_id`, `stage_id`, `result_status`, `mismatch_only`, `reported_count` and a free-text `query` over team and encounter names. Requires `match.read` on the workspace named by `workspace_id`.",
+      "query_params": [
+        {
+          "name": "page",
+          "required": false,
+          "schema": {
+            "default": 1,
+            "minimum": 1,
+            "title": "Page",
+            "type": "integer"
+          }
+        },
+        {
+          "name": "per_page",
+          "required": false,
+          "schema": {
+            "default": 10,
+            "maximum": 100,
+            "minimum": -1,
+            "title": "Per Page",
+            "type": "integer"
+          }
+        },
+        {
+          "name": "entities",
+          "required": false,
+          "schema": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Entities",
+            "type": "array"
+          }
+        },
+        {
+          "name": "only_count",
+          "required": false,
+          "schema": {
+            "default": false,
+            "title": "Only Count",
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "sort",
+          "required": false,
+          "schema": {
+            "default": "id",
+            "title": "Sort",
+            "type": "string"
+          }
+        },
+        {
+          "name": "order",
+          "required": false,
+          "schema": {
+            "$ref": "#/components/schemas/tournament.SortOrder",
+            "default": "asc"
+          }
+        },
+        {
+          "name": "query",
+          "required": false,
+          "schema": {
+            "default": "",
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        {
+          "name": "fields",
+          "required": false,
+          "schema": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Fields",
+            "type": "array"
+          }
+        },
+        {
+          "name": "tournament_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Tournament Id"
+          }
+        },
+        {
+          "name": "stage_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Stage Id"
+          }
+        },
+        {
+          "name": "result_status",
+          "required": false,
+          "schema": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/tournament.EncounterResultStatus"
+            },
+            "title": "Result Status",
+            "type": "array"
+          }
+        },
+        {
+          "name": "mismatch_only",
+          "required": false,
+          "schema": {
+            "default": false,
+            "title": "Mismatch Only",
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "reported_count",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reported Count"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "tournament.Paginated_EncounterReportsRow_"
+      },
+      "summary": "List captain reports"
+    },
+    "rpc.tournament.admin_encounter_reports_stats": {
+      "description": "Counts behind the list's filter chips. Scoped by `tournament_id`, `stage_id` and `query`, but deliberately NOT by the chip filters themselves \u2014 each chip reports how many rows it would select, so selecting one does not zero the others. Requires `match.read` on the workspace named by `workspace_id`.",
+      "query_params": [
+        {
+          "name": "page",
+          "required": false,
+          "schema": {
+            "default": 1,
+            "minimum": 1,
+            "title": "Page",
+            "type": "integer"
+          }
+        },
+        {
+          "name": "per_page",
+          "required": false,
+          "schema": {
+            "default": 10,
+            "maximum": 100,
+            "minimum": -1,
+            "title": "Per Page",
+            "type": "integer"
+          }
+        },
+        {
+          "name": "entities",
+          "required": false,
+          "schema": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Entities",
+            "type": "array"
+          }
+        },
+        {
+          "name": "only_count",
+          "required": false,
+          "schema": {
+            "default": false,
+            "title": "Only Count",
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "sort",
+          "required": false,
+          "schema": {
+            "default": "id",
+            "title": "Sort",
+            "type": "string"
+          }
+        },
+        {
+          "name": "order",
+          "required": false,
+          "schema": {
+            "$ref": "#/components/schemas/tournament.SortOrder",
+            "default": "asc"
+          }
+        },
+        {
+          "name": "query",
+          "required": false,
+          "schema": {
+            "default": "",
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        {
+          "name": "fields",
+          "required": false,
+          "schema": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Fields",
+            "type": "array"
+          }
+        },
+        {
+          "name": "tournament_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Tournament Id"
+          }
+        },
+        {
+          "name": "stage_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Stage Id"
+          }
+        },
+        {
+          "name": "result_status",
+          "required": false,
+          "schema": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/tournament.EncounterResultStatus"
+            },
+            "title": "Result Status",
+            "type": "array"
+          }
+        },
+        {
+          "name": "mismatch_only",
+          "required": false,
+          "schema": {
+            "default": false,
+            "title": "Mismatch Only",
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "reported_count",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reported Count"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "tournament.EncounterReportsStats"
+      },
+      "summary": "Captain report counters"
+    },
     "rpc.tournament.admin_veto_act": {
       "description": "Performs a ban or pick on behalf of the given side (admin override of the captain flow) and returns the updated pool entry; requires match-update permission on its workspace.",
       "summary": "Veto for a side"
@@ -5325,6 +5639,10 @@
     },
     "rpc.tournament.captain_reports": {
       "description": "Returns both captains' reports for an encounter (score, closeness, per-map codes); visible to anyone who can view the encounter.",
+      "response": {
+        "array": true,
+        "ref": "tournament.CaptainReportRead"
+      },
       "summary": "Get captain reports"
     },
     "rpc.tournament.captain_submit_report": {
@@ -7186,6 +7504,26 @@
         "ref": "tournament.OverallStatistics"
       },
       "summary": "Get overall statistics"
+    },
+    "rpc.tournament.sub_config_list": {
+      "description": "Returns every configurable subscription provider for a workspace (present or not) with its raw ids; challenge codes are redacted to tier and expiry only; requires team-read permission.",
+      "response": {
+        "array": false,
+        "ref": "tournament.SubscriptionProviderConfigListResponse"
+      },
+      "summary": "List subscription providers"
+    },
+    "rpc.tournament.sub_config_upsert": {
+      "description": "Creates or updates one provider's config (Discord guild id and role\u2192tier mapping, Twitch broadcaster, challenge codes). Plaintext codes are hashed server-side and never stored; omitting a field keeps the stored value; requires team-update permission.",
+      "request": {
+        "array": false,
+        "ref": "tournament.SubscriptionProviderConfigUpsert"
+      },
+      "response": {
+        "array": false,
+        "ref": "tournament.SubscriptionProviderConfigRead"
+      },
+      "summary": "Configure subscription provider"
     },
     "rpc.tournament.sub_me": {
       "description": "Returns the calling user's composed subscription outcome for the tournament plus a per-provider verdict; never forces a provider refresh; requires authentication.",
@@ -25584,6 +25922,206 @@
       "title": "BulkExclusionResponse",
       "type": "object"
     },
+    "tournament.CaptainReportRead": {
+      "description": "One captain's independent report of an encounter's result.",
+      "properties": {
+        "away_score": {
+          "title": "Away Score",
+          "type": "integer"
+        },
+        "closeness": {
+          "title": "Closeness",
+          "type": "integer"
+        },
+        "created_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Created At"
+        },
+        "encounter_id": {
+          "title": "Encounter Id",
+          "type": "integer"
+        },
+        "home_score": {
+          "title": "Home Score",
+          "type": "integer"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "map_codes": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.EncounterMapCodeRead"
+          },
+          "title": "Map Codes",
+          "type": "array"
+        },
+        "reporter_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reporter Name"
+        },
+        "reporter_user_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reporter User Id"
+        },
+        "side": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Side"
+        },
+        "team_id": {
+          "title": "Team Id",
+          "type": "integer"
+        },
+        "updated_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Updated At"
+        }
+      },
+      "required": [
+        "id",
+        "encounter_id",
+        "team_id",
+        "side",
+        "reporter_user_id",
+        "home_score",
+        "away_score",
+        "closeness",
+        "map_codes",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "CaptainReportRead",
+      "type": "object"
+    },
+    "tournament.ChallengeCodeRead": {
+      "description": "Redacted: never carries the code or its digest.\n\nA digest is still brute-forcible offline, so the UI only learns that a code\nexists, at what tier, and until when.",
+      "properties": {
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        },
+        "tier_label": {
+          "default": "",
+          "title": "Tier Label",
+          "type": "string"
+        },
+        "tier_rank": {
+          "title": "Tier Rank",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "tier_rank"
+      ],
+      "title": "ChallengeCodeRead",
+      "type": "object"
+    },
+    "tournament.ChallengeCodeUpsert": {
+      "description": "A challenge code, supplied either as plaintext (new) or as its digest.\n\nPlaintext is hashed server-side and never persisted. The digest form exists so\nthe redacted read model can be sent back unchanged without double-hashing.",
+      "properties": {
+        "code": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Code"
+        },
+        "code_sha256": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Code Sha256"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        },
+        "tier_label": {
+          "default": "",
+          "maxLength": 64,
+          "title": "Tier Label",
+          "type": "string"
+        },
+        "tier_rank": {
+          "default": 1,
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Tier Rank",
+          "type": "integer"
+        }
+      },
+      "title": "ChallengeCodeUpsert",
+      "type": "object"
+    },
     "tournament.ChallongeMatch": {
       "properties": {
         "created_at": {
@@ -28007,6 +28545,41 @@
       "title": "EncounterKpiRead",
       "type": "object"
     },
+    "tournament.EncounterMapCodeRead": {
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "map_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Map Id"
+        },
+        "map_index": {
+          "title": "Map Index",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "map_index",
+        "map_id",
+        "code"
+      ],
+      "title": "EncounterMapCodeRead",
+      "type": "object"
+    },
     "tournament.EncounterMapMetricRead": {
       "properties": {
         "count": {
@@ -28395,6 +28968,291 @@
         "matches"
       ],
       "title": "EncounterRead",
+      "type": "object"
+    },
+    "tournament.EncounterReportsQueryParams": {
+      "description": "Wire shape of the list's query string.",
+      "properties": {
+        "entities": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Entities",
+          "type": "array"
+        },
+        "fields": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Fields",
+          "type": "array"
+        },
+        "mismatch_only": {
+          "default": false,
+          "title": "Mismatch Only",
+          "type": "boolean"
+        },
+        "only_count": {
+          "default": false,
+          "title": "Only Count",
+          "type": "boolean"
+        },
+        "order": {
+          "$ref": "#/components/schemas/tournament.SortOrder",
+          "default": "asc"
+        },
+        "page": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Page",
+          "type": "integer"
+        },
+        "per_page": {
+          "default": 10,
+          "maximum": 100,
+          "minimum": -1,
+          "title": "Per Page",
+          "type": "integer"
+        },
+        "query": {
+          "default": "",
+          "title": "Query",
+          "type": "string"
+        },
+        "reported_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reported Count"
+        },
+        "result_status": {
+          "default": [],
+          "items": {
+            "$ref": "#/components/schemas/tournament.EncounterResultStatus"
+          },
+          "title": "Result Status",
+          "type": "array"
+        },
+        "sort": {
+          "default": "id",
+          "title": "Sort",
+          "type": "string"
+        },
+        "stage_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stage Id"
+        },
+        "tournament_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tournament Id"
+        }
+      },
+      "title": "EncounterReportsQueryParams",
+      "type": "object"
+    },
+    "tournament.EncounterReportsRow": {
+      "description": "One encounter plus the pair of reports filed against it.\n\nThe row, not the report, is the unit: a dispute spans two reports and the\naction that resolves it is per-encounter.",
+      "properties": {
+        "away_report": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/tournament.CaptainReportRead"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "away_team": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/tournament.EncounterTeamRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "best_of": {
+          "title": "Best Of",
+          "type": "integer"
+        },
+        "home_report": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/tournament.CaptainReportRead"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "home_team": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/tournament.EncounterTeamRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "last_resolution": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/tournament.LastResolutionRead"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "reported_count": {
+          "title": "Reported Count",
+          "type": "integer"
+        },
+        "result_status": {
+          "$ref": "#/components/schemas/tournament.EncounterResultStatus"
+        },
+        "round": {
+          "title": "Round",
+          "type": "integer"
+        },
+        "scheduled_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Scheduled At"
+        },
+        "scores_match": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Scores Match"
+        },
+        "series_score_valid": {
+          "title": "Series Score Valid",
+          "type": "boolean"
+        },
+        "stage_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Stage Name"
+        },
+        "status": {
+          "$ref": "#/components/schemas/tournament.EncounterStatus"
+        },
+        "tournament_id": {
+          "title": "Tournament Id",
+          "type": "integer"
+        },
+        "tournament_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Tournament Name"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "tournament_id",
+        "tournament_name",
+        "stage_name",
+        "round",
+        "best_of",
+        "status",
+        "result_status",
+        "scheduled_at",
+        "home_team",
+        "away_team",
+        "home_report",
+        "away_report",
+        "reported_count",
+        "scores_match",
+        "series_score_valid",
+        "last_resolution"
+      ],
+      "title": "EncounterReportsRow",
+      "type": "object"
+    },
+    "tournament.EncounterReportsStats": {
+      "description": "Server-computed counters behind the filter chips.\n\nComputed server-side so a chip never reflects only the current page.",
+      "properties": {
+        "awaiting_second_count": {
+          "title": "Awaiting Second Count",
+          "type": "integer"
+        },
+        "by_result_status": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "By Result Status",
+          "type": "object"
+        },
+        "mismatch_count": {
+          "title": "Mismatch Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "by_result_status",
+        "mismatch_count",
+        "awaiting_second_count"
+      ],
+      "title": "EncounterReportsStats",
       "type": "object"
     },
     "tournament.EncounterResultAuditAction": {
@@ -29040,6 +29898,31 @@
       "title": "EncounterSummaryRead",
       "type": "object"
     },
+    "tournament.EncounterTeamRef": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "EncounterTeamRef",
+      "type": "object"
+    },
     "tournament.EncounterUpdate": {
       "description": "Schema for updating an encounter",
       "properties": {
@@ -29360,6 +30243,49 @@
         "color"
       ],
       "title": "HeroRead",
+      "type": "object"
+    },
+    "tournament.LastResolutionRead": {
+      "description": "The newest audit row for the encounter, flattened for the list row.",
+      "properties": {
+        "action": {
+          "$ref": "#/components/schemas/tournament.EncounterResultAuditAction"
+        },
+        "actor_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Actor Name"
+        },
+        "actor_user_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Actor User Id"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "actor_user_id",
+        "actor_name",
+        "created_at"
+      ],
+      "title": "LastResolutionRead",
       "type": "object"
     },
     "tournament.LeaguePlayerStack": {
@@ -30242,6 +31168,37 @@
         "results"
       ],
       "title": "Paginated[EncounterRead]",
+      "type": "object"
+    },
+    "tournament.Paginated_EncounterReportsRow_": {
+      "properties": {
+        "page": {
+          "title": "Page",
+          "type": "integer"
+        },
+        "per_page": {
+          "title": "Per Page",
+          "type": "integer"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.EncounterReportsRow"
+          },
+          "title": "Results",
+          "type": "array"
+        },
+        "total": {
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "page",
+        "per_page",
+        "total",
+        "results"
+      ],
+      "title": "Paginated[EncounterReportsRow]",
       "type": "object"
     },
     "tournament.Paginated_MatchRead_": {
@@ -31663,6 +32620,58 @@
       "title": "RegistrationUserExportResponse",
       "type": "object"
     },
+    "tournament.RoleTierRead": {
+      "properties": {
+        "role_id": {
+          "title": "Role Id",
+          "type": "string"
+        },
+        "tier_label": {
+          "default": "",
+          "title": "Tier Label",
+          "type": "string"
+        },
+        "tier_rank": {
+          "title": "Tier Rank",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "role_id",
+        "tier_rank"
+      ],
+      "title": "RoleTierRead",
+      "type": "object"
+    },
+    "tournament.RoleTierUpsert": {
+      "description": "One ``discord role -> subscription tier`` mapping.\n\n``role_id`` is a string because a Discord snowflake exceeds 2**53 and must\nnever survive a float round-trip.",
+      "properties": {
+        "role_id": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Role Id",
+          "type": "string"
+        },
+        "tier_label": {
+          "default": "",
+          "maxLength": 64,
+          "title": "Tier Label",
+          "type": "string"
+        },
+        "tier_rank": {
+          "default": 1,
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Tier Rank",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "role_id"
+      ],
+      "title": "RoleTierUpsert",
+      "type": "object"
+    },
     "tournament.RoleWithSubrole": {
       "properties": {
         "is_primary": {
@@ -33070,6 +34079,175 @@
         "label"
       ],
       "title": "SubroleOption",
+      "type": "object"
+    },
+    "tournament.SubscriptionProviderConfigListResponse": {
+      "properties": {
+        "configs": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.SubscriptionProviderConfigRead"
+          },
+          "title": "Configs",
+          "type": "array"
+        }
+      },
+      "title": "SubscriptionProviderConfigListResponse",
+      "type": "object"
+    },
+    "tournament.SubscriptionProviderConfigRead": {
+      "properties": {
+        "broadcaster_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Broadcaster Id"
+        },
+        "broadcaster_login": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Broadcaster Login"
+        },
+        "codes": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.ChallengeCodeRead"
+          },
+          "title": "Codes",
+          "type": "array"
+        },
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "guild_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Guild Id"
+        },
+        "provider": {
+          "title": "Provider",
+          "type": "string"
+        },
+        "role_tiers": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.RoleTierRead"
+          },
+          "title": "Role Tiers",
+          "type": "array"
+        }
+      },
+      "required": [
+        "provider"
+      ],
+      "title": "SubscriptionProviderConfigRead",
+      "type": "object"
+    },
+    "tournament.SubscriptionProviderConfigUpsert": {
+      "description": "Per-workspace provider setup.\n\nEvery field except ``provider``/``enabled`` is optional and OMITTING it keeps\nwhatever is stored. That matters most for ``codes``: the admin never sees the\nexisting ones (only digests are kept), so a plain save must not wipe them.\nPassing an explicit list replaces them.",
+      "properties": {
+        "broadcaster_id": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Broadcaster Id"
+        },
+        "broadcaster_login": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Broadcaster Login"
+        },
+        "codes": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/components/schemas/tournament.ChallengeCodeUpsert"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Codes"
+        },
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "guild_id": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Guild Id"
+        },
+        "provider": {
+          "title": "Provider",
+          "type": "string"
+        },
+        "role_tiers": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/components/schemas/tournament.RoleTierUpsert"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Role Tiers"
+        }
+      },
+      "required": [
+        "provider"
+      ],
+      "title": "SubscriptionProviderConfigUpsert",
       "type": "object"
     },
     "tournament.SubscriptionProviderVerdictRead": {

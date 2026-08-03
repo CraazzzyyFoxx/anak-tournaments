@@ -132,6 +132,32 @@ func TestApiV1Guard_NoConflictAndNoLoop(t *testing.T) {
 	}
 }
 
+// A new /api/v1/admin/... path is only reachable if it is in a table main.go
+// registers — otherwise the /api/v1/ guard answers 404 and the feature is dead
+// on arrival with no compile error to warn anyone. These two ride the existing
+// AdminMiscRoutes table, and this pins that they actually made it onto the mux.
+func TestApiV1Guard_EncounterReportsRoutesAreRegistered(t *testing.T) {
+	mux := buildGuardedMux(t)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	for _, path := range []string{
+		"/api/v1/admin/encounter-reports?workspace_id=1",
+		"/api/v1/admin/encounter-reports/stats?workspace_id=1",
+	} {
+		t.Run(path, func(t *testing.T) {
+			resp, err := http.Get(srv.URL + path)
+			if err != nil {
+				t.Fatalf("GET %s: %v", path, err)
+			}
+			defer resp.Body.Close()
+			if route := resp.Header.Get("X-Route"); route == "guard" {
+				t.Fatalf("GET %s hit the /api/v1/ guard — the route is not registered", path)
+			}
+		})
+	}
+}
+
 // buildBalancerGuardedMux mirrors gateway/cmd/gateway/main.go's /api/balancer
 // wiring. Building it must NOT panic (a ServeMux pattern conflict would crash the
 // gateway at startup). The HTTP balancer-service is decommissioned: every

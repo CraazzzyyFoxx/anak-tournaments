@@ -19,6 +19,12 @@ var AdminMiscRoutes = []edge.RouteSpec{
 	{Method: "POST", Pattern: "/api/v1/admin/encounters/{encounter_id}/result/reopen", Queue: "rpc.tournament.encounter_reopen_result", IDParam: "encounter_id", Auth: edge.AuthRequired},
 	{Method: "GET", Pattern: "/api/v1/admin/encounters/{encounter_id}/result-audit", Queue: "rpc.tournament.encounter_result_audit", IDParam: "encounter_id", Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/admin/encounters/{encounter_id}/map-pool", Queue: "rpc.tournament.encounter_assign_map_pool", IDParam: "encounter_id", Body: true, Auth: edge.AuthRequired},
+	// captain reports — cross-tournament, workspace-scoped (?workspace_id=). Both
+	// carry the same filter set, so both take AllQuery. The /stats literal is
+	// listed first: this table is scanned in order and a later bare-collection
+	// pattern must never shadow a more specific literal under it.
+	{Method: "GET", Pattern: "/api/v1/admin/encounter-reports/stats", Queue: "rpc.tournament.admin_encounter_reports_stats", AllQuery: true, Auth: edge.AuthRequired},
+	{Method: "GET", Pattern: "/api/v1/admin/encounter-reports", Queue: "rpc.tournament.admin_encounter_reports_list", AllQuery: true, Auth: edge.AuthRequired},
 	// map veto (docs/plans/map-veto-redesign.md) — config CRUD keyed by tournament
 	// (upsert key = tournament/stage/round in the body) plus per-encounter session
 	// reset and admin-forced actions. Worker enforces workspace "match"/"update".
