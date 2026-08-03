@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Literal
 
 from sqlalchemy import select
@@ -62,7 +62,6 @@ async def finalize_encounter_score(
     encounter: Encounter | None = None,
     status: EncounterStatus = EncounterStatus.COMPLETED,
     result_status: EncounterResultStatus | None = None,
-    confirmed_by_id: int | None = None,
     confirmed_at: datetime | None = None,
     post_advance: PostAdvanceHook | None = None,
 ) -> FinalizedEncounterScore:
@@ -96,9 +95,8 @@ async def finalize_encounter_score(
     if result_status is not None:
         locked_encounter.result_status = result_status
 
-    if confirmed_by_id is not None or confirmed_at is not None:
-        locked_encounter.confirmed_by_id = confirmed_by_id
-        locked_encounter.confirmed_at = confirmed_at or datetime.now(UTC)
+    if confirmed_at is not None:
+        locked_encounter.confirmed_at = confirmed_at
 
     advanced_encounters = await advancement.advance_winner(session, locked_encounter)
     # Bracket propagation is THE write path where encounter team slots become

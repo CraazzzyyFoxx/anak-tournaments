@@ -40,7 +40,6 @@ async def finalize_encounter_score(
     encounter: models.Encounter | None = None,
     status: EncounterStatus = EncounterStatus.COMPLETED,
     result_status: EncounterResultStatus | None = None,
-    confirmed_by_id: int | None = None,
     confirmed_at: datetime | None = None,
 ) -> FinalizedEncounterScore:
     """Finalize an encounter score, keeping affected veto sessions in sync.
@@ -57,7 +56,6 @@ async def finalize_encounter_score(
         encounter=encounter,
         status=status,
         result_status=result_status,
-        confirmed_by_id=confirmed_by_id,
         confirmed_at=confirmed_at,
         post_advance=veto_session_service.sync_veto_session_after_team_change,
     )

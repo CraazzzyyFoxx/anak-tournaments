@@ -275,6 +275,23 @@ class EncounterResultStatus(StrEnum):
     DISPUTED = "disputed"
 
 
+class EncounterResultAuditAction(StrEnum):
+    """What moved an encounter's result. One row per transition.
+
+    ``confirm``/``reopen`` are admin actions; ``auto_confirm``/``auto_dispute``
+    are derived from the two captain reports; ``import`` is Challonge pulling a
+    remote result in; ``cascade_reset`` is the bracket un-playing an encounter
+    whose team slots changed upstream.
+    """
+
+    CONFIRM = "confirm"
+    REOPEN = "reopen"
+    AUTO_CONFIRM = "auto_confirm"
+    AUTO_DISPUTE = "auto_dispute"
+    IMPORT = "import"
+    CASCADE_RESET = "cascade_reset"
+
+
 class MapPoolEntryStatus(StrEnum):
     AVAILABLE = "available"
     PICKED = "picked"

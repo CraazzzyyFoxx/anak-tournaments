@@ -554,6 +554,7 @@ GF_ENCOUNTER_ID = 5660
 LITNIK_CAPTAIN = 100  # home captain
 AVERET_CAPTAIN = 200  # away captain
 OUTSIDER_CAPTAIN = 999  # captain of a team not in this encounter (e.g. vac3x)
+ADMIN_USER_ID = 900  # workspace admin resolving a dispute (not a captain)
 
 
 @contextmanager
@@ -583,9 +584,6 @@ def _gf_encounter() -> SimpleNamespace:
         home_score=0,
         away_score=0,
         closeness=None,
-        submitted_by_id=None,
-        submitted_at=None,
-        confirmed_by_id=None,
         confirmed_at=None,
         captain_reports=[],
     )
@@ -601,9 +599,15 @@ class _EditorSession(SimpleNamespace):
     inspection.
     """
 
-    def __init__(self, encounter: SimpleNamespace, linked_player_id: int) -> None:
+    def __init__(
+        self,
+        encounter: SimpleNamespace,
+        linked_player_id: int,
+        added: list | None = None,
+    ) -> None:
         execute_count = 0
         captured: list[object] = []
+        collected: list = added if added is not None else []
 
         async def fake_execute(query):
             nonlocal execute_count
@@ -630,9 +634,15 @@ class _EditorSession(SimpleNamespace):
             commit=AsyncMock(),
             refresh=AsyncMock(),
             flush=AsyncMock(),
-            add=lambda _obj: None,
+            add=collected.append,
+            added=collected,
             captured_queries=captured,
         )
+
+
+def _audit_actions(added: list) -> list[str]:
+    """The result-audit trail recorded across a test's sessions, in order."""
+    return [obj.action for obj in added if type(obj).__name__ == "EncounterResultAudit"]
 
 
 class ConcurrentResultEditingTournament72Tests(IsolatedAsyncioTestCase):
@@ -646,6 +656,7 @@ class ConcurrentResultEditingTournament72Tests(IsolatedAsyncioTestCase):
 
     def setUp(self) -> None:
         self.encounter = _gf_encounter()
+        self.added: list = []
         self.recalc = AsyncMock()
         self.completed = AsyncMock()
 
@@ -654,7 +665,6 @@ class ConcurrentResultEditingTournament72Tests(IsolatedAsyncioTestCase):
             self.encounter.result_status = kwargs["result_status"]
             self.encounter.home_score = kwargs["home_score"]
             self.encounter.away_score = kwargs["away_score"]
-            self.encounter.confirmed_by_id = kwargs.get("confirmed_by_id")
             self.encounter.confirmed_at = kwargs.get("confirmed_at")
             return SimpleNamespace(encounter=self.encounter, advanced_encounters=[])
 
@@ -668,7 +678,7 @@ class ConcurrentResultEditingTournament72Tests(IsolatedAsyncioTestCase):
             self.addCleanup(patcher.stop)
 
     def _session(self, player_id: int) -> _EditorSession:
-        return _EditorSession(self.encounter, player_id)
+        return _EditorSession(self.encounter, player_id, added=self.added)
 
     async def _report(self, player_id: int, home_score: int, away_score: int, closeness: int = 5) -> None:
         await captain_service.submit_captain_report(
@@ -712,7 +722,7 @@ class ConcurrentResultEditingTournament72Tests(IsolatedAsyncioTestCase):
         self.assertEqual(enums.EncounterResultStatus.CONFIRMED, self.encounter.result_status)
         self.assertEqual(enums.EncounterStatus.COMPLETED, self.encounter.status)
         self.assertEqual((0, 3), (self.encounter.home_score, self.encounter.away_score))
-        self.assertEqual(AVERET_CAPTAIN, self.encounter.confirmed_by_id)
+        self.assertEqual([enums.EncounterResultAuditAction.AUTO_CONFIRM], _audit_actions(self.added))
         self.assertAlmostEqual(self.encounter.closeness, 0.7)  # avg(8, 6) / 10
         self.assertEqual(1, self.completed.await_count)
 
@@ -722,6 +732,7 @@ class ConcurrentResultEditingTournament72Tests(IsolatedAsyncioTestCase):
         self.assertEqual(enums.EncounterResultStatus.DISPUTED, self.encounter.result_status)
         self.assertIsNone(self.encounter.closeness)
         self.completed.assert_not_awaited()
+        self.assertEqual([enums.EncounterResultAuditAction.AUTO_DISPUTE], _audit_actions(self.added))
 
     async def test_confirmed_result_is_immutable_for_captains(self) -> None:
         await self._report(LITNIK_CAPTAIN, 0, 3)
@@ -739,9 +750,24 @@ class ConcurrentResultEditingTournament72Tests(IsolatedAsyncioTestCase):
         await self._report(AVERET_CAPTAIN, 0, 3)
         self.assertEqual(enums.EncounterResultStatus.DISPUTED, self.encounter.result_status)
 
-        await captain_service.admin_confirm_result(self._session(LITNIK_CAPTAIN), encounter_id=GF_ENCOUNTER_ID)
+        await captain_service.set_encounter_result(
+            self._session(LITNIK_CAPTAIN),
+            GF_ENCOUNTER_ID,
+            actor_user_id=ADMIN_USER_ID,
+            adopt_report_team_id=self.encounter.away_team_id,
+        )
         self.assertEqual(enums.EncounterResultStatus.CONFIRMED, self.encounter.result_status)
         self.assertEqual(enums.EncounterStatus.COMPLETED, self.encounter.status)
+        # The away captain's report (0:3) is adopted verbatim…
+        self.assertEqual((0, 3), (self.encounter.home_score, self.encounter.away_score))
+        # …and the resolution is attributed, unlike the old payload-free confirm.
+        self.assertEqual(
+            [enums.EncounterResultAuditAction.AUTO_DISPUTE, enums.EncounterResultAuditAction.CONFIRM],
+            _audit_actions(self.added),
+        )
+        confirm_row = [o for o in self.added if type(o).__name__ == "EncounterResultAudit"][-1]
+        self.assertEqual(ADMIN_USER_ID, confirm_row.actor_user_id)
+        self.assertEqual(self.encounter.away_team_id, confirm_row.adopted_team_id)
 
 
 # ---------------------------------------------------------------------------
@@ -911,9 +937,6 @@ def _db_encounter(
         closeness=None,
         status=enums.EncounterStatus.OPEN,
         result_status=enums.EncounterResultStatus.NONE,
-        submitted_by_id=None,
-        submitted_at=None,
-        confirmed_by_id=None,
         confirmed_at=None,
         captain_reports=[],
     )
@@ -1029,7 +1052,7 @@ class BracketAutoAdvancementTournament72Tests(IsolatedAsyncioTestCase):
         )
         self.assertEqual(enums.EncounterStatus.COMPLETED, self.ub_final.status)
         self.assertEqual(enums.EncounterResultStatus.CONFIRMED, self.ub_final.result_status)
-        self.assertEqual(LITNIK_CAPTAIN, self.ub_final.confirmed_by_id)
+        self.assertIsNotNone(self.ub_final.confirmed_at)
 
         # …and the bracket moves forward automatically: winner → GF home,
         # loser → LB Final away, names rebuilt from real team names.

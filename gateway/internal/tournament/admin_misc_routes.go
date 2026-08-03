@@ -14,7 +14,12 @@ var AdminMiscRoutes = []edge.RouteSpec{
 	// encounter.py — bulk takes encounter_ids from the body (no path id).
 	{Method: "PATCH", Pattern: "/api/v1/admin/encounters/bulk", Queue: "rpc.tournament.encounter_bulk_update", Body: true, Auth: edge.AuthRequired},
 	{Method: "PATCH", Pattern: "/api/v1/admin/encounters/matches/{match_id}", Queue: "rpc.tournament.encounter_update_match", IDParam: "match_id", Body: true, Auth: edge.AuthRequired},
-	{Method: "POST", Pattern: "/api/v1/admin/encounters/{encounter_id}/confirm-result", Queue: "rpc.tournament.encounter_confirm_result", IDParam: "encounter_id", Auth: edge.AuthRequired},
+	// The single admin result write: score + status + result_status + audit row
+	// move together, so a dispute can never be left half-resolved. reopen is the
+	// only way out of a dispute an admin does not want to force-confirm.
+	{Method: "POST", Pattern: "/api/v1/admin/encounters/{encounter_id}/result", Queue: "rpc.tournament.encounter_set_result", IDParam: "encounter_id", Body: true, Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/admin/encounters/{encounter_id}/result/reopen", Queue: "rpc.tournament.encounter_reopen_result", IDParam: "encounter_id", Auth: edge.AuthRequired},
+	{Method: "GET", Pattern: "/api/v1/admin/encounters/{encounter_id}/result-audit", Queue: "rpc.tournament.encounter_result_audit", IDParam: "encounter_id", Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/admin/encounters/{encounter_id}/map-pool", Queue: "rpc.tournament.encounter_assign_map_pool", IDParam: "encounter_id", Body: true, Auth: edge.AuthRequired},
 	// map veto (docs/plans/map-veto-redesign.md) — config CRUD keyed by tournament
 	// (upsert key = tournament/stage/round in the body) plus per-encounter session

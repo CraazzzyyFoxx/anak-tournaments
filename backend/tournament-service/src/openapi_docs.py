@@ -193,6 +193,33 @@ DOCS: dict[str, dict] = {
         "summary": "Delete encounter",
         "description": "Deletes an encounter by id (204 no body); requires match-delete permission on its workspace.",
     },
+    # ── encounter result (the single admin write + its audit trail) ────────
+    "rpc.tournament.encounter_set_result": {
+        "summary": "Set encounter result",
+        "description": (
+            "Confirms an encounter result in one transaction: score, status, result_status and the audit row "
+            "move together. The score is taken from the first available source — an explicit home_score/away_score, "
+            "the report of adopt_report_team_id, both reports when they agree, or the encounter's own non-zero "
+            "score — and 422 when none applies. 409 when the result is already confirmed (reopen it first). "
+            "Requires match-update permission on the encounter's workspace."
+        ),
+    },
+    "rpc.tournament.encounter_reopen_result": {
+        "summary": "Reopen encounter result",
+        "description": (
+            "Un-confirms an encounter so it can be replayed or re-reported, clearing its score, closeness and "
+            "confirmation, and cascading through anything the old result advanced. Captain reports are kept. "
+            "409 when there is no recorded result. Requires match-update permission on the encounter's workspace."
+        ),
+    },
+    "rpc.tournament.encounter_result_audit": {
+        "summary": "Get encounter result history",
+        "description": (
+            "Returns every recorded transition of the encounter's result, newest first. A null actor_user_id "
+            "means a machine actor (Challonge import, bracket cascade). Requires match-read permission on the "
+            "encounter's workspace."
+        ),
+    },
     # ── generic CRUD engine: standing ──────────────────────────────────────
     "rpc.tournament.admin.update#standing": {
         "summary": "Update standing",
@@ -602,7 +629,15 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.reg_pub_check_in": {
         "summary": "Check in to tournament",
-        "description": "Checks the calling user's own registration in, blocking when the form requires a confirmed-public OW profile that is private; requires authentication.",
+        "description": "Checks the calling user's own registration in, blocking when the form requires a confirmed-public OW profile that is private, or when a required subscription is confirmed missing (an undetermined verdict fails open); requires authentication.",
+    },
+    "rpc.tournament.sub_me": {
+        "summary": "My subscription status",
+        "description": "Returns the calling user's composed subscription outcome for the tournament plus a per-provider verdict; never forces a provider refresh; requires authentication.",
+    },
+    "rpc.tournament.sub_redeem_code": {
+        "summary": "Redeem a subscription code",
+        "description": "Redeems a challenge code published in a subscriber-only post, granting an entitlement at the code's tier; never downgrades an existing higher tier and is rate-limited per user; requires authentication.",
     },
     "rpc.tournament.reg_pub_list": {
         "summary": "List public registrations",

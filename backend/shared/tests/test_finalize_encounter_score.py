@@ -8,6 +8,7 @@ session — no database, matching the repo's IsolatedAsyncioTestCase convention.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
 from unittest import IsolatedAsyncioTestCase
@@ -18,6 +19,8 @@ from sqlalchemy.dialects import postgresql
 from shared.core import enums
 from shared.core.errors import BaseAPIException
 from shared.services.encounter import finalize
+
+_NOW = datetime(2026, 8, 3, 12, 0, tzinfo=UTC)
 
 
 class _Result:
@@ -60,7 +63,6 @@ def _encounter(**overrides: Any) -> SimpleNamespace:
         "stage_id": None,
         "status": enums.EncounterStatus.OPEN,
         "result_status": enums.EncounterResultStatus.NONE,
-        "confirmed_by_id": None,
         "confirmed_at": None,
     }
     base.update(overrides)
@@ -85,7 +87,7 @@ class FinalizeEncounterScoreTests(IsolatedAsyncioTestCase):
                 away_score=1,
                 source="admin",
                 result_status=enums.EncounterResultStatus.CONFIRMED,
-                confirmed_by_id=200,
+                confirmed_at=_NOW,
             )
 
         self.assertIs(result.encounter, encounter)
@@ -93,8 +95,7 @@ class FinalizeEncounterScoreTests(IsolatedAsyncioTestCase):
         self.assertEqual(1, encounter.away_score)
         self.assertEqual(enums.EncounterStatus.COMPLETED, encounter.status)
         self.assertEqual(enums.EncounterResultStatus.CONFIRMED, encounter.result_status)
-        self.assertEqual(200, encounter.confirmed_by_id)
-        self.assertIsNotNone(encounter.confirmed_at)
+        self.assertEqual(_NOW, encounter.confirmed_at)
         self.assertEqual(1, advance_winner.await_count)
         self.assertIn("FOR UPDATE", _compiled_sql(session.statement))
 

@@ -73,9 +73,6 @@ class EncounterRead(BaseRead):
     started_at: datetime | None = None
     ended_at: datetime | None = None
     current_map_index: int | None = None
-    submitted_by_id: int | None = None
-    submitted_at: datetime | None = None
-    confirmed_by_id: int | None = None
     confirmed_at: datetime | None = None
 
     stage: StageSummaryRead | None

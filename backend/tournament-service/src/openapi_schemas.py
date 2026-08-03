@@ -146,9 +146,7 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.grid_version_readiness": Op(response=schemas.DivisionGridActivationReadiness),
     "rpc.tournament.grid_version_activate": Op(response=schemas.DivisionGridVersionRead),
     "rpc.tournament.grid_version_clone": Op(response=schemas.DivisionGridVersionRead),
-    "rpc.tournament.grid_save": Op(
-        request=schemas.DivisionGridSaveRequest, response=schemas.DivisionGridSaveResult
-    ),
+    "rpc.tournament.grid_save": Op(request=schemas.DivisionGridSaveRequest, response=schemas.DivisionGridSaveResult),
     "rpc.tournament.grid_mapping_put": Op(
         request=schemas.DivisionGridMappingWrite, response=schemas.DivisionGridMappingRead
     ),
@@ -244,8 +242,19 @@ OPERATIONS: dict[str, Op] = {
     ),
     "rpc.tournament.reg_pub_withdraw_me": Op(response=reg_schemas.RegistrationStatusResponse),
     "rpc.tournament.reg_pub_check_in": Op(response=reg_schemas.RegistrationRead),
+    "rpc.tournament.sub_me": Op(response=reg_schemas.SubscriptionStatusRead),
+    "rpc.tournament.sub_redeem_code": Op(
+        request=reg_schemas.SubscriptionRedeemRequest,
+        response=reg_schemas.SubscriptionStatusRead,
+    ),
     # ── encounter saved-view write ─────────────────────────────────────────
     "rpc.tournament.saved_view_create": Op(
         request=schemas.EncounterSavedViewCreate, response=schemas.EncounterSavedViewRead
     ),
+    # ── encounter result (the single admin write + its audit trail) ────────
+    "rpc.tournament.encounter_set_result": Op(
+        request=admin_encounter.EncounterSetResultInput, response=admin_encounter.EncounterResultRead
+    ),
+    "rpc.tournament.encounter_reopen_result": Op(response=admin_encounter.EncounterResultRead),
+    "rpc.tournament.encounter_result_audit": Op(response=admin_encounter.EncounterResultAuditRead, response_array=True),
 }

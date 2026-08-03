@@ -80,9 +80,6 @@ def _mk_encounter(
         home_score=0,
         away_score=0,
         closeness=None,
-        submitted_by_id=None,
-        submitted_at=None,
-        confirmed_by_id=None,
         confirmed_at=None,
         captain_reports=captain_reports if captain_reports is not None else [],
     )
@@ -102,25 +99,24 @@ def _mk_session(
         nonlocal execute_count
         execute_count += 1
 
-        if execute_count == 1:
-            result_mock = Mock()
-            result_mock.scalar_one_or_none.return_value = encounter
-            return result_mock
-
-        if execute_count == 2:
-            result_mock = Mock()
-            player = SimpleNamespace(id=linked_player_id) if linked_player_id is not None else None
-            result_mock.scalar_one_or_none.return_value = player
-            return result_mock
-
-        # Any later execute: delete(codes) is ignored; the picked-pool select
-        # reads .all(); challonge resolve reads .all() (empty -> not linked).
+        # Every result answers scalar_one_or_none()/scalars().all()/all(), so any
+        # query shape is safe regardless of call order: the encounter load, the
+        # linked-player lookup, delete(codes), the picked-pool select, the
+        # challonge probe, and the bracket's EncounterLink fan-out.
         result_mock = Mock()
-        result_mock.scalar_one_or_none.return_value = None
         scalars_mock = Mock()
         scalars_mock.all.return_value = []
         result_mock.scalars.return_value = scalars_mock
         result_mock.all.return_value = list(rows)
+
+        if execute_count == 1:  # encounter load
+            result_mock.scalar_one_or_none.return_value = encounter
+        elif execute_count == 2:  # linked-player lookup (submit flow)
+            result_mock.scalar_one_or_none.return_value = (
+                SimpleNamespace(id=linked_player_id) if linked_player_id is not None else None
+            )
+        else:
+            result_mock.scalar_one_or_none.return_value = None
         return result_mock
 
     added: list[object] = []
@@ -133,6 +129,11 @@ def _mk_session(
         add=lambda obj: added.append(obj),
         _added=added,
     )
+
+
+def _audit_rows(session) -> list:
+    """Result-audit rows appended during the call, in order."""
+    return [obj for obj in session._added if type(obj).__name__ == "EncounterResultAudit"]
 
 
 class CaptainReportValidation(IsolatedAsyncioTestCase):
@@ -185,7 +186,10 @@ class CaptainReportFlow(IsolatedAsyncioTestCase):
         recalc.assert_awaited_once_with(session, encounter.tournament_id)
         self.assertEqual(encounter.result_status, enums.EncounterResultStatus.PENDING_CONFIRMATION)
         self.assertIsNone(encounter.closeness)
-        self.assertEqual(encounter.submitted_by_id, 100)
+        self.assertEqual(encounter.captain_reports[0].reporter_user_id, 100)
+        # A first report decides nothing, so it leaves no result-audit row —
+        # who reported is already on the report itself.
+        self.assertEqual([], _audit_rows(session))
         self.assertEqual(len(encounter.captain_reports), 1)
         self.assertEqual(encounter.captain_reports[0].team_id, 1)
         session.commit.assert_awaited_once()
@@ -196,13 +200,11 @@ class CaptainReportFlow(IsolatedAsyncioTestCase):
             result_status=enums.EncounterResultStatus.PENDING_CONFIRMATION,
             captain_reports=[existing],
         )
-        encounter.submitted_by_id = 100
         session = _mk_session(encounter, [200])  # away captain
 
         async def fake_finalize(*_args, **kwargs):
             encounter.status = enums.EncounterStatus.COMPLETED
             encounter.result_status = kwargs["result_status"]
-            encounter.confirmed_by_id = kwargs["confirmed_by_id"]
             encounter.home_score = kwargs["home_score"]
             encounter.away_score = kwargs["away_score"]
             return SimpleNamespace(encounter=encounter, advanced_encounters=[])
@@ -220,7 +222,10 @@ class CaptainReportFlow(IsolatedAsyncioTestCase):
         recalc.assert_awaited_once_with(session, encounter.tournament_id)
         completed.assert_awaited_once_with(session, encounter)
         self.assertEqual(encounter.result_status, enums.EncounterResultStatus.CONFIRMED)
-        self.assertEqual(encounter.confirmed_by_id, 200)
+        audit = _audit_rows(session)
+        self.assertEqual(1, len(audit))
+        self.assertEqual(enums.EncounterResultAuditAction.AUTO_CONFIRM, audit[0].action)
+        self.assertEqual(200, audit[0].actor_user_id)
         # avg(8, 6) / 10 == 0.7
         self.assertAlmostEqual(encounter.closeness, 0.7)
         session.commit.assert_awaited_once()
@@ -281,18 +286,20 @@ class CaptainReportFlow(IsolatedAsyncioTestCase):
         self.assertIsNone(by_index[3].map_id)  # soft: index beyond picks
         self.assertEqual(by_index[1].code, "AAA")
 
-class AdminConfirm(IsolatedAsyncioTestCase):
-    async def _confirm(self, encounter):
-        """Run admin_confirm_result with finalize mocked to capture its score."""
+class AdminSetResult(IsolatedAsyncioTestCase):
+    ADMIN = 900
+
+    async def _set(self, encounter, **kwargs):
+        """Run set_encounter_result with finalize mocked to capture its score."""
         session = _mk_session(encounter, [])
         captured: dict = {}
 
-        async def fake_finalize(*_args, **kwargs):
-            captured.update(kwargs)
+        async def fake_finalize(*_args, **kw):
+            captured.update(kw)
             encounter.status = enums.EncounterStatus.COMPLETED
-            encounter.result_status = kwargs["result_status"]
-            encounter.home_score = kwargs["home_score"]
-            encounter.away_score = kwargs["away_score"]
+            encounter.result_status = kw["result_status"]
+            encounter.home_score = kw["home_score"]
+            encounter.away_score = kw["away_score"]
             return SimpleNamespace(encounter=encounter, advanced_encounters=[])
 
         with (
@@ -301,26 +308,54 @@ class AdminConfirm(IsolatedAsyncioTestCase):
             patch.object(captain_service, "_enqueue_encounter_completed", AsyncMock()),
             patch.object(captain_service, "resolve_encounter_challonge", AsyncMock(return_value={})),
         ):
-            await captain_service.admin_confirm_result(session, 10)
-        return captured
+            await captain_service.set_encounter_result(session, 10, actor_user_id=self.ADMIN, **kwargs)
+        return captured, session
 
     async def test_pending_single_report_adopts_reported_score(self) -> None:
-        # Regression: the encounter score stays 0-0 until an auto-confirm, so a
-        # pending single-report confirm must adopt the captain's reported score
-        # instead of finalizing a bogus 0-0 draw.
+        # The encounter score stays 0-0 until an auto-confirm, so confirming a
+        # pending single-report encounter must adopt the captain's reported
+        # score instead of finalizing a bogus 0-0 draw.
         report = _mk_report(team_id=1, home=3, away=0, closeness=7)
         encounter = _mk_encounter(
             result_status=enums.EncounterResultStatus.PENDING_CONFIRMATION,
             captain_reports=[report],
         )
-        captured = await self._confirm(encounter)
+        captured, session = await self._set(encounter)
         self.assertEqual((captured["home_score"], captured["away_score"]), (3, 0))
         self.assertEqual(encounter.result_status, enums.EncounterResultStatus.CONFIRMED)
         self.assertAlmostEqual(encounter.closeness, 0.7)
 
-    async def test_disputed_keeps_admin_edited_score(self) -> None:
-        # Two differing reports -> the admin resolves by editing the encounter
-        # score; confirm must use that score, never a report's.
+        audit = _audit_rows(session)
+        self.assertEqual(1, len(audit))
+        self.assertEqual(enums.EncounterResultAuditAction.CONFIRM, audit[0].action)
+        self.assertEqual(self.ADMIN, audit[0].actor_user_id)
+        self.assertEqual((0, 0), (audit[0].home_score_before, audit[0].away_score_before))
+        self.assertEqual((3, 0), (audit[0].home_score_after, audit[0].away_score_after))
+
+    async def test_explicit_score_wins_over_every_report(self) -> None:
+        home = _mk_report(team_id=1, home=2, away=0, closeness=5, report_id=1)
+        away = _mk_report(team_id=2, home=0, away=3, closeness=9, report_id=2)
+        encounter = _mk_encounter(
+            result_status=enums.EncounterResultStatus.DISPUTED,
+            captain_reports=[home, away],
+        )
+        captured, _ = await self._set(encounter, home_score=2, away_score=1)
+        self.assertEqual((captured["home_score"], captured["away_score"]), (2, 1))
+
+    async def test_adopting_one_side_takes_that_report_verbatim(self) -> None:
+        """The dispute-resolution path: "team 2 was right" is one call, not an
+        edit followed by a confirm."""
+        home = _mk_report(team_id=1, home=2, away=0, closeness=5, report_id=1)
+        away = _mk_report(team_id=2, home=0, away=3, closeness=9, report_id=2)
+        encounter = _mk_encounter(
+            result_status=enums.EncounterResultStatus.DISPUTED,
+            captain_reports=[home, away],
+        )
+        captured, session = await self._set(encounter, adopt_report_team_id=2)
+        self.assertEqual((captured["home_score"], captured["away_score"]), (0, 3))
+        self.assertEqual(2, _audit_rows(session)[0].adopted_team_id)
+
+    async def test_keeps_an_already_edited_encounter_score(self) -> None:
         home = _mk_report(team_id=1, home=2, away=0, closeness=5, report_id=1)
         away = _mk_report(team_id=2, home=0, away=3, closeness=9, report_id=2)
         encounter = _mk_encounter(
@@ -329,11 +364,89 @@ class AdminConfirm(IsolatedAsyncioTestCase):
         )
         encounter.home_score = 2
         encounter.away_score = 1
-        captured = await self._confirm(encounter)
+        captured, _ = await self._set(encounter)
         self.assertEqual((captured["home_score"], captured["away_score"]), (2, 1))
 
-    async def test_rejects_confirm_when_not_pending_or_disputed(self) -> None:
+    async def test_explicit_closeness_overrides_the_report_average(self) -> None:
+        report = _mk_report(team_id=1, home=3, away=0, closeness=2)
+        encounter = _mk_encounter(
+            result_status=enums.EncounterResultStatus.PENDING_CONFIRMATION,
+            captain_reports=[report],
+        )
+        await self._set(encounter, closeness=9)
+        self.assertAlmostEqual(encounter.closeness, 0.9)
+
+    async def test_rejects_an_unresolvable_score(self) -> None:
+        """No explicit score, no report to adopt and a still-0-0 encounter: a
+        bogus draw would also 400 on elimination stages."""
+        encounter = _mk_encounter(result_status=enums.EncounterResultStatus.NONE)
+        session = _mk_session(encounter, [])
+        with assert_http_status(self, 422):
+            await captain_service.set_encounter_result(session, 10, actor_user_id=self.ADMIN)
+
+    async def test_rejects_a_half_specified_score(self) -> None:
+        encounter = _mk_encounter(result_status=enums.EncounterResultStatus.NONE)
+        session = _mk_session(encounter, [])
+        with assert_http_status(self, 422):
+            await captain_service.set_encounter_result(session, 10, actor_user_id=self.ADMIN, home_score=2)
+
+    async def test_rejects_adopting_a_team_that_never_reported(self) -> None:
+        report = _mk_report(team_id=1, home=3, away=0, closeness=7)
+        encounter = _mk_encounter(
+            result_status=enums.EncounterResultStatus.PENDING_CONFIRMATION,
+            captain_reports=[report],
+        )
+        session = _mk_session(encounter, [])
+        with assert_http_status(self, 422):
+            await captain_service.set_encounter_result(
+                session, 10, actor_user_id=self.ADMIN, adopt_report_team_id=2
+            )
+
+    async def test_rejects_reconfirming_a_confirmed_result(self) -> None:
+        """Unlike the old confirm, ``none`` is now a legal starting point — the
+        only refusal is a result that is already confirmed."""
         encounter = _mk_encounter(result_status=enums.EncounterResultStatus.CONFIRMED)
         session = _mk_session(encounter, [])
-        with assert_http_status(self, 400):
-            await captain_service.admin_confirm_result(session, 10)
+        with assert_http_status(self, 409):
+            await captain_service.set_encounter_result(
+                session, 10, actor_user_id=self.ADMIN, home_score=2, away_score=0
+            )
+
+
+class AdminReopenResult(IsolatedAsyncioTestCase):
+    ADMIN = 900
+
+    async def test_reopen_clears_the_result_and_keeps_the_reports(self) -> None:
+        report = _mk_report(team_id=1, home=3, away=0, closeness=7)
+        encounter = _mk_encounter(
+            result_status=enums.EncounterResultStatus.CONFIRMED,
+            captain_reports=[report],
+        )
+        encounter.status = enums.EncounterStatus.COMPLETED
+        encounter.home_score = 3
+        encounter.closeness = 0.7
+        session = _mk_session(encounter, [])
+
+        with patch.object(captain_service, "_enqueue_tournament_recalculation", AsyncMock()) as recalc:
+            await captain_service.reopen_encounter_result(session, 10, actor_user_id=self.ADMIN)
+
+        self.assertEqual(enums.EncounterResultStatus.NONE, encounter.result_status)
+        self.assertEqual(enums.EncounterStatus.OPEN, encounter.status)
+        self.assertEqual((0, 0), (encounter.home_score, encounter.away_score))
+        self.assertIsNone(encounter.closeness)
+        self.assertIsNone(encounter.confirmed_at)
+        # The captains' submissions are the evidence — a correction is not a purge.
+        self.assertEqual([report], encounter.captain_reports)
+        recalc.assert_awaited_once_with(session, encounter.tournament_id)
+
+        audit = _audit_rows(session)
+        self.assertEqual(1, len(audit))
+        self.assertEqual(enums.EncounterResultAuditAction.REOPEN, audit[0].action)
+        self.assertEqual(self.ADMIN, audit[0].actor_user_id)
+        self.assertEqual(enums.EncounterResultStatus.CONFIRMED, audit[0].from_result_status)
+
+    async def test_rejects_reopening_an_untouched_encounter(self) -> None:
+        encounter = _mk_encounter(result_status=enums.EncounterResultStatus.NONE)
+        session = _mk_session(encounter, [])
+        with assert_http_status(self, 409):
+            await captain_service.reopen_encounter_result(session, 10, actor_user_id=self.ADMIN)

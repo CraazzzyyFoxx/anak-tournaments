@@ -13,7 +13,7 @@ The gateway passes path params as ``data["<name>"]`` (and the primary id as
 ``data["query"][key] = [values]``, and the JSON body as ``data["payload"]``.
 
 Commit semantics: every write service called here commits internally
-(bulk_update_encounters, update_match, admin_confirm_result, initialize_map_pool,
+(bulk_update_encounters, update_match, set_encounter_result, initialize_map_pool,
 toggle_finished, transition_status, recalculate_standings), so the handlers add no
 extra commit. job_get/job_list are read-only.
 """
@@ -45,6 +45,19 @@ from src.services.encounter import map_veto as map_veto_service
 from src.services.tournament import flows as tournament_flows
 from src.services.tournament import schedule as schedule_service
 from src.services.tournament.cache_invalidation import invalidate_tournament_cache
+
+
+def _serialize_result(encounter: models.Encounter) -> dict:
+    """The settled result state both result endpoints return."""
+    return enc_schemas.EncounterResultRead(
+        id=encounter.id,
+        status=encounter.status,
+        result_status=encounter.result_status,
+        home_score=encounter.home_score,
+        away_score=encounter.away_score,
+        closeness=encounter.closeness,
+        confirmed_at=encounter.confirmed_at,
+    ).model_dump(mode="json")
 
 
 class AdminMapPoolAssign(BaseModel):
@@ -101,20 +114,50 @@ def register(broker: Any, logger: Any) -> None:
 
         return await _run(logger, op)
 
-    @broker.subscriber("rpc.tournament.encounter_confirm_result")
-    async def _encounter_confirm_result(data: dict, msg: RabbitMessage) -> dict:
+    @broker.subscriber("rpc.tournament.encounter_set_result")
+    async def _encounter_set_result(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             user = _identity(data)
             encounter_id = _require_id(data)
             ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
             ensure_workspace_permission(user, ws_id, "match", "update")
-            # admin_confirm_result commits internally; route returns a custom dict.
-            encounter = await captain_service.admin_confirm_result(session, encounter_id)
-            return {
-                "id": encounter.id,
-                "result_status": encounter.result_status,
-                "status": encounter.status,
-            }
+            body = enc_schemas.EncounterSetResultInput.model_validate(_payload(data))
+            # set_encounter_result commits internally; route returns the settled state.
+            encounter = await captain_service.set_encounter_result(
+                session,
+                encounter_id,
+                actor_user_id=user.id,
+                home_score=body.home_score,
+                away_score=body.away_score,
+                closeness=body.closeness,
+                adopt_report_team_id=body.adopt_report_team_id,
+            )
+            return _serialize_result(encounter)
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.encounter_reopen_result")
+    async def _encounter_reopen_result(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            encounter_id = _require_id(data)
+            ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
+            ensure_workspace_permission(user, ws_id, "match", "update")
+            encounter = await captain_service.reopen_encounter_result(
+                session, encounter_id, actor_user_id=user.id
+            )
+            return _serialize_result(encounter)
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.encounter_result_audit")
+    async def _encounter_result_audit(data: dict, msg: RabbitMessage) -> Any:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            encounter_id = _require_id(data)
+            ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
+            ensure_workspace_permission(user, ws_id, "match", "read")
+            return await captain_service.get_result_audit(session, encounter_id)
 
         return await _run(logger, op)
 

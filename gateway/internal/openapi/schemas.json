@@ -5375,6 +5375,34 @@
       "description": "Returns recent Challonge sync-log entries for a tournament (limit-bounded); requires challonge-read permission on the tournament.",
       "summary": "Get Challonge sync log"
     },
+    "rpc.tournament.encounter_reopen_result": {
+      "description": "Un-confirms an encounter so it can be replayed or re-reported, clearing its score, closeness and confirmation, and cascading through anything the old result advanced. Captain reports are kept. 409 when there is no recorded result. Requires match-update permission on the encounter's workspace.",
+      "response": {
+        "array": false,
+        "ref": "tournament.EncounterResultRead"
+      },
+      "summary": "Reopen encounter result"
+    },
+    "rpc.tournament.encounter_result_audit": {
+      "description": "Returns every recorded transition of the encounter's result, newest first. A null actor_user_id means a machine actor (Challonge import, bracket cascade). Requires match-read permission on the encounter's workspace.",
+      "response": {
+        "array": true,
+        "ref": "tournament.EncounterResultAuditRead"
+      },
+      "summary": "Get encounter result history"
+    },
+    "rpc.tournament.encounter_set_result": {
+      "description": "Confirms an encounter result in one transaction: score, status, result_status and the audit row move together. The score is taken from the first available source \u2014 an explicit home_score/away_score, the report of adopt_report_team_id, both reports when they agree, or the encounter's own non-zero score \u2014 and 422 when none applies. 409 when the result is already confirmed (reopen it first). Requires match-update permission on the encounter's workspace.",
+      "request": {
+        "array": false,
+        "ref": "tournament.EncounterSetResultInput"
+      },
+      "response": {
+        "array": false,
+        "ref": "tournament.EncounterResultRead"
+      },
+      "summary": "Set encounter result"
+    },
     "rpc.tournament.encounters_overview": {
       "description": "Returns an aggregated encounters overview for the search filters, with viewer-scoped fields resolved from the optional identity.",
       "query_params": [
@@ -22168,6 +22196,11 @@
           ],
           "title": "Attached Encounter Name"
         },
+        "attempts": {
+          "default": 0,
+          "title": "Attempts",
+          "type": "integer"
+        },
         "created_at": {
           "format": "date-time",
           "title": "Created At",
@@ -28157,18 +28190,6 @@
           "default": null,
           "title": "Confirmed At"
         },
-        "confirmed_by_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Confirmed By Id"
-        },
         "current_map_index": {
           "anyOf": [
             {
@@ -28321,31 +28342,6 @@
           "title": "Status",
           "type": "string"
         },
-        "submitted_at": {
-          "anyOf": [
-            {
-              "format": "date-time",
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Submitted At"
-        },
-        "submitted_by_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Submitted By Id"
-        },
         "tournament": {
           "anyOf": [
             {
@@ -28380,6 +28376,205 @@
       ],
       "title": "EncounterRead",
       "type": "object"
+    },
+    "tournament.EncounterResultAuditAction": {
+      "description": "What moved an encounter's result. One row per transition.\n\n``confirm``/``reopen`` are admin actions; ``auto_confirm``/``auto_dispute``\nare derived from the two captain reports; ``import`` is Challonge pulling a\nremote result in; ``cascade_reset`` is the bracket un-playing an encounter\nwhose team slots changed upstream.",
+      "enum": [
+        "confirm",
+        "reopen",
+        "auto_confirm",
+        "auto_dispute",
+        "import",
+        "cascade_reset"
+      ],
+      "title": "EncounterResultAuditAction",
+      "type": "string"
+    },
+    "tournament.EncounterResultAuditRead": {
+      "description": "One recorded transition. ``actor_user_id`` is NULL for a machine actor.",
+      "properties": {
+        "action": {
+          "$ref": "#/components/schemas/tournament.EncounterResultAuditAction"
+        },
+        "actor_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Actor Name"
+        },
+        "actor_user_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Actor User Id"
+        },
+        "adopted_team_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Adopted Team Id"
+        },
+        "away_score_after": {
+          "title": "Away Score After",
+          "type": "integer"
+        },
+        "away_score_before": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Away Score Before"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "encounter_id": {
+          "title": "Encounter Id",
+          "type": "integer"
+        },
+        "from_result_status": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/tournament.EncounterResultStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "home_score_after": {
+          "title": "Home Score After",
+          "type": "integer"
+        },
+        "home_score_before": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Home Score Before"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "to_result_status": {
+          "$ref": "#/components/schemas/tournament.EncounterResultStatus"
+        }
+      },
+      "required": [
+        "id",
+        "encounter_id",
+        "actor_user_id",
+        "actor_name",
+        "action",
+        "from_result_status",
+        "to_result_status",
+        "home_score_before",
+        "away_score_before",
+        "home_score_after",
+        "away_score_after",
+        "adopted_team_id",
+        "source",
+        "created_at"
+      ],
+      "title": "EncounterResultAuditRead",
+      "type": "object"
+    },
+    "tournament.EncounterResultRead": {
+      "description": "What the result endpoints return: the settled state of the encounter.",
+      "properties": {
+        "away_score": {
+          "title": "Away Score",
+          "type": "integer"
+        },
+        "closeness": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Closeness"
+        },
+        "confirmed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Confirmed At"
+        },
+        "home_score": {
+          "title": "Home Score",
+          "type": "integer"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "result_status": {
+          "$ref": "#/components/schemas/tournament.EncounterResultStatus"
+        },
+        "status": {
+          "$ref": "#/components/schemas/tournament.EncounterStatus"
+        }
+      },
+      "required": [
+        "id",
+        "status",
+        "result_status",
+        "home_score",
+        "away_score",
+        "closeness",
+        "confirmed_at"
+      ],
+      "title": "EncounterResultRead",
+      "type": "object"
+    },
+    "tournament.EncounterResultStatus": {
+      "enum": [
+        "none",
+        "pending_confirmation",
+        "confirmed",
+        "disputed"
+      ],
+      "title": "EncounterResultStatus",
+      "type": "string"
     },
     "tournament.EncounterSavedViewCreate": {
       "properties": {
@@ -28616,6 +28811,65 @@
       "title": "EncounterSearchQueryParams",
       "type": "object"
     },
+    "tournament.EncounterSetResultInput": {
+      "description": "Body of the single admin result write.\n\nEvery field is optional: an empty body means \"confirm what is already\nthere\", which covers the common case of two agreeing reports. Supplying\n``adopt_report_team_id`` is how a dispute is resolved in one call \u2014 \"this\nside was right\" \u2014 instead of editing the score and confirming separately.",
+      "properties": {
+        "adopt_report_team_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Adopt Report Team Id"
+        },
+        "away_score": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Away Score"
+        },
+        "closeness": {
+          "anyOf": [
+            {
+              "maximum": 10,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Closeness"
+        },
+        "home_score": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Home Score"
+        }
+      },
+      "title": "EncounterSetResultInput",
+      "type": "object"
+    },
     "tournament.EncounterSideBalanceRead": {
       "properties": {
         "away_win_pct": {
@@ -28666,6 +28920,15 @@
       ],
       "title": "EncounterStageSplitRead",
       "type": "object"
+    },
+    "tournament.EncounterStatus": {
+      "enum": [
+        "completed",
+        "pending",
+        "open"
+      ],
+      "title": "EncounterStatus",
+      "type": "string"
     },
     "tournament.EncounterSummaryRead": {
       "properties": {
@@ -30869,6 +31132,11 @@
           "title": "Require Open Profile",
           "type": "boolean"
         },
+        "require_subscription": {
+          "default": false,
+          "title": "Require Subscription",
+          "type": "boolean"
+        },
         "show_ranks": {
           "default": false,
           "title": "Show Ranks",
@@ -30882,6 +31150,11 @@
             "type": "array"
           },
           "title": "Subrole Catalog",
+          "type": "object"
+        },
+        "subscription_requirement_json": {
+          "additionalProperties": true,
+          "title": "Subscription Requirement Json",
           "type": "object"
         },
         "tournament_id": {
@@ -30938,10 +31211,20 @@
           "title": "Require Open Profile",
           "type": "boolean"
         },
+        "require_subscription": {
+          "default": false,
+          "title": "Require Subscription",
+          "type": "boolean"
+        },
         "show_ranks": {
           "default": false,
           "title": "Show Ranks",
           "type": "boolean"
+        },
+        "subscription_requirement_json": {
+          "additionalProperties": true,
+          "title": "Subscription Requirement Json",
+          "type": "object"
         }
       },
       "title": "RegistrationFormUpsert",
@@ -31107,6 +31390,31 @@
           ],
           "default": null,
           "title": "Submitted At"
+        },
+        "subscription_outcome": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subscription Outcome"
+        },
+        "subscription_verdicts": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subscription Verdicts"
         },
         "tournament_id": {
           "title": "Tournament Id",

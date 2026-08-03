@@ -1885,7 +1885,7 @@ async def _push_single_result_impl(
 async def auto_push_on_confirm(session: AsyncSession, encounter_id: int) -> None:
     """Auto-push to Challonge when an encounter result is confirmed.
 
-    Called from captain.submit_captain_report / admin_confirm_result once the
+    Called from captain.submit_captain_report / set_encounter_result once the
     encounter result becomes confirmed.
     """
     enc_result = await session.execute(

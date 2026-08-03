@@ -21,8 +21,6 @@ class EncounterRead(BaseRead):
     closeness: float | None
     has_logs: bool
     result_status: str = "none"
-    submitted_by_id: int | None = None
-    confirmed_by_id: int | None = None
 
     stage: StageRead | None
     stage_item: StageItemRead | None

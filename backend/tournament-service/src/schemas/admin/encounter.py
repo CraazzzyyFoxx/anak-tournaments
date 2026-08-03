@@ -2,11 +2,16 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, model_validator
 
+from shared.core.enums import EncounterResultAuditAction, EncounterResultStatus, EncounterStatus
+
 __all__ = (
     "EncounterCreate",
     "EncounterUpdate",
     "BulkEncounterUpdate",
     "MatchUpdate",
+    "EncounterSetResultInput",
+    "EncounterResultRead",
+    "EncounterResultAuditRead",
 )
 
 
@@ -63,6 +68,52 @@ class MatchUpdate(BaseModel):
     code: str | None = None
     time: float | None = None
     log_name: str | None = None
+
+
+class EncounterSetResultInput(BaseModel):
+    """Body of the single admin result write.
+
+    Every field is optional: an empty body means "confirm what is already
+    there", which covers the common case of two agreeing reports. Supplying
+    ``adopt_report_team_id`` is how a dispute is resolved in one call — "this
+    side was right" — instead of editing the score and confirming separately.
+    """
+
+    home_score: int | None = Field(default=None, ge=0)
+    away_score: int | None = Field(default=None, ge=0)
+    closeness: int | None = Field(default=None, ge=1, le=10)
+    adopt_report_team_id: int | None = None
+
+
+class EncounterResultRead(BaseModel):
+    """What the result endpoints return: the settled state of the encounter."""
+
+    id: int
+    status: EncounterStatus
+    result_status: EncounterResultStatus
+    home_score: int
+    away_score: int
+    closeness: float | None
+    confirmed_at: datetime | None
+
+
+class EncounterResultAuditRead(BaseModel):
+    """One recorded transition. ``actor_user_id`` is NULL for a machine actor."""
+
+    id: int
+    encounter_id: int
+    actor_user_id: int | None
+    actor_name: str | None
+    action: EncounterResultAuditAction
+    from_result_status: EncounterResultStatus | None
+    to_result_status: EncounterResultStatus
+    home_score_before: int | None
+    away_score_before: int | None
+    home_score_after: int
+    away_score_after: int
+    adopted_team_id: int | None
+    source: str
+    created_at: datetime
 
 
 class BulkEncounterUpdate(BaseModel):
