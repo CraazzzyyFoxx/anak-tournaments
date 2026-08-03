@@ -5,10 +5,10 @@ import { useParams } from "next/navigation";
 import { usePermissions } from "@/hooks/usePermissions";
 import { tabFallback, useHubTournamentQuery } from "../../hubQueries";
 
-const TournamentReportsTab = dynamic(
+const EncounterReportsBrowser = dynamic(
   () =>
-    import("../../components/TournamentReportsTab").then((module) => ({
-      default: module.TournamentReportsTab
+    import("@/components/admin/EncounterReportsBrowser").then((module) => ({
+      default: module.EncounterReportsBrowser
     })),
   { loading: () => tabFallback }
 );
@@ -29,7 +29,7 @@ export default function ReportsTabPage() {
 
   const workspaceId = tournamentQuery.data.workspace_id ?? null;
   return (
-    <TournamentReportsTab
+    <EncounterReportsBrowser
       tournamentId={tournamentId}
       workspaceId={workspaceId}
       canUpdateEncounter={canAccessPermission("match.update", workspaceId)}

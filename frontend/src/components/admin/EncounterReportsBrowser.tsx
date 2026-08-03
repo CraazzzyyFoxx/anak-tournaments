@@ -17,7 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import type { EncounterReportsQuery, EncounterReportsRow } from "@/types/admin.types";
-import { invalidateTournamentWorkspace } from "./tournamentWorkspace.queryKeys";
+import { invalidateTournamentWorkspace } from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.queryKeys";
 
 const PAGE_SIZE = 25;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -55,18 +55,23 @@ function chipFilters(chip: Chip): Partial<EncounterReportsQuery> {
   }
 }
 /**
- * Captain reports for one tournament.
+ * Captain reports, for one tournament or for the whole workspace.
+ *
+ * One component rather than a hub tab and a near-identical browser page: the
+ * two differ only by whether `tournamentId` is pinned, and a second copy of a
+ * table with this much derived state would drift within a release.
  *
  * A dispute used to be invisible outside the per-encounter dialog; this lists
  * what needs attention and hands each row to the one write surface that can
  * settle it.
  */
-export function TournamentReportsTab({
+export function EncounterReportsBrowser({
   tournamentId,
   workspaceId,
   canUpdateEncounter
 }: Readonly<{
-  tournamentId: number;
+  /** `null` = every tournament in the workspace. */
+  tournamentId: number | null;
   workspaceId: number | null;
   canUpdateEncounter: boolean;
 }>) {
@@ -83,7 +88,7 @@ export function TournamentReportsTab({
         ? null
         : {
             workspace_id: workspaceId,
-            tournament_id: tournamentId,
+            tournament_id: tournamentId ?? undefined,
             query: debouncedSearch || undefined
           },
     [workspaceId, tournamentId, debouncedSearch]
@@ -204,6 +209,7 @@ export function TournamentReportsTab({
                 <ReportRow
                   key={row.id}
                   row={row}
+                  showTournament={tournamentId == null}
                   canUpdateEncounter={canUpdateEncounter}
                   onResolve={() => setResolving(row)}
                 />
@@ -253,8 +259,12 @@ export function TournamentReportsTab({
           void queryClient.invalidateQueries({ queryKey: ["encounter-reports"] });
           void queryClient.invalidateQueries({ queryKey: ["encounters"] });
           void queryClient.invalidateQueries({ queryKey: ["admin-matches"] });
-          void queryClient.invalidateQueries({ queryKey: ["standings", tournamentId] });
-          invalidateTournamentWorkspace(queryClient, tournamentId, workspaceId);
+          void queryClient.invalidateQueries({
+            queryKey: tournamentId == null ? ["standings"] : ["standings", tournamentId]
+          });
+          if (tournamentId != null) {
+            invalidateTournamentWorkspace(queryClient, tournamentId, workspaceId);
+          }
         }}
       />
     </div>
@@ -263,10 +273,12 @@ export function TournamentReportsTab({
 
 function ReportRow({
   row,
+  showTournament,
   canUpdateEncounter,
   onResolve
 }: Readonly<{
   row: EncounterReportsRow;
+  showTournament: boolean;
   canUpdateEncounter: boolean;
   onResolve: () => void;
 }>) {
@@ -277,6 +289,7 @@ function ReportRow({
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold">{row.name}</p>
           <p className="truncate text-xs text-muted-foreground">
+            {showTournament ? `${row.tournament_name ?? "Unknown tournament"} · ` : ""}
             {row.stage_name ?? "Unassigned"} · Round {row.round} · BO{row.best_of}
           </p>
           <p className="mt-1 font-mono text-xs tabular-nums text-muted-foreground">

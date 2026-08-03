@@ -55,6 +55,7 @@ describe("admin navigation lifecycle grouping (D12, §5)", () => {
       "/admin/teams",
       "/admin/players",
       "/admin/encounters",
+      "/admin/match-reports",
       "/admin/standings",
     ]);
   });
@@ -123,6 +124,14 @@ describe("admin administration entry and palette aliases (D10, D11)", () => {
   it("gates /admin/rank by user.read instead of the broad admin entry", () => {
     expect(getMatchingAdminRoute("/admin/rank")?.permissions).toEqual(["user.read"]);
     expect(getMatchingAdminRoute("/admin/rank/anything")?.permissions).toEqual(["user.read"]);
+  });
+
+  it("gates /admin/match-reports by match.read, not by a neighbouring prefix", () => {
+    // The matcher is exact-or-slash, so `/admin/match` style prefixes cannot
+    // capture this path. Pinned because the sibling `/admin/matches` browser
+    // lands next and a substring match would silently hand it the wrong gate.
+    expect(getMatchingAdminRoute("/admin/match-reports")?.permissions).toEqual(["match.read"]);
+    expect(getMatchingAdminRoute("/admin/match-reports")?.prefix).toBe("/admin/match-reports");
   });
 
   it("aliases 'settings' to rank collection only", () => {
