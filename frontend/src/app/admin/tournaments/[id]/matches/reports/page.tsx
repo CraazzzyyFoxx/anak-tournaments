@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
+import { usePermissions } from "@/hooks/usePermissions";
 import { tabFallback, useHubTournamentQuery } from "../../hubQueries";
 
 const TournamentReportsTab = dynamic(
@@ -15,6 +16,7 @@ const TournamentReportsTab = dynamic(
 export default function ReportsTabPage() {
   const params = useParams<{ id: string }>();
   const tournamentId = Number(params.id);
+  const { canAccessPermission } = usePermissions();
 
   const tournamentQuery = useHubTournamentQuery(tournamentId);
 
@@ -25,10 +27,12 @@ export default function ReportsTabPage() {
     return null;
   }
 
+  const workspaceId = tournamentQuery.data.workspace_id ?? null;
   return (
     <TournamentReportsTab
       tournamentId={tournamentId}
-      workspaceId={tournamentQuery.data.workspace_id ?? null}
+      workspaceId={workspaceId}
+      canUpdateEncounter={canAccessPermission("match.update", workspaceId)}
     />
   );
 }

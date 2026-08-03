@@ -18,7 +18,12 @@ from datetime import datetime
 from pydantic import BaseModel
 
 from shared.core import pagination
-from shared.core.enums import EncounterResultAuditAction, EncounterResultStatus, EncounterStatus
+from shared.core.enums import (
+    EncounterResultAuditAction,
+    EncounterResultStatus,
+    EncounterStatus,
+    StageType,
+)
 
 __all__ = (
     "CaptainReportRead",
@@ -102,6 +107,9 @@ class EncounterReportsRow(BaseModel):
     tournament_id: int
     tournament_name: str | None
     stage_name: str | None
+    #: Lets the resolve dialog refuse a draw before sending it: an elimination
+    #: bracket needs a winner and the finalizer rejects one with a 400.
+    stage_type: StageType | None
     round: int
     best_of: int
     status: EncounterStatus

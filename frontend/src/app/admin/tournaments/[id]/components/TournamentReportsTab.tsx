@@ -1,11 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ClipboardCheck, Clock3, ScrollText } from "lucide-react";
 import { useDebounce } from "use-debounce";
 
 import { AdminReportPairCell } from "@/components/admin/AdminReportPairCell";
+import { ResolveResultDialog } from "@/components/admin/ResolveResultDialog";
 import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
 import { TONE_CLASS } from "@/components/admin/tone";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import type { EncounterReportsQuery, EncounterReportsRow } from "@/types/admin.types";
+import { invalidateTournamentWorkspace } from "./tournamentWorkspace.queryKeys";
 
 const PAGE_SIZE = 25;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -55,17 +57,21 @@ function chipFilters(chip: Chip): Partial<EncounterReportsQuery> {
 /**
  * Captain reports for one tournament.
  *
- * Read-only: the resolve action lands with the resolve dialog. Until then this
- * shows which encounters need attention and why, which is already more than the
- * admin had — a dispute was previously invisible outside the encounter dialog.
+ * A dispute used to be invisible outside the per-encounter dialog; this lists
+ * what needs attention and hands each row to the one write surface that can
+ * settle it.
  */
 export function TournamentReportsTab({
   tournamentId,
-  workspaceId
+  workspaceId,
+  canUpdateEncounter
 }: Readonly<{
   tournamentId: number;
   workspaceId: number | null;
+  canUpdateEncounter: boolean;
 }>) {
+  const queryClient = useQueryClient();
+  const [resolving, setResolving] = useState<EncounterReportsRow | null>(null);
   const [chip, setChip] = useState<Chip>("all");
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
@@ -195,7 +201,12 @@ export function TournamentReportsTab({
           ) : (
             <ul className="space-y-2">
               {rows.map((row) => (
-                <ReportRow key={row.id} row={row} />
+                <ReportRow
+                  key={row.id}
+                  row={row}
+                  canUpdateEncounter={canUpdateEncounter}
+                  onResolve={() => setResolving(row)}
+                />
               ))}
             </ul>
           )}
@@ -229,11 +240,36 @@ export function TournamentReportsTab({
           ) : null}
         </CardContent>
       </Card>
+
+      <ResolveResultDialog
+        row={resolving}
+        open={resolving != null}
+        onOpenChange={(next) => setResolving(next ? resolving : null)}
+        onResolved={() => {
+          // A settled result moves the encounter, the standings and the
+          // bracket, so the invalidation is wider than this list. Scoped to
+          // prefixes rather than exact keys because the list key carries the
+          // whole filter object and every variant of it is now stale.
+          void queryClient.invalidateQueries({ queryKey: ["encounter-reports"] });
+          void queryClient.invalidateQueries({ queryKey: ["encounters"] });
+          void queryClient.invalidateQueries({ queryKey: ["admin-matches"] });
+          void queryClient.invalidateQueries({ queryKey: ["standings", tournamentId] });
+          invalidateTournamentWorkspace(queryClient, tournamentId, workspaceId);
+        }}
+      />
     </div>
   );
 }
 
-function ReportRow({ row }: Readonly<{ row: EncounterReportsRow }>) {
+function ReportRow({
+  row,
+  canUpdateEncounter,
+  onResolve
+}: Readonly<{
+  row: EncounterReportsRow;
+  canUpdateEncounter: boolean;
+  onResolve: () => void;
+}>) {
   const resolvedAt = row.last_resolution ? new Date(row.last_resolution.created_at) : null;
   return (
     <li className="rounded-xl border border-border/60 bg-card/40 p-3">
@@ -247,9 +283,18 @@ function ReportRow({ row }: Readonly<{ row: EncounterReportsRow }>) {
             Recorded {row.home_team?.name ?? "?"} vs {row.away_team?.name ?? "?"}
           </p>
         </div>
-        <Badge className={cn("shrink-0", TONE_CLASS[row.result_status === "disputed" ? "danger" : "neutral"])}>
-          {row.result_status}
-        </Badge>
+        <div className="flex shrink-0 items-center gap-2">
+          <Badge
+            className={cn(TONE_CLASS[row.result_status === "disputed" ? "danger" : "neutral"])}
+          >
+            {row.result_status}
+          </Badge>
+          {canUpdateEncounter ? (
+            <Button type="button" size="sm" variant="secondary" onClick={onResolve}>
+              {row.result_status === "confirmed" ? "Review" : "Resolve"}
+            </Button>
+          ) : null}
+        </div>
       </div>
       <AdminReportPairCell
         className="mt-3"

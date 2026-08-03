@@ -58,7 +58,7 @@ def _encounter(reports, *, best_of: int = 3, home_team_id: int = 1, away_team_id
         name="A vs B",
         tournament_id=3,
         tournament=SimpleNamespace(name="Cup"),
-        stage=SimpleNamespace(name="Groups"),
+        stage=SimpleNamespace(name="Groups", stage_type=enums.StageType.ROUND_ROBIN),
         stage_item=None,
         round=1,
         best_of=best_of,

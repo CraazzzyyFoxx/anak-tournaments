@@ -490,6 +490,8 @@ export interface EncounterReportsRow {
   tournament_id: number;
   tournament_name: string | null;
   stage_name: string | null;
+  /** Lets the resolve dialog refuse a draw the finalizer would reject with a 400. */
+  stage_type: string | null;
   round: number;
   best_of: number;
   status: string;

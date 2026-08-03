@@ -198,6 +198,7 @@ def _row(
         tournament_name=encounter.tournament.name if encounter.tournament else None,
         stage_name=(encounter.stage_item.name if encounter.stage_item else None)
         or (encounter.stage.name if encounter.stage else None),
+        stage_type=encounter.stage.stage_type if encounter.stage else None,
         round=encounter.round,
         best_of=encounter.best_of,
         status=encounter.status,

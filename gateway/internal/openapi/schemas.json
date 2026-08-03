@@ -29186,6 +29186,16 @@
           ],
           "title": "Stage Name"
         },
+        "stage_type": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/tournament.StageType"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "status": {
           "$ref": "#/components/schemas/tournament.EncounterStatus"
         },
@@ -29211,6 +29221,7 @@
         "tournament_id",
         "tournament_name",
         "stage_name",
+        "stage_type",
         "round",
         "best_of",
         "status",
