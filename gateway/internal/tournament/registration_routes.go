@@ -68,4 +68,9 @@ var RegistrationAdminRoutes = []edge.RouteSpec{
 	{Method: "DELETE", Pattern: "/api/v1/admin/ws/{workspace_id}/balancer-statuses/custom/{status_id}", Queue: "rpc.tournament.regstatus_delete", Path: []string{"workspace_id", "status_id"}, Auth: edge.AuthRequired, Success: 204},
 	{Method: "PUT", Pattern: "/api/v1/admin/ws/{workspace_id}/balancer-statuses/system/{scope}/{slug}", Queue: "rpc.tournament.regstatus_builtin_upsert", Path: []string{"workspace_id", "scope", "slug"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "DELETE", Pattern: "/api/v1/admin/ws/{workspace_id}/balancer-statuses/system/{scope}/{slug}", Queue: "rpc.tournament.regstatus_builtin_reset", Path: []string{"workspace_id", "scope", "slug"}, Auth: edge.AuthRequired, Success: 204},
+
+	// Workspace subscription provider config — raw ids for now (guild id, role
+	// mapping, broadcaster). A Discord-backed role picker is a later refinement.
+	{Method: "GET", Pattern: "/api/v1/admin/ws/{workspace_id}/subscription-providers", Queue: "rpc.tournament.sub_config_list", Path: []string{"workspace_id"}, Auth: edge.AuthRequired, Timeout: regReadTimeout},
+	{Method: "PUT", Pattern: "/api/v1/admin/ws/{workspace_id}/subscription-providers", Queue: "rpc.tournament.sub_config_upsert", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 }

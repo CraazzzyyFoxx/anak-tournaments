@@ -582,6 +582,15 @@ DOCS: dict[str, dict] = {
         "summary": "Reset built-in status",
         "description": "Removes a workspace's override for a built-in registration status (204 no body), reverting to defaults; requires team-update permission.",
     },
+    # ── workspace subscription provider config ────────────────────────────
+    "rpc.tournament.sub_config_list": {
+        "summary": "List subscription providers",
+        "description": "Returns every configurable subscription provider for a workspace (present or not) with its raw ids; challenge codes are redacted to tier and expiry only; requires team-read permission.",
+    },
+    "rpc.tournament.sub_config_upsert": {
+        "summary": "Configure subscription provider",
+        "description": "Creates or updates one provider's config (Discord guild id and role→tier mapping, Twitch broadcaster, challenge codes). Plaintext codes are hashed server-side and never stored; omitting a field keeps the stored value; requires team-update permission.",
+    },
     # ── public registration (captain / self-service) ──────────────────────
     "rpc.tournament.captain_my_role": {
         "summary": "Get my captain side",

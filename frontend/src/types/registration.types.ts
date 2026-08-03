@@ -80,6 +80,58 @@ export interface SubscriptionStatus {
   verdicts: Record<string, SubscriptionProviderVerdict>;
 }
 
+/** One `discord role -> tier` mapping. `role_id` is a string: a Discord snowflake
+ *  exceeds 2**53 and must never round-trip through a float. */
+export interface SubscriptionRoleTier {
+  role_id: string;
+  tier_rank: number;
+  tier_label?: string;
+}
+
+/** Redacted view of a stored challenge code: never the code, never its digest —
+ *  a digest is still brute-forcible offline. */
+export interface SubscriptionCodeRead {
+  tier_rank: number;
+  tier_label?: string;
+  expires_at?: string | null;
+}
+
+/** A code being saved. Plaintext is hashed server-side; the digest form lets the
+ *  redacted read model round-trip without double-hashing. */
+export interface SubscriptionCodeUpsert {
+  code?: string;
+  code_sha256?: string;
+  tier_rank: number;
+  tier_label?: string;
+  expires_at?: string | null;
+}
+
+export interface SubscriptionProviderConfigRead {
+  provider: string;
+  enabled: boolean;
+  guild_id?: string | null;
+  role_tiers: SubscriptionRoleTier[];
+  broadcaster_id?: string | null;
+  broadcaster_login?: string | null;
+  codes: SubscriptionCodeRead[];
+}
+
+export interface SubscriptionProviderConfigListResponse {
+  configs: SubscriptionProviderConfigRead[];
+}
+
+/** Omitting a field keeps whatever is stored. That matters most for `codes`:
+ *  the admin never sees the existing ones, so a plain save must not wipe them. */
+export interface SubscriptionProviderConfigUpsert {
+  provider: string;
+  enabled: boolean;
+  guild_id?: string;
+  role_tiers?: SubscriptionRoleTier[];
+  broadcaster_id?: string;
+  broadcaster_login?: string;
+  codes?: SubscriptionCodeUpsert[];
+}
+
 export interface RegistrationForm {
   id: number;
   tournament_id: number;

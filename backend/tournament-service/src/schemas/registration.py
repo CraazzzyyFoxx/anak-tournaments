@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from shared.subscriptions import parse_requirement
 from src.schemas.division_grid import DivisionGridVersionRead
@@ -221,6 +221,115 @@ class SubscriptionStatusRead(BaseModel):
     outcome: str | None = None
     rule: str | None = None
     verdicts: dict[str, SubscriptionProviderVerdictRead] = Field(default_factory=dict)
+
+
+# ── workspace subscription provider config ──────────────────────────────────
+#
+# Minimal surface on purpose: raw ids typed by hand. Resolving Discord role names
+# through the API and offering a picker is the "more elegant" follow-up.
+
+_SUBSCRIPTION_PROVIDERS = ("boosty", "twitch")
+
+
+class RoleTierUpsert(BaseModel):
+    """One ``discord role -> subscription tier`` mapping.
+
+    ``role_id`` is a string because a Discord snowflake exceeds 2**53 and must
+    never survive a float round-trip.
+    """
+
+    role_id: str = Field(min_length=1, max_length=32)
+    tier_rank: int = Field(default=1, ge=1, le=100)
+    tier_label: str = Field(default="", max_length=64)
+
+
+class ChallengeCodeUpsert(BaseModel):
+    """A challenge code, supplied either as plaintext (new) or as its digest.
+
+    Plaintext is hashed server-side and never persisted. The digest form exists so
+    the redacted read model can be sent back unchanged without double-hashing.
+    """
+
+    code: str | None = Field(default=None, min_length=1, max_length=128)
+    code_sha256: str | None = Field(default=None, min_length=64, max_length=64)
+    tier_rank: int = Field(default=1, ge=1, le=100)
+    tier_label: str = Field(default="", max_length=64)
+    expires_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def _needs_one_form(self) -> ChallengeCodeUpsert:
+        if not self.code and not self.code_sha256:
+            raise ValueError("a code row needs either `code` or `code_sha256`")
+        return self
+
+
+class SubscriptionProviderConfigUpsert(BaseModel):
+    """Per-workspace provider setup.
+
+    Every field except ``provider``/``enabled`` is optional and OMITTING it keeps
+    whatever is stored. That matters most for ``codes``: the admin never sees the
+    existing ones (only digests are kept), so a plain save must not wipe them.
+    Passing an explicit list replaces them.
+    """
+
+    provider: str
+    enabled: bool = False
+    guild_id: str | None = Field(default=None, max_length=32)
+    role_tiers: list[RoleTierUpsert] | None = None
+    broadcaster_id: str | None = Field(default=None, max_length=32)
+    broadcaster_login: str | None = Field(default=None, max_length=64)
+    codes: list[ChallengeCodeUpsert] | None = None
+
+    @field_validator("provider")
+    @classmethod
+    def _known_provider(cls, value: str) -> str:
+        if value not in _SUBSCRIPTION_PROVIDERS:
+            raise ValueError(f"provider must be one of {_SUBSCRIPTION_PROVIDERS}")
+        return value
+
+    @field_validator("role_tiers")
+    @classmethod
+    def _unique_roles(cls, value: list[RoleTierUpsert] | None) -> list[RoleTierUpsert] | None:
+        if value is None:
+            return value
+        seen: set[str] = set()
+        for row in value:
+            if row.role_id in seen:
+                raise ValueError(f"duplicate role_id {row.role_id!r}")
+            seen.add(row.role_id)
+        return value
+
+
+class RoleTierRead(BaseModel):
+    role_id: str
+    tier_rank: int
+    tier_label: str = ""
+
+
+class ChallengeCodeRead(BaseModel):
+    """Redacted: never carries the code or its digest.
+
+    A digest is still brute-forcible offline, so the UI only learns that a code
+    exists, at what tier, and until when.
+    """
+
+    tier_rank: int
+    tier_label: str = ""
+    expires_at: datetime | None = None
+
+
+class SubscriptionProviderConfigRead(BaseModel):
+    provider: str
+    enabled: bool = False
+    guild_id: str | None = None
+    role_tiers: list[RoleTierRead] = Field(default_factory=list)
+    broadcaster_id: str | None = None
+    broadcaster_login: str | None = None
+    codes: list[ChallengeCodeRead] = Field(default_factory=list)
+
+
+class SubscriptionProviderConfigListResponse(BaseModel):
+    configs: list[SubscriptionProviderConfigRead] = Field(default_factory=list)
 
 
 class RegistrationListRead(RegistrationRead):

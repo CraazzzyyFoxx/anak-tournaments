@@ -35,7 +35,12 @@ import {
   WorkspaceBalancerConfig,
   WorkspaceBalancerConfigUpsert
 } from "@/types/balancer-admin.types";
-import type { StatusScope } from "@/types/registration.types";
+import type {
+  StatusScope,
+  SubscriptionProviderConfigListResponse,
+  SubscriptionProviderConfigRead,
+  SubscriptionProviderConfigUpsert
+} from "@/types/registration.types";
 
 // Endpoints whose response model is `X | None` return HTTP 200 with a `null`
 // body from FastAPI, but the Go gateway omits the body for null data. Parse
@@ -323,6 +328,30 @@ export default class balancerAdminService {
         method: "PUT",
         body: data
       }
+    );
+    return response.json();
+  }
+
+  /** Workspace subscription providers. Codes come back redacted — tier and
+   *  expiry only, never the code or its digest. */
+  static async listSubscriptionProviders(
+    workspaceId: number
+  ): Promise<SubscriptionProviderConfigListResponse> {
+    const response = await apiFetch(
+      `/api/v1/admin/ws/${workspaceId}/subscription-providers`
+    );
+    return response.json();
+  }
+
+  /** Omitting a field keeps the stored value — that is deliberate for `codes`,
+   *  which the admin cannot read back. Pass an explicit `[]` to clear them. */
+  static async upsertSubscriptionProvider(
+    workspaceId: number,
+    data: SubscriptionProviderConfigUpsert
+  ): Promise<SubscriptionProviderConfigRead> {
+    const response = await apiFetch(
+      `/api/v1/admin/ws/${workspaceId}/subscription-providers`,
+      { method: "PUT", body: data }
     );
     return response.json();
   }

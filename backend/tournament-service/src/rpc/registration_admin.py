@@ -53,10 +53,13 @@ from src import models
 from src.core import auth
 from src.rpc._helpers import _bool, _dump, _identity, _path_int, _payload, _q1, _require_id, _run
 from src.schemas.admin import balancer as admin_schemas
-from src.schemas.registration import RegistrationFormUpsert
+from src.schemas.registration import (
+    RegistrationFormUpsert,
+    SubscriptionProviderConfigUpsert,
+)
 from src.services.registration import admin as registration_service
 from src.services.registration import service as reg_svc
-from src.services.registration import status_catalog
+from src.services.registration import status_catalog, subscription_config
 from src.services.registration.ow_rank_selection import select_main_account_ow_ranks
 from src.services.registration.realtime import emit_balancer_registrations_changed
 from src.services.registration.serializers import (
@@ -754,5 +757,38 @@ def register(broker: Any, logger: Any) -> None:
                 slug=slug,
             )
             return None
+
+        return await _run(logger, op)
+
+    # GET /balancer/workspaces/{workspace_id}/subscription-providers
+    #   dep: require_workspace_permission("team", "read")
+    @broker.subscriber("rpc.tournament.sub_config_list")
+    async def _sub_config_list(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            workspace_id = _path_int(data, "workspace_id")
+            ensure_workspace_permission(user, workspace_id, "team", "read")
+            return _dump(await subscription_config.list_provider_configs(session, workspace_id))
+
+        return await _run(logger, op)
+
+    # PUT /balancer/workspaces/{workspace_id}/subscription-providers
+    #   dep: require_workspace_permission("team", "update")
+    @broker.subscriber("rpc.tournament.sub_config_upsert")
+    async def _sub_config_upsert(data: dict, msg: RabbitMessage) -> dict:
+        """Create or update one provider's config.
+
+        Plaintext challenge codes are hashed in the service and never persisted;
+        omitting a field keeps whatever is stored (see subscription_config).
+        """
+
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            workspace_id = _path_int(data, "workspace_id")
+            ensure_workspace_permission(user, workspace_id, "team", "update")
+            body = SubscriptionProviderConfigUpsert.model_validate(_payload(data))
+            return _dump(
+                await subscription_config.upsert_provider_config(session, workspace_id=workspace_id, body=body)
+            )
 
         return await _run(logger, op)
