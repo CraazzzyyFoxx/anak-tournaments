@@ -467,7 +467,7 @@ No new realtime topic. The reports and matches lists refetch on window focus and
 ## 14. Verification and Acceptance Criteria
 
 1. `SELECT count(*) FROM tournament.encounter WHERE (result_status='CONFIRMED') <> (status='COMPLETED')` returns 0, and inserting a violating row fails on the constraint.
-2. Exactly one `finalize_encounter_score` exists in the tree (`grep -rn "def finalize_encounter_score" backend/` → one hit, under `shared/`).
+2. Exactly one *implementation* of `finalize_encounter_score` exists, under `shared/services/encounter/`. `tournament-service/src/services/encounter/finalize.py` keeps the name as a thin binding wrapper whose only job is injecting the veto hook (D13), so `grep -rn "def finalize_encounter_score"` returns two hits by design — the wrapper delegates and holds no logic.
 3. `grep -rn "confirm-result\|bulkUpdateEncounters\|encounter_bulk_update" backend/ frontend/ gateway/` returns nothing.
 4. `gateway/internal/openapi/schemas.json` contains a `response` ref for all seven new subjects and for `rpc.tournament.captain_reports`.
 5. Browser smoke, end to end:
@@ -479,7 +479,31 @@ No new realtime topic. The reports and matches lists refetch on window focus and
    - `/admin/match-reports` and `/admin/matches` show the same data across the workspace's tournaments and appear in Cmd+K.
 6. A user with `match.read` and without `match.update` sees both lists and no write actions.
 7. `docs/database_erd.md` and its mirror `frontend/src/app/docs/diagrams.ts` gain the `ENCOUNTER_CAPTAIN_REPORT` / `ENCOUNTER_MAP_CODE` blocks and the new `ENCOUNTER_RESULT_AUDIT` entity, lose `ENCOUNTER.submitted_by_id`/`confirmed_by_id`, and record the `MATCH.log_record_id` FK plus the new constraint.
-8. `grep -rn "confirmed_by_id\|submitted_by_id\|submitted_at" backend/ frontend/src gateway/` returns only the `encres0001` migration itself.
+8. `grep -rn "confirmed_by_id\|submitted_by_id\|submitted_at" backend/ frontend/src gateway/` returns only migrations (`encres0001` and the two historical revisions that created the columns), the parity test that asserts their absence, and the model comments explaining the removal.
+
+### Phase 0 verification — recorded state (2026-08-03)
+
+Passing: criteria 2, 3, 4 and 8; `ruff check .` clean; every backend suite green
+(shared 336, tournament 564, parser 207, app 181, balancer 287, identity 143,
+analytics 155, discord 12); `go build` + `go vet` + `go test ./...` green;
+`tsc --noEmit` clean, vitest 232/232, eslint 0 errors.
+
+**Not verified — no environment for it:**
+
+- **Criterion 1 and both migrations are unapplied.** `encres0001` and
+  `mtchlog001` have never run against a database. There is no local Postgres
+  (nothing listening on 5432/15432/54320) and the only reachable DSN in
+  `backend/.env` is a remote shared host — applying a revision that drops three
+  columns there is not an option. The metadata tests
+  (`test_encres0001_migration_matches_models.py`,
+  `test_mtchlog001_migration_matches_models.py`) pin the DDL, the enum storage
+  forms and the invariant expression, but **the backfills, the pre-constraint
+  assertion and the FK join are unexercised**. Both must be applied to a scratch
+  database before deploy; the opt-in pattern in
+  `tournament-service/tests/test_check_in_gate_integration.py`
+  (`SUBSCRIPTIONS_IT_DSN`) is the precedent for wiring that.
+- **Criteria 5 and 6 (browser smoke, permission masking)** need a running stack.
+  They also cover surfaces that Phases 1–2 have not built yet.
 
 ---
 
