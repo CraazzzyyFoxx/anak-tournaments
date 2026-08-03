@@ -90,7 +90,9 @@ async def load_auth_user_ids_by_registration(
         .join(models.User, models.WorkspaceMember.player_id == models.User.id)
         .where(models.BalancerRegistration.id.in_(reg_ids))
     )
-    mapped = dict(rows.all())
+    # `.tuples()` is what makes this a real 2-tuple: without it a `Row` is not an
+    # `Iterable[tuple[...]]` and `dict()` does not type-check.
+    mapped = dict(rows.tuples().all())
     return {reg_id: mapped.get(reg_id) for reg_id in reg_ids}
 
 

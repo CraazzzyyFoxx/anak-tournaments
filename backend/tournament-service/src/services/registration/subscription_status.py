@@ -133,7 +133,7 @@ def _client() -> aioredis.Redis | None:
         from src.core.config import settings
 
         try:
-            _redis_client = aioredis.from_url(str(settings.redis_url), decode_responses=True)
+            _redis_client = aioredis.Redis.from_url(str(settings.redis_url), decode_responses=True)
         except Exception as exc:  # pragma: no cover - configuration failure
             logger.warning(f"redeem rate limit disabled, redis unavailable: {exc}")
             return None
