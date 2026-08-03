@@ -37,9 +37,8 @@ export interface Encounter {
   started_at: Date | string | null;
   ended_at: Date | string | null;
   current_map_index: number | null;
-  submitted_by_id: number | null;
-  submitted_at: Date | string | null;
-  confirmed_by_id: number | null;
+  // Who decided the result — and every earlier decision — lives in the result
+  // audit, not in a single slot that only ever remembered the last writer.
   confirmed_at: Date | string | null;
 
   matches: Match[];

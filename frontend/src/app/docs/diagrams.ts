@@ -591,8 +591,6 @@ export const domains: DiagramDomain[] = [
         int best_of
         string status
         string result_status
-        int submitted_by_id FK "nullable → players.user"
-        int confirmed_by_id FK "nullable → players.user"
     }
     ENCOUNTER_LINK {
         int id PK

@@ -31,7 +31,7 @@ import tournamentService from "@/services/tournament.service";
 import teamService from "@/services/team.service";
 import adminService from "@/services/admin.service";
 import { Encounter } from "@/types/encounter.types";
-import { EncounterCreateInput, EncounterUpdateInput } from "@/types/admin.types";
+import { EncounterCreateInput, EncounterEditableStatus, EncounterUpdateInput } from "@/types/admin.types";
 import { StageItem } from "@/types/tournament.types";
 import { Input } from "@/components/ui/input";
 import { NumberInput } from "@/components/ui/number-input";
@@ -47,21 +47,30 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
-const ENCOUNTER_STATUS_OPTIONS = ["OPEN", "PENDING", "COMPLETED"] as const;
+// Editable statuses only. COMPLETED is set by the result endpoint, which moves
+// score, status, result_status and the audit row together.
+const ENCOUNTER_STATUS_OPTIONS = ["OPEN", "PENDING"] as const;
 const TOURNAMENT_QUERY_PARAM = "tournament";
 
-function normalizeEncounterStatus(status?: string | null): string {
+/** What the table shows — the encounter's real status, COMPLETED included. */
+function displayEncounterStatus(status?: string | null): string {
+  return status?.toUpperCase() ?? "OPEN";
+}
+
+/** What a form may submit. COMPLETED is not editable: it belongs to the result
+ * endpoint, which moves score, status, result_status and the audit row together. */
+function normalizeEncounterStatus(status?: string | null): EncounterEditableStatus {
   const normalizedStatus = status?.toUpperCase();
   return ENCOUNTER_STATUS_OPTIONS.includes(
     normalizedStatus as (typeof ENCOUNTER_STATUS_OPTIONS)[number]
   )
-    ? normalizedStatus!
+    ? (normalizedStatus as EncounterEditableStatus)
     : "OPEN";
 }
 
 function formatEncounterStatus(status?: string | null) {
-  const normalizedStatus = normalizeEncounterStatus(status);
-  return normalizedStatus.charAt(0) + normalizedStatus.slice(1).toLowerCase();
+  const shown = displayEncounterStatus(status);
+  return shown.charAt(0) + shown.slice(1).toLowerCase();
 }
 
 function closenessFloatToStars(closeness: number | null | undefined): number {
@@ -377,7 +386,7 @@ export default function EncountersPage() {
       accessorKey: "status",
       header: "Status",
       cell: ({ row }) => {
-        const status = normalizeEncounterStatus(row.getValue<string>("status"));
+        const status = displayEncounterStatus(row.getValue<string>("status"));
 
         if (status === "COMPLETED")
           return <StatusIcon icon={CheckCircle} label="Completed" variant="success" />;
@@ -667,8 +676,7 @@ export default function EncountersPage() {
               setFormData({
                 ...formData,
                 home_score: score.homeScore,
-                away_score: score.awayScore,
-                status: "COMPLETED"
+                away_score: score.awayScore
               })
             }
           />
@@ -677,7 +685,7 @@ export default function EncountersPage() {
             <Label htmlFor="status">Status</Label>
             <Select
               value={(formData as EncounterCreateInput).status}
-              onValueChange={(value) => setFormData({ ...formData, status: value })}
+              onValueChange={(value) => setFormData({ ...formData, status: value as EncounterEditableStatus })}
             >
               <SelectTrigger id="status">
                 <SelectValue />
@@ -685,7 +693,6 @@ export default function EncountersPage() {
               <SelectContent>
                 <SelectItem value="OPEN">Open</SelectItem>
                 <SelectItem value="PENDING">Pending</SelectItem>
-                <SelectItem value="COMPLETED">Completed</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -851,8 +858,7 @@ export default function EncountersPage() {
               setFormData({
                 ...formData,
                 home_score: score.homeScore,
-                away_score: score.awayScore,
-                status: "COMPLETED"
+                away_score: score.awayScore
               })
             }
           />
@@ -861,7 +867,7 @@ export default function EncountersPage() {
             <Label htmlFor="edit-status">Status</Label>
             <Select
               value={(formData as EncounterUpdateInput).status}
-              onValueChange={(value) => setFormData({ ...formData, status: value })}
+              onValueChange={(value) => setFormData({ ...formData, status: value as EncounterEditableStatus })}
             >
               <SelectTrigger id="edit-status">
                 <SelectValue />
@@ -869,7 +875,6 @@ export default function EncountersPage() {
               <SelectContent>
                 <SelectItem value="OPEN">Open</SelectItem>
                 <SelectItem value="PENDING">Pending</SelectItem>
-                <SelectItem value="COMPLETED">Completed</SelectItem>
               </SelectContent>
             </Select>
           </div>

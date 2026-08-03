@@ -635,7 +635,11 @@
       "open": "Open",
       "pending": "Pending",
       "completed": "Completed"
-    }
+    },
+    "reopenResult": "Reopen result",
+    "reopening": "Reopening…",
+    "resultReopened": "Result reopened",
+    "reopenErrorMessage": "Could not reopen the result"
   },
   "matchReport": {
     "title": "Match Report",

@@ -28,7 +28,7 @@ import { useTranslations } from "next-intl";
 import adminService from "@/services/admin.service";
 import captainService from "@/services/captain.service";
 import { CaptainReportsView } from "@/components/tournaments/CaptainReportsView";
-import type { EncounterUpdateInput } from "@/types/admin.types";
+import type { EncounterEditableStatus, EncounterUpdateInput } from "@/types/admin.types";
 import { Encounter } from "@/types/encounter.types";
 import { cn } from "@/lib/utils";
 
@@ -38,7 +38,9 @@ interface EncounterEditDialogProps {
   encounter: Encounter;
 }
 
-const ENCOUNTER_STATUSES = ["open", "pending", "completed"] as const;
+// Editable statuses only. Completion moves score, status, result_status and
+// the audit row together, so it belongs to the result action below.
+const ENCOUNTER_STATUSES = ["open", "pending"] as const;
 const BEST_OF_OPTIONS = [1, 2, 3, 5, 7] as const;
 
 function closenessFloatToStars(closeness: number | null | undefined): number {
@@ -106,7 +108,7 @@ function EncounterEditDialogBody({
       const encounterPayload: EncounterUpdateInput = {
         home_score: homeScore,
         away_score: awayScore,
-        status,
+        status: status as EncounterEditableStatus,
         closeness: stars > 0 ? stars / 10 : null,
         best_of: bestOf
       };
@@ -119,8 +121,15 @@ function EncounterEditDialogBody({
     }
   });
 
+  // Confirming takes the numbers currently on screen, so "fix the score and
+  // confirm it" is one request instead of an edit racing a confirm.
   const confirmMutation = useMutation({
-    mutationFn: () => adminService.confirmEncounterResult(encounter.id),
+    mutationFn: () =>
+      adminService.setEncounterResult(encounter.id, {
+        home_score: homeScore,
+        away_score: awayScore,
+        ...(stars > 0 ? { closeness: stars } : {})
+      }),
     onSuccess: async () => {
       notify.success(t("matchEdit.resultConfirmed"));
       await refreshEncounterViews();
@@ -128,6 +137,18 @@ function EncounterEditDialogBody({
     },
     onError: (error) => {
       notify.apiError(error, { title: t("matchEdit.confirmErrorMessage") });
+    }
+  });
+
+  const reopenMutation = useMutation({
+    mutationFn: () => adminService.reopenEncounterResult(encounter.id),
+    onSuccess: async () => {
+      notify.success(t("matchEdit.resultReopened"));
+      await refreshEncounterViews();
+      onOpenChange(false);
+    },
+    onError: (error) => {
+      notify.apiError(error, { title: t("matchEdit.reopenErrorMessage") });
     }
   });
 
@@ -258,8 +279,16 @@ function EncounterEditDialogBody({
         >
           {t("matchEdit.cancel")}
         </Button>
-        {(encounter.result_status === "pending_confirmation" ||
-          encounter.result_status === "disputed") && (
+        {encounter.result_status === "confirmed" ? (
+          <Button
+            variant="secondary"
+            onClick={() => reopenMutation.mutate()}
+            disabled={reopenMutation.isPending}
+            className="h-10 px-5 font-semibold"
+          >
+            {reopenMutation.isPending ? t("matchEdit.reopening") : t("matchEdit.reopenResult")}
+          </Button>
+        ) : (
           <Button
             variant="secondary"
             onClick={() => confirmMutation.mutate()}

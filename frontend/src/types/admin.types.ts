@@ -413,6 +413,57 @@ export interface PlayerSubRoleUpdateInput {
 
 // ─── Encounter ───────────────────────────────────────────────────────────────
 
+/**
+ * Statuses a plain field edit may set. Completion moves score, status,
+ * result_status and the audit row together, so it has its own endpoint.
+ */
+export type EncounterEditableStatus = "OPEN" | "PENDING";
+
+export interface EncounterSetResultInput {
+  home_score?: number;
+  away_score?: number;
+  /** 1..10; defaults to the mean of the captain reports when omitted. */
+  closeness?: number;
+  /** Resolve a dispute by taking this team's report as the truth. */
+  adopt_report_team_id?: number;
+}
+
+export interface EncounterResultRead {
+  id: number;
+  status: string;
+  result_status: string;
+  home_score: number;
+  away_score: number;
+  closeness: number | null;
+  confirmed_at: string | null;
+}
+
+export type EncounterResultAuditAction =
+  | "confirm"
+  | "reopen"
+  | "auto_confirm"
+  | "auto_dispute"
+  | "import"
+  | "cascade_reset";
+
+export interface EncounterResultAuditRead {
+  id: number;
+  encounter_id: number;
+  /** null = a machine actor (Challonge import, bracket cascade). */
+  actor_user_id: number | null;
+  actor_name: string | null;
+  action: EncounterResultAuditAction;
+  from_result_status: string | null;
+  to_result_status: string;
+  home_score_before: number | null;
+  away_score_before: number | null;
+  home_score_after: number;
+  away_score_after: number;
+  adopted_team_id: number | null;
+  source: string;
+  created_at: string;
+}
+
 export interface EncounterCreateInput {
   tournament_id: number;
   tournament_group_id?: number | null;
@@ -423,7 +474,8 @@ export interface EncounterCreateInput {
   round: number;
   home_score?: number;
   away_score?: number;
-  status?: string;
+  /** COMPLETED is rejected: completion goes through setEncounterResult. */
+  status?: EncounterEditableStatus;
   best_of?: number;
   name?: string;
 }
@@ -436,7 +488,8 @@ export interface EncounterUpdateInput {
   away_team_id?: number | null;
   home_score?: number;
   away_score?: number;
-  status?: string;
+  /** COMPLETED is rejected: completion goes through setEncounterResult. */
+  status?: EncounterEditableStatus;
   round?: number;
   name?: string;
   closeness?: number | null;

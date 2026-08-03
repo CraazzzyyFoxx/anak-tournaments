@@ -60,6 +60,7 @@ import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
 import type {
   EncounterCreateInput,
+  EncounterEditableStatus,
   EncounterUpdateInput,
   StandingUpdateInput
 } from "@/types/admin.types";
@@ -371,7 +372,7 @@ export function TournamentMatchesTab({
           round: encounterFormData.round,
           home_score: encounterFormData.home_score,
           away_score: encounterFormData.away_score,
-          status: encounterFormData.status
+          status: encounterFormData.status as EncounterEditableStatus
         } satisfies EncounterUpdateInput)
       : ({
           name: encounterFormData.name.trim(),
@@ -383,7 +384,7 @@ export function TournamentMatchesTab({
           round: encounterFormData.round,
           home_score: encounterFormData.home_score,
           away_score: encounterFormData.away_score,
-          status: encounterFormData.status
+          status: encounterFormData.status as EncounterEditableStatus
         } satisfies EncounterCreateInput);
 
     saveEncounterMutation.mutate(
@@ -1095,7 +1096,6 @@ export function TournamentMatchesTab({
               <SelectContent>
                 <SelectItem value="open">Open</SelectItem>
                 <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
               </SelectContent>
             </Select>
           </div>

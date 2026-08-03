@@ -95,7 +95,10 @@ import {
   CollectTriggerResult,
   RankFetchLogRow,
   RankFetchLogQuery,
-  RankCollectionStats
+  RankCollectionStats,
+  EncounterResultAuditRead,
+  EncounterResultRead,
+  EncounterSetResultInput,
 } from "@/types/admin.types";
 
 class AdminService {
@@ -383,12 +386,33 @@ class AdminService {
     });
   }
 
-  async confirmEncounterResult(
-    id: number
-  ): Promise<{ id: number; result_status: string; status: string }> {
-    const response = await apiFetch(`/api/v1/admin/encounters/${id}/confirm-result`, {
+  /**
+   * The single admin result write: score, status, result_status and the audit
+   * row move together. An empty body confirms whatever is already there, which
+   * covers the common case of two agreeing captain reports.
+   */
+  async setEncounterResult(
+    id: number,
+    data: EncounterSetResultInput = {}
+  ): Promise<EncounterResultRead> {
+    const response = await apiFetch(`/api/v1/admin/encounters/${id}/result`, {
+      method: "POST",
+      body: data
+    });
+    return response.json();
+  }
+
+  /** Un-confirm a result so it can be replayed or re-reported. */
+  async reopenEncounterResult(id: number): Promise<EncounterResultRead> {
+    const response = await apiFetch(`/api/v1/admin/encounters/${id}/result/reopen`, {
       method: "POST"
     });
+    return response.json();
+  }
+
+  /** Every recorded transition of this encounter's result, newest first. */
+  async getEncounterResultAudit(id: number): Promise<EncounterResultAuditRead[]> {
+    const response = await apiFetch(`/api/v1/admin/encounters/${id}/result-audit`);
     return response.json();
   }
 
@@ -1334,24 +1358,6 @@ class AdminService {
   ): Promise<Stage> {
     const response = await apiFetch(`/api/v1/admin/stages/${stageId}/seed-teams`, {
       method: "POST",
-      body: data
-    });
-    return response.json();
-  }
-
-  async bulkUpdateEncounters(data: {
-    encounter_ids: number[];
-    status?: string;
-    home_score?: number;
-    away_score?: number;
-    reset_scores?: boolean;
-  }): Promise<{
-    updated: number;
-    newly_completed: number;
-    tournaments_recalculated: number[];
-  }> {
-    const response = await apiFetch("/api/v1/admin/encounters/bulk", {
-      method: "PATCH",
       body: data
     });
     return response.json();

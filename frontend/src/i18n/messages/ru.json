@@ -635,7 +635,11 @@
       "open": "Открыт",
       "pending": "Ожидает",
       "completed": "Завершён"
-    }
+    },
+    "reopenResult": "Переоткрыть результат",
+    "reopening": "Переоткрываем…",
+    "resultReopened": "Результат переоткрыт",
+    "reopenErrorMessage": "Не удалось переоткрыть результат"
   },
   "matchReport": {
     "title": "Репорт матча",
