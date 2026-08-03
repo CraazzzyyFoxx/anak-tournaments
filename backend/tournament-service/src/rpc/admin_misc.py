@@ -29,13 +29,26 @@ from pydantic import BaseModel
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.identity import ensure_workspace_permission
+from shared.rpc.query import build_query_model
 from src import models
 from src.core import auth
-from src.rpc._helpers import _bool, _dump, _identity, _path_int, _payload, _q1, _require_id, _run
+from src.rpc._helpers import (
+    _bool,
+    _dump,
+    _identity,
+    _path_int,
+    _payload,
+    _q1,
+    _require_id,
+    _require_q1,
+    _run,
+)
 from src.schemas.admin import encounter as enc_schemas
+from src.schemas.admin import encounter_reports as reports_schemas
 from src.schemas.admin import tournament as tournament_schemas
 from src.schemas.admin.computation import TournamentComputationJobRead
 from src.services.admin import encounter as enc_service
+from src.services.admin import encounter_reports as reports_service
 from src.services.admin import preview_access as preview_access_service
 from src.services.admin import standing as standing_service
 from src.services.admin import tournament as tournament_service
@@ -354,5 +367,38 @@ def register(broker: Any, logger: Any) -> None:
                 limit=limit,
             )
             return [_dump(TournamentComputationJobRead.model_validate(job, from_attributes=True)) for job in jobs_list]
+
+        return await _run(logger, op)
+
+    # ── captain reports (cross-tournament, workspace-scoped) ──────────────
+
+    def _reports_params(data: dict) -> tuple[int, Any]:
+        """Resolve the workspace and parse the shared filter set.
+
+        The workspace is an explicit query param rather than inferred: this list
+        spans every tournament in it, so there is no single tournament to derive
+        the scope from.
+        """
+        user = _identity(data)
+        workspace_id = _require_q1(data, "workspace_id", int)
+        ensure_workspace_permission(user, workspace_id, "match", "read")
+        qp = build_query_model(reports_schemas.EncounterReportsQueryParams, data.get("query"))
+        return workspace_id, reports_schemas.EncounterReportsSearchParams.from_query_params(qp)
+
+    @broker.subscriber("rpc.tournament.admin_encounter_reports_list")
+    async def _admin_encounter_reports_list(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            workspace_id, params = _reports_params(data)
+            return await reports_service.list_encounter_reports(
+                session, workspace_id=workspace_id, params=params
+            )
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.admin_encounter_reports_stats")
+    async def _admin_encounter_reports_stats(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            workspace_id, params = _reports_params(data)
+            return await reports_service.get_reports_stats(session, workspace_id=workspace_id, params=params)
 
         return await _run(logger, op)

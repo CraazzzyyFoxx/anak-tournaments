@@ -12,16 +12,20 @@ The payload shape is unchanged from the hand-rolled dict — the frontend's
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from pydantic import BaseModel
 
+from shared.core import pagination
 from shared.core.enums import EncounterResultAuditAction, EncounterResultStatus, EncounterStatus
 
 __all__ = (
     "CaptainReportRead",
     "EncounterMapCodeRead",
+    "EncounterReportsQueryParams",
     "EncounterReportsRow",
+    "EncounterReportsSearchParams",
     "EncounterReportsStats",
     "EncounterTeamRef",
     "LastResolutionRead",
@@ -126,3 +130,30 @@ class EncounterReportsStats(BaseModel):
     by_result_status: dict[str, int]
     mismatch_count: int
     awaiting_second_count: int
+
+
+class EncounterReportsQueryParams(pagination.PaginationSortSearchQueryParams):
+    """Wire shape of the list's query string."""
+
+    tournament_id: int | None = None
+    stage_id: int | None = None
+    result_status: list[EncounterResultStatus] = []
+    mismatch_only: bool = False
+    reported_count: int | None = None
+
+
+@dataclass
+class EncounterReportsSearchParams(pagination.PaginationSortSearchParams):
+    """Parsed filters.
+
+    Split into "scope" (tournament, stage, free text) and "chip" (result status,
+    mismatch, reported count) by the service: the stats endpoint applies only
+    the former, so a chip counts what it would select rather than what it has
+    already selected.
+    """
+
+    tournament_id: int | None = None
+    stage_id: int | None = None
+    result_status: list[EncounterResultStatus] = field(default_factory=list)
+    mismatch_only: bool = False
+    reported_count: int | None = None
