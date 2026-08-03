@@ -11,25 +11,32 @@ Trigger model — debounced, event-driven:
     one per cooldown window so a burst of events coalesces into a single refresh.
 
 The refresh is scheduled as a background task (never blocks the event consumer),
-runs with ``statement_timeout`` disabled for its transaction, and is guarded by a
-Postgres advisory lock so two refreshers never collide.
+runs with ``statement_timeout`` disabled and ``work_mem`` raised for its
+transaction, and is guarded by a Postgres advisory lock so two refreshers never
+collide. The debounce window lives in Redis (via cashews) so it holds across
+scaled-out replicas, not just inside one process.
 """
 
 from __future__ import annotations
 
 import asyncio
-import time
+from contextlib import suppress
 from typing import Any
 
 import sqlalchemy as sa
+from cashews import cache
 
 _MV_QUALNAME = "matches.mv_hero_global_stats"
 # Arbitrary constant advisory-lock key, unique to this refresh.
 _ADVISORY_LOCK_KEY = 0x6865726F5F6756
 # Debounce window: collapse a burst of change events into a single refresh.
-_REFRESH_COOLDOWN_SECONDS = 600.0
+# Global per-hero stats do not need minute-level freshness.
+_REFRESH_COOLDOWN_SECONDS = 3600
+# Cooldown marker. The ``backend:`` prefix routes to Redis (see ``core.caching``),
+# so the window is shared by every app-svc replica (``make prod-scale``) — a
+# module-level timestamp would debounce inside one process only.
+_COOLDOWN_KEY = "backend:hero_global_stats:refresh_cooldown"
 
-_last_refresh_monotonic: float | None = None
 # Keep references to in-flight refresh tasks so they aren't garbage-collected.
 _background_tasks: set[asyncio.Task[Any]] = set()
 
@@ -49,6 +56,14 @@ async def refresh_hero_global_stats(session: Any) -> bool:
     # text() bind-parser and ``to_regclass`` returns NULL (not an error) when the
     # view has not been created yet.
     await session.execute(sa.text("SET LOCAL statement_timeout = 0"))
+    # Two plan nodes over the ~4.3M-row ``eligible`` CTE spilled at the server-wide
+    # 64 MB ``work_mem``: its sort (245 MB temp file) and its materialization
+    # (216 MB). ``work_mem`` caps each node separately and measured in-memory need
+    # is well above the on-disk size — EXPLAIN ANALYZE on prod: 403 MB quicksort +
+    # 321 MB tuplestore. 768 MB keeps both resident with room to grow; only one
+    # such transaction runs at a time (advisory lock below), so it cannot multiply
+    # across sessions the way a global bump would.
+    await session.execute(sa.text("SET LOCAL work_mem = '768MB'"))
     got_lock = (await session.execute(sa.text(f"SELECT pg_try_advisory_xact_lock({_ADVISORY_LOCK_KEY})"))).scalar()
     if not got_lock:
         return False
@@ -63,26 +78,27 @@ async def refresh_hero_global_stats(session: Any) -> bool:
 
 async def _run_refresh(session_maker: Any, logger: Any) -> None:
     try:
+        # Cross-replica debounce: atomic SET NX EX, first claimant in the window wins.
+        if not await cache.set(_COOLDOWN_KEY, 1, expire=_REFRESH_COOLDOWN_SECONDS, exist=False):
+            return
         async with session_maker() as session:
             await refresh_hero_global_stats(session)
     except Exception:
         logger.exception("hero global-stats materialized view refresh failed")
+        # Release the window so a transient failure retries on the next event
+        # instead of leaving the view stale for a full cooldown.
+        with suppress(Exception):
+            await cache.delete(_COOLDOWN_KEY)
 
 
 def request_refresh(session_maker: Any, logger: Any) -> None:
     """Debounced, non-blocking refresh request (call on data-change events / startup).
 
-    Throttled to at most one refresh per cooldown window; the timestamp is set
-    before scheduling so a burst of events doesn't launch several refreshes. The
-    refresh runs as a background task so it never blocks the caller (the event
-    consumer). The advisory lock in :func:`refresh_hero_global_stats` is the
-    final guard against overlapping refreshes.
+    Runs as a background task so it never blocks the caller (the event consumer).
+    The task claims the cooldown window in Redis first, so a burst of events —
+    across every replica — coalesces into a single refresh; the advisory lock in
+    :func:`refresh_hero_global_stats` is the final guard against overlap.
     """
-    global _last_refresh_monotonic
-    now = time.monotonic()
-    if _last_refresh_monotonic is not None and (now - _last_refresh_monotonic) < _REFRESH_COOLDOWN_SECONDS:
-        return
-    _last_refresh_monotonic = now
     task = asyncio.create_task(_run_refresh(session_maker, logger))
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
