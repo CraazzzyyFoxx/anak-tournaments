@@ -123,10 +123,8 @@ async def get_completed_match_history_by_tournament(
             models.Encounter.tournament_id == tournament_id,
             models.Encounter.home_team_id.isnot(None),
             models.Encounter.away_team_id.isnot(None),
-            sa.or_(
-                models.Encounter.status == enums.EncounterStatus.COMPLETED,
-                models.Encounter.result_status == enums.EncounterResultStatus.CONFIRMED,
-            ),
+            # Single form (encres0001 pins it to result_status == CONFIRMED).
+            models.Encounter.status == enums.EncounterStatus.COMPLETED,
         )
         .order_by(
             models.Encounter.stage_id.asc().nullslast(),

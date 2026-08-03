@@ -45,10 +45,8 @@ def _winner_team_id(encounter: models.Encounter) -> int | None:
 
 
 def _encounter_is_completed(encounter: models.Encounter) -> bool:
-    return (
-        encounter.status == enums.EncounterStatus.COMPLETED
-        or encounter.result_status == enums.EncounterResultStatus.CONFIRMED
-    )
+    # Single form (encres0001 pins it to result_status == CONFIRMED).
+    return encounter.status == enums.EncounterStatus.COMPLETED
 
 
 async def _enqueue_match_log_tournament_events(
