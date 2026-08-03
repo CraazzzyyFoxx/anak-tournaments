@@ -19,5 +19,6 @@ from .platform import *
 from .preferences import *
 from .ranks import *
 from .registration import *
+from .subscriptions import *
 from .tenancy import *
 from .tournament import *
