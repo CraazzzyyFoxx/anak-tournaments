@@ -1,9 +1,22 @@
 import React from "react";
-import { CheckCircle2, Circle, Clock, Lock, Unlock, XCircle } from "lucide-react";
+import {
+  CheckCircle2,
+  Circle,
+  Clock,
+  HeartCrack,
+  HeartHandshake,
+  Lock,
+  Unlock,
+  XCircle
+} from "lucide-react";
 import { useTranslations } from "next-intl";
 import StatusMetaBadge from "@/components/status/StatusMetaBadge";
 import { StatusIconBadge } from "@/components/status/StatusIconBadge";
-import type { StatusMeta } from "@/types/registration.types";
+import type {
+  StatusMeta,
+  SubscriptionOutcome,
+  SubscriptionProviderVerdict
+} from "@/types/registration.types";
 
 interface StatusBadgeProps {
   status?: string | null;
@@ -58,6 +71,14 @@ interface AdmissionOptions {
   requireOpenProfile?: boolean;
   /** True = public, False = closed, null/undefined = unknown (fails open). */
   profilesOpen?: boolean | null;
+  /** When the tournament requires a subscription, a confirmed refusal blocks admission. */
+  requireSubscription?: boolean;
+  /**
+   * Composed outcome as sent by the server. Deliberately NOT re-derived on the
+   * client: under `any` mode one red per-provider chip next to a green one is
+   * still a pass, so only the composed answer may drive admission.
+   */
+  subscriptionOutcome?: SubscriptionOutcome | null;
 }
 
 interface AdmissionStatusBadgeProps extends AdmissionOptions {
@@ -81,6 +102,12 @@ export function isAdmitted(
   if (options?.requireOpenProfile && options.profilesOpen === false) {
     return false;
   }
+  // Subscription requirement: identical rule, one layer over — only a confirmed
+  // refusal blocks. "undetermined" (provider outage, unlinked account, missing
+  // scope) fails open exactly as the server gate does.
+  if (options?.requireSubscription && options.subscriptionOutcome === "refused") {
+    return false;
+  }
   return true;
 }
 
@@ -90,13 +117,19 @@ export function AdmissionStatusBadge({
   checkedIn,
   requireOpenProfile,
   profilesOpen,
+  requireSubscription,
+  subscriptionOutcome,
   className
 }: AdmissionStatusBadgeProps) {
   const t = useTranslations();
 
   const isProfileClosed = requireOpenProfile && profilesOpen === false;
+  const isSubscriptionRefused = requireSubscription && subscriptionOutcome === "refused";
   const isApprovedAndReady =
-    registrationStatus === "approved" && balancerStatus === "ready" && !isProfileClosed;
+    registrationStatus === "approved" &&
+    balancerStatus === "ready" &&
+    !isProfileClosed &&
+    !isSubscriptionRefused;
 
   if (!isApprovedAndReady) {
     return (
@@ -161,6 +194,105 @@ export function ProfileStatusBadge({ profilesOpen, className }: ProfileStatusBad
     <StatusIconBadge
       icon={Circle}
       label={t("common.profileNotChecked")}
+      tone="neutral"
+      className={className}
+    />
+  );
+}
+
+
+interface SubscriptionStatusBadgeProps {
+  /** Composed outcome from the server; null/undefined = not required or unknown. */
+  outcome: SubscriptionOutcome | null | undefined;
+  className?: string;
+}
+
+/**
+ * The COMPOSED subscription verdict, for admin tables and the admission column.
+ *
+ * Renders three states, not two: an outage must be visually distinct from a
+ * confirmed refusal, because only the latter blocks. Per-provider detail belongs
+ * in the row detail (see `SubscriptionProviderBadge`) — one column per provider
+ * would not scale, and under `any` mode a red provider cell beside a green one
+ * reads as a failure when it is not.
+ */
+export function SubscriptionStatusBadge({ outcome, className }: SubscriptionStatusBadgeProps) {
+  const t = useTranslations();
+
+  if (outcome === "satisfied") {
+    return (
+      <StatusIconBadge
+        icon={HeartHandshake}
+        label={t("common.subscription.satisfied")}
+        tone="positive"
+        className={className}
+      />
+    );
+  }
+  if (outcome === "refused") {
+    return (
+      <StatusIconBadge
+        icon={HeartCrack}
+        label={t("common.subscription.refused")}
+        tone="negative"
+        className={className}
+      />
+    );
+  }
+  return (
+    <StatusIconBadge
+      icon={Circle}
+      label={t("common.subscription.undetermined")}
+      tone="neutral"
+      className={className}
+    />
+  );
+}
+
+interface SubscriptionProviderBadgeProps {
+  providerLabel: string;
+  verdict: SubscriptionProviderVerdict | undefined;
+  className?: string;
+}
+
+/**
+ * One provider's verdict, for the registration form's account rows.
+ *
+ * Shows the provider's own tier label rather than the numeric rank: Boosty
+ * "Уровень 2" and Twitch "Tier 2" are unrelated scales and a bare number would
+ * imply they are comparable.
+ */
+export function SubscriptionProviderBadge({
+  providerLabel,
+  verdict,
+  className
+}: SubscriptionProviderBadgeProps) {
+  const t = useTranslations();
+
+  if (verdict?.state === "active") {
+    return (
+      <StatusIconBadge
+        icon={HeartHandshake}
+        label={verdict.tier_label ? `${providerLabel}: ${verdict.tier_label}` : providerLabel}
+        tone="positive"
+        className={className}
+      />
+    );
+  }
+  if (verdict?.state === "inactive") {
+    return (
+      <StatusIconBadge
+        icon={HeartCrack}
+        label={`${providerLabel}: ${t("common.subscription.none")}`}
+        tone="negative"
+        className={className}
+      />
+    );
+  }
+  return (
+    <StatusIconBadge
+      icon={Circle}
+      label={`${providerLabel}: ${t("common.subscription.unchecked")}`}
       tone="neutral"
       className={className}
     />

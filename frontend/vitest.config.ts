@@ -35,7 +35,9 @@ export default defineConfig({
       "src/components/ui/data-pagination.test.tsx",
       "src/components/ui/infinite-scroll.test.tsx",
       "src/components/site/**/*.test.tsx",
-      "src/components/ui/toggle-group.test.tsx"
+      "src/components/ui/toggle-group.test.tsx",
+      "src/components/status/**/*.test.tsx",
+      "src/lib/**/*.test.ts"
     ]
   }
 });
