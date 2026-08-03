@@ -17,6 +17,7 @@ from src import schemas
 from src.schemas import registration as reg_schemas
 from src.schemas.admin import balancer as admin_balancer
 from src.schemas.admin import encounter as admin_encounter
+from src.schemas.admin import encounter_reports as admin_reports
 from src.schemas.admin import player_sub_role as admin_player_sub_role
 from src.schemas.admin import stage as admin_stage
 from src.schemas.admin import standing as admin_standing
@@ -251,6 +252,8 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.saved_view_create": Op(
         request=schemas.EncounterSavedViewCreate, response=schemas.EncounterSavedViewRead
     ),
+    # ── captain reports (public read, now typed) ───────────────────────────
+    "rpc.tournament.captain_reports": Op(response=admin_reports.CaptainReportRead, response_array=True),
     # ── encounter result (the single admin write + its audit trail) ────────
     "rpc.tournament.encounter_set_result": Op(
         request=admin_encounter.EncounterSetResultInput, response=admin_encounter.EncounterResultRead

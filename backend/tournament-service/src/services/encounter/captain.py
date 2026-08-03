@@ -34,6 +34,7 @@ from shared.services.bracket import advancement
 from shared.services.challonge_refs import resolve_encounter_challonge
 from shared.services.encounter.result_audit import record_result_transition
 from src import models
+from src.schemas.admin.encounter_reports import CaptainReportRead, EncounterMapCodeRead
 from src.services.challonge import sync as challonge_sync
 from src.services.encounter.finalize import finalize_encounter_score
 from src.services.tournament.events import enqueue_tournament_recalculation
@@ -174,38 +175,41 @@ async def _picked_map_ids(session: AsyncSession, encounter_id: int) -> dict[int,
     return {int(order): int(map_id) for order, map_id in rows.all() if order is not None}
 
 
-def serialize_map_code(code: models.EncounterMapCode) -> dict:
-    return {
-        "id": code.id,
-        "map_index": code.map_index,
-        "map_id": code.map_id,
-        "code": code.code,
-    }
+def serialize_map_code(code: models.EncounterMapCode) -> EncounterMapCodeRead:
+    return EncounterMapCodeRead(
+        id=code.id,
+        map_index=code.map_index,
+        map_id=code.map_id,
+        code=code.code,
+    )
 
 
 def serialize_captain_report(
     report: models.EncounterCaptainReport,
     encounter: models.Encounter,
     map_codes: Sequence[models.EncounterMapCode],
-) -> dict:
+    reporter_name: str | None = None,
+) -> CaptainReportRead:
+    """Build the report payload shared by the public read and the admin list."""
     side: str | None = None
     if report.team_id == encounter.home_team_id:
         side = "home"
     elif report.team_id == encounter.away_team_id:
         side = "away"
-    return {
-        "id": report.id,
-        "encounter_id": report.encounter_id,
-        "team_id": report.team_id,
-        "side": side,
-        "reporter_user_id": report.reporter_user_id,
-        "home_score": report.home_score,
-        "away_score": report.away_score,
-        "closeness": report.closeness,
-        "map_codes": [serialize_map_code(mc) for mc in sorted(map_codes, key=lambda c: c.map_index)],
-        "created_at": report.created_at.isoformat() if report.created_at else None,
-        "updated_at": report.updated_at.isoformat() if report.updated_at else None,
-    }
+    return CaptainReportRead(
+        id=report.id,
+        encounter_id=report.encounter_id,
+        team_id=report.team_id,
+        side=side,
+        reporter_user_id=report.reporter_user_id,
+        reporter_name=reporter_name,
+        home_score=report.home_score,
+        away_score=report.away_score,
+        closeness=report.closeness,
+        map_codes=[serialize_map_code(mc) for mc in sorted(map_codes, key=lambda c: c.map_index)],
+        created_at=report.created_at.isoformat() if report.created_at else None,
+        updated_at=report.updated_at.isoformat() if report.updated_at else None,
+    )
 
 
 async def get_encounter_reports(session: AsyncSession, encounter_id: int) -> list[dict]:
@@ -250,7 +254,23 @@ async def get_encounter_reports(session: AsyncSession, encounter_id: int) -> lis
     for code in codes:
         codes_by_report.setdefault(code.report_id, []).append(code)
 
-    return [serialize_captain_report(r, encounter, codes_by_report.get(r.id, [])) for r in reports]
+    reporter_ids = {r.reporter_user_id for r in reports if r.reporter_user_id is not None}
+    names_by_user_id: dict[int, str] = {}
+    if reporter_ids:
+        rows = await session.execute(
+            select(models.User.id, models.User.name).where(models.User.id.in_(reporter_ids))
+        )
+        names_by_user_id = dict(rows.all())
+
+    return [
+        serialize_captain_report(
+            r,
+            encounter,
+            codes_by_report.get(r.id, []),
+            reporter_name=names_by_user_id.get(r.reporter_user_id) if r.reporter_user_id else None,
+        ).model_dump(mode="json")
+        for r in reports
+    ]
 
 
 async def get_result_audit(session: AsyncSession, encounter_id: int) -> list[dict]:
