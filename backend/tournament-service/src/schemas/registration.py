@@ -5,8 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
+from shared.subscriptions import parse_requirement
 from src.schemas.division_grid import DivisionGridVersionRead
 
 # ---------------------------------------------------------------------------
@@ -56,6 +57,8 @@ class RegistrationFormRead(BaseModel):
     require_open_profile: bool = False
     open_profile_scope: str = "main"
     show_ranks: bool = False
+    require_subscription: bool = False
+    subscription_requirement_json: dict[str, Any] = Field(default_factory=dict)
     built_in_fields: dict[str, BuiltInFieldConfig] = Field(default_factory=dict)
     custom_fields: list[CustomFieldDefinition] = Field(default_factory=list)
     # Workspace sub-role catalog keyed by registration role code (tank/dps/support).
@@ -70,8 +73,27 @@ class RegistrationFormUpsert(BaseModel):
     require_open_profile: bool = False
     open_profile_scope: str = "main"
     show_ranks: bool = False
+    require_subscription: bool = False
+    subscription_requirement_json: dict[str, Any] = Field(default_factory=dict)
     built_in_fields: dict[str, BuiltInFieldConfig] = Field(default_factory=dict)
     custom_fields: list[CustomFieldDefinition] = Field(default_factory=list)
+
+    @field_validator("subscription_requirement_json")
+    @classmethod
+    def _validate_requirement(cls, value: dict[str, Any]) -> dict[str, Any]:
+        """Reject a malformed requirement on SAVE, not at check-in.
+
+        ``parse_requirement`` raises on an unknown ``mode`` (silently picking one
+        would change the admission rule) and drops rows with no provider — which
+        would leave the organizer believing they configured a gate that does
+        nothing, so an all-dropped payload is rejected too.
+        """
+        if not value:
+            return {}
+        requirement = parse_requirement(value)
+        if (value.get("requirements") or []) and not requirement.requirements:
+            raise ValueError("subscription requirement rows must each name a provider")
+        return value
 
 
 # ---------------------------------------------------------------------------

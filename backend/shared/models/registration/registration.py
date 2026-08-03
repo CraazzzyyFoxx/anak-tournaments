@@ -47,6 +47,24 @@ class BalancerRegistrationForm(db.TimeStampIntegerMixin):
     require_open_profile: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
     open_profile_scope: Mapped[str] = mapped_column(String(8), nullable=False, server_default="main", default="main")
     show_ranks: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
+    # Subscription admission requirement. Enforced at CHECK-IN only, never at
+    # registration submission (a provider outage during open signups must not lock
+    # anybody out). ``require_subscription`` is a master toggle kept separate from
+    # the blob -- like ``Workspace.branding_enabled`` -- so switching the gate off
+    # mid-tournament does not destroy the organizer's thresholds.
+    #
+    # ``subscription_requirement_json`` is ``{mode, requirements}``:
+    #   {"mode": "any"|"all",
+    #    "requirements": [{"provider": "boosty", "min_tier_rank": 2}, ...]}
+    # A per-provider threshold is mandatory because Boosty "Уровень 2" and Twitch
+    # "Tier 2" are unrelated scales. Parsed by
+    # ``shared.subscriptions.parse_requirement``; composed with Kleene logic.
+    require_subscription: Mapped[bool] = mapped_column(
+        Boolean(), nullable=False, server_default="false", default=False
+    )
+    subscription_requirement_json: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, server_default="{}", default=dict
+    )
 
     tournament: Mapped[Tournament] = relationship()
     workspace: Mapped[Workspace] = relationship()
