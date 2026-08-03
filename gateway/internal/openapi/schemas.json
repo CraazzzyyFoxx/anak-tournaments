@@ -6768,7 +6768,7 @@
       "summary": "List registrations (admin)"
     },
     "rpc.tournament.reg_pub_check_in": {
-      "description": "Checks the calling user's own registration in, blocking when the form requires a confirmed-public OW profile that is private; requires authentication.",
+      "description": "Checks the calling user's own registration in, blocking when the form requires a confirmed-public OW profile that is private, or when a required subscription is confirmed missing (an undetermined verdict fails open); requires authentication.",
       "response": {
         "array": false,
         "ref": "tournament.RegistrationRead"
@@ -7186,6 +7186,26 @@
         "ref": "tournament.OverallStatistics"
       },
       "summary": "Get overall statistics"
+    },
+    "rpc.tournament.sub_me": {
+      "description": "Returns the calling user's composed subscription outcome for the tournament plus a per-provider verdict; never forces a provider refresh; requires authentication.",
+      "response": {
+        "array": false,
+        "ref": "tournament.SubscriptionStatusRead"
+      },
+      "summary": "My subscription status"
+    },
+    "rpc.tournament.sub_redeem_code": {
+      "description": "Redeems a challenge code published in a subscriber-only post, granting an entitlement at the code's tier; never downgrades an existing higher tier and is rate-limited per user; requires authentication.",
+      "request": {
+        "array": false,
+        "ref": "tournament.SubscriptionRedeemRequest"
+      },
+      "response": {
+        "array": false,
+        "ref": "tournament.SubscriptionStatusRead"
+      },
+      "summary": "Redeem a subscription code"
     },
     "rpc.tournament.tournament_finish": {
       "description": "Toggles a tournament's legacy finished flag and returns it with stages; superuser-only.",
@@ -33050,6 +33070,132 @@
         "label"
       ],
       "title": "SubroleOption",
+      "type": "object"
+    },
+    "tournament.SubscriptionProviderVerdictRead": {
+      "description": "One provider's verdict, as shown to the patron.\n\nDeliberately narrow: ``evidence`` may hold guild ids and role ids, so only\n``reason`` is exposed -- the UI branches on it to pick a call to action\n(\"link Discord\" vs \"reconnect Twitch\").",
+      "properties": {
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "state": {
+          "title": "State",
+          "type": "string"
+        },
+        "tier_label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tier Label"
+        },
+        "tier_rank": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tier Rank"
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "title": "SubscriptionProviderVerdictRead",
+      "type": "object"
+    },
+    "tournament.SubscriptionRedeemRequest": {
+      "description": "Body of the challenge-code redemption endpoint.\n\n``provider`` defaults to ``boosty`` because the challenge code exists\nspecifically for it -- Twitch has a real API and needs no code.",
+      "properties": {
+        "code": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Code",
+          "type": "string"
+        },
+        "provider": {
+          "default": "boosty",
+          "title": "Provider",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code"
+      ],
+      "title": "SubscriptionRedeemRequest",
+      "type": "object"
+    },
+    "tournament.SubscriptionStatusRead": {
+      "description": "The caller's own subscription standing for one tournament.\n\n``outcome`` is the COMPOSED answer over the tournament's requirement;\n``verdicts`` is per provider so the form can render a chip per account row.\n``required`` is false when the tournament does not gate on a subscription, in\nwhich case the rest is informational only.",
+      "properties": {
+        "mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mode"
+        },
+        "outcome": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Outcome"
+        },
+        "required": {
+          "default": false,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "rule": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rule"
+        },
+        "verdicts": {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/tournament.SubscriptionProviderVerdictRead"
+          },
+          "title": "Verdicts",
+          "type": "object"
+        }
+      },
+      "title": "SubscriptionStatusRead",
       "type": "object"
     },
     "tournament.TeamCreate": {
