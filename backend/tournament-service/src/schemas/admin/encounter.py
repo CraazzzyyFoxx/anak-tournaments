@@ -66,7 +66,6 @@ class MatchUpdate(BaseModel):
     map_id: int | None = None
     code: str | None = None
     time: float | None = None
-    log_name: str | None = None
 
 
 class EncounterSetResultInput(BaseModel):

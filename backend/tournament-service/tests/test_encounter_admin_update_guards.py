@@ -142,3 +142,15 @@ class BulkEndpointIsGone(IsolatedAsyncioTestCase):
         what the single-mechanism rule forbids."""
         self.assertFalse(hasattr(enc_service, "bulk_update_encounters"))
         self.assertFalse(hasattr(admin_schemas, "BulkEncounterUpdate"))
+
+
+class MatchLogNameIsNotEditable(IsolatedAsyncioTestCase):
+    def test_log_name_left_matchupdate(self) -> None:
+        """An unvalidated log_name edit detached a match from every log record.
+        Since mtchlog001 provenance is a foreign key, so there is nothing left to
+        gain by allowing the string to be rewritten."""
+        self.assertNotIn("log_name", admin_schemas.MatchUpdate.model_fields)
+
+    def test_the_other_match_fields_are_still_editable(self) -> None:
+        fields = set(admin_schemas.MatchUpdate.model_fields)
+        assert {"home_score", "away_score", "map_id", "code", "time"} <= fields

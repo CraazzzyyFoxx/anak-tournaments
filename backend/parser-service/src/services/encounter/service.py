@@ -453,11 +453,13 @@ async def create_match(
     away_team_id: int,
     home_score: int,
     away_score: int,
+    log_record_id: int | None = None,
     commit: bool = True,
 ) -> models.Match:
     match = models.Match(
         time=time,
         log_name=log_name,
+        log_record_id=log_record_id,
         home_team_id=home_team_id,
         away_team_id=away_team_id,
         home_score=home_score,

@@ -6,6 +6,7 @@ from shared.core import db, enums
 from shared.models.catalog.hero import Hero
 from shared.models.catalog.map import Map
 from shared.models.identity.user import User
+from shared.models.ingestion.log_processing import LogProcessingRecord
 from shared.models.tournament.encounter import Encounter
 from shared.models.tournament.team import Team
 
@@ -27,8 +28,18 @@ class Match(db.TimeStampIntegerMixin):
     home_score: Mapped[int] = mapped_column(Integer())
     away_score: Mapped[int] = mapped_column(Integer())
     time: Mapped[float] = mapped_column(Float())
+    # The bare log filename as the parser saw it. Kept because the S3 key is
+    # built from it (logs/{tournament_id}/{log_name}); provenance itself lives on
+    # log_record_id below.
     log_name: Mapped[str] = mapped_column()
     code: Mapped[str | None] = mapped_column(nullable=True)
+    # Which ingested log produced this match. Nullable: rows written before this
+    # column existed cannot always be matched back, and the backfill leaves those
+    # NULL rather than guessing. SET NULL so pruning ingestion history never
+    # deletes a played map.
+    log_record_id: Mapped[int | None] = mapped_column(
+        ForeignKey("log_processing.record.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
     encounter_id: Mapped[int] = mapped_column(ForeignKey(Encounter.id, ondelete="CASCADE"), index=True)
     map_id: Mapped[int] = mapped_column(ForeignKey("overwatch.map.id", ondelete="CASCADE"), index=True)
@@ -37,6 +48,9 @@ class Match(db.TimeStampIntegerMixin):
     away_team: Mapped["Team"] = relationship(foreign_keys=[away_team_id])
     encounter: Mapped["Encounter"] = relationship(back_populates="matches")
     map: Mapped["Map"] = relationship()
+    # lazy="raise": only the admin surfaces need it, and an implicit load here
+    # would fire inside async paths that cannot do IO on attribute access.
+    log_record: Mapped["LogProcessingRecord | None"] = relationship(lazy="raise")
 
 
 class MatchStatistics(db.TimeStampIntegerMixin):

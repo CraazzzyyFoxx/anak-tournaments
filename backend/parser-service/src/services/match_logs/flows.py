@@ -93,9 +93,20 @@ async def _enqueue_match_log_tournament_events(
 
 
 class MatchLogProcessor:
-    def __init__(self, tournament: models.Tournament, name: str, data_in: list[str], s3: S3Client):
+    def __init__(
+        self,
+        tournament: models.Tournament,
+        name: str,
+        data_in: list[str],
+        s3: S3Client,
+        log_record_id: int | None = None,
+    ):
         self.tournament: models.Tournament = tournament
         self.filename: str = name
+        # The ingestion row this run came from. Recorded on every match it
+        # writes so provenance is a foreign key, not a filename comparison
+        # across two differently normalised columns.
+        self.log_record_id: int | None = log_record_id
         self.df: pd.DataFrame = self._load_and_format_data(data_in)
         self.heroes_map: dict[str, models.Hero] = {}  # Hero cache
         self._s3 = s3
@@ -973,6 +984,7 @@ class MatchLogProcessor:
                 away_team_id=away_team_db.id,
                 home_score=home_score,
                 away_score=away_score,
+                log_record_id=self.log_record_id,
                 commit=False,
             )
             encounter = await encounter_service.update_encounter_logs(
@@ -992,6 +1004,8 @@ class MatchLogProcessor:
             match_model.home_team_id = home_team_db.id
             match_model.away_team_id = away_team_db.id
             match_model.log_name = self.filename
+            if self.log_record_id is not None:
+                match_model.log_record_id = self.log_record_id
             session.add(match_model)
             await session.flush()
             logger.info(f"Match updated [id={match_model.id}] for log {self.filename}")
@@ -1282,7 +1296,13 @@ async def process_match_log(
     record = await record_service.set_processing(session, tournament_id, filename, content_hash=content_hash)
 
     decoded_lines = [line.decode() for line in raw_bytes.split(b"\n") if line]
-    processor = MatchLogProcessor(tournament, filename.split("/")[-1], decoded_lines, s3)
+    processor = MatchLogProcessor(
+        tournament,
+        filename.split("/")[-1],
+        decoded_lines,
+        s3,
+        log_record_id=record.id if record is not None else None,
+    )
     try:
         await processor.start(session, is_raise=is_raise)
         if record is not None:
