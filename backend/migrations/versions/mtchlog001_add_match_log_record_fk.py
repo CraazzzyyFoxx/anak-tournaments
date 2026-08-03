@@ -56,23 +56,30 @@ def upgrade() -> None:
 
     # basename on BOTH sides: log_name is already bare, record.filename may carry
     # the S3 key prefix depending on which path created it.
+    #
+    # Picked with DISTINCT ON rather than a LATERAL in the UPDATE's FROM: Postgres
+    # will not let a lateral subquery reference the update target, so the obvious
+    # per-row phrasing does not parse. The CTE keeps the same tie-break — a record
+    # that finished processing wins, then the newest — and touches only the rows
+    # that actually resolve.
     op.execute(
         """
+        WITH pick AS (
+            SELECT DISTINCT ON (m.id)
+                   m.id AS match_id,
+                   r.id AS record_id
+            FROM matches.match AS m
+            JOIN tournament.encounter AS e ON e.id = m.encounter_id
+            JOIN log_processing.record AS r
+              ON r.tournament_id = e.tournament_id
+             AND regexp_replace(r.filename, '^.*/', '') = regexp_replace(m.log_name, '^.*/', '')
+            WHERE m.log_record_id IS NULL
+            ORDER BY m.id, (r.status = 'done') DESC, r.created_at DESC, r.id DESC
+        )
         UPDATE matches.match AS m
-        SET log_record_id = pick.id
-        FROM LATERAL (
-            SELECT r.id
-            FROM log_processing.record AS r
-            WHERE r.tournament_id = (
-                    SELECT e.tournament_id
-                    FROM tournament.encounter AS e
-                    WHERE e.id = m.encounter_id
-                  )
-              AND regexp_replace(r.filename, '^.*/', '') = regexp_replace(m.log_name, '^.*/', '')
-            ORDER BY (r.status = 'done') DESC, r.created_at DESC, r.id DESC
-            LIMIT 1
-        ) AS pick
-        WHERE m.log_record_id IS NULL
+        SET log_record_id = pick.record_id
+        FROM pick
+        WHERE pick.match_id = m.id
         """
     )
 

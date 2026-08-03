@@ -75,11 +75,40 @@ class TestBackfill:
     def test_tiebreak_is_deterministic(self):
         """Duplicate records for one filename are expected — upsert_log_record
         reuses only pending/failed rows — so the pick must not depend on plan
-        order."""
-        assert "ORDER BY (r.status = 'done') DESC, r.created_at DESC, r.id DESC" in _text()
+        order.
+
+        Asserted as an ordered sequence of ranking keys rather than one literal
+        ORDER BY line: DISTINCT ON has to lead with the partition column, so the
+        exact prefix depends on phrasing while the ranking must not.
+        """
+        order_by = re.search(r"ORDER BY([^\n]*)", _text())
+        assert order_by, "the pick has no ORDER BY, so duplicates resolve arbitrarily"
+        keys = order_by.group(1)
+        ranking = ["r.status = 'done'", "r.created_at DESC", "r.id DESC"]
+        positions = [keys.find(k) for k in ranking]
+        assert all(p >= 0 for p in positions), f"missing ranking key in: {keys}"
+        assert positions == sorted(positions), f"ranking keys out of order in: {keys}"
 
     def test_scopes_the_match_to_its_own_tournament(self):
-        assert "r.tournament_id = (" in _text()
+        """Filenames are unique only within a tournament; without this the
+        backfill would attach a map to another event's log."""
+        text = _text()
+        assert re.search(r"r\.tournament_id\s*=", text), "record picked without a tournament scope"
+
+    def test_backfill_does_not_lateral_reference_the_update_target(self):
+        """Postgres refuses to let a LATERAL subquery in an UPDATE's FROM clause
+        reference the row being updated — the natural per-row phrasing does not
+        parse at all. Learned the hard way when this first ran against a real
+        database; pinned so the readable-looking version does not come back.
+        """
+        text = _text()
+        update_pos = text.find("UPDATE matches.match")
+        assert update_pos >= 0
+        statement = text[update_pos : text.find('"""', update_pos)]
+        assert "LATERAL" not in statement.upper(), (
+            "a LATERAL in UPDATE ... FROM cannot see the update target; "
+            "precompute the pick in a CTE and join on the primary key"
+        )
 
     def test_unresolved_rows_are_counted_not_guessed(self):
         text = _text()

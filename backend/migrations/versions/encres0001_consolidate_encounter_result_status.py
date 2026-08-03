@@ -51,6 +51,9 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 _RESULT_STATUS_ENUM = postgresql.ENUM(name="encounterresultstatus", schema="tournament", create_type=False)
+# ``create_type=False`` on both: the type is created once, explicitly, at the top
+# of ``upgrade``. Left at its default, ``op.create_table`` below would emit a
+# second ``CREATE TYPE`` for the same name and abort the whole revision.
 _AUDIT_ACTION_ENUM = postgresql.ENUM(
     "confirm",
     "reopen",
@@ -60,6 +63,7 @@ _AUDIT_ACTION_ENUM = postgresql.ENUM(
     "cascade_reset",
     name="encounterresultauditaction",
     schema="tournament",
+    create_type=False,
 )
 
 # ``encounterstatus`` stores member NAMES; ``encounterresultstatus`` stores values.

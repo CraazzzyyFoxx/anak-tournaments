@@ -63,6 +63,19 @@ class TestRevisionWiring:
         assert match, "down_revision must be a single quoted revision id"
         assert match.group(1) == "logretry0001"
 
+    def test_the_audit_enum_is_created_exactly_once(self):
+        """Both ENUM objects must carry ``create_type=False``.
+
+        ``upgrade`` creates the type explicitly, then hands the same object to
+        ``op.create_table``. At the SQLAlchemy default the table would emit a
+        second ``CREATE TYPE`` for a name that already exists and abort the
+        revision — which is exactly how this first ran against a real database.
+        No metadata comparison can catch that; only the flag can be pinned.
+        """
+        module = _module()
+        assert module._AUDIT_ACTION_ENUM.create_type is False
+        assert module._RESULT_STATUS_ENUM.create_type is False
+
 
 class TestInvariantExpression:
     """The CHECK is the whole point of the revision — it makes
