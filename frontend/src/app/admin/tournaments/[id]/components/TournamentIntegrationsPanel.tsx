@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { MessageSquare, Pencil, Trash2 } from "lucide-react";
+import { Pencil, Plug, Trash2 } from "lucide-react";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { Badge } from "@/components/ui/badge";
@@ -13,11 +13,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EYEBROW_CLASS, TONE_CLASS, type Tone } from "@/components/admin/tone";
+import { cn } from "@/lib/utils";
 import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
 import type { DiscordChannelInput, DiscordChannelRead } from "@/types/admin.types";
 import type { Tournament } from "@/types/tournament.types";
-import { ChallongeSyncPanel } from "./ChallongeSyncPanel";
+import { ChallongeIntegrationSection } from "./ChallongeIntegrationSection";
 import { getTournamentWorkspaceQueryKeys } from "./tournamentWorkspace.queryKeys";
 
 interface TournamentIntegrationsPanelProps {
@@ -27,9 +28,11 @@ interface TournamentIntegrationsPanelProps {
   canUpdateTournament: boolean;
   discordChannel: DiscordChannelRead | null | undefined;
   discordChannelLoading: boolean;
+  challongeSlug: string;
+  onChallongeSlugChange: (value: string) => void;
 }
 
-function DetailField({ label, value }: Readonly<{ label: string; value: string; }>) {
+function DetailField({ label, value }: Readonly<{ label: string; value: string }>) {
   return (
     <div className="min-w-0">
       <p className={EYEBROW_CLASS}>{label}</p>
@@ -39,7 +42,7 @@ function DetailField({ label, value }: Readonly<{ label: string; value: string; 
 }
 
 /**
- * Every external-provider connection of the tournament, in one place.
+ * Every external-provider connection of the tournament, in one card.
  *
  * The Challonge sync panel used to sit on Overview while its sync triggers sat
  * on the Teams and Matches tabs, and Discord state was rendered five times on
@@ -47,8 +50,13 @@ function DetailField({ label, value }: Readonly<{ label: string; value: string; 
  * a health row). Overview now shows read-only integration state; configuration
  * lives here.
  *
- * Rendered as a sibling of the settings form, not inside it — these buttons
- * fire their own mutations and would otherwise submit the form.
+ * Challonge and Discord are sections of one card rather than two stacked cards:
+ * split across cards, each held a title, a description and a badge to say the
+ * same "one provider, connected or not", and the Challonge link field sat in a
+ * third card entirely.
+ *
+ * Rendered inside the settings form so it shares its grid, so every button here
+ * carries `type="button"` — an unlabelled button submits the form it sits in.
  */
 export function TournamentIntegrationsPanel({
   tournamentId,
@@ -56,7 +64,9 @@ export function TournamentIntegrationsPanel({
   hasChallongeSource,
   canUpdateTournament,
   discordChannel,
-  discordChannelLoading
+  discordChannelLoading,
+  challongeSlug,
+  onChallongeSlugChange
 }: TournamentIntegrationsPanelProps) {
   const queryClient = useQueryClient();
   const queryKeys = getTournamentWorkspaceQueryKeys(tournamentId);
@@ -112,29 +122,37 @@ export function TournamentIntegrationsPanel({
 
   return (
     <>
-      <div className="flex flex-col gap-4">
-        <ChallongeSyncPanel tournamentId={tournamentId} hasChallongeSource={hasChallongeSource} />
+      <Card className="border-border/40 bg-card/50">
+        <CardHeader className="pb-4">
+          <div className="flex items-center gap-2">
+            <Plug className="size-4 text-primary" aria-hidden />
+            <CardTitle asChild className="text-sm font-semibold">
+              <h2>Integrations</h2>
+            </CardTitle>
+          </div>
+          <CardDescription className="text-xs">
+            External services this tournament reads from and writes to.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <ChallongeIntegrationSection
+            tournamentId={tournamentId}
+            hasChallongeSource={hasChallongeSource}
+            slug={challongeSlug}
+            onSlugChange={onChallongeSlugChange}
+          />
 
-        <Card className="border-border/40">
-          <CardHeader className="gap-3 pb-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <MessageSquare className="size-4 text-primary" aria-hidden />
-                  <CardTitle asChild>
-                    <h3 className="text-sm">Discord match logs</h3>
-                  </CardTitle>
-                </div>
-                <CardDescription className="mt-1 text-xs">
-                  Route Discord match logs into this tournament workspace.
-                </CardDescription>
-              </div>
-              <Badge variant="outline" className={TONE_CLASS[discordTone]}>
+          <section className="flex flex-col gap-3 border-t border-border/30 pt-4">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className={EYEBROW_CLASS}>Discord match logs</h3>
+              <Badge variant="outline" className={cn("shrink-0", TONE_CLASS[discordTone])}>
                 {discordLabel}
               </Badge>
             </div>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
+            <p className="text-xs text-muted-foreground">
+              Route Discord match logs into this tournament workspace.
+            </p>
+
             {discordChannelLoading ? (
               <Skeleton className="h-16 w-full" />
             ) : discordChannel ? (
@@ -144,7 +162,7 @@ export function TournamentIntegrationsPanel({
                 <DetailField label="Name" value={discordChannel.channel_name ?? "—"} />
               </div>
             ) : (
-              <p className="rounded-lg border border-dashed border-border/70 bg-muted/10 p-3 text-sm text-muted-foreground">
+              <p className="rounded-lg border border-dashed border-border/70 bg-muted/10 p-3 text-xs text-muted-foreground">
                 No channel yet. Add a guild and channel to start pulling match logs in
                 automatically.
               </p>
@@ -152,21 +170,26 @@ export function TournamentIntegrationsPanel({
 
             {canUpdateTournament ? (
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" onClick={openDialog}>
+                <Button type="button" variant="outline" size="sm" onClick={openDialog}>
                   <Pencil className="mr-2 size-4" aria-hidden />
                   {discordChannel ? "Edit channel" : "Add channel"}
                 </Button>
                 {discordChannel ? (
-                  <Button variant="destructive" size="sm" onClick={() => setDeleteOpen(true)}>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => setDeleteOpen(true)}
+                  >
                     <Trash2 className="mr-2 size-4" aria-hidden />
                     Remove channel
                   </Button>
                 ) : null}
               </div>
             ) : null}
-          </CardContent>
-        </Card>
-      </div>
+          </section>
+        </CardContent>
+      </Card>
 
       <EntityFormDialog
         open={dialogOpen}

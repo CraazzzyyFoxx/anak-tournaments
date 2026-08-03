@@ -93,7 +93,7 @@ function formatDuration(record: LogProcessingRecord) {
   return `${(durationMs / 1000).toFixed(1)}s`;
 }
 
-/** Matches `formatSyncTime` in ChallongeSyncPanel so both admin logs read alike. */
+/** Matches `formatSyncTime` in ChallongeIntegrationSection so both admin logs read alike. */
 function formatLogTime(value: string) {
   return new Date(value).toLocaleString(undefined, {
     month: "short",

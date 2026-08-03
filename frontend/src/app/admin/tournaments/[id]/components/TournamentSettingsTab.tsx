@@ -32,7 +32,11 @@ import { DEFAULT_WORKSPACE_TIMEZONE, getUtcOffsetLabel } from "@/lib/timezone";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { Tournament } from "@/types/tournament.types";
 import type { DivisionGridVersion } from "@/types/workspace.types";
-import type { TournamentPhaseScheduleEntryInput, TournamentUpdateInput } from "@/types/admin.types";
+import type {
+  DiscordChannelRead,
+  TournamentPhaseScheduleEntryInput,
+  TournamentUpdateInput
+} from "@/types/admin.types";
 import {
   getPhaseSchedulePayload,
   getTournamentForm,
@@ -41,6 +45,7 @@ import {
   type TournamentFormState
 } from "./tournamentWorkspace.helpers";
 import { TournamentPreviewAllowlist } from "./TournamentPreviewAllowlist";
+import { TournamentIntegrationsPanel } from "./TournamentIntegrationsPanel";
 import { invalidateTournamentWorkspace } from "./tournamentWorkspace.queryKeys";
 
 const PHASE_LABELS: Record<SchedulablePhase, string> = {
@@ -56,6 +61,10 @@ interface TournamentSettingsTabProps {
   divisionGridVersions: DivisionGridVersion[];
   divisionGridLoading: boolean;
   canDeleteTournament: boolean;
+  canUpdateTournament: boolean;
+  hasChallongeSource: boolean;
+  discordChannel: DiscordChannelRead | null | undefined;
+  discordChannelLoading: boolean;
 }
 
 export function TournamentSettingsTab({
@@ -63,7 +72,11 @@ export function TournamentSettingsTab({
   tournamentId,
   divisionGridVersions,
   divisionGridLoading,
-  canDeleteTournament
+  canDeleteTournament,
+  canUpdateTournament,
+  hasChallongeSource,
+  discordChannel,
+  discordChannelLoading
 }: TournamentSettingsTabProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -194,27 +207,27 @@ export function TournamentSettingsTab({
         </div>
       )}
 
-      {/* One grid, not two hand-packed columns. Assigning cards to a left and
-          a right stack left the right one ~360px short of the left, because
-          the schedule card is roughly twice the height of anything else. The
-          two short cards pair up; the tall ones span the full width, where the
-          phase grid can use the room instead of stacking. */}
+      {/* One grid, not two hand-packed columns of cards. Card heights differ by
+          hundreds of pixels, so auto-placement left a hole under whichever card
+          was shorter. The two tall stacks pair up — configuration on the left,
+          integrations on the right — and the schedule spans the full width,
+          where its phase grid lays out as rows instead of stacking. */}
       <div className="grid items-start gap-6 xl:grid-cols-2">
-        {/* Identity, description and external links */}
-        <Card className="border-border/40 bg-card/50">
-          <CardHeader className="pb-4">
-            <div className="flex items-center gap-2">
-              <Info className="size-4 text-primary" aria-hidden />
-              <CardTitle asChild className="text-sm font-semibold">
-                <h2>General information</h2>
-              </CardTitle>
-            </div>
-            <CardDescription className="text-xs">
-              Update core tournament identity metadata and external links.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="space-y-4">
+        <div className="flex flex-col gap-6">
+          {/* Identity and description */}
+          <Card className="border-border/40 bg-card/50">
+            <CardHeader className="pb-4">
+              <div className="flex items-center gap-2">
+                <Info className="size-4 text-primary" aria-hidden />
+                <CardTitle asChild className="text-sm font-semibold">
+                  <h2>General information</h2>
+                </CardTitle>
+              </div>
+              <CardDescription className="text-xs">
+                Update core tournament identity metadata.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
               <div>
                 <Label htmlFor="settings-name" className="text-xs">
                   Tournament name
@@ -242,209 +255,211 @@ export function TournamentSettingsTab({
                   placeholder="Optional tournament description…"
                 />
               </div>
-            </div>
+            </CardContent>
+          </Card>
 
-            <section className="space-y-2 border-t border-border/30 pt-4">
-              <h3 className={EYEBROW_CLASS}>Integrations</h3>
-              <div>
-                <Label htmlFor="settings-challonge" className="text-xs">
-                  Challonge URL or slug
-                </Label>
-                <Input
-                  id="settings-challonge"
-                  placeholder="e.g. my-tournament or https://challonge.com/my-tournament"
-                  value={formData.challonge_slug}
-                  onChange={(event) =>
-                    setFormData({ ...formData, challonge_slug: event.target.value })
-                  }
-                  className="mt-1.5 bg-background/50"
-                />
+          {/* Format rules, scoring and public visibility */}
+          <Card className="border-border/40 bg-card/50">
+            <CardHeader className="pb-4">
+              <div className="flex items-center gap-2">
+                <Wrench className="size-4 text-primary" aria-hidden />
+                <CardTitle asChild className="text-sm font-semibold">
+                  <h2>Rules & grid configuration</h2>
+                </CardTitle>
               </div>
-            </section>
-          </CardContent>
-        </Card>
-
-        {/* Format rules, scoring and public visibility */}
-        <Card className="border-border/40 bg-card/50">
-          <CardHeader className="pb-4">
-            <div className="flex items-center gap-2">
-              <Wrench className="size-4 text-primary" aria-hidden />
-              <CardTitle asChild className="text-sm font-semibold">
-                <h2>Rules & grid configuration</h2>
-              </CardTitle>
-            </div>
-            <CardDescription className="text-xs">
-              Adjust grid versions, team formation, scoring points, league status and public
-              visibility.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="settings-team-formation" className="text-xs">
-                  Team formation
-                </Label>
-                <Select
-                  value={formData.team_formation}
-                  onValueChange={(nextValue) =>
-                    setFormData({ ...formData, team_formation: nextValue })
-                  }
-                >
-                  <SelectTrigger id="settings-team-formation" className="mt-1.5 bg-background/50">
-                    <SelectValue placeholder="Select method" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="balancer">Auto-balance (Balancer)</SelectItem>
-                    <SelectItem value="draft">Live draft</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <Label htmlFor="settings-division-grid-version" className="text-xs">
-                  Division grid version
-                </Label>
-                <Select
-                  value={formData.division_grid_version_id?.toString() ?? "none"}
-                  onValueChange={(nextValue) =>
-                    setFormData({
-                      ...formData,
-                      division_grid_version_id: nextValue === "none" ? null : Number(nextValue)
-                    })
-                  }
-                >
-                  <SelectTrigger
-                    id="settings-division-grid-version"
-                    className="mt-1.5 bg-background/50"
+              <CardDescription className="text-xs">
+                Adjust grid versions, team formation, scoring points, league status and public
+                visibility.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="settings-team-formation" className="text-xs">
+                    Team formation
+                  </Label>
+                  <Select
+                    value={formData.team_formation}
+                    onValueChange={(nextValue) =>
+                      setFormData({ ...formData, team_formation: nextValue })
+                    }
                   >
-                    <SelectValue
-                      placeholder={
-                        divisionGridLoading ? "Loading division grids…" : "Select version"
-                      }
+                    <SelectTrigger id="settings-team-formation" className="mt-1.5 bg-background/50">
+                      <SelectValue placeholder="Select method" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="balancer">Auto-balance (Balancer)</SelectItem>
+                      <SelectItem value="draft">Live draft</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label htmlFor="settings-division-grid-version" className="text-xs">
+                    Division grid version
+                  </Label>
+                  <Select
+                    value={formData.division_grid_version_id?.toString() ?? "none"}
+                    onValueChange={(nextValue) =>
+                      setFormData({
+                        ...formData,
+                        division_grid_version_id: nextValue === "none" ? null : Number(nextValue)
+                      })
+                    }
+                  >
+                    <SelectTrigger
+                      id="settings-division-grid-version"
+                      className="mt-1.5 bg-background/50"
+                    >
+                      <SelectValue
+                        placeholder={
+                          divisionGridLoading ? "Loading division grids…" : "Select version"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Workspace default</SelectItem>
+                      {divisionGridVersions.map((version) => (
+                        <SelectItem key={version.id} value={version.id.toString()}>
+                          {version.label} (v{version.version}, {version.status})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Checkboxes panel */}
+              <div className="flex flex-col gap-4 bg-muted/20 border border-border/50 rounded-lg p-3.5">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="settings-is-league"
+                    checked={formData.is_league}
+                    onCheckedChange={(checked) =>
+                      setFormData({ ...formData, is_league: checked === true })
+                    }
+                  />
+                  <Label
+                    htmlFor="settings-is-league"
+                    className="cursor-pointer text-sm font-medium"
+                  >
+                    Treat as league season
+                  </Label>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="settings-is-finished"
+                    checked={formData.is_finished}
+                    onCheckedChange={(checked) =>
+                      setFormData({ ...formData, is_finished: checked === true })
+                    }
+                  />
+                  <Label
+                    htmlFor="settings-is-finished"
+                    className="cursor-pointer text-sm font-medium"
+                  >
+                    Mark tournament as finished
+                  </Label>
+                </div>
+              </div>
+
+              <section className="space-y-2 border-t border-border/30 pt-4">
+                <h3 className={EYEBROW_CLASS}>Scoring points</h3>
+                <p className="text-xs text-muted-foreground">
+                  Points awarded in standings logic for match outcomes.
+                </p>
+                <div className="grid grid-cols-3 gap-3 pt-1">
+                  <div>
+                    <Label htmlFor="settings-win-points" className="text-xs">
+                      Win
+                    </Label>
+                    <NumberInput
+                      id="settings-win-points"
+                      value={formData.win_points}
+                      onValueChange={(next) => setFormData({ ...formData, win_points: next ?? 0 })}
+                      className="mt-1.5 bg-background/50"
                     />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Workspace default</SelectItem>
-                    {divisionGridVersions.map((version) => (
-                      <SelectItem key={version.id} value={version.id.toString()}>
-                        {version.label} (v{version.version}, {version.status})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Checkboxes panel */}
-            <div className="flex flex-col gap-4 bg-muted/20 border border-border/50 rounded-lg p-3.5">
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="settings-is-league"
-                  checked={formData.is_league}
-                  onCheckedChange={(checked) =>
-                    setFormData({ ...formData, is_league: checked === true })
-                  }
-                />
-                <Label htmlFor="settings-is-league" className="cursor-pointer text-sm font-medium">
-                  Treat as league season
-                </Label>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="settings-is-finished"
-                  checked={formData.is_finished}
-                  onCheckedChange={(checked) =>
-                    setFormData({ ...formData, is_finished: checked === true })
-                  }
-                />
-                <Label
-                  htmlFor="settings-is-finished"
-                  className="cursor-pointer text-sm font-medium"
-                >
-                  Mark tournament as finished
-                </Label>
-              </div>
-            </div>
-
-            <section className="space-y-2 border-t border-border/30 pt-4">
-              <h3 className={EYEBROW_CLASS}>Scoring points</h3>
-              <p className="text-xs text-muted-foreground">
-                Points awarded in standings logic for match outcomes.
-              </p>
-              <div className="grid grid-cols-3 gap-3 pt-1">
-                <div>
-                  <Label htmlFor="settings-win-points" className="text-xs">
-                    Win
-                  </Label>
-                  <NumberInput
-                    id="settings-win-points"
-                    value={formData.win_points}
-                    onValueChange={(next) => setFormData({ ...formData, win_points: next ?? 0 })}
-                    className="mt-1.5 bg-background/50"
-                  />
+                  </div>
+                  <div>
+                    <Label htmlFor="settings-draw-points" className="text-xs">
+                      Draw
+                    </Label>
+                    <NumberInput
+                      id="settings-draw-points"
+                      value={formData.draw_points}
+                      onValueChange={(next) => setFormData({ ...formData, draw_points: next ?? 0 })}
+                      className="mt-1.5 bg-background/50"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="settings-loss-points" className="text-xs">
+                      Loss
+                    </Label>
+                    <NumberInput
+                      id="settings-loss-points"
+                      value={formData.loss_points}
+                      onValueChange={(next) => setFormData({ ...formData, loss_points: next ?? 0 })}
+                      className="mt-1.5 bg-background/50"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <Label htmlFor="settings-draw-points" className="text-xs">
-                    Draw
-                  </Label>
-                  <NumberInput
-                    id="settings-draw-points"
-                    value={formData.draw_points}
-                    onValueChange={(next) => setFormData({ ...formData, draw_points: next ?? 0 })}
-                    className="mt-1.5 bg-background/50"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="settings-loss-points" className="text-xs">
-                    Loss
-                  </Label>
-                  <NumberInput
-                    id="settings-loss-points"
-                    value={formData.loss_points}
-                    onValueChange={(next) => setFormData({ ...formData, loss_points: next ?? 0 })}
-                    className="mt-1.5 bg-background/50"
-                  />
-                </div>
-              </div>
-            </section>
+              </section>
 
-            <section className="space-y-3 border-t border-border/30 pt-4">
-              <h3 className={EYEBROW_CLASS}>Visibility</h3>
-              <p className="text-xs text-muted-foreground">
-                Hide this tournament and all its data from the public site. Only workspace admins
-                and the preview allowlist below can see a hidden tournament.
-              </p>
-              <div className="flex items-center gap-2 bg-muted/20 border border-border/50 rounded-lg p-3.5">
-                <Checkbox
-                  id="settings-is-hidden"
-                  checked={formData.is_hidden}
-                  onCheckedChange={(checked) =>
-                    setFormData({ ...formData, is_hidden: checked === true })
-                  }
-                />
-                <Label htmlFor="settings-is-hidden" className="cursor-pointer text-sm font-medium">
-                  Hidden (preview) — not visible to the public
-                </Label>
-              </div>
-
-              <div className="space-y-2">
-                <h4 className={EYEBROW_CLASS}>Preview allowlist</h4>
-                {formData.is_hidden ? (
-                  <TournamentPreviewAllowlist
-                    tournamentId={tournamentId}
-                    workspaceId={tournament.workspace_id}
+              <section className="space-y-3 border-t border-border/30 pt-4">
+                <h3 className={EYEBROW_CLASS}>Visibility</h3>
+                <p className="text-xs text-muted-foreground">
+                  Hide this tournament and all its data from the public site. Only workspace admins
+                  and the preview allowlist below can see a hidden tournament.
+                </p>
+                <div className="flex items-center gap-2 bg-muted/20 border border-border/50 rounded-lg p-3.5">
+                  <Checkbox
+                    id="settings-is-hidden"
+                    checked={formData.is_hidden}
+                    onCheckedChange={(checked) =>
+                      setFormData({ ...formData, is_hidden: checked === true })
+                    }
                   />
-                ) : (
-                  <p className="rounded-lg border border-dashed border-border/70 px-3 py-2 text-xs text-muted-foreground">
-                    Tick “Hidden (preview)” above to choose who may view this tournament while it is
-                    still private.
-                  </p>
-                )}
-              </div>
-            </section>
-          </CardContent>
-        </Card>
+                  <Label
+                    htmlFor="settings-is-hidden"
+                    className="cursor-pointer text-sm font-medium"
+                  >
+                    Hidden (preview) — not visible to the public
+                  </Label>
+                </div>
+
+                <div className="space-y-2">
+                  <h4 className={EYEBROW_CLASS}>Preview allowlist</h4>
+                  {formData.is_hidden ? (
+                    <TournamentPreviewAllowlist
+                      tournamentId={tournamentId}
+                      workspaceId={tournament.workspace_id}
+                    />
+                  ) : (
+                    <p className="rounded-lg border border-dashed border-border/70 px-3 py-2 text-xs text-muted-foreground">
+                      Tick “Hidden (preview)” above to choose who may view this tournament while it
+                      is still private.
+                    </p>
+                  )}
+                </div>
+              </section>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Right column: every external connection, and the Challonge link
+            field it needs. Its buttons fire their own mutations, so they carry
+            an explicit type inside this form. */}
+        <TournamentIntegrationsPanel
+          tournamentId={tournamentId}
+          tournament={tournament}
+          hasChallongeSource={hasChallongeSource}
+          canUpdateTournament={canUpdateTournament}
+          discordChannel={discordChannel}
+          discordChannelLoading={discordChannelLoading}
+          challongeSlug={formData.challonge_slug}
+          onChallongeSlugChange={(value) => setFormData({ ...formData, challonge_slug: value })}
+        />
 
         {/* Schedule: full width so the phase grid can lay out as rows */}
         <Card className="xl:col-span-2 border-border/40 bg-card/50">

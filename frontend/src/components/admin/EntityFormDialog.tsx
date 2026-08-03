@@ -80,6 +80,11 @@ export function EntityFormDialog({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // React portals bubble events through the React tree, not the DOM tree, so
+    // this submit would otherwise reach the onSubmit of any form this dialog is
+    // rendered from — e.g. the tournament settings form behind its integrations
+    // card.
+    e.stopPropagation();
     if (isReadOnly) {
       return;
     }

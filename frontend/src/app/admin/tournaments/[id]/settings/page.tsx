@@ -23,14 +23,6 @@ const TournamentSettingsTab = dynamic(
   { loading: () => tabFallback }
 );
 
-const TournamentIntegrationsPanel = dynamic(
-  () =>
-    import("../components/TournamentIntegrationsPanel").then((module) => ({
-      default: module.TournamentIntegrationsPanel
-    })),
-  { loading: () => null }
-);
-
 export default function SettingsTabPage() {
   const params = useParams<{ id: string }>();
   const tournamentId = Number(params.id);
@@ -59,24 +51,16 @@ export default function SettingsTabPage() {
   const canUpdateTournament = canAccessPermission("tournament.update", workspaceId);
 
   return (
-    <div className="flex flex-col gap-4">
-      <TournamentSettingsTab
-        tournament={tournament}
-        tournamentId={tournamentId}
-        divisionGridVersions={flattenDivisionGridVersions(divisionGridsQuery.data)}
-        divisionGridLoading={divisionGridsQuery.isLoading}
-        canDeleteTournament={canAccessPermission("tournament.delete", workspaceId)}
-      />
-      {/* Sibling of the settings form, never a child: these controls fire their
-          own mutations and would submit the form otherwise. */}
-      <TournamentIntegrationsPanel
-        tournamentId={tournamentId}
-        tournament={tournament}
-        hasChallongeSource={hasChallongeSource(tournament, stagesQuery.data ?? [])}
-        canUpdateTournament={canUpdateTournament}
-        discordChannel={discordChannelQuery.data}
-        discordChannelLoading={discordChannelQuery.isLoading}
-      />
-    </div>
+    <TournamentSettingsTab
+      tournament={tournament}
+      tournamentId={tournamentId}
+      divisionGridVersions={flattenDivisionGridVersions(divisionGridsQuery.data)}
+      divisionGridLoading={divisionGridsQuery.isLoading}
+      canDeleteTournament={canAccessPermission("tournament.delete", workspaceId)}
+      canUpdateTournament={canUpdateTournament}
+      hasChallongeSource={hasChallongeSource(tournament, stagesQuery.data ?? [])}
+      discordChannel={discordChannelQuery.data}
+      discordChannelLoading={discordChannelQuery.isLoading}
+    />
   );
 }

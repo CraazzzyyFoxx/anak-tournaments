@@ -83,12 +83,13 @@ export function TournamentWorkspaceHeader({
       titleHidden
       meta={
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-          <Badge
-            variant="outline"
-            className={TONE_CLASS[tournament.is_league ? "info" : "neutral"]}
-          >
-            {tournament.is_league ? "League" : "Tournament"}
-          </Badge>
+          {/* Only leagues get a chip: a "Tournament" badge on the tournament
+              workspace restated the noun in the breadcrumb above it. */}
+          {tournament.is_league ? (
+            <Badge variant="outline" className={TONE_CLASS.info}>
+              League
+            </Badge>
+          ) : null}
           <span className="flex items-center gap-1.5">
             <CalendarDays className="size-3.5" aria-hidden />
             <span className="tabular-nums">
