@@ -72,10 +72,13 @@ class MatchStatistics(db.TimeStampIntegerMixin):
     )
 
     match_id: Mapped[int] = mapped_column(ForeignKey(Match.id, ondelete="CASCADE"), index=True)
-    round: Mapped[int] = mapped_column(Integer(), index=True)
+    # No standalone index on ``round`` / ``hero_id``: both are low-cardinality and
+    # dead in production (see migration ``statidx001``); the composite indexes
+    # above serve every access pattern that touches them.
+    round: Mapped[int] = mapped_column(Integer())
     team_id: Mapped[int] = mapped_column(ForeignKey(Team.id, ondelete="CASCADE"), index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey(User.id, ondelete="CASCADE"), index=True)
-    hero_id: Mapped[int | None] = mapped_column(ForeignKey(Hero.id, ondelete="CASCADE"), nullable=True, index=True)
+    hero_id: Mapped[int | None] = mapped_column(ForeignKey(Hero.id, ondelete="CASCADE"), nullable=True)
 
     name: Mapped[enums.LogStatsName] = mapped_column(Enum(enums.LogStatsName), index=True)
     value: Mapped[float] = mapped_column(Float())
