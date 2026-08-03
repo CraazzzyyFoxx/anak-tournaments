@@ -22,12 +22,12 @@ from sqlalchemy.orm import selectinload
 from shared.core import enums
 from shared.services.challonge_refs import resolve_encounter_challonge
 from shared.services.distributed_lock import distributed_lock
+from shared.services.encounter.finalize import finalize_encounter_score
 from shared.services.encounter_naming import build_encounter_name
 from shared.services.stage_refs import StageRefs, resolve_stage_refs_from_group
 from src import models, schemas
 from src.core import config
 from src.services.challonge import service as challonge_service
-from src.services.encounter.finalize import finalize_encounter_score
 from src.services.standings import recalculation as standings_recalculation
 
 _AMBIGUOUS = -1

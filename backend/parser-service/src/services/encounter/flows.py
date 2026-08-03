@@ -227,39 +227,3 @@ async def bulk_create_for_from_challonge(session: AsyncSession) -> dict:
         ):
             totals[key] += int(result.get(key, 0) or 0)
     return totals
-
-
-async def create_match(
-    session: AsyncSession,
-    encounter: models.Encounter,
-    *,
-    time: int,
-    map: models.Map,
-    log_name: str,
-    home_team_id: int,
-    away_team_id: int,
-    home_score: int,
-    away_score: int,
-) -> models.Match:
-    match = await service.get_match_by_encounter_and_map(session, encounter.id, map.id, [])
-    if match:
-        raise errors.ApiHTTPException(
-            status_code=400,
-            detail=[
-                errors.ApiExc(
-                    code="already_exists",
-                    msg=f"Match with encounter {encounter.id} and map {map.id} already exists",
-                )
-            ],
-        )
-    return await service.create_match(
-        session,
-        encounter=encounter,
-        time=time,
-        map=map,
-        log_name=log_name,
-        home_team_id=home_team_id,
-        away_team_id=away_team_id,
-        home_score=home_score,
-        away_score=away_score,
-    )
