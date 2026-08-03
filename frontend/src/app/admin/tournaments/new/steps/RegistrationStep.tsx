@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ExternalLink } from "lucide-react";
 
+import SubscriptionRequirementEditor from "@/components/admin/subscriptions/SubscriptionRequirementEditor";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -19,8 +20,14 @@ interface RegistrationStepProps {
   draftId: number | null;
 }
 
+/** Only the boolean toggles belong in this list; the subscription requirement is
+ *  a structured value edited by its own component below. */
+type BooleanRegistrationKey = {
+  [K in keyof WizardRegistrationState]: WizardRegistrationState[K] extends boolean ? K : never;
+}[keyof WizardRegistrationState];
+
 const ROWS: Array<{
-  key: keyof WizardRegistrationState;
+  key: BooleanRegistrationKey;
   label: string;
   description: string;
 }> = [
@@ -38,6 +45,11 @@ const ROWS: Array<{
     key: "require_open_profile",
     label: "Require open profile",
     description: "Players must keep their game profile public to register."
+  },
+  {
+    key: "require_subscription",
+    label: "Require an active subscription",
+    description: "Checked at check-in only; an undetermined verdict fails open."
   }
 ];
 
@@ -64,6 +76,17 @@ export function RegistrationStep({ value, onChange, draftId }: RegistrationStepP
           </div>
         ))}
       </div>
+
+      {value.require_subscription && (
+        <div className="space-y-3 bg-muted/20 border border-border/50 rounded-lg p-3.5">
+          <div className="text-sm font-medium">Subscription requirement</div>
+          <SubscriptionRequirementEditor
+            value={value.subscription_requirement_json}
+            availableProviders={["boosty", "twitch"]}
+            onChange={(next) => onChange({ ...value, subscription_requirement_json: next })}
+          />
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">
           Custom fields and built-in field configuration live in the form builder.

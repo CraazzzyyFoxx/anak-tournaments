@@ -5,6 +5,7 @@ import {
   type SchedulablePhase
 } from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.helpers";
 import { EYEBROW_CLASS } from "@/components/admin/tone";
+import { describeRequirement } from "@/lib/subscription-requirement";
 import type { DivisionGridVersion } from "@/types/workspace.types";
 
 import type {
@@ -131,6 +132,16 @@ export function ReviewStep({
             <Row
               label="Require open profile"
               value={registration.require_open_profile ? "Yes" : "No"}
+            />
+            {/* The composed rule, not a bare Yes/No: an organizer reviewing the
+                draft needs to see which providers and thresholds they picked. */}
+            <Row
+              label="Require subscription"
+              value={
+                registration.require_subscription
+                  ? describeRequirement(registration.subscription_requirement_json) || "No providers selected"
+                  : "No"
+              }
             />
           </dl>
         </section>

@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { notify } from "@/lib/notify";
 import { MUTED_BUTTON_CLASS } from "@/app/balancer/components/balancer-page-helpers";
+import SubscriptionRequirementEditor from "@/components/admin/subscriptions/SubscriptionRequirementEditor";
+import type { SubscriptionRequirement } from "@/types/registration.types";
 import { ROLES, canonicalToRegistrationRole } from "@/lib/roles";
 import adminService from "@/services/admin.service";
 import balancerAdminService from "@/services/balancer-admin.service";
@@ -53,6 +55,16 @@ export default function RegistrationFormBuilder({
   const [requireOpenProfile, setRequireOpenProfile] = useState(false);
   const [openProfileScope, setOpenProfileScope] = useState<"main" | "all">("main");
   const [showRanks, setShowRanks] = useState(false);
+  const [requireSubscription, setRequireSubscription] = useState(false);
+  const [subscriptionRequirement, setSubscriptionRequirement] = useState<SubscriptionRequirement>({
+    mode: "all",
+    requirements: [],
+  });
+  // Providers the resolver can actually answer for. Until a workspace-level
+  // provider-config admin surface exists, both known providers are offered and
+  // the editor's own warning covers a provider that turns out unconfigured (its
+  // verdict resolves to `undetermined`, which fails open).
+  const availableSubscriptionProviders = useMemo(() => ["boosty", "twitch"], []);
   const [builtInFields, setBuiltInFields] = useState<Record<string, BuiltInFieldConfig>>(() =>
     getBuiltInConfig({})
   );
@@ -86,6 +98,10 @@ export default function RegistrationFormBuilder({
       setIsOpen(data.is_open);
       setAutoApprove(data.auto_approve ?? false);
       setRequireOpenProfile(data.require_open_profile ?? false);
+      setRequireSubscription(data.require_subscription ?? false);
+      setSubscriptionRequirement(
+        data.subscription_requirement_json ?? { mode: "all", requirements: [] },
+      );
       setOpenProfileScope((data.open_profile_scope as "main" | "all") ?? "main");
       setShowRanks(data.show_ranks ?? false);
       setBuiltInFields(getBuiltInConfig(data.built_in_fields ?? {}));
@@ -127,6 +143,8 @@ export default function RegistrationFormBuilder({
         require_open_profile: requireOpenProfile,
         open_profile_scope: openProfileScope,
         show_ranks: showRanks,
+        require_subscription: requireSubscription,
+        subscription_requirement_json: subscriptionRequirement,
         built_in_fields: Object.fromEntries(
           Object.entries(builtInFields).map(([key, value]) => [
             key,
@@ -343,6 +361,35 @@ export default function RegistrationFormBuilder({
                 <p className="text-xs text-muted-foreground">
                   When enabled, players whose Overwatch profile is private are not admitted (blocked
                   at check-in). Unranked players are already excluded separately.
+                </p>
+              </div>
+
+              <div className="space-y-3 rounded-lg border p-4">
+                <div className="font-medium">Subscription</div>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={requireSubscription}
+                    onChange={(event) => {
+                      setRequireSubscription(event.target.checked);
+                      setHasChanges(true);
+                    }}
+                  />
+                  Require an active subscription
+                </label>
+                <SubscriptionRequirementEditor
+                  value={subscriptionRequirement}
+                  disabled={!requireSubscription}
+                  availableProviders={availableSubscriptionProviders}
+                  onChange={(next) => {
+                    setSubscriptionRequirement(next);
+                    setHasChanges(true);
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Checked at check-in only, never at sign-up: a provider outage during open
+                  registration must not lock anybody out. A verdict that cannot be determined
+                  (provider down, account not linked) fails open and does not block.
                 </p>
               </div>
 

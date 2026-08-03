@@ -145,7 +145,9 @@ export default function NewTournamentPage() {
   const [registration, setRegistration] = useState<WizardRegistrationState>({
     is_open: true,
     auto_approve: false,
-    require_open_profile: false
+    require_open_profile: false,
+    require_subscription: false,
+    subscription_requirement_json: { mode: "all", requirements: [] }
   });
 
   // Lazy Unpublished draft (D4): created by the first action needing an id.
