@@ -311,6 +311,8 @@
       "useValue": "Использовать «{value}»",
       "discordPlaceholder": "имя пользователя",
       "twitchPlaceholder": "название канала",
+      "boosty": "Boosty",
+      "boostyPlaceholder": "никнейм",
       "verified": "Подтверждён",
       "noAccountsHint": "У вас пока нет привязанных аккаунтов.",
       "noAccountsHintDesc": "Привяжите Battle.net, Discord или Twitch в настройках профиля, чтобы автозаполнить и подтвердить их.",

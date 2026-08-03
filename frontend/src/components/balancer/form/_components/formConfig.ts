@@ -29,6 +29,7 @@ export interface BuiltInFieldDef {
 export const DEFAULT_BATTLE_TAG_REGEX = String.raw`([\w0-9]{2,12}#[0-9]{4,})`;
 export const DEFAULT_DISCORD_REGEX = String.raw`^[a-z0-9_.]{2,32}$`;
 export const DEFAULT_TWITCH_REGEX = String.raw`^[a-z0-9_]{4,25}$`;
+export const DEFAULT_BOOSTY_REGEX = String.raw`^[A-Za-z0-9._-]{2,50}$`;
 export const DEFAULT_URL_REGEX = String.raw`^https?://.+$`;
 export const DEFAULT_NUMBER_REGEX = String.raw`^-?\d+(?:[.,]\d+)?$`;
 
@@ -107,6 +108,24 @@ export const BUILT_IN_FIELDS: BuiltInFieldDef[] = [
     defaultEnabled: true,
     defaultRequired: false,
     supportsRequired: false,
+  },
+  {
+    key: "boosty_nick",
+    label: "Boosty",
+    description: "Boosty nickname (self-declared — Boosty has no OAuth)",
+    defaultEnabled: false,
+    defaultRequired: false,
+    supportsValidation: true,
+    // Deliberately NOT verifiable. Boosty has no third-party OAuth and neither
+    // viable path (Discord roles, challenge code) reveals the handle, so the
+    // nickname stays self-declared. Offering a "Verified" toggle here would
+    // promise a guarantee that cannot be delivered — the trust lives in the
+    // subscription entitlement shown beside the field, not in the handle.
+    supportsVerified: false,
+    defaultValidation: {
+      regex: DEFAULT_BOOSTY_REGEX,
+      error_message: "Boosty nickname must contain 2-50 letters, digits, dots, dashes or underscores.",
+    },
   },
   {
     key: "top_heroes",

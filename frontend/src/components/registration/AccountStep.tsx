@@ -1,11 +1,13 @@
 import { useTranslations } from "next-intl";
 
-import type { RegistrationForm } from "@/types/registration.types";
+import type { RegistrationForm, SubscriptionStatus } from "@/types/registration.types";
 import type { SocialAccount } from "@/types/user.types";
 import AccountCombobox from "./AccountCombobox";
 import VerifiedAccountSelect from "./VerifiedAccountSelect";
 import SmurfTagsInput from "./SmurfTagsInput";
 import FormField from "./FormField";
+import SubscriptionRow from "./SubscriptionRow";
+import SubscriptionRuleNotice from "./SubscriptionRuleNotice";
 import { ArrowRight, Link2, UserRound } from "lucide-react";
 
 interface AccountStepProps {
@@ -18,6 +20,7 @@ interface AccountStepProps {
   battleTagSuggestions: string[];
   discordSuggestions: string[];
   twitchSuggestions: string[];
+  boostySuggestions?: string[];
   mode?: "public" | "admin";
   displayName?: string;
   onDisplayNameChange?: (v: string) => void;
@@ -27,6 +30,10 @@ interface AccountStepProps {
   verifiedErrors?: Record<string, string | null>;
   /** Public mode only: open profile settings so the user can link accounts. */
   onLinkAccounts?: () => void;
+  /** Server-resolved subscription standing; drives the per-row chips. */
+  subscription?: SubscriptionStatus | null;
+  /** Redeem a challenge code; resolves once the server answers. */
+  onRedeemCode?: (code: string) => Promise<void>;
 }
 
 export default function AccountStep({
@@ -39,12 +46,15 @@ export default function AccountStep({
   battleTagSuggestions,
   discordSuggestions,
   twitchSuggestions,
+  boostySuggestions = [],
   mode = "public",
   displayName,
   onDisplayNameChange,
   accounts = [],
   verifiedErrors = {},
   onLinkAccounts,
+  subscription,
+  onRedeemCode,
 }: AccountStepProps) {
   const t = useTranslations();
   const fields = form.built_in_fields;
@@ -52,6 +62,7 @@ export default function AccountStep({
   const showSmurfTags = fields?.smurf_tags?.enabled !== false;
   const showDiscord = fields?.discord_nick?.enabled !== false;
   const showTwitch = fields?.twitch_nick?.enabled !== false;
+  const showBoosty = fields?.boosty_nick?.enabled !== false;
   // ``require_verified`` only applies to public self-registration (it gates on
   // the registrant's own OAuth-verified accounts); admin editing is unconstrained.
   const requireVerified = (key: string) =>
@@ -59,6 +70,8 @@ export default function AccountStep({
 
   return (
     <div className="grid gap-4">
+      <SubscriptionRuleNotice subscription={subscription} />
+
       {mode === "public" && accounts.length === 0 && onLinkAccounts && (
         <button
           type="button"
@@ -159,30 +172,67 @@ export default function AccountStep({
       )}
 
       {showTwitch && (
-        requireVerified("twitch_nick") ? (
-          <VerifiedAccountSelect
-            label={t("registration.accounts.twitch")}
+        <div className="grid gap-2">
+          {requireVerified("twitch_nick") ? (
+            <VerifiedAccountSelect
+              label={t("registration.accounts.twitch")}
+              provider="twitch"
+              accounts={accounts}
+              value={values.twitch_nick ?? ""}
+              onChange={(v) => onUpdate("twitch_nick", v)}
+              required
+              error={verifiedErrors.twitch_nick}
+            />
+          ) : (
+            <AccountCombobox
+              label={t("registration.accounts.twitch")}
+              placeholder={t("registration.accounts.twitchPlaceholder")}
+              value={values.twitch_nick ?? ""}
+              onChange={(v) => onUpdate("twitch_nick", v)}
+              suggestions={twitchSuggestions}
+              icon="/twitch.png"
+              required={fields?.twitch_nick?.required === true}
+              fieldKey="twitch_nick"
+              config={fields?.twitch_nick}
+              onValidationChange={(error) => onBuiltInValidationChange("twitch_nick", error)}
+            />
+          )}
+          {/* Twitch has a real API, so no challenge code here — only the chip and,
+              when the stored token predates the subscriptions scope, a reconnect. */}
+          <SubscriptionRow
             provider="twitch"
-            accounts={accounts}
-            value={values.twitch_nick ?? ""}
-            onChange={(v) => onUpdate("twitch_nick", v)}
-            required
-            error={verifiedErrors.twitch_nick}
+            providerLabel="Twitch"
+            subscription={subscription}
+            onLinkAccounts={onLinkAccounts}
           />
-        ) : (
+        </div>
+      )}
+
+      {showBoosty && (
+        <div className="grid gap-2">
           <AccountCombobox
-            label={t("registration.accounts.twitch")}
-            placeholder={t("registration.accounts.twitchPlaceholder")}
-            value={values.twitch_nick ?? ""}
-            onChange={(v) => onUpdate("twitch_nick", v)}
-            suggestions={twitchSuggestions}
-            icon="/twitch.png"
-            required={fields?.twitch_nick?.required === true}
-            fieldKey="twitch_nick"
-            config={fields?.twitch_nick}
-            onValidationChange={(error) => onBuiltInValidationChange("twitch_nick", error)}
+            label={t("registration.accounts.boosty")}
+            placeholder={t("registration.accounts.boostyPlaceholder")}
+            value={values.boosty_nick ?? ""}
+            onChange={(v) => onUpdate("boosty_nick", v)}
+            suggestions={boostySuggestions}
+            icon="/boosty.svg"
+            required={fields?.boosty_nick?.required === true}
+            fieldKey="boosty_nick"
+            config={fields?.boosty_nick}
+            onValidationChange={(error) => onBuiltInValidationChange("boosty_nick", error)}
           />
-        )
+          {/* The nickname above is self-declared — Boosty has no OAuth and neither
+              viable path reveals the handle. What is actually verified is the
+              SUBSCRIPTION, shown here. */}
+          <SubscriptionRow
+            provider="boosty"
+            providerLabel="Boosty"
+            subscription={subscription}
+            onLinkAccounts={onLinkAccounts}
+            onRedeemCode={onRedeemCode}
+          />
+        </div>
       )}
     </div>
   );

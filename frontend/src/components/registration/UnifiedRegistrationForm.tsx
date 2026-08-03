@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useReducer, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, Loader2 } from "lucide-react";
 import heroService from "@/services/hero.service";
+import registrationService from "@/services/registration.service";
+import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
 import { useTranslations } from "next-intl";
 import { useAccountSettingsModalStore } from "@/stores/account-settings-modal.store";
 import type {
@@ -39,6 +41,7 @@ interface UnifiedFormState {
   smurfTags: string[];
   discordNick: string;
   twitchNick: string;
+  boostyNick: string;
   notes: string;
   adminNotes: string;
   streamPov: boolean;
@@ -67,6 +70,7 @@ const initialState: UnifiedFormState = {
   smurfTags: [],
   discordNick: "",
   twitchNick: "",
+  boostyNick: "",
   notes: "",
   adminNotes: "",
   streamPov: false,
@@ -125,6 +129,7 @@ export default function UnifiedRegistrationForm({
   submitPending = false,
 }: UnifiedRegistrationFormProps) {
   const t = useTranslations();
+  const queryClient = useQueryClient();
   const openAccountSettings = useAccountSettingsModalStore((s) => s.open);
   const [state, dispatch] = useReducer(formReducer, initialState);
   const [error, setError] = useState<string | null>(null);
@@ -289,6 +294,7 @@ export default function UnifiedRegistrationForm({
     battle_tag: state.battleTag,
     discord_nick: state.discordNick,
     twitch_nick: state.twitchNick,
+    boosty_nick: state.boostyNick,
   };
   // ``require_verified`` gates the registrant's own OAuth accounts; admin editing
   // is unconstrained (matches AccountStep, which renders a plain input in admin).
@@ -469,6 +475,7 @@ export default function UnifiedRegistrationForm({
         smurf_tags: isEnabled("smurf_tags") && state.smurfTags.length > 0 ? state.smurfTags : undefined,
         discord_nick: isEnabled("discord_nick") ? (state.discordNick || undefined) : undefined,
         twitch_nick: isEnabled("twitch_nick") ? (state.twitchNick || undefined) : undefined,
+        boosty_nick: isEnabled("boosty_nick") ? (state.boostyNick || undefined) : undefined,
         roles: rolesPayload.length > 0 ? rolesPayload : undefined,
         stream_pov: isEnabled("stream_pov") ? state.streamPov : undefined,
         notes: isEnabled("notes") ? (state.notes || undefined) : undefined,
@@ -492,6 +499,7 @@ export default function UnifiedRegistrationForm({
       smurf_tags_json: state.smurfTags,
       discord_nick: state.discordNick || null,
       twitch_nick: state.twitchNick || null,
+      boosty_nick: state.boostyNick || null,
       notes: state.notes || null,
       admin_notes: state.adminNotes || null,
       is_flex: isFlexSelection(state.roleSelections),
@@ -527,6 +535,7 @@ export default function UnifiedRegistrationForm({
     if (key === "battle_tag") dispatch({ type: "SET_FIELD", key: "battleTag", value });
     else if (key === "discord_nick") dispatch({ type: "SET_FIELD", key: "discordNick", value });
     else if (key === "twitch_nick") dispatch({ type: "SET_FIELD", key: "twitchNick", value });
+    else if (key === "boosty_nick") dispatch({ type: "SET_FIELD", key: "boostyNick", value });
     else if (key === "notes") dispatch({ type: "SET_FIELD", key: "notes", value });
     else if (key === "stream_pov") dispatch({ type: "SET_FIELD", key: "streamPov", value: value === "true" });
     else dispatch({ type: "SET_CUSTOM_FIELD", key, value });
@@ -551,6 +560,22 @@ export default function UnifiedRegistrationForm({
   const battleTagSuggestions = profileAccounts.filter((a) => a.provider === "battlenet").map((a) => a.username);
   const discordSuggestions = profileAccounts.filter((a) => a.provider === "discord").map((a) => a.username);
   const twitchSuggestions = profileAccounts.filter((a) => a.provider === "twitch").map((a) => a.username);
+  const boostySuggestions = profileAccounts.filter((a) => a.provider === "boosty").map((a) => a.username);
+
+  // Subscription standing for the chips + rule notice. Public mode only: the
+  // endpoint answers for the CALLER, so it is meaningless while an admin edits
+  // somebody else's registration.
+  const subscriptionQuery = useQuery({
+    queryKey: tournamentQueryKeys.subscriptionStatus(tournamentId),
+    queryFn: () => registrationService.getMySubscriptionStatus(tournamentId),
+    enabled: mode === "public" && formConfig.require_subscription === true,
+    staleTime: 30_000,
+  });
+
+  const handleRedeemCode = async (code: string) => {
+    const next = await registrationService.redeemSubscriptionCode(tournamentId, code);
+    queryClient.setQueryData(tournamentQueryKeys.subscriptionStatus(tournamentId), next);
+  };
 
   // Setup options for admin selects
   const resolvedRegistrationStatusOptions = {
@@ -620,6 +645,7 @@ export default function UnifiedRegistrationForm({
               battle_tag: state.battleTag,
               discord_nick: state.discordNick,
               twitch_nick: state.twitchNick,
+              boosty_nick: state.boostyNick,
             }}
             onUpdate={handleFieldUpdate}
             smurfTags={state.smurfTags}
@@ -629,6 +655,9 @@ export default function UnifiedRegistrationForm({
             battleTagSuggestions={mode === "admin" ? [] : battleTagSuggestions}
             discordSuggestions={mode === "admin" ? [] : discordSuggestions}
             twitchSuggestions={mode === "admin" ? [] : twitchSuggestions}
+            boostySuggestions={mode === "admin" ? [] : boostySuggestions}
+            subscription={mode === "public" ? subscriptionQuery.data : null}
+            onRedeemCode={mode === "public" ? handleRedeemCode : undefined}
             accounts={mode === "admin" ? [] : (userProfile?.social_accounts ?? [])}
             verifiedErrors={{
               battle_tag: getVerifiedError("battle_tag"),

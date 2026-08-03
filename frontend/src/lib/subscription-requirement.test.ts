@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+// Runs under `bun test`, matching every other `src/lib/*.test.ts` in this
+// directory (vitest's include list deliberately does not cover src/lib).
+import { describe, expect, it } from "bun:test";
 
 import {
   composeOutcome,
