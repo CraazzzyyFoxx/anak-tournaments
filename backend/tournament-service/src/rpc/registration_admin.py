@@ -67,7 +67,7 @@ from src.services.registration.serializers import (
 
 # --- helpers -----------------------------------------------------------------
 
-# Same cap as BulkEncounterUpdate.encounter_ids — bulk operations must not
+# Cap on bulk id lists — bulk operations must not
 # accept unbounded id lists.
 _MAX_BULK_IDS = 500
 

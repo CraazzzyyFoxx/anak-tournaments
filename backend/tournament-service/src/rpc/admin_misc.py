@@ -13,7 +13,7 @@ The gateway passes path params as ``data["<name>"]`` (and the primary id as
 ``data["query"][key] = [values]``, and the JSON body as ``data["payload"]``.
 
 Commit semantics: every write service called here commits internally
-(bulk_update_encounters, update_match, set_encounter_result, initialize_map_pool,
+(update_match, set_encounter_result, initialize_map_pool,
 toggle_finished, transition_status, recalculate_standings), so the handlers add no
 extra commit. job_get/job_list are read-only.
 """
@@ -71,23 +71,6 @@ class AdminMapPoolAssign(BaseModel):
 
 def register(broker: Any, logger: Any) -> None:
     # ── encounters ────────────────────────────────────────────────────────
-
-    @broker.subscriber("rpc.tournament.encounter_bulk_update")
-    async def _encounter_bulk_update(data: dict, msg: RabbitMessage) -> dict:
-        async def op(session: Any) -> Any:
-            user = _identity(data)
-            body = enc_schemas.BulkEncounterUpdate.model_validate(_payload(data))
-            await auth.require_encounter_ids_permission(
-                session,
-                user,
-                encounter_ids=body.encounter_ids,
-                resource="match",
-                action="update",
-            )
-            # bulk_update_encounters commits internally; returns a custom dict.
-            return await enc_service.bulk_update_encounters(session, body)
-
-        return await _run(logger, op)
 
     @broker.subscriber("rpc.tournament.encounter_update_match")
     async def _encounter_update_match(data: dict, msg: RabbitMessage) -> dict:
