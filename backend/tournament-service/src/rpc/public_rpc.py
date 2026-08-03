@@ -39,8 +39,10 @@ from shared.balancer_subrole_catalog import resolve_subrole_catalog
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.identity import rehydrate_user
 from shared.services.profile_visibility import resolve_profiles_open
+from shared.services.subscription_wiring import build_resolver
 from shared.services.tournament_visibility import assert_tournament_viewable
 from src import models, schemas
+from src.core.config import settings
 from src.rpc._helpers import (
     _dump,
     _identity,
@@ -70,6 +72,7 @@ from src.services.encounter import captain as captain_service
 from src.services.encounter import flows as encounter_flows
 from src.services.encounter import map_veto as map_veto_service
 from src.services.registration import service as reg_service
+from src.services.registration.subscription_gate import assert_subscription_allows_check_in
 from src.services.registration.validation import (
     validate_registration_input,
     validate_verified_identity,
@@ -351,6 +354,20 @@ def register(broker: Any, logger: Any) -> None:
                         status_code=400,
                         detail="Your Overwatch profile is private. Make it public to check in.",
                     )
+
+            # Subscription admission gate. Same contract as the profile gate one
+            # block up: block only on a CONFIRMED refusal, so a provider outage
+            # (unknown) can never lock anybody out of a live check-in.
+            await assert_subscription_allows_check_in(
+                form=form,
+                auth_user_id=user.id,
+                resolver=build_resolver(
+                    session,
+                    discord_bot_token=settings.discord_token,
+                    twitch_client_id=settings.twitch_client_id,
+                    proxy=settings.proxy_url,
+                ),
+            )
 
             # check_in_registration commits internally.
             checked_in = await reg_service.check_in_registration(
