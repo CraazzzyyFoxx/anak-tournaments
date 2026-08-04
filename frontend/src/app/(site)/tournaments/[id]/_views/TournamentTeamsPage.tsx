@@ -9,6 +9,13 @@ import { Team } from "@/types/team.types";
 import teamService from "@/services/team.service";
 import { TournamentTeamCard } from "@/components/TournamentTeamCard";
 import { FilterChip } from "@/components/ui/filter-chip";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
 
 import { TournamentPageState } from "../_components/TournamentPageState";
@@ -110,17 +117,19 @@ const TournamentTeamsView = ({ tournament }: { tournament: Tournament }) => {
               </FilterChip>
             ))}
 
-            <select
-              className="filter-sort"
-              style={{ marginLeft: "auto" }}
-              value={sortBy}
-              onChange={(event) => setSortBy(event.target.value as SortBy)}
-              aria-label={t("tournamentDetail.sortTeams")}
-            >
-              <option value="placement">{t("common.byPlacement")}</option>
-              <option value="sr">{t("common.byAvgSr")}</option>
-              <option value="name">{t("common.byName")}</option>
-            </select>
+            <Select value={sortBy} onValueChange={(value) => setSortBy(value as SortBy)}>
+              <SelectTrigger
+                aria-label={t("tournamentDetail.sortTeams")}
+                className="filter-sort ml-auto h-8 w-[170px] shadow-none focus:ring-0 focus:ring-offset-0"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="placement">{t("common.byPlacement")}</SelectItem>
+                <SelectItem value="sr">{t("common.byAvgSr")}</SelectItem>
+                <SelectItem value="name">{t("common.byName")}</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           {visibleTeams.length === 0 ? (

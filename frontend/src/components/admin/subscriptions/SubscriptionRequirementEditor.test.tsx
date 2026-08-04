@@ -116,10 +116,10 @@ describe("unconfigured providers", () => {
 
   it("keeps an unavailable provider selected so opening the form does not rewrite the rule", async () => {
     const { container } = await mount(TWO, ["boosty"]);
-    const values = [...container.querySelectorAll("select")].map(
-      (select) => (select as HTMLSelectElement).value
-    );
-    expect(values).toContain("twitch");
+    const selected = [
+      ...container.querySelectorAll('button[role="combobox"][aria-label="Provider"]')
+    ].map((trigger) => trigger.textContent?.trim());
+    expect(selected).toContain("Twitch");
   });
 });
 

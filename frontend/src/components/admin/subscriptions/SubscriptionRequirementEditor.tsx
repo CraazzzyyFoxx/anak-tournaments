@@ -3,6 +3,13 @@
 import { AlertTriangle, Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
 import { describeRequirement } from "@/lib/subscription-requirement";
 import type {
   SubscriptionProviderRequirement,
@@ -73,15 +80,19 @@ export default function SubscriptionRequirementEditor({
       {showModeSelector && (
         <div className="flex items-center gap-2 text-sm">
           <span className="text-muted-foreground">Match</span>
-          <select
-            className="rounded-md border border-border bg-background px-2 py-1 text-sm disabled:opacity-50"
+          <Select
             value={mode}
             disabled={disabled}
-            onChange={(event) => update({ mode: event.target.value as "any" | "all" })}
+            onValueChange={(value) => update({ mode: value as "any" | "all" })}
           >
-            <option value="all">All of the below</option>
-            <option value="any">Any one of the below</option>
-          </select>
+            <SelectTrigger className="h-8 w-[190px] text-sm" aria-label="Requirement match mode">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All of the below</SelectItem>
+              <SelectItem value="any">Any one of the below</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       )}
 
@@ -95,34 +106,42 @@ export default function SubscriptionRequirementEditor({
         const tiers = TIER_OPTIONS[row.provider] ?? [{ rank: 1, label: "any tier" }];
         return (
           <div key={`${row.provider}-${index}`} className="flex items-center gap-2">
-            <select
-              className="rounded-md border border-border bg-background px-2 py-1 text-sm disabled:opacity-50"
+            <Select
               value={row.provider}
               disabled={disabled}
-              onChange={(event) => updateRow(index, { provider: event.target.value })}
+              onValueChange={(value) => updateRow(index, { provider: value })}
             >
-              {/* Keep the current value selectable even when unavailable, so
-                  opening the form does not silently rewrite a saved rule. */}
-              {[...new Set([row.provider, ...availableProviders])].filter(Boolean).map((provider) => (
-                <option key={provider} value={provider}>
-                  {PROVIDER_LABELS[provider] ?? provider}
-                </option>
-              ))}
-            </select>
-            <select
-              className="rounded-md border border-border bg-background px-2 py-1 text-sm disabled:opacity-50"
+              <SelectTrigger className="h-8 w-[140px] text-sm" aria-label="Provider">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {/* Keep the current value selectable even when unavailable, so
+                    opening the form does not silently rewrite a saved rule. */}
+                {[...new Set([row.provider, ...availableProviders])]
+                  .filter(Boolean)
+                  .map((provider) => (
+                    <SelectItem key={provider} value={provider}>
+                      {PROVIDER_LABELS[provider] ?? provider}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+            <Select
               value={String(row.min_tier_rank ?? 1)}
               disabled={disabled}
-              onChange={(event) =>
-                updateRow(index, { min_tier_rank: Number(event.target.value) })
-              }
+              onValueChange={(value) => updateRow(index, { min_tier_rank: Number(value) })}
             >
-              {tiers.map((tier) => (
-                <option key={tier.rank} value={String(tier.rank)}>
-                  {tier.label}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className="h-8 w-[170px] text-sm" aria-label="Minimum tier">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {tiers.map((tier) => (
+                  <SelectItem key={tier.rank} value={String(tier.rank)}>
+                    {tier.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button
               type="button"
               variant="ghost"

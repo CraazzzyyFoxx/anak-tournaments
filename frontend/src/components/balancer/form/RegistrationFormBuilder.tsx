@@ -8,6 +8,14 @@ import { ArrowLeft, Loader2, Save } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { notify } from "@/lib/notify";
 import { MUTED_BUTTON_CLASS } from "@/app/balancer/components/balancer-page-helpers";
@@ -332,12 +340,11 @@ export default function RegistrationFormBuilder({
 
               <div className="space-y-3 rounded-lg border p-4">
                 <div className="font-medium">Admission</div>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <Checkbox
                     checked={requireOpenProfile}
-                    onChange={(event) => {
-                      setRequireOpenProfile(event.target.checked);
+                    onCheckedChange={(checked) => {
+                      setRequireOpenProfile(checked === true);
                       setHasChanges(true);
                     }}
                   />
@@ -345,18 +352,22 @@ export default function RegistrationFormBuilder({
                 </label>
                 <div className="flex items-center gap-2 text-sm">
                   <span className="text-muted-foreground">Scope</span>
-                  <select
-                    className="rounded-md border border-border bg-background px-2 py-1 text-sm disabled:opacity-50"
+                  <Select
                     value={openProfileScope}
                     disabled={!requireOpenProfile}
-                    onChange={(event) => {
-                      setOpenProfileScope(event.target.value as "main" | "all");
+                    onValueChange={(value) => {
+                      setOpenProfileScope(value as "main" | "all");
                       setHasChanges(true);
                     }}
                   >
-                    <option value="main">Main account only</option>
-                    <option value="all">All accounts (incl. smurfs)</option>
-                  </select>
+                    <SelectTrigger className="h-8 w-[230px] text-sm" aria-label="Open profile scope">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="main">Main account only</SelectItem>
+                      <SelectItem value="all">All accounts (incl. smurfs)</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <p className="text-xs text-muted-foreground">
                   When enabled, players whose Overwatch profile is private are not admitted (blocked
@@ -366,12 +377,11 @@ export default function RegistrationFormBuilder({
 
               <div className="space-y-3 rounded-lg border p-4">
                 <div className="font-medium">Subscription</div>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <Checkbox
                     checked={requireSubscription}
-                    onChange={(event) => {
-                      setRequireSubscription(event.target.checked);
+                    onCheckedChange={(checked) => {
+                      setRequireSubscription(checked === true);
                       setHasChanges(true);
                     }}
                   />
@@ -395,12 +405,11 @@ export default function RegistrationFormBuilder({
 
               <div className="space-y-3 rounded-lg border p-4">
                 <div className="font-medium">Display Options</div>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <Checkbox
                     checked={showRanks}
-                    onChange={(event) => {
-                      setShowRanks(event.target.checked);
+                    onCheckedChange={(checked) => {
+                      setShowRanks(checked === true);
                       setHasChanges(true);
                     }}
                   />
