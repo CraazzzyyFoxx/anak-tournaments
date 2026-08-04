@@ -4,7 +4,10 @@
 package observability
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -41,7 +44,10 @@ func Init(cfg *config.Config) (func(time.Duration), error) {
 		TracesSampleRate: cfg.Sentry.TracesSampleRate,
 		// QueryString is recorded verbatim regardless of SendDefaultPII; scrub the
 		// JWT (and similar) out of both error and transaction events.
-		BeforeSend: func(event *sentry.Event, _ *sentry.EventHint) *sentry.Event {
+		BeforeSend: func(event *sentry.Event, hint *sentry.EventHint) *sentry.Event {
+			if isClientDisconnect(hint) {
+				return nil
+			}
 			return scrubEvent(event)
 		},
 		BeforeSendTransaction: func(event *sentry.Event, _ *sentry.EventHint) *sentry.Event {
@@ -52,6 +58,37 @@ func Init(cfg *config.Config) (func(time.Duration), error) {
 		return func(time.Duration) {}, fmt.Errorf("sentry init: %w", err)
 	}
 	return func(d time.Duration) { sentry.Flush(d) }, nil
+}
+
+// isClientDisconnect reports whether a captured event is a client hanging up
+// rather than a gateway fault.
+//
+// httputil.ReverseProxy panics with http.ErrAbortHandler when the response copy
+// to the client fails mid-body (navigation away, closed tab, a scanner probing
+// the public IP and dropping the socket). sentryhttp runs with Repanic: true, so
+// net/http's recover turns every one of those into a *fatal* Sentry event under
+// "net/http: abort Handler" — by volume the loudest issue in the project and
+// never once actionable. context.Canceled/DeadlineExceeded reach CaptureException
+// the same way via safego.
+func isClientDisconnect(hint *sentry.EventHint) bool {
+	if hint == nil {
+		return false
+	}
+	candidates := []error{hint.OriginalException}
+	if err, ok := hint.RecoveredException.(error); ok {
+		candidates = append(candidates, err)
+	}
+	for _, err := range candidates {
+		if err == nil {
+			continue
+		}
+		if errors.Is(err, http.ErrAbortHandler) ||
+			errors.Is(err, context.Canceled) ||
+			errors.Is(err, context.DeadlineExceeded) {
+			return true
+		}
+	}
+	return false
 }
 
 // scrubEvent redacts sensitive query parameters from a captured event's request.

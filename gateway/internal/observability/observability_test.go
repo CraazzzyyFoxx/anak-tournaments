@@ -3,11 +3,16 @@ package observability
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
+	"net/http"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/getsentry/sentry-go"
 
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/config"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/httplog"
@@ -75,6 +80,75 @@ func TestDropAccessLogsFiltersAccessLogRecords(t *testing.T) {
 	}
 	if sink.records[0].Message != "boom" {
 		t.Fatalf("passed message = %q, want %q", sink.records[0].Message, "boom")
+	}
+}
+
+// Every `log.Error("rpc failed", "err", err)` site reports a context.Canceled
+// the moment a browser navigates away mid-request. Those must not reach Sentry
+// (they opened a group per RPC queue name), while an rpc failure with a real
+// cause must still get through.
+func TestDropAccessLogsFiltersClientDisconnects(t *testing.T) {
+	sink := &captureHandler{minLevel: slog.LevelDebug}
+	logger := slog.New(dropAccessLogs(sink))
+
+	logger.Error("rpc failed", "queue", "rpc.identity.get_me", "err", context.Canceled)
+	logger.Error("rpc failed", "queue", "rpc.identity.validate_token", "err", context.DeadlineExceeded)
+	if got := sink.count(); got != 0 {
+		t.Fatalf("client disconnect reached sink: got %d records, want 0", got)
+	}
+
+	// Wrapped causes count too: the gateway wraps with fmt.Errorf("rpc to %q: %w").
+	logger.Error("rpc failed", "err", fmt.Errorf(`rpc to "rpc.identity.get_me": %w`, context.Canceled))
+	if got := sink.count(); got != 0 {
+		t.Fatalf("wrapped client disconnect reached sink: got %d records, want 0", got)
+	}
+
+	// A real upstream failure keeps its Sentry issue.
+	logger.Error("rpc failed", "queue", "rpc.app.workspaces.get", "err", errors.New("queue overloaded"))
+	if got := sink.count(); got != 1 {
+		t.Fatalf("genuine rpc failure dropped: got %d records, want 1", got)
+	}
+
+	// A non-error "err" attribute must not panic or be misclassified.
+	logger.Error("odd shape", "err", "just a string")
+	if got := sink.count(); got != 2 {
+		t.Fatalf("string err attribute dropped: got %d records, want 2", got)
+	}
+}
+
+// httputil.ReverseProxy panics with http.ErrAbortHandler when the client hangs
+// up mid-body; sentryhttp turns that into a fatal event. It was the single
+// loudest issue in the project and never actionable.
+func TestIsClientDisconnect(t *testing.T) {
+	cases := []struct {
+		name string
+		hint *sentry.EventHint
+		want bool
+	}{
+		{"nil hint", nil, false},
+		{"empty hint", &sentry.EventHint{}, false},
+		{"abort handler", &sentry.EventHint{OriginalException: http.ErrAbortHandler}, true},
+		{
+			"abort handler recovered from panic",
+			&sentry.EventHint{RecoveredException: http.ErrAbortHandler},
+			true,
+		},
+		{"cancelled context", &sentry.EventHint{OriginalException: context.Canceled}, true},
+		{"deadline exceeded", &sentry.EventHint{OriginalException: context.DeadlineExceeded}, true},
+		{
+			"wrapped abort handler",
+			&sentry.EventHint{OriginalException: fmt.Errorf("proxy: %w", http.ErrAbortHandler)},
+			true,
+		},
+		{"genuine fault", &sentry.EventHint{OriginalException: errors.New("nil map write")}, false},
+		{"non-error panic value", &sentry.EventHint{RecoveredException: "boom"}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isClientDisconnect(tc.hint); got != tc.want {
+				t.Fatalf("isClientDisconnect = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
 

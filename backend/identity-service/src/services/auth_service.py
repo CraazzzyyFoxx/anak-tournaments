@@ -539,7 +539,13 @@ class AuthService:
         result = await session.execute(select(models.RefreshToken).where(models.RefreshToken.token.in_(candidates)))
         reused_token = result.scalar_one_or_none()
         if reused_token:
-            logger.bind(user_id=str(reused_token.user_id)).error(
+            # WARNING, not ERROR: reuse is an expected consequence of ordinary
+            # client behaviour (a stale tab replaying a rotated token, a mobile
+            # app resuming from background) and is fully handled right below by
+            # revoking the affected session. As an ERROR it opened a Sentry issue
+            # per occurrence with nothing to fix. Alert on the rate of this
+            # message instead, which is what actually indicates token theft.
+            logger.bind(user_id=str(reused_token.user_id)).warning(
                 "Refresh token reuse detected; revoking only the matching browser session"
             )
             reused_session_id = getattr(reused_token, "session_id", None)
