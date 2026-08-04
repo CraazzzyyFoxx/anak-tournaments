@@ -9,6 +9,15 @@ Ownership of the account is already proven by our own Discord OAuth (the patron'
 ``provider_user_id``), and the subscription itself is asserted by Boosty's bot --
 so no reverse-engineering and no new user-facing scope.
 
+``config["guild_id"]`` is NOT stored in the provider blob: it is injected by
+``SqlEntitlementStore.load_configs`` from ``Workspace.discord_guild_id``, so one
+organizer's guild is configured once and every feature reads the same snowflake.
+That injection is deliberately invisible here -- this resolver's contract and its
+whole decision table (including the fail-open ``unknown("guild_not_configured")``
+branch, which is now reached when the *workspace* has no guild) are unchanged by
+the move. Do NOT "tidy" the injection into an explicit parameter: that would
+re-open the fail-open question argued in ``shared.subscriptions.verification``.
+
 Discord access notes (verified against the API docs, see the design doc):
 
 - ``GET /guilds/{guild}/members/{user}`` needs NO privileged intent. Do not use

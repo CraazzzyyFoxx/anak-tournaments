@@ -356,6 +356,7 @@ export const domains: DiagramDomain[] = [
         string slug UK
         string name
         bool is_active
+        string discord_guild_id "nullable"
         int default_division_grid_version_id FK "nullable"
     }
     WORKSPACE_MEMBER {
@@ -1405,7 +1406,6 @@ export const domains: DiagramDomain[] = [
     DISCORD_CHANNEL {
         int id PK
         int tournament_id FK "UNIQUE"
-        int guild_id
         int channel_id UK
         bool is_active
     }
