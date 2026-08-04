@@ -1,7 +1,7 @@
 """configurable captain match-report form
 
 Revision ID: rptform0001
-Revises: divgrid0004
+Revises: mtchlog001
 Create Date: 2026-08-04 12:00:00.000000
 
 Makes the captain match-report form configurable per tournament:
@@ -27,7 +27,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "rptform0001"
-down_revision: str | Sequence[str] | None = "divgrid0004"
+down_revision: str | Sequence[str] | None = "mtchlog001"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
