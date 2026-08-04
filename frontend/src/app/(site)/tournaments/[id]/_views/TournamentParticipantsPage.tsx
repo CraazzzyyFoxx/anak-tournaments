@@ -42,7 +42,9 @@ import { cn, hexToRgba } from "@/lib/utils";
 import { isPhaseWindowActive } from "@/lib/tournament-status";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
+import { getApiErrorMessage } from "@/lib/api-error";
 import registrationService from "@/services/registration.service";
+import CheckInSubscriptionProof from "@/components/registration/CheckInSubscriptionProof";
 import type { Tournament } from "@/types/tournament.types";
 import type { Registration, RegistrationStatus } from "@/types/registration.types";
 
@@ -1057,12 +1059,33 @@ function TournamentParticipantsView({ tournament }: { tournament: Tournament }) 
         />
       )}
 
-      <AlertDialog open={isCheckInDialogOpen} onOpenChange={setIsCheckInDialogOpen}>
+      <AlertDialog
+        open={isCheckInDialogOpen}
+        onOpenChange={(open) => {
+          setIsCheckInDialogOpen(open);
+          // A stale refusal from the previous attempt must not greet the next one:
+          // the whole point of the phrase field is that the answer changes.
+          if (!open) checkInMutation.reset();
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("common.confirmCheckIn")}</AlertDialogTitle>
             <AlertDialogDescription>{t("common.checkInDesc")}</AlertDialogDescription>
           </AlertDialogHeader>
+          {/* The subscription requirement is enforced by THIS action, so the last
+              manual proof it accepts — the phrase from a subscriber-only post —
+              belongs here and nowhere else. */}
+          <CheckInSubscriptionProof
+            tournamentId={tournament.id}
+            requirement={form?.subscription_requirement_json}
+            active={isCheckInDialogOpen && form?.require_subscription === true}
+          />
+          {checkInMutation.isError && (
+            <p role="alert" className="text-sm text-[color:var(--aqt-rose)]">
+              {getApiErrorMessage(checkInMutation.error, t("common.checkInFailed"))}
+            </p>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={checkInMutation.isPending}>
               {t("common.cancel")}

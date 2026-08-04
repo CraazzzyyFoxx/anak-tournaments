@@ -30,10 +30,13 @@ interface AccountStepProps {
   verifiedErrors?: Record<string, string | null>;
   /** Public mode only: open profile settings so the user can link accounts. */
   onLinkAccounts?: () => void;
-  /** Server-resolved subscription standing; drives the per-row chips. */
+  /** Server-resolved subscription standing; drives the per-row chips.
+   *
+   *  Read-only here on purpose: proving a subscription by pasting a phrase is a
+   *  check-in step, not a signup step. Signup only shows what was decided
+   *  automatically, so a patron cannot be asked for a secret before they even
+   *  have a registration. */
   subscription?: SubscriptionStatus | null;
-  /** Redeem a challenge code; resolves once the server answers. */
-  onRedeemCode?: (code: string) => Promise<void>;
 }
 
 export default function AccountStep({
@@ -54,7 +57,6 @@ export default function AccountStep({
   verifiedErrors = {},
   onLinkAccounts,
   subscription,
-  onRedeemCode,
 }: AccountStepProps) {
   const t = useTranslations();
   const fields = form.built_in_fields;
@@ -230,7 +232,6 @@ export default function AccountStep({
             providerLabel="Boosty"
             subscription={subscription}
             onLinkAccounts={onLinkAccounts}
-            onRedeemCode={onRedeemCode}
           />
         </div>
       )}

@@ -45,6 +45,7 @@ from shared.subscriptions import (
     evaluate_requirement,
     parse_verification_method,
 )
+from shared.subscriptions.challenge_code import has_live_code
 
 __all__ = (
     "SUBSCRIPTION_TTL_SECONDS",
@@ -247,15 +248,23 @@ class SubscriptionResolver:
         status read needs it (admins never redeem), and the alternative — widening
         ``evaluate``'s return type — would ripple through every bulk read that has no
         use for it.
+
+        "Can help" is literal: the method must accept codes AND at least one code must
+        still be live. A provider whose codes all expired takes no paste, and the
+        registration gate defers a refusal for exactly this set — so a loose answer
+        here would defer forever on a rule nobody can satisfy by code.
         """
         wanted = list(dict.fromkeys(providers))
         if not wanted:
             return set()
+        now = self._now()
         configs = await self._store.load_configs(workspace_id, wanted)
         return {
             provider
             for provider, row in configs.items()
-            if row.enabled and accepts_code(parse_verification_method(row.config))
+            if row.enabled
+            and accepts_code(parse_verification_method(row.config))
+            and has_live_code(row.config, now=now)
         }
 
     # ── internals ─────────────────────────────────────────────────────────────

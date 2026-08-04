@@ -5,6 +5,10 @@ method an unlinked patron reads ``no_linked_discord_account``, yet a code would
 satisfy them too — so a UI inferring from ``reason`` alone would either hide a
 working input or offer one the server is about to reject with 400.
 
+``blocks_registration`` answers a different question — whether SIGN-UP is refused
+right now — and must agree with the gate that enforces it, including the deferral
+of anything a challenge code could still change.
+
 Runs under stdlib unittest -- there is no pytest-asyncio here.
 """
 
@@ -175,3 +179,46 @@ class TestVerdictNarrowing(IsolatedAsyncioTestCase):
         assert read.required is True
         assert read.outcome == Outcome.SATISFIED.value
         assert read.rule
+
+
+
+class TestBlocksRegistration(IsolatedAsyncioTestCase):
+    """Mirrors ``assert_subscription_allows_registration``; the form disables submit on it."""
+
+    async def test_false_when_satisfied(self):
+        read, _ = await _status({"boosty": _verdict(SubscriptionState.ACTIVE)}, set())
+        assert read.blocks_registration is False
+
+    async def test_true_on_an_automatic_refusal(self):
+        read, _ = await _status({"boosty": _verdict(SubscriptionState.INACTIVE)}, set())
+        assert read.blocks_registration is True
+
+    async def test_false_when_a_code_could_still_fix_it(self):
+        """The phrase field lives at check-in, so sign-up must not refuse on it."""
+        read, _ = await _status({"boosty": _verdict(SubscriptionState.INACTIVE)}, {"boosty"})
+        assert read.blocks_registration is False
+
+    async def test_false_on_an_undetermined_verdict(self):
+        read, _ = await _status({"boosty": _verdict(SubscriptionState.UNKNOWN, reason="strategy_error")}, set())
+        assert read.blocks_registration is False
+
+    async def test_narrower_than_the_composed_outcome(self):
+        """The two fields disagree by design: `outcome` is the check-in answer."""
+        read, _ = await _status({"boosty": _verdict(SubscriptionState.INACTIVE)}, {"boosty"})
+        assert read.outcome == Outcome.REFUSED.value
+        assert read.blocks_registration is False
+
+    async def test_all_mode_blocks_when_one_provider_needs_no_code(self):
+        read, _ = await _status(
+            {
+                "boosty": _verdict(SubscriptionState.INACTIVE),
+                "twitch": _verdict(SubscriptionState.INACTIVE),
+            },
+            {"boosty"},
+            requirement=_requirement("boosty", "twitch", mode="all"),
+        )
+        assert read.blocks_registration is True
+
+    async def test_not_required_never_blocks(self):
+        read = await subscription_status_for_user(form=None, auth_user_id=USER, resolver=_FakeResolver({}, set()))
+        assert read.blocks_registration is False

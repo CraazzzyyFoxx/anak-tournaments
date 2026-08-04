@@ -1,9 +1,17 @@
-"""Subscription admission gate for check-in.
+"""Subscription admission gates.
 
-The ONLY place a subscription requirement is enforced. Registration submission is
-never gated: a provider outage during open signups would lock people out of
-signing up, which is strictly worse than admitting someone who later turns out
-not to be subscribed.
+Two gates, one rule, different amounts of certainty available:
+
+- **Registration submit** blocks only what is *automatically* provable. A provider
+  the patron can still satisfy by pasting a challenge code is deferred (see
+  ``evaluate_requirement``'s ``deferred_providers``), because the phrase field is
+  only offered at check-in — refusing someone one paste away from admission would
+  be a lie about their standing.
+- **Check-in** blocks on any confirmed refusal. Every proof path is on screen by
+  then, so nothing is outstanding.
+
+Both fail OPEN on an undetermined verdict, exactly like ``require_open_profile``:
+a provider outage must never un-admit a subscriber.
 
 Every composition subtlety lives in ``shared.subscriptions.requirement`` (Kleene
 three-valued logic). This module only decides *when* to ask and *what to say*.
@@ -15,9 +23,19 @@ from typing import Any, Protocol
 
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.social import SocialProvider
-from shared.subscriptions import Outcome, SubscriptionRequirement, parse_requirement
+from shared.subscriptions import (
+    Outcome,
+    SubscriptionRequirement,
+    SubscriptionVerdict,
+    evaluate_requirement,
+    parse_requirement,
+)
 
-__all__ = ("assert_subscription_allows_check_in", "describe_requirement")
+__all__ = (
+    "assert_subscription_allows_check_in",
+    "assert_subscription_allows_registration",
+    "describe_requirement",
+)
 
 # Display names for the refusal message. Falls back to the raw provider key so a
 # provider added later is still named, just less prettily.
@@ -35,7 +53,9 @@ class RequirementEvaluator(Protocol):
         auth_user_ids: Any,
         requirement: SubscriptionRequirement,
         force_refresh: bool = False,
-    ) -> dict[int, tuple[Outcome, Any]]: ...
+    ) -> dict[int, tuple[Outcome, dict[str, SubscriptionVerdict]]]: ...
+
+    async def accepted_code_providers(self, *, workspace_id: int, providers: Any) -> set[str]: ...
 
 
 def describe_requirement(requirement: SubscriptionRequirement) -> str:
@@ -55,28 +75,31 @@ def describe_requirement(requirement: SubscriptionRequirement) -> str:
     return conjunction.join(parts)
 
 
+def _enforceable_requirement(form: Any | None) -> SubscriptionRequirement | None:
+    """The rule to enforce, or ``None`` when there is nothing to enforce.
+
+    A malformed ``mode`` is rejected when the form is saved. If one reached the
+    database anyway, refusing every patron mid-tournament is the worse failure
+    mode, so this fails open too.
+    """
+    if form is None or not getattr(form, "require_subscription", False):
+        return None
+    try:
+        requirement = parse_requirement(getattr(form, "subscription_requirement_json", None))
+    except ValueError:
+        return None
+    return requirement if requirement.requirements else None
+
+
 async def assert_subscription_allows_check_in(
     *,
     form: Any | None,
     auth_user_id: int,
     resolver: RequirementEvaluator,
 ) -> None:
-    """Raise 400 iff the composed requirement is a CONFIRMED refusal.
-
-    Mirrors the ``require_open_profile`` gate: an undetermined verdict passes.
-    """
-    if form is None or not getattr(form, "require_subscription", False):
-        return
-
-    try:
-        requirement = parse_requirement(getattr(form, "subscription_requirement_json", None))
-    except ValueError:
-        # A malformed `mode` is rejected when the form is saved. If one reached the
-        # database anyway, refusing every patron mid-tournament is the worse
-        # failure mode, so fail open here too.
-        return
-
-    if not requirement.requirements:
+    """Raise 400 iff the composed requirement is a CONFIRMED refusal."""
+    requirement = _enforceable_requirement(form)
+    if requirement is None:
         return
 
     outcomes = await resolver.evaluate(
@@ -88,8 +111,49 @@ async def assert_subscription_allows_check_in(
         force_refresh=True,
     )
     outcome, _verdicts = outcomes[auth_user_id]
-    if outcome.blocks_check_in:
+    if outcome.blocks_admission:
         raise HTTPException(
             status_code=400,
             detail=f"Для чек-ина нужна активная подписка: {describe_requirement(requirement)}.",
+        )
+
+
+async def assert_subscription_allows_registration(
+    *,
+    form: Any | None,
+    auth_user_id: int,
+    resolver: RequirementEvaluator,
+) -> None:
+    """Raise 400 iff the requirement is refused by a path the patron cannot change here.
+
+    Signing up used to be ungated on the argument that a provider outage during
+    open signups must not lock anybody out. That argument only ever covered the
+    *undetermined* verdict, which still passes; it never justified admitting a
+    patron the provider positively answered "no" about, only to refuse them at
+    check-in once the roster is being built. What genuinely cannot be decided here
+    is a code that has not been offered yet — that, and only that, is deferred.
+    """
+    requirement = _enforceable_requirement(form)
+    if requirement is None:
+        return
+
+    outcomes = await resolver.evaluate(
+        workspace_id=form.workspace_id,
+        auth_user_ids=[auth_user_id],
+        requirement=requirement,
+        # A blocking decision on one user, once per tournament: worth a live look
+        # rather than refusing a patron who subscribed minutes ago.
+        force_refresh=True,
+    )
+    outcome, verdicts = outcomes[auth_user_id]
+    # Deferring can only ever weaken a refusal, so a non-blocking outcome needs no
+    # second question — and the code-config read is skipped on the happy path.
+    if not outcome.blocks_admission:
+        return
+
+    deferred = await resolver.accepted_code_providers(workspace_id=form.workspace_id, providers=requirement.providers)
+    if evaluate_requirement(requirement, verdicts, deferred_providers=deferred).blocks_admission:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Для регистрации нужна активная подписка: {describe_requirement(requirement)}.",
         )

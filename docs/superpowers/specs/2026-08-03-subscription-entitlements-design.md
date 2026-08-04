@@ -20,6 +20,10 @@
 - **Scope now:** Boosty and Twitch. The module interface must not assume either.
 - **Enforcement point:** **check-in only.** Registration submission is never blocked.
   Status is *displayed* everywhere a provider is configured.
+  *(Superseded: sign-up now blocks a refusal it can verify automatically — provider API or
+  Discord roles. Anything a challenge code could still change stays deferred to check-in,
+  because that field is only offered there. Undetermined still fails open. See
+  `assert_subscription_allows_registration`.)*
 - **Non-goals:** payments/billing inside the platform, reverse-syncing subscribers to the
   provider, Boosty's Telegram integration (a later provider behind the same interface),
   proving ownership of a Boosty *handle*.

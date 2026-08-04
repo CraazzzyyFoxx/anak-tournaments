@@ -665,7 +665,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.reg_pub_create": {
         "summary": "Submit registration",
-        "description": "Lets a user self-register for a tournament (201 Created) after validating the form is open and the input; rejects duplicates with 409 and requires authentication.",
+        "description": "Lets a user self-register for a tournament (201 Created) after validating the form is open and the input; rejects duplicates with 409, refuses with 400 when a required subscription is confirmed missing by an automatic check (a verdict a challenge code could still change is deferred to check-in, and an undetermined verdict fails open), and requires authentication.",
     },
     "rpc.tournament.reg_pub_get_me": {
         "summary": "Get my registration",

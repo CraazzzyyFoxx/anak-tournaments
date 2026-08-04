@@ -139,13 +139,79 @@ class TestMissingVerdicts:
         assert evaluate_requirement(_req("any"), {}) is Outcome.SATISFIED
 
 
-class TestBlocksCheckIn:
-    """The gate's only question. Blocks IFF the outcome is REFUSED."""
+class TestBlocksAdmission:
+    """Both gates' only question. Blocks IFF the outcome is REFUSED."""
 
     def test_only_refused_blocks(self):
-        assert Outcome.REFUSED.blocks_check_in is True
-        assert Outcome.UNDETERMINED.blocks_check_in is False
-        assert Outcome.SATISFIED.blocks_check_in is False
+        assert Outcome.REFUSED.blocks_admission is True
+        assert Outcome.UNDETERMINED.blocks_admission is False
+        assert Outcome.SATISFIED.blocks_admission is False
+
+
+class TestDeferredProviders:
+    """Registration submit runs before the patron is offered the phrase field.
+
+    A provider they can still satisfy by pasting a code is therefore not yet
+    decided, and folds in as UNDETERMINED so the existing Kleene table does the
+    rest — no second composition path, no mode special-casing.
+    """
+
+    def test_a_deferred_refusal_becomes_undetermined(self):
+        assert (
+            evaluate_requirement(_req("all", "boosty"), {"boosty": F}, deferred_providers={"boosty"})
+            is Outcome.UNDETERMINED
+        )
+
+    def test_deferral_never_hides_a_satisfied_verdict(self):
+        assert (
+            evaluate_requirement(_req("all", "boosty"), {"boosty": T}, deferred_providers={"boosty"})
+            is Outcome.SATISFIED
+        )
+
+    def test_a_tier_shortfall_is_deferred_too(self):
+        """A higher-tier code can still lift an active-but-too-low patron."""
+        assert (
+            evaluate_requirement(
+                _req("all", "boosty", min_tier=3), {"boosty": _v("active", 1)}, deferred_providers={"boosty"}
+            )
+            is Outcome.UNDETERMINED
+        )
+
+    def test_a_provider_outside_the_set_still_refuses(self):
+        """Deferral is per provider: Twitch has an API, so its no is final."""
+        assert (
+            evaluate_requirement(
+                _req("all", "boosty", "twitch"), {"boosty": F, "twitch": F}, deferred_providers={"boosty"}
+            )
+            is Outcome.REFUSED
+        )
+
+    def test_all_mode_still_blocks_on_an_independent_refusal(self):
+        """`all` needs every provider, so a code cannot rescue a Twitch refusal."""
+        assert (
+            evaluate_requirement(
+                _req("all", "boosty", "twitch"), {"boosty": T, "twitch": F}, deferred_providers={"boosty"}
+            )
+            is Outcome.REFUSED
+        )
+
+    def test_any_mode_defers_the_whole_rule(self):
+        """Under `any` the code alone would admit them — refusing now would be wrong."""
+        assert (
+            evaluate_requirement(
+                _req("any", "boosty", "twitch"), {"boosty": F, "twitch": F}, deferred_providers={"boosty"}
+            )
+            is Outcome.UNDETERMINED
+        )
+
+    def test_empty_set_is_the_check_in_behaviour(self):
+        assert evaluate_requirement(_req("all", "boosty"), {"boosty": F}, deferred_providers=set()) is Outcome.REFUSED
+
+    def test_naming_a_provider_the_rule_ignores_changes_nothing(self):
+        assert (
+            evaluate_requirement(_req("all", "boosty"), {"boosty": F}, deferred_providers={"twitch"})
+            is Outcome.REFUSED
+        )
 
 
 class TestParseRequirement:

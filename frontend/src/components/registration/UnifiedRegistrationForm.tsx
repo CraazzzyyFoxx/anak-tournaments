@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useReducer, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, Loader2 } from "lucide-react";
 import heroService from "@/services/hero.service";
 import registrationService from "@/services/registration.service";
@@ -129,7 +129,6 @@ export default function UnifiedRegistrationForm({
   submitPending = false,
 }: UnifiedRegistrationFormProps) {
   const t = useTranslations();
-  const queryClient = useQueryClient();
   const openAccountSettings = useAccountSettingsModalStore((s) => s.open);
   const [state, dispatch] = useReducer(formReducer, initialState);
   const [error, setError] = useState<string | null>(null);
@@ -562,9 +561,9 @@ export default function UnifiedRegistrationForm({
   const twitchSuggestions = profileAccounts.filter((a) => a.provider === "twitch").map((a) => a.username);
   const boostySuggestions = profileAccounts.filter((a) => a.provider === "boosty").map((a) => a.username);
 
-  // Subscription standing for the chips + rule notice. Public mode only: the
-  // endpoint answers for the CALLER, so it is meaningless while an admin edits
-  // somebody else's registration.
+  // Subscription standing for the chips, the rule notice and the submit block.
+  // Public mode only: the endpoint answers for the CALLER, so it is meaningless
+  // while an admin edits somebody else's registration.
   const subscriptionQuery = useQuery({
     queryKey: tournamentQueryKeys.subscriptionStatus(tournamentId),
     queryFn: () => registrationService.getMySubscriptionStatus(tournamentId),
@@ -572,10 +571,12 @@ export default function UnifiedRegistrationForm({
     staleTime: 30_000,
   });
 
-  const handleRedeemCode = async (code: string) => {
-    const next = await registrationService.redeemSubscriptionCode(tournamentId, code);
-    queryClient.setQueryData(tournamentQueryKeys.subscriptionStatus(tournamentId), next);
-  };
+  // The server refuses this submit, and no field on this form can change that:
+  // `blocks_registration` is already narrowed to the automatically-decided part
+  // of the rule, so anything a challenge code could still fix is NOT in here —
+  // that is asked for at check-in. Disabling beats letting three steps be filled
+  // in and answering 400.
+  const subscriptionBlocked = subscriptionQuery.data?.blocks_registration === true;
 
   // Setup options for admin selects
   const resolvedRegistrationStatusOptions = {
@@ -657,7 +658,6 @@ export default function UnifiedRegistrationForm({
             twitchSuggestions={mode === "admin" ? [] : twitchSuggestions}
             boostySuggestions={mode === "admin" ? [] : boostySuggestions}
             subscription={mode === "public" ? subscriptionQuery.data : null}
-            onRedeemCode={mode === "public" ? handleRedeemCode : undefined}
             accounts={mode === "admin" ? [] : (userProfile?.social_accounts ?? [])}
             verifiedErrors={{
               battle_tag: getVerifiedError("battle_tag"),
@@ -726,6 +726,17 @@ export default function UnifiedRegistrationForm({
         </p>
       )}
 
+      {subscriptionBlocked && (
+        <p
+          role="alert"
+          className="rounded-lg border border-[color:color-mix(in_srgb,var(--aqt-rose)_30%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-rose)_12%,transparent)] p-2.5 text-xs leading-5 text-[color:var(--aqt-fg)]"
+        >
+          {t("common.subscription.registrationBlocked", {
+            rule: subscriptionQuery.data?.rule ?? "",
+          })}
+        </p>
+      )}
+
       <div className="flex items-center justify-between border-t border-[color:var(--aqt-border)] pt-4">
         {stepIndex > 0 ? (
           <button
@@ -749,7 +760,7 @@ export default function UnifiedRegistrationForm({
         <button
           type="button"
           onClick={handleNext}
-          disabled={submitPending}
+          disabled={submitPending || (isLastStep && subscriptionBlocked)}
           className="inline-flex items-center gap-2 rounded-lg bg-[color:var(--aqt-teal)] px-4 py-2 text-sm font-medium text-[color:var(--aqt-bg)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50"
         >
           {submitPending && <Loader2 className="size-4 animate-spin" aria-hidden />}

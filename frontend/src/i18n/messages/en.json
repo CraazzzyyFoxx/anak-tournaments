@@ -75,6 +75,7 @@
     "withdrawDesc": "Your application will be marked as withdrawn, and you will not be able to register for this tournament again.",
     "confirmWithdraw": "Confirm withdraw",
     "checkingIn": "Checking in...",
+    "checkInFailed": "Check-in failed",
     "withdrawing": "Withdrawing...",
     "checkIn": "Check-in",
     "withdraw": "Withdraw",
@@ -142,7 +143,8 @@
       "codeSubmit": "Redeem",
       "codeAccepted": "Code accepted",
       "linkDiscordCta": "Link Discord to confirm your Boosty subscription",
-      "reconnectTwitchCta": "Reconnect Twitch to confirm your subscription"
+      "reconnectTwitchCta": "Reconnect Twitch to confirm your subscription",
+      "registrationBlocked": "You cannot sign up yet: an active subscription is required ({rule}). Subscribe with the account linked to your profile, then reload this form."
     },
     "divisionWithId": "Division {id}",
     "stageWithId": "Stage {id}",
@@ -3540,7 +3542,7 @@
       "subscription": {
         "title": "Subscription",
         "require": "Require an active subscription",
-        "hint": "Checked at check-in only, never at sign-up: a provider outage during open registration must not lock anybody out. A verdict that cannot be determined (provider down, account not linked) fails open and does not block."
+        "hint": "Enforced twice. At sign-up only what can be verified automatically blocks (provider APIs / Discord roles); a provider verified by a code from a subscriber-only post is deferred, since that field is only offered at check-in. At check-in everything is enforced. A verdict that cannot be determined (provider down, account not linked) fails open and never blocks."
       },
       "display": {
         "title": "Display Options",

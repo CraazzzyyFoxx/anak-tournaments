@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-__all__ = ("CodeTier", "hash_code", "match_code", "parse_code_tiers")
+__all__ = ("CodeTier", "has_live_code", "hash_code", "match_code", "parse_code_tiers")
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,3 +101,13 @@ def parse_code_tiers(config: dict[str, Any] | None) -> tuple[CodeTier, ...]:
             )
         )
     return tuple(parsed)
+
+
+def has_live_code(config: dict[str, Any] | None, *, now: datetime) -> bool:
+    """Whether ANY configured code is still redeemable.
+
+    Not the same question as ``match_code``, which needs a submitted string. This
+    answers "would pasting anything here ever work", which is what decides whether
+    the UI offers the field and whether the registration gate defers a refusal.
+    """
+    return any(tier.expires_at is None or tier.expires_at > now for tier in parse_code_tiers(config))

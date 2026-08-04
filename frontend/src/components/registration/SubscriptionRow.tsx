@@ -16,8 +16,10 @@ interface SubscriptionRowProps {
   subscription?: SubscriptionStatus | null;
   /** Opens profile settings so the user can link a Discord/Twitch account. */
   onLinkAccounts?: () => void;
-  /** Only wired for providers that support a challenge code (Boosty). */
-  onRedeemCode?: (code: string) => Promise<void>;
+  /** Redeem a challenge code for THIS provider. Only offered where the server
+   *  says a code is accepted, and only at check-in — the signup form shows the
+   *  verdict but never asks for a secret. */
+  onRedeemCode?: (code: string, provider: string) => Promise<void>;
 }
 
 /**
@@ -64,7 +66,7 @@ export default function SubscriptionRow({
     setPending(true);
     setError(null);
     try {
-      await onRedeemCode(code.trim());
+      await onRedeemCode(code.trim(), provider);
       setCode("");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

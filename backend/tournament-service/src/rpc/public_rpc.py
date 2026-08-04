@@ -74,7 +74,10 @@ from src.services.encounter import flows as encounter_flows
 from src.services.encounter import map_veto as map_veto_service
 from src.services.registration import service as reg_service
 from src.services.registration.subscription_codes import redeem_challenge_code
-from src.services.registration.subscription_gate import assert_subscription_allows_check_in
+from src.services.registration.subscription_gate import (
+    assert_subscription_allows_check_in,
+    assert_subscription_allows_registration,
+)
 from src.services.registration.subscription_reads import (
     build_subscription_reads,
     serialize_verdicts,
@@ -255,6 +258,17 @@ def register(broker: Any, logger: Any) -> None:
             tournament_id = _path_int(data, "tournament_id")
             await assert_tournament_viewable(session, user, tournament_id)
             body = RegistrationCreate.model_validate(_payload(data))
+
+            # Subscription admission gate. Blocks only what can be decided WITHOUT
+            # the patron typing anything: a provider still satisfiable by a challenge
+            # code is deferred to check-in, where that field exists.
+            form = await reg_service.get_registration_form(session, tournament_id)
+            await assert_subscription_allows_registration(
+                form=form,
+                auth_user_id=user.id,
+                resolver=_subscription_resolver(session),
+            )
+
             # Full use-case (validation, duplicate check, create, serialize)
             # lives in the service layer; commits internally.
             return _dump(

@@ -5,8 +5,13 @@ human-readable rule, and a per-provider verdict so the form can render a chip on
 each account row and a summary line above them. Without the summary line an
 ``any`` requirement reads as two independent failures.
 
-Never forces a provider refresh -- the form polls this on render. Only check-in
-forces a fresh look, and only for the one acting user.
+It also answers whether the registration gate would refuse this patron right now,
+computed by the same composition the gate itself runs — the form must be able to
+say "you cannot sign up yet" up front rather than let three steps be filled in
+and answer 400 at submit.
+
+Never forces a provider refresh -- the form polls this on render. Only the gates
+force a fresh look, and only for the one acting user.
 """
 
 from __future__ import annotations
@@ -18,7 +23,13 @@ from loguru import logger
 from redis.exceptions import RedisError
 
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.subscriptions import Outcome, SubscriptionRequirement, SubscriptionVerdict, parse_requirement
+from shared.subscriptions import (
+    Outcome,
+    SubscriptionRequirement,
+    SubscriptionVerdict,
+    evaluate_requirement,
+    parse_requirement,
+)
 from src.schemas.registration import (
     SubscriptionProviderVerdictRead,
     SubscriptionStatusRead,
@@ -88,6 +99,13 @@ async def subscription_status_for_user(
         mode=requirement.mode,
         outcome=outcome.value,
         rule=describe_requirement(requirement),
+        # Same composition the registration gate runs, so the form can never
+        # promise an admission the gate is about to refuse (or vice versa). Note
+        # this read is non-forcing, so a patron who just subscribed may see a stale
+        # block for up to the entitlement TTL; the gate itself re-resolves live.
+        blocks_registration=evaluate_requirement(
+            requirement, verdicts, deferred_providers=code_providers
+        ).blocks_admission,
         verdicts={
             provider: SubscriptionProviderVerdictRead(
                 state=verdict.state,

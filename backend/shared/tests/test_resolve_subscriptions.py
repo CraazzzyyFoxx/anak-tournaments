@@ -428,7 +428,7 @@ class TestEvaluateRequirement(IsolatedAsyncioTestCase):
         )
         outcome, verdicts = outcomes[1]
         assert outcome is Outcome.UNDETERMINED
-        assert outcome.blocks_check_in is False
+        assert outcome.blocks_admission is False
         assert verdicts["twitch"].state == SubscriptionState.UNKNOWN
 
     async def test_all_mode_blocks_on_one_refusal(self):
@@ -443,7 +443,7 @@ class TestEvaluateRequirement(IsolatedAsyncioTestCase):
                 "twitch": _FakeStrategy(default=_verdict(SubscriptionState.INACTIVE)),
             },
         )
-        assert outcomes[1][0].blocks_check_in is True
+        assert outcomes[1][0].blocks_admission is True
 
     async def test_threshold_is_enforced_per_provider(self):
         outcomes = await self._evaluate(
@@ -482,3 +482,59 @@ class TestEvaluateRequirement(IsolatedAsyncioTestCase):
             requirement=parse_requirement({"requirements": [{"provider": "boosty"}]}),
         )
         assert twitch.calls == []
+
+
+
+def _code_config(*, method: str, expires_in: int | None = None) -> dict:
+    return {
+        "verification_method": method,
+        "codes": [
+            {
+                "code_sha256": "a" * 64,
+                "tier_rank": 1,
+                "expires_at": None if expires_in is None else (NOW + timedelta(seconds=expires_in)).isoformat(),
+            }
+        ],
+    }
+
+
+class TestAcceptedCodeProviders(IsolatedAsyncioTestCase):
+    """Drives the check-in code field AND the registration gate's deferral.
+
+    A provider named here is one the registration gate will NOT refuse, so a
+    false positive silently disables signup-time gating for that provider.
+    """
+
+    async def _accepted(self, configs, *, providers=("boosty",)):
+        resolver = _resolver(_FakeStore(configs=configs), {})
+        return await resolver.accepted_code_providers(workspace_id=WS, providers=list(providers))
+
+    async def test_code_only_with_a_live_code_is_accepted(self):
+        configs = {"boosty": _enabled("boosty", _code_config(method="code"))}
+        assert await self._accepted(configs) == {"boosty"}
+
+    async def test_permissive_method_also_accepts(self):
+        configs = {"boosty": _enabled("boosty", _code_config(method="any"))}
+        assert await self._accepted(configs) == {"boosty"}
+
+    async def test_live_only_never_accepts(self):
+        configs = {"boosty": _enabled("boosty", _code_config(method="live"))}
+        assert await self._accepted(configs) == set()
+
+    async def test_no_codes_configured_is_not_accepted(self):
+        """Choosing a code-accepting method and configuring nothing takes no paste."""
+        configs = {"boosty": _enabled("boosty", {"verification_method": "any"})}
+        assert await self._accepted(configs) == set()
+
+    async def test_only_expired_codes_are_not_accepted(self):
+        configs = {"boosty": _enabled("boosty", _code_config(method="code", expires_in=-1))}
+        assert await self._accepted(configs) == set()
+
+    async def test_a_disabled_provider_is_not_accepted(self):
+        configs = {"boosty": ProviderConfigRow(provider="boosty", enabled=False, config=_code_config(method="code"))}
+        assert await self._accepted(configs) == set()
+
+    async def test_no_providers_asked_skips_the_query(self):
+        store = _FakeStore()
+        assert await _resolver(store, {}).accepted_code_providers(workspace_id=WS, providers=[]) == set()
+        assert store.config_calls == []

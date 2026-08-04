@@ -54,7 +54,8 @@ export default defineConfig({
       // File-level, not a directory glob: this folder holds BOTH runners'
       // tests. `RoleStep.behavior.test.tsx` is `.tsx` yet imports `bun:test`,
       // so a directory glob here drags it into vitest and it fails on the import.
-      "src/components/registration/SubscriptionRow.behavior.test.tsx"
+      "src/components/registration/SubscriptionRow.behavior.test.tsx",
+      "src/components/registration/CheckInSubscriptionProof.behavior.test.tsx"
     ]
   }
 });

@@ -7259,7 +7259,7 @@
       "summary": "Check in to tournament"
     },
     "rpc.tournament.reg_pub_create": {
-      "description": "Lets a user self-register for a tournament (201 Created) after validating the form is open and the input; rejects duplicates with 409 and requires authentication.",
+      "description": "Lets a user self-register for a tournament (201 Created) after validating the form is open and the input; rejects duplicates with 409, refuses with 400 when a required subscription is confirmed missing by an automatic check (a verdict a challenge code could still change is deferred to check-in, and an undetermined verdict fails open), and requires authentication.",
       "request": {
         "array": false,
         "ref": "tournament.RegistrationCreate"
@@ -34983,6 +34983,11 @@
     "tournament.SubscriptionStatusRead": {
       "description": "The caller's own subscription standing for one tournament.\n\n``outcome`` is the COMPOSED answer over the tournament's requirement;\n``verdicts`` is per provider so the form can render a chip per account row.\n``required`` is false when the tournament does not gate on a subscription, in\nwhich case the rest is informational only.",
       "properties": {
+        "blocks_registration": {
+          "default": false,
+          "title": "Blocks Registration",
+          "type": "boolean"
+        },
         "mode": {
           "anyOf": [
             {

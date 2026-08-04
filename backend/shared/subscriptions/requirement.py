@@ -11,13 +11,15 @@ via the other. Coercing it to true would make ``all[refused, unknown]`` pass,
 admitting a confirmed non-subscriber. Kleene is the only mapping that preserves
 "block only on certainty" in both modes.
 
-The gate blocks IFF the composed outcome is ``REFUSED``.
+The gate blocks IFF the composed outcome is ``REFUSED``. ``deferred_providers``
+exists for the one gate that runs *before* the patron has been offered every
+proof path — see ``evaluate_requirement``.
 """
 
 from __future__ import annotations
 
 import enum
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from typing import Any, Final, Literal
 
@@ -46,7 +48,7 @@ class Outcome(enum.Enum):
     UNDETERMINED = "undetermined"  # U
 
     @property
-    def blocks_check_in(self) -> bool:
+    def blocks_admission(self) -> bool:
         """Only certainty of failure blocks. ``UNDETERMINED`` fails open."""
         return self is Outcome.REFUSED
 
@@ -72,7 +74,7 @@ class SubscriptionRequirement:
         return tuple(req.provider for req in self.requirements)
 
 
-def _evaluate_one(req: ProviderRequirement, verdict: SubscriptionVerdict | None) -> Outcome:
+def _evaluate_one(req: ProviderRequirement, verdict: SubscriptionVerdict | None, *, deferred: bool) -> Outcome:
     # No verdict at all: the provider is unconfigured, disabled, or was not
     # resolved. That is the organizer's problem, never read as "not subscribed".
     if verdict is None or verdict.state == SubscriptionState.UNKNOWN:
@@ -81,22 +83,38 @@ def _evaluate_one(req: ProviderRequirement, verdict: SubscriptionVerdict | None)
     # here it is a pure active/threshold comparison.
     if meets_min_tier(verdict, min_tier_rank=req.min_tier_rank):
         return Outcome.SATISFIED
-    return Outcome.REFUSED
+    # The provider says no, but the patron still holds an unused way to say yes.
+    # Not knowing yet is the honest answer, and it is the same UNDETERMINED the
+    # rest of this module already fails open on.
+    return Outcome.UNDETERMINED if deferred else Outcome.REFUSED
 
 
 def evaluate_requirement(
     requirement: SubscriptionRequirement,
     verdicts: Mapping[str, SubscriptionVerdict],
+    *,
+    deferred_providers: Collection[str] = (),
 ) -> Outcome:
     """Compose ``requirement`` over ``verdicts`` keyed by provider.
 
     Commutative and associative in both modes: provider order in config is
     arbitrary and must not change the answer.
+
+    ``deferred_providers`` names providers whose remaining proof — a challenge
+    code the patron has not been asked for yet — is still outstanding, so their
+    refusal is not yet final. Registration submit passes the code-accepting
+    providers here because the phrase field only exists at check-in: refusing
+    someone one paste away from admission would be wrong, and under ``any`` it
+    would refuse a rule they can still satisfy. Check-in passes nothing — the
+    field is right there, so every refusal is final.
     """
     if not requirement.requirements:
         return Outcome.SATISFIED
 
-    outcomes = [_evaluate_one(req, verdicts.get(req.provider)) for req in requirement.requirements]
+    outcomes = [
+        _evaluate_one(req, verdicts.get(req.provider), deferred=req.provider in deferred_providers)
+        for req in requirement.requirements
+    ]
 
     if requirement.mode == MODE_ALL:
         # Kleene AND: F dominates, then U.
