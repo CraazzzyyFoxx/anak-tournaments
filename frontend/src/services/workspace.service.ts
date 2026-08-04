@@ -58,6 +58,7 @@ export default class workspaceService {
       subdomain?: string | null;
       seo_title?: string | null;
       seo_description?: string | null;
+      discord_guild_id?: string | null;
       default_division_grid_version_id?: number | null;
     }
   ): Promise<Workspace> {

@@ -237,6 +237,8 @@ export interface Workspace {
   custom_domain_verified_at: string | null;
   /** Required value of the `_owt-verify.<custom_domain>` TXT record; not secret. */
   custom_domain_verification_token: string | null;
+  /** The one Discord guild this workspace runs in — Boosty patron roles and match-log channels alike. */
+  discord_guild_id: string | null;
   default_division_grid_version_id: number | null;
   default_division_grid_version: DivisionGridVersion | null;
 }
