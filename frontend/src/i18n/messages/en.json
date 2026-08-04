@@ -287,6 +287,7 @@
         "discordRequired": "Discord is required.",
         "twitchRequired": "Twitch is required.",
         "boostyRequired": "Boosty is required.",
+        "primaryRoleRequired": "Choose a primary role or enable Flex before continuing.",
         "fallbackRoleRequired": "This tournament requires at least one fallback role.",
         "topHeroesRequired": "Select at least one top hero before continuing.",
         "notesRequired": "Notes are required.",
