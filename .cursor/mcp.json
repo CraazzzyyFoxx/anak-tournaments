@@ -9,6 +9,10 @@
         "--path",
         "C:\\Users\\andre\\Programming\\anak-tournaments"
       ]
+    },
+    "sentry": {
+      "type": "http",
+      "url": "https://mcp.sentry.dev/mcp"
     }
   }
 }

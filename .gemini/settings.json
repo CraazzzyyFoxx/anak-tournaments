@@ -7,6 +7,9 @@
         "serve",
         "--mcp"
       ]
+    },
+    "sentry": {
+      "httpUrl": "https://mcp.sentry.dev/mcp"
     }
   }
 }
