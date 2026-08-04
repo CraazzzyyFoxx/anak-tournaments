@@ -182,7 +182,11 @@ def upgrade() -> None:
     )
 
     # 3. One source of truth: the blob must not keep a competing copy.
-    op.execute("update subscriptions.provider_config set config_json = config_json - 'guild_id'")
+    op.execute(
+        "update subscriptions.provider_config "
+        "set config_json = ((config_json::jsonb) - 'guild_id')::json "
+        "where config_json::jsonb ? 'guild_id'"
+    )
 
     op.drop_column("discord_channel", "guild_id", schema="log_processing")
 
@@ -210,7 +214,8 @@ def downgrade() -> None:
     op.execute(
         """
         update subscriptions.provider_config pc
-           set config_json = pc.config_json || jsonb_build_object('guild_id', w.discord_guild_id)
+           set config_json = ((pc.config_json::jsonb)
+                              || jsonb_build_object('guild_id', w.discord_guild_id))::json
           from workspace w
          where w.id = pc.workspace_id
            and pc.provider = 'boosty'
@@ -221,9 +226,11 @@ def downgrade() -> None:
     op.drop_column("workspace", "discord_guild_id")
 ```
 
-> If `config_json` is a `json` rather than `jsonb` column, the `- 'guild_id'` and `||` operators do not exist. Check with
-> `select data_type from information_schema.columns where table_schema='subscriptions' and table_name='provider_config' and column_name='config_json';`
-> and cast (`config_json::jsonb ... ::json`) if needed. Do not guess.
+> **The casts are load-bearing and already resolved — do not second-guess them.** `config_json` is
+> `sa.JSON()` (`subs0001_add_subscription_tables.py:53`), so the PostgreSQL column type is `json`,
+> **not** `jsonb`. The `-` and `||` operators, and the `?` existence test, exist only on `jsonb`;
+> applying them to `json` is a hard `operator does not exist` error. Hence `::jsonb` in and `::json`
+> back out. The same applies to any future edit of this blob.
 
 **Step 3: Render the DDL without touching a database**
 
