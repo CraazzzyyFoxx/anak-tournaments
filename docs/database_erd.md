@@ -550,9 +550,36 @@ erDiagram
         int round
         int best_of
         string status
-        string result_status
-        int submitted_by_id FK "nullable → players.user"
-        int confirmed_by_id FK "nullable → players.user"
+        string result_status "confirmed ⟺ status=COMPLETED (CHECK, encres0001)"
+        timestamp confirmed_at "nullable — единственный провенанс на строке"
+    }
+    ENCOUNTER_CAPTAIN_REPORT {
+        int id PK
+        int encounter_id FK "UK(encounter, team)"
+        int team_id FK
+        int reporter_user_id FK "nullable → players.user"
+        int home_score
+        int away_score
+        int closeness "1..10"
+    }
+    ENCOUNTER_MAP_CODE {
+        int id PK
+        int report_id FK "UK(report, map_index)"
+        int map_index "1-based"
+        int map_id FK "nullable — мягкая ссылка на пик вето"
+        string code
+    }
+    ENCOUNTER_RESULT_AUDIT {
+        int id PK
+        int encounter_id FK
+        int actor_user_id FK "nullable = машинный актор"
+        string action "confirm/reopen/auto_confirm/auto_dispute/import/cascade_reset"
+        string from_result_status "nullable"
+        string to_result_status
+        int home_score_after
+        int away_score_after
+        int adopted_team_id FK "nullable — чей репорт приняли"
+        string source
     }
     ENCOUNTER_LINK {
         int id PK
@@ -632,6 +659,11 @@ erDiagram
     ENCOUNTER ||--o{ ENCOUNTER_LINK : "источник продвижения"
     ENCOUNTER ||--o{ ENCOUNTER_LINK : "цель продвижения"
     ENCOUNTER ||--o{ ENCOUNTER_MAP_POOL : "пул карт"
+    ENCOUNTER ||--o{ ENCOUNTER_CAPTAIN_REPORT : "репорты капитанов (по одному на команду)"
+    TOURNAMENT_TEAM ||--o{ ENCOUNTER_CAPTAIN_REPORT : "чей репорт"
+    ENCOUNTER_CAPTAIN_REPORT ||--o{ ENCOUNTER_MAP_CODE : "коды карт"
+    MAP |o--o{ ENCOUNTER_MAP_CODE : "карта пика"
+    ENCOUNTER ||--o{ ENCOUNTER_RESULT_AUDIT : "история решений по результату"
     MAP ||--o{ ENCOUNTER_MAP_POOL : "карта"
     TOURNAMENT ||--o{ MAP_VETO_CONFIG : "конфиг вето"
     MAP_VETO_CONFIG ||--o{ MAP_VETO_CONFIG_MAP : "пул карт (нормализован)"
@@ -684,7 +716,8 @@ erDiagram
         int home_score
         int away_score
         float time
-        string log_name
+        string log_name "имя файла; из него всё ещё строится ключ S3"
+        int log_record_id FK "nullable → log_processing.record (mtchlog001, ON DELETE SET NULL)"
     }
     MATCH_STATISTICS {
         int id PK
@@ -1350,6 +1383,7 @@ erDiagram
         string status "pending/processing/done/failed"
         string source "upload/discord/manual"
         string content_hash
+        int attempts "logretry0001 — бюджет повторов reaper'а, живёт на строке"
     }
     DISCORD_CHANNEL {
         int id PK
@@ -1392,6 +1426,7 @@ erDiagram
     TOURNAMENT ||--o{ LOG_RECORD : "логи турнира"
     PLAYERS_USER |o--o{ LOG_RECORD : "загрузивший"
     ENCOUNTER |o--o{ LOG_RECORD : "привязка к встрече"
+    LOG_RECORD |o--o{ MATCH : "провенанс распаршенной карты (mtchlog001)"
     TOURNAMENT |o--o| DISCORD_CHANNEL : "канал сбора (1:0..1)"
     TOURNAMENT ||--o{ COMPUTATION_JOB : "джобы вычисления"
     STAGE |o--o{ COMPUTATION_JOB : "по стадии"

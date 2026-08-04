@@ -526,10 +526,52 @@ the tournament scoping cost nothing. The split is chronological and does not
 overlap: linked matches run 2026-04-08 to 2026-04-26, unlinked run 2025-01-09 to
 2026-03-15. `log_processing.record` simply did not exist before April 2026.
 
-**Still not verified — needs a running stack:**
+### Phases 1–2 verification — recorded state (2026-08-04)
 
-- **Criteria 5 and 6 (browser smoke, permission masking).** They also cover
-  surfaces that Phases 1–2 have not built yet.
+All 23 tasks landed. Criteria 1, 2, 3, 4, 7 and 8 hold; 5 and 6 remain open and
+are stated honestly below rather than assumed.
+
+**Criterion 4** — all seven new subjects plus `rpc.tournament.captain_reports`
+carry a `response` ref in the regenerated manifest, checked by name rather than
+by eye. A missing entry degrades silently to a generic `object`, so this is the
+one criterion that cannot be inferred from the code compiling.
+
+**Criterion 7** — `docs/database_erd.md` and its mirror
+`frontend/src/app/docs/diagrams.ts` gained `ENCOUNTER_CAPTAIN_REPORT`,
+`ENCOUNTER_MAP_CODE` and `ENCOUNTER_RESULT_AUDIT`, the `MATCH.log_record_id` FK,
+`LOG_RECORD.attempts`, and the `confirmed ⟺ COMPLETED` constraint note; the two
+dropped provenance columns are gone from both. The files were verified to match
+each other, not merely to have been edited.
+
+**Suites** — backend 1958 tests across eight services with `ruff check .` clean;
+gateway `build` + `vet` + `test ./...` green; frontend `tsc` clean, 267 tests,
+eslint 0 errors.
+
+**Live SQL** — every list filter was executed against `anak_dev`, not only
+compiled. Reports: 30 one-report + 149 no-report + 0 two-report = 179 in scope,
+and the agree/mismatch/awaiting verdicts were confirmed on synthetic reports in
+a rolled-back transaction. Matches: workspace 1 holds 6252, all unlinked;
+workspace 2 holds 340, all linked and `done`. An empty `log_status` keeps all
+6252 unlinked rows visible and a non-empty one excludes them — the LEFT-join
+asymmetry that would otherwise have hidden the majority of the archive.
+
+**Two defects were found by running things rather than by review**, and both
+were invisible to the tests that existed:
+
+- Both reports subscribers returned an undumped Pydantic model, which `_run`
+  passes straight to the serializer. Both endpoints were dead on arrival.
+  `tests/test_admin_rpc_serialization.py` now pins all four subjects.
+- Page-level `redirect()` in a nested server component answers 200 with the
+  redirect inside the RSC payload. The moved hub paths now redirect from
+  `next.config`, where `/matches` 307s and the retired `/logs` 308s for real.
+
+**Still not verified:**
+
+- **Criteria 5 and 6 (browser smoke, permission masking).** The route tree was
+  exercised against a running dev server — every new path answers, the two
+  redirects resolve, an unknown sub-tab 404s — but the tables themselves never
+  rendered with data: the backend runs on the deployment host and signing into
+  the admin was not possible unattended.
 - **The revisions have not been applied to `anak_v5` (production).** Its data
   differs and the backfill counts above do not transfer; re-check the violation
   count there before deploying.
