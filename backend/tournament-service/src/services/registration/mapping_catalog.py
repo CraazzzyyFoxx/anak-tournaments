@@ -161,6 +161,14 @@ def _build_builtin_specs() -> tuple[MappingTargetSpec, ...]:
             aliases=("twitch", "твич"),
         ),
         MappingTargetSpec(
+            key="boosty_nick",
+            label="Boosty",
+            group="profile",
+            accepted_parsers=(PARSER_STRING,),
+            default_parser=PARSER_STRING,
+            aliases=("boosty", "бусти"),
+        ),
+        MappingTargetSpec(
             key="stream_pov",
             label="Stream POV",
             group="profile",

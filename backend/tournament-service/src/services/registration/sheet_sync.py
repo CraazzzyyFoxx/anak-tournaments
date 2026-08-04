@@ -411,6 +411,7 @@ def apply_sheet_fields_to_registration(
     registration.smurf_tags_json = parsed_fields.get("smurf_tags") or None
     registration.discord_nick = parsed_fields.get("discord_nick")
     registration.twitch_nick = parsed_fields.get("twitch_nick")
+    registration.boosty_nick = parsed_fields.get("boosty_nick")
     registration.stream_pov = bool(parsed_fields.get("stream_pov", False))
     registration.notes = parsed_fields.get("notes")
 
@@ -562,6 +563,7 @@ async def sync_google_sheet_feed(
                     smurf_tags_json=parsed_fields.get("smurf_tags") or None,
                     discord_nick=parsed_fields.get("discord_nick"),
                     twitch_nick=parsed_fields.get("twitch_nick"),
+                    boosty_nick=parsed_fields.get("boosty_nick"),
                     stream_pov=bool(parsed_fields.get("stream_pov", False)),
                     notes=parsed_fields.get("notes"),
                     admin_notes=parsed_fields.get("admin_notes"),

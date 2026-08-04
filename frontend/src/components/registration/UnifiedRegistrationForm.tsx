@@ -154,6 +154,7 @@ export default function UnifiedRegistrationForm({
         ["battleTag", handleFor("battlenet"), state.battleTag],
         ["discordNick", handleFor("discord"), state.discordNick],
         ["twitchNick", handleFor("twitch"), state.twitchNick],
+        ["boostyNick", handleFor("boosty"), state.boostyNick],
       ];
       for (const [key, handle, current] of prefill) {
         if (handle && !current.trim()) dispatch({ type: "SET_FIELD", key, value: handle });
@@ -188,7 +189,7 @@ export default function UnifiedRegistrationForm({
   const stepHasContent: Record<StepKey, boolean> = {
     accounts:
       mode === "admin" ||
-      ["battle_tag", "smurf_tags", "discord_nick", "twitch_nick"].some(isEnabled),
+      ["battle_tag", "smurf_tags", "discord_nick", "twitch_nick", "boosty_nick"].some(isEnabled),
     roles:
       mode === "admin" ||
       isEnabled("primary_role") ||
@@ -249,7 +250,7 @@ export default function UnifiedRegistrationForm({
           smurfTags: initialData.smurf_tags_json ?? [],
           discordNick: initialData.discord_nick ?? "",
           twitchNick: initialData.twitch_nick ?? "",
-          notes: initialData.notes ?? "",
+          boostyNick: initialData.boosty_nick ?? "",
           adminNotes: initialData.admin_notes ?? "",
           streamPov: initialData.stream_pov ?? false,
           status: initialData.status ?? "approved",
@@ -264,10 +265,11 @@ export default function UnifiedRegistrationForm({
       const bts = accounts.filter((a) => a.provider === "battlenet").map((a) => a.username);
       const dcs = accounts.filter((a) => a.provider === "discord").map((a) => a.username);
       const tws = accounts.filter((a) => a.provider === "twitch").map((a) => a.username);
+      const bss = accounts.filter((a) => a.provider === "boosty").map((a) => a.username);
       if (isEnabled("battle_tag") && bts.length > 0) init.battleTag = bts[0];
       if (isEnabled("discord_nick") && dcs.length > 0) init.discordNick = dcs[0];
       if (isEnabled("twitch_nick") && tws.length > 0) init.twitchNick = tws[0];
-      dispatch({ type: "INIT_VALUES", values: init });
+      if (isEnabled("boosty_nick") && bss.length > 0) init.boostyNick = bss[0];
     }
   }, [mode, initialData, userProfile]);
 
@@ -278,6 +280,7 @@ export default function UnifiedRegistrationForm({
         ...(isEnabled("smurf_tags") ? ["smurf_tags"] : []),
         ...(isEnabled("discord_nick") ? ["discord_nick"] : []),
         ...(isEnabled("twitch_nick") ? ["twitch_nick"] : []),
+        ...(isEnabled("boosty_nick") ? ["boosty_nick"] : []),
       ];
     }
     if (stepKey === "details") {
@@ -330,6 +333,9 @@ export default function UnifiedRegistrationForm({
       if (isRequired("twitch_nick") && !state.twitchNick.trim()) {
         return t("registration.wizard.validation.twitchRequired");
       }
+      if (isRequired("boosty_nick") && !state.boostyNick.trim()) {
+        return t("registration.wizard.validation.boostyRequired");
+      }
       return (
         (isEnabled("battle_tag")
           ? getBuiltInFieldValidationError(
@@ -360,6 +366,14 @@ export default function UnifiedRegistrationForm({
               "twitch_nick",
               state.twitchNick,
               getBuiltInConfig("twitch_nick"),
+              t
+            )
+          : null) ??
+        (isEnabled("boosty_nick")
+          ? getBuiltInFieldValidationError(
+              "boosty_nick",
+              state.boostyNick,
+              getBuiltInConfig("boosty_nick"),
               t
             )
           : null)

@@ -203,6 +203,7 @@ export interface Registration {
   smurf_tags_json: string[] | null;
   discord_nick: string | null;
   twitch_nick: string | null;
+  boosty_nick?: string | null;
   stream_pov: boolean;
   roles: RegistrationRole[];
   notes: string | null;
@@ -253,6 +254,7 @@ export interface RegistrationCreateInput {
   smurf_tags?: string[];
   discord_nick?: string;
   twitch_nick?: string;
+  boosty_nick?: string;
   roles?: RoleInput[];
   stream_pov?: boolean;
   notes?: string;
@@ -263,6 +265,7 @@ export interface RegistrationUpdateInput {
   battle_tag?: string;
   discord_nick?: string;
   twitch_nick?: string;
+  boosty_nick?: string;
   primary_role?: string;
   stream_pov?: boolean;
   notes?: string;

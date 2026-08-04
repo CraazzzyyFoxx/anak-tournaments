@@ -163,6 +163,7 @@ def _reg_to_read(
         smurf_tags_json=reg.smurf_tags_json,
         discord_nick=reg.discord_nick,
         twitch_nick=reg.twitch_nick,
+        boosty_nick=getattr(reg, "boosty_nick", None),
         stream_pov=reg.stream_pov,
         roles=roles,
         notes=reg.notes,

@@ -155,6 +155,7 @@ class BalancerRegistration(db.TimeStampIntegerMixin):
     smurf_tags_json: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     discord_nick: Mapped[str | None] = mapped_column(String(255), nullable=True)
     twitch_nick: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    boosty_nick: Mapped[str | None] = mapped_column(String(255), nullable=True)
     stream_pov: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
     notes: Mapped[str | None] = mapped_column(Text(), nullable=True)
     exclude_from_balancer: Mapped[bool] = mapped_column(

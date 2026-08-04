@@ -174,7 +174,8 @@ async def create_manual_registration(
     smurf_tags_json: list[str] | None,
     discord_nick: str | None,
     twitch_nick: str | None,
-    stream_pov: bool,
+    boosty_nick: str | None = None,
+    stream_pov: bool = False,
     notes: str | None,
     admin_notes: str | None,
     roles: list[dict[str, Any]],
@@ -207,6 +208,7 @@ async def create_manual_registration(
         smurf_tags_json=smurf_tags_json or None,
         discord_nick=discord_nick,
         twitch_nick=twitch_nick,
+        boosty_nick=boosty_nick,
         stream_pov=stream_pov,
         notes=notes,
         admin_notes=admin_notes,
@@ -237,7 +239,8 @@ async def update_registration_profile(
     smurf_tags_json: list[str] | None,
     discord_nick: str | None,
     twitch_nick: str | None,
-    stream_pov: bool | None,
+    boosty_nick: str | None = None,
+    stream_pov: bool | None = None,
     notes: str | None,
     admin_notes: str | None,
     status_value: str | None,
@@ -267,6 +270,8 @@ async def update_registration_profile(
         registration.discord_nick = discord_nick
     if twitch_nick is not None:
         registration.twitch_nick = twitch_nick
+    if boosty_nick is not None:
+        registration.boosty_nick = boosty_nick
     if stream_pov is not None:
         registration.stream_pov = stream_pov
     if notes is not None:

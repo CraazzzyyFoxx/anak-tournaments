@@ -430,6 +430,7 @@ export interface AdminRegistration {
   smurf_tags_json: string[];
   discord_nick: string | null;
   twitch_nick: string | null;
+  boosty_nick?: string | null;
   stream_pov: boolean;
   roles: AdminRegistrationRole[];
   notes: string | null;
@@ -461,6 +462,7 @@ export interface AdminRegistrationCreateInput {
   smurf_tags_json?: string[] | null;
   discord_nick?: string | null;
   twitch_nick?: string | null;
+  boosty_nick?: string | null;
   stream_pov?: boolean;
   notes?: string | null;
   admin_notes?: string | null;
@@ -476,7 +478,7 @@ export interface AdminRegistrationUpdateInput {
   smurf_tags_json?: string[] | null;
   discord_nick?: string | null;
   twitch_nick?: string | null;
-  stream_pov?: boolean | null;
+  boosty_nick?: string | null;
   notes?: string | null;
   admin_notes?: string | null;
   is_flex?: boolean | null;

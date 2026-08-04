@@ -16,15 +16,19 @@ from pydantic import BaseModel, Field, model_validator
 __all__ = (
     "SETTINGS_KEY_RANK_COLLECTION",
     "SETTINGS_KEY_RANK_MAPPING",
+    "SETTINGS_KEY_SUBSCRIPTION_COLLECTION",
     "SETTINGS_SCHEMAS",
     "RankCollectionConfig",
     "RankCollectionScope",
     "RankMappingConfig",
     "RankMappingEntry",
+    "SubscriptionCollectionConfig",
 )
 
 SETTINGS_KEY_RANK_COLLECTION = "parser.rank_collection"
 SETTINGS_KEY_RANK_MAPPING = "parser.rank_mapping"
+SETTINGS_KEY_SUBSCRIPTION_COLLECTION = "parser.subscription_collection"
+
 
 RankCollectionScope = Literal["registrations_only", "all"]
 
@@ -58,6 +62,17 @@ class RankCollectionConfig(BaseModel):
     extra_accounts_per_registration: int = Field(default=0, ge=0, le=50)
     max_consecutive_failures: int = Field(default=5, ge=1, le=100)
     backoff_base_seconds: int = Field(default=60, ge=1, le=86_400)
+
+class SubscriptionCollectionConfig(BaseModel):
+    """Operational config for the periodic subscription check collector.
+
+    Periodically resolves and caches Twitch/Boosty subscriptions for participants
+    in tournaments requiring subscriptions.
+    """
+
+    enabled: bool = True
+    interval_seconds: int = Field(default=1800, ge=60, le=86_400)
+    batch_size: int = Field(default=50, ge=1, le=500)
 
 
 class RankMappingEntry(BaseModel):
@@ -94,4 +109,5 @@ class RankMappingConfig(BaseModel):
 SETTINGS_SCHEMAS: dict[str, type[BaseModel]] = {
     SETTINGS_KEY_RANK_COLLECTION: RankCollectionConfig,
     SETTINGS_KEY_RANK_MAPPING: RankMappingConfig,
+    SETTINGS_KEY_SUBSCRIPTION_COLLECTION: SubscriptionCollectionConfig,
 }

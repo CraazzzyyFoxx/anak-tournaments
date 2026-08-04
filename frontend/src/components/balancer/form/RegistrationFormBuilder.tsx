@@ -21,6 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { notify } from "@/lib/notify";
 import { MUTED_BUTTON_CLASS } from "@/app/balancer/components/balancer-page-helpers";
 import SubscriptionRequirementEditor from "@/components/admin/subscriptions/SubscriptionRequirementEditor";
+import SubscriptionProvidersCard from "@/components/admin/subscriptions/SubscriptionProviderCard";
 import type { SubscriptionRequirement } from "@/types/registration.types";
 import { ROLES, canonicalToRegistrationRole } from "@/lib/roles";
 import adminService from "@/services/admin.service";
@@ -396,6 +397,12 @@ export default function RegistrationFormBuilder({
                   }}
                 />
                 <p className="text-xs text-muted-foreground">{t("subscription.hint")}</p>
+
+                {workspaceId && (
+                  <div className="pt-2">
+                    <SubscriptionProvidersCard workspaceId={workspaceId} />
+                  </div>
+                )}
               </div>
 
               <div className="space-y-3 rounded-lg border p-4">

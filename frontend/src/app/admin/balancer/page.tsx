@@ -8,7 +8,6 @@ import StatusMetaBadge from "@/components/status/StatusMetaBadge";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { EYEBROW_CLASS } from "@/components/admin/tone";
-import SubscriptionProvidersCard from "@/components/admin/subscriptions/SubscriptionProviderCard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -724,22 +723,6 @@ export default function AdminBalancerPage() {
         ))}
       </div>
 
-      {canManageStatuses && (
-        <Card>
-          <CardHeader>
-            <CardTitle asChild>
-              <h2>Subscriptions</h2>
-            </CardTitle>
-            <CardDescription>
-              Where a subscription tier comes from. A tournament&apos;s registration form decides
-              whether it is <em>required</em>; this decides how it is <em>read</em>.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <SubscriptionProvidersCard workspaceId={workspaceId} />
-          </CardContent>
-        </Card>
-      )}
 
       <Dialog
         open={createOpen}

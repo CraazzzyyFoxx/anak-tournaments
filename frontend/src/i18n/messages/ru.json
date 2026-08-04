@@ -286,7 +286,7 @@
         "smurfTagsRequired": "Добавьте хотя бы один смурф-аккаунт.",
         "discordRequired": "Требуется Discord.",
         "twitchRequired": "Требуется Twitch.",
-        "primaryRoleRequired": "Выберите основную роль или включите Flex перед продолжением.",
+        "boostyRequired": "Требуется Boosty.",
         "fallbackRoleRequired": "Для этого турнира требуется хотя бы одна запасная роль.",
         "topHeroesRequired": "Выберите хотя бы одного топ-героя перед продолжением.",
         "notesRequired": "Заполните примечания.",

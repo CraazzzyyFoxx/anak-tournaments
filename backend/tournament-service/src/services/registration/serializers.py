@@ -79,6 +79,7 @@ def serialize_registration(
         smurf_tags_json=registration.smurf_tags_json or [],
         discord_nick=registration.discord_nick,
         twitch_nick=registration.twitch_nick,
+        boosty_nick=registration.boosty_nick,
         stream_pov=registration.stream_pov,
         notes=registration.notes,
         admin_notes=registration.admin_notes,

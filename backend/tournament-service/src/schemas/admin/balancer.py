@@ -369,6 +369,7 @@ class BalancerRegistrationRead(BaseRead):
     smurf_tags_json: list[str] = Field(default_factory=list)
     discord_nick: str | None = None
     twitch_nick: str | None = None
+    boosty_nick: str | None = None
     stream_pov: bool = False
     notes: str | None = None
     admin_notes: str | None = None
@@ -397,6 +398,7 @@ class BalancerRegistrationCreateRequest(BaseModel):
     smurf_tags_json: list[str] | None = None
     discord_nick: str | None = None
     twitch_nick: str | None = None
+    boosty_nick: str | None = None
     stream_pov: bool = False
     notes: str | None = None
     admin_notes: str | None = None
@@ -412,6 +414,7 @@ class BalancerRegistrationUpdateRequest(BaseModel):
     smurf_tags_json: list[str] | None = None
     discord_nick: str | None = None
     twitch_nick: str | None = None
+    boosty_nick: str | None = None
     stream_pov: bool | None = None
     notes: str | None = None
     admin_notes: str | None = None

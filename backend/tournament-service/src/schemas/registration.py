@@ -114,6 +114,7 @@ class RegistrationCreate(BaseModel):
     smurf_tags: list[str] | None = None
     discord_nick: str | None = None
     twitch_nick: str | None = None
+    boosty_nick: str | None = None
     roles: list[RoleWithSubrole] | None = None
     stream_pov: bool = False
     notes: str | None = None
@@ -124,6 +125,7 @@ class RegistrationUpdate(BaseModel):
     battle_tag: str | None = None
     discord_nick: str | None = None
     twitch_nick: str | None = None
+    boosty_nick: str | None = None
     primary_role: str | None = None
     stream_pov: bool | None = None
     notes: str | None = None
@@ -148,6 +150,7 @@ class RegistrationRead(BaseModel):
     smurf_tags_json: list[str] | None = None
     discord_nick: str | None = None
     twitch_nick: str | None = None
+    boosty_nick: str | None = None
     stream_pov: bool = False
     roles: list[RegistrationRoleRead] = Field(default_factory=list)
     notes: str | None = None

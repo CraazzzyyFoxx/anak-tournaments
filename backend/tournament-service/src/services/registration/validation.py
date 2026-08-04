@@ -338,6 +338,7 @@ def validate_registration_input(
         "smurf_tags": getattr(payload, "smurf_tags", None),
         "discord_nick": getattr(payload, "discord_nick", None),
         "twitch_nick": getattr(payload, "twitch_nick", None),
+        "boosty_nick": getattr(payload, "boosty_nick", None),
         "notes": getattr(payload, "notes", None),
         "stream_pov": getattr(payload, "stream_pov", None),
         "roles": getattr(payload, "roles", None),
@@ -348,6 +349,7 @@ def validate_registration_input(
         ("smurf_tags", "Smurf Accounts"),
         ("discord_nick", "Discord"),
         ("twitch_nick", "Twitch"),
+        ("boosty_nick", "Boosty"),
         ("notes", "Notes"),
     ):
         config = built_in_fields.get(field_key)

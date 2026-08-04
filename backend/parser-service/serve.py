@@ -77,6 +77,7 @@ from src.services.match_logs import uploads as upload_service
 from src.services.match_logs.result_events import publish_match_log_result
 from src.services.overwatch_rank import scheduler as rank_scheduler
 from src.services.overwatch_rank import tasks as rank_tasks
+from src.services.subscription_collection import scheduler as subscription_scheduler
 from src.services.s3 import service as s3_service
 
 logger = setup_logging(
@@ -178,6 +179,7 @@ async def start_worker() -> None:
     # Requeue match-log records the queue dropped (expired ProcessMatchLogEvent,
     # worker killed mid-parse). Redis leader-locked across worker replicas.
     logs_reaper.start_scheduler(redis=_clients.realtime_redis, broker=broker)
+    subscription_scheduler.start_scheduler()
     logger.info("Parser worker started")
 
 
@@ -185,6 +187,7 @@ async def start_worker() -> None:
 async def stop_worker() -> None:
     rank_scheduler.shutdown_scheduler()
     logs_reaper.shutdown_scheduler()
+    subscription_scheduler.shutdown_scheduler()
     await s3_client.close()
     await rank_tasks.rank_client.close()
     await rank_tasks.close_redis()

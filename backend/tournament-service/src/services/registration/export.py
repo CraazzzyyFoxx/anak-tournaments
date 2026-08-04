@@ -122,6 +122,8 @@ def _registration_identity_handles(registration: models.BalancerRegistration) ->
         handles.append((SocialProvider.DISCORD, registration.discord_nick))
     if registration.twitch_nick:
         handles.append((SocialProvider.TWITCH, registration.twitch_nick))
+    if registration.boosty_nick:
+        handles.append((SocialProvider.BOOSTY, registration.boosty_nick))
     return handles
 
 

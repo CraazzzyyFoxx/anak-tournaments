@@ -286,7 +286,7 @@
         "smurfTagsRequired": "Add at least one smurf account.",
         "discordRequired": "Discord is required.",
         "twitchRequired": "Twitch is required.",
-        "primaryRoleRequired": "Choose a primary role or enable Flex before continuing.",
+        "boostyRequired": "Boosty is required.",
         "fallbackRoleRequired": "This tournament requires at least one fallback role.",
         "topHeroesRequired": "Select at least one top hero before continuing.",
         "notesRequired": "Notes are required.",
