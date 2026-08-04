@@ -16,7 +16,19 @@ import (
 
 const (
 	tournamentWorkspaceSQL = `SELECT workspace_id FROM tournament.tournament WHERE id = $1`
-	isMemberSQL            = `SELECT EXISTS(SELECT 1 FROM workspace_member WHERE auth_user_id = $1 AND workspace_id = $2)`
+	// workspace_member is anchored on player_id (a players."user" row), not on the
+	// RBAC auth identity: the identity/workspace refactor (iwrefac07) dropped
+	// workspace_member.auth_user_id. The gateway only ever holds an auth user id
+	// (from the JWT), so it must bridge through players."user".auth_user_id —
+	// mirroring WorkspaceMemberRepository.get_member in
+	// backend/shared/repository/workspace.py. "user" is a reserved word, hence
+	// the quoting.
+	isMemberSQL = `SELECT EXISTS(
+		SELECT 1
+		FROM workspace_member wm
+		JOIN players."user" u ON u.id = wm.player_id
+		WHERE u.auth_user_id = $1 AND wm.workspace_id = $2
+	)`
 	// Only a workspace whose custom domain has completed DNS TXT verification
 	// matches; a domain that is merely set (custom_domain_verified_at IS NULL,
 	// still pending/unverified) never does. See
