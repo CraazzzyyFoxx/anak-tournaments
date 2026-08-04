@@ -985,20 +985,54 @@ No new routes, so there is no `edge.RouteSpec`, no `apidocs/groups.go` entry and
 bash backend/scripts/export_openapi_schemas.sh
 ```
 
+**On Windows this script fails with `line 29: uv: command not found`, even though `uv` is on PATH.**
+A nested `bash` gets a POSIX-converted PATH that drops `C:\Users\<you>\.local\bin`, and exporting
+`PATH` into it does not help — it is a different shell. Reproduce the script's two steps in the
+working shell instead (verified: ~8 s total):
+
+```bash
+export POSTGRES_USER=x POSTGRES_PASSWORD=x POSTGRES_DB=x POSTGRES_HOST=x POSTGRES_PORT=5432 \
+       REDIS_URL=redis://x:6379 RABBITMQ_URL=amqp://x JWT_SECRET_KEY=x SECRET_KEY=x \
+       PROJECT_URL=http://x CHALLONGE_USERNAME=x CHALLONGE_API_KEY=x
+mkdir -p /tmp/oas && frags=""
+for svc in tournament-service app-service analytics-service balancer-service parser-service identity-service; do
+  (cd "backend/$svc" && uv run python ../scripts/export_openapi_schemas.py) > "/tmp/oas/$svc.json" || exit 1
+  frags="$frags /tmp/oas/$svc.json"
+done
+uv --project backend run python backend/scripts/merge_openapi_schemas.py $frags > gateway/internal/openapi/schemas.json
+```
+
+Do NOT try this inside the `eval` tool: `uv run` under a captured subprocess there hangs and takes
+the kernel with it.
+
 **Step 2: Verify the diff says what it should**
 
 ```bash
 rtk git diff --stat gateway/internal/openapi/schemas.json
-rtk grep -n "discord_guild_id" gateway/internal/openapi/schemas.json
+# Strict check -- grep alone gives false positives, because the rewritten
+# DiscordChannelUpsert *docstring* mentions `Workspace.discord_guild_id`.
+jq -r '.schemas | to_entries | map(select((.value.properties // {}) | has("discord_guild_id"))) | .[].key' gateway/internal/openapi/schemas.json
+jq -r '[.schemas | to_entries[] | select((.value.properties // {}) | has("guild_id")) | .key] | if length==0 then "NONE" else .[] end' gateway/internal/openapi/schemas.json
 ```
 
-Expected: `discord_guild_id` present under `WorkspaceRead`, `WorkspaceUpdate` and the subscription list response; `guild_id` gone from `DiscordChannelUpsert`, `DiscordChannelRead` and both subscription provider-config models. A missing manifest entry degrades silently to a generic `object` — verify, do not assume.
+Expected: the first `jq` prints exactly `app.WorkspaceRead`, `app.WorkspaceUpdate`,
+`tournament.SubscriptionProviderConfigListResponse`; the second prints `NONE`. A missing manifest
+entry degrades silently to a generic `object` — verify, do not assume.
+
+**Expect a diff far larger than this change** (observed: +724/-175, including unrelated fields such
+as `boosty_nick`). `schemas.json` was already stale on `develop` — it was last regenerated at
+`5121b3e4`, while the service schemas moved on since. Regenerating repairs that drift as a
+side effect. Say so in the commit message rather than pretending the diff is all yours; the
+generator is all-or-nothing, so it cannot be split.
 
 **Step 3: Gateway tests**
 
 ```bash
-rtk go test ./gateway/...
+cd gateway && rtk go test ./...
 ```
+
+The Go module is rooted at `gateway/`, so `go test ./gateway/...` from the repo root fails with
+`directory prefix gateway does not contain main module`. Expected: 356 passed in 32 packages.
 
 **Step 4: Commit**
 
