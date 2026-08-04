@@ -107,6 +107,13 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         permissions: ["match.read"],
       },
       {
+        title: "Parsed matches",
+        href: "/admin/matches",
+        icon: Map,
+        description: "Played maps from the log parser, and the upload each came from.",
+        permissions: ["match.read"],
+      },
+      {
         title: "Standings",
         href: "/admin/standings",
         icon: BarChart3,
@@ -244,6 +251,7 @@ export const adminRoutePermissions: Array<{
   { prefix: "/admin/sub-roles", permissions: ["player.read"] },
   { prefix: "/admin/encounters", permissions: ["match.read"] },
   { prefix: "/admin/match-reports", permissions: ["match.read"] },
+  { prefix: "/admin/matches", permissions: ["match.read"] },
   { prefix: "/admin/standings", permissions: ["standing.read"] },
   { prefix: "/admin/users", permissions: ["user.read"] },
   { prefix: "/admin/rank", permissions: ["user.read"] },

@@ -56,6 +56,7 @@ describe("admin navigation lifecycle grouping (D12, §5)", () => {
       "/admin/players",
       "/admin/encounters",
       "/admin/match-reports",
+      "/admin/matches",
       "/admin/standings",
     ]);
   });
@@ -132,6 +133,11 @@ describe("admin administration entry and palette aliases (D10, D11)", () => {
     // lands next and a substring match would silently hand it the wrong gate.
     expect(getMatchingAdminRoute("/admin/match-reports")?.permissions).toEqual(["match.read"]);
     expect(getMatchingAdminRoute("/admin/match-reports")?.prefix).toBe("/admin/match-reports");
+    // The sibling browser resolves to its own entry, not to the reports one.
+    expect(getMatchingAdminRoute("/admin/matches")?.prefix).toBe("/admin/matches");
+    expect(getMatchingAdminRoute("/admin/matches/42")?.permissions).toEqual(["match.read"]);
+    // /admin/maps is superuser-only game metadata and must stay separate.
+    expect(getMatchingAdminRoute("/admin/maps")?.superuserOnly).toBe(true);
   });
 
   it("aliases 'settings' to rank collection only", () => {
