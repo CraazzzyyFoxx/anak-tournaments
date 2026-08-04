@@ -11,6 +11,10 @@ from src.schemas.division_grid import DivisionGridVersionRead
 # the branding derive util consumes.
 _HEX_COLOR = r"^#[0-9a-fA-F]{6}$"
 
+# A Discord snowflake: 17-19 digits today, 20 leaves headroom past 2090. Kept as a
+# string end to end because it exceeds 2**53 and a float round-trip would corrupt it.
+_DISCORD_SNOWFLAKE = r"^\d{17,20}$"
+
 __all__ = (
     "WorkspaceRead",
     "WorkspaceCreate",
@@ -51,6 +55,12 @@ class WorkspaceRead(BaseRead):
     custom_domain: str | None = None
     custom_domain_verified_at: datetime | None = None
     custom_domain_verification_token: str | None = None
+    # The organizer's Discord guild. Public for the same reason
+    # `custom_domain_verification_token` above is: it is not a secret -- every
+    # Discord message link is `discord.com/channels/<guild_id>/<channel_id>/<id>`.
+    # A genuinely secret integration value must NOT follow this path; it needs an
+    # authenticated admin read model.
+    discord_guild_id: str | None = None
     default_division_grid_version_id: int | None
     default_division_grid_version: DivisionGridVersionRead | None = None
 
@@ -83,6 +93,7 @@ class WorkspaceUpdate(BaseModel):
     subdomain: str | None = None
     seo_title: str | None = None
     seo_description: str | None = None
+    discord_guild_id: str | None = Field(default=None, max_length=32, pattern=_DISCORD_SNOWFLAKE)
     default_division_grid_version_id: int | None = None
 
     @field_validator(
@@ -124,6 +135,15 @@ class WorkspaceUpdate(BaseModel):
             ZoneInfo(value)
         except (ZoneInfoNotFoundError, ValueError, KeyError) as exc:
             raise ValueError(f"Unknown IANA timezone: {value!r}") from exc
+        return value
+
+    @field_validator("discord_guild_id", mode="before")
+    @classmethod
+    def _blank_snowflake_to_none(cls, value: object) -> object:
+        # A blank id means "clear it", not "fail the digits pattern" -- the same
+        # discipline `_blank_hex_to_none` applies to the brand colours.
+        if isinstance(value, str):
+            return value.strip() or None
         return value
 
 
