@@ -20,7 +20,9 @@ os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
 os.environ.setdefault("CHALLONGE_USERNAME", "x")
 os.environ.setdefault("CHALLONGE_API_KEY", "x")
-
+os.environ.setdefault("S3_ACCESS_KEY", "x")
+os.environ.setdefault("S3_SECRET_KEY", "x")
+os.environ.setdefault("S3_ENDPOINT_URL", "http://x")
 from shared.schemas.settings import SubscriptionCollectionConfig
 
 

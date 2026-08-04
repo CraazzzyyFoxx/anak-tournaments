@@ -17,6 +17,7 @@ from shared.services.distributed_lock import (
 )
 from src.core import db
 from src.core.config import settings
+from src.rpc._clients import realtime_redis
 from . import service
 
 SCHEDULER_TICK_SECONDS = 300
@@ -27,8 +28,8 @@ _scheduler: AsyncIOScheduler | None = None
 
 
 async def run_subscription_collection_tick(
-    session_factory: Any,
-    redis_client: Any,
+    session_factory: Any = db.async_session_maker,
+    redis_client: Any = realtime_redis,
 ) -> int:
     """One scheduling pass: resolve subscriptions for active tournament participants."""
     token = await acquire_distributed_lock(
@@ -57,16 +58,18 @@ async def run_subscription_collection_tick(
         await release_distributed_lock(redis_client, LEADER_LOCK_KEY, token)
 
 
-def start_scheduler() -> None:
+def start_scheduler(*, redis: Any | None = None) -> None:
     global _scheduler
     if _scheduler is not None:
         return
 
-    _scheduler = AsyncIOScheduler()
+    redis_client = redis or realtime_redis
+
+    _scheduler = AsyncIOScheduler(timezone="UTC")
     _scheduler.add_job(
         run_subscription_collection_tick,
         "interval",
-        args=[db.async_session_factory, db.redis_client],
+        args=[db.async_session_maker, redis_client],
         seconds=SCHEDULER_TICK_SECONDS,
         id="subscription_collection",
         max_instances=1,
