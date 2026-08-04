@@ -1130,14 +1130,12 @@ export interface ChallongeSyncLogEntry {
 export interface DiscordChannelRead {
   id: number;
   tournament_id: number;
-  guild_id: string;
   channel_id: string;
   channel_name: string | null;
   is_active: boolean;
 }
 
 export interface DiscordChannelInput {
-  guild_id: string;
   channel_id: string;
   channel_name?: string | null;
   is_active: boolean;

@@ -124,7 +124,6 @@ export interface SubscriptionCodeUpsert {
 export interface SubscriptionProviderConfigRead {
   provider: string;
   enabled: boolean;
-  guild_id?: string | null;
   role_tiers: SubscriptionRoleTier[];
   broadcaster_id?: string | null;
   broadcaster_login?: string | null;
@@ -134,6 +133,9 @@ export interface SubscriptionProviderConfigRead {
 
 export interface SubscriptionProviderConfigListResponse {
   configs: SubscriptionProviderConfigRead[];
+  /** Response-level, not per-provider: the guild belongs to the workspace, so
+   *  every provider that needs one shares this single value. */
+  discord_guild_id?: string | null;
 }
 
 /** Omitting a field keeps whatever is stored. That matters most for `codes`:
@@ -141,7 +143,6 @@ export interface SubscriptionProviderConfigListResponse {
 export interface SubscriptionProviderConfigUpsert {
   provider: string;
   enabled: boolean;
-  guild_id?: string;
   role_tiers?: SubscriptionRoleTier[];
   broadcaster_id?: string;
   broadcaster_login?: string;

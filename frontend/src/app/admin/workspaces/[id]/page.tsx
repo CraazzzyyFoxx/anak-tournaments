@@ -54,6 +54,7 @@ interface EditFormData {
   subdomain: string | null;
   seo_title: string | null;
   seo_description: string | null;
+  discord_guild_id: string | null;
 }
 
 function formFromWorkspace(ws: Workspace): EditFormData {
@@ -75,6 +76,7 @@ function formFromWorkspace(ws: Workspace): EditFormData {
     subdomain: ws.subdomain,
     seo_title: ws.seo_title,
     seo_description: ws.seo_description,
+    discord_guild_id: ws.discord_guild_id ?? null,
   };
 }
 
@@ -353,6 +355,7 @@ export default function WorkspaceEditPage({ params }: { params: Promise<{ id: st
       subdomain: form.subdomain?.trim() || null,
       seo_title: form.seo_title?.trim() || null,
       seo_description: form.seo_description?.trim() || null,
+      discord_guild_id: form.discord_guild_id,
     });
   };
 
@@ -402,6 +405,30 @@ export default function WorkspaceEditPage({ params }: { params: Promise<{ id: st
           </Select>
           <p className="mt-1 text-xs text-muted-foreground">
             Tournament schedule times are entered and shown in this zone.
+          </p>
+        </div>
+        <div>
+          <Label htmlFor="discord-guild-id">Discord guild ID</Label>
+          <Input
+            id="discord-guild-id"
+            className="mt-1 font-mono"
+            value={form.discord_guild_id ?? ""}
+            inputMode="numeric"
+            autoComplete="off"
+            placeholder="123456789012345678"
+            maxLength={19}
+            onChange={(e) => patch({ discord_guild_id: e.target.value.replace(/\D/g, "") || null })}
+          />
+          {form.discord_guild_id && !/^\d{17,19}$/.test(form.discord_guild_id) ? (
+            <p className="mt-1 text-xs font-medium text-destructive">
+              A Discord server ID is 17–19 digits — this one is {form.discord_guild_id.length}. Saving
+              now would fail.
+            </p>
+          ) : null}
+          <p className="mt-1 max-w-prose text-xs text-muted-foreground">
+            The server this workspace runs in: where Boosty&apos;s bot assigns subscriber roles and where
+            match-log channels live. Enable Developer Mode in Discord, then right-click the server &rarr; Copy
+            Server ID.
           </p>
         </div>
         <div>

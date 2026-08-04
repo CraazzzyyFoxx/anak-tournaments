@@ -42,7 +42,9 @@ class SubscriptionProviderConfig(db.TimeStampIntegerMixin):
 
     ``config_json`` is provider-shaped:
 
-    - ``discord_role``:   ``{guild_id, role_tiers: [{role_id, tier_rank, tier_label}]}``
+    - ``discord_role``:   ``{role_tiers: [{role_id, tier_rank, tier_label}]}`` -- the
+      guild itself is NOT here: it comes from ``Workspace.discord_guild_id`` and is
+      injected into the config by ``SqlEntitlementStore.load_configs``.
     - ``challenge_code``: ``{codes: [{code_sha256, tier_rank, tier_label, expires_at}]}``
     - ``twitch_helix``:   ``{broadcaster_login, broadcaster_id}``
 

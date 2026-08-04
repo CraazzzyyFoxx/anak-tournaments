@@ -1,6 +1,7 @@
 """Workspace-level subscription provider configuration.
 
-Minimal admin surface: raw ids typed by hand (guild id, role ids, broadcaster id).
+Minimal admin surface: raw ids typed by hand (role ids, broadcaster id). The Discord
+guild id is NOT among them -- it belongs to the workspace, not to a provider blob.
 No Discord API picker yet — that is the "more elegant" follow-up.
 
 The rules that matter here:
@@ -102,24 +103,19 @@ class TestUpsertSchema:
 
 
 class TestBuildConfigJson:
-    def test_stores_guild_id_and_role_tiers(self):
+    def test_stores_role_tiers(self):
         body = SubscriptionProviderConfigUpsert(
             provider="boosty",
-            guild_id="999",
             role_tiers=[{"role_id": "100", "tier_rank": 2, "tier_label": "Уровень 2"}],
         )
         config = build_config_json(body, existing={})
-        assert config["guild_id"] == "999"
         assert config["role_tiers"] == [{"role_id": "100", "tier_rank": 2, "tier_label": "Уровень 2"}]
 
     def test_keeps_snowflakes_as_strings(self):
         """Discord ids exceed 2**53 and must never round-trip through a float."""
         big = "1234567890123456789"
-        body = SubscriptionProviderConfigUpsert(
-            provider="boosty", guild_id=big, role_tiers=[{"role_id": big, "tier_rank": 1}]
-        )
+        body = SubscriptionProviderConfigUpsert(provider="boosty", role_tiers=[{"role_id": big, "tier_rank": 1}])
         config = build_config_json(body, existing={})
-        assert config["guild_id"] == big
         assert config["role_tiers"][0]["role_id"] == big
 
     def test_stores_broadcaster_for_twitch(self):
@@ -139,7 +135,7 @@ class TestBuildConfigJson:
     def test_omitting_codes_keeps_the_stored_ones(self):
         """The admin cannot see existing codes, so a plain save must not wipe them."""
         existing = {"codes": [{"code_sha256": "a" * 64, "tier_rank": 1}]}
-        body = SubscriptionProviderConfigUpsert(provider="boosty", guild_id="999")
+        body = SubscriptionProviderConfigUpsert(provider="boosty")
         config = build_config_json(body, existing=existing)
         assert config["codes"] == existing["codes"]
 
@@ -164,15 +160,10 @@ class TestBuildConfigJson:
         else:
             raise AssertionError("expected a validation error")
 
-    def test_omitting_guild_id_keeps_the_stored_one(self):
-        existing = {"guild_id": "999"}
-        body = SubscriptionProviderConfigUpsert(provider="boosty", role_tiers=[])
-        assert build_config_json(body, existing=existing)["guild_id"] == "999"
-
-    def test_an_explicit_empty_guild_id_clears_it(self):
-        existing = {"guild_id": "999"}
-        body = SubscriptionProviderConfigUpsert(provider="boosty", guild_id="")
-        assert build_config_json(body, existing=existing).get("guild_id") in (None, "")
+    def test_a_stale_client_guild_is_ignored_not_written(self):
+        """The blob must never regain the key, whatever an old frontend posts."""
+        body = SubscriptionProviderConfigUpsert.model_validate({"provider": "boosty", "guild_id": "999"})
+        assert "guild_id" not in build_config_json(body, existing={})
 
 
 class TestSerializeProviderConfig:
@@ -185,23 +176,21 @@ class TestSerializeProviderConfig:
         assert read.codes[0].tier_rank == 2
         assert read.codes[0].tier_label == "L2"
 
-    def test_exposes_guild_and_role_tiers(self):
-        row = _Row(
-            config={
-                "guild_id": "999",
-                "role_tiers": [{"role_id": "100", "tier_rank": 1, "tier_label": "L1"}],
-            }
-        )
+    def test_exposes_role_tiers(self):
+        row = _Row(config={"role_tiers": [{"role_id": "100", "tier_rank": 1, "tier_label": "L1"}]})
         read = serialize_provider_config(row)
-        assert read.guild_id == "999"
         assert read.role_tiers[0].role_id == "100"
+
+    def test_a_stored_guild_is_not_echoed_back(self):
+        row = _Row(config={"guild_id": "999", "role_tiers": [{"role_id": "1", "tier_rank": 1}]})
+        read = serialize_provider_config(row)
+        assert not hasattr(read, "guild_id")
 
     def test_reports_the_enabled_flag(self):
         assert serialize_provider_config(_Row(enabled=False)).enabled is False
 
     def test_tolerates_an_empty_config(self):
         read = serialize_provider_config(_Row(config={}))
-        assert read.guild_id is None
         assert read.role_tiers == []
         assert read.codes == []
 
@@ -243,7 +232,7 @@ class TestVerificationMethod:
             raise AssertionError("expected a validation error")
 
     def test_omitting_the_method_keeps_the_stored_one(self):
-        body = SubscriptionProviderConfigUpsert(provider="boosty", guild_id="1")
+        body = SubscriptionProviderConfigUpsert(provider="boosty")
         assert build_config_json(body, existing={"verification_method": "code"})["verification_method"] == "code"
 
     def test_an_explicit_method_replaces_the_stored_one(self):

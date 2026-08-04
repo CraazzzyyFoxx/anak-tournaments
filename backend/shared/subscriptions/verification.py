@@ -10,9 +10,10 @@ They are not interchangeable, and leaving both permanently on makes two states
 unreachable, which is the whole reason this module exists:
 
 1. **Code-only was impossible.** An organizer with no Discord server leaves
-   ``guild_id`` empty, the live path answers ``unknown("guild_not_configured")``,
-   and ``unknown`` fails open — so the gate admitted *everybody*, including people
-   who never redeemed anything. The organizer believed the code was gating entry.
+   ``Workspace.discord_guild_id`` unset, the live path answers
+   ``unknown("guild_not_configured")``, and ``unknown`` fails open — so the gate
+   admitted *everybody*, including people who never redeemed anything. The organizer
+   believed the code was gating entry.
 2. **Live-only was impossible.** Codes left in the config stayed redeemable, and
    an already-redeemed code counts forever (a redeemed code is deliberately never
    re-polled), so switching to roles could not revoke it.

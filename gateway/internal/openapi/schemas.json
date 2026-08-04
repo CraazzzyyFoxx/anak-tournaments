@@ -4920,6 +4920,42 @@
       },
       "summary": "Upsert global setting"
     },
+    "rpc.parser.subscription.check_log": {
+      "description": "Lists append-only subscription check-log entries (the collection history) filtered by state, source, provider, auth user and cursor; requires the global admin role.",
+      "response": {
+        "array": true,
+        "ref": "parser.SubscriptionCheckLogRead"
+      },
+      "summary": "Subscription check log"
+    },
+    "rpc.parser.subscription.collect": {
+      "description": "Runs a live subscription re-check for one player (optionally limited to specific providers) or sweeps every open tournament that requires a subscription, and returns the number of checks performed; requires the global admin role.",
+      "request": {
+        "array": false,
+        "ref": "parser.SubscriptionCollectTriggerRequest"
+      },
+      "response": {
+        "array": false,
+        "ref": "parser.SubscriptionCollectTriggerResponse"
+      },
+      "summary": "Trigger subscription collection"
+    },
+    "rpc.parser.subscription.stats": {
+      "description": "Aggregated subscription-collection health: entitlement counts by state and provider, distinct-user check coverage over 24h/7d, last successful check, last-24h check-outcome mix with error rate, the number of open tournaments enforcing a subscription, and the active config; requires the global admin role.",
+      "response": {
+        "array": false,
+        "ref": "parser.SubscriptionCollectionStats"
+      },
+      "summary": "Subscription collection health stats"
+    },
+    "rpc.parser.subscription.user_collection": {
+      "description": "Returns the current subscription entitlement per workspace and provider for one player; requires the global admin role.",
+      "response": {
+        "array": true,
+        "ref": "parser.SubscriptionUserCollectionRead"
+      },
+      "summary": "User subscription collection status"
+    },
     "rpc.parser.teams.challonge_preview": {
       "description": "Previews the mapping of Challonge participants to teams for a tournament before syncing; requires the global admin role.",
       "response": {
@@ -15694,6 +15730,18 @@
           ],
           "title": "Description"
         },
+        "discord_guild_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Discord Guild Id"
+        },
         "icon_url": {
           "anyOf": [
             {
@@ -15942,6 +15990,19 @@
           ],
           "default": null,
           "title": "Description"
+        },
+        "discord_guild_id": {
+          "anyOf": [
+            {
+              "pattern": "^\\d{17,19}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Discord Guild Id"
         },
         "icon_url": {
           "anyOf": [
@@ -22307,10 +22368,6 @@
           ],
           "title": "Channel Name"
         },
-        "guild_id": {
-          "title": "Guild Id",
-          "type": "string"
-        },
         "id": {
           "title": "Id",
           "type": "integer"
@@ -22327,7 +22384,6 @@
       "required": [
         "id",
         "tournament_id",
-        "guild_id",
         "channel_id",
         "channel_name",
         "is_active"
@@ -22336,7 +22392,7 @@
       "type": "object"
     },
     "parser.DiscordChannelUpsert": {
-      "description": "Schema for creating or updating a tournament Discord sync channel.\n\nguild_id and channel_id are Discord snowflakes (64-bit integers). They are\naccepted as strings to avoid JavaScript float64 precision loss on the client side.",
+      "description": "Schema for creating or updating a tournament Discord sync channel.\n\nchannel_id is a Discord snowflake (64-bit integer), accepted as a string to\navoid JavaScript float64 precision loss on the client side. The guild is not\nhere: it belongs to the workspace (``Workspace.discord_guild_id``) and was\nduplicated into every tournament row while being read by nobody.",
       "properties": {
         "channel_id": {
           "title": "Channel Id",
@@ -22354,10 +22410,6 @@
           "default": null,
           "title": "Channel Name"
         },
-        "guild_id": {
-          "title": "Guild Id",
-          "type": "string"
-        },
         "is_active": {
           "default": true,
           "title": "Is Active",
@@ -22365,7 +22417,6 @@
         }
       },
       "required": [
-        "guild_id",
         "channel_id"
       ],
       "title": "DiscordChannelUpsert",
@@ -23802,6 +23853,444 @@
       "title": "StageType",
       "type": "string"
     },
+    "parser.SubscriptionCheckLogRead": {
+      "properties": {
+        "auth_user_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Auth User Id"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "mechanism": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mechanism"
+        },
+        "provider": {
+          "title": "Provider",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "state": {
+          "title": "State",
+          "type": "string"
+        },
+        "tier_label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tier Label"
+        },
+        "tier_rank": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tier Rank"
+        },
+        "user_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "User Id"
+        },
+        "user_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "User Name"
+        },
+        "workspace_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workspace Id"
+        }
+      },
+      "required": [
+        "id",
+        "provider",
+        "state",
+        "source",
+        "created_at"
+      ],
+      "title": "SubscriptionCheckLogRead",
+      "type": "object"
+    },
+    "parser.SubscriptionCollectTriggerRequest": {
+      "properties": {
+        "providers": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Providers"
+        },
+        "user_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "User Id"
+        }
+      },
+      "title": "SubscriptionCollectTriggerRequest",
+      "type": "object"
+    },
+    "parser.SubscriptionCollectTriggerResponse": {
+      "properties": {
+        "checked": {
+          "title": "Checked",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "checked"
+      ],
+      "title": "SubscriptionCollectTriggerResponse",
+      "type": "object"
+    },
+    "parser.SubscriptionCollectionStats": {
+      "description": "Aggregated collection health for the admin dashboard.",
+      "properties": {
+        "active_tournaments": {
+          "title": "Active Tournaments",
+          "type": "integer"
+        },
+        "batch_size": {
+          "title": "Batch Size",
+          "type": "integer"
+        },
+        "by_provider": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "By Provider",
+          "type": "object"
+        },
+        "by_state": {
+          "$ref": "#/components/schemas/parser.SubscriptionStateCounts"
+        },
+        "checks_24h": {
+          "$ref": "#/components/schemas/parser.SubscriptionStateCounts"
+        },
+        "checks_24h_total": {
+          "title": "Checks 24H Total",
+          "type": "integer"
+        },
+        "coverage_24h": {
+          "title": "Coverage 24H",
+          "type": "integer"
+        },
+        "coverage_7d": {
+          "title": "Coverage 7D",
+          "type": "integer"
+        },
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "error_rate_24h": {
+          "title": "Error Rate 24H",
+          "type": "number"
+        },
+        "interval_seconds": {
+          "title": "Interval Seconds",
+          "type": "integer"
+        },
+        "last_check_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Check At"
+        },
+        "last_success_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Success At"
+        },
+        "never_checked": {
+          "title": "Never Checked",
+          "type": "integer"
+        },
+        "total": {
+          "title": "Total",
+          "type": "integer"
+        },
+        "tracked_users": {
+          "title": "Tracked Users",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total",
+        "tracked_users",
+        "never_checked",
+        "by_state",
+        "by_provider",
+        "coverage_24h",
+        "coverage_7d",
+        "last_success_at",
+        "last_check_at",
+        "checks_24h",
+        "checks_24h_total",
+        "error_rate_24h",
+        "active_tournaments",
+        "enabled",
+        "interval_seconds",
+        "batch_size"
+      ],
+      "title": "SubscriptionCollectionStats",
+      "type": "object"
+    },
+    "parser.SubscriptionStateCounts": {
+      "description": "Count per ``SubscriptionCheckState``. States absent in a source read stay 0.\n\n``extra=\"ignore\"`` so an unexpected state string can never break the read.",
+      "properties": {
+        "active": {
+          "default": 0,
+          "title": "Active",
+          "type": "integer"
+        },
+        "error": {
+          "default": 0,
+          "title": "Error",
+          "type": "integer"
+        },
+        "inactive": {
+          "default": 0,
+          "title": "Inactive",
+          "type": "integer"
+        },
+        "unknown": {
+          "default": 0,
+          "title": "Unknown",
+          "type": "integer"
+        }
+      },
+      "title": "SubscriptionStateCounts",
+      "type": "object"
+    },
+    "parser.SubscriptionUserCollectionRead": {
+      "description": "One (workspace, provider) entitlement for a player.",
+      "properties": {
+        "checked_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Checked At"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        },
+        "provider": {
+          "title": "Provider",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "state": {
+          "title": "State",
+          "type": "string"
+        },
+        "tier_label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tier Label"
+        },
+        "tier_rank": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tier Rank"
+        },
+        "workspace_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workspace Id"
+        },
+        "workspace_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workspace Name"
+        }
+      },
+      "required": [
+        "provider",
+        "state"
+      ],
+      "title": "SubscriptionUserCollectionRead",
+      "type": "object"
+    },
     "parser.TournamentPhaseScheduleRead": {
       "description": "One phase-schedule row: when phase ``status`` starts (and its action window ends).",
       "properties": {
@@ -24853,6 +25342,18 @@
           "default": null,
           "title": "Battle Tag"
         },
+        "boosty_nick": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Boosty Nick"
+        },
         "discord_nick": {
           "anyOf": [
             {
@@ -25485,6 +25986,18 @@
           ],
           "default": null,
           "title": "Battle Tag Normalized"
+        },
+        "boosty_nick": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Boosty Nick"
         },
         "checked_in": {
           "default": false,
@@ -26146,6 +26659,18 @@
           ],
           "default": null,
           "title": "Battle Tag"
+        },
+        "boosty_nick": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Boosty Nick"
         },
         "discord_nick": {
           "anyOf": [
@@ -32730,6 +33255,18 @@
           "default": null,
           "title": "Battle Tag"
         },
+        "boosty_nick": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Boosty Nick"
+        },
         "custom_fields": {
           "anyOf": [
             {
@@ -32986,6 +33523,18 @@
           ],
           "default": null,
           "title": "Battle Tag"
+        },
+        "boosty_nick": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Boosty Nick"
         },
         "checked_in": {
           "default": false,
@@ -33267,6 +33816,18 @@
           ],
           "default": null,
           "title": "Battle Tag"
+        },
+        "boosty_nick": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Boosty Nick"
         },
         "custom_fields": {
           "anyOf": [
@@ -34894,6 +35455,18 @@
           },
           "title": "Configs",
           "type": "array"
+        },
+        "discord_guild_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Discord Guild Id"
         }
       },
       "title": "SubscriptionProviderConfigListResponse",
@@ -34936,18 +35509,6 @@
           "default": false,
           "title": "Enabled",
           "type": "boolean"
-        },
-        "guild_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Guild Id"
         },
         "provider": {
           "title": "Provider",
@@ -35020,19 +35581,6 @@
           "default": false,
           "title": "Enabled",
           "type": "boolean"
-        },
-        "guild_id": {
-          "anyOf": [
-            {
-              "maxLength": 32,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Guild Id"
         },
         "provider": {
           "title": "Provider",

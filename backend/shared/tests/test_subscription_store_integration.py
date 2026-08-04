@@ -9,14 +9,18 @@ the things that only real Postgres has an opinion about:
 - JSON columns round-tripping ``evidence`` unchanged,
 - ``timestamptz`` columns coming back **tz-aware** (a naive value would break the
   TTL comparison in the resolver and silently make every row look stale),
-- the schema-qualified table names resolving at all.
+- the schema-qualified table names resolving at all,
+- the join onto ``workspace`` that sources ``guild_id``: the provider blob no
+  longer carries one, and a stale key left inside ``config_json`` must lose to
+  the workspace column.
 
 Run against a scratch/dev database, e.g.::
 
     SUBSCRIPTIONS_IT_DSN=postgresql+psycopg://user:pw@127.0.0.1:15432/anak_dev \\
         uv run pytest shared/tests/test_subscription_store_integration.py -v
 
-Every row this creates is deleted again in ``asyncTearDown``.
+Every row this creates is deleted again in ``asyncTearDown``, and the workspace's
+``discord_guild_id`` -- which these tests mutate in place -- is restored there.
 """
 
 from __future__ import annotations
@@ -69,6 +73,11 @@ class TestSqlEntitlementStore(IsolatedAsyncioTestCase):
         if self.ws is None or self.au is None:
             self.skipTest("target database has no workspace / auth user to anchor FKs")
 
+        # Snapshot: this suite mutates a real workspace row and must put it back.
+        self._guild_before = (
+            await self._session.execute(sa.text("select discord_guild_id from workspace where id=:w"), {"w": self.ws})
+        ).scalar()
+
     async def asyncTearDown(self) -> None:
         await self._session.execute(
             sa.text("delete from subscriptions.entitlement where workspace_id=:w and auth_user_id=:u"),
@@ -77,6 +86,10 @@ class TestSqlEntitlementStore(IsolatedAsyncioTestCase):
         await self._session.execute(
             sa.text("delete from subscriptions.provider_config where workspace_id=:w and provider='boosty'"),
             {"w": self.ws},
+        )
+        await self._session.execute(
+            sa.text("update workspace set discord_guild_id=:g where id=:w"),
+            {"g": self._guild_before, "w": self.ws},
         )
         await self._session.commit()
         await self._session.close()
@@ -87,11 +100,18 @@ class TestSqlEntitlementStore(IsolatedAsyncioTestCase):
             sa.text(
                 "insert into subscriptions.provider_config "
                 "(workspace_id, provider, enabled, config_json) "
-                "values (:ws,'boosty',true,'{\"guild_id\":\"999\"}') "
+                "values (:ws,'boosty',true,'{}') "
                 "on conflict on constraint uq_subscription_config_workspace_provider "
                 "do update set enabled=true"
             ),
             {"ws": self.ws},
+        )
+        await self._session.commit()
+
+    async def _set_workspace_guild(self, guild_id: str | None) -> None:
+        await self._session.execute(
+            sa.text("update workspace set discord_guild_id=:g where id=:w"),
+            {"g": guild_id, "w": self.ws},
         )
         await self._session.commit()
 
@@ -101,11 +121,37 @@ class TestSqlEntitlementStore(IsolatedAsyncioTestCase):
         assert await self.store.load_entitlements(self.ws, [self.au], []) == {}
 
     async def test_load_configs_returns_only_configured_providers(self):
+        await self._set_workspace_guild("424242424242424242")
         await self._configure_boosty()
         configs = await self.store.load_configs(self.ws, ["boosty", "twitch"])
         assert set(configs) == {"boosty"}
         assert configs["boosty"].enabled is True
-        assert configs["boosty"].config["guild_id"] == "999"
+        # The guild comes from the workspace, not from the provider blob.
+        assert configs["boosty"].config["guild_id"] == "424242424242424242"
+
+    async def test_a_workspace_without_a_guild_reads_back_as_unconfigured(self):
+        """The fail-open path: no guild must reach the resolver as "not set"."""
+        await self._set_workspace_guild(None)
+        await self._configure_boosty()
+        configs = await self.store.load_configs(self.ws, ["boosty"])
+        assert configs["boosty"].config["guild_id"] == ""
+
+    async def test_a_stale_blob_guild_cannot_outrank_the_workspace(self):
+        """Regression guard for the injection order -- the blob must lose."""
+        await self._set_workspace_guild("111111111111111111")
+        await self._session.execute(
+            sa.text(
+                "insert into subscriptions.provider_config "
+                "(workspace_id, provider, enabled, config_json) "
+                "values (:ws,'boosty',true,'{\"guild_id\":\"999\"}') "
+                "on conflict on constraint uq_subscription_config_workspace_provider "
+                'do update set config_json=\'{"guild_id":"999"}\''
+            ),
+            {"ws": self.ws},
+        )
+        await self._session.commit()
+        configs = await self.store.load_configs(self.ws, ["boosty"])
+        assert configs["boosty"].config["guild_id"] == "111111111111111111"
 
     async def test_upsert_then_load_round_trips(self):
         await self.store.upsert(

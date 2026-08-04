@@ -30,13 +30,22 @@ vi.mock("@/lib/notify", () => ({
 const BOOSTY_WITH_STORED_CODE = {
   provider: "boosty",
   enabled: true,
-  guild_id: "1234567890123456789",
   role_tiers: [{ role_id: "9876543210987654321", tier_rank: 2, tier_label: "Уровень 2" }],
   codes: [{ tier_rank: 3, tier_label: "Уровень 3" }]
 };
 
-async function mount(configs: unknown[]) {
-  listSubscriptionProviders.mockResolvedValue({ configs });
+/** `discord_guild_id` is response-level now: it belongs to the workspace, not to
+ *  a provider. Default it to a real snowflake so the "no guild" warning stays out
+ *  of every test that is not about it. */
+async function mount(
+  configs: unknown[],
+  response: { discord_guild_id?: string | null } = {}
+) {
+  listSubscriptionProviders.mockResolvedValue({
+    configs,
+    discord_guild_id: "1234567890123456789",
+    ...response
+  });
   const container = document.createElement("div");
   document.body.appendChild(container);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -104,7 +113,6 @@ describe("SubscriptionProvidersCard", () => {
     expect(upsertSubscriptionProvider).toHaveBeenCalledTimes(1);
     const [, body] = upsertSubscriptionProvider.mock.calls[0];
     expect("codes" in body).toBe(false);
-    expect(body.guild_id).toBe("1234567890123456789");
   });
 
   it("sends the typed codes when there are any", async () => {
@@ -171,6 +179,28 @@ describe("SubscriptionProvidersCard", () => {
     expect("role_tiers" in body).toBe(false);
   });
 
+  it("never posts a guild — it belongs to the workspace now", async () => {
+    const container = await mount([BOOSTY_WITH_STORED_CODE]);
+
+    await click(button(container, "Save"));
+
+    const [, body] = upsertSubscriptionProvider.mock.calls[0];
+    expect("guild_id" in body).toBe(false);
+  });
+
+  it("warns when live verification is on but the workspace has no guild", async () => {
+    const container = await mount(
+      [{ ...BOOSTY_WITH_STORED_CODE, enabled: true, role_tiers: [] }],
+      { discord_guild_id: null }
+    );
+
+    expect(container.textContent).toContain(en.subscriptionProviders.guild.missing);
+    // Deliberate precedence: fix the guild first. With no guild AND no roles, only
+    // the guild warning shows — dropping `Boolean(discordGuildId)` from `rolesMissing`
+    // would surface both and leave the operator guessing which to act on.
+    expect(container.textContent).not.toContain("without a role mapping");
+  });
+
   it("renders one editor per provider the server offers", async () => {
     const container = await mount([
       BOOSTY_WITH_STORED_CODE,
@@ -209,13 +239,13 @@ describe("verification method", () => {
 
   it("hides the code input under live-only, and the role mapping under code-only", async () => {
     const live = await mount([{ ...BOOSTY_WITH_STORED_CODE, verification_method: "live" }]);
-    expect(live.textContent).toContain("Discord guild id");
+    expect(live.textContent).toContain("Discord guild:");
     expect(live.textContent).not.toContain("Challenge codes");
 
     document.body.innerHTML = "";
     const code = await mount([{ ...BOOSTY_WITH_STORED_CODE, verification_method: "code" }]);
     expect(code.textContent).toContain("Challenge codes");
-    expect(code.textContent).not.toContain("Discord guild id");
+    expect(code.textContent).not.toContain("Discord guild:");
   });
 
   it("offers challenge codes for twitch too — code-only with no input would fail open", async () => {

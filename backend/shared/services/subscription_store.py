@@ -10,6 +10,10 @@ view of hundreds of registrants cheap.
 Two implementations, matching the resolver's two write boundaries:
 ``SqlEntitlementStore`` (current state, destructive upsert) and
 ``SqlCheckLogSink`` (append-only history).
+
+``load_configs`` is the single place a ``ProviderConfigRow`` is born, and therefore
+the single injection point for workspace-scoped values: it joins ``workspace`` to
+source ``guild_id``, so the resolver keeps reading it out of ``config`` unchanged.
 """
 
 from __future__ import annotations
@@ -36,19 +40,26 @@ class SqlEntitlementStore:
     async def load_configs(self, workspace_id: int, providers: Sequence[str]) -> dict[str, ProviderConfigRow]:
         if not providers:
             return {}
+        cfg = models.SubscriptionProviderConfig
         rows = await self._session.execute(
-            sa.select(
-                models.SubscriptionProviderConfig.provider,
-                models.SubscriptionProviderConfig.enabled,
-                models.SubscriptionProviderConfig.config_json,
-            ).where(
-                models.SubscriptionProviderConfig.workspace_id == workspace_id,
-                models.SubscriptionProviderConfig.provider.in_(list(providers)),
+            sa.select(cfg.provider, cfg.enabled, cfg.config_json, models.Workspace.discord_guild_id)
+            .join(models.Workspace, models.Workspace.id == cfg.workspace_id)
+            .where(
+                cfg.workspace_id == workspace_id,
+                cfg.provider.in_(list(providers)),
             )
         )
         return {
-            provider: ProviderConfigRow(provider=provider, enabled=bool(enabled), config=dict(config or {}))
-            for provider, enabled, config in rows.all()
+            provider: ProviderConfigRow(
+                provider=provider,
+                enabled=bool(enabled),
+                # The guild belongs to the workspace, never to the provider blob.
+                # Injected here -- the single place configs are born -- so the
+                # resolver's `config["guild_id"]` contract, and with it the whole
+                # fail-open decision table, stays untouched.
+                config={**(config or {}), "guild_id": guild_id or ""},
+            )
+            for provider, enabled, config, guild_id in rows.all()
         }
 
     async def load_entitlements(

@@ -1,7 +1,9 @@
 """Workspace-level subscription provider configuration.
 
-Minimal admin surface: raw ids typed by hand. Resolving Discord role names through
-the API and offering a picker is a deliberate follow-up, not part of this.
+Minimal admin surface: raw ids typed by hand (role ids, broadcaster id). The Discord
+guild id is NOT typed here -- it belongs to the workspace, and the list response
+echoes it back read-only. Resolving Discord role names through the API and offering
+a picker is a deliberate follow-up, not part of this.
 
 Two rules carry the weight here:
 
@@ -55,8 +57,6 @@ def build_config_json(body: SubscriptionProviderConfigUpsert, *, existing: dict[
     """
     config = dict(existing)
 
-    if body.guild_id is not None:
-        config["guild_id"] = body.guild_id.strip()
     if body.broadcaster_id is not None:
         config["broadcaster_id"] = body.broadcaster_id.strip()
     if body.broadcaster_login is not None:
@@ -95,7 +95,6 @@ def serialize_provider_config(row: Any) -> SubscriptionProviderConfigRead:
     return SubscriptionProviderConfigRead(
         provider=row.provider,
         enabled=bool(row.enabled),
-        guild_id=config.get("guild_id") or None,
         role_tiers=[
             RoleTierRead(
                 role_id=str(entry.get("role_id") or ""),
@@ -123,10 +122,14 @@ def serialize_provider_config(row: Any) -> SubscriptionProviderConfigRead:
 
 
 async def list_provider_configs(session: AsyncSession, workspace_id: int) -> SubscriptionProviderConfigListResponse:
-    """Every configurable provider, present or not.
+    """Every configurable provider, present or not, plus the workspace's guild.
 
     Providers with no row are returned disabled and empty, so the admin UI renders
     one card per provider without inventing placeholder rows in the database.
+
+    The guild is response-level rather than per-provider because it lives on the
+    workspace, not in any provider blob: the card renders it read-only and the
+    workspace settings form is the only place that writes it.
     """
     rows = (
         (
@@ -146,7 +149,10 @@ async def list_provider_configs(session: AsyncSession, workspace_id: int) -> Sub
         else SubscriptionProviderConfigRead(provider=provider, enabled=False)
         for provider in CONFIGURABLE_PROVIDERS
     ]
-    return SubscriptionProviderConfigListResponse(configs=configs)
+    discord_guild_id = await session.scalar(
+        sa.select(models.Workspace.discord_guild_id).where(models.Workspace.id == workspace_id)
+    )
+    return SubscriptionProviderConfigListResponse(configs=configs, discord_guild_id=discord_guild_id or None)
 
 
 async def upsert_provider_config(

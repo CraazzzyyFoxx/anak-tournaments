@@ -17,7 +17,7 @@ challonge), `registration/`, `balancer/` (balance, draft), `matches/`,
 
 > **Актуальность.** Документ отражает финальное состояние после
 > identity/workspace-рефактора и нормализаций Challonge / map-veto / draft /
-> predictions. Alembic head — **`captrep0001`**. Сводка изменений — в конце
+> predictions. Alembic head — **`wsguild0002`**. Сводка изменений — в конце
 > файла («История изменений схемы»).
 
 > Соглашение об именах на диаграммах: имя сущности = `SCHEMA_TABLE`, потому что
@@ -295,6 +295,7 @@ erDiagram
         string custom_domain UK "nullable"
         timestamp custom_domain_verified_at "nullable"
         string custom_domain_verification_token "nullable"
+        string discord_guild_id "nullable"
         int default_division_grid_version_id FK "nullable"
     }
     WORKSPACE_MEMBER {
@@ -1388,7 +1389,6 @@ erDiagram
     DISCORD_CHANNEL {
         int id PK
         int tournament_id FK "UNIQUE"
-        int guild_id
         int channel_id UK
         bool is_active
     }
@@ -1464,7 +1464,7 @@ erDiagram
 
 ## История изменений схемы
 
-Документ актуализирован под финальное состояние (Alembic head — **`captrep0001`**).
+Документ актуализирован под финальное состояние (Alembic head — **`wsguild0002`**).
 Ключевые изменения относительно прежнего mid-refactor состояния:
 
 - **Identity/workspace-рефактор.** `players.user.auth_user_id` (unique nullable;
@@ -1498,3 +1498,12 @@ erDiagram
   map-veto, timezone воркспейса (wstz), phase-schedule, снятие team-SR (teamsr),
   MVP-impact scoring (mvpimp), брендинг-палитра (wsbrand), скрытые/preview
   турниры (hidden), captain reports (captrep, `encounter_report`), draft-audit.
+- **Discord-гильдия воркспейса (`wsguild0001` + `wsguild0002`).**
+  `public.workspace.discord_guild_id` (`String(32)`, nullable) — единственный источник
+  снежинки гильдии. Пара expand/contract, порядок обязателен: `wsguild0001` добавляет
+  колонку и бэкфиллит её (до раскатки кода), затем `wsguild0002` убирает ключ из блоба
+  `subscriptions.provider_config.config_json` и удаляет столбец
+  `log_processing.discord_channel.guild_id` (после раскатки). Одной ревизией это
+  недеплоимо: старая ORM всё ещё маппит `guild_id`, поэтому ранний DROP останавливает
+  сбор логов, а новый `load_configs` джойнит колонку воркспейса, поэтому ранний код
+  ломает чтение подписок.

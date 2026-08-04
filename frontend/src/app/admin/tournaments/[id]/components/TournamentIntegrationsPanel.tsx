@@ -74,7 +74,6 @@ export function TournamentIntegrationsPanel({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [form, setForm] = useState<DiscordChannelInput>({
-    guild_id: "",
     channel_id: "",
     channel_name: "",
     is_active: true
@@ -100,7 +99,6 @@ export function TournamentIntegrationsPanel({
 
   const openDialog = () => {
     setForm({
-      guild_id: discordChannel?.guild_id ?? "",
       channel_id: discordChannel?.channel_id ?? "",
       channel_name: discordChannel?.channel_name ?? "",
       is_active: discordChannel?.is_active ?? true
@@ -156,15 +154,13 @@ export function TournamentIntegrationsPanel({
             {discordChannelLoading ? (
               <Skeleton className="h-16 w-full" />
             ) : discordChannel ? (
-              <div className="grid gap-3 rounded-lg border border-border/60 bg-muted/10 p-3 sm:grid-cols-3">
-                <DetailField label="Guild" value={discordChannel.guild_id} />
+              <div className="grid gap-3 rounded-lg border border-border/60 bg-muted/10 p-3 sm:grid-cols-2">
                 <DetailField label="Channel" value={discordChannel.channel_id} />
                 <DetailField label="Name" value={discordChannel.channel_name ?? "—"} />
               </div>
             ) : (
               <p className="rounded-lg border border-dashed border-border/70 bg-muted/10 p-3 text-xs text-muted-foreground">
-                No channel yet. Add a guild and channel to start pulling match logs in
-                automatically.
+                No channel yet. Add a channel to start pulling match logs in automatically.
               </p>
             )}
 
@@ -198,7 +194,7 @@ export function TournamentIntegrationsPanel({
           if (!open) saveMutation.reset();
         }}
         title="Discord match logs"
-        description={`Set the Discord guild and channel for ${tournament.name}.`}
+        description={`Set the Discord channel for ${tournament.name}.`}
         onSubmit={(event) => {
           event.preventDefault();
           saveMutation.mutate(form);
@@ -209,22 +205,6 @@ export function TournamentIntegrationsPanel({
         isDirty
       >
         <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="discord-guild-id">Guild ID</Label>
-            <Input
-              id="discord-guild-id"
-              type="text"
-              inputMode="numeric"
-              value={form.guild_id}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  guild_id: event.target.value.replace(/\D/g, "")
-                }))
-              }
-              placeholder="123456789012345678"
-            />
-          </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="discord-channel-id">Channel ID</Label>
             <Input
