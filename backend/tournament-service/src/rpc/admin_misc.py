@@ -15,7 +15,8 @@ The gateway passes path params as ``data["<name>"]`` (and the primary id as
 Commit semantics: every write service called here commits internally
 (update_match, set_encounter_result, initialize_map_pool,
 toggle_finished, transition_status, recalculate_standings), so the handlers add no
-extra commit. job_get/job_list are read-only.
+extra commit. job_get/job_list and the encounter-reports / parsed-matches reads are
+read-only.
 """
 
 from __future__ import annotations
@@ -45,10 +46,12 @@ from src.rpc._helpers import (
 )
 from src.schemas.admin import encounter as enc_schemas
 from src.schemas.admin import encounter_reports as reports_schemas
+from src.schemas.admin import matches as matches_schemas
 from src.schemas.admin import tournament as tournament_schemas
 from src.schemas.admin.computation import TournamentComputationJobRead
 from src.services.admin import encounter as enc_service
 from src.services.admin import encounter_reports as reports_service
+from src.services.admin import matches as matches_service
 from src.services.admin import preview_access as preview_access_service
 from src.services.admin import standing as standing_service
 from src.services.admin import tournament as tournament_service
@@ -389,8 +392,8 @@ def register(broker: Any, logger: Any) -> None:
     async def _admin_encounter_reports_list(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             workspace_id, params = _reports_params(data)
-            return await reports_service.list_encounter_reports(
-                session, workspace_id=workspace_id, params=params
+            return _dump(
+                await reports_service.list_encounter_reports(session, workspace_id=workspace_id, params=params)
             )
 
         return await _run(logger, op)
@@ -399,6 +402,45 @@ def register(broker: Any, logger: Any) -> None:
     async def _admin_encounter_reports_stats(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             workspace_id, params = _reports_params(data)
-            return await reports_service.get_reports_stats(session, workspace_id=workspace_id, params=params)
+            return _dump(await reports_service.get_reports_stats(session, workspace_id=workspace_id, params=params))
+
+        return await _run(logger, op)
+
+    # ── parsed matches (cross-tournament, workspace-scoped) ───────────────
+
+    def _matches_workspace(data: dict) -> int:
+        """The scope both match reads are gated on.
+
+        An explicit query param, never derived from the row: deriving it would
+        scope the read to whatever tenant already owns the id, which is the check
+        inverted.
+        """
+        user = _identity(data)
+        workspace_id = _require_q1(data, "workspace_id", int)
+        ensure_workspace_permission(user, workspace_id, "match", "read")
+        return workspace_id
+
+    def _matches_params(data: dict) -> tuple[int, Any]:
+        """Same shape as ``_reports_params``: the list spans every tournament in
+        the workspace, so there is no single tournament to derive the scope from.
+        """
+        workspace_id = _matches_workspace(data)
+        qp = build_query_model(matches_schemas.AdminMatchesQueryParams, data.get("query"))
+        return workspace_id, matches_schemas.AdminMatchesSearchParams.from_query_params(qp)
+
+    @broker.subscriber("rpc.tournament.admin_matches_list")
+    async def _admin_matches_list(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            workspace_id, params = _matches_params(data)
+            return _dump(await matches_service.list_admin_matches(session, workspace_id=workspace_id, params=params))
+
+        return await _run(logger, op)
+
+    @broker.subscriber("rpc.tournament.admin_match_get")
+    async def _admin_match_get(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            workspace_id = _matches_workspace(data)
+            match_id = _require_id(data)
+            return _dump(await matches_service.get_admin_match(session, workspace_id=workspace_id, match_id=match_id))
 
         return await _run(logger, op)
