@@ -13,7 +13,9 @@ import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from unittest import TestCase
+from unittest import IsolatedAsyncioTestCase, TestCase
+
+from sqlalchemy.dialects import postgresql
 
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
@@ -190,3 +192,63 @@ class FilterPartitioning(TestCase):
         predicate = str(builder.scope_predicates()[-1]).lower()
         for expected in ("encounter.name", "home_team.name", "away_team.name"):
             self.assertIn(expected, predicate)
+
+
+class Pagination(IsolatedAsyncioTestCase):
+    """The list must page through the shared helper, not its own arithmetic.
+
+    ``per_page=-1`` means "everything" to every other list in the codebase and
+    the helper caps it at MAX_UNLIMITED_RESULTS. Computing the window inline
+    turned it into ``LIMIT -1``, which Postgres rejects — the endpoint would
+    have failed for the one caller that asked for an unbounded page.
+    """
+
+    async def _statements(self, **kw) -> list[str]:
+        """Run the list against a session that records statements instead of
+        executing them, and hand back the compiled SQL."""
+        params = schemas.EncounterReportsSearchParams(page=1, per_page=25)
+        for key, value in kw.items():
+            setattr(params, key, value)
+
+        seen: list[str] = []
+
+        class _Result:
+            def unique(self):
+                return self
+
+            def all(self):
+                return []
+
+            def scalar_one(self):
+                return 0
+
+        class _Session:
+            async def execute(self, statement):
+                # Literal binds: the window is the assertion, and a bound
+                # ``LIMIT %(param_1)s`` hides whether it is -1 or capped.
+                seen.append(
+                    str(
+                        statement.compile(
+                            dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+                        )
+                    )
+                )
+                return _Result()
+
+        await svc.list_encounter_reports(_Session(), workspace_id=1, params=params)
+        return seen
+
+    async def test_an_unbounded_page_is_capped_not_negative(self):
+        page_sql = (await self._statements(per_page=-1))[0]
+        self.assertNotIn("LIMIT -1", page_sql)
+        self.assertIn(str(schemas.EncounterReportsSearchParams.MAX_UNLIMITED_RESULTS), page_sql)
+
+    async def test_a_normal_page_still_windows(self):
+        page_sql = (await self._statements(page=3, per_page=25))[0]
+        self.assertIn("LIMIT", page_sql)
+        self.assertIn("OFFSET", page_sql)
+
+    async def test_only_count_asks_for_no_rows(self):
+        """The envelope still reports the total; the page itself is empty."""
+        page_sql = (await self._statements(only_count=True))[0]
+        self.assertIn("LIMIT", page_sql)

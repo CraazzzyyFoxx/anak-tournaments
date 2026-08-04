@@ -251,9 +251,11 @@ async def list_encounter_reports(
             selectinload(models.Encounter.stage_item),
         )
         .order_by(models.Encounter.updated_at.desc().nullslast(), models.Encounter.id.desc())
-        .offset((params.page - 1) * params.per_page)
-        .limit(params.per_page)
     )
+    # The shared helper, not a hand-rolled offset/limit: it is what caps
+    # ``per_page=-1`` at MAX_UNLIMITED_RESULTS and honours ``only_count``. Doing
+    # the arithmetic here emitted ``LIMIT -1``, which Postgres rejects outright.
+    query = params.apply_pagination(query)
 
     total_query = builder.join(sa.select(sa.func.count()).select_from(models.Encounter)).where(*where)
 
