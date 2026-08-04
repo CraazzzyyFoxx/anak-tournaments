@@ -46,7 +46,6 @@ for _key, _value in {
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-GUILD = "1234567890123456789"
 ROLE = "9876543210987654321"
 
 
@@ -61,10 +60,20 @@ class TestProviderConfigPersistence(IsolatedAsyncioTestCase):
         if self.ws is None:
             self.skipTest("target database has no workspace to anchor the FK")
 
+        # Snapshot: `test_the_list_response_reports_the_workspace_guild` mutates a
+        # real workspace row and must put it back.
+        self._guild_before = (
+            await self._session.execute(sa.text("select discord_guild_id from workspace where id=:w"), {"w": self.ws})
+        ).scalar()
+
     async def asyncTearDown(self) -> None:
         await self._session.execute(
             sa.text("delete from subscriptions.provider_config where workspace_id = :w"),
             {"w": self.ws},
+        )
+        await self._session.execute(
+            sa.text("update workspace set discord_guild_id=:g where id=:w"),
+            {"g": self._guild_before, "w": self.ws},
         )
         await self._session.commit()
         await self._session.close()
@@ -98,23 +107,32 @@ class TestProviderConfigPersistence(IsolatedAsyncioTestCase):
         assert [c.provider for c in listed.configs] == ["boosty", "twitch"]
         assert all(c.enabled is False for c in listed.configs)
 
-    async def test_stores_guild_and_role_mapping(self):
+    async def test_stores_the_role_mapping(self):
         read = await self._save(
             provider="boosty",
             enabled=True,
-            guild_id=GUILD,
             role_tiers=[{"role_id": ROLE, "tier_rank": 2, "tier_label": "Уровень 2"}],
         )
-        assert read.guild_id == GUILD
         assert read.role_tiers[0].role_id == ROLE
         assert read.role_tiers[0].tier_rank == 2
 
     async def test_snowflakes_survive_as_strings(self):
         """A Discord id exceeds 2**53; a float round-trip would corrupt it."""
-        await self._save(provider="boosty", guild_id=GUILD, role_tiers=[{"role_id": ROLE, "tier_rank": 1}])
+        await self._save(provider="boosty", role_tiers=[{"role_id": ROLE, "tier_rank": 1}])
         raw = await self._raw_config("boosty")
-        assert f'"{GUILD}"' in raw
         assert f'"{ROLE}"' in raw
+
+    async def test_the_list_response_reports_the_workspace_guild(self):
+        """The guild is workspace-scoped: one field for the whole response."""
+        from src.services.registration import subscription_config
+
+        await self._session.execute(
+            sa.text("update workspace set discord_guild_id='424242424242424242' where id=:w"),
+            {"w": self.ws},
+        )
+        await self._session.commit()
+        response = await subscription_config.list_provider_configs(self._session, self.ws)
+        assert response.discord_guild_id == "424242424242424242"
 
     async def test_plaintext_code_never_reaches_the_database(self):
         read = await self._save(provider="boosty", codes=[{"code": "live-secret", "tier_rank": 3, "tier_label": "L3"}])
@@ -130,7 +148,7 @@ class TestProviderConfigPersistence(IsolatedAsyncioTestCase):
     async def test_saving_without_codes_keeps_them(self):
         """The admin cannot see stored codes, so a plain save must not wipe them."""
         await self._save(provider="boosty", codes=[{"code": "keep-me", "tier_rank": 1}])
-        read = await self._save(provider="boosty", guild_id=GUILD)
+        read = await self._save(provider="boosty")
         assert len(read.codes) == 1
 
     async def test_explicit_empty_code_list_clears_them(self):
@@ -146,8 +164,8 @@ class TestProviderConfigPersistence(IsolatedAsyncioTestCase):
         assert (read.broadcaster_id, read.broadcaster_login) == ("12345", "streamer")
 
     async def test_repeated_save_updates_in_place(self):
-        await self._save(provider="boosty", guild_id=GUILD)
-        await self._save(provider="boosty", guild_id="999")
+        await self._save(provider="boosty", verification_method="live")
+        await self._save(provider="boosty", verification_method="code")
         count = (
             await self._session.execute(
                 sa.text(
@@ -158,7 +176,7 @@ class TestProviderConfigPersistence(IsolatedAsyncioTestCase):
         ).scalar()
         assert count == 1
         read = await self._save(provider="boosty")
-        assert read.guild_id == "999"
+        assert read.verification_method == "code"
 
     async def test_enabled_flag_round_trips(self):
         assert (await self._save(provider="boosty", enabled=True)).enabled is True

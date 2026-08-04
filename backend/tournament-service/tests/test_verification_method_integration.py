@@ -51,7 +51,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 CODE = "integration-method-secret"
-GUILD = "1234567890123456789"
 ROLE = "9876543210987654321"
 
 
@@ -103,13 +102,12 @@ class TestVerificationMethodEndToEnd(IsolatedAsyncioTestCase):
             await self._session.execute(sa.text(f"delete from {table} where workspace_id = :w"), {"w": self.ws})
         await self._session.commit()
 
-    async def _configure(self, method: str, *, with_codes: bool, with_guild: bool = True) -> None:
+    async def _configure(self, method: str, *, with_codes: bool, with_roles: bool = True) -> None:
         from src.schemas.registration import SubscriptionProviderConfigUpsert
         from src.services.registration import subscription_config
 
         body: dict = {"provider": "boosty", "enabled": True, "verification_method": method}
-        if with_guild:
-            body["guild_id"] = GUILD
+        if with_roles:
             body["role_tiers"] = [{"role_id": ROLE, "tier_rank": 2}]
         body["codes"] = [{"code": CODE, "tier_rank": 2}] if with_codes else []
         await subscription_config.upsert_provider_config(

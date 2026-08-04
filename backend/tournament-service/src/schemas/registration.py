@@ -287,7 +287,6 @@ class SubscriptionProviderConfigUpsert(BaseModel):
 
     provider: str
     enabled: bool = False
-    guild_id: str | None = Field(default=None, max_length=32)
     role_tiers: list[RoleTierUpsert] | None = None
     broadcaster_id: str | None = Field(default=None, max_length=32)
     broadcaster_login: str | None = Field(default=None, max_length=64)
@@ -348,7 +347,6 @@ class ChallengeCodeRead(BaseModel):
 class SubscriptionProviderConfigRead(BaseModel):
     provider: str
     enabled: bool = False
-    guild_id: str | None = None
     role_tiers: list[RoleTierRead] = Field(default_factory=list)
     broadcaster_id: str | None = None
     broadcaster_login: str | None = None
@@ -358,6 +356,9 @@ class SubscriptionProviderConfigRead(BaseModel):
 
 class SubscriptionProviderConfigListResponse(BaseModel):
     configs: list[SubscriptionProviderConfigRead] = Field(default_factory=list)
+    # One field for the whole response, not one per provider: the guild belongs to
+    # the workspace. The admin card renders it read-only and warns when it is unset.
+    discord_guild_id: str | None = None
 
 
 class RegistrationListRead(RegistrationRead):
