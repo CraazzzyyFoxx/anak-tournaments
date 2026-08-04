@@ -685,10 +685,15 @@ In `misc.py`, delete line 128 (`channel.guild_id = int(body.guild_id)`).
 
 ```bash
 cd backend && rtk uv run --package parser-service pytest parser-service/tests -v
-cd backend && rtk uv run --package parser-service python -c "from src.schemas.admin.discord_channel import DiscordChannelUpsert as U; print(sorted(U.model_fields))"
+cd backend/parser-service && rtk uv run python -c "from src.schemas.admin.discord_channel import DiscordChannelUpsert as U, DiscordChannelRead as R; print(sorted(U.model_fields), sorted(R.model_fields))"
+cd backend && rtk uv run --package shared python -c "from shared import models; print(sorted(c.name for c in models.TournamentDiscordChannel.__table__.c))"
 ```
 
-Expected: `['channel_id', 'channel_name', 'is_active']`
+Expected, in order: the parser suite green with **zero skips** (it is unit-level and needs no DB);
+`['channel_id', 'channel_name', 'is_active'] ['channel_id', 'channel_name', 'id', 'is_active', 'tournament_id']`;
+and `['channel_id', 'channel_name', 'created_at', 'id', 'is_active', 'tournament_id', 'updated_at']`
+with **no `guild_id`** — that last one is the check that actually matters, since a surviving ORM
+attribute would break every query once the migration lands.
 
 **Step 3: Confirm nothing else referenced it**
 
