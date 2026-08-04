@@ -129,16 +129,20 @@ def downgrade() -> None:
     # the snowflake irrecoverably -- and since workspace is now the only source, a
     # re-upgrade would leave the gate silently unconfigured. Upsert instead, and
     # insert disabled so rolling back cannot start enforcing. `created_at` is omitted:
-    # it has a server default (subs0001).
+    # it has a server default (subs0001). The target is aliased `pc` rather than
+    # referenced as `subscriptions.provider_config.config_json` inside DO UPDATE: the
+    # three-part form is almost certainly valid, but an alias removes all doubt on a
+    # path that first executes during a rollback, when nobody wants to debug syntax.
     op.execute(
         """
-        insert into subscriptions.provider_config (workspace_id, provider, enabled, config_json)
+        insert into subscriptions.provider_config as pc
+                    (workspace_id, provider, enabled, config_json)
         select w.id, 'boosty', false,
                jsonb_build_object('guild_id', w.discord_guild_id)::json
           from workspace w
          where w.discord_guild_id is not null
             on conflict on constraint uq_subscription_config_workspace_provider
-            do update set config_json = ((subscriptions.provider_config.config_json::jsonb)
+            do update set config_json = ((pc.config_json::jsonb)
                                          || jsonb_build_object(
                                                 'guild_id', excluded.config_json::jsonb ->> 'guild_id'
                                             ))::json
