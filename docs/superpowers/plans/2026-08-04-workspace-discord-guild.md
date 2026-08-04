@@ -647,10 +647,18 @@ rtk git commit -m "refactor(subscriptions): drop guild_id from the provider conf
 ### Task 6: Remove the guild from the tournament Discord channel
 
 **Files:**
+- Modify: `backend/shared/models/ingestion/discord_channel.py:23`
 - Modify: `backend/parser-service/src/schemas/admin/discord_channel.py:9-37`
 - Modify: `backend/parser-service/src/rpc/misc.py:128`
 
 Nothing reads this column — the bot's `load_active_channels` keys on `channel_id` alone — so there is no behaviour to preserve, only a field to stop demanding.
+
+**The ORM attribute is not optional cleanup — it is required for correctness.** Task 2 drops the
+column, and SQLAlchemy emits every mapped column in every `SELECT`. Leaving
+`TournamentDiscordChannel.guild_id` declared would make **all** queries against
+`log_processing.discord_channel` fail with `UndefinedColumn` the moment the migration lands: the
+bot's channel load, the parser's get/upsert, the admin panel. Delete line 23 of the model in this
+task, and note that `BigInteger` may then be an unused import in that file.
 
 **Step 1: Implement**
 
