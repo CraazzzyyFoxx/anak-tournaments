@@ -527,6 +527,12 @@
   text-align: center;
 }
 
+/* Badge and icon tracks are narrow by design, so the 0.85rem gutter would eat
+   more of them than the content does. Centred content keeps the rhythm. */
+.participantCompactCell {
+  padding-inline: 0.5rem;
+}
+
 .participantCellValue {
   min-width: 0;
 }

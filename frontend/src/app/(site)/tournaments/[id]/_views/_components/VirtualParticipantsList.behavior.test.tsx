@@ -564,4 +564,49 @@ describe("VirtualParticipantsList mount budget", () => {
     );
 
   });
+
+  it("sizes tracks from each column's content class and matches the table minimum", async () => {
+    const badgeColumn: ColumnDefinition = {
+      id: "_balancer_status",
+      label: "Balancer",
+      category: "meta",
+      defaultVisible: true,
+      width: "badge",
+      render: () => <span />
+    };
+    const iconColumn: ColumnDefinition = {
+      id: "_subscription",
+      label: "Subscription",
+      category: "meta",
+      defaultVisible: true,
+      width: "icon",
+      render: () => <span />
+    };
+    const columns = [imageColumn, heavyColumn, badgeColumn, iconColumn];
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createTestRoot(container);
+
+    await act(async () => {
+      root.render(
+        <VirtualParticipantsList
+          allColumns={columns}
+          expandedIds={new Set()}
+          onToggleExpanded={() => {}}
+          registrations={[registration(1)]}
+          visibleColumns={columns}
+        />
+      );
+      await new Promise<void>((resolve) => testWindow.requestAnimationFrame(() => resolve()));
+    });
+
+    const table = container.querySelector<HTMLElement>('[role="table"]')!;
+    // Identity 12 + data 8 + badge 7.25 + icon 6.75, then the fixed expander.
+    expect(table.style.getPropertyValue("--participant-grid-columns")).toBe(
+      "minmax(12rem, 1.4fr) minmax(8rem, 1fr) minmax(7.25rem, 0.7fr) minmax(6.75rem, 0.5fr) 3rem"
+    );
+    // Narrower than the sum would squeeze tracks below their minmax floor and
+    // clip columns with no scrollbar to reach them.
+    expect(table.style.getPropertyValue("--participant-table-min-width")).toBe("37rem");
+  });
 });

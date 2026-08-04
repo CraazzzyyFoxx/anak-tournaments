@@ -58,6 +58,13 @@ export interface ColumnDefinition {
   responsive?: "always" | "sm" | "md" | "lg";
   /** Optional fixed width class for the column. */
   widthClass?: string;
+  /**
+   * Content class driving the desktop grid track minimum. Every row is its own
+   * grid, so tracks must be sized from a declared content class instead of
+   * `min-content`, which would resolve differently per row and misalign the
+   * columns. Omitted = `"data"`.
+   */
+  width?: "icon" | "badge" | "data";
   /** Optional alignment override for header and cells. */
   align?: "left" | "center";
 }
@@ -453,6 +460,7 @@ interface BuiltInFieldDef {
   defaultVisible: boolean;
   responsive?: ColumnDefinition["responsive"];
   widthClass?: string;
+  width?: ColumnDefinition["width"];
   align?: ColumnDefinition["align"];
   render: (reg: Registration) => ReactNode;
   searchValue?: (reg: Registration) => string | null;
@@ -516,6 +524,7 @@ const BUILT_IN_FIELD_DEFS: Record<string, BuiltInFieldDef> = {
     defaultVisible: true,
     responsive: "always",
     align: "center",
+    width: "badge",
     render: (reg) => <RolesCell roles={reg.roles} />,
     searchValue: (reg) =>
       reg.roles?.map((r) => r.role).join(" ") ?? null,
@@ -536,6 +545,7 @@ const BUILT_IN_FIELD_DEFS: Record<string, BuiltInFieldDef> = {
     defaultVisible: false,
     responsive: "lg",
     align: "center",
+    width: "badge",
     render: (reg) => <StreamPovCell value={reg.stream_pov} />,
   },
   notes: {
@@ -602,6 +612,7 @@ export function buildParticipantColumns(
     category: "meta",
     defaultVisible: false,
     responsive: "always",
+    width: "icon",
     render: (_reg, index) => (
       <span className="text-[color:var(--aqt-fg-dim)] tabular-nums">{index + 1}</span>
     ),
@@ -635,6 +646,7 @@ export function buildParticipantColumns(
       defaultVisible: form?.built_in_fields ? def.defaultVisible : true,
       responsive: def.responsive ?? "sm",
       widthClass: def.widthClass,
+      width: def.width,
       align: def.align,
       render: def.id === "roles"
         ? (reg) => <RolesCell roles={reg.roles} grid={grid} showRanks={form?.show_ranks} />
@@ -707,6 +719,7 @@ export function buildParticipantColumns(
     defaultVisible: true,
     responsive: "md",
     align: "center",
+    width: "icon",
     render: (reg) => (
       <TournamentHistoryCell
         history={reg.tournament_history ?? []}
@@ -733,6 +746,7 @@ export function buildParticipantColumns(
     defaultVisible: true,
     responsive: "always",
     align: "center",
+    width: "badge",
     render: (reg) => <RegistrationStatusBadge status={reg.status} meta={reg.status_meta} />,
   });
 
@@ -744,6 +758,7 @@ export function buildParticipantColumns(
     defaultVisible: true,
     responsive: "md",
     align: "center",
+    width: "badge",
     render: (reg) => <BalancerStatusBadge status={reg.balancer_status} meta={reg.balancer_status_meta} />,
   });
 
@@ -755,6 +770,7 @@ export function buildParticipantColumns(
     defaultVisible: true,
     responsive: "md",
     align: "center",
+    width: "icon",
     render: (reg) => <CheckInStatusBadge checkedIn={reg.checked_in} />,
   });
 
@@ -767,6 +783,7 @@ export function buildParticipantColumns(
       defaultVisible: true,
       responsive: "always",
       align: "center",
+      width: "icon",
       render: (reg) => <ProfileStatusBadge profilesOpen={reg.profiles_open} />,
     });
   }
@@ -782,6 +799,7 @@ export function buildParticipantColumns(
       defaultVisible: true,
       responsive: "always",
       align: "center",
+      width: "icon",
       render: (reg) => <SubscriptionStatusBadge outcome={reg.subscription_outcome} />,
     });
   }
@@ -794,6 +812,7 @@ export function buildParticipantColumns(
     defaultVisible: true,
     responsive: "always",
     align: "center",
+    width: "icon",
     render: (reg) => (
       <AdmissionStatusBadge
         registrationStatus={reg.status}

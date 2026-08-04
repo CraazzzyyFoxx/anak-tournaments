@@ -15,6 +15,29 @@ import { isMandatoryParticipantColumnId } from "./participants-url-state";
 
 const ESTIMATED_ROW_HEIGHT = 56;
 
+/**
+ * Desktop grid track budget per content class, in rem. Every row is its own
+ * grid, so a track minimum has to be declared rather than measured — a
+ * content-based track would resolve per row and the columns would drift apart.
+ * Each value is the widest of its rendered content and its longest localized
+ * header, measured at the cell's own inline padding:
+ *   data   free text and multi-chip cells
+ *   badge  one nowrap status pill ("Не добавлен" is the widest common one at
+ *          97px) or three 32px role icons
+ *   icon   a single 20px glyph under the longest header ("SUBSCRIPTION", 87px)
+ * A flat 8rem for every column pushed the table to 103rem the moment the
+ * subscription column landed, which is wider than a 1600px window.
+ */
+const COLUMN_TRACKS = {
+  identity: { min: 12, grow: 1.4 },
+  data: { min: 8, grow: 1 },
+  badge: { min: 7.25, grow: 0.7 },
+  icon: { min: 6.75, grow: 0.5 },
+} as const;
+
+/** Fixed expander track; matches `.participantExpander`'s 2.25rem hit area. */
+const EXPANDER_TRACK_REM = 3;
+
 function orderedColumns(
   visibleColumns: readonly ColumnDefinition[],
   allColumns: readonly ColumnDefinition[],
@@ -142,13 +165,22 @@ export default function VirtualParticipantsList({
   const rows = findMode
     ? registrations.map((registration, index) => ({ index, key: registration.id, start: 0 }))
     : virtualItems;
-  const secondaryColumnCount = Math.max(displayColumns.length - 1, 0);
+  // The first column is the identity track regardless of which field lands
+  // there; the rest are sized by their declared content class.
+  const tracks = displayColumns.map((column, index) =>
+    index === 0 ? COLUMN_TRACKS.identity : COLUMN_TRACKS[column.width ?? "data"],
+  );
   const gridStyle = {
-    "--participant-grid-columns":
-      displayColumns.length > 0
-        ? `minmax(12rem, 1.4fr) repeat(${secondaryColumnCount}, minmax(8rem, 1fr)) 3rem`
-        : "3rem",
-    "--participant-table-min-width": `${Math.max(46, displayColumns.length * 8 + 7)}rem`,
+    "--participant-grid-columns": [
+      ...tracks.map((track) => `minmax(${track.min}rem, ${track.grow}fr)`),
+      `${EXPANDER_TRACK_REM}rem`,
+    ].join(" "),
+    // Must equal the sum of the track minimums: any smaller value lets the
+    // viewport squeeze tracks below their minmax floor and the table overflows
+    // without a scrollbar to reach the clipped columns.
+    "--participant-table-min-width": `${
+      tracks.reduce((total, track) => total + track.min, 0) + EXPANDER_TRACK_REM
+    }rem`,
   } as CSSProperties;
 
   return (
@@ -166,6 +198,8 @@ export default function VirtualParticipantsList({
                 styles.participantHeaderCell,
                 index > 0 && column.id !== "_status" && styles.participantDetailCell,
                 column.align === "center" && styles.participantCellCenter,
+                index > 0 && column.width && column.width !== "data" &&
+                  styles.participantCompactCell,
               )}
               data-column-id={column.id}
               data-participant-kind={
@@ -173,6 +207,10 @@ export default function VirtualParticipantsList({
               }
               key={column.id}
               role="columnheader"
+              // Narrow tracks ellipsize the longest localized labels
+              // ("Subscription", "Балансировщик"); the tooltip is the only way
+              // back to the full name on a pointer device.
+              title={column.label}
             >
               {column.label}
             </div>
@@ -218,6 +256,8 @@ export default function VirtualParticipantsList({
                         styles.participantCell,
                         index > 0 && column.id !== "_status" && styles.participantDetailCell,
                         column.align === "center" && styles.participantCellCenter,
+                        index > 0 && column.width && column.width !== "data" &&
+                          styles.participantCompactCell,
                       )}
                       data-column-id={column.id}
                       data-participant-kind={
