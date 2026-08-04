@@ -30,31 +30,58 @@
 
 ## Phase 0 — Pre-flight
 
-### Task 0: Confirm the two guild sources agree
+### Task 0: Confirm the guild sources are usable and agree
 
-The migration prefers the Boosty config over `discord_channel`. If they disagree for a live workspace, the backfill silently picks a winner — find out before writing it.
+This query answers two questions, and **both** are gates. First, the migration prefers the Boosty
+config over `discord_channel` — if they disagree for a live workspace, the backfill silently picks a
+winner. Second, and less obvious: the backfill only accepts values that look like a snowflake, and a
+workspace whose stored guild fails that guard **with no plausible channel to fall back on** ends up
+`NULL`. If that workspace held an implausible-but-non-empty guild, the migration flips it from
+**blocking** every patron to **admitting** them — irreversibly, since step 3 strips the blob key and
+`downgrade`'s upsert is gated on a non-`NULL` workspace value. See the design doc §4.1.
 
-**Step 1: Query both sources**
+**Step 1: Query both sources, and classify each workspace**
 
 ```sql
 -- against the target database, read-only
-select w.id, w.slug,
-       (select pc.config_json ->> 'guild_id'
-          from subscriptions.provider_config pc
-         where pc.workspace_id = w.id and pc.provider = 'boosty')            as boosty_guild,
-       (select array_agg(distinct dc.guild_id)
-          from log_processing.discord_channel dc
-          join tournament.tournament t on t.id = dc.tournament_id
-         where t.workspace_id = w.id)                                        as channel_guilds
-  from workspace w
- order by w.id;
+with src as (
+  select w.id, w.slug,
+         (select pc.config_json ->> 'guild_id'
+            from subscriptions.provider_config pc
+           where pc.workspace_id = w.id and pc.provider = 'boosty')          as boosty_guild,
+         (select array_agg(distinct dc.guild_id)
+            from log_processing.discord_channel dc
+            join tournament.tournament t on t.id = dc.tournament_id
+           where t.workspace_id = w.id)                                      as channel_guilds,
+         (select max(dc.guild_id)
+            from log_processing.discord_channel dc
+            join tournament.tournament t on t.id = dc.tournament_id
+           where t.workspace_id = w.id
+             and dc.guild_id >= 10000000000000000)                           as usable_channel
+    from workspace w
+)
+select id, slug, boosty_guild, channel_guilds,
+       case
+         when boosty_guild ~ '^[0-9]{17,19}$'                then 'ok: boosty wins'
+         when usable_channel is not null                     then 'FALLS THROUGH to channel'
+         when coalesce(boosty_guild, '') <> ''               then 'DISARMS A LIVE GATE'
+         else 'ok: was unconfigured, stays unconfigured'
+       end                                                                   as outcome
+  from src
+ order by outcome desc, id;
 ```
 
-**Step 2: Record the outcome in the PR description**
+**Step 2: Reconcile before running the revision**
 
-Expected: for every row, `boosty_guild` is null or equals the single element of `channel_guilds`. If any row disagrees, **stop and ask** which value is correct — do not let the migration decide.
+- `DISARMS A LIVE GATE` — a non-empty guild that fails the guard and has no usable channel. **Stop.**
+  Get the real snowflake from the organizer and write it into `workspace.discord_guild_id` by hand
+  after the migration (or fix the blob before it). Left alone, that workspace stops gating silently.
+- `FALLS THROUGH to channel` — confirm the channel guild is the one the organizer means. It was never
+  validated by any form, so nobody would have noticed a typo.
+- Rows where `boosty_guild` is non-null and differs from the single element of `channel_guilds` —
+  **stop and ask** which is correct; do not let the migration decide.
 
-No commit.
+Record the outcome in the PR description. No commit.
 
 ---
 

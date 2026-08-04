@@ -104,7 +104,14 @@ A **missing** guild and a **wrong** guild are opposite outcomes, and conflating 
 
 That matters because `discord_channel.guild_id`, the fallback source, was **never validated**: the admin form had no pattern check, and nothing ever read the column back, so no operator would have noticed a typo. The old write schema for the Boosty blob was no better (`max_length=32`, no digits pattern), which is why `"999"` was a legal stored value — this repository's own tests seeded exactly that. Two further consequences of copying such a value verbatim: `WorkspaceUpdate` enforces `^\d{17,19}$` and the workspace edit page posts the field on **every** save, so the workspace would return 422 on unrelated edits (name, timezone, branding) forever; and a value longer than 32 characters would abort the migration outright on `String(32)`.
 
-Hence: pattern-guard both sources. Note what a rejected value does **not** do: the guard sits in step 1's source-row `WHERE`, so failing it does not end the backfill — step 2 still gets its turn, and a workspace with an implausible Boosty guild can end up gated on its most recent tournament channel instead. That is deliberate. Per the table above, such a workspace was already **blocking** every patron, so falling through can only fix it or leave it equally broken, whereas writing `NULL` would silently stop a gate that was enforcing. Only a workspace with no plausible value in *either* source ends up `NULL` — and for that one, `NULL` genuinely is the fail-open state it already had.
+Hence: pattern-guard both sources. Note what a rejected value does **not** do: the guard sits in step 1's source-row `WHERE`, so failing it does not end the backfill — step 2 still gets its turn, and a workspace with an implausible Boosty guild can end up gated on its most recent tournament channel instead. That is deliberate. Per the table above, such a workspace was already **blocking** every patron, so falling through can only fix it or leave it equally broken, whereas writing `NULL` would silently stop a gate that was enforcing.
+
+A workspace with no plausible value in *either* source does end up `NULL`, and that case splits in two:
+
+- it simply had no guild → `NULL` is the fail-open state it already had, and nothing changes;
+- it held an implausible one (`'999'`) → `NULL` moves it from **blocking** to **admitting**. This is the one transition the migration cannot avoid, because the value is unusable either way — and it is **irreversible**: step 3 strips the key from the blob, and `downgrade`'s upsert is gated on a non-`NULL` workspace value, so `'999'` is never written back.
+
+The pre-flight query must therefore list these workspaces too, not only the divergent ones.
 
 A note on widths: the accepted pattern is `^\d{17,19}$`, not `{17,20}`. `bigint` — what `discord_channel.guild_id` was, and what `downgrade` casts back to — tops out at `9223372036854775807`, 19 digits. Permitting 20 would admit a value the rollback path cannot represent. 19 digits already covers real snowflakes past 2080.
 

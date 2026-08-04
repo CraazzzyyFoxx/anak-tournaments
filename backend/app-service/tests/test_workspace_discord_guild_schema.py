@@ -44,8 +44,8 @@ def test_explicit_none_clears_it():
 
 
 def test_read_carries_the_field_defaulting_to_none():
-    # The same pin every other WorkspaceRead field carries (see
-    # test_workspace_timezone_schema.py and test_workspace_branding_schema.py).
+    # The same pin the other deliberately-exposed WorkspaceRead fields carry (see
+    # test_workspace_timezone_schema.py:30 and test_workspace_branding_schema.py:98).
     # It looks tautological, but exposing this field on a PUBLIC read model is a
     # deliberate design decision, and nothing else in the suite fails if it
     # silently disappears -- the admin page would just render a blank guild.
