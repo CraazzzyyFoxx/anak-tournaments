@@ -244,14 +244,13 @@ function ProviderEditor({
           (isBoosty ? (
             <div className="space-y-3 pt-1">
               <div className="space-y-1">
-                <p className="text-xs text-muted-foreground">
+                <p className={`text-xs ${guildMissing ? "font-medium text-destructive" : "text-muted-foreground"}`}>
                   {discordGuildId
                     ? t("guild.current", { guildId: discordGuildId })
-                    : t("guild.unset")}
+                    : guildMissing
+                      ? t("guild.missing")
+                      : t("guild.unset")}
                 </p>
-                {guildMissing && (
-                  <p className="text-xs font-medium text-destructive">{t("guild.missing")}</p>
-                )}
                 <p className="max-w-prose text-xs text-muted-foreground">{t("guild.hint")}</p>
               </div>
 

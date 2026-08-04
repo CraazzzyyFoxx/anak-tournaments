@@ -416,8 +416,15 @@ export default function WorkspaceEditPage({ params }: { params: Promise<{ id: st
             inputMode="numeric"
             autoComplete="off"
             placeholder="123456789012345678"
+            maxLength={19}
             onChange={(e) => patch({ discord_guild_id: e.target.value.replace(/\D/g, "") || null })}
           />
+          {form.discord_guild_id && !/^\d{17,19}$/.test(form.discord_guild_id) ? (
+            <p className="mt-1 text-xs font-medium text-destructive">
+              A Discord server ID is 17–19 digits — this one is {form.discord_guild_id.length}. Saving
+              now would fail.
+            </p>
+          ) : null}
           <p className="mt-1 max-w-prose text-xs text-muted-foreground">
             The server this workspace runs in: where Boosty&apos;s bot assigns subscriber roles and where
             match-log channels live. Enable Developer Mode in Discord, then right-click the server &rarr; Copy

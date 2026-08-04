@@ -189,11 +189,16 @@ describe("SubscriptionProvidersCard", () => {
   });
 
   it("warns when live verification is on but the workspace has no guild", async () => {
-    const container = await mount([{ ...BOOSTY_WITH_STORED_CODE, enabled: true }], {
-      discord_guild_id: null
-    });
+    const container = await mount(
+      [{ ...BOOSTY_WITH_STORED_CODE, enabled: true, role_tiers: [] }],
+      { discord_guild_id: null }
+    );
 
     expect(container.textContent).toContain(en.subscriptionProviders.guild.missing);
+    // Deliberate precedence: fix the guild first. With no guild AND no roles, only
+    // the guild warning shows — dropping `Boolean(discordGuildId)` from `rolesMissing`
+    // would surface both and leave the operator guessing which to act on.
+    expect(container.textContent).not.toContain("without a role mapping");
   });
 
   it("renders one editor per provider the server offers", async () => {
