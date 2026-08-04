@@ -109,3 +109,17 @@ class PlayerWithMatchStats(PlayerRead):
 
 class TeamWithMatchStats(TeamRead):
     players: list[PlayerWithMatchStats]
+
+
+# PlayerRead.team is a forward reference to TeamRead, which is defined below it.
+# Pydantic leaves such a model's serializer as a MockValSer placeholder and only
+# tries to materialise it lazily on first use — and that lazy path fails with
+# "'MockValSer' object cannot be converted to 'SchemaSerializer'" when the first
+# use is a model_dump() reached through a cached/nested value rather than through
+# validation. Rebuilding at import time makes it deterministic. Subclasses
+# (PlayerWithMatchStats/TeamWithMatchStats) inherit the incomplete core schema,
+# so they need it too.
+PlayerRead.model_rebuild()
+TeamRead.model_rebuild()
+PlayerWithMatchStats.model_rebuild()
+TeamWithMatchStats.model_rebuild()

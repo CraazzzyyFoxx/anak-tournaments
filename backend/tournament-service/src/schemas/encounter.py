@@ -261,3 +261,9 @@ class MatchSearchQueryParams(pagination.PaginationSortSearchQueryParams):
     tournament_id: int | None = None
     home_team_id: int | None = None
     away_team_id: int | None = None
+
+
+# EncounterRead.matches forward-references MatchRead, defined below it; see the
+# note at the tail of schemas/team.py for why the lazy rebuild is not enough.
+EncounterRead.model_rebuild()
+MatchRead.model_rebuild()
