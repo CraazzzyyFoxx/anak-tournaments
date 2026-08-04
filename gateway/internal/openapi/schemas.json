@@ -15994,8 +15994,7 @@
         "discord_guild_id": {
           "anyOf": [
             {
-              "maxLength": 32,
-              "pattern": "^\\d{17,20}$",
+              "pattern": "^\\d{17,19}$",
               "type": "string"
             },
             {

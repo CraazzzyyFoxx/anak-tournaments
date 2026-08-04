@@ -41,3 +41,13 @@ def test_omitting_the_field_writes_nothing():
 def test_explicit_none_clears_it():
     model = schemas.WorkspaceUpdate(discord_guild_id=None)
     assert model.model_dump(exclude_unset=True) == {"discord_guild_id": None}
+
+
+def test_read_carries_the_field_defaulting_to_none():
+    # The same pin every other WorkspaceRead field carries (see
+    # test_workspace_timezone_schema.py and test_workspace_branding_schema.py).
+    # It looks tautological, but exposing this field on a PUBLIC read model is a
+    # deliberate design decision, and nothing else in the suite fails if it
+    # silently disappears -- the admin page would just render a blank guild.
+    assert "discord_guild_id" in schemas.WorkspaceRead.model_fields
+    assert schemas.WorkspaceRead.model_fields["discord_guild_id"].default is None

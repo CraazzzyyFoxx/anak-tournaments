@@ -15,7 +15,9 @@ _HEX_COLOR = r"^#[0-9a-fA-F]{6}$"
 # used to live in was BigInteger, which tops out at 19 digits -- so 20 was never
 # storable, and permitting it would let through a value the migration's downgrade
 # cannot cast back. Kept as a string end to end because it exceeds 2**53 and a float
-# round-trip would corrupt it.
+# round-trip would corrupt it. No `max_length` accompanies this pattern: it caps the
+# value at 19 characters already, so the `String(32)` column width could never bind,
+# and shipping both into the public schema would advertise contradictory bounds.
 _DISCORD_SNOWFLAKE = r"^\d{17,19}$"
 
 __all__ = (
@@ -96,7 +98,7 @@ class WorkspaceUpdate(BaseModel):
     subdomain: str | None = None
     seo_title: str | None = None
     seo_description: str | None = None
-    discord_guild_id: str | None = Field(default=None, max_length=32, pattern=_DISCORD_SNOWFLAKE)
+    discord_guild_id: str | None = Field(default=None, pattern=_DISCORD_SNOWFLAKE)
     default_division_grid_version_id: int | None = None
 
     @field_validator(

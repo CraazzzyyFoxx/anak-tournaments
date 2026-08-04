@@ -36,8 +36,11 @@ not ``jsonb``. The ``-``/``||``/``?`` operators exist only on ``jsonb``, hence t
 comes back as ``BigInteger NOT NULL``, and rows with no resolvable guild get ``0`` --
 precisely as meaningful as the value was before, since nothing read it. The cast is
 bounded by shape *and* magnitude (``<= 9223372036854775807``): a 19-digit value can
-still overflow ``bigint``, and that would abort the revision after ``add_column`` had
-already run, leaving it half-applied. The guild itself is preserved into a ``boosty``
+still overflow ``bigint``, which would abort the rollback. It would NOT leave a
+half-applied schema -- ``env.py`` wraps ``run_migrations`` in one transaction and
+PostgreSQL has transactional DDL, so an abort takes ``add_column`` with it and the
+database is left exactly as it was. The rollback still would not complete, which is
+reason enough to bound the cast. The guild itself is preserved into a ``boosty``
 ``provider_config`` row so a later re-upgrade recovers it -- inserted
 ``enabled = false`` so a rollback never starts enforcing something that was not
 enforcing, and on conflict updating only ``config_json`` so an existing row keeps its
@@ -118,8 +121,18 @@ def downgrade() -> None:
           from tournament.tournament t
           join workspace w on w.id = t.workspace_id
          where t.id = dc.tournament_id
-           and w.discord_guild_id ~ '^[0-9]{1,19}$'
-           and w.discord_guild_id::numeric <= 9223372036854775807
+           -- CASE, not two conjuncts: PostgreSQL leaves subexpression evaluation
+           -- order undefined and the planner may reorder WHERE clauses, so the
+           -- regex is not guaranteed to run before the cast it guards. Written as
+           -- `regex and ::numeric <= …` a non-digit value could raise
+           -- `invalid input syntax for type numeric` and abort the very rollback
+           -- the guard exists to protect. No supported writer can produce such a
+           -- value today -- this survives one arriving out of band.
+           and case
+                 when w.discord_guild_id ~ '^[0-9]{1,19}$'
+                 then w.discord_guild_id::numeric <= 9223372036854775807
+                 else false
+               end
         """
     )
     op.alter_column("discord_channel", "guild_id", server_default=None, schema="log_processing")
