@@ -212,6 +212,27 @@ DOCS: dict[str, dict] = {
             "409 when there is no recorded result. Requires match-update permission on the encounter's workspace."
         ),
     },
+    "rpc.tournament.admin_matches_list": {
+        "summary": "List parsed matches",
+        "description": (
+            "Every played map the log parser produced, across the workspace. One row is one map, "
+            "not one encounter. `log_record` is the ingestion record the map was parsed from and is "
+            "null when provenance is unresolved \u2014 the normal state for matches that predate the "
+            "ingestion table, not an error. Filter with `tournament_id`, `encounter_id`, `map_id`, "
+            "`log_status`, `unlinked_only` and a free-text `query` over log name, match code and team "
+            "names. An empty `log_status` filters nothing, so unlinked matches stay visible. "
+            "Requires `match.read` on the workspace named by `workspace_id`."
+        ),
+    },
+    "rpc.tournament.admin_match_get": {
+        "summary": "Get a parsed match",
+        "description": (
+            "One parsed map with the aggregates the list omits: the round count and how many "
+            "statistics, kill-feed and event rows were written for it. Returns 404 both for an "
+            "unknown match and for one outside the workspace named by `workspace_id`, so it cannot "
+            "be used to probe for ids in another workspace. Requires `match.read`."
+        ),
+    },
     "rpc.tournament.admin_encounter_reports_list": {
         "summary": "List captain reports",
         "description": (

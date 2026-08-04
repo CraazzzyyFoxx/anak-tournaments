@@ -25,6 +25,11 @@ var AdminMiscRoutes = []edge.RouteSpec{
 	// pattern must never shadow a more specific literal under it.
 	{Method: "GET", Pattern: "/api/v1/admin/encounter-reports/stats", Queue: "rpc.tournament.admin_encounter_reports_stats", AllQuery: true, Auth: edge.AuthRequired},
 	{Method: "GET", Pattern: "/api/v1/admin/encounter-reports", Queue: "rpc.tournament.admin_encounter_reports_list", AllQuery: true, Auth: edge.AuthRequired},
+	// parsed matches — one row per played map, workspace-scoped (?workspace_id=).
+	// The literal collection is registered before the {match_id} pattern so a
+	// bare /matches can never be swallowed as an id.
+	{Method: "GET", Pattern: "/api/v1/admin/matches", Queue: "rpc.tournament.admin_matches_list", AllQuery: true, Auth: edge.AuthRequired},
+	{Method: "GET", Pattern: "/api/v1/admin/matches/{match_id}", Queue: "rpc.tournament.admin_match_get", IDParam: "match_id", AllQuery: true, Auth: edge.AuthRequired},
 	// map veto (docs/plans/map-veto-redesign.md) — config CRUD keyed by tournament
 	// (upsert key = tournament/stage/round in the body) plus per-encounter session
 	// reset and admin-forced actions. Worker enforces workspace "match"/"update".

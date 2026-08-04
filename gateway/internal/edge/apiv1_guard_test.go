@@ -134,9 +134,9 @@ func TestApiV1Guard_NoConflictAndNoLoop(t *testing.T) {
 
 // A new /api/v1/admin/... path is only reachable if it is in a table main.go
 // registers — otherwise the /api/v1/ guard answers 404 and the feature is dead
-// on arrival with no compile error to warn anyone. These two ride the existing
+// on arrival with no compile error to warn anyone. These ride the existing
 // AdminMiscRoutes table, and this pins that they actually made it onto the mux.
-func TestApiV1Guard_EncounterReportsRoutesAreRegistered(t *testing.T) {
+func TestApiV1Guard_MatchSurfaceRoutesAreRegistered(t *testing.T) {
 	mux := buildGuardedMux(t)
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
@@ -144,6 +144,10 @@ func TestApiV1Guard_EncounterReportsRoutesAreRegistered(t *testing.T) {
 	for _, path := range []string{
 		"/api/v1/admin/encounter-reports?workspace_id=1",
 		"/api/v1/admin/encounter-reports/stats?workspace_id=1",
+		"/api/v1/admin/matches?workspace_id=1",
+		// The collection must not swallow this as an id, nor the id pattern
+		// shadow the collection.
+		"/api/v1/admin/matches/42?workspace_id=1",
 	} {
 		t.Run(path, func(t *testing.T) {
 			resp, err := http.Get(srv.URL + path)

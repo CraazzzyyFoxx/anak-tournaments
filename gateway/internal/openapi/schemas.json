@@ -5605,6 +5605,171 @@
       },
       "summary": "Captain report counters"
     },
+    "rpc.tournament.admin_match_get": {
+      "description": "One parsed map with the aggregates the list omits: the round count and how many statistics, kill-feed and event rows were written for it. Returns 404 both for an unknown match and for one outside the workspace named by `workspace_id`, so it cannot be used to probe for ids in another workspace. Requires `match.read`.",
+      "response": {
+        "array": false,
+        "ref": "tournament.AdminMatchDetail"
+      },
+      "summary": "Get a parsed match"
+    },
+    "rpc.tournament.admin_matches_list": {
+      "description": "Every played map the log parser produced, across the workspace. One row is one map, not one encounter. `log_record` is the ingestion record the map was parsed from and is null when provenance is unresolved \u2014 the normal state for matches that predate the ingestion table, not an error. Filter with `tournament_id`, `encounter_id`, `map_id`, `log_status`, `unlinked_only` and a free-text `query` over log name, match code and team names. An empty `log_status` filters nothing, so unlinked matches stay visible. Requires `match.read` on the workspace named by `workspace_id`.",
+      "query_params": [
+        {
+          "name": "page",
+          "required": false,
+          "schema": {
+            "default": 1,
+            "minimum": 1,
+            "title": "Page",
+            "type": "integer"
+          }
+        },
+        {
+          "name": "per_page",
+          "required": false,
+          "schema": {
+            "default": 10,
+            "maximum": 100,
+            "minimum": -1,
+            "title": "Per Page",
+            "type": "integer"
+          }
+        },
+        {
+          "name": "entities",
+          "required": false,
+          "schema": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Entities",
+            "type": "array"
+          }
+        },
+        {
+          "name": "only_count",
+          "required": false,
+          "schema": {
+            "default": false,
+            "title": "Only Count",
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "sort",
+          "required": false,
+          "schema": {
+            "default": "id",
+            "title": "Sort",
+            "type": "string"
+          }
+        },
+        {
+          "name": "order",
+          "required": false,
+          "schema": {
+            "$ref": "#/components/schemas/tournament.SortOrder",
+            "default": "asc"
+          }
+        },
+        {
+          "name": "query",
+          "required": false,
+          "schema": {
+            "default": "",
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        {
+          "name": "fields",
+          "required": false,
+          "schema": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Fields",
+            "type": "array"
+          }
+        },
+        {
+          "name": "tournament_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Tournament Id"
+          }
+        },
+        {
+          "name": "encounter_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Encounter Id"
+          }
+        },
+        {
+          "name": "map_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Map Id"
+          }
+        },
+        {
+          "name": "log_status",
+          "required": false,
+          "schema": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/tournament.LogProcessingStatus"
+            },
+            "title": "Log Status",
+            "type": "array"
+          }
+        },
+        {
+          "name": "unlinked_only",
+          "required": false,
+          "schema": {
+            "default": false,
+            "title": "Unlinked Only",
+            "type": "boolean"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "tournament.Paginated_AdminMatchRow_"
+      },
+      "summary": "List parsed matches"
+    },
     "rpc.tournament.admin_veto_act": {
       "description": "Performs a ban or pick on behalf of the given side (admin override of the captain flow) and returns the updated pool entry; requires match-update permission on its workspace.",
       "summary": "Veto for a side"
@@ -23815,6 +23980,330 @@
       "title": "TournamentStatus",
       "type": "string"
     },
+    "tournament.AdminMatchDetail": {
+      "description": "A single match with the per-match aggregates the list omits.\n\nNFR 3: ``matches.statistics`` / ``kill_feed`` / ``assists`` are the hot,\nhigh-volume tables. Counting them per row would put three aggregate scans\nbehind every page of the list, so they live here \u2014 one row at a time.",
+      "properties": {
+        "away_score": {
+          "title": "Away Score",
+          "type": "integer"
+        },
+        "away_team": {
+          "$ref": "#/components/schemas/tournament.EncounterTeamRef"
+        },
+        "code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Code"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "encounter_id": {
+          "title": "Encounter Id",
+          "type": "integer"
+        },
+        "encounter_name": {
+          "title": "Encounter Name",
+          "type": "string"
+        },
+        "event_count": {
+          "title": "Event Count",
+          "type": "integer"
+        },
+        "home_score": {
+          "title": "Home Score",
+          "type": "integer"
+        },
+        "home_team": {
+          "$ref": "#/components/schemas/tournament.EncounterTeamRef"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "kill_feed_count": {
+          "title": "Kill Feed Count",
+          "type": "integer"
+        },
+        "log_name": {
+          "title": "Log Name",
+          "type": "string"
+        },
+        "log_record": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/tournament.LogRecordRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "map_id": {
+          "title": "Map Id",
+          "type": "integer"
+        },
+        "map_name": {
+          "title": "Map Name",
+          "type": "string"
+        },
+        "rounds": {
+          "title": "Rounds",
+          "type": "integer"
+        },
+        "statistics_count": {
+          "title": "Statistics Count",
+          "type": "integer"
+        },
+        "time": {
+          "title": "Time",
+          "type": "number"
+        },
+        "tournament_id": {
+          "title": "Tournament Id",
+          "type": "integer"
+        },
+        "tournament_name": {
+          "title": "Tournament Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "encounter_id",
+        "encounter_name",
+        "tournament_id",
+        "tournament_name",
+        "map_id",
+        "map_name",
+        "home_team",
+        "away_team",
+        "home_score",
+        "away_score",
+        "time",
+        "log_name",
+        "code",
+        "created_at",
+        "log_record",
+        "rounds",
+        "statistics_count",
+        "kill_feed_count",
+        "event_count"
+      ],
+      "title": "AdminMatchDetail",
+      "type": "object"
+    },
+    "tournament.AdminMatchRow": {
+      "description": "One parsed match \u2014 a single played map \u2014 as the log parser produced it.\n\nOnly ``log_record`` is optional. Everything else hangs off a NOT NULL foreign\nkey, so a row that cannot name its encounter, tournament, map or either team\nis a broken invariant and should surface as one rather than as empty cells.",
+      "properties": {
+        "away_score": {
+          "title": "Away Score",
+          "type": "integer"
+        },
+        "away_team": {
+          "$ref": "#/components/schemas/tournament.EncounterTeamRef"
+        },
+        "code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Code"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "encounter_id": {
+          "title": "Encounter Id",
+          "type": "integer"
+        },
+        "encounter_name": {
+          "title": "Encounter Name",
+          "type": "string"
+        },
+        "home_score": {
+          "title": "Home Score",
+          "type": "integer"
+        },
+        "home_team": {
+          "$ref": "#/components/schemas/tournament.EncounterTeamRef"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "log_name": {
+          "title": "Log Name",
+          "type": "string"
+        },
+        "log_record": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/tournament.LogRecordRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "map_id": {
+          "title": "Map Id",
+          "type": "integer"
+        },
+        "map_name": {
+          "title": "Map Name",
+          "type": "string"
+        },
+        "time": {
+          "title": "Time",
+          "type": "number"
+        },
+        "tournament_id": {
+          "title": "Tournament Id",
+          "type": "integer"
+        },
+        "tournament_name": {
+          "title": "Tournament Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "encounter_id",
+        "encounter_name",
+        "tournament_id",
+        "tournament_name",
+        "map_id",
+        "map_name",
+        "home_team",
+        "away_team",
+        "home_score",
+        "away_score",
+        "time",
+        "log_name",
+        "code",
+        "created_at",
+        "log_record"
+      ],
+      "title": "AdminMatchRow",
+      "type": "object"
+    },
+    "tournament.AdminMatchesQueryParams": {
+      "description": "Wire shape of the list's query string.",
+      "properties": {
+        "encounter_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Encounter Id"
+        },
+        "entities": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Entities",
+          "type": "array"
+        },
+        "fields": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Fields",
+          "type": "array"
+        },
+        "log_status": {
+          "default": [],
+          "items": {
+            "$ref": "#/components/schemas/tournament.LogProcessingStatus"
+          },
+          "title": "Log Status",
+          "type": "array"
+        },
+        "map_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Map Id"
+        },
+        "only_count": {
+          "default": false,
+          "title": "Only Count",
+          "type": "boolean"
+        },
+        "order": {
+          "$ref": "#/components/schemas/tournament.SortOrder",
+          "default": "asc"
+        },
+        "page": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Page",
+          "type": "integer"
+        },
+        "per_page": {
+          "default": 10,
+          "maximum": 100,
+          "minimum": -1,
+          "title": "Per Page",
+          "type": "integer"
+        },
+        "query": {
+          "default": "",
+          "title": "Query",
+          "type": "string"
+        },
+        "sort": {
+          "default": "id",
+          "title": "Sort",
+          "type": "string"
+        },
+        "tournament_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tournament Id"
+        },
+        "unlinked_only": {
+          "default": false,
+          "title": "Unlinked Only",
+          "type": "boolean"
+        }
+      },
+      "title": "AdminMatchesQueryParams",
+      "type": "object"
+    },
     "tournament.BalancerGoogleSheetFeedRead": {
       "properties": {
         "auto_sync_enabled": {
@@ -30325,6 +30814,134 @@
       "title": "LeaguePlayerStack",
       "type": "object"
     },
+    "tournament.LogProcessingSource": {
+      "enum": [
+        "upload",
+        "discord",
+        "manual"
+      ],
+      "title": "LogProcessingSource",
+      "type": "string"
+    },
+    "tournament.LogProcessingStatus": {
+      "enum": [
+        "pending",
+        "processing",
+        "done",
+        "failed"
+      ],
+      "title": "LogProcessingStatus",
+      "type": "string"
+    },
+    "tournament.LogRecordRef": {
+      "description": "The ingestion record a match was parsed from.\n\nEvery field but the identity is nullable because a record is a *live*\ningestion state, not a finished document: ``started_at`` is unset until the\nworker picks it up, ``finished_at`` until it stops, and ``error_message``\nonly ever fills in on failure.",
+      "properties": {
+        "attempts": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Attempts"
+        },
+        "created_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Created At"
+        },
+        "error_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error Message"
+        },
+        "filename": {
+          "title": "Filename",
+          "type": "string"
+        },
+        "finished_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Finished At"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/tournament.LogProcessingSource"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Started At"
+        },
+        "status": {
+          "$ref": "#/components/schemas/tournament.LogProcessingStatus"
+        },
+        "uploader_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Uploader Id"
+        }
+      },
+      "required": [
+        "id",
+        "filename",
+        "status",
+        "source",
+        "uploader_id",
+        "attempts",
+        "error_message",
+        "created_at",
+        "started_at",
+        "finished_at"
+      ],
+      "title": "LogRecordRef",
+      "type": "object"
+    },
     "tournament.LogStatsName": {
       "enum": [
         "eliminations",
@@ -31148,6 +31765,37 @@
         "standings"
       ],
       "title": "OwalStandings",
+      "type": "object"
+    },
+    "tournament.Paginated_AdminMatchRow_": {
+      "properties": {
+        "page": {
+          "title": "Page",
+          "type": "integer"
+        },
+        "per_page": {
+          "title": "Per Page",
+          "type": "integer"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.AdminMatchRow"
+          },
+          "title": "Results",
+          "type": "array"
+        },
+        "total": {
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "page",
+        "per_page",
+        "total",
+        "results"
+      ],
+      "title": "Paginated[AdminMatchRow]",
       "type": "object"
     },
     "tournament.Paginated_EncounterRead_": {

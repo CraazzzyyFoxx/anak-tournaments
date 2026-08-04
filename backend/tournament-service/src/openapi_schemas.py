@@ -18,6 +18,7 @@ from src.schemas import registration as reg_schemas
 from src.schemas.admin import balancer as admin_balancer
 from src.schemas.admin import encounter as admin_encounter
 from src.schemas.admin import encounter_reports as admin_reports
+from src.schemas.admin import matches as admin_matches
 from src.schemas.admin import player_sub_role as admin_player_sub_role
 from src.schemas.admin import stage as admin_stage
 from src.schemas.admin import standing as admin_standing
@@ -277,4 +278,10 @@ OPERATIONS: dict[str, Op] = {
         response=admin_reports.EncounterReportsStats,
         query=admin_reports.EncounterReportsQueryParams,
     ),
+    # ── parsed matches (one row per played map) ────────────────────────────
+    "rpc.tournament.admin_matches_list": Op(
+        response=Paginated[admin_matches.AdminMatchRow],
+        query=admin_matches.AdminMatchesQueryParams,
+    ),
+    "rpc.tournament.admin_match_get": Op(response=admin_matches.AdminMatchDetail),
 }
