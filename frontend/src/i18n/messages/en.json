@@ -3655,7 +3655,7 @@
   },
   "subscriptionProviders": {
     "title": "Subscription Providers Setup",
-    "description": "Raw ids for now — paste the Discord guild and role ids by hand (enable Developer Mode in Discord, then right-click → Copy ID). Boosty's own bot assigns those roles, so the mapping is what turns a role into a subscription tier.",
+    "description": "Raw ids for now — paste the role ids by hand (enable Developer Mode in Discord, then right-click → Copy ID). Boosty's own bot assigns those roles, so the mapping is what turns a role into a subscription tier.",
     "loading": "Loading…",
     "save": "Save",
     "saved": "{provider} configuration saved",
@@ -3690,8 +3690,10 @@
       }
     },
     "guild": {
-      "label": "Discord guild id",
-      "hint": "The server where Boosty's bot assigns subscriber roles. Our bot must also be a member of it."
+      "current": "Discord guild: {guildId}",
+      "unset": "No Discord guild is set for this workspace.",
+      "missing": "Live verification needs a Discord guild. Set it in workspace settings.",
+      "hint": "Set once per workspace, in workspace settings. Boosty's bot assigns subscriber roles in that server; our bot must also be a member of it."
     },
     "roles": {
       "label": "Role → tier",

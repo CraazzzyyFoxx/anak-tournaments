@@ -104,6 +104,7 @@ export default function SubscriptionProvidersCard({ workspaceId }: SubscriptionP
             key={`${config.provider}:${JSON.stringify(config)}`}
             workspaceId={workspaceId}
             config={config}
+            discordGuildId={data.discord_guild_id ?? null}
             onSaved={() => queryClient.invalidateQueries({ queryKey })}
           />
         ))}
@@ -115,10 +116,12 @@ export default function SubscriptionProvidersCard({ workspaceId }: SubscriptionP
 function ProviderEditor({
   workspaceId,
   config,
+  discordGuildId,
   onSaved,
 }: {
   workspaceId: number;
   config: SubscriptionProviderConfigRead;
+  discordGuildId: string | null;
   onSaved: () => void;
 }) {
   const t = useTranslations("subscriptionProviders");
@@ -126,7 +129,6 @@ function ProviderEditor({
   const isBoosty = config.provider === "boosty";
 
   const [enabled, setEnabled] = useState(config.enabled);
-  const [guildId, setGuildId] = useState(config.guild_id ?? "");
   const [broadcasterId, setBroadcasterId] = useState(config.broadcaster_id ?? "");
   const [broadcasterLogin, setBroadcasterLogin] = useState(config.broadcaster_login ?? "");
   const [roleTiers, setRoleTiers] = useState<SubscriptionRoleTier[]>(config.role_tiers);
@@ -151,7 +153,7 @@ function ProviderEditor({
         provider: config.provider,
         enabled,
         verification_method: method,
-        ...(acceptsLive && isBoosty ? { guild_id: guildId.trim(), role_tiers: roleTiers } : {}),
+        ...(acceptsLive && isBoosty ? { role_tiers: roleTiers } : {}),
         ...(acceptsLive && !isBoosty
           ? { broadcaster_id: broadcasterId.trim(), broadcaster_login: broadcasterLogin.trim() }
           : {}),
@@ -172,7 +174,11 @@ function ProviderEditor({
     roleTiers.filter((tier) => tier.role_id.trim()).length;
 
   const rolesMissing =
-    acceptsLive && isBoosty && enabled && guildId.trim() && roleTiers.length === 0;
+    acceptsLive && isBoosty && enabled && Boolean(discordGuildId) && roleTiers.length === 0;
+
+  // Live Boosty verification without a guild resolves `unknown`, and `unknown`
+  // fails open -- so the gate silently admits everybody. Say so on the screen.
+  const guildMissing = acceptsLive && isBoosty && enabled && !discordGuildId;
 
   const codesMissing =
     method === "code" && enabled && config.codes.length === 0 && newCodes.length === 0;
@@ -238,18 +244,14 @@ function ProviderEditor({
           (isBoosty ? (
             <div className="space-y-3 pt-1">
               <div className="space-y-1">
-                <Label htmlFor={`guild-${config.provider}`} className="text-xs font-medium">
-                  {t("guild.label")}
-                </Label>
-                <Input
-                  id={`guild-${config.provider}`}
-                  value={guildId}
-                  onChange={(event) => setGuildId(event.target.value)}
-                  placeholder="1234567890123456789"
-                  inputMode="numeric"
-                  autoComplete="off"
-                  className="h-8 font-mono"
-                />
+                <p className="text-xs text-muted-foreground">
+                  {discordGuildId
+                    ? t("guild.current", { guildId: discordGuildId })
+                    : t("guild.unset")}
+                </p>
+                {guildMissing && (
+                  <p className="text-xs font-medium text-destructive">{t("guild.missing")}</p>
+                )}
                 <p className="max-w-prose text-xs text-muted-foreground">{t("guild.hint")}</p>
               </div>
 
