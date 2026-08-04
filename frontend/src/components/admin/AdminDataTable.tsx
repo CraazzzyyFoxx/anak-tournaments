@@ -53,6 +53,13 @@ export interface AdminDataTableProps<TData> {
   initialPageSize?: number;
   pageSizeOptions?: number[];
 
+  /**
+   * Opaque identity of filters the caller owns (chips, scope selects) rather
+   * than this table. Changing it resets to page 1: narrowing a filter while on
+   * page 4 otherwise lands on a page the new result set does not have.
+   */
+  filterKey?: string;
+
   onRowClick?: (row: Row<TData>) => void;
   onRowDoubleClick?: (row: Row<TData>) => void;
   actions?: React.ReactNode;
@@ -69,6 +76,7 @@ export function AdminDataTable<TData>({
   actions,
   initialPageSize = 15,
   pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
+  filterKey,
 }: AdminDataTableProps<TData>) {
   const pathname = usePathname();
   const searchInputId = useId();
@@ -82,6 +90,7 @@ export function AdminDataTable<TData>({
   const sortDir: SortDir = sorting[0]?.desc ? "desc" : "asc";
   const previousDebouncedSearchRef = useRef("");
   const previousPageSizeRef = useRef(initialPageSize);
+  const previousFilterKeyRef = useRef(filterKey);
   const previousSortRef = useRef<{ field: string | null; dir: SortDir }>({ field: null, dir: "asc" });
   const previousUrlStateRef = useRef({ page: 1, search: "", pageSize: initialPageSize, sortField: null as string | null, sortDir: "asc" as SortDir });
   const rowClickTimeoutRef = useRef<number | null>(null);
@@ -106,6 +115,13 @@ export function AdminDataTable<TData>({
       setCurrentPage(1);
     }
   }, [pageSize]);
+
+  useEffect(() => {
+    if (previousFilterKeyRef.current !== filterKey) {
+      previousFilterKeyRef.current = filterKey;
+      setCurrentPage(1);
+    }
+  }, [filterKey]);
 
   useEffect(() => {
     const prev = previousSortRef.current;

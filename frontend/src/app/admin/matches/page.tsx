@@ -19,7 +19,7 @@ export default function AdminMatchesPage() {
     <div className="space-y-4">
       <AdminPageHeader
         title="Parsed matches"
-        description="Every played map the log parser produced, and the upload each came from"
+        description="Every played map across every tournament in the workspace"
       />
       <ParsedMatchesBrowser tournamentId={null} workspaceId={workspaceId} />
     </div>

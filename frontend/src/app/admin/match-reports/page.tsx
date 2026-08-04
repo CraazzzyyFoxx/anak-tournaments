@@ -20,7 +20,7 @@ export default function MatchReportsPage() {
     <div className="space-y-4">
       <AdminPageHeader
         title="Match reports"
-        description="Captain-submitted results across the workspace, and the disputes between them"
+        description="Captain-submitted results across every tournament in the workspace"
       />
       <EncounterReportsBrowser
         tournamentId={null}

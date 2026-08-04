@@ -6,9 +6,15 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url))
-    }
+    },
+    dedupe: ["react", "react-dom"]
   },
   test: {
+    // Externalized deps are loaded by Node and resolve their own CJS `react`,
+    // whose hook dispatcher react-dom never sets. `@tanstack/react-table` calls
+    // hooks, so every `useReactTable` render threw "Invalid hook call" until it
+    // was inlined through Vite alongside the app code.
+    server: { deps: { inline: ["@tanstack/react-table"] } },
     environment: "node",
     include: [
       "src/app/**/tournaments/**/draft/**/*.test.ts",
