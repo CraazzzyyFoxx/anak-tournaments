@@ -53,6 +53,10 @@ export interface SubscriptionProviderVerdict {
   /** Why a verdict is `unknown`; drives the call to action (link Discord vs
    *  reconnect Twitch). Never carries internal evidence like guild/role ids. */
   reason?: string | null;
+  /** Whether pasting a code can help HERE. Not inferable from `reason`: under the
+   *  permissive method an unlinked patron reads `no_linked_discord_account` and a
+   *  code would satisfy them too, so the server has to say so explicitly. */
+  code_accepted?: boolean;
 }
 
 /** One `{provider, min_tier_rank}` row of the tournament's requirement. */
@@ -79,6 +83,13 @@ export interface SubscriptionStatus {
   rule?: string | null;
   verdicts: Record<string, SubscriptionProviderVerdict>;
 }
+
+/** Which mechanism may prove a subscription.
+ *
+ *  `live` is provider-agnostic on purpose: it means the provider's own signal —
+ *  Discord roles for Boosty, the Helix subscriptions endpoint for Twitch. Naming it
+ *  after either would be a lie for the other. */
+export type VerificationMethod = "live" | "code" | "any";
 
 /** One `discord role -> tier` mapping. `role_id` is a string: a Discord snowflake
  *  exceeds 2**53 and must never round-trip through a float. */
@@ -114,6 +125,7 @@ export interface SubscriptionProviderConfigRead {
   broadcaster_id?: string | null;
   broadcaster_login?: string | null;
   codes: SubscriptionCodeRead[];
+  verification_method: VerificationMethod;
 }
 
 export interface SubscriptionProviderConfigListResponse {
@@ -130,6 +142,7 @@ export interface SubscriptionProviderConfigUpsert {
   broadcaster_id?: string;
   broadcaster_login?: string;
   codes?: SubscriptionCodeUpsert[];
+  verification_method?: VerificationMethod;
 }
 
 export interface RegistrationForm {

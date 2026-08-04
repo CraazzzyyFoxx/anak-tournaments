@@ -78,10 +78,7 @@ async function click(el: HTMLElement) {
 
 async function type(input: HTMLInputElement, value: string) {
   await act(async () => {
-    const setter = Object.getOwnPropertyDescriptor(
-      HTMLInputElement.prototype,
-      "value"
-    )?.set;
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
     setter?.call(input, value);
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
@@ -136,9 +133,7 @@ describe("SubscriptionProvidersCard", () => {
   });
 
   it("warns that a guild with no role mapping fails open", async () => {
-    const container = await mount([
-      { ...BOOSTY_WITH_STORED_CODE, role_tiers: [], codes: [] }
-    ]);
+    const container = await mount([{ ...BOOSTY_WITH_STORED_CODE, role_tiers: [], codes: [] }]);
 
     expect(container.textContent).toContain("fails open");
   });
@@ -180,8 +175,95 @@ describe("SubscriptionProvidersCard", () => {
 
     expect(container.textContent).toContain("Boosty");
     expect(container.textContent).toContain("Twitch");
-    expect([...container.querySelectorAll("button")].filter((el) => el.textContent === "Save")).toHaveLength(
-      2
-    );
+    expect(
+      [...container.querySelectorAll("button")].filter((el) => el.textContent === "Save")
+    ).toHaveLength(2);
+  });
+});
+
+describe("verification method", () => {
+  it("defaults to either when the server sends nothing, so no mechanism is silently off", async () => {
+    const container = await mount([BOOSTY_WITH_STORED_CODE]);
+
+    await click(button(container, "Save"));
+
+    const [, body] = upsertSubscriptionProvider.mock.calls[0];
+    expect(body.verification_method).toBe("any");
+  });
+
+  it("labels the live option after the mechanism the provider actually uses", async () => {
+    const boosty = await mount([BOOSTY_WITH_STORED_CODE]);
+    expect(boosty.textContent).toContain("Discord role");
+
+    document.body.innerHTML = "";
+    const twitch = await mount([
+      { provider: "twitch", enabled: true, role_tiers: [], codes: [], verification_method: "any" }
+    ]);
+    expect(twitch.textContent).toContain("Twitch subscription");
+    expect(twitch.textContent).not.toContain("Discord role");
+  });
+
+  it("hides the code input under live-only, and the role mapping under code-only", async () => {
+    const live = await mount([{ ...BOOSTY_WITH_STORED_CODE, verification_method: "live" }]);
+    expect(live.textContent).toContain("Discord guild id");
+    expect(live.textContent).not.toContain("Challenge codes");
+
+    document.body.innerHTML = "";
+    const code = await mount([{ ...BOOSTY_WITH_STORED_CODE, verification_method: "code" }]);
+    expect(code.textContent).toContain("Challenge codes");
+    expect(code.textContent).not.toContain("Discord guild id");
+  });
+
+  it("offers challenge codes for twitch too — code-only with no input would fail open", async () => {
+    const container = await mount([
+      { provider: "twitch", enabled: true, role_tiers: [], codes: [], verification_method: "code" }
+    ]);
+    expect(container.textContent).toContain("Challenge codes");
+    expect(container.textContent).not.toContain("Broadcaster id");
+  });
+
+  it("omits the fields of a rejected mechanism instead of blanking them", async () => {
+    const container = await mount([{ ...BOOSTY_WITH_STORED_CODE, verification_method: "code" }]);
+
+    await click(button(container, "Save"));
+
+    const [, body] = upsertSubscriptionProvider.mock.calls[0];
+    expect(body.verification_method).toBe("code");
+    // Leaving them out preserves the stored guild and roles for a switch back;
+    // sending empties would destroy them on a radio click.
+    expect("guild_id" in body).toBe(false);
+    expect("role_tiers" in body).toBe(false);
+  });
+
+  it("sends the method the admin picked", async () => {
+    const container = await mount([{ ...BOOSTY_WITH_STORED_CODE, verification_method: "any" }]);
+
+    const liveRadio = [...container.querySelectorAll("input")].find(
+      (el) => (el as HTMLInputElement).value === "live"
+    ) as HTMLInputElement;
+    await click(liveRadio);
+    await click(button(container, "Save"));
+
+    const [, body] = upsertSubscriptionProvider.mock.calls[0];
+    expect(body.verification_method).toBe("live");
+  });
+
+  it("warns that code-only with no code configured fails open", async () => {
+    const container = await mount([
+      { ...BOOSTY_WITH_STORED_CODE, codes: [], verification_method: "code" }
+    ]);
+    expect(container.textContent).toContain("unsatisfiable");
+  });
+
+  it("does not warn once a code is stored", async () => {
+    const container = await mount([{ ...BOOSTY_WITH_STORED_CODE, verification_method: "code" }]);
+    expect(container.textContent).not.toContain("unsatisfiable");
+  });
+
+  it("drops the role-mapping warning under code-only, where roles are irrelevant", async () => {
+    const container = await mount([
+      { ...BOOSTY_WITH_STORED_CODE, role_tiers: [], verification_method: "code" }
+    ]);
+    expect(container.textContent).not.toContain("without a role mapping");
   });
 });

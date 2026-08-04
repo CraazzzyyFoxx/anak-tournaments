@@ -11,6 +11,9 @@ Two rules carry the weight here:
   at which tier, and until when.
 - **Omitting a field keeps what is stored.** The admin cannot see existing codes,
   so a plain save must not wipe them. Passing an explicit list replaces them.
+- **The verification method is authoritative over the cache, not just the call.**
+  Narrowing it invalidates stored entitlements whose source it no longer accepts —
+  see ``shared.subscriptions.verification`` for why that is load-bearing.
 """
 
 from __future__ import annotations
@@ -23,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
 from shared.core.social import SocialProvider
+from shared.subscriptions import parse_verification_method
 from shared.subscriptions.challenge_code import hash_code
 from src.schemas.registration import (
     ChallengeCodeRead,
@@ -57,6 +61,8 @@ def build_config_json(body: SubscriptionProviderConfigUpsert, *, existing: dict[
         config["broadcaster_id"] = body.broadcaster_id.strip()
     if body.broadcaster_login is not None:
         config["broadcaster_login"] = body.broadcaster_login.strip()
+    if body.verification_method is not None:
+        config["verification_method"] = body.verification_method
 
     if body.role_tiers is not None:
         config["role_tiers"] = [
@@ -110,6 +116,9 @@ def serialize_provider_config(row: Any) -> SubscriptionProviderConfigRead:
             )
             for entry in config.get("codes") or []
         ],
+        # Through the runtime parser, not the raw blob: a stored value the code no
+        # longer knows must read back as `any`, matching what the gate will do.
+        verification_method=parse_verification_method(config),
     )
 
 

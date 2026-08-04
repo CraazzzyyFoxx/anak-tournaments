@@ -39,7 +39,11 @@ from shared.subscriptions import (
     SubscriptionSource,
     SubscriptionState,
     SubscriptionVerdict,
+    accepts_code,
+    accepts_live,
+    accepts_source,
     evaluate_requirement,
+    parse_verification_method,
 )
 
 __all__ = (
@@ -160,15 +164,35 @@ class SubscriptionResolver:
                 continue
 
             config = configs[provider].config
+            method = parse_verification_method(config)
+
             stale: list[int] = []
             for uid in user_ids:
                 row = stored.get((uid, provider))
-                if row is not None and self._is_usable(row, force_refresh=force_refresh):
+                # A stored verdict whose source the chosen method no longer accepts
+                # is treated as ABSENT, not merely ignored: otherwise narrowing the
+                # method could never revoke a redeemed code, which is deliberately
+                # never re-polled.
+                if (
+                    row is not None
+                    and accepts_source(method, row.source)
+                    and self._is_usable(row, force_refresh=force_refresh)
+                ):
                     out[uid][provider] = row.to_verdict()
                 else:
                     stale.append(uid)
 
             if not stale:
+                continue
+
+            if not accepts_live(method):
+                # Code-only: the only admissible proof is a redeemed code, and every
+                # stale user demonstrably has none. This is a real refusal, not an
+                # outage — answering `unknown` here is exactly what used to make the
+                # gate fail open and admit everybody. Nothing is persisted: it is
+                # derived from the absence of a row, and a redemption overwrites it.
+                for uid in stale:
+                    out[uid][provider] = self._no_code_redeemed()
                 continue
 
             try:
@@ -216,6 +240,24 @@ class SubscriptionResolver:
             uid: (evaluate_requirement(requirement, verdicts.get(uid, {})), verdicts.get(uid, {})) for uid in user_ids
         }
 
+    async def accepted_code_providers(self, *, workspace_id: int, providers: Sequence[str]) -> set[str]:
+        """Providers where pasting a challenge code can currently help.
+
+        Its own query rather than a by-product of ``resolve``: only the patron's own
+        status read needs it (admins never redeem), and the alternative — widening
+        ``evaluate``'s return type — would ripple through every bulk read that has no
+        use for it.
+        """
+        wanted = list(dict.fromkeys(providers))
+        if not wanted:
+            return set()
+        configs = await self._store.load_configs(workspace_id, wanted)
+        return {
+            provider
+            for provider, row in configs.items()
+            if row.enabled and accepts_code(parse_verification_method(row.config))
+        }
+
     # ── internals ─────────────────────────────────────────────────────────────
 
     def _unusable_reason(self, provider: str, config: ProviderConfigRow | None) -> str | None:
@@ -228,6 +270,17 @@ class SubscriptionResolver:
             return "provider_not_configured"
         if not config.enabled:
             return "provider_disabled"
+
+        method = parse_verification_method(config.config)
+        if not accepts_live(method):
+            # Code-only needs no strategy at all, so a missing one is irrelevant.
+            # What IS fatal is choosing code-only and configuring no codes: the
+            # requirement becomes unsatisfiable by anyone, which is an organizer
+            # error and therefore fails open like every other one.
+            if not (config.config or {}).get("codes"):
+                return "no_codes_configured"
+            return None
+
         if provider not in self._strategies:
             return "no_strategy_for_provider"
         return None
@@ -256,4 +309,22 @@ class SubscriptionResolver:
             checked_at=now,
             expires_at=now + timedelta(seconds=self._ttl_seconds),
             evidence={"reason": reason},
+        )
+
+    def _no_code_redeemed(self) -> SubscriptionVerdict:
+        """A real refusal under code-only verification.
+
+        ``inactive``, not ``unknown``: the patron simply has not redeemed a code,
+        and there is nothing to be uncertain about. This is the branch that makes
+        code-only actually gate anything.
+        """
+        now = self._now()
+        return SubscriptionVerdict(
+            state=SubscriptionState.INACTIVE,
+            tier_rank=None,
+            tier_label=None,
+            source=SubscriptionSource.CHALLENGE_CODE,
+            checked_at=now,
+            expires_at=None,
+            evidence={"reason": "no_code_redeemed"},
         )

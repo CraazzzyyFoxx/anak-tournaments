@@ -632,7 +632,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.sub_config_upsert": {
         "summary": "Configure subscription provider",
-        "description": "Creates or updates one provider's config (Discord guild id and role→tier mapping, Twitch broadcaster, challenge codes). Plaintext codes are hashed server-side and never stored; omitting a field keeps the stored value; requires team-update permission.",
+        "description": "Creates or updates one provider's config (Discord guild id and role→tier mapping, Twitch broadcaster, challenge codes) and its verification_method: 'live' accepts only the provider's own signal, 'code' only a redeemed challenge code, 'any' either. Narrowing the method revokes stored entitlements whose source it no longer accepts. Plaintext codes are hashed server-side and never stored; omitting a field keeps the stored value; requires team-update permission.",
     },
     # ── public registration (captain / self-service) ──────────────────────
     "rpc.tournament.captain_my_role": {

@@ -48,6 +48,8 @@ class RequirementEvaluator(Protocol):
         force_refresh: bool = False,
     ) -> dict[int, tuple[Outcome, dict[str, SubscriptionVerdict]]]: ...
 
+    async def accepted_code_providers(self, *, workspace_id: int, providers: Any) -> set[str]: ...
+
 
 async def subscription_status_for_user(
     *,
@@ -75,6 +77,12 @@ async def subscription_status_for_user(
         force_refresh=False,
     )
     outcome, verdicts = outcomes[auth_user_id]
+    # Which providers will actually take a code right now. Asked for separately
+    # because `reason` cannot express it: under the permissive method an unlinked
+    # patron reads `no_linked_discord_account`, yet a code would satisfy them too.
+    code_providers = await resolver.accepted_code_providers(
+        workspace_id=form.workspace_id, providers=requirement.providers
+    )
     return SubscriptionStatusRead(
         required=True,
         mode=requirement.mode,
@@ -86,6 +94,7 @@ async def subscription_status_for_user(
                 tier_rank=verdict.tier_rank,
                 tier_label=verdict.tier_label,
                 reason=verdict.evidence.get("reason"),
+                code_accepted=provider in code_providers,
             )
             for provider, verdict in verdicts.items()
         },

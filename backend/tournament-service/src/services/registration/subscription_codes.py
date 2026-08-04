@@ -23,7 +23,13 @@ from typing import Protocol
 
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.services.subscription_entitlements import ProviderConfigRow, StoredEntitlement
-from shared.subscriptions import SubscriptionSource, SubscriptionState, SubscriptionVerdict
+from shared.subscriptions import (
+    SubscriptionSource,
+    SubscriptionState,
+    SubscriptionVerdict,
+    accepts_code,
+    parse_verification_method,
+)
 from shared.subscriptions.challenge_code import match_code, parse_code_tiers
 
 __all__ = ("redeem_challenge_code",)
@@ -32,6 +38,9 @@ __all__ = ("redeem_challenge_code",)
 # reveal whether any codes are configured, whether one expired, or how close a
 # guess was.
 _REJECTED = "Код не подошёл. Проверьте, что он скопирован из поста целиком."
+
+# Distinct on purpose: this is not a failed guess, it is the wrong mechanism.
+_CODES_NOT_ACCEPTED = "Этот турнир проверяет подписку не кодом. Привяжите аккаунт вместо ввода кода."
 
 
 class _Store(Protocol):
@@ -66,6 +75,13 @@ async def redeem_challenge_code(
     config = configs.get(provider)
     if config is None or not config.enabled:
         raise HTTPException(status_code=400, detail=_REJECTED)
+
+    # Not the guessing-oracle message: whether codes are accepted at all is a
+    # public property of the tournament (the UI does not even render the input),
+    # identical for every submitted code, so saying so plainly leaks nothing — and
+    # it beats blaming the patron's copy-paste for the organizer's choice.
+    if not accepts_code(parse_verification_method(config.config)):
+        raise HTTPException(status_code=400, detail=_CODES_NOT_ACCEPTED)
 
     tiers = parse_code_tiers(config.config)
     matched = match_code(submitted_code, tiers, now=moment) if tiers else None

@@ -41,7 +41,7 @@ from shared.services.subscription_entitlements import (  # noqa: E402
     ProviderConfigRow,
     StoredEntitlement,
 )
-from shared.subscriptions import SubscriptionSource, SubscriptionState  # noqa: E402
+from shared.subscriptions import SubscriptionSource, SubscriptionState, VerificationMethod  # noqa: E402
 from shared.subscriptions.challenge_code import hash_code  # noqa: E402
 from src.services.registration.subscription_codes import redeem_challenge_code  # noqa: E402
 
@@ -50,12 +50,11 @@ WS = 7
 USER = 42
 
 
-def _config(*codes, enabled=True):
-    return ProviderConfigRow(
-        provider="boosty",
-        enabled=enabled,
-        config={"codes": list(codes)},
-    )
+def _config(*codes, enabled=True, method=None):
+    config: dict = {"codes": list(codes)}
+    if method is not None:
+        config["verification_method"] = method
+    return ProviderConfigRow(provider="boosty", enabled=enabled, config=config)
 
 
 def _code(plain: str, tier: int, *, label: str | None = None, expires=None):
@@ -250,3 +249,45 @@ class TestNeverDowngrades(IsolatedAsyncioTestCase):
         verdict = await _redeem(store, "basic")
         assert verdict.tier_rank == 2
         assert store.upserts == []
+
+
+class TestVerificationMethodGatesRedemption(IsolatedAsyncioTestCase):
+    async def test_live_only_refuses_even_a_correct_code(self):
+        """The organizer chose account linking; a valid code is the wrong mechanism
+        and must not quietly grant a tier."""
+        store = _Store({"boosty": _config(_code("secret", 2), method=VerificationMethod.LIVE)})
+        with self.assertRaises(HTTPException) as caught:
+            await _redeem(store, "secret")
+        assert caught.exception.status_code == 400
+        assert store.upserts == []
+
+    async def test_the_refusal_says_why_instead_of_blaming_the_copy_paste(self):
+        """Whether codes are accepted is public config, identical for every
+        submitted code, so it is not an oracle — and 'check your copy-paste' would
+        send the patron hunting for a typo that does not exist."""
+        store = _Store({"boosty": _config(_code("secret", 2), method=VerificationMethod.LIVE)})
+        with self.assertRaises(HTTPException) as caught:
+            await _redeem(store, "secret")
+        assert "не кодом" in caught.exception.detail
+
+    async def test_code_only_accepts_the_code(self):
+        store = _Store({"boosty": _config(_code("secret", 2), method=VerificationMethod.CODE)})
+        verdict = await _redeem(store, "secret")
+        assert verdict.state == SubscriptionState.ACTIVE
+        assert verdict.tier_rank == 2
+
+    async def test_any_accepts_the_code(self):
+        store = _Store({"boosty": _config(_code("secret", 1), method=VerificationMethod.ANY)})
+        assert (await _redeem(store, "secret")).tier_rank == 1
+
+    async def test_a_config_without_the_field_still_accepts_codes(self):
+        """Every tournament configured before the picker existed keeps working."""
+        store = _Store({"boosty": _config(_code("secret", 1))})
+        assert (await _redeem(store, "secret")).tier_rank == 1
+
+    async def test_a_wrong_code_under_code_only_keeps_the_uniform_rejection(self):
+        """The oracle discipline still applies where a secret is actually at stake."""
+        store = _Store({"boosty": _config(_code("secret", 1), method=VerificationMethod.CODE)})
+        with self.assertRaises(HTTPException) as caught:
+            await _redeem(store, "wrong")
+        assert "не кодом" not in caught.exception.detail

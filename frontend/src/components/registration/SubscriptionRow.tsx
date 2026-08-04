@@ -46,8 +46,11 @@ export default function SubscriptionRow({
   const reason = verdict.reason ?? null;
   const showLinkDiscord = reason === "no_linked_discord_account" && Boolean(onLinkAccounts);
   const showReconnectTwitch = reason === "missing_scope" && Boolean(onLinkAccounts);
-  // A code only helps when the provider is not already satisfied.
-  const showCodeInput = Boolean(onRedeemCode) && verdict.state !== "active";
+  // Two independent reasons a code is pointless here: the provider is already
+  // satisfied, or this tournament does not verify by code at all — in which case
+  // the server answers 400 and offering the input is a trap.
+  const showCodeInput =
+    Boolean(onRedeemCode) && verdict.state !== "active" && verdict.code_accepted === true;
 
   const submit = async () => {
     if (!onRedeemCode || !code.trim()) return;
@@ -116,7 +119,10 @@ export default function SubscriptionRow({
               disabled={pending || !code.trim()}
             >
               {pending && (
-                <Loader2 className="mr-1 size-3 animate-spin motion-reduce:animate-none" aria-hidden />
+                <Loader2
+                  className="mr-1 size-3 animate-spin motion-reduce:animate-none"
+                  aria-hidden
+                />
               )}
               {t("common.subscription.codeSubmit")}
             </Button>

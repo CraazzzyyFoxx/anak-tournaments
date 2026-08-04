@@ -217,3 +217,39 @@ class TestDuplicateRoleGuard(IsolatedAsyncioTestCase):
                     {"role_id": "100", "tier_rank": 2},
                 ],
             )
+
+
+class TestVerificationMethod:
+    def test_defaults_to_any_so_existing_configs_are_unchanged(self):
+        assert serialize_provider_config(_Row(config={})).verification_method == "any"
+
+    def test_round_trips_a_stored_method(self):
+        assert serialize_provider_config(_Row(config={"verification_method": "code"})).verification_method == "code"
+
+    def test_a_stored_value_the_code_no_longer_knows_reads_back_as_any(self):
+        """It must match what the gate does at runtime, which widens rather than
+        locking a tournament out."""
+        row = _Row(config={"verification_method": "discord_role"})
+        assert serialize_provider_config(row).verification_method == "any"
+
+    def test_upsert_rejects_an_unknown_method(self):
+        """Asymmetric with the reader on purpose: a typo the admin can still fix is
+        an error, a bad stored blob is not."""
+        try:
+            SubscriptionProviderConfigUpsert(provider="boosty", verification_method="discord_role")
+        except ValueError as exc:
+            assert "verification_method" in str(exc)
+        else:
+            raise AssertionError("expected a validation error")
+
+    def test_omitting_the_method_keeps_the_stored_one(self):
+        body = SubscriptionProviderConfigUpsert(provider="boosty", guild_id="1")
+        assert build_config_json(body, existing={"verification_method": "code"})["verification_method"] == "code"
+
+    def test_an_explicit_method_replaces_the_stored_one(self):
+        body = SubscriptionProviderConfigUpsert(provider="boosty", verification_method="live")
+        assert build_config_json(body, existing={"verification_method": "code"})["verification_method"] == "live"
+
+    def test_every_known_method_is_accepted(self):
+        for method in ("live", "code", "any"):
+            assert SubscriptionProviderConfigUpsert(provider="boosty", verification_method=method)

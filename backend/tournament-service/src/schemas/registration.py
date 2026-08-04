@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from shared.subscriptions import parse_requirement
+from shared.subscriptions import VERIFICATION_METHODS, VerificationMethod, parse_requirement
 from src.schemas.division_grid import DivisionGridVersionRead
 
 # ---------------------------------------------------------------------------
@@ -205,6 +205,11 @@ class SubscriptionProviderVerdictRead(BaseModel):
     tier_rank: int | None = None
     tier_label: str | None = None
     reason: str | None = None
+    # Whether pasting a code can help HERE. Not derivable from `reason`: under the
+    # permissive method an unlinked patron reports `no_linked_discord_account`, and a
+    # code would ALSO satisfy them — so the UI cannot infer this and would either
+    # hide a working input or offer one the server is about to reject.
+    code_accepted: bool = False
 
 
 class SubscriptionStatusRead(BaseModel):
@@ -279,6 +284,7 @@ class SubscriptionProviderConfigUpsert(BaseModel):
     broadcaster_id: str | None = Field(default=None, max_length=32)
     broadcaster_login: str | None = Field(default=None, max_length=64)
     codes: list[ChallengeCodeUpsert] | None = None
+    verification_method: str | None = None
 
     @field_validator("provider")
     @classmethod
@@ -297,6 +303,19 @@ class SubscriptionProviderConfigUpsert(BaseModel):
             if row.role_id in seen:
                 raise ValueError(f"duplicate role_id {row.role_id!r}")
             seen.add(row.role_id)
+        return value
+
+    @field_validator("verification_method")
+    @classmethod
+    def _known_method(cls, value: str | None) -> str | None:
+        """Reject an unknown method on WRITE, unlike the runtime parser which widens
+        it to ``any``. Asymmetric on purpose: a typo the admin can still fix must be
+        an error, while a bad stored blob must never lock a tournament out.
+        """
+        if value is None:
+            return value
+        if value not in VERIFICATION_METHODS:
+            raise ValueError(f"verification_method must be one of {sorted(VERIFICATION_METHODS)}")
         return value
 
 
@@ -326,6 +345,7 @@ class SubscriptionProviderConfigRead(BaseModel):
     broadcaster_id: str | None = None
     broadcaster_login: str | None = None
     codes: list[ChallengeCodeRead] = Field(default_factory=list)
+    verification_method: str = VerificationMethod.ANY
 
 
 class SubscriptionProviderConfigListResponse(BaseModel):

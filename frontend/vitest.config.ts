@@ -49,7 +49,11 @@ export default defineConfig({
       "src/components/ui/infinite-scroll.test.tsx",
       "src/components/site/**/*.test.tsx",
       "src/components/ui/toggle-group.test.tsx",
-      "src/components/status/**/*.test.tsx"
+      "src/components/status/**/*.test.tsx",
+      // File-level, not a directory glob: this folder holds BOTH runners'
+      // tests. `RoleStep.behavior.test.tsx` is `.tsx` yet imports `bun:test`,
+      // so a directory glob here drags it into vitest and it fails on the import.
+      "src/components/registration/SubscriptionRow.behavior.test.tsx"
     ]
   }
 });

@@ -27,10 +27,20 @@ from shared.subscriptions.types import (
     meets_min_tier,
     normalize_twitch_tier,
 )
+from shared.subscriptions.verification import (
+    VERIFICATION_METHODS,
+    VerificationMethod,
+    accepts_code,
+    accepts_live,
+    accepts_source,
+    normalize_verification_method,
+    parse_verification_method,
+)
 
 __all__ = (
     "MODE_ALL",
     "MODE_ANY",
+    "VERIFICATION_METHODS",
     "Outcome",
     "ProviderRequirement",
     "ResolveContext",
@@ -39,8 +49,14 @@ __all__ = (
     "SubscriptionSource",
     "SubscriptionState",
     "SubscriptionVerdict",
+    "VerificationMethod",
+    "accepts_code",
+    "accepts_live",
+    "accepts_source",
     "evaluate_requirement",
     "meets_min_tier",
     "normalize_twitch_tier",
+    "normalize_verification_method",
     "parse_requirement",
+    "parse_verification_method",
 )
