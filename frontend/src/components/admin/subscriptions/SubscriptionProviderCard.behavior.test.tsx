@@ -1,9 +1,11 @@
 // @vitest-environment happy-dom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import en from "@/i18n/messages/en.json";
 import SubscriptionProvidersCard from "./SubscriptionProviderCard";
 
 declare global {
@@ -41,9 +43,11 @@ async function mount(configs: unknown[]) {
   const root = createRoot(container);
   await act(async () => {
     root.render(
-      <QueryClientProvider client={client}>
-        <SubscriptionProvidersCard workspaceId={7} />
-      </QueryClientProvider>
+      <NextIntlClientProvider locale="en" messages={en}>
+        <QueryClientProvider client={client}>
+          <SubscriptionProvidersCard workspaceId={7} />
+        </QueryClientProvider>
+      </NextIntlClientProvider>
     );
   });
   // React Query resolves through the real task queue, not just microtasks, so a

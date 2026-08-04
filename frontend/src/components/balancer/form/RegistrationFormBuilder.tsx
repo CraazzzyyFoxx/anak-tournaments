@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useEffect, useId, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -10,6 +10,14 @@ import { useTranslations } from "next-intl";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle
+} from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -57,6 +65,7 @@ export default function RegistrationFormBuilder({
   basePath: string;
 }>) {
   const t = useTranslations("registrationFormAdmin.page");
+  const scopeSelectId = useId();
 
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
@@ -286,8 +295,11 @@ export default function RegistrationFormBuilder({
   // Avoid flashing default toggles while the saved form is still loading.
   if (formQuery.isLoading) {
     return (
-      <div className="flex flex-1 items-center justify-center py-16 text-sm text-muted-foreground">
-        <Loader2 className="mr-2 size-4 animate-spin" />
+      <div
+        role="status"
+        className="flex flex-1 items-center justify-center py-16 text-sm text-muted-foreground"
+      >
+        <Loader2 className="mr-2 size-4 animate-spin motion-reduce:animate-none" aria-hidden />
         {t("loading")}
       </div>
     );
@@ -305,11 +317,11 @@ export default function RegistrationFormBuilder({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
-            <p className="text-sm text-muted-foreground">{t("description")}</p>
+            <p className="max-w-prose text-sm text-muted-foreground">{t("description")}</p>
           </div>
           <Button variant="outline" asChild className={MUTED_BUTTON_CLASS}>
             <Link href={registrationsHref}>
-              <ArrowLeft className="mr-2 h-4 w-4" />
+              <ArrowLeft className="mr-2 h-4 w-4" aria-hidden />
               {t("backToRegistrations")}
             </Link>
           </Button>
@@ -338,87 +350,109 @@ export default function RegistrationFormBuilder({
                 }}
               />
 
-              <div className="space-y-3 rounded-lg border p-4">
-                <div className="font-medium">{t("admission.title")}</div>
-                <label className="flex cursor-pointer items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={requireOpenProfile}
-                    onCheckedChange={(checked) => {
-                      setRequireOpenProfile(checked === true);
-                      setHasChanges(true);
-                    }}
-                  />
-                  {t("admission.requireOpenProfile")}
-                </label>
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="text-muted-foreground">{t("admission.scope")}</span>
-                  <Select
-                    value={openProfileScope}
-                    disabled={!requireOpenProfile}
-                    onValueChange={(value) => {
-                      setOpenProfileScope(value as "main" | "all");
-                      setHasChanges(true);
-                    }}
-                  >
-                    <SelectTrigger
-                      className="h-8 w-[230px] text-sm"
-                      aria-label={t("admission.scopeAria")}
+              {/* Every section on this tab is a Card with the rule stated in its
+                  description, so the explanation precedes the control it governs
+                  instead of trailing it. */}
+              <Card>
+                <CardHeader>
+                  <CardTitle asChild><h2>{t("admission.title")}</h2></CardTitle>
+                  <CardDescription className="max-w-prose">{t("admission.hint")}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <label className="flex w-fit cursor-pointer items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={requireOpenProfile}
+                      onCheckedChange={(checked) => {
+                        setRequireOpenProfile(checked === true);
+                        setHasChanges(true);
+                      }}
+                    />
+                    {t("admission.requireOpenProfile")}
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <Label htmlFor={scopeSelectId} className="text-muted-foreground">
+                      {t("admission.scope")}
+                    </Label>
+                    <Select
+                      value={openProfileScope}
+                      disabled={!requireOpenProfile}
+                      onValueChange={(value) => {
+                        setOpenProfileScope(value as "main" | "all");
+                        setHasChanges(true);
+                      }}
                     >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="main">{t("admission.scopeMain")}</SelectItem>
-                      <SelectItem value="all">{t("admission.scopeAll")}</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <p className="text-xs text-muted-foreground">{t("admission.hint")}</p>
-              </div>
-
-              <div className="space-y-3 rounded-lg border p-4">
-                <div className="font-medium">{t("subscription.title")}</div>
-                <label className="flex cursor-pointer items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={requireSubscription}
-                    onCheckedChange={(checked) => {
-                      setRequireSubscription(checked === true);
-                      setHasChanges(true);
-                    }}
-                  />
-                  {t("subscription.require")}
-                </label>
-                <SubscriptionRequirementEditor
-                  value={subscriptionRequirement}
-                  disabled={!requireSubscription}
-                  availableProviders={availableSubscriptionProviders}
-                  onChange={(next) => {
-                    setSubscriptionRequirement(next);
-                    setHasChanges(true);
-                  }}
-                />
-                <p className="text-xs text-muted-foreground">{t("subscription.hint")}</p>
-
-                {workspaceId && (
-                  <div className="pt-2">
-                    <SubscriptionProvidersCard workspaceId={workspaceId} />
+                      <SelectTrigger
+                        id={scopeSelectId}
+                        // Sized from content, not a pixel width: the Russian option
+                        // labels are longer and a fixed 230px clipped them.
+                        className="h-8 w-fit min-w-[230px] max-w-full text-sm"
+                        aria-label={t("admission.scopeAria")}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="main">{t("admission.scopeMain")}</SelectItem>
+                        <SelectItem value="all">{t("admission.scopeAll")}</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
-                )}
-              </div>
+                </CardContent>
+              </Card>
 
-              <div className="space-y-3 rounded-lg border p-4">
-                <div className="font-medium">{t("display.title")}</div>
-                <label className="flex cursor-pointer items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={showRanks}
-                    onCheckedChange={(checked) => {
-                      setShowRanks(checked === true);
+              <Card>
+                <CardHeader>
+                  <CardTitle asChild><h2>{t("subscription.title")}</h2></CardTitle>
+                  <CardDescription className="max-w-prose">
+                    {t("subscription.hint")}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <label className="flex w-fit cursor-pointer items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={requireSubscription}
+                      onCheckedChange={(checked) => {
+                        setRequireSubscription(checked === true);
+                        setHasChanges(true);
+                      }}
+                    />
+                    {t("subscription.require")}
+                  </label>
+                  <SubscriptionRequirementEditor
+                    value={subscriptionRequirement}
+                    disabled={!requireSubscription}
+                    availableProviders={availableSubscriptionProviders}
+                    onChange={(next) => {
+                      setSubscriptionRequirement(next);
                       setHasChanges(true);
                     }}
                   />
-                  {t("display.showRanks")}
-                </label>
-                <p className="text-xs text-muted-foreground">{t("display.hint")}</p>
-              </div>
+                </CardContent>
+              </Card>
+
+              {/* Sibling, not nested: this configures workspace-wide provider
+                  credentials and saves itself, so keeping it inside the
+                  tournament's subscription rule made two Save buttons look like
+                  one decision. */}
+              {workspaceId && <SubscriptionProvidersCard workspaceId={workspaceId} />}
+
+              <Card>
+                <CardHeader>
+                  <CardTitle asChild><h2>{t("display.title")}</h2></CardTitle>
+                  <CardDescription className="max-w-prose">{t("display.hint")}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <label className="flex w-fit cursor-pointer items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={showRanks}
+                      onCheckedChange={(checked) => {
+                        setShowRanks(checked === true);
+                        setHasChanges(true);
+                      }}
+                    />
+                    {t("display.showRanks")}
+                  </label>
+                </CardContent>
+              </Card>
             </div>
           </TabsContent>
 
@@ -446,20 +480,21 @@ export default function RegistrationFormBuilder({
         </Tabs>
       </div>
 
-      <div className="flex items-center justify-end gap-3 border-t bg-background/95 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        {hasChanges ? (
-          <span className="text-xs text-muted-foreground">{t("unsavedChanges")}</span>
-        ) : null}
+      <div className="flex items-center justify-end gap-3 border-t py-3">
+        {/* Stable region, not a conditionally mounted node: a polite live region
+            only announces reliably when it is already in the tree. */}
+        <span role="status" className="text-xs text-muted-foreground">
+          {hasChanges ? t("unsavedChanges") : ""}
+        </span>
         <Button
           size="lg"
-          className="rounded-xl bg-primary text-primary-foreground hover:bg-primary/90"
           onClick={() => saveMutation.mutate()}
           disabled={saveMutation.isPending || (!hasChanges && formExists)}
         >
           {saveMutation.isPending ? (
-            <Loader2 className="mr-2 size-4 animate-spin" />
+            <Loader2 className="mr-2 size-4 animate-spin motion-reduce:animate-none" aria-hidden />
           ) : (
-            <Save className="mr-2 size-4" />
+            <Save className="mr-2 size-4" aria-hidden />
           )}
           {formExists ? t("saveChanges") : t("createForm")}
         </Button>

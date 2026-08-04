@@ -1,9 +1,11 @@
 "use client";
 
+import { useId } from "react";
 import { AlertTriangle, Plus, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { useRequirementDescription } from "@/components/admin/subscriptions/useRequirementDescription";
+import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -57,6 +59,7 @@ export default function SubscriptionRequirementEditor({
   disabled = false
 }: SubscriptionRequirementEditorProps) {
   const t = useTranslations("subscriptionRequirement");
+  const modeSelectId = useId();
   const description = useRequirementDescription(value);
   const rows = value.requirements ?? [];
   const mode = value.mode ?? "all";
@@ -82,14 +85,21 @@ export default function SubscriptionRequirementEditor({
   return (
     <div className="space-y-3">
       {showModeSelector && (
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-muted-foreground">{t("matchLabel")}</span>
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <Label htmlFor={modeSelectId} className="text-muted-foreground">
+            {t("matchLabel")}
+          </Label>
           <Select
             value={mode}
             disabled={disabled}
             onValueChange={(value) => update({ mode: value as "any" | "all" })}
           >
-            <SelectTrigger className="h-8 w-[190px] text-sm" aria-label={t("modeAria")}>
+            <SelectTrigger
+              id={modeSelectId}
+              // Content-sized: the translated mode labels overflow a fixed width.
+              className="h-8 w-fit min-w-[190px] max-w-full text-sm"
+              aria-label={t("modeAria")}
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -106,13 +116,16 @@ export default function SubscriptionRequirementEditor({
         const tiers =
           TIER_OPTIONS[row.provider as keyof typeof TIER_OPTIONS] ?? GENERIC_TIER_OPTIONS;
         return (
-          <div key={`${row.provider}-${index}`} className="flex items-center gap-2">
+          <div key={`${row.provider}-${index}`} className="flex flex-wrap items-center gap-2">
             <Select
               value={row.provider}
               disabled={disabled}
               onValueChange={(value) => updateRow(index, { provider: value })}
             >
-              <SelectTrigger className="h-8 w-[140px] text-sm" aria-label={t("providerAria")}>
+              <SelectTrigger
+                className="h-8 w-fit min-w-[140px] max-w-full text-sm"
+                aria-label={t("providerAria")}
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -132,7 +145,10 @@ export default function SubscriptionRequirementEditor({
               disabled={disabled}
               onValueChange={(value) => updateRow(index, { min_tier_rank: Number(value) })}
             >
-              <SelectTrigger className="h-8 w-[170px] text-sm" aria-label={t("minTierAria")}>
+              <SelectTrigger
+                className="h-8 w-fit min-w-[170px] max-w-full text-sm"
+                aria-label={t("minTierAria")}
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -153,7 +169,7 @@ export default function SubscriptionRequirementEditor({
                 provider: PROVIDER_LABELS[row.provider] ?? row.provider
               })}
             >
-              <Trash2 className="size-3.5" />
+              <Trash2 className="size-3.5" aria-hidden />
             </Button>
           </div>
         );
@@ -169,7 +185,7 @@ export default function SubscriptionRequirementEditor({
             update({ requirements: [...rows, { provider: remaining[0], min_tier_rank: 1 }] })
           }
         >
-          <Plus className="mr-1.5 size-3.5" />
+          <Plus className="mr-1.5 size-3.5" aria-hidden />
           {t("addProvider")}
         </Button>
       )}
@@ -177,7 +193,7 @@ export default function SubscriptionRequirementEditor({
       {unavailable.length > 0 && (
         <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 p-2.5">
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden />
-          <p className="text-xs text-warning">
+          <p className="max-w-prose text-xs text-warning">
             {t.rich("unconfiguredWarning", {
               count: unavailable.length,
               providers: unavailable.map((p) => PROVIDER_LABELS[p] ?? p).join(", "),
@@ -188,7 +204,7 @@ export default function SubscriptionRequirementEditor({
       )}
 
       {rows.length > 0 && (
-        <p className="text-xs text-muted-foreground">
+        <p className="max-w-prose text-xs text-muted-foreground">
           {t.rich("summary", {
             rule: description,
             hl: (chunks) => <span className="font-medium">{chunks}</span>

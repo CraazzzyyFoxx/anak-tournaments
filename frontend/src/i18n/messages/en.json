@@ -3531,8 +3531,8 @@
       "title": "Custom Fields",
       "description": "Add extra fields like Boosty nick, VK link, YouTube, etc.",
       "addField": "Add field",
-      "emptyTitle": "No custom fields yet.",
-      "emptyHint": "Click \"Add field\" to create fields like Boosty, VK, YouTube, etc.",
+      "emptyTitle": "No custom fields yet",
+      "emptyHint": "Custom fields collect extra details from players, such as a Boosty nickname or a VK link.",
       "label": "Label",
       "labelPlaceholder": "e.g. Boosty nick",
       "type": "Type",
@@ -3651,6 +3651,77 @@
       "clauseAnyTier": "{provider}",
       "and": " and ",
       "or": " or "
+    }
+  },
+  "subscriptionProviders": {
+    "title": "Subscription Providers Setup",
+    "description": "Raw ids for now — paste the Discord guild and role ids by hand (enable Developer Mode in Discord, then right-click → Copy ID). Boosty's own bot assigns those roles, so the mapping is what turns a role into a subscription tier.",
+    "loading": "Loading…",
+    "save": "Save",
+    "saved": "{provider} configuration saved",
+    "saveFailed": "Failed to save {provider}",
+    "status": {
+      "active": "Active",
+      "disabled": "Disabled"
+    },
+    "methodsLegend": "How a subscription is proven",
+    "methods": {
+      "live": {
+        "boosty": {
+          "label": "Discord role",
+          "description": "Boosty's own bot assigns a role per level; we read the patron's roles in your server. Needs a linked Discord account."
+        },
+        "twitch": {
+          "label": "Twitch subscription",
+          "description": "Read directly from Twitch. Affiliate/Partner channels only."
+        },
+        "generic": {
+          "label": "Provider signal",
+          "description": "Read from the provider directly."
+        }
+      },
+      "code": {
+        "label": "Challenge code",
+        "description": "You publish a secret in a subscriber-only post and the player pastes it. Works without Discord, but a code is shareable."
+      },
+      "any": {
+        "label": "Either",
+        "description": "Whichever the player can produce. The most permissive option."
+      }
+    },
+    "guild": {
+      "label": "Discord guild id",
+      "hint": "The server where Boosty's bot assigns subscriber roles. Our bot must also be a member of it."
+    },
+    "roles": {
+      "label": "Role → tier",
+      "add": "Add role",
+      "roleIdPlaceholder": "role id",
+      "tierRankAria": "tier rank",
+      "tierLabelPlaceholder": "Level 2",
+      "removeAria": "Remove role {role}"
+    },
+    "broadcaster": {
+      "idLabel": "Broadcaster id",
+      "loginLabel": "Broadcaster login",
+      "loginPlaceholder": "channel_name",
+      "note": "Only works for Affiliate/Partner channels — Twitch has no subscriptions API for anyone else, and a non-eligible channel resolves to <em>undetermined</em>, which fails open."
+    },
+    "codes": {
+      "label": "Challenge codes",
+      "addCode": "Add code",
+      "hint": "Publish a secret in a subscriber-only post; the player pastes it back. Rotate them per tournament — a code is shareable, so it proves access to a level, not identity.",
+      "stored": "Currently stored: {codes}. Codes are stored hashed and cannot be shown again.",
+      "tierFallback": "tier {rank}",
+      "codePlaceholder": "code from the post",
+      "tierRankAria": "tier rank",
+      "removeAria": "Remove code {number}",
+      "replaceWarning": "{count, plural, one {Saving replaces every stored code with the one above.} other {Saving replaces every stored code with the # above.}}"
+    },
+    "warnings": {
+      "duplicateRole": "Two tiers on the same role id. The server rejects this — the resulting verdict would depend on ordering.",
+      "rolesMissing": "A guild without a role mapping resolves to <em>undetermined</em>, which fails open — the gate will not enforce anything.",
+      "codesMissing": "Code-only with no code configured is unsatisfiable, so it resolves to <em>undetermined</em> and fails open — nobody is checked, and nobody is blocked."
     }
   }
 }

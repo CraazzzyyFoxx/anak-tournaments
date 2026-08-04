@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import { useTranslations } from "next-intl";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,27 +19,35 @@ export function RegistrationStatusCard({
   onChangeAutoApprove: (value: boolean) => void;
 }) {
   const t = useTranslations("registrationFormAdmin.status");
-
+  const idPrefix = useId();
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{t("title")}</CardTitle>
+        <CardTitle asChild><h2>{t("title")}</h2></CardTitle>
         <CardDescription>{t("description")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="flex items-center justify-between rounded-lg border p-4">
+        <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
           <div className="space-y-0.5">
-            <Label className="text-sm font-medium">{t("acceptLabel")}</Label>
-            <p className="text-xs text-muted-foreground">{t("acceptHint")}</p>
+            <Label htmlFor={`${idPrefix}-accept`} className="text-sm font-medium">
+              {t("acceptLabel")}
+            </Label>
+            <p className="max-w-prose text-xs text-muted-foreground">{t("acceptHint")}</p>
           </div>
-          <Switch checked={isOpen} onCheckedChange={onChangeOpen} />
+          <Switch id={`${idPrefix}-accept`} checked={isOpen} onCheckedChange={onChangeOpen} />
         </div>
-        <div className="flex items-center justify-between rounded-lg border p-4">
+        <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
           <div className="space-y-0.5">
-            <Label className="text-sm font-medium">{t("autoApproveLabel")}</Label>
-            <p className="text-xs text-muted-foreground">{t("autoApproveHint")}</p>
+            <Label htmlFor={`${idPrefix}-auto-approve`} className="text-sm font-medium">
+              {t("autoApproveLabel")}
+            </Label>
+            <p className="max-w-prose text-xs text-muted-foreground">{t("autoApproveHint")}</p>
           </div>
-          <Switch checked={autoApprove} onCheckedChange={onChangeAutoApprove} />
+          <Switch
+            id={`${idPrefix}-auto-approve`}
+            checked={autoApprove}
+            onCheckedChange={onChangeAutoApprove}
+          />
         </div>
       </CardContent>
     </Card>

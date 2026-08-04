@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { useTranslations } from "next-intl";
 
@@ -24,12 +24,13 @@ export function BuiltInFieldsCard({
   onUpdate: (key: string, updates: Partial<BuiltInFieldConfig>) => void;
 }) {
   const t = useTranslations("registrationFormAdmin.builtInFields");
+  const idPrefix = useId();
   const [expandedFields, setExpandedFields] = useState<Record<string, boolean>>({});
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{t("title")}</CardTitle>
+        <CardTitle asChild><h2>{t("title")}</h2></CardTitle>
         <CardDescription>{t("description")}</CardDescription>
       </CardHeader>
       <CardContent>
@@ -62,24 +63,27 @@ export function BuiltInFieldsCard({
                     }}
                   />
 
-                  <div className={cn("min-w-0 flex-1", !cfg.enabled && "opacity-50")}>
+                  <div className={cn("min-w-0 flex-1", !cfg.enabled && "opacity-70")}>
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-medium">{label}</span>
                       {cfg.require_verified && cfg.enabled && (
-                        <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-400">
+                        <span className="rounded border border-success/30 bg-success/10 px-1.5 py-0.5 text-xs font-medium text-success">
                           {t("verifiedBadge")}
                         </span>
                       )}
                     </div>
-                    <p className="truncate text-xs text-muted-foreground">{description}</p>
+                    {/* `title` keeps the full description reachable once the row is
+                        narrow enough to clip it. */}
+                    <p className="truncate text-xs text-muted-foreground" title={description}>
+                      {description}
+                    </p>
                   </div>
 
                   {cfg.enabled && def.supportsRequired !== false && (
-                    <label className="flex shrink-0 cursor-pointer select-none items-center gap-1.5 text-xs text-muted-foreground">
+                    <label className="flex shrink-0 cursor-pointer select-none items-center gap-2 text-xs text-muted-foreground">
                       <Switch
                         checked={cfg.required}
                         onCheckedChange={(checked) => onUpdate(def.key, { required: checked })}
-                        className="scale-75"
                       />
                       {t("required")}
                     </label>
@@ -112,16 +116,24 @@ export function BuiltInFieldsCard({
                 {hasSettings && (
                   <Collapsible open={isExpanded}>
                     <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
-                      <div className="mt-3 space-y-3 rounded-md bg-muted/30 p-3">
+                      {/* Indented to the row's label edge (switch 44px + gap 12px) so
+                          the panel reads as belonging to that field, not the group. */}
+                      <div className="mt-3 space-y-3 rounded-md bg-muted/30 p-3 sm:ml-14">
                         {def.supportsVerified && (
                           <div className="flex items-center justify-between gap-4">
                             <div className="min-w-0">
-                              <div className="text-xs font-medium">{t("verifiedAccount")}</div>
-                              <p className="text-xs text-muted-foreground">
+                              <Label
+                                htmlFor={`${idPrefix}-${def.key}-verified`}
+                                className="text-xs"
+                              >
+                                {t("verifiedAccount")}
+                              </Label>
+                              <p className="max-w-prose text-xs text-muted-foreground">
                                 {t("verifiedAccountHelp")}
                               </p>
                             </div>
                             <Switch
+                              id={`${idPrefix}-${def.key}-verified`}
                               checked={cfg.require_verified ?? false}
                               onCheckedChange={(checked) =>
                                 onUpdate(def.key, { require_verified: checked })
@@ -133,8 +145,11 @@ export function BuiltInFieldsCard({
                         {def.supportsValidation && (
                           <div className="grid gap-3 md:grid-cols-2">
                             <div className="space-y-1">
-                              <Label className="text-xs">{t("regexPattern")}</Label>
+                              <Label htmlFor={`${idPrefix}-${def.key}-regex`} className="text-xs">
+                                {t("regexPattern")}
+                              </Label>
                               <Input
+                                id={`${idPrefix}-${def.key}-regex`}
                                 value={cfg.validation?.regex ?? ""}
                                 onChange={(e) =>
                                   onUpdate(def.key, {
@@ -145,12 +160,19 @@ export function BuiltInFieldsCard({
                                   })
                                 }
                                 placeholder={def.defaultValidation?.regex ?? "^[a-z0-9_]+$"}
-                                className="h-8 bg-background/50 text-xs"
+                                spellCheck={false}
+                                autoCapitalize="none"
+                                // A pattern is read character by character: mono keeps
+                                // brackets, escapes and quantifiers distinguishable.
+                                className="h-8 bg-background/50 font-mono"
                               />
                             </div>
                             <div className="space-y-1">
-                              <Label className="text-xs">{t("errorMessage")}</Label>
+                              <Label htmlFor={`${idPrefix}-${def.key}-error`} className="text-xs">
+                                {t("errorMessage")}
+                              </Label>
                               <Input
+                                id={`${idPrefix}-${def.key}-error`}
                                 value={cfg.validation?.error_message ?? ""}
                                 onChange={(e) =>
                                   onUpdate(def.key, {
@@ -161,7 +183,7 @@ export function BuiltInFieldsCard({
                                   })
                                 }
                                 placeholder={t("errorMessagePlaceholder", { field: label })}
-                                className="h-8 bg-background/50 text-xs"
+                                className="h-8 bg-background/50"
                               />
                             </div>
                           </div>
@@ -169,17 +191,18 @@ export function BuiltInFieldsCard({
 
                         {def.supportsMaxHeroes && (
                           <div className="max-w-[10rem] space-y-1">
-                            <Label className="text-xs">{t("maxHeroes")}</Label>
+                            <Label htmlFor={`${idPrefix}-${def.key}-max`} className="text-xs">
+                              {t("maxHeroes")}
+                            </Label>
                             <NumberInput
+                              id={`${idPrefix}-${def.key}-max`}
                               integer
                               min={1}
                               max={20}
                               value={cfg.max_heroes}
-                              onValueChange={(next) =>
-                                onUpdate(def.key, { max_heroes: next })
-                              }
+                              onValueChange={(next) => onUpdate(def.key, { max_heroes: next })}
                               placeholder="5"
-                              className="h-8 bg-background/50 text-xs"
+                              className="h-8 bg-background/50 tabular-nums"
                             />
                           </div>
                         )}

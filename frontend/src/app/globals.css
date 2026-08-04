@@ -199,7 +199,12 @@
   --popover: 215 20% 8%;
   --popover-foreground: 210 20% 95%;
   --muted: 215 16% 13%;
-  --muted-foreground: 215 12% 50%;
+  /* Secondary text carries hints, field descriptions and unit labels across the
+     admin surfaces, so it is held to the same 60 APCA floor as the tone roles
+     below. At the previous 50% lightness it measured |Lc| 32.1 on --card — dimmer
+     than the site's own dark theme — which made every hint on a settings page
+     unreadable. 71% measures |Lc| 60.4 on --card and 60.8 on --background. */
+  --muted-foreground: 215 12% 71%;
   --accent: 215 20% 16%;
   --accent-foreground: 210 20% 95%;
   --secondary: 215 24% 20%;

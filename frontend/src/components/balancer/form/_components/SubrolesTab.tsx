@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Check, ExternalLink } from "lucide-react";
+import { ArrowRight, Check } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
@@ -44,13 +44,13 @@ export function SubrolesTab({
     <Card>
       <CardHeader className="flex flex-row items-start justify-between gap-3">
         <div>
-          <CardTitle>{t("title")}</CardTitle>
+          <CardTitle asChild><h2>{t("title")}</h2></CardTitle>
           <CardDescription>{t("description")}</CardDescription>
         </div>
         <Button variant="outline" size="sm" asChild className="shrink-0">
           <Link href="/admin/sub-roles">
             {t("editCatalog")}
-            <ExternalLink className="ml-2 size-3.5" aria-hidden />
+            <ArrowRight className="ml-2 size-3.5" aria-hidden />
           </Link>
         </Button>
       </CardHeader>
@@ -67,7 +67,7 @@ export function SubrolesTab({
                   {ROLE_LABELS[role.code] ?? role.display}
                 </span>
                 {options.length > 0 && roleSelection !== undefined && (
-                  <span className="text-[11px] text-muted-foreground">
+                  <span className="text-xs tabular-nums text-muted-foreground">
                     {t("offeredCount", {
                       count: roleSelection.filter((slug) => allSlugs.includes(slug)).length,
                       total: options.length,
@@ -93,20 +93,20 @@ export function SubrolesTab({
                       aria-pressed={offered}
                       title={offered ? t("chipOffered") : t("chipHidden")}
                       className={cn(
-                        "inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
+                        "inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                         offered
                           ? "border-primary/30 bg-primary/10 text-primary"
                           : "border-border/60 text-muted-foreground hover:text-foreground"
                       )}
                     >
-                      {offered && <Check className="size-3" />}
+                      {offered && <Check className="size-3" aria-hidden />}
                       {option.label}
                     </button>
                   );
                 })}
 
                 {options.length === 0 && (
-                  <span className="text-xs italic text-muted-foreground/60">
+                  <span className="text-xs text-muted-foreground">
                     {isLoading
                       ? t("loading")
                       : t("emptyRole", { role: ROLE_LABELS[role.code] ?? role.display })}

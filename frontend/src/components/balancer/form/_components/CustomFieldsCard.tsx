@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { ChevronDown, Plus, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { AdminCustomFieldDef } from "@/types/balancer-admin.types";
 
@@ -28,60 +29,81 @@ export function CustomFieldsCard({
   onRemove: (index: number) => void;
 }) {
   const t = useTranslations("registrationFormAdmin.customFields");
+  const idPrefix = useId();
   const [expandedFields, setExpandedFields] = useState<Record<number, boolean>>({});
 
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex items-start justify-between gap-4">
           <div>
-            <CardTitle>{t("title")}</CardTitle>
-            <CardDescription>{t("description")}</CardDescription>
+            <CardTitle asChild>
+              <h2>{t("title")}</h2>
+            </CardTitle>
+            <CardDescription className="max-w-prose">{t("description")}</CardDescription>
           </div>
-          <Button variant="outline" size="sm" onClick={onAdd}>
-            <Plus className="mr-1.5 size-3.5" />
-            {t("addField")}
-          </Button>
+          {/* While the list is empty the empty state owns this action, so the
+              header does not show a second copy of the same button. */}
+          {customFields.length > 0 && (
+            <Button variant="outline" size="sm" className="shrink-0" onClick={onAdd}>
+              <Plus className="mr-1.5 size-3.5" aria-hidden />
+              {t("addField")}
+            </Button>
+          )}
         </div>
       </CardHeader>
       <CardContent>
         {customFields.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border/60 py-10 text-center">
-            <p className="text-sm text-muted-foreground">{t("emptyTitle")}</p>
-            <p className="mt-1 text-xs text-muted-foreground/60">{t("emptyHint")}</p>
+          <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border/60 px-4 py-10 text-center">
+            <p className="text-sm font-medium">{t("emptyTitle")}</p>
+            <p className="mt-1 max-w-prose text-xs text-muted-foreground">{t("emptyHint")}</p>
+            <Button variant="outline" size="sm" className="mt-4" onClick={onAdd}>
+              <Plus className="mr-1.5 size-3.5" aria-hidden />
+              {t("addField")}
+            </Button>
           </div>
         ) : (
           <div className="space-y-3">
             {customFields.map((field, index) => {
-              const hasSettings = field.type === "select" || supportsCustomFieldValidation(field.type);
+              const hasSettings =
+                field.type === "select" || supportsCustomFieldValidation(field.type);
               const isExpanded = !!expandedFields[index];
               const fieldName = field.label || t("fieldFallback");
+              const rowId = `${idPrefix}-${index}`;
 
               return (
                 <div key={field.key || index} className="rounded-lg border p-4">
-                  <div className="grid gap-3 sm:grid-cols-[1fr_140px_140px_auto]">
+                  {/* Label and placeholder both hold free text, so both flex; only
+                      the type picker has a fixed intrinsic width. */}
+                  <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_150px_minmax(0,1fr)_auto]">
                     <div className="space-y-1.5">
-                      <Label className="text-xs">{t("label")}</Label>
+                      <Label htmlFor={`${rowId}-label`} className="text-xs">
+                        {t("label")}
+                      </Label>
                       <Input
+                        id={`${rowId}-label`}
                         value={field.label}
                         onChange={(e) => onUpdate(index, { label: e.target.value })}
                         placeholder={t("labelPlaceholder")}
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="text-xs">{t("type")}</Label>
+                      <Label htmlFor={`${rowId}-type`} className="text-xs">
+                        {t("type")}
+                      </Label>
                       <Select
                         value={field.type}
                         onValueChange={(v) => {
                           const nextType = v as AdminCustomFieldDef["type"];
                           onUpdate(index, { type: nextType });
-                          const nextHasSettings = nextType === "select" || supportsCustomFieldValidation(nextType);
+                          const nextHasSettings =
+                            nextType === "select" || supportsCustomFieldValidation(nextType);
                           if (nextHasSettings) {
                             setExpandedFields((prev) => ({ ...prev, [index]: true }));
                           }
                         }}
                       >
-                        <SelectTrigger>
+                        <SelectTrigger id={`${rowId}-type`}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -94,27 +116,35 @@ export function CustomFieldsCard({
                       </Select>
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="text-xs">{t("placeholder")}</Label>
+                      <Label htmlFor={`${rowId}-placeholder`} className="text-xs">
+                        {t("placeholder")}
+                      </Label>
                       <Input
+                        id={`${rowId}-placeholder`}
                         value={field.placeholder ?? ""}
                         onChange={(e) => onUpdate(index, { placeholder: e.target.value || null })}
                         placeholder={t("placeholderHint")}
                       />
                     </div>
                     <div className="flex items-end gap-2">
-                      <div className="flex items-center gap-2 rounded-lg border px-3 py-2">
+                      <label
+                        htmlFor={`${rowId}-required`}
+                        className="flex h-9 cursor-pointer select-none items-center gap-2 rounded-lg border px-3 text-xs text-muted-foreground"
+                      >
                         <Switch
+                          id={`${rowId}-required`}
                           checked={field.required}
                           onCheckedChange={(checked) => onUpdate(index, { required: checked })}
                         />
-                        <Label className="whitespace-nowrap text-xs text-muted-foreground">{t("required")}</Label>
-                      </div>
+                        <span className="whitespace-nowrap">{t("required")}</span>
+                      </label>
                       {hasSettings && (
                         <Button
                           variant="ghost"
                           size="icon"
                           className="size-9 shrink-0 text-muted-foreground hover:text-foreground"
                           aria-label={t("settingsAria", { field: fieldName })}
+                          aria-expanded={isExpanded}
                           onClick={() =>
                             setExpandedFields((prev) => ({ ...prev, [index]: !prev[index] }))
                           }
@@ -124,17 +154,18 @@ export function CustomFieldsCard({
                               "size-4 transition-transform duration-200",
                               isExpanded && "rotate-180 text-primary"
                             )}
+                            aria-hidden
                           />
                         </Button>
                       )}
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="size-9 shrink-0 text-destructive hover:text-destructive"
+                        className="size-9 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
                         aria-label={t("removeAria", { field: fieldName })}
                         onClick={() => onRemove(index)}
                       >
-                        <Trash2 className="size-4" />
+                        <Trash2 className="size-4" aria-hidden />
                       </Button>
                     </div>
                   </div>
@@ -143,14 +174,16 @@ export function CustomFieldsCard({
                       <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
                         {field.type === "select" && (
                           <div className="mt-3 space-y-1.5">
-                            <Label className="text-xs">{t("options")}</Label>
-                            <textarea
-                              className="w-full rounded-md border bg-transparent px-3 py-2 text-sm"
+                            <Label htmlFor={`${rowId}-options`} className="text-xs">
+                              {t("options")}
+                            </Label>
+                            <Textarea
+                              id={`${rowId}-options`}
                               rows={3}
                               value={(field.options ?? []).join("\n")}
                               onChange={(e) =>
                                 onUpdate(index, {
-                                  options: e.target.value.split("\n").filter((l) => l.trim()),
+                                  options: e.target.value.split("\n").filter((l) => l.trim())
                                 })
                               }
                               placeholder={t("optionsPlaceholder")}
@@ -160,29 +193,47 @@ export function CustomFieldsCard({
                         {supportsCustomFieldValidation(field.type) && (
                           <div className="mt-3 grid gap-3 md:grid-cols-2">
                             <div className="space-y-1.5">
-                              <Label className="text-xs">{t("regex")}</Label>
+                              <Label htmlFor={`${rowId}-regex`} className="text-xs">
+                                {t("regex")}
+                              </Label>
                               <Input
+                                id={`${rowId}-regex`}
                                 value={field.validation?.regex ?? ""}
                                 onChange={(e) =>
                                   onUpdate(index, {
-                                    validation: { ...field.validation, regex: e.target.value || null },
-                                  })
-                                }
-                                placeholder={getCustomFieldDefaultValidation(field.type)?.regex ?? "^[a-z0-9_]{3,}$"}
-                              />
-                            </div>
-                            <div className="space-y-1.5">
-                              <Label className="text-xs">{t("errorMessage")}</Label>
-                              <Input
-                                value={field.validation?.error_message ?? ""}
-                                onChange={(e) =>
-                                  onUpdate(index, {
-                                    validation: { ...field.validation, error_message: e.target.value || null },
+                                    validation: {
+                                      ...field.validation,
+                                      regex: e.target.value || null
+                                    }
                                   })
                                 }
                                 placeholder={
-                                  getCustomFieldDefaultValidation(field.type)?.error_message
-                                  ?? t("errorMessagePlaceholder", { field: fieldName })
+                                  getCustomFieldDefaultValidation(field.type)?.regex ??
+                                  "^[a-z0-9_]{3,}$"
+                                }
+                                spellCheck={false}
+                                autoCapitalize="none"
+                                className="font-mono"
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label htmlFor={`${rowId}-error`} className="text-xs">
+                                {t("errorMessage")}
+                              </Label>
+                              <Input
+                                id={`${rowId}-error`}
+                                value={field.validation?.error_message ?? ""}
+                                onChange={(e) =>
+                                  onUpdate(index, {
+                                    validation: {
+                                      ...field.validation,
+                                      error_message: e.target.value || null
+                                    }
+                                  })
+                                }
+                                placeholder={
+                                  getCustomFieldDefaultValidation(field.type)?.error_message ??
+                                  t("errorMessagePlaceholder", { field: fieldName })
                                 }
                               />
                             </div>
@@ -192,7 +243,9 @@ export function CustomFieldsCard({
                     </Collapsible>
                   )}
                   {field.key && (
-                    <p className="mt-2 font-mono text-[10px] text-muted-foreground/50">{t("keyLabel", { key: field.key })}</p>
+                    <p className="mt-2 font-mono text-xs text-muted-foreground">
+                      {t("keyLabel", { key: field.key })}
+                    </p>
                   )}
                 </div>
               );
