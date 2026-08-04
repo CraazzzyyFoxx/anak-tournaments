@@ -53,7 +53,7 @@ async def start_worker() -> None:
         logs_level=config.settings.sentry_logs_level,
         enable_metrics=config.settings.sentry_enable_metrics,
         environment=config.settings.environment,
-        release=config.settings.version,
+        release=config.settings.sentry_release,
         http_proxy=config.settings.sentry_http_proxy_url,
         https_proxy=config.settings.sentry_https_proxy_url,
     )

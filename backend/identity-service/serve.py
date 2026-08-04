@@ -113,7 +113,7 @@ async def setup_worker() -> None:
         logs_level=settings.sentry_logs_level,
         enable_metrics=settings.sentry_enable_metrics,
         environment=settings.environment,
-        release=settings.version,
+        release=settings.sentry_release,
         http_proxy=settings.sentry_http_proxy_url,
         https_proxy=settings.sentry_https_proxy_url,
     )

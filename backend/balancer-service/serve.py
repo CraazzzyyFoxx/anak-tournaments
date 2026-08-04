@@ -82,7 +82,7 @@ async def setup_worker_observability() -> None:
         logs_level=config.sentry_logs_level,
         enable_metrics=config.sentry_enable_metrics,
         environment=config.environment,
-        release=config.version,
+        release=config.sentry_release,
         http_proxy=config.sentry_http_proxy_url,
         https_proxy=config.sentry_https_proxy_url,
     )

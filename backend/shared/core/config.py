@@ -37,6 +37,12 @@ class BaseServiceSettings(BaseSettings):
     # Application
     project_name: str = "Anak Service"
     version: str = "0.0.1"
+    # Build identity, injected by CI/the image build (GIT_SHA). ``version`` is a
+    # hand-maintained constant that has not moved from 0.0.1, so on its own it
+    # cannot distinguish two deploys — which made stale-image bugs (a service
+    # running ahead of / behind its migrations) indistinguishable from real
+    # defects in Sentry. See sentry_release below.
+    git_sha: str | None = None
     environment: typing.Literal["development", "production", "staging"] = "development"
     host: str = "localhost"
     port: int = 8000
@@ -171,3 +177,14 @@ class BaseServiceSettings(BaseSettings):
         if self.sentry_https_proxy:
             return self.sentry_https_proxy
         return self.sentry_http_proxy_url
+
+    @property
+    def sentry_release(self) -> str:
+        """Release identifier for Sentry events: ``<version>+<short sha>``.
+
+        Falls back to ``version`` alone when GIT_SHA is not injected (local runs),
+        so the SDK still gets a stable, non-empty release.
+        """
+        if not self.git_sha:
+            return self.version
+        return f"{self.version}+{self.git_sha[:12]}"
