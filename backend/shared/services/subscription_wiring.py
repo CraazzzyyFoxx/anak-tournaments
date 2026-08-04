@@ -16,17 +16,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.social import SocialProvider
 from shared.services.subscription_entitlements import (
+    CheckLogSink,
     EntitlementStore,
     ProviderStrategy,
     SubscriptionResolver,
 )
-from shared.services.subscription_store import SqlEntitlementStore
+from shared.services.subscription_store import SqlCheckLogSink, SqlEntitlementStore
 from shared.services.subscription_strategies import (
     BoostyDiscordStrategy,
     TwitchSubscriptionStrategy,
 )
 
-__all__ = ("build_resolver", "build_store", "build_strategies")
+__all__ = ("build_log_sink", "build_resolver", "build_store", "build_strategies")
+
+
+def build_log_sink(session: AsyncSession) -> CheckLogSink:
+    return SqlCheckLogSink(session)
 
 
 def build_store(session: AsyncSession) -> EntitlementStore:
@@ -72,4 +77,8 @@ def build_resolver(
             twitch_client_id=twitch_client_id,
             proxy=proxy,
         ),
+        # Every real resolver records history: the collector needs it for the admin
+        # tab, and the registration/check-in gates are exactly the checks an
+        # organizer later asks "why was this player refused?" about.
+        log_sink=build_log_sink(session),
     )

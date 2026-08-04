@@ -63,6 +63,23 @@ DOCS: dict[str, dict] = {
         "summary": "Re-enable disabled rank collection",
         "description": "Requeues battle tags that were auto-disabled by a transient OverFast outage (status disabled -> pending, failure counter reset), spreading them across the collection interval; optionally limited to tags that previously succeeded. Returns the re-enabled count; requires the global admin role.",
     },
+    # ── subscription collection admin ─────────────────────────────────────────
+    "rpc.parser.subscription.stats": {
+        "summary": "Subscription collection health stats",
+        "description": "Aggregated subscription-collection health: entitlement counts by state and provider, distinct-user check coverage over 24h/7d, last successful check, last-24h check-outcome mix with error rate, the number of open tournaments enforcing a subscription, and the active config; requires the global admin role.",
+    },
+    "rpc.parser.subscription.check_log": {
+        "summary": "Subscription check log",
+        "description": "Lists append-only subscription check-log entries (the collection history) filtered by state, source, provider, auth user and cursor; requires the global admin role.",
+    },
+    "rpc.parser.subscription.user_collection": {
+        "summary": "User subscription collection status",
+        "description": "Returns the current subscription entitlement per workspace and provider for one player; requires the global admin role.",
+    },
+    "rpc.parser.subscription.collect": {
+        "summary": "Trigger subscription collection",
+        "description": "Runs a live subscription re-check for one player (optionally limited to specific providers) or sweeps every open tournament that requires a subscription, and returns the number of checks performed; requires the global admin role.",
+    },
     # ── achievement calculate ─────────────────────────────────────────────────
     "rpc.parser.ach.calculate": {
         "summary": "Run achievement calculation",

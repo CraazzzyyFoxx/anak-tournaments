@@ -98,13 +98,14 @@ class _Resolver:
         self.calls: list[dict] = []
         self.code_queries: list[tuple[int, tuple[str, ...]]] = []
 
-    async def evaluate(self, *, workspace_id, auth_user_ids, requirement, force_refresh=False):
+    async def evaluate(self, *, workspace_id, auth_user_ids, requirement, force_refresh=False, source="scheduled"):
         self.calls.append(
             {
                 "workspace_id": workspace_id,
                 "auth_user_ids": list(auth_user_ids),
                 "providers": list(requirement.providers),
                 "force_refresh": force_refresh,
+                "source": source,
             }
         )
         outcome = evaluate_requirement(requirement, self._verdicts)
@@ -203,7 +204,15 @@ class TestResolverContract(IsolatedAsyncioTestCase):
         resolver = _Resolver({"boosty": ACTIVE_2})
         await _gate(_Form(require_subscription=True, blob=BOOSTY_ONLY, workspace_id=13), resolver, auth_user_id=99)
         assert resolver.calls == [
-            {"workspace_id": 13, "auth_user_ids": [99], "providers": ["boosty"], "force_refresh": True}
+            {
+                "workspace_id": 13,
+                "auth_user_ids": [99],
+                "providers": ["boosty"],
+                "force_refresh": True,
+                # Tags the check-log row, so an organizer can later tell a signup
+                # refusal apart from a background sweep or a manual re-check.
+                "source": "registration",
+            }
         ]
 
 

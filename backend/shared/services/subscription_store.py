@@ -1,4 +1,4 @@
-"""SQLAlchemy implementation of ``EntitlementStore``.
+"""SQLAlchemy implementations of the subscription persistence boundaries.
 
 Kept separate from ``subscription_entitlements`` so the resolver's decision table
 stays importable and testable without a database.
@@ -6,6 +6,10 @@ stays importable and testable without a database.
 Every read is a single statement covering all requested providers -- the resolver
 promises the DB read does not fan out per provider, which is what keeps a list
 view of hundreds of registrants cheap.
+
+Two implementations, matching the resolver's two write boundaries:
+``SqlEntitlementStore`` (current state, destructive upsert) and
+``SqlCheckLogSink`` (append-only history).
 """
 
 from __future__ import annotations
@@ -18,10 +22,11 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
+from shared.core.enums import SubscriptionCollectionSource
 from shared.services.subscription_entitlements import ProviderConfigRow, StoredEntitlement
 from shared.subscriptions import SubscriptionVerdict
 
-__all__ = ("SqlEntitlementStore",)
+__all__ = ("SqlCheckLogSink", "SqlEntitlementStore")
 
 
 class SqlEntitlementStore:
@@ -128,5 +133,48 @@ class SqlEntitlementStore:
                     "evidence_json": stmt.excluded.evidence_json,
                     "updated_at": sa.func.now(),
                 },
+            )
+        )
+
+
+class SqlCheckLogSink:
+    """Appends check attempts to ``subscriptions.check_log``.
+
+    ``session.add`` only — no flush, no commit. The row lands with whatever
+    transaction the caller commits, so a rolled-back admission decision leaves no
+    misleading history behind, and a collector tick pays one INSERT per attempt
+    at its own commit boundary rather than a round trip per row.
+    """
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def log_check(
+        self,
+        *,
+        workspace_id: int,
+        auth_user_id: int,
+        provider: str,
+        state: str,
+        source: str = SubscriptionCollectionSource.scheduled,
+        verdict: SubscriptionVerdict | None = None,
+        error: str | None = None,
+    ) -> None:
+        evidence = verdict.evidence if verdict is not None else None
+        reason = evidence.get("reason") if isinstance(evidence, dict) else None
+        self._session.add(
+            models.SubscriptionCheckLog(
+                workspace_id=workspace_id,
+                auth_user_id=auth_user_id,
+                provider=provider,
+                state=str(state),
+                tier_rank=verdict.tier_rank if verdict is not None else None,
+                tier_label=verdict.tier_label if verdict is not None else None,
+                source=str(source),
+                mechanism=verdict.source if verdict is not None else None,
+                # `reason` is a String(64); provider reason vocabularies are short
+                # constants, but a future one must truncate rather than fail an INSERT.
+                reason=str(reason)[:64] if reason else None,
+                error=error[:2000] if error else None,
             )
         )

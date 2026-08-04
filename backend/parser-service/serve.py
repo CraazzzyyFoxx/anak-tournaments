@@ -69,6 +69,9 @@ from src.rpc import (
 from src.rpc import (
     rank as rpc_rank,
 )
+from src.rpc import (
+    subscription as rpc_subscription,
+)
 from src.services.achievement.engine.consumer import handle_achievement_evaluate
 from src.services.match_logs import flows as logs_flows
 from src.services.match_logs import realtime as logs_realtime
@@ -77,8 +80,8 @@ from src.services.match_logs import uploads as upload_service
 from src.services.match_logs.result_events import publish_match_log_result
 from src.services.overwatch_rank import scheduler as rank_scheduler
 from src.services.overwatch_rank import tasks as rank_tasks
-from src.services.subscription_collection import scheduler as subscription_scheduler
 from src.services.s3 import service as s3_service
+from src.services.subscription_collection import scheduler as subscription_scheduler
 
 logger = setup_logging(
     service_name="parser-svc",
@@ -140,6 +143,7 @@ rpc_achievements.register(broker, logger)
 rpc_misc.register(broker, logger)
 rpc_bootstrap.register(broker, logger)
 rpc_impact.register(broker, logger)
+rpc_subscription.register(broker, logger)
 
 
 @app.on_startup

@@ -3,11 +3,11 @@
 // generic.
 //
 // Parser-unique domains are folded into the unified /api/v1/* namespace (match-log
-// admin, OverFast rank, achievement engine + rules admin, OverFast metadata sync,
-// settings, discord-channel, bootstrap importers). The worker's RPC queues are
-// path-independent, so the external paths are clean /api/v1/* with no /api/parser
-// prefix. Un-migrated parser endpoints still proxy to parser-service on their
-// original /api/parser/* addresses.
+// admin, OverFast rank, subscription collection, achievement engine + rules admin,
+// OverFast metadata sync, settings, discord-channel, bootstrap importers). The
+// worker's RPC queues are path-independent, so the external paths are clean
+// /api/v1/* with no /api/parser prefix. Un-migrated parser endpoints still proxy
+// to parser-service on their original /api/parser/* addresses.
 package parser
 
 import "github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/edge"
@@ -35,6 +35,12 @@ var Routes = []edge.RouteSpec{
 	{Method: "GET", Pattern: "/api/v1/admin/rank/users/{id}/collection", Queue: "rpc.parser.rank.user_collection", IDParam: "id", Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/admin/rank/collect", Queue: "rpc.parser.rank.collect", Body: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/admin/rank/reenable-disabled", Queue: "rpc.parser.rank.reenable_disabled", Body: true, Auth: edge.AuthRequired},
+
+	// Subscription collection admin (src/rpc/subscription.py); admin role.
+	{Method: "GET", Pattern: "/api/v1/admin/subscriptions/stats", Queue: "rpc.parser.subscription.stats", Auth: edge.AuthRequired},
+	{Method: "GET", Pattern: "/api/v1/admin/subscriptions/check-log", Queue: "rpc.parser.subscription.check_log", AllQuery: true, Auth: edge.AuthRequired},
+	{Method: "GET", Pattern: "/api/v1/admin/subscriptions/users/{id}/collection", Queue: "rpc.parser.subscription.user_collection", IDParam: "id", Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/admin/subscriptions/collect", Queue: "rpc.parser.subscription.collect", Body: true, Auth: edge.AuthRequired},
 
 	// Achievement calculate (src/routes/achievement.py); global admin role in the handler.
 	{Method: "POST", Pattern: "/api/v1/achievement/calculate", Queue: "rpc.parser.ach.calculate", Body: true, Auth: edge.AuthRequired},

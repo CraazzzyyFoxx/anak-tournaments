@@ -64,6 +64,32 @@ class RankCollectionSource(StrEnum):
     manual = "manual"
 
 
+class SubscriptionCheckState(StrEnum):
+    """Outcome of one persisted subscription check.
+
+    The first three mirror ``shared.subscriptions.SubscriptionState`` (the
+    tri-state admission contract). ``error`` exists only in the check log: the
+    resolver deliberately answers ``unknown`` and persists nothing when a
+    provider strategy throws, so without a distinct log value an outage would be
+    indistinguishable from a misconfigured provider.
+    """
+
+    active = "active"
+    inactive = "inactive"
+    unknown = "unknown"
+    error = "error"
+
+
+class SubscriptionCollectionSource(StrEnum):
+    """What triggered a subscription check."""
+
+    scheduled = "scheduled"
+    registration = "registration"
+    check_in = "check_in"
+    manual = "manual"
+    redeem = "redeem"
+
+
 class LogEventType(StrEnum):
     MatchStart = "match_start"
     MatchEnd = "match_end"
@@ -375,6 +401,8 @@ __all__ = [
     "RankDivision",
     "RankCollectionStatus",
     "RankCollectionSource",
+    "SubscriptionCheckState",
+    "SubscriptionCollectionSource",
     "LogEventType",
     "LogStatsName",
     "StatDirection",

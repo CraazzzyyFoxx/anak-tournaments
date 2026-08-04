@@ -98,7 +98,13 @@ describe("admin administration entry and palette aliases (D10, D11)", () => {
     const admin = adminNavigationGroups.find((g) => g.title === "Administration");
     const hrefs = admin?.items.map((item) => item.href);
 
-    expect(hrefs).toEqual(["/admin/access", "/admin/users", "/admin/rank", "/admin/workspaces"]);
+    expect(hrefs).toEqual([
+      "/admin/access",
+      "/admin/users",
+      "/admin/rank",
+      "/admin/subscriptions",
+      "/admin/workspaces",
+    ]);
   });
 
   it("keeps per-tab access route gating after the single-entry collapse", () => {

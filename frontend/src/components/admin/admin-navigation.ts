@@ -1,6 +1,7 @@
 import {
   Activity,
   Award,
+  BadgeCheck,
   BarChart3,
   Building2,
   ClipboardCheck,
@@ -218,6 +219,16 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         aliases: ["settings"],
       },
       {
+        title: "Subscription collection",
+        href: "/admin/subscriptions",
+        icon: BadgeCheck,
+        description: "Boosty/Twitch subscription check health, history and per-player re-check.",
+        permissions: ["user.read"],
+        // `twitch` deliberately omitted: /admin/users already claims it, and the
+        // palette requires every alias to resolve to exactly one entry.
+        aliases: ["subscriptions", "boosty", "entitlements"],
+      },
+      {
         title: "Workspaces",
         href: "/admin/workspaces",
         icon: Building2,
@@ -255,6 +266,7 @@ export const adminRoutePermissions: Array<{
   { prefix: "/admin/standings", permissions: ["standing.read"] },
   { prefix: "/admin/users", permissions: ["user.read"] },
   { prefix: "/admin/rank", permissions: ["user.read"] },
+  { prefix: "/admin/subscriptions", permissions: ["user.read"] },
   { prefix: "/admin/heroes", permissions: [], superuserOnly: true },
   { prefix: "/admin/gamemodes", permissions: [], superuserOnly: true },
   { prefix: "/admin/maps", permissions: [], superuserOnly: true },

@@ -41,13 +41,7 @@ import type {
 
 const RANK_COLLECTION_KEY = "parser.rank_collection";
 const RANK_MAPPING_KEY = "parser.rank_mapping";
-const SUBSCRIPTION_COLLECTION_KEY = "parser.subscription_collection";
 
-const DEFAULT_SUB_COLLECTION = {
-  enabled: true,
-  interval_seconds: 1800,
-  batch_size: 50,
-};
 const DEFAULT_COLLECTION: RankCollectionConfig = {
   enabled: false,
   interval_seconds: 900,
@@ -90,10 +84,8 @@ export function RankSettingsPanel() {
         setting={settingsQuery.data?.find((s) => s.key === RANK_COLLECTION_KEY)}
         onSaved={invalidate}
       />
-      <SubscriptionCollectionSection
-        setting={settingsQuery.data?.find((s) => s.key === SUBSCRIPTION_COLLECTION_KEY)}
-        onSaved={invalidate}
-      />
+      {/* Subscription collection config moved to /admin/subscriptions, beside its
+          own health dashboard and check history. */}
       <RankMappingSection
         setting={settingsQuery.data?.find((s) => s.key === RANK_MAPPING_KEY)}
         onSaved={invalidate}
@@ -259,89 +251,6 @@ function RankCollectionSection({
               placeholder="auto"
               value={form.max_per_tick}
               onValueChange={(next) => setForm({ ...form, max_per_tick: next })}
-            />
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
-            {mutation.isPending ? "Saving…" : "Save"}
-          </Button>
-          {mutation.isSuccess && <span className="text-sm text-success">Saved</span>}
-          {mutation.isError && (
-            <span className="text-sm text-danger">Save failed — check the values and try again.</span>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function SubscriptionCollectionSection({
-  setting,
-  onSaved
-}: {
-  setting: SettingRead | undefined;
-  onSaved: () => void;
-}) {
-  const initial = useMemo(
-    () => ({ ...DEFAULT_SUB_COLLECTION, ...((setting?.value as Partial<typeof DEFAULT_SUB_COLLECTION>) ?? {}) }),
-    [setting]
-  );
-  const [form, setForm] = useState(initial);
-  const [prevInitial, setPrevInitial] = useState(initial);
-
-  if (initial !== prevInitial) {
-    setPrevInitial(initial);
-    setForm(initial);
-  }
-
-  const mutation = useMutation({
-    mutationFn: () =>
-      adminService.updateSetting(SUBSCRIPTION_COLLECTION_KEY, {
-        value: form as unknown as Record<string, unknown>
-      }),
-    onSuccess: onSaved
-  });
-
-  return (
-    <Card className="mt-4">
-      <CardHeader>
-        <CardTitle asChild>
-          <h2>Subscription collection</h2>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex items-center gap-2">
-          <Switch
-            id="sub-enabled"
-            checked={form.enabled}
-            onCheckedChange={(enabled) => setForm({ ...form, enabled })}
-          />
-          <Label htmlFor="sub-enabled">Enable background subscription auto-check</Label>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1">
-            <Label htmlFor="sub-interval">Check interval (seconds)</Label>
-            <NumberInput
-              id="sub-interval"
-              integer
-              min={60}
-              max={86400}
-              value={form.interval_seconds}
-              onValueChange={(next) => setForm({ ...form, interval_seconds: next ?? 1800 })}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="sub-batch">Batch size</Label>
-            <NumberInput
-              id="sub-batch"
-              integer
-              min={1}
-              max={500}
-              value={form.batch_size}
-              onValueChange={(next) => setForm({ ...form, batch_size: next ?? 50 })}
             />
           </div>
         </div>

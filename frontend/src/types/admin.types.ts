@@ -119,6 +119,93 @@ export interface RankCollectionStats {
   rate_limit_per_minute: number;
 }
 
+// ─── Subscription collection (parser admin) ────────────────────────────────────
+
+export interface SubscriptionStateCounts {
+  active: number;
+  inactive: number;
+  unknown: number;
+  /** Log-only: the check itself failed (provider outage), no verdict persisted. */
+  error: number;
+}
+
+export interface SubscriptionCollectionStats {
+  /** Entitlement rows tracked (workspace × user × provider). */
+  total: number;
+  tracked_users: number;
+  never_checked: number;
+  by_state: SubscriptionStateCounts;
+  by_provider: Record<string, number>;
+  coverage_24h: number;
+  coverage_7d: number;
+  last_success_at: string | null;
+  last_check_at: string | null;
+  checks_24h: SubscriptionStateCounts;
+  checks_24h_total: number;
+  error_rate_24h: number;
+  active_tournaments: number;
+  enabled: boolean;
+  interval_seconds: number;
+  batch_size: number;
+}
+
+export interface SubscriptionCheckLogRow {
+  id: number;
+  workspace_id: number | null;
+  auth_user_id: number | null;
+  /** Owning player id, resolved via auth_user_id; null when there is no profile. */
+  user_id: number | null;
+  user_name: string | null;
+  provider: string;
+  state: string;
+  tier_rank: number | null;
+  tier_label: string | null;
+  /** What triggered the check: scheduled / registration / check_in / manual / redeem. */
+  source: string;
+  /** How it was proven: discord_role / twitch_helix / challenge_code / resolver. */
+  mechanism: string | null;
+  reason: string | null;
+  error: string | null;
+  created_at: string;
+}
+
+export interface SubscriptionCheckLogQuery {
+  state?: string;
+  source?: string;
+  provider?: string;
+  user_id?: number;
+  before_id?: number;
+  limit?: number;
+}
+
+export interface SubscriptionUserCollectionRow {
+  workspace_id: number | null;
+  workspace_name: string | null;
+  provider: string;
+  state: string;
+  tier_rank: number | null;
+  tier_label: string | null;
+  source: string | null;
+  checked_at: string | null;
+  expires_at: string | null;
+  reason: string | null;
+}
+
+export interface SubscriptionCollectTriggerInput {
+  user_id?: number | null;
+  providers?: string[] | null;
+}
+
+export interface SubscriptionCollectTriggerResult {
+  checked: number;
+}
+
+export interface SubscriptionCollectionConfig {
+  enabled: boolean;
+  interval_seconds: number;
+  batch_size: number;
+}
+
 // ─── Tournament ──────────────────────────────────────────────────────────────
 
 import type {

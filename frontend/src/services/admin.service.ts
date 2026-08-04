@@ -96,6 +96,12 @@ import {
   RankFetchLogRow,
   RankFetchLogQuery,
   RankCollectionStats,
+  SubscriptionCollectionStats,
+  SubscriptionCheckLogRow,
+  SubscriptionCheckLogQuery,
+  SubscriptionUserCollectionRow,
+  SubscriptionCollectTriggerInput,
+  SubscriptionCollectTriggerResult,
   EncounterResultAuditRead,
   EncounterResultRead,
   EncounterSetResultInput,
@@ -1628,6 +1634,48 @@ class AdminService {
     const response = await apiFetch("/api/v1/admin/rank/reenable-disabled", {
       method: "POST",
       body: { only_previously_succeeded: onlyPreviouslySucceeded },
+      skipWorkspace: true
+    });
+    return response.json();
+  }
+
+  // ─── Subscription collection (superuser/admin) ─────────────────────────────
+
+  async getSubscriptionCollectionStats(): Promise<SubscriptionCollectionStats> {
+    const response = await apiFetch("/api/v1/admin/subscriptions/stats", { skipWorkspace: true });
+    return response.json();
+  }
+
+  async getSubscriptionCheckLog(
+    params: SubscriptionCheckLogQuery = {}
+  ): Promise<SubscriptionCheckLogRow[]> {
+    const response = await apiFetch("/api/v1/admin/subscriptions/check-log", {
+      query: {
+        state: params.state,
+        source: params.source,
+        provider: params.provider,
+        user_id: params.user_id,
+        before_id: params.before_id,
+        limit: params.limit ?? 50
+      },
+      skipWorkspace: true
+    });
+    return response.json();
+  }
+
+  async getSubscriptionCollectionStatus(userId: number): Promise<SubscriptionUserCollectionRow[]> {
+    const response = await apiFetch(`/api/v1/admin/subscriptions/users/${userId}/collection`, {
+      skipWorkspace: true
+    });
+    return response.json();
+  }
+
+  async triggerSubscriptionCollection(
+    data: SubscriptionCollectTriggerInput
+  ): Promise<SubscriptionCollectTriggerResult> {
+    const response = await apiFetch("/api/v1/admin/subscriptions/collect", {
+      method: "POST",
+      body: data,
       skipWorkspace: true
     });
     return response.json();

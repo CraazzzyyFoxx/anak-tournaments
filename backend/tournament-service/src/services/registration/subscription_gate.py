@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from shared.core.enums import SubscriptionCollectionSource
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.social import SocialProvider
 from shared.subscriptions import (
@@ -53,6 +54,7 @@ class RequirementEvaluator(Protocol):
         auth_user_ids: Any,
         requirement: SubscriptionRequirement,
         force_refresh: bool = False,
+        source: str = SubscriptionCollectionSource.scheduled,
     ) -> dict[int, tuple[Outcome, dict[str, SubscriptionVerdict]]]: ...
 
     async def accepted_code_providers(self, *, workspace_id: int, providers: Any) -> set[str]: ...
@@ -109,6 +111,7 @@ async def assert_subscription_allows_check_in(
         # Check-in is exactly the moment a stale `active` must not be trusted, and
         # it is one user rather than a list, so the extra provider call is cheap.
         force_refresh=True,
+        source=SubscriptionCollectionSource.check_in,
     )
     outcome, _verdicts = outcomes[auth_user_id]
     if outcome.blocks_admission:
@@ -144,6 +147,7 @@ async def assert_subscription_allows_registration(
         # A blocking decision on one user, once per tournament: worth a live look
         # rather than refusing a patron who subscribed minutes ago.
         force_refresh=True,
+        source=SubscriptionCollectionSource.registration,
     )
     outcome, verdicts = outcomes[auth_user_id]
     # Deferring can only ever weaken a refusal, so a non-blocking outcome needs no

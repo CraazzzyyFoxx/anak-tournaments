@@ -87,7 +87,7 @@ class _Resolver:
         self._verdicts = verdicts or {}
         self.calls: list[dict] = []
 
-    async def evaluate(self, *, workspace_id, auth_user_ids, requirement, force_refresh=False):
+    async def evaluate(self, *, workspace_id, auth_user_ids, requirement, force_refresh=False, source="scheduled"):
         from shared.subscriptions import evaluate_requirement
 
         self.calls.append(
@@ -96,6 +96,7 @@ class _Resolver:
                 "auth_user_ids": list(auth_user_ids),
                 "providers": list(requirement.providers),
                 "force_refresh": force_refresh,
+                "source": source,
             }
         )
         outcome = evaluate_requirement(requirement, self._verdicts)
@@ -229,6 +230,12 @@ class TestForceRefresh(IsolatedAsyncioTestCase):
         resolver = _Resolver({"boosty": ACTIVE_2})
         await _gate(_Form(require_subscription=True, blob=BOOSTY_ONLY), resolver)
         assert resolver.calls[0]["force_refresh"] is True
+
+    async def test_labels_the_check_as_check_in(self):
+        """The history row must name the trigger, not just the outcome."""
+        resolver = _Resolver({"boosty": ACTIVE_2})
+        await _gate(_Form(require_subscription=True, blob=BOOSTY_ONLY), resolver)
+        assert resolver.calls[0]["source"] == "check_in"
 
     async def test_resolves_only_the_acting_user(self):
         resolver = _Resolver({"boosty": ACTIVE_2})

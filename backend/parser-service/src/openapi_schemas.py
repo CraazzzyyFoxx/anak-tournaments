@@ -14,6 +14,7 @@ from src.schemas.admin import discord_channel as discord_schemas
 from src.schemas.admin import logs as admin_logs_schemas
 from src.schemas.admin import rank_collection as rc_schemas
 from src.schemas.admin import settings as settings_schemas
+from src.schemas.admin import subscription_collection as sc_schemas
 
 OPERATIONS: dict[str, Op] = {
     # ── match-log admin ────────────────────────────────────────────────────
@@ -71,6 +72,16 @@ OPERATIONS: dict[str, Op] = {
     "rpc.parser.rank.collect": Op(request=rc_schemas.CollectTriggerRequest, response=rc_schemas.CollectTriggerResponse),
     "rpc.parser.rank.reenable_disabled": Op(
         request=rc_schemas.ReenableDisabledRequest, response=rc_schemas.ReenableDisabledResponse
+    ),
+    # ── subscription collection admin ──────────────────────────────────────
+    "rpc.parser.subscription.stats": Op(response=sc_schemas.SubscriptionCollectionStats),
+    "rpc.parser.subscription.check_log": Op(response=sc_schemas.SubscriptionCheckLogRead, response_array=True),
+    "rpc.parser.subscription.user_collection": Op(
+        response=sc_schemas.SubscriptionUserCollectionRead, response_array=True
+    ),
+    "rpc.parser.subscription.collect": Op(
+        request=sc_schemas.SubscriptionCollectTriggerRequest,
+        response=sc_schemas.SubscriptionCollectTriggerResponse,
     ),
     # ── achievement calculate ──────────────────────────────────────────────
     "rpc.parser.ach.calculate": Op(

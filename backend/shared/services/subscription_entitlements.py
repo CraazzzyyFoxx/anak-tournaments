@@ -23,7 +23,11 @@ Two invariants worth keeping:
 
 Persistence and live provider calls are injected (``EntitlementStore``,
 ``strategies``) so the whole decision table is testable without a database or a
-network.
+network. An optional ``CheckLogSink`` appends the attempt to the collection
+history; it is a *third* boundary rather than a method on ``EntitlementStore``
+because the two have different contracts — the store holds one mutable
+current-state row per (workspace, user, provider), the sink is append-only and
+never read back by admission.
 """
 
 from __future__ import annotations
@@ -33,6 +37,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, Final, Protocol
 
+from shared.core.enums import SubscriptionCheckState, SubscriptionCollectionSource
 from shared.subscriptions import (
     Outcome,
     SubscriptionRequirement,
@@ -49,6 +54,7 @@ from shared.subscriptions.challenge_code import has_live_code
 
 __all__ = (
     "SUBSCRIPTION_TTL_SECONDS",
+    "CheckLogSink",
     "EntitlementStore",
     "ProviderConfigRow",
     "ProviderStrategy",
@@ -123,6 +129,28 @@ class ProviderStrategy(Protocol):
     ) -> dict[int, SubscriptionVerdict]: ...
 
 
+class CheckLogSink(Protocol):
+    """Append-only history boundary — one row per live provider resolution.
+
+    Separate from ``EntitlementStore`` on purpose: the store answers "what is
+    their state now?" from a single row it overwrites, this answers "what
+    happened, and when?" and is never read back by an admission decision. A
+    resolver without a sink behaves exactly as before.
+    """
+
+    async def log_check(
+        self,
+        *,
+        workspace_id: int,
+        auth_user_id: int,
+        provider: str,
+        state: str,
+        source: str,
+        verdict: SubscriptionVerdict | None = None,
+        error: str | None = None,
+    ) -> None: ...
+
+
 class SubscriptionResolver:
     def __init__(
         self,
@@ -131,11 +159,13 @@ class SubscriptionResolver:
         strategies: Mapping[str, ProviderStrategy],
         now: Callable[[], datetime] | None = None,
         ttl_seconds: int = SUBSCRIPTION_TTL_SECONDS,
+        log_sink: CheckLogSink | None = None,
     ) -> None:
         self._store = store
         self._strategies = strategies
         self._now = now or (lambda: datetime.now(UTC))
         self._ttl_seconds = ttl_seconds
+        self._log_sink = log_sink
 
     # ── raw verdicts ──────────────────────────────────────────────────────────
 
@@ -146,6 +176,7 @@ class SubscriptionResolver:
         auth_user_ids: Sequence[int],
         providers: Sequence[str],
         force_refresh: bool = False,
+        source: str = SubscriptionCollectionSource.scheduled,
     ) -> dict[int, dict[str, SubscriptionVerdict]]:
         user_ids = list(dict.fromkeys(auth_user_ids))
         wanted = list(dict.fromkeys(providers))
@@ -198,11 +229,21 @@ class SubscriptionResolver:
 
             try:
                 fresh = await self._strategies[provider].resolve_many(config=config, auth_user_ids=stale)
-            except Exception:
+            except Exception as exc:
                 # Isolate the blast radius: this provider is unknown for these
                 # users, nothing is persisted, every other provider is untouched.
+                # The history log is the one exception — an outage that leaves no
+                # trace is indistinguishable from a provider nobody configured.
                 for uid in stale:
                     out[uid][provider] = self._unknown("strategy_error")
+                    await self._log(
+                        workspace_id=workspace_id,
+                        auth_user_id=uid,
+                        provider=provider,
+                        state=SubscriptionCheckState.error,
+                        source=source,
+                        error=f"{type(exc).__name__}: {exc}",
+                    )
                 continue
 
             for uid in stale:
@@ -211,9 +252,25 @@ class SubscriptionResolver:
                     # The strategy declined to answer. Treated as unknown rather
                     # than silently omitted -- see the total-coverage invariant.
                     out[uid][provider] = self._unknown("not_resolved")
+                    await self._log(
+                        workspace_id=workspace_id,
+                        auth_user_id=uid,
+                        provider=provider,
+                        state=SubscriptionCheckState.unknown,
+                        source=source,
+                        verdict=out[uid][provider],
+                    )
                     continue
                 out[uid][provider] = verdict
                 await self._store.upsert(workspace_id, uid, provider, verdict)
+                await self._log(
+                    workspace_id=workspace_id,
+                    auth_user_id=uid,
+                    provider=provider,
+                    state=verdict.state,
+                    source=source,
+                    verdict=verdict,
+                )
 
         return out
 
@@ -226,6 +283,7 @@ class SubscriptionResolver:
         auth_user_ids: Sequence[int],
         requirement: SubscriptionRequirement,
         force_refresh: bool = False,
+        source: str = SubscriptionCollectionSource.scheduled,
     ) -> dict[int, tuple[Outcome, dict[str, SubscriptionVerdict]]]:
         user_ids = list(dict.fromkeys(auth_user_ids))
         if not requirement.requirements:
@@ -236,6 +294,7 @@ class SubscriptionResolver:
             auth_user_ids=user_ids,
             providers=requirement.providers,
             force_refresh=force_refresh,
+            source=source,
         )
         return {
             uid: (evaluate_requirement(requirement, verdicts.get(uid, {})), verdicts.get(uid, {})) for uid in user_ids
@@ -268,6 +327,37 @@ class SubscriptionResolver:
         }
 
     # ── internals ─────────────────────────────────────────────────────────────
+
+    async def _log(
+        self,
+        *,
+        workspace_id: int,
+        auth_user_id: int,
+        provider: str,
+        state: str,
+        source: str,
+        verdict: SubscriptionVerdict | None = None,
+        error: str | None = None,
+    ) -> None:
+        """Append one attempt to the collection history, if a sink is wired.
+
+        Swallows sink failures: history is diagnostics, and losing a log row must
+        never turn into a failed admission decision or an aborted collector tick.
+        """
+        if self._log_sink is None:
+            return
+        try:
+            await self._log_sink.log_check(
+                workspace_id=workspace_id,
+                auth_user_id=auth_user_id,
+                provider=provider,
+                state=state,
+                source=source,
+                verdict=verdict,
+                error=error,
+            )
+        except Exception:  # pragma: no cover - defensive; see docstring
+            pass
 
     def _unusable_reason(self, provider: str, config: ProviderConfigRow | None) -> str | None:
         """Why this provider cannot answer at all, or ``None`` if it can.
