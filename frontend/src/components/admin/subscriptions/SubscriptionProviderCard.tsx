@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Loader2, Plus, Save, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { notify } from "@/lib/notify";
@@ -186,11 +187,14 @@ function ProviderEditor({
   return (
     <div className="space-y-3 rounded-md border border-border/60 bg-muted/10 p-3">
       <div className="flex items-center justify-between gap-3">
-        <label className="flex items-center gap-2 text-sm font-medium">
-          <input
-            type="checkbox"
+        <label
+          htmlFor={`enabled-${config.provider}`}
+          className="flex items-center gap-2 text-sm font-medium"
+        >
+          <Checkbox
+            id={`enabled-${config.provider}`}
             checked={enabled}
-            onChange={(event) => setEnabled(event.target.checked)}
+            onCheckedChange={(checked) => setEnabled(checked === true)}
           />
           {label}
         </label>
