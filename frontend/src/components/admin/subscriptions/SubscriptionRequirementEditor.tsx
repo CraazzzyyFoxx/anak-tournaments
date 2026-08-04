@@ -1,7 +1,9 @@
 "use client";
 
 import { AlertTriangle, Plus, Trash2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 
+import { useRequirementDescription } from "@/components/admin/subscriptions/useRequirementDescription";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -10,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import { describeRequirement } from "@/lib/subscription-requirement";
+import { PROVIDER_LABELS } from "@/lib/subscription-requirement";
 import type {
   SubscriptionProviderRequirement,
   SubscriptionRequirement
@@ -18,27 +20,27 @@ import type {
 
 /** Tier options per provider, in that provider's OWN vocabulary.
  *
- *  A shared numeric spinner would imply Boosty "Уровень 2" and Twitch "Tier 2"
+ *  A shared numeric spinner would imply Boosty "Level 2" and Twitch "Tier 2"
  *  are comparable. They are not: each provider's threshold is evaluated only
- *  against its own verdict.
+ *  against its own verdict. Hence one message key per provider per rank rather
+ *  than one parameterised "tier {n}" — the two vocabularies must stay separate
+ *  in every locale, not merge into a shared word after translation.
  */
-const TIER_OPTIONS: Record<string, Array<{ rank: number; label: string }>> = {
+const TIER_OPTIONS = {
   boosty: [
-    { rank: 1, label: "любой уровень" },
-    { rank: 2, label: "Уровень 2+" },
-    { rank: 3, label: "Уровень 3+" }
+    { rank: 1, labelKey: "tiers.boosty.any" },
+    { rank: 2, labelKey: "tiers.boosty.level2" },
+    { rank: 3, labelKey: "tiers.boosty.level3" }
   ],
   twitch: [
-    { rank: 1, label: "Tier 1+" },
-    { rank: 2, label: "Tier 2+" },
-    { rank: 3, label: "Tier 3+" }
+    { rank: 1, labelKey: "tiers.twitch.tier1" },
+    { rank: 2, labelKey: "tiers.twitch.tier2" },
+    { rank: 3, labelKey: "tiers.twitch.tier3" }
   ]
-};
+} as const;
 
-const PROVIDER_LABELS: Record<string, string> = {
-  boosty: "Boosty",
-  twitch: "Twitch"
-};
+/** A provider we have no vocabulary for still needs one selectable row. */
+const GENERIC_TIER_OPTIONS = [{ rank: 1, labelKey: "tiers.anyTier" }] as const;
 
 interface SubscriptionRequirementEditorProps {
   value: SubscriptionRequirement;
@@ -54,6 +56,8 @@ export default function SubscriptionRequirementEditor({
   availableProviders,
   disabled = false
 }: SubscriptionRequirementEditorProps) {
+  const t = useTranslations("subscriptionRequirement");
+  const description = useRequirementDescription(value);
   const rows = value.requirements ?? [];
   const mode = value.mode ?? "all";
 
@@ -79,31 +83,28 @@ export default function SubscriptionRequirementEditor({
     <div className="space-y-3">
       {showModeSelector && (
         <div className="flex items-center gap-2 text-sm">
-          <span className="text-muted-foreground">Match</span>
+          <span className="text-muted-foreground">{t("matchLabel")}</span>
           <Select
             value={mode}
             disabled={disabled}
             onValueChange={(value) => update({ mode: value as "any" | "all" })}
           >
-            <SelectTrigger className="h-8 w-[190px] text-sm" aria-label="Requirement match mode">
+            <SelectTrigger className="h-8 w-[190px] text-sm" aria-label={t("modeAria")}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All of the below</SelectItem>
-              <SelectItem value="any">Any one of the below</SelectItem>
+              <SelectItem value="all">{t("modes.all")}</SelectItem>
+              <SelectItem value="any">{t("modes.any")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
       )}
 
-      {rows.length === 0 && (
-        <p className="text-xs text-muted-foreground">
-          No providers selected — the gate is inactive even while the toggle is on.
-        </p>
-      )}
+      {rows.length === 0 && <p className="text-xs text-muted-foreground">{t("emptyHint")}</p>}
 
       {rows.map((row, index) => {
-        const tiers = TIER_OPTIONS[row.provider] ?? [{ rank: 1, label: "any tier" }];
+        const tiers =
+          TIER_OPTIONS[row.provider as keyof typeof TIER_OPTIONS] ?? GENERIC_TIER_OPTIONS;
         return (
           <div key={`${row.provider}-${index}`} className="flex items-center gap-2">
             <Select
@@ -111,7 +112,7 @@ export default function SubscriptionRequirementEditor({
               disabled={disabled}
               onValueChange={(value) => updateRow(index, { provider: value })}
             >
-              <SelectTrigger className="h-8 w-[140px] text-sm" aria-label="Provider">
+              <SelectTrigger className="h-8 w-[140px] text-sm" aria-label={t("providerAria")}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -131,13 +132,13 @@ export default function SubscriptionRequirementEditor({
               disabled={disabled}
               onValueChange={(value) => updateRow(index, { min_tier_rank: Number(value) })}
             >
-              <SelectTrigger className="h-8 w-[170px] text-sm" aria-label="Minimum tier">
+              <SelectTrigger className="h-8 w-[170px] text-sm" aria-label={t("minTierAria")}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {tiers.map((tier) => (
                   <SelectItem key={tier.rank} value={String(tier.rank)}>
-                    {tier.label}
+                    {t(tier.labelKey)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -148,7 +149,9 @@ export default function SubscriptionRequirementEditor({
               size="sm"
               disabled={disabled}
               onClick={() => update({ requirements: rows.filter((_, i) => i !== index) })}
-              aria-label={`Remove ${PROVIDER_LABELS[row.provider] ?? row.provider}`}
+              aria-label={t("removeAria", {
+                provider: PROVIDER_LABELS[row.provider] ?? row.provider
+              })}
             >
               <Trash2 className="size-3.5" />
             </Button>
@@ -167,7 +170,7 @@ export default function SubscriptionRequirementEditor({
           }
         >
           <Plus className="mr-1.5 size-3.5" />
-          Add provider
+          {t("addProvider")}
         </Button>
       )}
 
@@ -175,16 +178,21 @@ export default function SubscriptionRequirementEditor({
         <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 p-2.5">
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden />
           <p className="text-xs text-warning">
-            {unavailable.map((p) => PROVIDER_LABELS[p] ?? p).join(", ")} is not configured for this
-            workspace. Its verdict resolves to <em>undetermined</em>, which fails open — the gate
-            silently stops enforcing that provider.
+            {t.rich("unconfiguredWarning", {
+              count: unavailable.length,
+              providers: unavailable.map((p) => PROVIDER_LABELS[p] ?? p).join(", "),
+              em: (chunks) => <em>{chunks}</em>
+            })}
           </p>
         </div>
       )}
 
       {rows.length > 0 && (
         <p className="text-xs text-muted-foreground">
-          Players must have: <span className="font-medium">{describeRequirement(value)}</span>
+          {t.rich("summary", {
+            rule: description,
+            hl: (chunks) => <span className="font-medium">{chunks}</span>
+          })}
         </p>
       )}
     </div>

@@ -22,7 +22,8 @@ import type {
  * uses, so the two implementations cannot drift.
  */
 
-const PROVIDER_LABELS: Record<string, string> = {
+/** Brand names, never translated; an unknown key renders as itself. */
+export const PROVIDER_LABELS: Record<string, string> = {
   boosty: "Boosty",
   twitch: "Twitch"
 };
@@ -75,7 +76,11 @@ export function composeOutcome(
 }
 
 /**
- * Human-readable rule, e.g. `Boosty уровень 2 или Twitch`.
+ * The rule as structure, one clause per requirement row in declaration order.
+ *
+ * Wording and the conjunction between clauses are locale-dependent and live in
+ * `useRequirementDescription`; this module stays pure so the Kleene table above
+ * can be tested without a translation runtime.
  *
  * The conjunction is load-bearing: without it an `any` requirement reads as two
  * independent failures, and a patron who satisfies one provider sees a red chip
@@ -85,19 +90,15 @@ export function composeOutcome(
  * `outcome === "refused"`, written inline at its call sites the same way the
  * neighbouring open-profile gate writes `profilesOpen === false`.
  */
-export function describeRequirement(
+export function requirementClauses(
   requirement: SubscriptionRequirement | undefined | null
-): string {
-  const rows = (requirement?.requirements ?? []).filter((row) => (row?.provider ?? "").trim());
-  if (rows.length === 0) return "";
-
-  const parts = rows.map((row) => {
-    const label = PROVIDER_LABELS[row.provider] ?? row.provider;
-    const minTier = Math.max(row.min_tier_rank ?? 1, 1);
-    // A threshold of 1 means "any paid tier"; spelling it out reads like a
-    // restriction that is not there.
-    return minTier > 1 ? `${label} уровень ${minTier}` : label;
-  });
-
-  return parts.join((requirement?.mode ?? "all") === "any" ? " или " : " и ");
+): Array<{ provider: string; minTier: number | null }> {
+  return (requirement?.requirements ?? [])
+    .filter((row) => (row?.provider ?? "").trim())
+    .map((row) => {
+      const minTier = Math.max(row.min_tier_rank ?? 1, 1);
+      // A threshold of 1 means "any paid tier"; spelling it out reads like a
+      // restriction that is not there, so it is dropped rather than rendered.
+      return { provider: row.provider, minTier: minTier > 1 ? minTier : null };
+    });
 }

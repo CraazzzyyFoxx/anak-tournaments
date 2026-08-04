@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Loader2, Save } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -54,6 +55,8 @@ export default function RegistrationFormBuilder({
   tournamentId: number | null;
   basePath: string;
 }>) {
+  const t = useTranslations("registrationFormAdmin.page");
+
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const currentWorkspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
@@ -144,7 +147,7 @@ export default function RegistrationFormBuilder({
 
   const saveMutation = useMutation({
     mutationFn: () => {
-      if (!tournamentId) throw new Error("No tournament selected");
+      if (!tournamentId) throw new Error(t("noTournamentError"));
       const payload: AdminRegistrationFormUpsert = {
         is_open: isOpen,
         auto_approve: autoApprove,
@@ -171,7 +174,7 @@ export default function RegistrationFormBuilder({
         queryKey: ["balancer-admin", "registration-form", tournamentId]
       });
       setHasChanges(false);
-      notify.success("Registration form saved");
+      notify.success(t("savedToast"));
     }
   });
 
@@ -262,10 +265,8 @@ export default function RegistrationFormBuilder({
   if (!tournamentId) {
     return (
       <Alert>
-        <AlertTitle>Select a tournament</AlertTitle>
-        <AlertDescription>
-          Choose a tournament in the sidebar before configuring the registration form.
-        </AlertDescription>
+        <AlertTitle>{t("noTournament.title")}</AlertTitle>
+        <AlertDescription>{t("noTournament.description")}</AlertDescription>
       </Alert>
     );
   }
@@ -273,9 +274,9 @@ export default function RegistrationFormBuilder({
   if (formQuery.isError) {
     return (
       <Alert variant="destructive">
-        <AlertTitle>Failed to load the registration form</AlertTitle>
+        <AlertTitle>{t("loadError.title")}</AlertTitle>
         <AlertDescription>
-          {(formQuery.error as Error)?.message ?? "Reload the page and try again."}
+          {(formQuery.error as Error)?.message ?? t("loadError.fallback")}
         </AlertDescription>
       </Alert>
     );
@@ -286,7 +287,7 @@ export default function RegistrationFormBuilder({
     return (
       <div className="flex flex-1 items-center justify-center py-16 text-sm text-muted-foreground">
         <Loader2 className="mr-2 size-4 animate-spin" />
-        Loading registration form…
+        {t("loading")}
       </div>
     );
   }
@@ -302,25 +303,23 @@ export default function RegistrationFormBuilder({
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Form Configuration</h1>
-            <p className="text-sm text-muted-foreground">
-              Configure registration form fields, admission rules, sub-roles, and custom inputs.
-            </p>
+            <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
+            <p className="text-sm text-muted-foreground">{t("description")}</p>
           </div>
           <Button variant="outline" asChild className={MUTED_BUTTON_CLASS}>
             <Link href={registrationsHref}>
               <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to registrations
+              {t("backToRegistrations")}
             </Link>
           </Button>
         </div>
 
         <Tabs defaultValue="status" className="flex min-h-0 flex-1 flex-col">
           <TabsList className="self-start">
-            <TabsTrigger value="status">Status</TabsTrigger>
-            <TabsTrigger value="fields">Fields</TabsTrigger>
-            <TabsTrigger value="subroles">Subroles</TabsTrigger>
-            <TabsTrigger value="custom">Custom Fields</TabsTrigger>
+            <TabsTrigger value="status">{t("tabs.status")}</TabsTrigger>
+            <TabsTrigger value="fields">{t("tabs.fields")}</TabsTrigger>
+            <TabsTrigger value="subroles">{t("tabs.subroles")}</TabsTrigger>
+            <TabsTrigger value="custom">{t("tabs.custom")}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="status">
@@ -339,7 +338,7 @@ export default function RegistrationFormBuilder({
               />
 
               <div className="space-y-3 rounded-lg border p-4">
-                <div className="font-medium">Admission</div>
+                <div className="font-medium">{t("admission.title")}</div>
                 <label className="flex cursor-pointer items-center gap-2 text-sm">
                   <Checkbox
                     checked={requireOpenProfile}
@@ -348,10 +347,10 @@ export default function RegistrationFormBuilder({
                       setHasChanges(true);
                     }}
                   />
-                  Require open Overwatch profile
+                  {t("admission.requireOpenProfile")}
                 </label>
                 <div className="flex items-center gap-2 text-sm">
-                  <span className="text-muted-foreground">Scope</span>
+                  <span className="text-muted-foreground">{t("admission.scope")}</span>
                   <Select
                     value={openProfileScope}
                     disabled={!requireOpenProfile}
@@ -360,23 +359,23 @@ export default function RegistrationFormBuilder({
                       setHasChanges(true);
                     }}
                   >
-                    <SelectTrigger className="h-8 w-[230px] text-sm" aria-label="Open profile scope">
+                    <SelectTrigger
+                      className="h-8 w-[230px] text-sm"
+                      aria-label={t("admission.scopeAria")}
+                    >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="main">Main account only</SelectItem>
-                      <SelectItem value="all">All accounts (incl. smurfs)</SelectItem>
+                      <SelectItem value="main">{t("admission.scopeMain")}</SelectItem>
+                      <SelectItem value="all">{t("admission.scopeAll")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  When enabled, players whose Overwatch profile is private are not admitted (blocked
-                  at check-in). Unranked players are already excluded separately.
-                </p>
+                <p className="text-xs text-muted-foreground">{t("admission.hint")}</p>
               </div>
 
               <div className="space-y-3 rounded-lg border p-4">
-                <div className="font-medium">Subscription</div>
+                <div className="font-medium">{t("subscription.title")}</div>
                 <label className="flex cursor-pointer items-center gap-2 text-sm">
                   <Checkbox
                     checked={requireSubscription}
@@ -385,7 +384,7 @@ export default function RegistrationFormBuilder({
                       setHasChanges(true);
                     }}
                   />
-                  Require an active subscription
+                  {t("subscription.require")}
                 </label>
                 <SubscriptionRequirementEditor
                   value={subscriptionRequirement}
@@ -396,15 +395,11 @@ export default function RegistrationFormBuilder({
                     setHasChanges(true);
                   }}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Checked at check-in only, never at sign-up: a provider outage during open
-                  registration must not lock anybody out. A verdict that cannot be determined
-                  (provider down, account not linked) fails open and does not block.
-                </p>
+                <p className="text-xs text-muted-foreground">{t("subscription.hint")}</p>
               </div>
 
               <div className="space-y-3 rounded-lg border p-4">
-                <div className="font-medium">Display Options</div>
+                <div className="font-medium">{t("display.title")}</div>
                 <label className="flex cursor-pointer items-center gap-2 text-sm">
                   <Checkbox
                     checked={showRanks}
@@ -413,13 +408,9 @@ export default function RegistrationFormBuilder({
                       setHasChanges(true);
                     }}
                   />
-                  Show player ranks on participants page
+                  {t("display.showRanks")}
                 </label>
-                <p className="text-xs text-muted-foreground">
-                  When enabled, player rank values will be displayed on the public participants
-                  page. When disabled, rank values are completely hidden and omitted from backend
-                  payloads.
-                </p>
+                <p className="text-xs text-muted-foreground">{t("display.hint")}</p>
               </div>
             </div>
           </TabsContent>
@@ -449,7 +440,9 @@ export default function RegistrationFormBuilder({
       </div>
 
       <div className="flex items-center justify-end gap-3 border-t bg-background/95 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        {hasChanges ? <span className="text-xs text-muted-foreground">Unsaved changes</span> : null}
+        {hasChanges ? (
+          <span className="text-xs text-muted-foreground">{t("unsavedChanges")}</span>
+        ) : null}
         <Button
           size="lg"
           className="rounded-xl bg-primary text-primary-foreground hover:bg-primary/90"
@@ -461,7 +454,7 @@ export default function RegistrationFormBuilder({
           ) : (
             <Save className="mr-2 size-4" />
           )}
-          {formExists ? "Save changes" : "Create form"}
+          {formExists ? t("saveChanges") : t("createForm")}
         </Button>
       </div>
     </div>

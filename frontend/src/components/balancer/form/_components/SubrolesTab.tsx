@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Check, ExternalLink } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,19 +38,18 @@ export function SubrolesTab({
   onToggleOffered: (role: string, slug: string, nextSlugs: string[]) => void;
   isLoading?: boolean;
 }) {
+  const t = useTranslations("registrationFormAdmin.subroles");
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-start justify-between gap-3">
         <div>
-          <CardTitle>Subroles</CardTitle>
-          <CardDescription>
-            Choose which sub-roles players can pick per role on this form. Highlighted chips are
-            offered; leave all enabled to offer every option.
-          </CardDescription>
+          <CardTitle>{t("title")}</CardTitle>
+          <CardDescription>{t("description")}</CardDescription>
         </div>
         <Button variant="outline" size="sm" asChild className="shrink-0">
           <Link href="/admin/sub-roles">
-            Edit catalog
+            {t("editCatalog")}
             <ExternalLink className="ml-2 size-3.5" aria-hidden />
           </Link>
         </Button>
@@ -68,8 +68,10 @@ export function SubrolesTab({
                 </span>
                 {options.length > 0 && roleSelection !== undefined && (
                   <span className="text-[11px] text-muted-foreground">
-                    {roleSelection.filter((slug) => allSlugs.includes(slug)).length}/{options.length}{" "}
-                    offered
+                    {t("offeredCount", {
+                      count: roleSelection.filter((slug) => allSlugs.includes(slug)).length,
+                      total: options.length,
+                    })}
                   </span>
                 )}
               </div>
@@ -89,9 +91,7 @@ export function SubrolesTab({
                         onToggleOffered(role.code, option.slug, next);
                       }}
                       aria-pressed={offered}
-                      title={
-                        offered ? "Offered on the form — click to hide" : "Hidden — click to offer"
-                      }
+                      title={offered ? t("chipOffered") : t("chipHidden")}
                       className={cn(
                         "inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
                         offered
@@ -107,14 +107,9 @@ export function SubrolesTab({
 
                 {options.length === 0 && (
                   <span className="text-xs italic text-muted-foreground/60">
-                    {isLoading ? (
-                      "Loading…"
-                    ) : (
-                      <>
-                        No {ROLE_LABELS[role.code] ?? role.display} sub-roles in this workspace yet —
-                        add them in the catalog.
-                      </>
-                    )}
+                    {isLoading
+                      ? t("loading")
+                      : t("emptyRole", { role: ROLE_LABELS[role.code] ?? role.display })}
                   </span>
                 )}
               </div>

@@ -3418,5 +3418,191 @@
         "description": "Open recent match breakdowns and results."
       }
     }
+  },
+  "registrationFormAdmin": {
+    "builtInFields": {
+      "title": "Built-in Fields",
+      "description": "Toggle which standard fields appear on the registration form. Sub-roles for the role fields are configured in the Subroles tab.",
+      "verifiedBadge": "Verified",
+      "required": "Required",
+      "settingsAria": "{field} settings",
+      "verifiedAccount": "Verified account",
+      "verifiedAccountHelp": "Require an OAuth-verified account; the registrant picks from their verified accounts.",
+      "regexPattern": "Regex pattern",
+      "errorMessage": "Error message",
+      "errorMessagePlaceholder": "Shown when {field} is invalid",
+      "maxHeroes": "Max heroes per role",
+      "defs": {
+        "battle_tag": {
+          "label": "BattleTag",
+          "description": "Battle.net tag (e.g. Player#1234)"
+        },
+        "smurf_tags": {
+          "label": "Smurf Accounts",
+          "description": "Additional BattleTag accounts (smurfs)"
+        },
+        "discord_nick": {
+          "label": "Discord",
+          "description": "Discord username"
+        },
+        "twitch_nick": {
+          "label": "Twitch",
+          "description": "Twitch channel name"
+        },
+        "primary_role": {
+          "label": "Primary Role",
+          "description": "Main role (tank/dps/support) with subrole selection"
+        },
+        "additional_roles": {
+          "label": "Additional Roles",
+          "description": "Secondary roles the player can fill"
+        },
+        "flex_role": {
+          "label": "Flex Role",
+          "description": "Let players register as Flex (all roles, equal priority)"
+        },
+        "boosty_nick": {
+          "label": "Boosty",
+          "description": "Boosty nickname (self-declared — Boosty has no OAuth)"
+        },
+        "top_heroes": {
+          "label": "Top Heroes",
+          "description": "Let players pick their best heroes per role"
+        },
+        "stream_pov": {
+          "label": "Stream POV",
+          "description": "Player will stream their POV"
+        },
+        "notes": {
+          "label": "Notes",
+          "description": "Free-text notes from the player"
+        }
+      }
+    },
+    "customFields": {
+      "title": "Custom Fields",
+      "description": "Add extra fields like Boosty nick, VK link, YouTube, etc.",
+      "addField": "Add field",
+      "emptyTitle": "No custom fields yet.",
+      "emptyHint": "Click \"Add field\" to create fields like Boosty, VK, YouTube, etc.",
+      "label": "Label",
+      "labelPlaceholder": "e.g. Boosty nick",
+      "type": "Type",
+      "types": {
+        "text": "Text",
+        "number": "Number",
+        "url": "URL",
+        "select": "Select",
+        "checkbox": "Checkbox"
+      },
+      "placeholder": "Placeholder",
+      "placeholderHint": "Hint text...",
+      "required": "Required",
+      "fieldFallback": "field",
+      "settingsAria": "{field} settings",
+      "removeAria": "Remove {field}",
+      "options": "Options (one per line)",
+      "optionsPlaceholder": "Option A\nOption B\nOption C",
+      "regex": "Regex pattern",
+      "errorMessage": "Error message",
+      "errorMessagePlaceholder": "Shown when {field} is invalid",
+      "keyLabel": "key: {key}"
+    },
+    "subroles": {
+      "title": "Subroles",
+      "description": "Choose which sub-roles players can pick per role on this form. Highlighted chips are offered; leave all enabled to offer every option.",
+      "editCatalog": "Edit catalog",
+      "offeredCount": "{count}/{total} offered",
+      "chipOffered": "Offered on the form — click to hide",
+      "chipHidden": "Hidden — click to offer",
+      "loading": "Loading…",
+      "emptyRole": "No {role} sub-roles in this workspace yet — add them in the catalog."
+    },
+    "page": {
+      "title": "Form Configuration",
+      "description": "Configure registration form fields, admission rules, sub-roles, and custom inputs.",
+      "backToRegistrations": "Back to registrations",
+      "tabs": {
+        "status": "Status",
+        "fields": "Fields",
+        "subroles": "Subroles",
+        "custom": "Custom Fields"
+      },
+      "admission": {
+        "title": "Admission",
+        "requireOpenProfile": "Require open Overwatch profile",
+        "scope": "Scope",
+        "scopeAria": "Open profile scope",
+        "scopeMain": "Main account only",
+        "scopeAll": "All accounts (incl. smurfs)",
+        "hint": "When enabled, players whose Overwatch profile is private are not admitted (blocked at check-in). Unranked players are already excluded separately."
+      },
+      "subscription": {
+        "title": "Subscription",
+        "require": "Require an active subscription",
+        "hint": "Checked at check-in only, never at sign-up: a provider outage during open registration must not lock anybody out. A verdict that cannot be determined (provider down, account not linked) fails open and does not block."
+      },
+      "display": {
+        "title": "Display Options",
+        "showRanks": "Show player ranks on participants page",
+        "hint": "When enabled, player rank values will be displayed on the public participants page. When disabled, rank values are completely hidden and omitted from backend payloads."
+      },
+      "unsavedChanges": "Unsaved changes",
+      "saveChanges": "Save changes",
+      "createForm": "Create form",
+      "savedToast": "Registration form saved",
+      "noTournamentError": "No tournament selected",
+      "noTournament": {
+        "title": "Select a tournament",
+        "description": "Choose a tournament in the sidebar before configuring the registration form."
+      },
+      "loadError": {
+        "title": "Failed to load the registration form",
+        "fallback": "Reload the page and try again."
+      },
+      "loading": "Loading registration form…"
+    },
+    "status": {
+      "title": "Registration Status",
+      "description": "Control whether players can register for this tournament.",
+      "acceptLabel": "Accept registrations",
+      "acceptHint": "When enabled, the registration form will be visible on the tournament page.",
+      "autoApproveLabel": "Auto-approve",
+      "autoApproveHint": "Skip manual review. Registrations are approved instantly and players are added to the pool automatically."
+    }
+  },
+  "subscriptionRequirement": {
+    "matchLabel": "Match",
+    "modeAria": "Requirement match mode",
+    "modes": {
+      "all": "All of the below",
+      "any": "Any one of the below"
+    },
+    "emptyHint": "No providers selected — the gate is inactive even while the toggle is on.",
+    "providerAria": "Provider",
+    "minTierAria": "Minimum tier",
+    "addProvider": "Add provider",
+    "removeAria": "Remove {provider}",
+    "unconfiguredWarning": "{count, plural, one {{providers} is not configured for this workspace. Its verdict resolves to <em>undetermined</em>, which fails open — the gate silently stops enforcing that provider.} other {{providers} are not configured for this workspace. Their verdicts resolve to <em>undetermined</em>, which fails open — the gate silently stops enforcing those providers.}}",
+    "summary": "Players must have: <hl>{rule}</hl>",
+    "tiers": {
+      "anyTier": "any tier",
+      "boosty": {
+        "any": "any level",
+        "level2": "Level 2+",
+        "level3": "Level 3+"
+      },
+      "twitch": {
+        "tier1": "Tier 1+",
+        "tier2": "Tier 2+",
+        "tier3": "Tier 3+"
+      }
+    },
+    "rule": {
+      "clause": "{provider} level {tier}",
+      "clauseAnyTier": "{provider}",
+      "and": " and ",
+      "or": " or "
+    }
   }
 }

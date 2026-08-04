@@ -4,8 +4,8 @@ import {
   SCHEDULABLE_PHASES,
   type SchedulablePhase
 } from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.helpers";
+import { useRequirementDescription } from "@/components/admin/subscriptions/useRequirementDescription";
 import { EYEBROW_CLASS } from "@/components/admin/tone";
-import { describeRequirement } from "@/lib/subscription-requirement";
 import type { DivisionGridVersion } from "@/types/workspace.types";
 
 import type {
@@ -50,6 +50,7 @@ export function ReviewStep({
   registrationVisible,
   divisionGridVersions
 }: ReviewStepProps) {
+  const requirementRule = useRequirementDescription(registration.subscription_requirement_json);
   const gridLabel =
     form.division_grid_version_id == null
       ? "Workspace default"
@@ -139,7 +140,7 @@ export function ReviewStep({
               label="Require subscription"
               value={
                 registration.require_subscription
-                  ? describeRequirement(registration.subscription_requirement_json) || "No providers selected"
+                  ? requirementRule || "No providers selected"
                   : "No"
               }
             />

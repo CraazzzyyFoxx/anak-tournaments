@@ -4,8 +4,8 @@ import { describe, expect, it } from "bun:test";
 
 import {
   composeOutcome,
-  describeRequirement,
-  requiredProviders
+  requiredProviders,
+  requirementClauses
 } from "@/lib/subscription-requirement";
 import type {
   SubscriptionProviderVerdict,
@@ -164,40 +164,51 @@ describe("requiredProviders", () => {
   });
 });
 
-describe("describeRequirement", () => {
-  it("joins with 'или' in any mode", () => {
-    expect(describeRequirement(req("any", ["boosty", "twitch"]))).toContain(" или ");
+describe("requirementClauses", () => {
+  it("names every provider in declaration order", () => {
+    expect(requirementClauses(req("any", ["boosty", "twitch"])).map((c) => c.provider)).toEqual([
+      "boosty",
+      "twitch"
+    ]);
   });
 
-  it("joins with 'и' in all mode", () => {
-    expect(describeRequirement(req("all", ["boosty", "twitch"]))).toContain(" и ");
-  });
-
-  it("names every provider", () => {
-    const text = describeRequirement(req("any", ["boosty", "twitch"]));
-    expect(text).toContain("Boosty");
-    expect(text).toContain("Twitch");
-  });
-
-  it("spells out a threshold above one", () => {
-    expect(describeRequirement(req("all", ["boosty"], 2))).toContain("2");
+  it("surfaces a threshold above one", () => {
+    expect(requirementClauses(req("all", ["boosty"], 2))).toEqual([
+      { provider: "boosty", minTier: 2 }
+    ]);
   });
 
   it("omits a threshold of one — it would read as a restriction that is not there", () => {
-    expect(describeRequirement(req("all", ["boosty"], 1))).not.toContain("1");
+    expect(requirementClauses(req("all", ["boosty"], 1))).toEqual([
+      { provider: "boosty", minTier: null }
+    ]);
   });
 
-  it("uses no conjunction for a single provider", () => {
-    const text = describeRequirement(req("all", ["boosty"]));
-    expect(text).not.toContain(" и ");
-    expect(text).not.toContain(" или ");
+  it("clamps a nonsensical threshold below one away", () => {
+    expect(requirementClauses(req("all", ["boosty"], 0))).toEqual([
+      { provider: "boosty", minTier: null }
+    ]);
   });
 
-  it("falls back to the raw key for an unknown provider", () => {
-    expect(describeRequirement(req("all", ["patreon"]))).toContain("patreon");
+  it("passes an unknown provider key through untouched", () => {
+    expect(requirementClauses(req("all", ["patreon"], 2))).toEqual([
+      { provider: "patreon", minTier: 2 }
+    ]);
+  });
+
+  it("carries no conjunction — mode is the caller's to render", () => {
+    const any = requirementClauses(req("any", ["boosty", "twitch"], 2));
+    const all = requirementClauses(req("all", ["boosty", "twitch"], 2));
+    expect(any).toEqual(all);
+  });
+
+  it("skips rows without a provider", () => {
+    expect(requirementClauses({ requirements: [{} as never, { provider: "boosty" }] })).toEqual([
+      { provider: "boosty", minTier: null }
+    ]);
   });
 
   it("is empty when nothing is required", () => {
-    expect(describeRequirement(undefined)).toBe("");
+    expect(requirementClauses(undefined)).toEqual([]);
   });
 });

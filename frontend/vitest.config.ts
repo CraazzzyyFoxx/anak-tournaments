@@ -43,6 +43,7 @@ export default defineConfig({
       "src/app/**/users/compare/**/*.test.ts",
       "src/components/tournaments/**/*.test.ts",
       "src/components/balancer/registrations/**/*.test.tsx",
+      "src/components/balancer/form/**/*.test.tsx",
       "src/components/admin/**/*.test.tsx",
       "src/components/admin/**/*.test.ts",
       "src/components/ui/data-pagination.test.tsx",

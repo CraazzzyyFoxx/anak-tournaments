@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,16 +23,14 @@ export function BuiltInFieldsCard({
   builtInFields: Record<string, BuiltInFieldConfig>;
   onUpdate: (key: string, updates: Partial<BuiltInFieldConfig>) => void;
 }) {
+  const t = useTranslations("registrationFormAdmin.builtInFields");
   const [expandedFields, setExpandedFields] = useState<Record<string, boolean>>({});
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Built-in Fields</CardTitle>
-        <CardDescription>
-          Toggle which standard fields appear on the registration form. Sub-roles for the role
-          fields are configured in the Subroles tab.
-        </CardDescription>
+        <CardTitle>{t("title")}</CardTitle>
+        <CardDescription>{t("description")}</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="divide-y rounded-lg border">
@@ -44,6 +43,8 @@ export function BuiltInFieldsCard({
               def.supportsValidation || def.supportsMaxHeroes || def.supportsVerified
             );
             const isExpanded = cfg.enabled && !!expandedFields[def.key];
+            const label = t(`defs.${def.key}.label` as Parameters<typeof t>[0]);
+            const description = t(`defs.${def.key}.description` as Parameters<typeof t>[0]);
 
             return (
               <div key={def.key} className="px-4 py-3">
@@ -63,14 +64,14 @@ export function BuiltInFieldsCard({
 
                   <div className={cn("min-w-0 flex-1", !cfg.enabled && "opacity-50")}>
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-medium">{def.label}</span>
+                      <span className="text-sm font-medium">{label}</span>
                       {cfg.require_verified && cfg.enabled && (
                         <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-400">
-                          Verified
+                          {t("verifiedBadge")}
                         </span>
                       )}
                     </div>
-                    <p className="truncate text-xs text-muted-foreground">{def.description}</p>
+                    <p className="truncate text-xs text-muted-foreground">{description}</p>
                   </div>
 
                   {cfg.enabled && def.supportsRequired !== false && (
@@ -80,7 +81,7 @@ export function BuiltInFieldsCard({
                         onCheckedChange={(checked) => onUpdate(def.key, { required: checked })}
                         className="scale-75"
                       />
-                      Required
+                      {t("required")}
                     </label>
                   )}
 
@@ -89,7 +90,7 @@ export function BuiltInFieldsCard({
                       variant="ghost"
                       size="icon"
                       className="size-8 shrink-0 text-muted-foreground hover:text-foreground"
-                      aria-label={`${def.label} settings`}
+                      aria-label={t("settingsAria", { field: label })}
                       aria-expanded={isExpanded}
                       onClick={() =>
                         setExpandedFields((prev) => ({ ...prev, [def.key]: !prev[def.key] }))
@@ -115,10 +116,9 @@ export function BuiltInFieldsCard({
                         {def.supportsVerified && (
                           <div className="flex items-center justify-between gap-4">
                             <div className="min-w-0">
-                              <div className="text-xs font-medium">Verified account</div>
+                              <div className="text-xs font-medium">{t("verifiedAccount")}</div>
                               <p className="text-xs text-muted-foreground">
-                                Require an OAuth-verified account; the registrant picks from their
-                                verified accounts.
+                                {t("verifiedAccountHelp")}
                               </p>
                             </div>
                             <Switch
@@ -133,7 +133,7 @@ export function BuiltInFieldsCard({
                         {def.supportsValidation && (
                           <div className="grid gap-3 md:grid-cols-2">
                             <div className="space-y-1">
-                              <Label className="text-xs">Regex pattern</Label>
+                              <Label className="text-xs">{t("regexPattern")}</Label>
                               <Input
                                 value={cfg.validation?.regex ?? ""}
                                 onChange={(e) =>
@@ -149,7 +149,7 @@ export function BuiltInFieldsCard({
                               />
                             </div>
                             <div className="space-y-1">
-                              <Label className="text-xs">Error message</Label>
+                              <Label className="text-xs">{t("errorMessage")}</Label>
                               <Input
                                 value={cfg.validation?.error_message ?? ""}
                                 onChange={(e) =>
@@ -160,7 +160,7 @@ export function BuiltInFieldsCard({
                                     }
                                   })
                                 }
-                                placeholder={`Shown when ${def.label} is invalid`}
+                                placeholder={t("errorMessagePlaceholder", { field: label })}
                                 className="h-8 bg-background/50 text-xs"
                               />
                             </div>
@@ -169,7 +169,7 @@ export function BuiltInFieldsCard({
 
                         {def.supportsMaxHeroes && (
                           <div className="max-w-[10rem] space-y-1">
-                            <Label className="text-xs">Max heroes per role</Label>
+                            <Label className="text-xs">{t("maxHeroes")}</Label>
                             <NumberInput
                               integer
                               min={1}

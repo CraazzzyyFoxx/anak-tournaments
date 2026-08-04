@@ -5,6 +5,9 @@ import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
 
 import SubscriptionRequirementEditor from "./SubscriptionRequirementEditor";
+// The real dictionary, not `{}`: every visible string now comes from next-intl,
+// so an empty message set would assert against missing-message fallbacks.
+import messages from "@/i18n/messages/en.json";
 import type { SubscriptionRequirement } from "@/types/registration.types";
 
 declare global {
@@ -35,7 +38,7 @@ async function mount(
   const root = createRoot(container);
   await act(async () => {
     root.render(
-      <NextIntlClientProvider locale="en" messages={{}}>
+      <NextIntlClientProvider locale="en" messages={messages}>
         <SubscriptionRequirementEditor
           value={value}
           onChange={onChange}
@@ -71,14 +74,14 @@ describe("mode selector visibility", () => {
 describe("rule preview", () => {
   it("spells out the composed rule with the conjunction", async () => {
     const { text } = await mount(TWO);
-    // `any` must read as "или" so an organizer sees it is not a conjunction.
-    expect(text()).toContain("Boosty уровень 2 или Twitch");
+    // `any` must read as "or" so an organizer sees it is not a conjunction.
+    expect(text()).toContain("Boosty level 2 or Twitch");
   });
 
   it("uses no conjunction for a single provider", async () => {
     const { text } = await mount(ONE);
-    expect(text()).toContain("Boosty уровень 2");
-    expect(text()).not.toContain(" или ");
+    expect(text()).toContain("Boosty level 2");
+    expect(text()).not.toContain(" or ");
   });
 
   it("warns that an empty selection leaves the gate inactive", async () => {
@@ -88,9 +91,9 @@ describe("rule preview", () => {
 });
 
 describe("thresholds use each provider's own vocabulary", () => {
-  it("labels boosty tiers as Уровень, never a bare integer", async () => {
+  it("labels boosty tiers as Level, never a bare integer", async () => {
     const { text } = await mount(ONE);
-    expect(text()).toContain("Уровень 2+");
+    expect(text()).toContain("Level 2+");
   });
 
   it("labels twitch tiers as Tier", async () => {

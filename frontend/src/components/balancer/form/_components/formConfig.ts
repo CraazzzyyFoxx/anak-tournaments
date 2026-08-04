@@ -10,8 +10,7 @@ import type {
 
 export interface BuiltInFieldDef {
   key: string;
-  label: string;
-  description: string;
+  /** UI label and description live in `registrationFormAdmin.builtInFields.defs.<key>`. */
   defaultEnabled: boolean;
   defaultRequired: boolean;
   /** Role fields whose sub-roles are configured in the dedicated Subroles tab. */
@@ -36,8 +35,6 @@ export const DEFAULT_NUMBER_REGEX = String.raw`^-?\d+(?:[.,]\d+)?$`;
 export const BUILT_IN_FIELDS: BuiltInFieldDef[] = [
   {
     key: "battle_tag",
-    label: "BattleTag",
-    description: "Battle.net tag (e.g. Player#1234)",
     defaultEnabled: true,
     defaultRequired: true,
     supportsValidation: true,
@@ -49,8 +46,6 @@ export const BUILT_IN_FIELDS: BuiltInFieldDef[] = [
   },
   {
     key: "smurf_tags",
-    label: "Smurf Accounts",
-    description: "Additional BattleTag accounts (smurfs)",
     defaultEnabled: false,
     defaultRequired: false,
     supportsValidation: true,
@@ -61,8 +56,6 @@ export const BUILT_IN_FIELDS: BuiltInFieldDef[] = [
   },
   {
     key: "discord_nick",
-    label: "Discord",
-    description: "Discord username",
     defaultEnabled: true,
     defaultRequired: false,
     supportsValidation: true,
@@ -74,8 +67,6 @@ export const BUILT_IN_FIELDS: BuiltInFieldDef[] = [
   },
   {
     key: "twitch_nick",
-    label: "Twitch",
-    description: "Twitch channel name",
     defaultEnabled: true,
     defaultRequired: false,
     supportsValidation: true,
@@ -87,32 +78,24 @@ export const BUILT_IN_FIELDS: BuiltInFieldDef[] = [
   },
   {
     key: "primary_role",
-    label: "Primary Role",
-    description: "Main role (tank/dps/support) with subrole selection",
     defaultEnabled: true,
     defaultRequired: false,
     hasSubroles: true,
   },
   {
     key: "additional_roles",
-    label: "Additional Roles",
-    description: "Secondary roles the player can fill",
     defaultEnabled: false,
     defaultRequired: false,
     hasSubroles: true,
   },
   {
     key: "flex_role",
-    label: "Flex Role",
-    description: "Let players register as Flex (all roles, equal priority)",
     defaultEnabled: true,
     defaultRequired: false,
     supportsRequired: false,
   },
   {
     key: "boosty_nick",
-    label: "Boosty",
-    description: "Boosty nickname (self-declared — Boosty has no OAuth)",
     defaultEnabled: false,
     defaultRequired: false,
     supportsValidation: true,
@@ -129,17 +112,13 @@ export const BUILT_IN_FIELDS: BuiltInFieldDef[] = [
   },
   {
     key: "top_heroes",
-    label: "Top Heroes",
-    description: "Let players pick their best heroes per role",
     defaultEnabled: false,
     defaultRequired: false,
     supportsMaxHeroes: true,
   },
-  { key: "stream_pov", label: "Stream POV", description: "Player will stream their POV", defaultEnabled: false, defaultRequired: false },
+  { key: "stream_pov", defaultEnabled: false, defaultRequired: false },
   {
     key: "notes",
-    label: "Notes",
-    description: "Free-text notes from the player",
     defaultEnabled: true,
     defaultRequired: false,
     supportsValidation: true,
@@ -149,12 +128,13 @@ export const BUILT_IN_FIELDS: BuiltInFieldDef[] = [
 /** Role fields whose sub-role selection is edited in the Subroles tab. */
 export const ROLE_FIELD_KEYS = ["primary_role", "additional_roles"] as const;
 
+/** Labels live in `registrationFormAdmin.customFields.types.<value>`. */
 export const FIELD_TYPE_OPTIONS = [
-  { value: "text", label: "Text" },
-  { value: "number", label: "Number" },
-  { value: "url", label: "URL" },
-  { value: "select", label: "Select" },
-  { value: "checkbox", label: "Checkbox" },
+  { value: "text" },
+  { value: "number" },
+  { value: "url" },
+  { value: "select" },
+  { value: "checkbox" },
 ] as const;
 
 // ---------------------------------------------------------------------------
