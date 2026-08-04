@@ -196,10 +196,10 @@ export default function AdminDashboard() {
           <div className="flex flex-col gap-4">
             <Skeleton className="h-56 rounded-2xl" />
             <Skeleton className="h-64 rounded-2xl" />
-            <Skeleton className="h-64 rounded-2xl" />
           </div>
           <div className="flex flex-col gap-4">
             <Skeleton className="h-48 rounded-2xl" />
+            <Skeleton className="h-64 rounded-2xl" />
           </div>
         </div>
       </div>
@@ -273,12 +273,7 @@ export default function AdminDashboard() {
       )}
 
       {/* [4] WORK COLUMN + ATTENTION RAIL */}
-      <section
-        className={cn(
-          "grid gap-4",
-          !statsFailed && !tournamentsFailed && "xl:grid-cols-[7fr_3fr]",
-        )}
-      >
+      <section className={cn("grid gap-4", !tournamentsFailed && "xl:grid-cols-[7fr_3fr]")}>
         {!tournamentsFailed && (
           <div className="flex flex-col gap-4">
             <ActiveTournamentCard
@@ -296,13 +291,15 @@ export default function AdminDashboard() {
               isLoading={readinessQuery.isLoading}
               failed={readinessQuery.isError}
             />
-            <RecentTournaments canRead={canReadTournaments} tournaments={tournaments} />
           </div>
         )}
 
-        {!statsFailed && (
+        {(!statsFailed || !tournamentsFailed) && (
           <div className="flex flex-col gap-4">
-            <IssuesQueue items={derived.issueItems} />
+            {!statsFailed && <IssuesQueue items={derived.issueItems} />}
+            {!tournamentsFailed && (
+              <RecentTournaments canRead={canReadTournaments} tournaments={tournaments} />
+            )}
           </div>
         )}
       </section>
