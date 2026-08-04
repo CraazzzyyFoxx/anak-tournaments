@@ -7,8 +7,16 @@ from typing import TYPE_CHECKING, Any
 
 import sentry_sdk
 from loguru import logger
+from sentry_sdk.integrations import DidNotEnable
 from sentry_sdk.integrations.asyncio import AsyncioIntegration
 from sentry_sdk.integrations.loguru import LoguruIntegration
+
+try:
+    from sentry_sdk.integrations.otlp import OTLPIntegration
+
+    _OTLP_AVAILABLE = True
+except DidNotEnable:  # pragma: no cover - only when the OTLP HTTP exporter is absent
+    _OTLP_AVAILABLE = False
 
 from shared.core.errors import BaseAPIException
 
@@ -37,13 +45,19 @@ _TRANSPORT_CHURN_EXCEPTIONS: frozenset[str] = frozenset(
     }
 )
 
-# Loggers whose ERROR records duplicate an exception event the SDK already
-# captured from the same failure. FastStream logs a failing handler's traceback
-# through its logger proxy *and* re-raises it, so without this filter every
-# worker error reaches Sentry twice: once as the exception, once as a
-# "Level 40 | faststream..." message group with a timestamp in the title (which
-# also defeats grouping — 400+ single-event groups came from this).
-_DUPLICATE_EVENT_LOGGERS: tuple[str, ...] = ("faststream",)
+# Loggers whose ERROR records are never an actionable defect here.
+#
+# ``faststream`` logs a failing handler's traceback through its logger proxy *and*
+# re-raises it, so without this filter every worker error reaches Sentry twice:
+# once as the exception, once as a "Level 40 | faststream..." message group with a
+# timestamp in the title (which also defeats grouping — 400+ single-event groups
+# came from this).
+#
+# ``opentelemetry`` is the OTLP exporter failing to reach otel-collector. That is
+# a tracing-pipeline availability problem, visible in the collector's own metrics
+# and retried by the exporter itself; as Sentry issues it contributed ~800 events
+# that no code change can address.
+_NOISY_LOGGERS: tuple[str, ...] = ("faststream", "opentelemetry")
 
 
 def _is_transport_churn(exc: BaseException) -> bool:
@@ -69,7 +83,7 @@ def _is_expected_client_error(exc: BaseException) -> bool:
 
 def _before_send(event: Event, hint: Hint) -> Event | None:
     """Drop transport churn, already-handled 4xx, and duplicated worker logs."""
-    if str(event.get("logger") or "").startswith(_DUPLICATE_EVENT_LOGGERS):
+    if str(event.get("logger") or "").startswith(_NOISY_LOGGERS):
         return None
     exc_info = (hint or {}).get("exc_info")
     if exc_info:
@@ -80,9 +94,9 @@ def _before_send(event: Event, hint: Hint) -> Event | None:
 
 
 def _before_send_log(log: Log, hint: Hint) -> Log | None:
-    """Drop Sentry Logs that mirror an exception event (see _DUPLICATE_EVENT_LOGGERS)."""
+    """Drop Sentry Logs coming from the same loggers (see _NOISY_LOGGERS)."""
     name = log.get("attributes", {}).get("logger.name", "")
-    if str(name).startswith(_DUPLICATE_EVENT_LOGGERS):
+    if str(name).startswith(_NOISY_LOGGERS):
         return None
     return log
 
@@ -117,10 +131,17 @@ def setup_sentry(
 
     Observability surfaces wired here:
 
-    - **Tracing** — ``traces_sample_rate`` plus the auto-enabled
-      FastAPI/SQLAlchemy/Redis integrations. ``AsyncioIntegration`` is added
-      explicitly so spans and errors from tasks spawned in the FastStream
-      workers keep their context (it does not auto-enable).
+    - **Tracing** — spans come from OpenTelemetry
+      (:mod:`shared.observability.tracing`), not from this SDK: the shared
+      otel-collector fans the same OTLP stream out to Tempo *and* Sentry, so one
+      trace spans the gateway, the broker hop and every service instead of the
+      per-process transactions the SDK would emit on its own. ``traces_sample_rate``
+      therefore stays at 0 in deployed environments — leaving it on would bill a
+      second, disconnected copy of the same request. ``OTLPIntegration`` (with the
+      SDK's own exporter *and* propagator disabled) only teaches this SDK to read
+      the active OTel span, so errors, logs and metrics attach to that trace.
+      ``AsyncioIntegration`` is added explicitly so errors from tasks spawned in
+      the FastStream workers keep their context (it does not auto-enable).
     - **Logs** — when ``enable_logs`` is set, loguru records are forwarded to
       Sentry Logs at ``logs_level`` via :class:`LoguruIntegration`. Errors
       still become events (ERROR) and INFO records still become breadcrumbs.
@@ -135,6 +156,19 @@ def setup_sentry(
     if not dsn:
         return False
 
+    integrations: list[Any] = [
+        AsyncioIntegration(),
+        LoguruIntegration(sentry_logs_level=_resolve_level(logs_level)),
+    ]
+    if _OTLP_AVAILABLE:
+        # Trace linking only. Both side effects are off on purpose:
+        # setup_otlp_traces_exporter would add a SECOND span processor shipping
+        # every span straight to Sentry, duplicating what the otel-collector
+        # already forwards; setup_propagator would swap the global W3C
+        # traceparent propagator for Sentry's own, which is what carries trace
+        # context across the gateway boundary and the RabbitMQ hop.
+        integrations.append(OTLPIntegration(setup_otlp_traces_exporter=False, setup_propagator=True))
+
     init_kwargs: dict[str, Any] = {
         "dsn": dsn,
         "environment": environment,
@@ -144,10 +178,7 @@ def setup_sentry(
         "enable_metrics": enable_metrics,
         # FastAPI/Starlette/SQLAlchemy/Redis auto-enable; Asyncio does not, and
         # the explicit Loguru integration lets us control the Sentry-logs level.
-        "integrations": [
-            AsyncioIntegration(),
-            LoguruIntegration(sentry_logs_level=_resolve_level(logs_level)),
-        ],
+        "integrations": integrations,
         "before_send": _before_send,
         "before_send_log": _before_send_log,
     }

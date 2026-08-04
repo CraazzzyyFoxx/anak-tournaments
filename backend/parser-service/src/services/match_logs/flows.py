@@ -1272,7 +1272,13 @@ async def process_match_log(
     raw_bytes = await s3_service.get_log_by_filename(s3, tournament.id, filename)
     if not raw_bytes:
         msg = f"Log file {filename} not found or empty in S3"
-        logger.error(msg)
+        # WARNING, not ERROR: a missing/empty object is a state of the uploaded
+        # data, not a service defect — and it is already reported three other
+        # ways (the terminal `failed` record below, the 404 raised to the caller,
+        # and the `failed` result published to the bot). As an ERROR it opened a
+        # second Sentry group for every occurrence that the raise below already
+        # reported, so one missing file cost two issues and 300+ events.
+        logger.warning(msg)
         # Terminal, not silent: this fires before set_processing, so without it
         # the row stays `pending` and the stall reaper requeues it forever.
         await record_service.fail_unstarted(session, tournament_id, object_name, msg)
@@ -1286,7 +1292,7 @@ async def process_match_log(
     max_log_bytes = settings.max_match_log_bytes
     if len(raw_bytes) > max_log_bytes:
         msg = f"Log file {filename} exceeds the maximum size of {max_log_bytes} bytes"
-        logger.error(msg)
+        logger.warning(msg)  # same rationale as the missing-object branch above
         await record_service.fail_unstarted(session, tournament_id, object_name, msg)
         if is_raise:
             raise errors.ApiHTTPException(

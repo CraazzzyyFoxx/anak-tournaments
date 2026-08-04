@@ -64,8 +64,15 @@ class BeforeSendTests(TestCase):
                 event = {"event_id": "keep-me"}
                 self.assertIs(event, _before_send(event, _hint(exc)))
 
-    def test_drops_faststream_duplicate_of_an_exception_it_reraises(self) -> None:
-        self.assertIsNone(_before_send({"logger": "faststream._internal.logger.logger_proxy"}, {}))
+    def test_drops_events_from_noisy_loggers(self) -> None:
+        # faststream duplicates an exception it re-raises; the OTLP exporter
+        # reports a collector it cannot reach and retries on its own.
+        for name in (
+            "faststream._internal.logger.logger_proxy",
+            "opentelemetry.exporter.otlp.proto.grpc.exporter",
+        ):
+            with self.subTest(logger=name):
+                self.assertIsNone(_before_send({"logger": name}, {}))
 
     def test_keeps_events_from_application_loggers(self) -> None:
         event = {"logger": "src.rpc._helpers"}
@@ -77,9 +84,13 @@ class BeforeSendTests(TestCase):
 
 
 class BeforeSendLogTests(TestCase):
-    def test_drops_faststream_logs(self) -> None:
-        log = {"attributes": {"logger.name": "faststream._internal.logger.logger_proxy"}}
-        self.assertIsNone(_before_send_log(log, {}))
+    def test_drops_logs_from_noisy_loggers(self) -> None:
+        for name in (
+            "faststream._internal.logger.logger_proxy",
+            "opentelemetry.exporter.otlp.proto.grpc.exporter",
+        ):
+            with self.subTest(logger=name):
+                self.assertIsNone(_before_send_log({"attributes": {"logger.name": name}}, {}))
 
     def test_keeps_application_logs(self) -> None:
         log = {"attributes": {"logger.name": "src.services.achievement.engine.runner"}}
