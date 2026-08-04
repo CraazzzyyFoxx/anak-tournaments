@@ -76,9 +76,7 @@ async def create_import_job(
         source_fingerprint=source_fingerprint,
     )
     existing = await session.scalar(
-        sa.select(models.DivisionGridImportJob).where(
-            models.DivisionGridImportJob.idempotency_key == idempotency_key
-        )
+        sa.select(models.DivisionGridImportJob).where(models.DivisionGridImportJob.idempotency_key == idempotency_key)
     )
     if existing is not None:
         if getattr(existing, "status", None) == "failed":
@@ -154,9 +152,7 @@ async def list_import_jobs(
     active_only: bool = False,
     limit: int = 20,
 ) -> list[models.DivisionGridImportJob]:
-    statement = sa.select(models.DivisionGridImportJob).where(
-        models.DivisionGridImportJob.workspace_id == workspace_id
-    )
+    statement = sa.select(models.DivisionGridImportJob).where(models.DivisionGridImportJob.workspace_id == workspace_id)
     if active_only:
         statement = statement.where(models.DivisionGridImportJob.status.in_(("pending", "running")))
     result = await session.scalars(

@@ -298,9 +298,7 @@ async def get_all(
     Returns:
         A `Paginated` instance containing `TournamentRead` schemas.
     """
-    results, total = await service.get_all(
-        session, params, visibility=visible_tournaments_predicate(viewer)
-    )
+    results, total = await service.get_all(session, params, visibility=visible_tournaments_predicate(viewer))
     tournament_ids = [result.id for result in results]
     participants_counts = (
         await team_service.get_player_count_by_tournament_bulk(session, tournament_ids)

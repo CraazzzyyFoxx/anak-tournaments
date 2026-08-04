@@ -17,11 +17,7 @@ def build_portable_document(
     mappings: Sequence[models.DivisionGridMapping],
 ) -> schemas.DivisionGridPortableDocument:
     version_number_by_id = {version.id: version.version for version in grid.versions}
-    tier_slug_by_id = {
-        tier.id: tier.slug
-        for version in grid.versions
-        for tier in version.tiers
-    }
+    tier_slug_by_id = {tier.id: tier.slug for version in grid.versions for tier in version.tiers}
     versions = [
         schemas.DivisionGridPortableVersion(
             version=version.version,
@@ -111,11 +107,7 @@ async def import_portable_document(
 
     fingerprint = _document_fingerprint(document)
     source_key = f"portable:{document.slug}"
-    await session.scalar(
-        sa.select(models.Workspace.id)
-        .where(models.Workspace.id == workspace_id)
-        .with_for_update()
-    )
+    await session.scalar(sa.select(models.Workspace.id).where(models.Workspace.id == workspace_id).with_for_update())
     provenance_filter = (
         models.DivisionGrid.source_key == source_key
         if request.mode == "sync"

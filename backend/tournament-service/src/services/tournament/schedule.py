@@ -41,9 +41,7 @@ async def set_schedule(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
     await session.execute(
-        delete(models.TournamentPhaseSchedule).where(
-            models.TournamentPhaseSchedule.tournament_id == tournament_id
-        )
+        delete(models.TournamentPhaseSchedule).where(models.TournamentPhaseSchedule.tournament_id == tournament_id)
     )
     session.add_all(
         models.TournamentPhaseSchedule(

@@ -87,8 +87,6 @@ class TournamentScheduleSet(BaseModel):
             if entry.ends_at is not None and entry.ends_at <= entry.starts_at:
                 raise ValueError(f"Phase '{entry.status.value}' must end after it starts")
             if previous is not None and entry.starts_at <= previous.starts_at:
-                raise ValueError(
-                    f"Phase '{entry.status.value}' must start after phase '{previous.status.value}'"
-                )
+                raise ValueError(f"Phase '{entry.status.value}' must start after phase '{previous.status.value}'")
             previous = entry
         return self

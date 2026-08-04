@@ -174,6 +174,7 @@ async def copy_division_icon_asset(
         )
     return DivisionImageCopy(public_url=s3.get_public_url(target_key), key=target_key)
 
+
 async def _copy_division_icon_asset_guarded(
     semaphore: asyncio.Semaphore,
     s3: S3Client,
@@ -467,6 +468,7 @@ def _selected_source_versions(
         raise HTTPException(status_code=400, detail="Selected version does not belong to the selected grid")
     return versions
 
+
 def target_imported_version_state(
     *,
     mode: str,
@@ -476,7 +478,6 @@ def target_imported_version_state(
     if mode == "copy":
         return "draft", None
     return source_status, source_published_at
-
 
 
 async def preflight_division_grid_import(
@@ -655,8 +656,7 @@ async def import_division_grids(
         grid_mappings = [
             mapping
             for mapping in mappings
-            if mapping.source_version_id in grid_version_ids
-            or mapping.target_version_id in grid_version_ids
+            if mapping.source_version_id in grid_version_ids or mapping.target_version_id in grid_version_ids
         ]
         source_fingerprints[source_grid.id] = build_source_fingerprint(
             [source_grid],
@@ -665,18 +665,13 @@ async def import_division_grids(
             include_icons=include_icons,
             include_ow_rank_mappings=include_ow_rank_mappings,
         )
-    if (
-        expected_source_fingerprint is not None
-        and source_fingerprint != expected_source_fingerprint
-    ):
+    if expected_source_fingerprint is not None and source_fingerprint != expected_source_fingerprint:
         raise HTTPException(
             status_code=409,
             detail="Source division grids changed after preflight; review the import again",
         )
     await session.scalar(
-        sa.select(models.Workspace.id)
-        .where(models.Workspace.id == target_workspace.id)
-        .with_for_update()
+        sa.select(models.Workspace.id).where(models.Workspace.id == target_workspace.id).with_for_update()
     )
     source_grid_ids = [grid.id for grid in source_grids]
     current_imports = await _load_current_imported_grids(
@@ -704,10 +699,7 @@ async def import_division_grids(
                     slug=unchanged_imports[source_grid.id].slug,
                     name=unchanged_imports[source_grid.id].name,
                     versions_count=len(unchanged_imports[source_grid.id].versions),
-                    tiers_count=sum(
-                        len(version.tiers)
-                        for version in unchanged_imports[source_grid.id].versions
-                    ),
+                    tiers_count=sum(len(version.tiers) for version in unchanged_imports[source_grid.id].versions),
                 )
                 for source_grid in source_grids
             ],
@@ -723,10 +715,7 @@ async def import_division_grids(
         archived_at = datetime.now(UTC)
         for source_grid in source_grids:
             previous = current_imports.get(source_grid.id)
-            if (
-                previous is not None
-                and previous.source_fingerprint != source_fingerprints[source_grid.id]
-            ):
+            if previous is not None and previous.source_fingerprint != source_fingerprints[source_grid.id]:
                 previous.archived_at = archived_at
 
     try:
@@ -774,11 +763,7 @@ async def import_division_grids(
                 description=source_grid.description,
                 source_workspace_id=source_workspace.id,
                 source_grid_id=source_grid.id,
-                source_key=(
-                    f"workspace:{source_workspace.id}:grid:{source_grid.id}"
-                    if mode == "sync"
-                    else None
-                ),
+                source_key=(f"workspace:{source_workspace.id}:grid:{source_grid.id}" if mode == "sync" else None),
                 source_fingerprint=source_fingerprints[source_grid.id],
                 imported_at=datetime.now(UTC),
             )
@@ -830,10 +815,7 @@ async def import_division_grids(
                         target_version=source_version.version,
                     )
                     if include_icons
-                    else [
-                        DivisionImageCopy(public_url=source_tier.icon_url, key=None)
-                        for source_tier in source_tiers
-                    ]
+                    else [DivisionImageCopy(public_url=source_tier.icon_url, key=None) for source_tier in source_tiers]
                 )
                 for copied in copied_icons:
                     if isinstance(copied, DivisionImageCopy) and copied.key is not None:

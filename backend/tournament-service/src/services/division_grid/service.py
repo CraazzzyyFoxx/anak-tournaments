@@ -59,10 +59,7 @@ def _classify_tier_change(
 
     for payload_tier in payload_tiers:
         active_tier = active_by_id[payload_tier.id]
-        if any(
-            getattr(active_tier, field) != getattr(payload_tier, field)
-            for field in _STRUCTURAL_TIER_FIELDS
-        ):
+        if any(getattr(active_tier, field) != getattr(payload_tier, field) for field in _STRUCTURAL_TIER_FIELDS):
             return "structural"
     return "cosmetic"
 
@@ -211,9 +208,7 @@ async def update_grid(
     archived = changes.pop("archived", None)
     if archived is True:
         active_version_id = await session.scalar(
-            sa.select(models.Workspace.default_division_grid_version_id).where(
-                models.Workspace.id == grid.workspace_id
-            )
+            sa.select(models.Workspace.default_division_grid_version_id).where(models.Workspace.id == grid.workspace_id)
         )
         if active_version_id in {version.id for version in grid.versions}:
             raise HTTPException(
@@ -245,9 +240,7 @@ async def delete_grid(session: AsyncSession, grid_id: int, *, force: bool = Fals
     version_ids = [version.id for version in grid.versions]
     if version_ids and not force:
         default_version_id = await session.scalar(
-            sa.select(models.Workspace.default_division_grid_version_id).where(
-                models.Workspace.id == grid.workspace_id
-            )
+            sa.select(models.Workspace.default_division_grid_version_id).where(models.Workspace.id == grid.workspace_id)
         )
         if default_version_id in version_ids:
             raise HTTPException(
@@ -428,9 +421,7 @@ async def update_version(
             structural_changed = True
 
         reordered = any(
-            tier.id is not None
-            and existing_by_id[tier.id].sort_order != tier.sort_order
-            for tier in data.tiers
+            tier.id is not None and existing_by_id[tier.id].sort_order != tier.sort_order for tier in data.tiers
         )
         if reordered:
             for existing in version.tiers:
@@ -610,9 +601,7 @@ async def get_activation_readiness(
             []
             if status == "ok"
             else [
-                schemas.DivisionGridReadinessConflictTier(
-                    source_tier_id=tier.id, slug=tier.slug, name=tier.name
-                )
+                schemas.DivisionGridReadinessConflictTier(source_tier_id=tier.id, slug=tier.slug, name=tier.name)
                 for tier in source_version.tiers
                 if tier.id not in covered
             ]
@@ -676,10 +665,7 @@ async def activate_version(
         target_version_id=version_id,
     )
     if not readiness.is_ready:
-        blocked = sorted(
-            set(readiness.missing_mapping_version_ids)
-            | set(readiness.incomplete_mapping_version_ids)
-        )
+        blocked = sorted(set(readiness.missing_mapping_version_ids) | set(readiness.incomplete_mapping_version_ids))
         raise HTTPException(
             status_code=409,
             detail=f"Division grid mappings are not ready for source versions: {blocked}",
@@ -774,6 +760,7 @@ async def _persist_mapping(
     await division_grid_cache.invalidate_mapping(source_version_id, target_version_id)
     return refreshed
 
+
 @dataclass
 class SaveOutcome:
     mode: str  # "in_place" | "new_version_activated" | "new_version_pending"
@@ -783,9 +770,7 @@ class SaveOutcome:
     readiness: schemas.DivisionGridActivationReadiness
 
 
-async def _resolve_workspace_grid(
-    session: AsyncSession, workspace: models.Workspace
-) -> models.DivisionGrid:
+async def _resolve_workspace_grid(session: AsyncSession, workspace: models.Workspace) -> models.DivisionGrid:
     """The single managed grid for a workspace: the one holding the active
     version, else the newest non-archived, else a freshly seeded grid."""
     grids = await get_workspace_grids(session, workspace.id)
@@ -799,14 +784,10 @@ async def _resolve_workspace_grid(
         return max(live, key=lambda grid: grid.id)
     if grids:
         return max(grids, key=lambda grid: grid.id)
-    return await create_grid(
-        session, workspace.id, schemas.DivisionGridCreate(slug="default", name="Division Grid")
-    )
+    return await create_grid(session, workspace.id, schemas.DivisionGridCreate(slug="default", name="Division Grid"))
 
 
-def _pick_active_version(
-    grid: models.DivisionGrid, workspace: models.Workspace
-) -> models.DivisionGridVersion | None:
+def _pick_active_version(grid: models.DivisionGrid, workspace: models.Workspace) -> models.DivisionGridVersion | None:
     default_id = workspace.default_division_grid_version_id
     versions = list(grid.versions)
     for version in versions:
@@ -889,9 +870,7 @@ async def save_workspace_grid(
                 is_complete=generation.is_complete,
             )
 
-        readiness = await get_activation_readiness(
-            session, workspace_id=workspace.id, target_version_id=new_version.id
-        )
+        readiness = await get_activation_readiness(session, workspace_id=workspace.id, target_version_id=new_version.id)
         if readiness.is_ready:
             await activate_version(session, workspace=workspace, version_id=new_version.id)
             mode = "new_version_activated"
@@ -904,9 +883,7 @@ async def save_workspace_grid(
     await session.flush()
 
     grid = await get_grid_by_id(session, grid.id)
-    readiness = await get_activation_readiness(
-        session, workspace_id=workspace.id, target_version_id=saved_version_id
-    )
+    readiness = await get_activation_readiness(session, workspace_id=workspace.id, target_version_id=saved_version_id)
     return SaveOutcome(
         mode=mode,
         grid=grid,

@@ -1440,9 +1440,7 @@ async def apply_best_of_to_existing(session: AsyncSession, stage_id: int) -> int
         enums.StageType.DOUBLE_ELIMINATION,
     )
 
-    result = await session.execute(
-        select(models.Encounter).where(models.Encounter.stage_id == stage_id)
-    )
+    result = await session.execute(select(models.Encounter).where(models.Encounter.stage_id == stage_id))
     encounters = list(result.scalars().all())
     max_round = max((encounter.round for encounter in encounters), default=0)
 

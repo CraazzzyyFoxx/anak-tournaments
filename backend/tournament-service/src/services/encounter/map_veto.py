@@ -97,9 +97,7 @@ def serialize_veto_session(veto: models.EncounterVetoSession) -> dict[str, Any]:
         "away_seed": veto.away_seed,
         "turn_timer_seconds": veto.turn_timer_seconds,
         "started_at": veto.started_at.isoformat() if veto.started_at else None,
-        "current_step_started_at": (
-            veto.current_step_started_at.isoformat() if veto.current_step_started_at else None
-        ),
+        "current_step_started_at": (veto.current_step_started_at.isoformat() if veto.current_step_started_at else None),
     }
 
 

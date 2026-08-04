@@ -95,17 +95,12 @@ def generate_mapping_rules(
             continue
 
         # 2. rank overlap
-        overlaps = [
-            (target, _overlap(source, target, ceiling))
-            for target in target_tiers
-        ]
+        overlaps = [(target, _overlap(source, target, ceiling)) for target in target_tiers]
         overlaps = [(target, value) for target, value in overlaps if value > 0]
 
         if not overlaps:
             # 3. conflict
-            conflicts.append(
-                ConflictTier(source_tier_id=source.id, slug=source.slug, name=source.name)
-            )
+            conflicts.append(ConflictTier(source_tier_id=source.id, slug=source.slug, name=source.name))
             continue
 
         overlaps.sort(key=lambda item: (item[1], item[0].id), reverse=True)

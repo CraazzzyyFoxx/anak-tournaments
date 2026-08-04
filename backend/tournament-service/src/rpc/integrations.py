@@ -495,8 +495,6 @@ def register(broker: Any, logger: Any) -> None:
 
         return await _run(logger, op)
 
-
-
     @broker.subscriber("rpc.tournament.grid_marketplace_workspaces")
     async def _grid_marketplace_workspaces(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
@@ -565,7 +563,6 @@ def register(broker: Any, logger: Any) -> None:
             )
 
         return await _run(logger, op)
-
 
     @broker.subscriber("rpc.tournament.grid_marketplace_import")
     async def _grid_marketplace_import(data: dict, msg: RabbitMessage) -> dict:
@@ -769,13 +766,9 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             workspace_id = _path_int(data, "workspace_id")
-            workspace = await require_workspace_permission(
-                workspace_id, session=session, user=user, action="update"
-            )
+            workspace = await require_workspace_permission(workspace_id, session=session, user=user, action="update")
             body = schemas.DivisionGridSaveRequest.model_validate(_payload(data))
-            outcome = await division_grid_service.save_workspace_grid(
-                session, workspace=workspace, data=body
-            )
+            outcome = await division_grid_service.save_workspace_grid(session, workspace=workspace, data=body)
             await session.commit()  # route commits explicitly (service does not).
             return _dump(
                 schemas.DivisionGridSaveResult(
