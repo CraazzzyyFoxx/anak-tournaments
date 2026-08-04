@@ -125,7 +125,6 @@ def register(broker: Any, logger: Any) -> None:
             if channel is None:
                 channel = models.TournamentDiscordChannel(tournament_id=tournament_id)
                 session.add(channel)
-            channel.guild_id = int(body.guild_id)
             channel.channel_id = int(body.channel_id)
             channel.channel_name = body.channel_name
             channel.is_active = body.is_active
