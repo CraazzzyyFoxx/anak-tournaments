@@ -18,7 +18,8 @@ const SUB_TAB_LABELS: Record<MatchesSubTab, string> = {
   results: "Results",
   reports: "Reports",
   maps: "Maps",
-  logs: "Logs"
+  logs: "Logs",
+  "report-form": "Report form"
 };
 
 /**

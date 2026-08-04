@@ -42,6 +42,9 @@ export default defineConfig({
       "src/app/balancer/redirect-map.test.ts",
       "src/app/**/users/compare/**/*.test.ts",
       "src/components/tournaments/**/*.test.ts",
+      // File-level, not `**/*.test.tsx`: this folder also holds `bun:test`
+      // files, which fail on the import when vitest picks them up.
+      "src/components/tournaments/MatchReportDialog.behavior.test.tsx",
       "src/components/balancer/registrations/**/*.test.tsx",
       "src/components/balancer/form/**/*.test.tsx",
       "src/components/admin/**/*.test.tsx",

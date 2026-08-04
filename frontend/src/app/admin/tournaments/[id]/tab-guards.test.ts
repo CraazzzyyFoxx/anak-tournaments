@@ -103,7 +103,18 @@ describe("matches sub-tabs", () => {
     expect(isMatchesSubTab("reports")).toBe(true);
     expect(isMatchesSubTab("logs")).toBe(true);
     expect(isMatchesSubTab("maps")).toBe(true);
+    expect(isMatchesSubTab("report-form")).toBe(true);
+    // The hyphen is part of the segment, not a separator the router splits on.
+    expect(isMatchesSubTab("report")).toBe(false);
+    expect(isMatchesSubTab("reportForm")).toBe(false);
     expect(isMatchesSubTab("")).toBe(false);
+  });
+
+  test("results stays first so the landing segment is also the first tab", () => {
+    // The sub-tab bar renders in key order and `report-form` was appended
+    // rather than inserted; a reorder would move the landing tab.
+    expect(MATCHES_SUB_TAB_KEYS[0]).toBe("results");
+    expect(MATCHES_DEFAULT_SUB_TAB).toBe("results");
   });
 
   test("logs stays a top-level key so its permanent redirect resolves", () => {

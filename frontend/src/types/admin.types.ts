@@ -478,8 +478,13 @@ export interface AdminCaptainReport {
   reporter_name: string | null;
   home_score: number;
   away_score: number;
-  closeness: number;
+  /** `null` when the tournament disables or does not require match quality. */
+  closeness: number | null;
   map_codes: Array<{ id: number; map_index: number; map_id: number | null; code: string }>;
+  /** Free-form note from the captain; never part of dispute derivation. */
+  comment: string | null;
+  /** Organizer-defined text answers, keyed by the report form's field keys. */
+  custom_fields: Record<string, string>;
   created_at: string | null;
   updated_at: string | null;
 }

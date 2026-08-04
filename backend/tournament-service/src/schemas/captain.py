@@ -30,12 +30,17 @@ class CaptainReportSubmission(BaseModel):
     """One captain's independent encounter report.
 
     ``home_score``/``away_score`` are in the encounter's home/away orientation.
+    Everything else is optional here and validated against the tournament's
+    report-form config server-side (``services.encounter.report_form``), because
+    what is required depends on that config, not on the wire shape.
     """
 
     home_score: int = Field(ge=0)
     away_score: int = Field(ge=0)
-    closeness: int = Field(ge=1, le=10)
+    closeness: int | None = Field(default=None, ge=1, le=10)
     map_codes: list[CaptainMapCodeInput] = Field(default_factory=list)
+    comment: str | None = None
+    custom_fields: dict[str, str] = Field(default_factory=dict)
 
 
 # HTTP 403 Forbidden — matched without importing fastapi so this module stays

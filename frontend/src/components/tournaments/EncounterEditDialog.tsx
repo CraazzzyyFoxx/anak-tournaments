@@ -264,8 +264,12 @@ function EncounterEditDialogBody({
           </p>
         </div>
 
-        {(reportsQuery.data?.length ?? 0) > 0 && (
-          <CaptainReportsView encounter={encounter} reports={reportsQuery.data ?? []} />
+        {(reportsQuery.data?.reports?.length ?? 0) > 0 && (
+          <CaptainReportsView
+            encounter={encounter}
+            reports={reportsQuery.data?.reports ?? []}
+            form={reportsQuery.data?.form}
+          />
         )}
 
         {validationError && <p className="text-sm text-destructive font-semibold">{validationError}</p>}

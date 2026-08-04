@@ -14,6 +14,7 @@ from __future__ import annotations
 from shared.core.pagination import Paginated
 from shared.rpc.openapi import Op, QueryParam
 from src import schemas
+from src.schemas import encounter_report_form as report_form_schemas
 from src.schemas import registration as reg_schemas
 from src.schemas.admin import balancer as admin_balancer
 from src.schemas.admin import encounter as admin_encounter
@@ -261,8 +262,14 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.saved_view_create": Op(
         request=schemas.EncounterSavedViewCreate, response=schemas.EncounterSavedViewRead
     ),
-    # ── captain reports (public read, now typed) ───────────────────────────
-    "rpc.tournament.captain_reports": Op(response=admin_reports.CaptainReportRead, response_array=True),
+    # ── match report form (per-tournament captain-report config) ───────────
+    "rpc.tournament.report_form_get": Op(response=report_form_schemas.MatchReportFormRead),
+    "rpc.tournament.report_form_upsert": Op(
+        request=report_form_schemas.MatchReportFormUpsert, response=report_form_schemas.MatchReportFormRead
+    ),
+    # captain_reports is deliberately absent: it answers the ad-hoc envelope
+    # {reports, form} rather than a bare CaptainReportRead array, and this module
+    # maps whole request/response models only (see the module docstring).
     # ── encounter result (the single admin write + its audit trail) ────────
     "rpc.tournament.encounter_set_result": Op(
         request=admin_encounter.EncounterSetResultInput, response=admin_encounter.EncounterResultRead

@@ -5803,15 +5803,11 @@
       "summary": "Get my captain side"
     },
     "rpc.tournament.captain_reports": {
-      "description": "Returns both captains' reports for an encounter (score, closeness, per-map codes); visible to anyone who can view the encounter.",
-      "response": {
-        "array": true,
-        "ref": "tournament.CaptainReportRead"
-      },
+      "description": "Returns both captains' reports for an encounter (score, closeness, per-map codes, comment and custom field values) alongside the tournament's match-report form config under `form`, so the report dialog renders exactly the rules the submit endpoint enforces. Visible to anyone who can view the encounter.",
       "summary": "Get captain reports"
     },
     "rpc.tournament.captain_submit_report": {
-      "description": "Lets an encounter captain submit their own report (series score + closeness 1..10 + optional per-map codes). Reports are per-captain; when both captains' scores match the encounter auto-confirms and closeness becomes their average, otherwise it is disputed. Upsert allowed until confirmed; requires authentication.",
+      "description": "Lets an encounter captain submit their own report: series score plus whatever the tournament's match-report form enables \u2014 closeness 1..10, per-map match codes, a free-text comment and any organizer-defined text fields. Fields the config disables are dropped rather than rejected, so a stale client cannot fail a submit; fields it marks required are enforced with a 422. Reports are per-captain; when both captains' scores match the encounter auto-confirms and closeness becomes their average (null when either side left it blank), otherwise it is disputed \u2014 comments and custom values never take part in that comparison. Upsert allowed until confirmed; requires authentication.",
       "summary": "Submit captain report"
     },
     "rpc.tournament.captain_veto": {
@@ -7441,6 +7437,26 @@
         "ref": "tournament.BalancerRegistrationStatusRead"
       },
       "summary": "Update custom status"
+    },
+    "rpc.tournament.report_form_get": {
+      "description": "Returns the tournament's captain match-report form config: which built-in fields (closeness, map codes, comment) are enabled and required, plus any organizer-defined text fields. Always a complete config \u2014 a tournament that has never been configured answers the defaults rather than null. Requires match-read permission on the tournament's workspace.",
+      "response": {
+        "array": false,
+        "ref": "tournament.MatchReportFormRead"
+      },
+      "summary": "Get match report form"
+    },
+    "rpc.tournament.report_form_upsert": {
+      "description": "Creates or replaces the tournament's captain match-report form config. Custom fields are text only, capped at 20, and their keys must be unique, slug-shaped and not collide with a built-in field name (422 otherwise). Rules apply to new submissions only; existing reports stay valid and readable. Requires match-update permission on the tournament's workspace.",
+      "request": {
+        "array": false,
+        "ref": "tournament.MatchReportFormUpsert"
+      },
+      "response": {
+        "array": false,
+        "ref": "tournament.MatchReportFormRead"
+      },
+      "summary": "Upsert match report form"
     },
     "rpc.tournament.saved_view_create": {
       "description": "Creates or upserts the calling user's saved encounter filter view in a workspace; requires authentication.",
@@ -26419,8 +26435,27 @@
           "type": "integer"
         },
         "closeness": {
-          "title": "Closeness",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Closeness"
+        },
+        "comment": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Comment"
         },
         "created_at": {
           "anyOf": [
@@ -26432,6 +26467,13 @@
             }
           ],
           "title": "Created At"
+        },
+        "custom_fields": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Custom Fields",
+          "type": "object"
         },
         "encounter_id": {
           "title": "Encounter Id",
@@ -31481,6 +31523,53 @@
       "title": "MatchReadWithStats",
       "type": "object"
     },
+    "tournament.MatchReportFormRead": {
+      "properties": {
+        "built_in_fields": {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/tournament.ReportBuiltInFieldConfig"
+          },
+          "title": "Built In Fields",
+          "type": "object"
+        },
+        "custom_fields": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.ReportCustomFieldDefinition"
+          },
+          "title": "Custom Fields",
+          "type": "array"
+        },
+        "tournament_id": {
+          "title": "Tournament Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "tournament_id"
+      ],
+      "title": "MatchReportFormRead",
+      "type": "object"
+    },
+    "tournament.MatchReportFormUpsert": {
+      "properties": {
+        "built_in_fields": {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/tournament.ReportBuiltInFieldConfig"
+          },
+          "title": "Built In Fields",
+          "type": "object"
+        },
+        "custom_fields": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.ReportCustomFieldDefinition"
+          },
+          "title": "Custom Fields",
+          "type": "array"
+        }
+      },
+      "title": "MatchReportFormUpsert",
+      "type": "object"
+    },
     "tournament.MatchSearchQueryParams": {
       "properties": {
         "away_team_id": {
@@ -33277,6 +33366,63 @@
         "total"
       ],
       "title": "RegistrationUserExportResponse",
+      "type": "object"
+    },
+    "tournament.ReportBuiltInFieldConfig": {
+      "properties": {
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "required": {
+          "default": false,
+          "title": "Required",
+          "type": "boolean"
+        }
+      },
+      "title": "ReportBuiltInFieldConfig",
+      "type": "object"
+    },
+    "tournament.ReportCustomFieldDefinition": {
+      "properties": {
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "placeholder": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Placeholder"
+        },
+        "required": {
+          "default": false,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "type": {
+          "const": "text",
+          "default": "text",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "label"
+      ],
+      "title": "ReportCustomFieldDefinition",
       "type": "object"
     },
     "tournament.RoleTierRead": {

@@ -51,9 +51,11 @@ export function allowedTab(
  *
  * `results` is the landing segment: `/matches` redirects to it, and anything
  * unknown or unpermitted bounces there too. `logs` used to be a top-level tab
- * and keeps a permanent redirect from its old path.
+ * and keeps a permanent redirect from its old path. `report-form` is the
+ * per-tournament captain-report configuration and sits last because it
+ * configures the other sections rather than reporting on them.
  */
-export const MATCHES_SUB_TAB_KEYS = ["results", "reports", "maps", "logs"] as const;
+export const MATCHES_SUB_TAB_KEYS = ["results", "reports", "maps", "logs", "report-form"] as const;
 
 export type MatchesSubTab = (typeof MATCHES_SUB_TAB_KEYS)[number];
 
@@ -75,6 +77,7 @@ export function allowedMatchesSubTab(tab: MatchesSubTab, p: { canReadMatch: bool
     case "reports":
     case "maps":
     case "logs":
+    case "report-form":
       return p.canReadMatch;
     default:
       return false;

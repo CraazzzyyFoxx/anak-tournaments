@@ -38,6 +38,11 @@ var AdminMiscRoutes = []edge.RouteSpec{
 	{Method: "DELETE", Pattern: "/api/v1/admin/veto-configs/{config_id}", Queue: "rpc.tournament.admin_veto_config_delete", IDParam: "config_id", Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/admin/encounters/{encounter_id}/veto-session/reset", Queue: "rpc.tournament.admin_veto_session_reset", IDParam: "encounter_id", Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/admin/encounters/{encounter_id}/veto-act", Queue: "rpc.tournament.admin_veto_act", IDParam: "encounter_id", Body: true, Auth: edge.AuthRequired},
+	// match report form (docs/plans/2026-08-04-configurable-match-report-form.md) —
+	// the per-tournament captain-report field config. Worker enforces workspace
+	// "match"/"read" for the get and "match"/"update" for the upsert.
+	{Method: "GET", Pattern: "/api/v1/admin/tournaments/{tournament_id}/report-form", Queue: "rpc.tournament.report_form_get", IDParam: "tournament_id", Auth: edge.AuthRequired},
+	{Method: "PUT", Pattern: "/api/v1/admin/tournaments/{tournament_id}/report-form", Queue: "rpc.tournament.report_form_upsert", IDParam: "tournament_id", Body: true, Auth: edge.AuthRequired},
 	// tournament.py — finish (legacy toggle), status transition, and phase schedule replace.
 	{Method: "POST", Pattern: "/api/v1/admin/tournaments/{tournament_id}/finish", Queue: "rpc.tournament.tournament_finish", IDParam: "tournament_id", Auth: edge.AuthRequired},
 	{Method: "PATCH", Pattern: "/api/v1/admin/tournaments/{tournament_id}/status", Queue: "rpc.tournament.tournament_status", IDParam: "tournament_id", Body: true, Auth: edge.AuthRequired},

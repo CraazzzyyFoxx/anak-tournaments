@@ -78,6 +78,8 @@ class SerializedShape(TestCase):
             home_score=1,
             away_score=2,
             closeness=8,
+            comment="gg",
+            custom_fields_json={"vod": "https://example.test/vod"},
             created_at=None,
             updated_at=None,
         )
@@ -97,6 +99,8 @@ class SerializedShape(TestCase):
                 "home_score",
                 "away_score",
                 "closeness",
+                "comment",
+                "custom_fields",
                 "map_codes",
                 "created_at",
                 "updated_at",
@@ -120,6 +124,8 @@ class SerializedShape(TestCase):
             home_score=2,
             away_score=0,
             closeness=5,
+            comment=None,
+            custom_fields_json=None,
             created_at=None,
             updated_at=None,
         )

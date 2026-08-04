@@ -3,7 +3,7 @@ import type {
   EncounterMapPoolEntry,
   EncounterMapPoolState,
 } from "@/types/tournament.types";
-import type { CaptainReport } from "@/types/encounter.types";
+import type { CaptainReport, CaptainReportsResponse } from "@/types/encounter.types";
 import type { VetoActionInput } from "@/types/admin.types";
 
 export interface CaptainMapCodeInput {
@@ -14,8 +14,11 @@ export interface CaptainMapCodeInput {
 export interface CaptainReportInput {
   home_score: number;
   away_score: number;
-  closeness: number; // 1..10
+  /** 1..10, or null when the tournament disables/does not require match quality. */
+  closeness: number | null;
   map_codes: CaptainMapCodeInput[];
+  comment?: string | null;
+  custom_fields?: Record<string, string>;
 }
 
 export interface CaptainReportSubmitResult {
@@ -40,10 +43,14 @@ class CaptainService {
     return response.json();
   }
 
-  async getReports(encounterId: number): Promise<CaptainReport[]> {
+  /**
+   * Returns the reports *and* the tournament's report-form config: the config
+   * rides this envelope so the dialog needs no second round trip and can never
+   * render rules that disagree with the reports shown beside them.
+   */
+  async getReports(encounterId: number): Promise<CaptainReportsResponse> {
     const response = await apiFetch(`/api/v1/encounters/${encounterId}/reports`);
-    const data: { reports: CaptainReport[] } = await response.json();
-    return data.reports;
+    return response.json();
   }
 
   async getMyRole(

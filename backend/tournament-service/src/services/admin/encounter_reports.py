@@ -157,6 +157,8 @@ def _report_read(report: models.EncounterCaptainReport, encounter: models.Encoun
         home_score=report.home_score,
         away_score=report.away_score,
         closeness=report.closeness,
+        comment=report.comment,
+        custom_fields=dict(report.custom_fields_json or {}),
         map_codes=[
             EncounterMapCodeRead(id=c.id, map_index=c.map_index, map_id=c.map_id, code=c.code)
             for c in report.map_codes

@@ -36,11 +36,13 @@ from shared.services.encounter.result_audit import record_result_transition
 from src import models
 from src.schemas.admin.encounter_reports import CaptainReportRead, EncounterMapCodeRead
 from src.services.challonge import sync as challonge_sync
+from src.services.encounter import report_form
 from src.services.encounter.finalize import finalize_encounter_score
 from src.services.tournament.events import enqueue_tournament_recalculation
 
-# One per-map code: (map_index 1-based, replay/match code string).
-MapCodeInput = tuple[int, str]
+# One per-map code: (map_index 1-based, replay/match code string). Defined by the
+# report-form service, which validates them.
+MapCodeInput = report_form.MapCodeInput
 
 
 async def _enqueue_tournament_recalculation(
@@ -206,6 +208,8 @@ def serialize_captain_report(
         home_score=report.home_score,
         away_score=report.away_score,
         closeness=report.closeness,
+        comment=report.comment,
+        custom_fields=dict(report.custom_fields_json or {}),
         map_codes=[serialize_map_code(mc) for mc in sorted(map_codes, key=lambda c: c.map_index)],
         created_at=report.created_at.isoformat() if report.created_at else None,
         updated_at=report.updated_at.isoformat() if report.updated_at else None,
@@ -351,7 +355,12 @@ async def _recompute_encounter_result(
         return False
 
     scores_match = home_report.home_score == away_report.home_score and home_report.away_score == away_report.away_score
-    avg_closeness = (home_report.closeness + away_report.closeness) / 2.0
+    # A tournament may have the match-quality field disabled, so a report can
+    # legitimately carry no rating; there is then nothing to average.
+    if home_report.closeness is None or away_report.closeness is None:
+        avg_closeness = None
+    else:
+        avg_closeness = (home_report.closeness + away_report.closeness) / 2.0
 
     if not scores_match:
         encounter.result_status = EncounterResultStatus.DISPUTED
@@ -369,7 +378,7 @@ async def _recompute_encounter_result(
         await _enqueue_tournament_recalculation(session, encounter.tournament_id)
         return False
 
-    encounter.closeness = avg_closeness / 10.0
+    encounter.closeness = None if avg_closeness is None else avg_closeness / 10.0
     await finalize_encounter_score(
         session,
         encounter.id,
@@ -402,20 +411,22 @@ async def submit_captain_report(
     *,
     home_score: int,
     away_score: int,
-    closeness: int,
+    closeness: int | None,
     map_codes: Sequence[MapCodeInput] = (),
+    comment: str | None = None,
+    custom_fields: dict[str, str] | None = None,
 ) -> models.Encounter:
     """Upsert the calling captain's report and recompute the derived result.
 
     ``home_score``/``away_score`` are in the encounter's home/away orientation.
-    ``map_codes`` are ``(map_index, code)`` pairs; blank codes are ignored and
-    ``map_id`` is softly resolved from the veto pool when one is complete.
+    ``map_codes`` are ``(map_index, code)`` pairs; ``map_id`` is softly resolved
+    from the veto pool when one is complete.
+
+    Which of ``closeness``/``map_codes``/``comment`` and which custom fields are
+    offered and mandatory comes from the tournament's report-form config; values
+    for disabled fields are dropped rather than rejected, so a client holding a
+    stale config cannot fail a submit it could not have known about.
     """
-    if not 1 <= closeness <= 10:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="closeness must be between 1 and 10",
-        )
     if home_score < 0 or away_score < 0:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -446,6 +457,21 @@ async def submit_captain_report(
 
     _side, captain_user_id, team_id = await _resolve_captain_identity(session, auth_user, encounter)
 
+    form = await report_form.resolve_report_form(session, encounter.tournament_id)
+    # Resolved before validation, not just before persisting the codes: a required
+    # `map_codes` config may only demand a code for a slot the captain was offered.
+    map_id_by_index = await _picked_map_ids(session, encounter_id)
+    submission = report_form.validate_submission(
+        form,
+        home_score=home_score,
+        away_score=away_score,
+        closeness=closeness,
+        map_codes=map_codes,
+        comment=comment,
+        custom_fields=custom_fields,
+        available_map_indices=report_form.series_map_indices(map_id_by_index, encounter.best_of),
+    )
+
     report = next((r for r in encounter.captain_reports if r.team_id == team_id), None)
     if report is None:
         report = models.EncounterCaptainReport(encounter_id=encounter.id, team_id=team_id)
@@ -460,20 +486,18 @@ async def submit_captain_report(
     report.reporter_user_id = captain_user_id
     report.home_score = home_score
     report.away_score = away_score
-    report.closeness = closeness
+    report.closeness = submission.closeness
+    report.comment = submission.comment
+    report.custom_fields_json = submission.custom_fields
 
     # Ensure the (possibly new) report has an id before attaching codes.
     await session.flush()
 
-    map_id_by_index = await _picked_map_ids(session, encounter_id)
-    for map_index, code in map_codes:
-        clean = (code or "").strip()
-        if not clean:
-            continue
+    for map_index, code in submission.map_codes:
         report.map_codes.append(
             models.EncounterMapCode(
                 map_index=map_index,
-                code=clean,
+                code=code,
                 map_id=map_id_by_index.get(map_index),
             )
         )
@@ -560,7 +584,9 @@ async def set_encounter_result(
     if closeness is not None:
         encounter.closeness = closeness / 10.0
     else:
-        closeness_values = [r.closeness for r in encounter.captain_reports]
+        # A tournament may have the match-quality field disabled, so skip the
+        # reports that carry no rating rather than summing a None.
+        closeness_values = [r.closeness for r in encounter.captain_reports if r.closeness is not None]
         if closeness_values:
             encounter.closeness = (sum(closeness_values) / len(closeness_values)) / 10.0
 

@@ -105,6 +105,8 @@ function report(overrides: Partial<AdminCaptainReport> = {}): AdminCaptainReport
     away_score: 1,
     closeness: 4,
     map_codes: [],
+    comment: null,
+    custom_fields: {},
     created_at: "2026-01-01T00:00:00Z",
     updated_at: null,
     ...overrides

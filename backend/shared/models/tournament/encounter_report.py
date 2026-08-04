@@ -6,11 +6,23 @@ encounter result is derived: both reports with matching scores auto-confirm the
 encounter (closeness = average of the two ratings); a score mismatch marks it
 disputed. Per-map match/replay codes hang off a report and, when a map-veto pool
 exists, softly resolve to the picked ``overwatch.map`` at that pick order.
+
+``EncounterReportForm`` holds the per-tournament configuration of which of those
+report fields are offered and which are mandatory, plus organizer-defined custom
+text fields.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import CheckConstraint, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    CheckConstraint,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db
@@ -25,6 +37,7 @@ if TYPE_CHECKING:
 __all__ = (
     "EncounterCaptainReport",
     "EncounterMapCode",
+    "EncounterReportForm",
 )
 
 
@@ -40,6 +53,7 @@ class EncounterCaptainReport(db.TimeStampIntegerMixin):
     __tablename__ = "encounter_captain_report"
     __table_args__ = (
         UniqueConstraint("encounter_id", "team_id", name="uq_encounter_captain_report_encounter_team"),
+        # Still valid with a nullable ``closeness``: a SQL CHECK passes on NULL.
         CheckConstraint("closeness BETWEEN 1 AND 10", name="ck_encounter_captain_report_closeness"),
         CheckConstraint("home_score >= 0 AND away_score >= 0", name="ck_encounter_captain_report_scores"),
         {"schema": "tournament"},
@@ -54,7 +68,13 @@ class EncounterCaptainReport(db.TimeStampIntegerMixin):
     )
     home_score: Mapped[int] = mapped_column(Integer())
     away_score: Mapped[int] = mapped_column(Integer())
-    closeness: Mapped[int] = mapped_column(Integer())
+    # Nullable because the tournament's report form may disable the field entirely.
+    closeness: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    comment: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    # Organizer-defined text answers, keyed by the definition's ``key``.
+    custom_fields_json: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, server_default="{}", default=dict
+    )
 
     encounter: Mapped[Encounter] = relationship(back_populates="captain_reports")
     team: Mapped[Team] = relationship()
@@ -98,3 +118,29 @@ class EncounterMapCode(db.TimeStampIntegerMixin):
 
     report: Mapped[EncounterCaptainReport] = relationship(back_populates="map_codes")
     map: Mapped["Map | None"] = relationship()
+
+
+class EncounterReportForm(db.TimeStampIntegerMixin):
+    """Per-tournament configuration of the captain match-report form.
+
+    Absent row means "all defaults"; the row is created lazily on the first
+    organizer save. ``built_in_fields_json`` maps a built-in field name
+    (``closeness``/``map_codes``/``comment``) to ``{enabled, required}``;
+    ``custom_fields_json`` is an ordered list of text-field definitions.
+    """
+
+    __tablename__ = "encounter_report_form"
+    __table_args__ = (
+        UniqueConstraint("tournament_id", name="uq_encounter_report_form_tournament"),
+        {"schema": "tournament"},
+    )
+
+    tournament_id: Mapped[int] = mapped_column(
+        ForeignKey("tournament.tournament.id", ondelete="CASCADE"), index=True
+    )
+    built_in_fields_json: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, server_default="{}", default=dict
+    )
+    custom_fields_json: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON, nullable=False, server_default="[]", default=list
+    )

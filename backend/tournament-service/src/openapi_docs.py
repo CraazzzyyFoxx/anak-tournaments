@@ -212,6 +212,25 @@ DOCS: dict[str, dict] = {
             "409 when there is no recorded result. Requires match-update permission on the encounter's workspace."
         ),
     },
+    # ── match report form (per-tournament captain-report config) ───────────
+    "rpc.tournament.report_form_get": {
+        "summary": "Get match report form",
+        "description": (
+            "Returns the tournament's captain match-report form config: which built-in fields (closeness, "
+            "map codes, comment) are enabled and required, plus any organizer-defined text fields. Always "
+            "a complete config — a tournament that has never been configured answers the defaults rather "
+            "than null. Requires match-read permission on the tournament's workspace."
+        ),
+    },
+    "rpc.tournament.report_form_upsert": {
+        "summary": "Upsert match report form",
+        "description": (
+            "Creates or replaces the tournament's captain match-report form config. Custom fields are text "
+            "only, capped at 20, and their keys must be unique, slug-shaped and not collide with a built-in "
+            "field name (422 otherwise). Rules apply to new submissions only; existing reports stay valid "
+            "and readable. Requires match-update permission on the tournament's workspace."
+        ),
+    },
     "rpc.tournament.admin_matches_list": {
         "summary": "List parsed matches",
         "description": (
@@ -641,11 +660,25 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.captain_submit_report": {
         "summary": "Submit captain report",
-        "description": "Lets an encounter captain submit their own report (series score + closeness 1..10 + optional per-map codes). Reports are per-captain; when both captains' scores match the encounter auto-confirms and closeness becomes their average, otherwise it is disputed. Upsert allowed until confirmed; requires authentication.",
+        "description": (
+            "Lets an encounter captain submit their own report: series score plus whatever the tournament's "
+            "match-report form enables — closeness 1..10, per-map match codes, a free-text comment and any "
+            "organizer-defined text fields. Fields the config disables are dropped rather than rejected, so a "
+            "stale client cannot fail a submit; fields it marks required are enforced with a 422. Reports are "
+            "per-captain; when both captains' scores match the encounter auto-confirms and closeness becomes "
+            "their average (null when either side left it blank), otherwise it is disputed — comments and "
+            "custom values never take part in that comparison. Upsert allowed until confirmed; requires "
+            "authentication."
+        ),
     },
     "rpc.tournament.captain_reports": {
         "summary": "Get captain reports",
-        "description": "Returns both captains' reports for an encounter (score, closeness, per-map codes); visible to anyone who can view the encounter.",
+        "description": (
+            "Returns both captains' reports for an encounter (score, closeness, per-map codes, comment and "
+            "custom field values) alongside the tournament's match-report form config under `form`, so the "
+            "report dialog renders exactly the rules the submit endpoint enforces. Visible to anyone who can "
+            "view the encounter."
+        ),
     },
     "rpc.tournament.captain_map_pool": {
         "summary": "Get encounter map pool",

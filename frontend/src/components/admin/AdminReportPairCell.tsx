@@ -28,8 +28,21 @@ function ReportSide({ label, report }: Readonly<{ label: string; report: AdminCa
             {report.home_score} &ndash; {report.away_score}
           </p>
           <p className="truncate text-xs text-muted-foreground">
-            {report.reporter_name ?? "unknown"} &middot; {report.closeness}/10
+            {report.reporter_name ?? "unknown"} &middot;{" "}
+            {/* Match quality is configurable per tournament, so an absent rating
+                is a legitimate report — not a missing number to render as NaN. */}
+            {report.closeness == null ? "no rating" : `${report.closeness}/10`}
           </p>
+          {report.comment ? (
+            // Clamped rather than hidden: an organizer settling a dispute needs
+            // to read what the captain wrote, and `title` carries the rest.
+            <p
+              className="mt-0.5 line-clamp-2 text-xs italic text-muted-foreground"
+              title={report.comment}
+            >
+              &ldquo;{report.comment}&rdquo;
+            </p>
+          ) : null}
         </>
       ) : (
         <p className="flex items-center gap-1 text-xs italic text-muted-foreground">

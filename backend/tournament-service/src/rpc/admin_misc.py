@@ -14,9 +14,9 @@ The gateway passes path params as ``data["<name>"]`` (and the primary id as
 
 Commit semantics: every write service called here commits internally
 (update_match, set_encounter_result, initialize_map_pool,
-toggle_finished, transition_status, recalculate_standings), so the handlers add no
-extra commit. job_get/job_list and the encounter-reports / parsed-matches reads are
-read-only.
+toggle_finished, transition_status, recalculate_standings, upsert_report_form), so
+the handlers add no extra commit. job_get/job_list, report_form_get and the
+encounter-reports / parsed-matches reads are read-only.
 """
 
 from __future__ import annotations
@@ -44,6 +44,7 @@ from src.rpc._helpers import (
     _require_q1,
     _run,
 )
+from src.schemas import encounter_report_form as report_form_schemas
 from src.schemas.admin import encounter as enc_schemas
 from src.schemas.admin import encounter_reports as reports_schemas
 from src.schemas.admin import matches as matches_schemas
@@ -58,6 +59,7 @@ from src.services.admin import tournament as tournament_service
 from src.services.computation import jobs as computation_jobs
 from src.services.encounter import captain as captain_service
 from src.services.encounter import map_veto as map_veto_service
+from src.services.encounter import report_form as report_form_service
 from src.services.tournament import flows as tournament_flows
 from src.services.tournament import schedule as schedule_service
 from src.services.tournament.cache_invalidation import invalidate_tournament_cache
@@ -171,6 +173,40 @@ def register(broker: Any, logger: Any) -> None:
             # initialize_map_pool commits internally; route returns {"assigned": N}.
             entries = await map_veto_service.initialize_map_pool(session, encounter_id, body.map_ids)
             return {"assigned": len(entries)}
+
+        return await _run(logger, op)
+
+    # ── match report form (per-tournament captain-report config) ──────────
+
+    # GET /admin/tournaments/{tournament_id}/report-form -> match.read
+    @broker.subscriber("rpc.tournament.report_form_get")
+    async def _report_form_get(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            tournament_id = _require_id(data)
+            ws_id = await auth.get_tournament_workspace_id(session, tournament_id)
+            ensure_workspace_permission(user, ws_id, "match", "read")
+            # Always a full defaults-merged config, never null — deliberately
+            # unlike rpc.tournament.reg_form_get. "No row yet" is the normal
+            # state (rows are created lazily on first save), so the client gets
+            # a config to render instead of an empty branch to special-case.
+            # resolve_report_form is read-only: it never materializes the row.
+            return _dump(await report_form_service.resolve_report_form(session, tournament_id))
+
+        return await _run(logger, op)
+
+    # PUT /admin/tournaments/{tournament_id}/report-form -> match.update
+    @broker.subscriber("rpc.tournament.report_form_upsert")
+    async def _report_form_upsert(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = _identity(data)
+            tournament_id = _require_id(data)
+            ws_id = await auth.get_tournament_workspace_id(session, tournament_id)
+            ensure_workspace_permission(user, ws_id, "match", "update")
+            body = report_form_schemas.MatchReportFormUpsert.model_validate(_payload(data))
+            # get_tournament_workspace_id above already 404s on a missing
+            # tournament; upsert_report_form commits internally.
+            return _dump(await report_form_service.upsert_report_form(session, tournament_id, body))
 
         return await _run(logger, op)
 

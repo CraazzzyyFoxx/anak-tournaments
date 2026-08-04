@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from shared.core import pagination
 from shared.core.enums import (
@@ -75,7 +75,9 @@ class CaptainReportRead(BaseModel):
     reporter_name: str | None = None
     home_score: int
     away_score: int
-    closeness: int
+    closeness: int | None
+    comment: str | None = None
+    custom_fields: dict[str, str] = Field(default_factory=dict)
     map_codes: list[EncounterMapCodeRead]
     created_at: str | None
     updated_at: str | None

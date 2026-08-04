@@ -34,6 +34,8 @@ function report(overrides: Partial<AdminCaptainReport> = {}): AdminCaptainReport
     away_score: 1,
     closeness: 7,
     map_codes: [],
+    comment: null,
+    custom_fields: {},
     created_at: null,
     updated_at: null,
     ...overrides
@@ -140,5 +142,39 @@ describe("AdminReportPairCell", () => {
       />
     );
     expect(container.textContent).not.toContain("Score outside best-of");
+  });
+
+  it("shows each captain's comment so a dispute can be read, not guessed", async () => {
+    const long = "We had a disconnect on the second map and replayed the last round. ".repeat(4);
+    const container = await mount(
+      <AdminReportPairCell
+        homeReport={report({ comment: "Opponents were late by 15 minutes" })}
+        awayReport={report({ id: 2, team_id: 2, side: "away", comment: long })}
+        scoresMatch
+        seriesScoreValid
+      />
+    );
+    expect(container.textContent).toContain("Opponents were late by 15 minutes");
+    // Clamped in the cell, but the full text stays reachable rather than lost.
+    const titles = Array.from(container.querySelectorAll("p"))
+      .filter((p) => p.className.includes("line-clamp"))
+      .map((p) => p.getAttribute("title"));
+    expect(titles).toEqual(["Opponents were late by 15 minutes", long]);
+  });
+
+  it("renders a report with no match quality without printing null or NaN", async () => {
+    // Match quality is configurable per tournament, so an unrated report is
+    // valid data — not a hole to render as "null/10".
+    const container = await mount(
+      <AdminReportPairCell
+        homeReport={report({ closeness: null })}
+        awayReport={null}
+        scoresMatch={null}
+        seriesScoreValid
+      />
+    );
+    expect(container.textContent).toContain("no rating");
+    expect(container.textContent).not.toContain("null");
+    expect(container.textContent).not.toContain("NaN");
   });
 });

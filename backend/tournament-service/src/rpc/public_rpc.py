@@ -72,6 +72,7 @@ from src.services import visibility_resolvers
 from src.services.encounter import captain as captain_service
 from src.services.encounter import flows as encounter_flows
 from src.services.encounter import map_veto as map_veto_service
+from src.services.encounter import report_form as report_form_service
 from src.services.registration import service as reg_service
 from src.services.registration.subscription_codes import redeem_challenge_code
 from src.services.registration.subscription_gate import (
@@ -152,6 +153,8 @@ def register(broker: Any, logger: Any) -> None:
                 away_score=body.away_score,
                 closeness=body.closeness,
                 map_codes=[(mc.map_index, mc.code) for mc in body.map_codes],
+                comment=body.comment,
+                custom_fields=body.custom_fields,
             )
             reports = await captain_service.get_encounter_reports(session, encounter_id)
             return {
@@ -173,7 +176,12 @@ def register(broker: Any, logger: Any) -> None:
             encounter_id = _require_id(data)
             tournament_id = await visibility_resolvers.tournament_id_for_encounter(session, encounter_id)
             await assert_tournament_viewable(session, _optional_identity(data), tournament_id)
-            return {"reports": await captain_service.get_encounter_reports(session, encounter_id)}
+            # The form config rides this envelope so the report dialog opens with
+            # exactly the rules the submit endpoint will enforce, in one round trip.
+            return {
+                "reports": await captain_service.get_encounter_reports(session, encounter_id),
+                "form": _dump(await report_form_service.resolve_report_form(session, tournament_id)),
+            }
 
         return await _run(logger, op)
 

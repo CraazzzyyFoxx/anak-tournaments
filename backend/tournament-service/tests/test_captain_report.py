@@ -46,7 +46,9 @@ def _mk_user(user_id: int = 1) -> SimpleNamespace:
     return SimpleNamespace(id=user_id)
 
 
-def _mk_report(*, team_id: int, home: int, away: int, closeness: int, report_id: int = 1) -> SimpleNamespace:
+def _mk_report(
+    *, team_id: int, home: int, away: int, closeness: int | None, report_id: int = 1
+) -> SimpleNamespace:
     return SimpleNamespace(
         id=report_id,
         team_id=team_id,
@@ -54,7 +56,17 @@ def _mk_report(*, team_id: int, home: int, away: int, closeness: int, report_id:
         home_score=home,
         away_score=away,
         closeness=closeness,
+        comment=None,
+        custom_fields_json={},
         map_codes=[],
+    )
+
+
+def _mk_report_form(built_in: dict | None = None, custom: list | None = None) -> SimpleNamespace:
+    """A stand-in for a persisted ``EncounterReportForm`` row."""
+    return SimpleNamespace(
+        built_in_fields_json=built_in or {},
+        custom_fields_json=custom or [],
     )
 
 
@@ -64,6 +76,7 @@ def _mk_encounter(
     captain_reports: list | None = None,
     home_captain_player_id: int = 100,
     away_captain_player_id: int = 200,
+    best_of: int = 3,
 ) -> SimpleNamespace:
     home_team = SimpleNamespace(id=1, captain_id=home_captain_player_id)
     away_team = SimpleNamespace(id=2, captain_id=away_captain_player_id)
@@ -77,6 +90,7 @@ def _mk_encounter(
         stage=SimpleNamespace(stage_type="round_robin"),
         result_status=result_status,
         status=enums.EncounterStatus.OPEN,
+        best_of=best_of,
         home_score=0,
         away_score=0,
         closeness=None,
@@ -90,6 +104,7 @@ def _mk_session(
     captain_player_ids: list[int],
     *,
     picked_rows: list[tuple[int, int]] | None = None,
+    report_form_row: SimpleNamespace | None = None,
 ) -> SimpleNamespace:
     linked_player_id = captain_player_ids[0] if captain_player_ids else None
     execute_count = 0
@@ -101,8 +116,9 @@ def _mk_session(
 
         # Every result answers scalar_one_or_none()/scalars().all()/all(), so any
         # query shape is safe regardless of call order: the encounter load, the
-        # linked-player lookup, delete(codes), the picked-pool select, the
-        # challonge probe, and the bracket's EncounterLink fan-out.
+        # linked-player lookup, the report-form config load, delete(codes), the
+        # picked-pool select, the challonge probe, and the bracket's
+        # EncounterLink fan-out.
         result_mock = Mock()
         scalars_mock = Mock()
         scalars_mock.all.return_value = []
@@ -115,6 +131,8 @@ def _mk_session(
             result_mock.scalar_one_or_none.return_value = (
                 SimpleNamespace(id=linked_player_id) if linked_player_id is not None else None
             )
+        elif execute_count == 3:  # report-form config (None => all defaults)
+            result_mock.scalar_one_or_none.return_value = report_form_row
         else:
             result_mock.scalar_one_or_none.return_value = None
         return result_mock
@@ -286,6 +304,84 @@ class CaptainReportFlow(IsolatedAsyncioTestCase):
         self.assertIsNone(by_index[3].map_id)  # soft: index beyond picks
         self.assertEqual(by_index[1].code, "AAA")
 
+
+class ConfigurableReportFields(IsolatedAsyncioTestCase):
+    """The tournament's report-form config decides what a report carries."""
+
+    async def test_persists_comment_and_custom_fields(self) -> None:
+        encounter = _mk_encounter()
+        session = _mk_session(
+            encounter,
+            [100],
+            report_form_row=_mk_report_form(
+                custom=[{"key": "vod", "label": "VOD link", "type": "text", "required": True}]
+            ),
+        )
+        with patch.object(captain_service, "_enqueue_tournament_recalculation", AsyncMock()):
+            await captain_service.submit_captain_report(
+                session, _mk_user(), 10, home_score=2, away_score=1, closeness=7,
+                comment="  close series  ",
+                custom_fields={"vod": "https://example.test/vod", "gone": "dropped"},
+            )
+        report = encounter.captain_reports[0]
+        self.assertEqual("close series", report.comment)
+        self.assertEqual({"vod": "https://example.test/vod"}, report.custom_fields_json)
+
+    async def test_a_required_custom_field_blocks_the_submit(self) -> None:
+        session = _mk_session(
+            _mk_encounter(),
+            [100],
+            report_form_row=_mk_report_form(
+                custom=[{"key": "vod", "label": "VOD link", "type": "text", "required": True}]
+            ),
+        )
+        with assert_http_status(self, 422):
+            await captain_service.submit_captain_report(
+                session, _mk_user(), 10, home_score=2, away_score=1, closeness=7
+            )
+
+    async def test_disabled_closeness_leaves_the_encounter_unrated(self) -> None:
+        """With the field off, both reports store NULL and there is no average."""
+        existing = _mk_report(team_id=1, home=2, away=1, closeness=None)
+        encounter = _mk_encounter(
+            result_status=enums.EncounterResultStatus.PENDING_CONFIRMATION,
+            captain_reports=[existing],
+        )
+        session = _mk_session(
+            encounter,
+            [200],  # away captain
+            report_form_row=_mk_report_form(
+                built_in={"closeness": {"enabled": False, "required": False}}
+            ),
+        )
+        with (
+            patch.object(captain_service, "finalize_encounter_score", AsyncMock()),
+            patch.object(captain_service, "_enqueue_tournament_recalculation", AsyncMock()),
+            patch.object(captain_service, "_enqueue_encounter_completed", AsyncMock()),
+        ):
+            await captain_service.submit_captain_report(
+                session, _mk_user(), 10, home_score=2, away_score=1, closeness=9
+            )
+        # Submitted 9, but the field is disabled: the value is dropped, not rejected.
+        self.assertIsNone(encounter.captain_reports[1].closeness)
+        self.assertIsNone(encounter.closeness)
+
+    async def test_required_map_codes_block_a_missing_code(self) -> None:
+        session = _mk_session(
+            _mk_encounter(),
+            [100],
+            report_form_row=_mk_report_form(
+                built_in={"map_codes": {"enabled": True, "required": True}}
+            ),
+        )
+        with assert_http_status(self, 422):
+            # 2-1 played three maps; only one code supplied.
+            await captain_service.submit_captain_report(
+                session, _mk_user(), 10, home_score=2, away_score=1, closeness=7,
+                map_codes=[(1, "AAA")],
+            )
+
+
 class AdminSetResult(IsolatedAsyncioTestCase):
     ADMIN = 900
 
@@ -331,6 +427,29 @@ class AdminSetResult(IsolatedAsyncioTestCase):
         self.assertEqual(self.ADMIN, audit[0].actor_user_id)
         self.assertEqual((0, 0), (audit[0].home_score_before, audit[0].away_score_before))
         self.assertEqual((3, 0), (audit[0].home_score_after, audit[0].away_score_after))
+
+    async def test_averages_only_the_reports_that_carry_a_rating(self) -> None:
+        """A disabled match-quality field leaves NULL ratings the average must skip."""
+        rated = _mk_report(team_id=1, home=2, away=0, closeness=8, report_id=1)
+        unrated = _mk_report(team_id=2, home=2, away=0, closeness=None, report_id=2)
+        encounter = _mk_encounter(
+            result_status=enums.EncounterResultStatus.DISPUTED,
+            captain_reports=[rated, unrated],
+        )
+        await self._set(encounter)
+        self.assertAlmostEqual(encounter.closeness, 0.8)
+
+    async def test_all_unrated_reports_leave_the_encounter_unrated(self) -> None:
+        reports = [
+            _mk_report(team_id=1, home=2, away=0, closeness=None, report_id=1),
+            _mk_report(team_id=2, home=2, away=0, closeness=None, report_id=2),
+        ]
+        encounter = _mk_encounter(
+            result_status=enums.EncounterResultStatus.PENDING_CONFIRMATION,
+            captain_reports=reports,
+        )
+        await self._set(encounter)
+        self.assertIsNone(encounter.closeness)
 
     async def test_explicit_score_wins_over_every_report(self) -> None:
         home = _mk_report(team_id=1, home=2, away=0, closeness=5, report_id=1)

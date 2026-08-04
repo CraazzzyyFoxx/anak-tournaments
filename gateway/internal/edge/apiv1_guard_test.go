@@ -148,6 +148,9 @@ func TestApiV1Guard_MatchSurfaceRoutesAreRegistered(t *testing.T) {
 		// The collection must not swallow this as an id, nor the id pattern
 		// shadow the collection.
 		"/api/v1/admin/matches/42?workspace_id=1",
+		// The per-tournament report-form config sits under the {tournament_id}
+		// prefix shared with finish/status/schedule/preview-access.
+		"/api/v1/admin/tournaments/7/report-form",
 	} {
 		t.Run(path, func(t *testing.T) {
 			resp, err := http.Get(srv.URL + path)
