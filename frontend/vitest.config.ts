@@ -45,6 +45,7 @@ export default defineConfig({
       // File-level, not `**/*.test.tsx`: this folder also holds `bun:test`
       // files, which fail on the import when vitest picks them up.
       "src/components/tournaments/MatchReportDialog.behavior.test.tsx",
+      "src/components/tournaments/EncounterEditDialog.behavior.test.tsx",
       "src/components/balancer/registrations/**/*.test.tsx",
       "src/components/balancer/form/**/*.test.tsx",
       "src/components/admin/**/*.test.tsx",

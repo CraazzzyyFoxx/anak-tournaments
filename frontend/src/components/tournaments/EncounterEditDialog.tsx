@@ -41,7 +41,20 @@ interface EncounterEditDialogProps {
 // Editable statuses only. Completion moves score, status, result_status and
 // the audit row together, so it belongs to the result action below.
 const ENCOUNTER_STATUSES = ["open", "pending"] as const;
+const COMPLETED_STATUS = "completed";
 const BEST_OF_OPTIONS = [1, 2, 3, 5, 7] as const;
+
+type EncounterStatusOption = (typeof ENCOUNTER_STATUSES)[number] | typeof COMPLETED_STATUS;
+
+/** A completed encounter keeps `completed` so the select has something to show;
+ * anything unrecognised falls back to `open` instead of rendering blank. */
+function normalizeStatus(status: string | null | undefined): EncounterStatusOption {
+  const value = (status ?? "").toLowerCase();
+  if (value === COMPLETED_STATUS) return COMPLETED_STATUS;
+  return ENCOUNTER_STATUSES.includes(value as (typeof ENCOUNTER_STATUSES)[number])
+    ? (value as (typeof ENCOUNTER_STATUSES)[number])
+    : "open";
+}
 
 function closenessFloatToStars(closeness: number | null | undefined): number {
   if (closeness == null || closeness <= 0) return 0;
@@ -77,9 +90,13 @@ function EncounterEditDialogBody({
 
   const [homeScore, setHomeScore] = useState(() => encounter.score?.home ?? 0);
   const [awayScore, setAwayScore] = useState(() => encounter.score?.away ?? 0);
-  const [status, setStatus] = useState<string>(() => encounter.status ?? "open");
+  const [status, setStatus] = useState<EncounterStatusOption>(() => normalizeStatus(encounter.status));
   const [stars, setStars] = useState<number>(() => closenessFloatToStars(encounter.closeness));
   const [bestOf, setBestOf] = useState<number>(() => encounter.best_of ?? 3);
+  // `completed` is rejected by the field update (completion goes through the
+  // result endpoint), so it is shown read-only and left out of the payload.
+  const isCompleted = normalizeStatus(encounter.status) === COMPLETED_STATUS;
+  const statusOptions: readonly EncounterStatusOption[] = isCompleted ? [COMPLETED_STATUS] : ENCOUNTER_STATUSES;
 
   const reportsQuery = useQuery({
     queryKey: ["encounter", encounter.id, "reports"],
@@ -108,9 +125,9 @@ function EncounterEditDialogBody({
       const encounterPayload: EncounterUpdateInput = {
         home_score: homeScore,
         away_score: awayScore,
-        status: status as EncounterEditableStatus,
         closeness: stars > 0 ? stars / 10 : null,
-        best_of: bestOf
+        best_of: bestOf,
+        ...(isCompleted ? {} : { status: status as EncounterEditableStatus })
       };
       await adminService.updateEncounter(encounter.id, encounterPayload);
     },
@@ -186,7 +203,6 @@ function EncounterEditDialogBody({
           onPresetSelect={(score) => {
             setHomeScore(score.homeScore);
             setAwayScore(score.awayScore);
-            setStatus("completed");
           }}
         />
 
@@ -212,12 +228,12 @@ function EncounterEditDialogBody({
 
         <div className="space-y-1.5">
           <Label className="text-[13px] font-bold text-[color:var(--aqt-fg-muted)]">{t("matchEdit.status")}</Label>
-          <Select value={status} onValueChange={setStatus}>
+          <Select value={status} onValueChange={(value) => setStatus(normalizeStatus(value))} disabled={isCompleted}>
             <SelectTrigger className="w-full rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] font-semibold text-[color:var(--aqt-fg)]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {ENCOUNTER_STATUSES.map((item) => (
+              {statusOptions.map((item) => (
                 <SelectItem
                   key={item}
                   value={item}
@@ -228,6 +244,11 @@ function EncounterEditDialogBody({
               ))}
             </SelectContent>
           </Select>
+          {isCompleted && (
+            <p className="text-[11px] text-[color:var(--aqt-fg-dim)] font-medium leading-normal mt-1">
+              {t("matchEdit.statusLockedHint")}
+            </p>
+          )}
         </div>
 
         <div className="space-y-1.5">

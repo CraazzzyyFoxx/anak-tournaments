@@ -612,6 +612,7 @@
     "manualEntry": "Manual result entry",
     "resultPresets": "Result presets",
     "status": "Status",
+    "statusLockedHint": "A completed match keeps its status until the result is reopened.",
     "matchCloseness": "Match closeness",
     "closenessHint": "Only the overall score is edited. Maps will appear after parsing the log files.",
     "cancel": "Cancel",
