@@ -102,6 +102,9 @@ import {
   EncounterReportsQuery,
   EncounterReportsRow,
   EncounterReportsStats,
+  AdminMatchDetail,
+  AdminMatchRow,
+  AdminMatchesQuery,
 } from "@/types/admin.types";
 
 /**
@@ -122,6 +125,25 @@ function buildEncounterReportsQuery(params: EncounterReportsQuery): string {
   // Repeated, not comma-joined: the backend field is a list and the gateway
   // forwards every occurrence.
   for (const status of params.result_status ?? []) search.append("result_status", status);
+  return search.toString();
+}
+
+/**
+ * Serialise the parsed-matches filter set. `log_status` repeats rather than
+ * comma-joining: the backend field is a list and the gateway forwards every
+ * occurrence.
+ */
+function buildAdminMatchesQuery(params: AdminMatchesQuery): string {
+  const search = new URLSearchParams();
+  search.set("workspace_id", String(params.workspace_id));
+  if (params.page != null) search.set("page", String(params.page));
+  if (params.per_page != null) search.set("per_page", String(params.per_page));
+  if (params.query) search.set("query", params.query);
+  if (params.tournament_id != null) search.set("tournament_id", String(params.tournament_id));
+  if (params.encounter_id != null) search.set("encounter_id", String(params.encounter_id));
+  if (params.map_id != null) search.set("map_id", String(params.map_id));
+  if (params.unlinked_only) search.set("unlinked_only", "true");
+  for (const status of params.log_status ?? []) search.append("log_status", status);
   return search.toString();
 }
 
@@ -462,6 +484,24 @@ class AdminService {
   async getEncounterReportStats(params: EncounterReportsQuery): Promise<EncounterReportsStats> {
     const response = await apiFetch(
       `/api/v1/admin/encounter-reports/stats?${buildEncounterReportsQuery(params)}`
+    );
+    return response.json();
+  }
+
+  /** Parsed matches — one row per played map — across the workspace. */
+  async listAdminMatches(params: AdminMatchesQuery): Promise<PaginatedResponse<AdminMatchRow>> {
+    const response = await apiFetch(`/api/v1/admin/matches?${buildAdminMatchesQuery(params)}`);
+    return response.json();
+  }
+
+  /**
+   * One parsed match with the aggregates the list omits. Needs the workspace
+   * because the endpoint 404s identically for an unknown id and for one in
+   * another workspace.
+   */
+  async getAdminMatch(matchId: number, workspaceId: number): Promise<AdminMatchDetail> {
+    const response = await apiFetch(
+      `/api/v1/admin/matches/${matchId}?workspace_id=${workspaceId}`
     );
     return response.json();
   }

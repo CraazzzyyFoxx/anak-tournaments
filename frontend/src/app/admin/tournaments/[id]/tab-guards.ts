@@ -53,7 +53,7 @@ export function allowedTab(
  * unknown or unpermitted bounces there too. `logs` used to be a top-level tab
  * and keeps a permanent redirect from its old path.
  */
-export const MATCHES_SUB_TAB_KEYS = ["results", "reports", "logs"] as const;
+export const MATCHES_SUB_TAB_KEYS = ["results", "reports", "maps", "logs"] as const;
 
 export type MatchesSubTab = (typeof MATCHES_SUB_TAB_KEYS)[number];
 
@@ -73,6 +73,7 @@ export function allowedMatchesSubTab(tab: MatchesSubTab, p: { canReadMatch: bool
   switch (tab) {
     case "results":
     case "reports":
+    case "maps":
     case "logs":
       return p.canReadMatch;
     default:

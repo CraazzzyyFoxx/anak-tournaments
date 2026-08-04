@@ -102,7 +102,7 @@ describe("matches sub-tabs", () => {
     expect(isMatchesSubTab("results")).toBe(true);
     expect(isMatchesSubTab("reports")).toBe(true);
     expect(isMatchesSubTab("logs")).toBe(true);
-    expect(isMatchesSubTab("maps")).toBe(false);
+    expect(isMatchesSubTab("maps")).toBe(true);
     expect(isMatchesSubTab("")).toBe(false);
   });
 

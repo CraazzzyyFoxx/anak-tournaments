@@ -541,6 +541,69 @@ export interface EncounterReportsQuery {
   reported_count?: number | null;
 }
 
+/**
+ * The ingestion record a parsed match came from. Deliberately thinner than the
+ * log console's own row: this is provenance for one map, not the log's
+ * lifecycle.
+ */
+export interface LogRecordRef {
+  id: number;
+  filename: string;
+  status: LogProcessingStatus;
+  source: string | null;
+  uploader_id: number | null;
+  attempts: number;
+  error_message: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+/** One parsed match — a single played map, as the log parser produced it. */
+export interface AdminMatchRow {
+  id: number;
+  encounter_id: number;
+  encounter_name: string;
+  tournament_id: number;
+  tournament_name: string;
+  map_id: number;
+  map_name: string;
+  home_team: { id: number; name: string | null };
+  away_team: { id: number; name: string | null };
+  home_score: number;
+  away_score: number;
+  /** Map duration in seconds. */
+  time: number;
+  log_name: string;
+  code: string | null;
+  created_at: string;
+  /**
+   * `null` means provenance is unresolved. That is the normal state for the
+   * bulk of the history — the ingestion table postdates most parsed matches —
+   * so the UI must present it as unknown, never as a failure.
+   */
+  log_record: LogRecordRef | null;
+}
+
+export interface AdminMatchDetail extends AdminMatchRow {
+  rounds: number;
+  statistics_count: number;
+  kill_feed_count: number;
+  event_count: number;
+}
+
+export interface AdminMatchesQuery {
+  workspace_id: number;
+  page?: number;
+  per_page?: number;
+  query?: string;
+  tournament_id?: number | null;
+  encounter_id?: number | null;
+  map_id?: number | null;
+  log_status?: LogProcessingStatus[];
+  unlinked_only?: boolean;
+}
+
 export interface EncounterCreateInput {
   tournament_id: number;
   tournament_group_id?: number | null;
