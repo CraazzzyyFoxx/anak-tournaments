@@ -1260,12 +1260,22 @@ async def process_match_log(
     from src.services.match_logs import log_records as record_service
 
     tournament = await tournament_flows.get(session, tournament_id, [])
+    # LogProcessingRecord.filename is always a bare object name — uploads.py
+    # rejects "/" outright — but the bulk path feeds us the full S3 key
+    # ("logs/{tournament_id}/{name}") straight from list_objects. Matching
+    # records on the prefixed form found nothing, forked a duplicate "manual"
+    # row and left the uploaded one on `pending` ("Queued") forever, so key
+    # every record lookup on the bare name.
+    object_name = filename.rsplit("/", 1)[-1]
     logger.info(f"Fetching logs from S3 for tournament {tournament.id} and file {filename}")
 
     raw_bytes = await s3_service.get_log_by_filename(s3, tournament.id, filename)
     if not raw_bytes:
         msg = f"Log file {filename} not found or empty in S3"
         logger.error(msg)
+        # Terminal, not silent: this fires before set_processing, so without it
+        # the row stays `pending` and the stall reaper requeues it forever.
+        await record_service.fail_unstarted(session, tournament_id, object_name, msg)
         if is_raise:
             raise errors.ApiHTTPException(
                 status_code=404,
@@ -1277,6 +1287,7 @@ async def process_match_log(
     if len(raw_bytes) > max_log_bytes:
         msg = f"Log file {filename} exceeds the maximum size of {max_log_bytes} bytes"
         logger.error(msg)
+        await record_service.fail_unstarted(session, tournament_id, object_name, msg)
         if is_raise:
             raise errors.ApiHTTPException(
                 status_code=413,
@@ -1286,19 +1297,19 @@ async def process_match_log(
 
     content_hash = record_service.compute_content_hash(raw_bytes)
 
-    if await record_service.is_already_processed(session, tournament_id, filename, content_hash):
+    if await record_service.is_already_processed(session, tournament_id, object_name, content_hash):
         logger.info(
-            f"Log {filename} (tournament {tournament_id}) already processed with hash {content_hash[:8]}…, skipping."
+            f"Log {object_name} (tournament {tournament_id}) already processed with hash {content_hash[:8]}…, skipping."
         )
-        await record_service.finish_duplicate_record(session, tournament_id, filename, content_hash)
+        await record_service.finish_duplicate_record(session, tournament_id, object_name, content_hash)
         return
 
-    record = await record_service.set_processing(session, tournament_id, filename, content_hash=content_hash)
+    record = await record_service.set_processing(session, tournament_id, object_name, content_hash=content_hash)
 
     decoded_lines = [line.decode() for line in raw_bytes.split(b"\n") if line]
     processor = MatchLogProcessor(
         tournament,
-        filename.split("/")[-1],
+        object_name,
         decoded_lines,
         s3,
         log_record_id=record.id if record is not None else None,

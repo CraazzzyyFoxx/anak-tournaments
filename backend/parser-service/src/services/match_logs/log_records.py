@@ -194,3 +194,37 @@ async def set_failed(session: AsyncSession, record: LogProcessingRecord, error: 
     except Exception as exc:
         logger.warning(f"Failed to mark log record as failed: {exc}")
         await session.rollback()
+
+
+async def fail_unstarted(
+    session: AsyncSession,
+    tournament_id: int,
+    filename: str,
+    error: str,
+) -> LogProcessingRecord | None:
+    """Fail the latest unfinished record for a log that never reached processing.
+
+    ``flows.process_match_log`` rejects a missing or oversized S3 object before
+    ``set_processing`` runs, so the row kept its ``pending`` status — "Queued" in
+    the admin console — and never spent a reaper attempt (``attempts`` is only
+    bumped by ``set_processing``). The stall reaper then republished it every
+    window forever, because its ``max_attempts`` guard could never trip. Marking
+    the row ``failed`` is terminal: the reaper leaves ``failed`` alone and an
+    operator sees the actual reason instead of an eternal queue.
+    """
+    result = await session.execute(
+        select(LogProcessingRecord)
+        .where(
+            LogProcessingRecord.tournament_id == tournament_id,
+            LogProcessingRecord.filename == filename,
+            LogProcessingRecord.status.in_([LogProcessingStatus.pending, LogProcessingStatus.processing]),
+        )
+        .order_by(LogProcessingRecord.created_at.desc())
+        .limit(1)
+    )
+    record = result.scalar_one_or_none()
+    if record is None:
+        return None
+
+    await set_failed(session, record, error)
+    return record

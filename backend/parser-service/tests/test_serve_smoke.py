@@ -49,6 +49,25 @@ def test_serve_module_leaves_tournament_worker_queues_to_tournament_service() ->
     assert not hasattr(serve, "scheduler")
 
 
+def test_match_log_parsing_gets_its_own_amqp_channel() -> None:
+    """A delivery that outlives RabbitMQ's consumer_timeout closes the channel it
+    arrived on, taking every consumer sharing that channel down with it. The
+    minutes-long match-log parse must therefore not share one with the short
+    handlers, or a single slow log strands uploads on "Queued"."""
+    serve = _import_serve()
+
+    channel_by_queue = {
+        subscriber.queue.name: subscriber.channel
+        for subscriber in serve.broker.subscribers
+        if getattr(subscriber, "queue", None) is not None
+    }
+
+    assert channel_by_queue["process_match_log"] is serve._MATCH_LOG_CHANNEL
+    for short_handler in ("upload_match_log", "process_tournament_logs", "achievement_evaluate"):
+        assert channel_by_queue[short_handler] is serve._JOBS_CHANNEL
+    assert serve._MATCH_LOG_CHANNEL is not serve._JOBS_CHANNEL
+
+
 def test_serve_registers_parser_unique_rpc_subjects() -> None:
     """The FastAPI HTTP face was removed; the parser-unique admin/read surface now
     runs as ``rpc.parser.*`` FastStream subscribers registered in ``serve.py``."""

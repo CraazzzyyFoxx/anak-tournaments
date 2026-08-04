@@ -7,16 +7,25 @@ from faststream.rabbit.annotations import RabbitMessage
 
 from shared.core.social import SocialProvider, normalize_social_handle
 from shared.messaging.config import (
+    ACHIEVEMENT_EVALUATE_DLQ,
     ACHIEVEMENT_EVALUATE_QUEUE,
+    PROCESS_MATCH_LOG_DLQ,
     PROCESS_MATCH_LOG_QUEUE,
+    PROCESS_TOURNAMENT_LOGS_DLQ,
     PROCESS_TOURNAMENT_LOGS_QUEUE,
+    RANK_FETCH_DLQ,
+    RANK_FETCH_PRIORITY_DLQ,
     RANK_FETCH_PRIORITY_QUEUE,
     RANK_FETCH_QUEUE,
+    TOURNAMENT_ENCOUNTER_COMPLETED_DLQ,
     TOURNAMENT_ENCOUNTER_COMPLETED_QUEUE,
     TOURNAMENT_EVENTS_EXCHANGE,
+    TOURNAMENT_REGISTRATION_APPROVED_DLQ,
     TOURNAMENT_REGISTRATION_APPROVED_QUEUE,
+    UPLOAD_MATCH_LOG_DLQ,
     UPLOAD_MATCH_LOG_QUEUE,
 )
+from shared.messaging.topology import declare_dead_letter_queue
 from shared.models.ingestion.log_processing import LogProcessingSource
 from shared.observability import (
     make_rabbit_broker,
@@ -82,10 +91,33 @@ broker = make_rabbit_broker(
 )
 app = FastStream(broker)
 
-# Match-log processing is minutes-long; keep it off the RPC channel QoS.
+# Background jobs stay off the RPC channel QoS.
 _JOBS_CHANNEL = Channel(prefetch_count=2)
+# process_match_log is the one minutes-long handler here, and a delivery that
+# outlives RabbitMQ's consumer_timeout (30 minutes by default) gets its whole
+# channel closed — taking every consumer sharing it down with it. Its own channel
+# keeps that blast radius to itself: upload_match_log, process_tournament_logs
+# and achievement_evaluate stay live.
+_MATCH_LOG_CHANNEL = Channel(prefetch_count=2)
 # OverFast-protective prefetch (existing setting, previously unwired).
 _RANK_FETCH_CHANNEL = Channel(prefetch_count=config.settings.rank_fetch_worker_prefetch)
+
+# Dead-letter queues this worker owns. Every queue it consumes carries
+# x-dead-letter-exchange=dlx plus an x-message-ttl, but nothing declared these or
+# bound them to the DLX — so an expired job (a batch upload the worker could not
+# chew inside the 5-minute process_match_log TTL) was routed to `dlx` with a
+# routing key nothing was bound to and dropped without a trace. The log row kept
+# saying "Queued" and there was no DLQ to prove why.
+_OWNED_DLQS = (
+    UPLOAD_MATCH_LOG_DLQ,
+    PROCESS_MATCH_LOG_DLQ,
+    PROCESS_TOURNAMENT_LOGS_DLQ,
+    ACHIEVEMENT_EVALUATE_DLQ,
+    RANK_FETCH_DLQ,
+    RANK_FETCH_PRIORITY_DLQ,
+    TOURNAMENT_ENCOUNTER_COMPLETED_DLQ,
+    TOURNAMENT_REGISTRATION_APPROVED_DLQ,
+)
 
 # Expose the worker broker to publishers that don't thread one through (the
 # APScheduler rank tick, the admin "collect now" RPC, the Challonge-import
@@ -111,6 +143,9 @@ rpc_impact.register(broker, logger)
 
 @app.on_startup
 async def start_worker() -> None:
+    await broker.connect()
+    for dlq in _OWNED_DLQS:
+        await declare_dead_letter_queue(broker, dlq)
     setup_sentry(
         dsn=config.settings.sentry_dsn,
         traces_sample_rate=config.settings.sentry_traces_sample_rate,
@@ -207,7 +242,7 @@ async def process_upload_match_log(data: dict, msg: RabbitMessage) -> None:
         log.info("Uploaded match log ingested and queued for processing")
 
 
-@broker.subscriber(PROCESS_MATCH_LOG_QUEUE, channel=_JOBS_CHANNEL)
+@broker.subscriber(PROCESS_MATCH_LOG_QUEUE, channel=_MATCH_LOG_CHANNEL)
 async def process_match_log_async(data: dict, msg: RabbitMessage) -> None:
     async with observe_message_processing(
         queue=PROCESS_MATCH_LOG_QUEUE,
@@ -283,9 +318,22 @@ async def process_tournament_log(data: dict, msg: RabbitMessage) -> None:
                 )
                 if tournament_exists is None:
                     raise RuntimeError(f"Tournament {event.tournament_id} not found")
-                for log in await s3_service.get_logs_by_tournament(s3_client, event.tournament_id):
-                    await logs_flows.process_match_log(session, event.tournament_id, log, s3_client, is_raise=False)
-            logger.info(f"All logs for tournament {event.tournament_id} are queued for processing.")
+                filenames = await s3_service.get_logs_by_tournament(s3_client, event.tournament_id)
+
+            # Fan out instead of parsing the whole tournament inline: an inline
+            # loop holds one session (and one unacked delivery) for as long as it
+            # takes to chew every file, which outruns RabbitMQ's consumer_timeout
+            # and gets the delivery requeued — then dropped, because its 10-minute
+            # TTL has long expired. Per-log messages ride the normal
+            # process_match_log path, which is deduped, retried and reaped.
+            for filename in filenames:
+                await publish_message(
+                    broker,
+                    ProcessMatchLogEvent(tournament_id=event.tournament_id, filename=filename).model_dump(),
+                    PROCESS_MATCH_LOG_QUEUE,
+                    logger=logger.bind(tournament_id=event.tournament_id, filename=filename),
+                )
+            logger.info(f"Queued {len(filenames)} logs for tournament {event.tournament_id}.")
         except Exception:
             logger.exception(f"Failed to process tournament logs tournament_id={event.tournament_id}")
             raise

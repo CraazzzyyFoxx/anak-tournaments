@@ -210,7 +210,19 @@ async def publish_message(
     logger: Any = default_logger,
     **publish_kwargs: Any,
 ) -> Any:
-    """Publish a RabbitMQ message with metrics and trace propagation."""
+    """Publish a RabbitMQ message with metrics and trace propagation.
+
+    ``persist`` defaults to ``True``: every caller of this helper targets a
+    durable work queue (match-log jobs, achievement evaluation, computation
+    jobs, rank fetches, ...), and FastStream's own default is
+    ``persist=False`` — a transient message on a durable queue, which a broker
+    restart silently discards. The dropped job leaves its row behind with no
+    live consumer (a LogProcessingRecord stuck on ``pending``, i.e. "Queued"
+    forever). The transactional outbox already publishes with ``persist=True``;
+    this makes the direct publishers match. Pass ``persist=False`` explicitly
+    for a genuinely disposable message.
+    """
+    publish_kwargs.setdefault("persist", True)
     queue_name = _queue_name(queue)
     effective_headers, effective_correlation_id = build_message_headers(headers, correlation_id=correlation_id)
     effective_message_id = message_id or uuid.uuid4().hex
