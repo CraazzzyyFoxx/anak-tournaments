@@ -1094,7 +1094,7 @@ No commit unless a fix was needed.
 
 Remove `int guild_id` from the `DISCORD_CHANNEL` block (`database_erd.md:1391`).
 
-**`WORKSPACE` appears eight times in this file** — once fully specified at `:284`, and seven times as
+**`WORKSPACE` appears seven times in this file** — once fully specified at `:284`, and six times as
 a `{ int id PK }` stub inside other diagrams. Add `string discord_guild_id` to the **full block at
 `:284` only**; touching a stub would put a column into a diagram that deliberately elides them.
 
@@ -1104,7 +1104,7 @@ Add `wsguild0001` to the revision changelog with the new head.
 
 The same two edits, at this file's own anchors: drop `int guild_id` from `DISCORD_CHANNEL`
 (`diagrams.ts:1408`) and add `string discord_guild_id` to the full `WORKSPACE` block
-(`diagrams.ts:354`) — again, not to the seven stubs. These two files drift silently; change both
+(`diagrams.ts:354`) — again, not to the six stubs. These two files drift silently; change both
 or neither.
 
 **Step 3: Docstrings**

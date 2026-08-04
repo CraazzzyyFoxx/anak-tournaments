@@ -157,7 +157,7 @@ Tests that must **not** change: the resolver's fake-store suites seeded with `{"
 
 No new routes, so there is no `edge.RouteSpec`, no `apidocs/groups.go` entry and no `apiv1_guard_test.go` change — only a regenerated manifest via `bash backend/scripts/export_openapi_schemas.sh`.
 
-`docs/database_erd.md` and its mirror `frontend/src/app/docs/diagrams.ts` move `guild_id` off the `DISCORD_CHANNEL` block (`:1391` / `:1408`) and onto `WORKSPACE`. Note that `WORKSPACE` appears eight times in each file — once fully specified (`database_erd.md:284`, `diagrams.ts:354`) and seven times as an `{ int id PK }` stub inside other diagrams. Only the full block gains the column; the stubs elide columns by design.
+`docs/database_erd.md` and its mirror `frontend/src/app/docs/diagrams.ts` move `guild_id` off the `DISCORD_CHANNEL` block (`:1391` / `:1408`) and onto `WORKSPACE`. Note that `WORKSPACE` appears seven times in each file — once fully specified (`database_erd.md:284`, `diagrams.ts:354`) and six times as an `{ int id PK }` stub inside other diagrams. Only the full block gains the column; the stubs elide columns by design. The alembic head these files record was itself badly stale (`captrep0001`, predating the whole `subs*` chain), so it is bumped in both places it appears.
 
 Docstrings to correct: `SubscriptionProviderConfig` (`subscription.py:45`), the `discord_role.py` header, `verification.py:13`.
 
