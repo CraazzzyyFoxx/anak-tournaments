@@ -11,9 +11,37 @@ processors:
     timeout: 5s
     send_batch_size: 1024
 
+  # The Sentry Exporter routes each resource to a Sentry project by resource
+  # attribute. Every backend process shares ONE Sentry project (the same one the
+  # SDKs' DSN points at, distinguished by the `service` tag), so stamp a constant
+  # instead of routing on service.name: a service.name -> project map would
+  # silently drop every span from any service added later, because with
+  # auto_create_projects off an unknown project is a permanent export failure.
+  resource/sentry_project:
+    attributes:
+      - key: sentry.project
+        value: ${env:SENTRY_OTEL_PROJECT}
+        action: upsert
+
 exporters:
-  otlphttp/tempo:
+  # `otlphttp` is a deprecated alias for this component in 0.157.0.
+  otlp_http/tempo:
     endpoint: http://tempo:4318
+
+  # Sentry Tracing/Performance fed from the same OTLP stream as Tempo, so the
+  # spans behind a Sentry issue are the ones Grafana shows. Needs a real
+  # SENTRY_OTEL_AUTH_TOKEN (org:read + project:read); with the compose fallback
+  # ("unset") the collector still starts and only this branch warns
+  # "Failed to pre-populate project cache" and drops its spans.
+  sentry:
+    url: https://sentry.io
+    org_slug: ${env:SENTRY_ORG_SLUG}
+    auth_token: ${env:SENTRY_OTEL_AUTH_TOKEN}
+    # Projects are created by hand in Sentry; auto-creation would spawn one per
+    # service.name and scatter the traces away from the errors.
+    auto_create_projects: false
+    routing:
+      project_from_attribute: sentry.project
 
 extensions:
   health_check:
@@ -25,10 +53,25 @@ service:
     metrics:
       # Bind the collector's own Prometheus metrics on all interfaces so the
       # `otel-collector` scrape job can reach them (default is localhost-only,
-      # which is unreachable from the Prometheus container).
-      address: 0.0.0.0:8888
+      # which is unreachable from the Prometheus container). The flat
+      # `address: host:port` form was dropped from service.telemetry; the
+      # pull/prometheus reader is its replacement and serves the same
+      # :8888/metrics endpoint.
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
   pipelines:
+    # Two pipelines off one receiver rather than one pipeline with two
+    # exporters: only the Sentry branch needs the routing attribute, and a
+    # Sentry outage (or a revoked token) then cannot stall Tempo's queue.
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp/tempo]
+      exporters: [otlp_http/tempo]
+    traces/sentry:
+      receivers: [otlp]
+      processors: [resource/sentry_project, batch]
+      exporters: [sentry]

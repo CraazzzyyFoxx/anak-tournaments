@@ -17,7 +17,8 @@ Services:
 - Loki — log storage
 - Promtail — log shipping
 - Tempo — distributed tracing backend (metrics_generator pushes span-metrics into Prometheus)
-- OpenTelemetry Collector — trace ingestion (OTLP)
+- OpenTelemetry Collector — trace ingestion (OTLP), fanned out to **both** Tempo
+  and Sentry (Sentry Exporter, see "Sentry tracing" below)
 - Redis Exporter — Redis metrics
 - RabbitMQ Exporter — RabbitMQ metrics (management API)
 - Node Exporter — host CPU / memory / disk / network
@@ -89,6 +90,35 @@ export GRAFANA_PORT=3001
 export GRAFANA_ROOT_URL='http://localhost:3001'
 export TEMPO_URL='http://tempo:3200'
 ```
+
+### Sentry tracing
+
+The collector forwards the same OTLP trace stream to Sentry, so a distributed
+trace (gateway -> RabbitMQ -> service -> SQL) shows up in Sentry Tracing next to
+the Issues it caused, not only in Tempo. Sentry routes by resource attribute; the
+collector stamps a constant `sentry.project` so a newly added service cannot
+silently lose its spans:
+
+```bash
+export SENTRY_ORG_SLUG='craazzzyyfoxx'          # default
+export SENTRY_OTEL_PROJECT='owt-tournaments'    # default; same project as the SDK DSN
+export SENTRY_OTEL_AUTH_TOKEN='sntrys_...'      # REQUIRED, no usable default
+```
+
+The token is a Sentry **Internal Integration** token (Settings -> Developer
+Settings -> Custom Integrations -> Internal Integration) with `org:read` and
+`project:read`. Put it in the repository-root `.env` so `make monitoring-up`
+picks it up.
+
+Without it the collector still starts and Tempo keeps working — the compose
+fallback (`unset`) is non-empty on purpose, because the exporter rejects an empty
+token at config validation and would crash-loop the whole collector. Only the
+Sentry branch degrades, with `Failed to pre-populate project cache` in the logs.
+
+The application SDKs deliberately send **no** transactions of their own
+(`SENTRY_TRACES_SAMPLE_RATE=0` in `backend/env/*.env`); they only link errors and
+logs to the OTel trace. Turning SDK tracing back on bills a second, disconnected
+copy of every request.
 
 The RabbitMQ exporter reads `RABBITMQ_DEFAULT_USER` / `RABBITMQ_DEFAULT_PASS` — the **same
 variables the broker itself uses** — so with a repository-root `.env` no extra export is
@@ -230,6 +260,25 @@ Fix: confirm Prometheus runs with `--web.enable-remote-write-receiver` and Tempo
 check `traces_spanmetrics_calls_total` in Prometheus after some sampled traffic
 (sampling is 10%, so quiet environments need a few requests).
 
+### Traces reach Tempo but not Sentry
+
+Cause: missing/expired `SENTRY_OTEL_AUTH_TOKEN`, or the project slug in
+`SENTRY_OTEL_PROJECT` does not exist in the org (`auto_create_projects` is off on
+purpose).
+
+Fix: check the collector logs for `Failed to pre-populate project cache` or
+`project not found`, then confirm the counters diverge:
+
+```bash
+docker exec owt-monitoring-prometheus-1 \
+  wget -qO- http://otel-collector:8888/metrics | grep -E 'sent_spans|send_failed_spans'
+```
+
+`otelcol_exporter_sent_spans{exporter="sentry"}` climbing means ingestion works;
+`otelcol_exporter_send_failed_spans{exporter="sentry"}` climbing is an auth or
+routing problem. Sentry-side lag is under a minute, and app sampling is 10%, so a
+quiet environment needs a few requests before anything shows up.
+
 ### Alertmanager starts but Discord alerts are not delivered
 
 Cause: `monitoring/secrets/discord_webhook_url` is missing, empty, or invalid.
@@ -250,7 +299,8 @@ After pulling monitoring/gateway changes on the production host
 
 ```bash
 git pull
-# 1) .env sanity: RABBITMQ_DEFAULT_USER/PASS set (non-guest) + POSTGRES_EXPORTER_DSN added.
+# 1) .env sanity: RABBITMQ_DEFAULT_USER/PASS set (non-guest), POSTGRES_EXPORTER_DSN
+#    added, and SENTRY_OTEL_AUTH_TOKEN added (else traces stop at Tempo).
 # 2) Gateway (tracing needs a rebuild):
 docker compose -f docker-compose.production.yml build gateway
 docker compose -f docker-compose.production.yml up -d gateway
@@ -261,8 +311,9 @@ make monitoring-down && make monitoring-up
 
 Then verify: Grafana shows exactly 5 dashboards in `OWT` (stale ones are
 auto-removed), Prometheus targets are UP (incl. app-svc/identity-svc/analytics-svc/
-analytics-worker/node/cadvisor/postgres), and the RabbitMQ panels on Workers & Queues
-have data.
+analytics-worker/node/cadvisor/postgres), the RabbitMQ panels on Workers & Queues
+have data, and `otelcol_exporter_sent_spans{exporter="sentry"}` is climbing (see
+"Traces reach Tempo but not Sentry").
 
 ## Files involved in deployment
 

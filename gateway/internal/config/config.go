@@ -140,6 +140,13 @@ type Upstreams struct {
 
 // Sentry holds the optional error-monitoring / tracing settings. An empty DSN
 // disables the SDK entirely, so the gateway behaves exactly as before.
+//
+// TracesSampleRate defaults to 0 because spans reach Sentry through the
+// otel-collector's Sentry Exporter, not this SDK. Turning it on adds a second,
+// disconnected copy of every request: sentryhttp wraps the OUTER router, whose
+// matched pattern is "/", so its transactions all group under "GET /" while the
+// OTel middleware names them by the real route. Errors still link to the OTel
+// trace via sentryotel.NewOtelIntegration (see internal/observability).
 type Sentry struct {
 	DSN              string
 	Environment      string
@@ -213,7 +220,7 @@ func Load() (*Config, error) {
 			DSN:              os.Getenv("SENTRY_DSN"),
 			Environment:      getenv("SENTRY_ENVIRONMENT", "development"),
 			Release:          os.Getenv("SENTRY_RELEASE"),
-			TracesSampleRate: getenvFloat("SENTRY_TRACES_SAMPLE_RATE", 0.2),
+			TracesSampleRate: getenvFloat("SENTRY_TRACES_SAMPLE_RATE", 0),
 		},
 		Tracing: Tracing{
 			Enabled:      getenvBool("TRACING_ENABLED", false),

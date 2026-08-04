@@ -167,7 +167,7 @@ def setup_sentry(
         # already forwards; setup_propagator would swap the global W3C
         # traceparent propagator for Sentry's own, which is what carries trace
         # context across the gateway boundary and the RabbitMQ hop.
-        integrations.append(OTLPIntegration(setup_otlp_traces_exporter=False, setup_propagator=True))
+        integrations.append(OTLPIntegration(setup_otlp_traces_exporter=False, setup_propagator=False))
 
     init_kwargs: dict[str, Any] = {
         "dsn": dsn,

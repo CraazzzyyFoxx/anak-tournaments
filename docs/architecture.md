@@ -176,7 +176,11 @@ egress through the outbound `proxy` container (xray/shadowsocks).
 
 - **Metrics** — Prometheus scrapes the gateway (`:9110`) and each worker's
   `WORKER_METRICS_PORT`.
-- **Tracing** — OpenTelemetry spans from gateway and workers → OTel Collector → Tempo.
+- **Tracing** — OpenTelemetry spans from gateway and workers → OTel Collector → Tempo
+  *and* Sentry (Sentry Exporter). One OTLP stream, two backends: Grafana for the
+  span-metrics/service-graph view, Sentry for traces sitting next to the Issues they
+  caused. The Sentry SDKs emit no transactions of their own
+  (`SENTRY_TRACES_SAMPLE_RATE=0`) and only link errors/logs to the OTel trace.
 - **Logs** — structured JSON logs to `logs/` → Promtail → Loki.
 - **Dashboards & alerts** — Grafana (Application Logs, Workers & Queues, Gateway, Tracing,
   Infrastructure) and Alertmanager → Discord.

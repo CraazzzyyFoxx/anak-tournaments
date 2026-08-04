@@ -210,9 +210,21 @@ services:
           memory: 128M
 
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.111.0
+    # 0.145.0 is the first release shipping the Sentry Exporter (alpha) used by
+    # monitoring/otel/otel-collector.yml.
+    image: otel/opentelemetry-collector-contrib:0.157.0
     restart: unless-stopped
     command: ["--config=/etc/otel-collector/config.yml"]
+    environment:
+      # Sentry Exporter target. The token is an Internal Integration token with
+      # org:read + project:read. The "unset" fallback is deliberate: the exporter
+      # requires a non-empty token at config validation, and an empty one would
+      # crash-loop the collector and take Tempo down with it. With a bogus token
+      # the Sentry branch only logs "Failed to pre-populate project cache" and
+      # drops its spans, while the Tempo pipeline keeps running.
+      SENTRY_ORG_SLUG: "${SENTRY_ORG_SLUG:-craazzzyyfoxx}"
+      SENTRY_OTEL_PROJECT: "${SENTRY_OTEL_PROJECT:-owt-tournaments}"
+      SENTRY_OTEL_AUTH_TOKEN: "${SENTRY_OTEL_AUTH_TOKEN:-unset}"
     volumes:
       - ./monitoring/otel/otel-collector.yml:/etc/otel-collector/config.yml:ro
     depends_on:

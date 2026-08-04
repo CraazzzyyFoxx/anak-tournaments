@@ -604,6 +604,8 @@ async def main():
             enabled=settings.tracing_enabled,
             sampler_name=settings.otel_traces_sampler,
             sampler_arg=settings.otel_traces_sampler_arg,
+            environment=settings.environment,
+            release=settings.sentry_release,
         )
         start_worker_metrics_server(settings.worker_metrics_port)
         await start_rabbitmq_listener()

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/getsentry/sentry-go"
+	sentryotel "github.com/getsentry/sentry-go/otel"
 
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/config"
 )
@@ -39,7 +40,15 @@ func Init(cfg *config.Config) (func(time.Duration), error) {
 		AttachStacktrace: true,
 		// The gateway forwards JWTs in Authorization headers and cookies; keeping
 		// SendDefaultPII off leaves those (and client IPs) out of captured events.
-		SendDefaultPII:   false,
+		SendDefaultPII: false,
+		// Spans come from OpenTelemetry (internal/tracing) and reach Sentry through
+		// the otel-collector's Sentry Exporter, so this SDK ships no transactions
+		// of its own by default (SENTRY_TRACES_SAMPLE_RATE=0). The OTel integration
+		// is pure linking: it resolves an event's trace context from the active
+		// OTel span so an Issue opens on the same trace Grafana shows.
+		Integrations: func(i []sentry.Integration) []sentry.Integration {
+			return append(i, sentryotel.NewOtelIntegration())
+		},
 		EnableTracing:    cfg.Sentry.TracesSampleRate > 0,
 		TracesSampleRate: cfg.Sentry.TracesSampleRate,
 		// QueryString is recorded verbatim regardless of SendDefaultPII; scrub the

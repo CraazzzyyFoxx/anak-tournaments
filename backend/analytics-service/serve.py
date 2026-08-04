@@ -69,6 +69,8 @@ async def start_worker() -> None:
         enabled=config.settings.tracing_enabled,
         sampler_name=config.settings.otel_traces_sampler,
         sampler_arg=config.settings.otel_traces_sampler_arg,
+        environment=config.settings.environment,
+        release=config.settings.sentry_release,
     )
     if config.settings.worker_metrics_port is not None:
         start_worker_metrics_server(config.settings.worker_metrics_port)

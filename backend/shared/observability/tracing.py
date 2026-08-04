@@ -7,7 +7,7 @@ from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
-from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+from opentelemetry.sdk.resources import DEPLOYMENT_ENVIRONMENT, SERVICE_NAME, SERVICE_VERSION, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.trace.sampling import ALWAYS_OFF, ALWAYS_ON, ParentBasedTraceIdRatio
@@ -32,8 +32,18 @@ def setup_tracing(
     enabled: bool = True,
     sampler_name: str = "parentbased_traceidratio",
     sampler_arg: float = 0.1,
+    environment: str | None = None,
+    release: str | None = None,
 ) -> None:
-    """Configure OpenTelemetry with an OTLP exporter."""
+    """Configure OpenTelemetry with an OTLP exporter.
+
+    ``environment`` and ``release`` are resource attributes, not decoration: the
+    otel-collector forwards this stream to Sentry as well as Tempo, and Sentry
+    derives an event's environment from ``deployment.environment`` and its
+    release from ``service.version``. Without them every span lands in Sentry
+    unassigned, so production and local traces share one bucket. The gateway
+    sets the same two attributes (gateway/internal/tracing/tracing.go).
+    """
     if not enabled:
         logger.info("OpenTelemetry tracing disabled")
         return
@@ -45,8 +55,13 @@ def setup_tracing(
     try:
         current_provider = trace.get_tracer_provider()
         if not isinstance(current_provider, TracerProvider):
+            attributes: dict[str, str] = {SERVICE_NAME: service_name}
+            if environment:
+                attributes[DEPLOYMENT_ENVIRONMENT] = environment
+            if release:
+                attributes[SERVICE_VERSION] = release
             provider = TracerProvider(
-                resource=Resource(attributes={SERVICE_NAME: service_name}),
+                resource=Resource(attributes=attributes),
                 sampler=_build_sampler(sampler_name, sampler_arg),
             )
             provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True)))
