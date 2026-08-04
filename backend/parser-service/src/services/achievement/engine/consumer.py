@@ -27,17 +27,17 @@ async def handle_achievement_evaluate(data: dict) -> None:
         tournament_id=event.tournament_id,
     ).info("Processing achievement evaluation from queue")
 
-    try:
-        async with db.async_session_maker() as session:
-            await run_evaluation(
-                session=session,
-                workspace_id=event.workspace_id,
-                trigger=EvaluationRunTrigger.parse_complete,
-                tournament_id=event.tournament_id,
-                changed_tables=event.changed_tables,
-            )
-    except Exception:
-        logger.exception(
-            f"Failed to evaluate achievements for workspace_id={event.workspace_id} tournament_id={event.tournament_id}"
+    # run_evaluation already logs the traceback with the run id before re-raising,
+    # and FastStream logs it a third time through its logger proxy. Logging here
+    # too meant one failure produced three Sentry entries for the same event, so
+    # let the exception propagate untouched: FastStream rejects the message
+    # (AckPolicy.REJECT_ON_ERROR, requeue=False) straight into
+    # achievement_evaluate.dlq.
+    async with db.async_session_maker() as session:
+        await run_evaluation(
+            session=session,
+            workspace_id=event.workspace_id,
+            trigger=EvaluationRunTrigger.parse_complete,
+            tournament_id=event.tournament_id,
+            changed_tables=event.changed_tables,
         )
-        raise
