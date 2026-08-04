@@ -37,7 +37,7 @@ config over `discord_channel` — if they disagree for a live workspace, the bac
 winner. Second, and less obvious: the backfill only accepts values that look like a snowflake, and a
 workspace whose stored guild fails that guard **with no plausible channel to fall back on** ends up
 `NULL`. If that workspace held an implausible-but-non-empty guild, the migration flips it from
-**blocking** every patron to **admitting** them — irreversibly, since step 3 strips the blob key and
+**blocking** every patron to **admitting** them — irreversibly, since the contract step strips the blob key and
 `downgrade`'s upsert is gated on a non-`NULL` workspace value. See the design doc §4.1.
 
 **Step 1: Query both sources, and classify each workspace**
@@ -123,6 +123,13 @@ rtk git commit -m "feat(workspace): add discord_guild_id column to the model"
 ---
 
 ### Task 2: Write the migration
+
+> **Superseded during rollout planning: this shipped as TWO revisions, not one.**
+> `wsguild0001` adds and backfills the column (expand); `wsguild0002` strips the blob key and
+> drops `discord_channel.guild_id` (contract). A single revision is undeployable — its halves need
+> opposite orderings relative to the code roll. The steps below describe the combined version as
+> originally planned; see **Rollout Notes** for the actual three-step sequence and the design doc
+> §4.1 for why. `down_revision` for `wsguild0001` is `subs0003`, confirmed by `alembic heads`.
 
 **Files:**
 - Create: `backend/migrations/versions/wsguild0001_move_discord_guild_to_workspace.py`
@@ -1170,9 +1177,30 @@ rtk git commit -m "fix(subscriptions): <what the smoke test caught>"
 
 ## Rollout Notes
 
-- **Order matters, and it cuts both ways.** The migration strips `config_json.guild_id`, so old code running *after* it reads `unknown("guild_not_configured")` and fails open for every Boosty-gated tournament. But the parser's ORM attribute is dropped by the code, while `discord_channel.guild_id` stays `NOT NULL` with no server default until the migration runs — so new code running *before* it returns 500 from `_discord_upsert` when an admin adds a match-log channel. **Migrate first, then roll the services**, and keep the gap short.
-- **The subscription-gate window is fail-open, not fail-closed** — nobody is wrongly blocked, some may be wrongly admitted. Prefer a low-traffic window; do not attempt a zero-downtime dance for it.
-- **Rollback:** `alembic downgrade -1` restores the schema exactly and preserves the guild into a disabled `boosty` config row, so a later re-upgrade recovers it. Verify with the round-trip (Task 2 Step 4), do not assume.
+- **Three steps, in this order, and the order is not negotiable.** The change ships as an
+  expand/contract pair precisely because no single ordering works for one combined revision:
+
+  1. `alembic upgrade wsguild0001` — adds and backfills `workspace.discord_guild_id`. Old code is
+     unaffected: the blob key and the tournament column are both still there.
+  2. Publish the release, so the services roll. New code reads the workspace column, which now
+     exists. `discord_channel.guild_id` is still present but no longer mapped — harmless for
+     `SELECT`, and the only casualty would be an `INSERT` of a brand-new channel row, which
+     step 3 clears.
+  3. `alembic upgrade wsguild0002` — strips the blob key and drops the tournament column. Nothing
+     reads either by now.
+
+  Getting it wrong is not subtle. Contract-before-code stops log collection entirely
+  (`load_active_channels` raises `UndefinedColumn` because the old ORM still maps `guild_id`).
+  Code-before-expand breaks every subscription read (`load_configs` joins a column that does not
+  exist yet).
+- **Deploy is release-triggered and does NOT migrate.** `.github/workflows/deploy-production.yml`
+  fires on `release: published` and only runs `docker compose build` + `up -d`; no service entrypoint
+  runs alembic. So the two migration steps are manual (`make migrate` runs `alembic upgrade head`
+  inside `app-svc` — for step 1 you want `upgrade wsguild0001`, not `head`, or you will apply both
+  halves at once and land in exactly the broken state above).
+- **Rollback:** `alembic downgrade wsguild0001` undoes the contract half, restoring both old sources
+  and preserving the guild into a disabled `boosty` config row. `alembic downgrade subs0003` then
+  drops the workspace column. Verify the round-trip on a scratch database first, do not assume.
 
 ---
 

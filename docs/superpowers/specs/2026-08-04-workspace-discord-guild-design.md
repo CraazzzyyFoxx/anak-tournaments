@@ -82,13 +82,27 @@ graph LR
 discord_guild_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
 ```
 
-Migration `wsguild0001` (`down_revision` from `alembic heads`, **never** hardcoded):
+Two migrations, deliberately — `wsguild0001` **expands**, `wsguild0002` **contracts**. A single combined revision is undeployable, because its halves need opposite orderings:
+
+| Statement | Must run | Otherwise |
+| --- | --- | --- |
+| `add_column workspace.discord_guild_id` | **before** the new code | new `load_configs` joins a column that does not exist → `UndefinedColumn` on every subscription read |
+| `drop_column discord_channel.guild_id` | **after** the new code | old `TournamentDiscordChannel` still maps the attribute, and SQLAlchemy emits every mapped column in every `SELECT` → the bot's `load_active_channels` raises `UndefinedColumn` and **log collection stops** |
+
+So the sequence is: apply `wsguild0001` → roll the services → apply `wsguild0002`. Both intermediate states are fully working: old code still reads the blob key and the tournament column, new code reads the workspace column, and nothing reads something absent. This also removes the fail-open window a combined revision would have opened, since the blob key survives until the contract step.
+
+**`wsguild0001` (expand):**
 
 1. `add_column workspace.discord_guild_id String(32) NULL`
 2. **Backfill**, in precedence order, and in both cases only from values that *look like* a snowflake:
    1. `subscriptions.provider_config.config_json ->> 'guild_id'` where `provider = 'boosty'` and the value matches `^[0-9]{17,19}$` — this is the value the running system actually reads, so it wins;
    2. otherwise the most recent `log_processing.discord_channel.guild_id` among that workspace's tournaments, floored at `10000000000000000` (the smallest 17-digit id).
-3. **Strip** `guild_id` out of `provider_config.config_json` — leaving it would keep two sources of truth and make the injection order in §4.2 ambiguous.
+
+`downgrade` is a bare `drop_column` — the sources it copied from are still intact at that point.
+
+**`wsguild0002` (contract):**
+
+3. **Strip** `guild_id` out of `provider_config.config_json` — leaving it would keep two sources of truth and make the injection order in §4.2 load-bearing and untestable.
 4. `drop_column log_processing.discord_channel.guild_id`
 
 #### Why the backfill validates rather than copies
@@ -109,7 +123,7 @@ Hence: pattern-guard both sources. Note what a rejected value does **not** do: t
 A workspace with no plausible value in *either* source does end up `NULL`, and that case splits in two:
 
 - it simply had no guild → `NULL` is the fail-open state it already had, and nothing changes;
-- it held an implausible one (`'999'`) → `NULL` moves it from **blocking** to **admitting**. This is the one transition the migration cannot avoid, because the value is unusable either way — and it is **irreversible**: step 3 strips the key from the blob, and `downgrade`'s upsert is gated on a non-`NULL` workspace value, so `'999'` is never written back.
+- it held an implausible one (`'999'`) → `NULL` moves it from **blocking** to **admitting**. This is the one transition the migration cannot avoid, because the value is unusable either way — and once `wsguild0002` runs it is **irreversible**: the contract step strips the key from the blob, and its `downgrade` upsert is gated on a non-`NULL` workspace value, so `'999'` is never written back.
 
 The pre-flight query must therefore list these workspaces too, not only the divergent ones.
 

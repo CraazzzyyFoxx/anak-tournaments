@@ -1,10 +1,26 @@
-"""move the discord guild id to workspace
+"""add workspace.discord_guild_id and backfill it (expand half)
 
 The guild lived in two unrelated places: ``subscriptions.provider_config``'s
 ``config_json['guild_id']`` (workspace-scoped, Boosty only, and the only one
 anything read) and ``log_processing.discord_channel.guild_id`` (one row per
 tournament, written by the admin form and read by nobody -- the bot keys on
 ``channel_id`` alone).
+
+**This is the EXPAND half of an expand/contract pair; ``wsguild0002`` contracts.**
+The split is not cosmetic -- a single revision is undeployable, because its two
+halves need opposite orderings:
+
+- ``add_column workspace.discord_guild_id`` must land BEFORE the new code, which
+  joins that column in ``SqlEntitlementStore.load_configs``. Run the code first and
+  every subscription read raises ``UndefinedColumn``.
+- ``drop_column discord_channel.guild_id`` must land AFTER the new code, because the
+  old ``TournamentDiscordChannel`` still maps that attribute and SQLAlchemy emits
+  every mapped column in every ``SELECT``. Drop it first and the Discord bot's
+  ``load_active_channels`` raises ``UndefinedColumn``, i.e. log collection stops.
+
+So: apply this revision, roll the services, then apply ``wsguild0002``. Both
+intermediate states are fully working -- old code still reads the blob key and the
+tournament column, new code reads the workspace column.
 
 Backfill precedence is the Boosty config first (step 1), because that is the value
 the running system already resolves against: preferring it cannot change current
@@ -22,29 +38,15 @@ requires ``^[0-9]{17,19}$`` (the old write schema had ``max_length=32`` and no d
 pattern, so ``'999'`` was a legal stored value, and an over-long one would abort the
 whole migration on the ``varchar(32)`` column), and step 2 requires
 ``>= 10000000000000000`` -- the smallest 17-digit id, which also rejects the ``0``
-that ``downgrade`` writes for unresolvable rows.
+that ``wsguild0002``'s downgrade writes for unresolvable rows.
 
-``guild_id`` is stripped out of ``config_json`` in the same revision. Leaving it
-would keep two sources of truth and make the injection order in
-``SqlEntitlementStore.load_configs`` load-bearing and untestable.
+``config_json`` is ``sa.JSON()`` (``subs0001``), so the column type is ``json``, not
+``jsonb``. The ``->>`` operator used here works on ``json`` uncast; ``wsguild0002``,
+which needs ``-``/``||``/``?``, does the casting.
 
-``config_json`` is ``sa.JSON()`` (``subs0001``), so the column type is ``json``,
-not ``jsonb``. The ``-``/``||``/``?`` operators exist only on ``jsonb``, hence the
-``::jsonb`` in and ``::json`` back out below.
-
-``downgrade`` restores the original schema exactly: ``discord_channel.guild_id``
-comes back as ``BigInteger NOT NULL``, and rows with no resolvable guild get ``0`` --
-precisely as meaningful as the value was before, since nothing read it. The cast is
-bounded by shape *and* magnitude (``<= 9223372036854775807``): a 19-digit value can
-still overflow ``bigint``, which would abort the rollback. It would NOT leave a
-half-applied schema -- ``env.py`` wraps ``run_migrations`` in one transaction and
-PostgreSQL has transactional DDL, so an abort takes ``add_column`` with it and the
-database is left exactly as it was. The rollback still would not complete, which is
-reason enough to bound the cast. The guild itself is preserved into a ``boosty``
-``provider_config`` row so a later re-upgrade recovers it -- inserted
-``enabled = false`` so a rollback never starts enforcing something that was not
-enforcing, and on conflict updating only ``config_json`` so an existing row keeps its
-own flags.
+``downgrade`` is a bare ``drop_column``: this revision adds a column and copies into
+it, so there is nothing else to undo. The sources it copied FROM are still intact at
+this point -- removing them is ``wsguild0002``'s job, and so is putting them back.
 
 Revision ID: wsguild0001
 Revises: subs0003
@@ -66,7 +68,10 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     op.add_column("workspace", sa.Column("discord_guild_id", sa.String(length=32), nullable=True))
 
-    # 1. The value the resolver actually reads wins.
+    # 1. The value the resolver actually reads wins. Pattern-guarded: the old write
+    #    schema permitted any <=32-char string, so a stored '999' is possible, and
+    #    copying it verbatim would both block every patron (see the docstring) and
+    #    make every later workspace save 422 against the new `^\d{17,19}$` schema.
     op.execute(
         """
         update workspace w
@@ -79,6 +84,8 @@ def upgrade() -> None:
     )
 
     # 2. Fallback: the most recently created tournament channel for that workspace.
+    #    Floored at the smallest 17-digit id -- `guild_id is not null` would be
+    #    vacuous (the column is NOT NULL) and would let the placeholder 0 through.
     op.execute(
         """
         update workspace w
@@ -96,70 +103,6 @@ def upgrade() -> None:
         """
     )
 
-    # 3. One source of truth: the blob must not keep a competing copy.
-    op.execute(
-        "update subscriptions.provider_config "
-        "set config_json = ((config_json::jsonb) - 'guild_id')::json "
-        "where config_json::jsonb ? 'guild_id'"
-    )
-
-    op.drop_column("discord_channel", "guild_id", schema="log_processing")
-
 
 def downgrade() -> None:
-    # NOT NULL is restored via a server default, then the default is dropped, so
-    # the resulting schema is byte-identical to pre-upgrade.
-    op.add_column(
-        "discord_channel",
-        sa.Column("guild_id", sa.BigInteger(), nullable=False, server_default="0"),
-        schema="log_processing",
-    )
-    op.execute(
-        """
-        update log_processing.discord_channel dc
-           set guild_id = w.discord_guild_id::bigint
-          from tournament.tournament t
-          join workspace w on w.id = t.workspace_id
-         where t.id = dc.tournament_id
-           -- CASE, not two conjuncts: PostgreSQL leaves subexpression evaluation
-           -- order undefined and the planner may reorder WHERE clauses, so the
-           -- regex is not guaranteed to run before the cast it guards. Written as
-           -- `regex and ::numeric <= …` a non-digit value could raise
-           -- `invalid input syntax for type numeric` and abort the very rollback
-           -- the guard exists to protect. No supported writer can produce such a
-           -- value today -- this survives one arriving out of band.
-           and case
-                 when w.discord_guild_id ~ '^[0-9]{1,19}$'
-                 then w.discord_guild_id::numeric <= 9223372036854775807
-                 else false
-               end
-        """
-    )
-    op.alter_column("discord_channel", "guild_id", server_default=None, schema="log_processing")
-
-    # A workspace can hold a guild while having no boosty row at all (and the
-    # statement above needs a discord_channel row), so a plain update would destroy
-    # the snowflake irrecoverably -- and since workspace is now the only source, a
-    # re-upgrade would leave the gate silently unconfigured. Upsert instead, and
-    # insert disabled so rolling back cannot start enforcing. `created_at` is omitted:
-    # it has a server default (subs0001). The target is aliased `pc` rather than
-    # referenced as `subscriptions.provider_config.config_json` inside DO UPDATE: the
-    # three-part form is almost certainly valid, but an alias removes all doubt on a
-    # path that first executes during a rollback, when nobody wants to debug syntax.
-    op.execute(
-        """
-        insert into subscriptions.provider_config as pc
-                    (workspace_id, provider, enabled, config_json)
-        select w.id, 'boosty', false,
-               jsonb_build_object('guild_id', w.discord_guild_id)::json
-          from workspace w
-         where w.discord_guild_id is not null
-            on conflict on constraint uq_subscription_config_workspace_provider
-            do update set config_json = ((pc.config_json::jsonb)
-                                         || jsonb_build_object(
-                                                'guild_id', excluded.config_json::jsonb ->> 'guild_id'
-                                            ))::json
-        """
-    )
-
     op.drop_column("workspace", "discord_guild_id")
