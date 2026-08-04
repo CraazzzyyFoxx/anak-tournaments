@@ -172,7 +172,7 @@ export default function AccountStep({
       )}
 
       {showTwitch && (
-        <div className="grid gap-2">
+        <div className="grid gap-1.5">
           {requireVerified("twitch_nick") ? (
             <VerifiedAccountSelect
               label={t("registration.accounts.twitch")}
@@ -209,7 +209,7 @@ export default function AccountStep({
       )}
 
       {showBoosty && (
-        <div className="grid gap-2">
+        <div className="grid gap-1.5">
           <AccountCombobox
             label={t("registration.accounts.boosty")}
             placeholder={t("registration.accounts.boostyPlaceholder")}

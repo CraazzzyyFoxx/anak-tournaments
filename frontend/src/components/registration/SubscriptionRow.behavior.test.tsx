@@ -20,6 +20,7 @@ const MESSAGES = {
       undetermined: "Subscription not checked",
       none: "not subscribed",
       unchecked: "not checked",
+      active: "subscribed",
       codeLabel: "Code from the subscriber-only post",
       codePlaceholder: "Paste the code",
       codeSubmit: "Redeem",
@@ -152,5 +153,35 @@ describe("SubscriptionRow visibility", () => {
       subscription: { required: true, verdicts: {} } as unknown as SubscriptionStatus
     });
     expect(container.textContent).toBe("");
+  });
+});
+
+describe("SubscriptionRow verdict text", () => {
+  it("spells the refusal out in visible text", async () => {
+    const container = await mount({
+      subscription: status({ state: "inactive", reason: "no_mapped_role" })
+    });
+    expect(container.textContent).toContain("Boosty: not subscribed");
+  });
+
+  it("names the tier when the subscription is active", async () => {
+    const container = await mount({
+      subscription: status({ state: "active", tier_rank: 2, tier_label: "Уровень 2" })
+    });
+    expect(container.textContent).toContain("Boosty: Уровень 2");
+  });
+
+  it("falls back to a plain confirmation when the provider has no tier label", async () => {
+    const container = await mount({
+      subscription: status({ state: "active", tier_rank: 1 })
+    });
+    expect(container.textContent).toContain("Boosty: subscribed");
+  });
+
+  it("says the verdict is unresolved rather than showing nothing", async () => {
+    const container = await mount({
+      subscription: status({ state: "unknown", reason: "provider_unavailable" })
+    });
+    expect(container.textContent).toContain("Boosty: not checked");
   });
 });

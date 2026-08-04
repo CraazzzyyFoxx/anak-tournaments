@@ -11,7 +11,12 @@ import {
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import StatusMetaBadge from "@/components/status/StatusMetaBadge";
-import { StatusIconBadge } from "@/components/status/StatusIconBadge";
+import {
+  STATUS_TONE_PILL,
+  StatusIconBadge,
+  type StatusTone
+} from "@/components/status/StatusIconBadge";
+import { cn } from "@/lib/utils";
 import type {
   StatusMeta,
   SubscriptionOutcome,
@@ -258,6 +263,11 @@ interface SubscriptionProviderBadgeProps {
 /**
  * One provider's verdict, for the registration form's account rows.
  *
+ * Labelled, not icon-only: this chip is the only place a registrant learns
+ * whether their subscription counts, and a lone glyph whose meaning lives in
+ * `title` says nothing on touch and nothing beside a form field. The composed
+ * badge above stays icon-only because it sits in dense admin tables.
+ *
  * Shows the provider's own tier label rather than the numeric rank: Boosty
  * "Уровень 2" and Twitch "Tier 2" are unrelated scales and a bare number would
  * imply they are comparable.
@@ -269,32 +279,30 @@ export function SubscriptionProviderBadge({
 }: SubscriptionProviderBadgeProps) {
   const t = useTranslations();
 
+  let icon = Circle;
+  let tone: StatusTone = "neutral";
+  let detail = t("common.subscription.unchecked");
   if (verdict?.state === "active") {
-    return (
-      <StatusIconBadge
-        icon={HeartHandshake}
-        label={verdict.tier_label ? `${providerLabel}: ${verdict.tier_label}` : providerLabel}
-        tone="positive"
-        className={className}
-      />
-    );
+    icon = HeartHandshake;
+    tone = "positive";
+    detail = verdict.tier_label ?? t("common.subscription.active");
+  } else if (verdict?.state === "inactive") {
+    icon = HeartCrack;
+    tone = "negative";
+    detail = t("common.subscription.none");
   }
-  if (verdict?.state === "inactive") {
-    return (
-      <StatusIconBadge
-        icon={HeartCrack}
-        label={`${providerLabel}: ${t("common.subscription.none")}`}
-        tone="negative"
-        className={className}
-      />
-    );
-  }
+  const Icon = icon;
+
   return (
-    <StatusIconBadge
-      icon={Circle}
-      label={`${providerLabel}: ${t("common.subscription.unchecked")}`}
-      tone="neutral"
-      className={className}
-    />
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[11px] font-medium",
+        STATUS_TONE_PILL[tone],
+        className
+      )}
+    >
+      <Icon className="size-3.5 shrink-0" aria-hidden />
+      {`${providerLabel}: ${detail}`}
+    </span>
   );
 }

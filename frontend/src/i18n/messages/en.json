@@ -132,6 +132,7 @@
       "satisfied": "Subscription confirmed",
       "refused": "No subscription",
       "undetermined": "Subscription not checked",
+      "active": "subscribed",
       "none": "not subscribed",
       "unchecked": "not checked",
       "requiredAny": "An active subscription is required: {rule}",

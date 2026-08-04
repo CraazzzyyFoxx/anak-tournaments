@@ -23,7 +23,10 @@ export default function SubscriptionRuleNotice({ subscription }: SubscriptionRul
   if (!subscription?.required || !subscription.rule) return null;
 
   return (
-    <div className="flex items-start gap-2 rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-2.5">
+    // border/overlay-1, not the control tokens: an informational line must not
+    // carry the same surface weight as the inputs it precedes, or it reads as a
+    // disabled field.
+    <div className="flex items-start gap-2 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] p-2.5">
       <Info className="mt-0.5 size-3.5 shrink-0 text-[color:var(--aqt-fg-muted)]" aria-hidden />
       <p className="text-xs leading-5 text-[color:var(--aqt-fg-dim)]">
         {subscription.mode === "any"
