@@ -11,9 +11,12 @@ from src.schemas.division_grid import DivisionGridVersionRead
 # the branding derive util consumes.
 _HEX_COLOR = r"^#[0-9a-fA-F]{6}$"
 
-# A Discord snowflake: 17-19 digits today, 20 leaves headroom past 2090. Kept as a
-# string end to end because it exceeds 2**53 and a float round-trip would corrupt it.
-_DISCORD_SNOWFLAKE = r"^\d{17,20}$"
+# A Discord snowflake: 17-19 digits. 19 already reaches ~2084, and the column this
+# used to live in was BigInteger, which tops out at 19 digits -- so 20 was never
+# storable, and permitting it would let through a value the migration's downgrade
+# cannot cast back. Kept as a string end to end because it exceeds 2**53 and a float
+# round-trip would corrupt it.
+_DISCORD_SNOWFLAKE = r"^\d{17,19}$"
 
 __all__ = (
     "WorkspaceRead",

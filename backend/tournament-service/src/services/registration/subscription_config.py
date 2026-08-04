@@ -122,10 +122,14 @@ def serialize_provider_config(row: Any) -> SubscriptionProviderConfigRead:
 
 
 async def list_provider_configs(session: AsyncSession, workspace_id: int) -> SubscriptionProviderConfigListResponse:
-    """Every configurable provider, present or not.
+    """Every configurable provider, present or not, plus the workspace's guild.
 
     Providers with no row are returned disabled and empty, so the admin UI renders
     one card per provider without inventing placeholder rows in the database.
+
+    The guild is response-level rather than per-provider because it lives on the
+    workspace, not in any provider blob: the card renders it read-only and the
+    workspace settings form is the only place that writes it.
     """
     rows = (
         (

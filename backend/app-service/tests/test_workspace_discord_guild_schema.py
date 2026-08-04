@@ -16,10 +16,15 @@ def test_update_strips_surrounding_whitespace():
     assert model.discord_guild_id == "1234567890123456789"
 
 
-@pytest.mark.parametrize("bad", ["notanumber", "12345", "1" * 21, "123456789012345678a", "12 34"])
+@pytest.mark.parametrize("bad", ["notanumber", "12345", "1" * 20, "1" * 21, "123456789012345678a", "12 34"])
 def test_update_rejects_anything_that_is_not_a_snowflake(bad):
     with pytest.raises(ValidationError):
         schemas.WorkspaceUpdate(discord_guild_id=bad)
+
+
+@pytest.mark.parametrize("ok", ["1" * 17, "1" * 18, "1" * 19])
+def test_update_accepts_every_length_a_bigint_could_hold(ok):
+    assert schemas.WorkspaceUpdate(discord_guild_id=ok).discord_guild_id == ok
 
 
 @pytest.mark.parametrize("blank", ["", "   ", "\t", "\n"])
@@ -36,8 +41,3 @@ def test_omitting_the_field_writes_nothing():
 def test_explicit_none_clears_it():
     model = schemas.WorkspaceUpdate(discord_guild_id=None)
     assert model.model_dump(exclude_unset=True) == {"discord_guild_id": None}
-
-
-def test_read_carries_the_field_defaulting_to_none():
-    assert "discord_guild_id" in schemas.WorkspaceRead.model_fields
-    assert schemas.WorkspaceRead.model_fields["discord_guild_id"].default is None

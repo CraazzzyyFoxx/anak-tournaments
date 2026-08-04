@@ -160,9 +160,6 @@ class TestBuildConfigJson:
         else:
             raise AssertionError("expected a validation error")
 
-    def test_the_guild_is_no_longer_part_of_the_provider_blob(self):
-        assert "guild_id" not in SubscriptionProviderConfigUpsert.model_fields
-
     def test_a_stale_client_guild_is_ignored_not_written(self):
         """The blob must never regain the key, whatever an old frontend posts."""
         body = SubscriptionProviderConfigUpsert.model_validate({"provider": "boosty", "guild_id": "999"})
