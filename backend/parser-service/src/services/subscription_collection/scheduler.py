@@ -12,6 +12,7 @@ from loguru import logger
 
 from shared.services import settings_provider
 from shared.services.distributed_lock import (
+    DistributedLockUnavailable,
     acquire_distributed_lock,
     release_distributed_lock,
 )
@@ -32,10 +33,14 @@ async def run_subscription_collection_tick(
     redis_client: Any = realtime_redis,
 ) -> int:
     """One scheduling pass: resolve subscriptions for active tournament participants."""
-    token = await acquire_distributed_lock(
-        redis_client, LEADER_LOCK_KEY, ttl_seconds=LEADER_LOCK_TTL_SECONDS
-    )
-    if token is None:
+    try:
+        token = await acquire_distributed_lock(
+            redis_client,
+            LEADER_LOCK_KEY,
+            ttl_seconds=LEADER_LOCK_TTL_SECONDS,
+            acquire_timeout_seconds=0.0,
+        )
+    except DistributedLockUnavailable:
         logger.debug("Another replica holds the subscription collection leader lock; skipping tick")
         return 0
 
@@ -55,7 +60,7 @@ async def run_subscription_collection_tick(
             logger.info("Subscription collection tick processed {} users", count)
             return count
     finally:
-        await release_distributed_lock(redis_client, LEADER_LOCK_KEY, token)
+        await release_distributed_lock(redis_client, token)
 
 
 def start_scheduler(*, redis: Any | None = None) -> None:

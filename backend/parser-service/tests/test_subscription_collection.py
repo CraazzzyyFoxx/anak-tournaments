@@ -79,6 +79,7 @@ class SubscriptionCollectionServiceTests(IsolatedAsyncioTestCase):
 
 class SubscriptionCollectionSchedulerTests(IsolatedAsyncioTestCase):
     async def test_run_subscription_collection_tick(self):
+        from shared.services.distributed_lock import DistributedLockToken
         from src.services.subscription_collection import scheduler
 
         mock_session = AsyncMock()
@@ -86,11 +87,28 @@ class SubscriptionCollectionSchedulerTests(IsolatedAsyncioTestCase):
         mock_cm.__aenter__.return_value = mock_session
         mock_session_factory = MagicMock(return_value=mock_cm)
         mock_redis = AsyncMock()
+        token = DistributedLockToken(key=scheduler.LEADER_LOCK_KEY, value="token-123")
+        mock_release = AsyncMock()
 
-        with patch("src.services.subscription_collection.scheduler.acquire_distributed_lock", AsyncMock(return_value="token-123")), \
-             patch("src.services.subscription_collection.scheduler.release_distributed_lock", AsyncMock()), \
+        with patch("src.services.subscription_collection.scheduler.acquire_distributed_lock", AsyncMock(return_value=token)), \
+             patch("src.services.subscription_collection.scheduler.release_distributed_lock", mock_release), \
              patch("shared.services.settings_provider.get_subscription_collection_config", AsyncMock(return_value=SubscriptionCollectionConfig(enabled=True))), \
              patch.object(scheduler.service, "collect_subscriptions_for_active_tournaments", AsyncMock(return_value=5)):
 
             count = await scheduler.run_subscription_collection_tick(mock_session_factory, mock_redis)
             self.assertEqual(count, 5)
+            mock_release.assert_called_once_with(mock_redis, token)
+
+    async def test_run_subscription_collection_tick_lock_unavailable(self):
+        from shared.services.distributed_lock import DistributedLockUnavailable
+        from src.services.subscription_collection import scheduler
+
+        mock_redis = AsyncMock()
+        mock_release = AsyncMock()
+
+        with patch("src.services.subscription_collection.scheduler.acquire_distributed_lock", AsyncMock(side_effect=DistributedLockUnavailable("locked"))), \
+             patch("src.services.subscription_collection.scheduler.release_distributed_lock", mock_release):
+
+            count = await scheduler.run_subscription_collection_tick(AsyncMock(), mock_redis)
+            self.assertEqual(count, 0)
+            mock_release.assert_not_called()
