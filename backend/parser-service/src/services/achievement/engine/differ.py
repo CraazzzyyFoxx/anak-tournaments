@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models.achievements.achievement import AchievementEvaluationResult, AchievementRule
@@ -16,6 +17,18 @@ from shared.models.tenancy.workspace import WorkspaceMember
 from shared.repository.workspace import get_or_create_workspace_member
 
 ResultSet = set[tuple[int, ...]]
+
+# Conflict target for the reconcile insert below. Mirrors the functional unique
+# index created by migration perfidx05 exactly; Postgres only matches an
+# ON CONFLICT target against an index whose expressions are identical, which is
+# also why the fallback is ``literal_column("0")`` and not a plain ``0`` — the
+# latter renders as a bind parameter and would not match ``COALESCE(x, 0)``.
+_DEDUP_INDEX_ELEMENTS = (
+    AchievementEvaluationResult.achievement_rule_id,
+    AchievementEvaluationResult.workspace_member_id,
+    sa.func.coalesce(AchievementEvaluationResult.tournament_id, sa.literal_column("0")),
+    sa.func.coalesce(AchievementEvaluationResult.match_id, sa.literal_column("0")),
+)
 
 
 @dataclass(frozen=True)
@@ -114,27 +127,49 @@ async def diff_and_apply(
             sa.delete(AchievementEvaluationResult).where(AchievementEvaluationResult.id.in_(ids_to_delete))
         )
 
-    # Apply insertions
+    # Apply insertions.
+    #
+    # The read-diff-write above is not atomic: two runs for the same workspace
+    # (e.g. two EncounterCompletedEvents for one tournament) read the same
+    # ``existing_map`` and then insert the same rows, tripping the
+    # ``uq_eval_result_dedup_coalesced`` unique index and failing the whole run.
+    # A single INSERT ... ON CONFLICT DO NOTHING makes the reconcile idempotent
+    # and replaces N ORM inserts with one statement. The conflict target must
+    # repeat the index's COALESCE expressions verbatim (see migration perfidx05)
+    # — the plain UniqueConstraint is NULL-blind and never matches for
+    # tournament/global-grain rows.
     now = datetime.now(UTC)
     inserts = []
+    values: list[dict] = []
     member_id_by_player: dict[int, int] = {}
     for key in to_add:
         user_id, tournament_id, match_id = _unpack_key(key)
         if user_id not in member_id_by_player:
             member = await get_or_create_workspace_member(session, workspace_id=rule.workspace_id, player_id=user_id)
             member_id_by_player[user_id] = member.id
-        row = AchievementEvaluationResult(
-            achievement_rule_id=rule.id,
-            workspace_member_id=member_id_by_player[user_id],
-            tournament_id=tournament_id,
-            match_id=match_id,
-            qualified_at=now,
-            rule_version=rule.rule_version,
-            run_id=run_id,
-            evidence_json={"rule_slug": rule.slug, "rule_version": rule.rule_version},
+        values.append(
+            {
+                "achievement_rule_id": rule.id,
+                "workspace_member_id": member_id_by_player[user_id],
+                "tournament_id": tournament_id,
+                "match_id": match_id,
+                "qualified_at": now,
+                "rule_version": rule.rule_version,
+                "run_id": run_id,
+                "evidence_json": {"rule_slug": rule.slug, "rule_version": rule.rule_version},
+            }
         )
-        session.add(row)
         inserts.append({"user_id": user_id, "tournament_id": tournament_id, "match_id": match_id})
+
+    if values:
+        # get_or_create_workspace_member may have created member rows in this
+        # session; flush them so the FK below resolves.
+        await session.flush()
+        await session.execute(
+            pg_insert(AchievementEvaluationResult)
+            .values(values)
+            .on_conflict_do_nothing(index_elements=_DEDUP_INDEX_ELEMENTS)
+        )
 
     return DiffResult(to_insert=inserts, to_delete=ids_to_delete)
 
