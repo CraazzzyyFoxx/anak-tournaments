@@ -1143,6 +1143,23 @@ rtk git commit -m "fix(subscriptions): <what the smoke test caught>"
 
 ## Rollout Notes
 
-- **Order matters.** The migration strips `config_json.guild_id`, so a running instance of the old code would read `unknown("guild_not_configured")` and fail open for every Boosty-gated tournament between the migration and the deploy. Ship the code with the migration, not before it.
-- **The window is fail-open, not fail-closed** — nobody is wrongly blocked, some may be wrongly admitted. Prefer a low-traffic window; do not attempt a zero-downtime dance for it.
-- **Rollback:** `alembic downgrade -1` restores both the column and the blob key (Task 2). Verified by the Step-4 round-trip, not assumed.
+- **Order matters, and it cuts both ways.** The migration strips `config_json.guild_id`, so old code running *after* it reads `unknown("guild_not_configured")` and fails open for every Boosty-gated tournament. But the parser's ORM attribute is dropped by the code, while `discord_channel.guild_id` stays `NOT NULL` with no server default until the migration runs — so new code running *before* it returns 500 from `_discord_upsert` when an admin adds a match-log channel. **Migrate first, then roll the services**, and keep the gap short.
+- **The subscription-gate window is fail-open, not fail-closed** — nobody is wrongly blocked, some may be wrongly admitted. Prefer a low-traffic window; do not attempt a zero-downtime dance for it.
+- **Rollback:** `alembic downgrade -1` restores the schema exactly and preserves the guild into a disabled `boosty` config row, so a later re-upgrade recovers it. Verify with the round-trip (Task 2 Step 4), do not assume.
+
+---
+
+## Post-Review Hardening (applied)
+
+A code-quality review after implementation returned `CHANGES REQUESTED` with two P1 findings. Both were accepted; the sections above describe the plan as originally written, and this records what the code now does differently. The design doc §4.1 carries the full reasoning.
+
+| Finding | Fix | Commit |
+| --- | --- | --- |
+| **P1** Backfill step 1 copied `config_json ->> 'guild_id'` with only a non-empty check. The old write schema had `max_length=32` and **no** digits pattern, so `"999"` was legal and this repo's own tests seeded it. A workspace backfilled with it would 422 on **every** workspace save (the edit page posts the field unconditionally), and a >32-char value would abort the migration on `String(32)`. | Guard with `~ '^[0-9]{17,19}$'`; drop the now-redundant `coalesce` check. | `992e66ac` |
+| **P1** Step 2's `dc.guild_id is not null` was **vacuous** — the column is `NOT NULL` — so `0`, the exact value `downgrade` writes for unresolvable rows, passed through as truthy `'0'`. Worse, this step promotes a never-validated column into a live-gating input, and a wrong guild does **not** fail open: it reads `inactive`/`not_a_member` and **blocks** every patron, where the workspace previously answered `unknown` and admitted everybody. | Floor at `10000000000000000`; rewrite the docstring paragraph that claimed the backfill "cannot change current admission behaviour" — true of step 1 only. | `992e66ac` |
+| **P2** `downgrade` cast to `bigint` (max 19 digits) while the schema admitted 20, so a 20-digit id aborted the revision *after* `add_column`, leaving it half-applied. Narrowing to 19 digits is **not** sufficient on its own: 19 digits reaches 9.99e18, still over `bigint`. | Narrow `_DISCORD_SNOWFLAKE` to `^\d{17,19}$` **and** bound the cast by `::numeric <= 9223372036854775807`. | `992e66ac`, `25845c0c` |
+| **P2** `downgrade`'s write-back only touched an *existing* `boosty` row, so a workspace with a guild but no `boosty` config and no tournament channel lost its snowflake irrecoverably. | Upsert instead, inserting **disabled** so a rollback cannot start enforcing; the conflict branch touches only `config_json`. Target aliased `pc` rather than a three-part column reference — very probably valid, but a rollback path is the worst place to debug syntax. | `992e66ac`, `af00c2fb` |
+| **P3** The Boosty card stacked `guild.unset` and `guild.missing`, saying the same thing twice with the actionable half second. | Show the warning *in place of* the neutral line. | `0f62be84` |
+| **P3** The guild input gave no length feedback — 5 or 25 digits both submitted and returned an opaque 422 naming no field. | `maxLength={19}` plus an inline out-of-range hint. | `0f62be84` |
+| **P3** Three tests asserted a declaration (`model_fields` introspection) two lines from the source and could not fail on any plausible bug. | Deleted; the behavioural tests beside them already cover the property. | `25845c0c` |
+| **P3** `rolesMissing` gained `Boolean(discordGuildId)`, deliberately suppressing the roles warning when the guild is missing too — but nothing pinned it, so flipping the condition passed the whole suite. | Assertion added, and **mutation-tested**: flipping `Boolean(discordGuildId)` to `!discordGuildId` fails it (2/18), reverting restores 18/18. The fixture needed `role_tiers: []` first, or the assertion would itself have been vacuous. | `0f62be84` |

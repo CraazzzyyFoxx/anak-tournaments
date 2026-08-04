@@ -85,13 +85,32 @@ discord_guild_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
 Migration `wsguild0001` (`down_revision` from `alembic heads`, **never** hardcoded):
 
 1. `add_column workspace.discord_guild_id String(32) NULL`
-2. **Backfill**, in precedence order:
-   1. `subscriptions.provider_config.config_json ->> 'guild_id'` where `provider = 'boosty'` — this is the value that is actually read today, so it wins;
-   2. otherwise the most recent non-null `log_processing.discord_channel.guild_id` among that workspace's tournaments.
+2. **Backfill**, in precedence order, and in both cases only from values that *look like* a snowflake:
+   1. `subscriptions.provider_config.config_json ->> 'guild_id'` where `provider = 'boosty'` and the value matches `^[0-9]{17,19}$` — this is the value the running system actually reads, so it wins;
+   2. otherwise the most recent `log_processing.discord_channel.guild_id` among that workspace's tournaments, floored at `10000000000000000` (the smallest 17-digit id).
 3. **Strip** `guild_id` out of `provider_config.config_json` — leaving it would keep two sources of truth and make the injection order in §4.2 ambiguous.
 4. `drop_column log_processing.discord_channel.guild_id`
 
-`downgrade` re-adds `discord_channel.guild_id` as `BigInteger NOT NULL server_default='0'`, backfills from `workspace.discord_guild_id` through the tournament join, then drops the server default, restoring the original schema exactly. Rows with no resolvable guild get `0` — precisely as meaningful as the value was before, since nothing read it. It also writes the guild back into the Boosty `config_json`.
+#### Why the backfill validates rather than copies
+
+A **missing** guild and a **wrong** guild are opposite outcomes, and conflating them is the sharpest hazard in this change:
+
+| Stored guild | Discord | Verdict | Admission |
+| --- | --- | --- | --- |
+| absent | not called | `unknown` / `guild_not_configured` | **passes** (fail-open) |
+| wrong | 404 on `GET /guilds/{id}/members/{user}` | `inactive` / `not_a_member` | **blocked** |
+
+`MemberNotFound` (`subscription_strategies.py:139-141`) maps to `_inactive("not_a_member")` (`discord_role.py:110-111`), and the composition reads `inactive` as a refusal. So promoting an unvalidated value can flip a workspace from "admits everybody" to "blocks every patron" — the exact opposite of a safe migration.
+
+That matters because `discord_channel.guild_id`, the fallback source, was **never validated**: the admin form had no pattern check, and nothing ever read the column back, so no operator would have noticed a typo. The old write schema for the Boosty blob was no better (`max_length=32`, no digits pattern), which is why `"999"` was a legal stored value — this repository's own tests seeded exactly that. Two further consequences of copying such a value verbatim: `WorkspaceUpdate` enforces `^\d{17,19}$` and the workspace edit page posts the field on **every** save, so the workspace would return 422 on unrelated edits (name, timezone, branding) forever; and a value longer than 32 characters would abort the migration outright on `String(32)`.
+
+Hence: pattern-guard both sources. A workspace whose only stored value is implausible ends up `NULL`, which is the fail-open state it effectively already had.
+
+A note on widths: the accepted pattern is `^\d{17,19}$`, not `{17,20}`. `bigint` — what `discord_channel.guild_id` was, and what `downgrade` casts back to — tops out at `9223372036854775807`, 19 digits. Permitting 20 would admit a value the rollback path cannot represent. 19 digits already covers real snowflakes past 2080.
+
+`downgrade` re-adds `discord_channel.guild_id` as `BigInteger NOT NULL server_default='0'`, backfills from `workspace.discord_guild_id` through the tournament join, then drops the server default, restoring the original schema exactly. Rows with no resolvable guild get `0` — precisely as meaningful as the value was before, since nothing read it. The cast is bounded by both shape and magnitude (`~ '^[0-9]{1,19}$'` **and** `::numeric <= 9223372036854775807`): a 19-digit value can still reach 9.99e18 and overflow `bigint`, and the failure would land *after* `add_column`, leaving the revision half-applied.
+
+The guild itself is preserved on rollback by an **upsert**, not an update. A plain update only touches an existing `boosty` row, so a workspace holding a guild with no `boosty` config and no tournament channel would have its snowflake destroyed irrecoverably — and since `workspace.discord_guild_id` is now the only source, a later re-upgrade would leave that workspace unconfigured, silently ending enforcement while the organizer believed the gate was live. The insert creates the row **disabled**, so rolling back can never *start* enforcing something that was not; the conflict branch touches only `config_json`. Its target is aliased `pc` rather than referenced as `subscriptions.provider_config.config_json` — the three-part form is very probably valid, but an alias removes all doubt from a statement whose first real execution is a rollback.
 
 ### 4.2 Read path — one chokepoint, resolver untouched
 
@@ -127,7 +146,7 @@ Consequences, and the reason this shape was chosen:
 
 | File | Change |
 | --- | --- |
-| `backend/app-service/src/schemas/workspace.py` | `WorkspaceUpdate.discord_guild_id: str \| None` (`^\d{17,20}$`, blank → `None`); `WorkspaceRead.discord_guild_id` with a comment citing the `custom_domain_verification_token` precedent |
+| `backend/app-service/src/schemas/workspace.py` | `WorkspaceUpdate.discord_guild_id: str \| None` (`^\d{17,19}$`, blank → `None`); `WorkspaceRead.discord_guild_id` with a comment citing the `custom_domain_verification_token` precedent |
 | `backend/tournament-service/src/schemas/registration.py:290,351` | drop `guild_id` from `SubscriptionProviderConfigUpsert` / `…Read` |
 | `…/services/registration/subscription_config.py:58-59,98` | stop writing and reading `guild_id` |
 | `…ConfigListResponse` | **add** `discord_guild_id: str \| None`, read from `Workspace` in `list_provider_configs`, so the Boosty card can warn when it is unset |
@@ -175,9 +194,11 @@ Docstrings to correct: `SubscriptionProviderConfig` (`subscription.py:45`), the 
 
 ## 6. Risks
 
-- **Backfill precedence is a judgement call.** If a workspace's Boosty guild differs from its tournaments' guild, the migration keeps the Boosty one. Mitigation: query both **before** running and confirm they agree; the migration logs the divergence.
+- **Backfill precedence is a judgement call.** If a workspace's Boosty guild differs from its tournaments' guild, the migration keeps the Boosty one. Mitigation: query both **before** running and confirm they agree.
+- **A wrong backfilled guild blocks; a missing one does not.** See §4.1 — this is the asymmetry that makes an unvalidated copy dangerous, and the reason both sources are pattern-guarded. Residual risk: a *plausible but wrong* 17–19-digit id still passes the guard and still blocks. Only the pre-flight query catches that, which is why it is a gate and not a suggestion.
 - **Public exposure sets a precedent.** Justified for a guild id, wrong for a secret. If a future integration value is secret (a bot token, a webhook URL with an embedded key), it must not follow this path — it needs an authenticated admin read model.
-- **Fail-open widens silently if the backfill misses a workspace.** A workspace that ends up with `NULL` admits everybody on a Boosty-gated tournament, exactly as a wrong guild does today. Mitigation: the new UI warning (§4.4) makes it visible on the screen that owns it, and §4.5.1 pins the behaviour.
+- **Fail-open widens silently if the backfill misses a workspace.** A workspace that ends up with `NULL` admits everybody on a Boosty-gated tournament. Mitigation: the new UI warning (§4.4) makes it visible on the screen that owns it, and §4.5.1 pins the behaviour.
+- **Dropping the ORM attribute opens a deploy window that fails inserts.** Between the code deploy and `wsguild0001` running, `discord_channel.guild_id` is still `NOT NULL` with no server default while the mapper no longer sets it, so `_discord_upsert` (`parser-service/src/rpc/misc.py`) returns 500 for an admin adding a match-log channel. Inherent to any column drop; the mitigation is ordering — migrate before the parser rolls. Note `_discord_upsert` has no test coverage at all, before or after this change.
 - **`dev` env may point at production.** Migrations are verified by `alembic upgrade <rev> --sql` render plus a round-trip against an explicitly named scratch database, never by a bare `alembic upgrade head` from a dev shell.
 
 ## 7. Exit Criteria
