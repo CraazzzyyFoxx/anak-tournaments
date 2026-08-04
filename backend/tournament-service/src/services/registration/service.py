@@ -604,6 +604,13 @@ async def withdraw_registration(
     session: AsyncSession,
     registration: models.BalancerRegistration,
 ) -> None:
+    # Check-in is the point where the attendee list becomes load-bearing: the
+    # balancer and the draft are run against it. Letting a participant drop
+    # themselves afterwards silently invalidates a composed roster, so
+    # self-withdrawal is final here. Organizers can still withdraw them through
+    # the admin path (lifecycle.withdraw_registration), which owns that call.
+    if registration.checked_in:
+        raise HTTPException(status_code=409, detail="Cannot withdraw after check-in")
     registration.status = "withdrawn"
     register_tournament_realtime_update(session, registration.tournament_id, "structure_changed")
     await session.commit()

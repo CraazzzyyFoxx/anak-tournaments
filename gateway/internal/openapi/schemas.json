@@ -7291,7 +7291,7 @@
       "summary": "Update my registration"
     },
     "rpc.tournament.reg_pub_withdraw_me": {
-      "description": "Withdraws the calling user's own registration and returns the new status; requires authentication.",
+      "description": "Withdraws the calling user's own registration and returns the new status; refuses with 409 once the registration has been checked in (only an organizer can withdraw an attendee from that point on); requires authentication.",
       "response": {
         "array": false,
         "ref": "tournament.RegistrationStatusResponse"
@@ -7695,7 +7695,7 @@
       "summary": "List subscription providers"
     },
     "rpc.tournament.sub_config_upsert": {
-      "description": "Creates or updates one provider's config (Discord guild id and role\u2192tier mapping, Twitch broadcaster, challenge codes). Plaintext codes are hashed server-side and never stored; omitting a field keeps the stored value; requires team-update permission.",
+      "description": "Creates or updates one provider's config (Discord guild id and role\u2192tier mapping, Twitch broadcaster, challenge codes) and its verification_method: 'live' accepts only the provider's own signal, 'code' only a redeemed challenge code, 'any' either. Narrowing the method revokes stored entitlements whose source it no longer accepts. Plaintext codes are hashed server-side and never stored; omitting a field keeps the stored value; requires team-update permission.",
       "request": {
         "array": false,
         "ref": "tournament.SubscriptionProviderConfigUpsert"
@@ -34959,6 +34959,11 @@
           },
           "title": "Role Tiers",
           "type": "array"
+        },
+        "verification_method": {
+          "default": "any",
+          "title": "Verification Method",
+          "type": "string"
         }
       },
       "required": [
@@ -35047,6 +35052,18 @@
           ],
           "default": null,
           "title": "Role Tiers"
+        },
+        "verification_method": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verification Method"
         }
       },
       "required": [
@@ -35058,6 +35075,11 @@
     "tournament.SubscriptionProviderVerdictRead": {
       "description": "One provider's verdict, as shown to the patron.\n\nDeliberately narrow: ``evidence`` may hold guild ids and role ids, so only\n``reason`` is exposed -- the UI branches on it to pick a call to action\n(\"link Discord\" vs \"reconnect Twitch\").",
       "properties": {
+        "code_accepted": {
+          "default": false,
+          "title": "Code Accepted",
+          "type": "boolean"
+        },
         "reason": {
           "anyOf": [
             {

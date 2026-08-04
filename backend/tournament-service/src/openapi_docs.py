@@ -710,7 +710,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.reg_pub_withdraw_me": {
         "summary": "Withdraw my registration",
-        "description": "Withdraws the calling user's own registration and returns the new status; requires authentication.",
+        "description": "Withdraws the calling user's own registration and returns the new status; refuses with 409 once the registration has been checked in (only an organizer can withdraw an attendee from that point on); requires authentication.",
     },
     "rpc.tournament.reg_pub_check_in": {
         "summary": "Check in to tournament",

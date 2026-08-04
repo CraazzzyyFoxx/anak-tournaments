@@ -341,7 +341,10 @@ function MyRegistrationCard({
   const isTerminal = TERMINAL_REGISTRATION_STATUSES.has(registration.status);
   const checkInPhaseOver =
     !isCheckedIn && !canCheckIn && CHECK_IN_OVER_TOURNAMENT_STATUSES.has(tournament.status);
-  const canWithdraw = registration.status === "pending" || registration.status === "approved";
+  // Withdrawal closes at check-in: past that point the roster is balanced and
+  // drafted against a confirmed attendee list (backend returns 409 too).
+  const canWithdraw =
+    !isCheckedIn && (registration.status === "pending" || registration.status === "approved");
   // "ready" is the terminal balancer state: the organizers added the player to
   // the pool and assigned a rank. Anything else (not_in_balancer, incomplete,
   // custom slugs, missing field) means the rank is still pending.
