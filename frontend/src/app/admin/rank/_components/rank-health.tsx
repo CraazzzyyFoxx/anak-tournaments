@@ -35,7 +35,7 @@ function formatInterval(seconds: number): string {
  */
 function StatusBar({ stats }: { stats: RankCollectionStats }) {
   const total = stats.total || 1;
-  const counts = stats.by_status;
+  const counts = stats.by_status || {};
   return (
     <div className="space-y-2">
       <div aria-hidden className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted/20">
@@ -114,10 +114,11 @@ export function RankHealthDashboard() {
     );
   }
 
-  const disabled = stats.by_status.disabled;
-  const errRate = Math.round(stats.error_rate_24h * 100);
-  const errCount = stats.fetch_24h.error + stats.fetch_24h.rate_limited;
-
+  const disabled = stats.by_status?.disabled ?? 0;
+  const errRate = Math.round((stats.error_rate_24h ?? 0) * 100);
+  const okCount = stats.fetch_24h?.ok ?? 0;
+  const notFoundCount = stats.fetch_24h?.not_found ?? 0;
+  const errCount = (stats.fetch_24h?.error ?? 0) + (stats.fetch_24h?.rate_limited ?? 0);
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -181,8 +182,8 @@ export function RankHealthDashboard() {
 
         <StatTile
           label="Fetches (24h)"
-          value={stats.fetch_24h_total}
-          detail={`${errRate}% errors · ok ${stats.fetch_24h.ok} · not found ${stats.fetch_24h.not_found} · errors ${errCount} · last success ${formatRelative(stats.last_success_at)}`}
+          value={stats.fetch_24h_total ?? 0}
+          detail={`${errRate}% errors · ok ${okCount} · not found ${notFoundCount} · errors ${errCount} · last success ${formatRelative(stats.last_success_at)}`}
           tone={errRate >= 20 ? "danger" : "neutral"}
           icon={errRate >= 20 ? AlertTriangle : undefined}
         />
