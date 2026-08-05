@@ -33,6 +33,11 @@ class HeroRead(BaseRead):
     image_path: str
     type: str
     color: str
+    # ponytail: aliases ride along in the public GET /api/v1/heroes too (~600
+    # extra lines on an endpoint cached for a day). Separate *AdminRead schemas
+    # when that payload becomes noticeable; today that is a 4th parameter to
+    # `_register_entity` for no present benefit.
+    aliases: list[str] = []
 
 
 class HeroPlaytime(BaseModel):

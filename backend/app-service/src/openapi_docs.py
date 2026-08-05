@@ -288,6 +288,19 @@ DOCS: dict[str, dict] = {
         "summary": "Delete gamemode",
         "description": "Deletes a gamemode by id (superuser only), returns 204.",
     },
+    # ── metadata admin: catalog alias-miss queue ──────────────────────────────────────────
+    "rpc.app.catalog_aliases.misses_list": {
+        "summary": "List catalog alias misses",
+        "description": "Returns a paginated queue of hero/map/gamemode names from match logs that no alias resolved, ordered by occurrences then recency; open misses only unless include_resolved=true (superuser only).",
+    },
+    "rpc.app.catalog_aliases.attach": {
+        "summary": "Attach a catalog alias",
+        "description": "Adds the raw name to the target entity's aliases and closes the matching miss in one transaction; 404 if the entity is missing (superuser only).",
+    },
+    "rpc.app.catalog_aliases.dismiss": {
+        "summary": "Dismiss a catalog alias miss",
+        "description": "Marks an alias miss resolved without attaching it; the row reopens if the same name reappears in a log. 404 if the miss is missing (superuser only).",
+    },
     # ── users admin (CRUD) ───────────────────────────────────────────────────────────────
     "rpc.app.users.admin_list": {
         "summary": "Admin list users",

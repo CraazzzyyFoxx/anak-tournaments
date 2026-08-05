@@ -25,6 +25,7 @@ from src.rpc import (
     achievements,
     admin_crud,
     binary,
+    catalog_aliases,
     gamemodes,
     heroes,
     maps,
@@ -69,6 +70,9 @@ admin_crud.register(broker, logger)
 
 # Game-metadata admin CRUD (hero/map/gamemode), relocated from parser-service.
 metadata_admin.register(broker, logger)
+
+# Alias-miss queue: unresolved log names + one-click attach (superuser only).
+catalog_aliases.register(broker, logger)
 
 # User + identity admin CRUD, profile merge, avatar, CSV import (from parser-service).
 users_admin.register(broker, logger)

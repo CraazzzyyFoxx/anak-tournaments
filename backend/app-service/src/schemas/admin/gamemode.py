@@ -17,12 +17,14 @@ class GamemodeCreate(BaseModel):
     """Schema for creating a gamemode"""
 
     name: str
+    aliases: list[str] | None = None
 
 
 class GamemodeUpdate(BaseModel):
     """Schema for updating a gamemode"""
 
     name: str | None = None
+    aliases: list[str] | None = None
 
 
 class GamemodeListQueryParams(

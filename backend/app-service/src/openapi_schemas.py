@@ -20,6 +20,11 @@ from shared.core.pagination import (
 )
 from shared.rpc.openapi import Op, QueryParam
 from src import schemas
+from src.schemas.admin.catalog_alias import (
+    CatalogAliasAttach,
+    CatalogAliasMissListQueryParams,
+    CatalogAliasMissRead,
+)
 from src.schemas.admin.gamemode import GamemodeCreate, GamemodeUpdate
 from src.schemas.admin.hero import HeroCreate, HeroUpdate
 from src.schemas.admin.map import MapCreate, MapUpdate
@@ -109,9 +114,7 @@ OPERATIONS: dict[str, Op] = {
     "rpc.app.users.by_name": Op(response=schemas.UserRead),
     "rpc.app.users.tournaments": Op(response=schemas.UserTournament, response_array=True),
     "rpc.app.users.tournament": Op(response=schemas.UserTournamentWithStats),
-    "rpc.app.users.tournament_leaderboard": Op(
-        response=schemas.LobbyLeaderboard, query_params=(QueryParam("stat"),)
-    ),
+    "rpc.app.users.tournament_leaderboard": Op(response=schemas.LobbyLeaderboard, query_params=(QueryParam("stat"),)),
     "rpc.app.users.maps": Op(response=Paginated[schemas.UserMap], query=schemas.UserMapsSearchQueryParams),
     "rpc.app.users.maps_summary": Op(response=schemas.UserMapsSummary, query=schemas.UserMapsSearchQueryParams),
     "rpc.app.users.encounters": Op(
@@ -180,6 +183,12 @@ OPERATIONS: dict[str, Op] = {
     "rpc.app.maps.admin_update": Op(request=MapUpdate, response=schemas.MapRead),
     "rpc.app.gamemodes.admin_create": Op(request=GamemodeCreate, response=schemas.GamemodeRead),
     "rpc.app.gamemodes.admin_update": Op(request=GamemodeUpdate, response=schemas.GamemodeRead),
+    # ── metadata admin: catalog alias-miss queue ───────────────────────────
+    "rpc.app.catalog_aliases.misses_list": Op(
+        response=Paginated[CatalogAliasMissRead], query=CatalogAliasMissListQueryParams
+    ),
+    "rpc.app.catalog_aliases.attach": Op(request=CatalogAliasAttach),
+    "rpc.app.catalog_aliases.dismiss": Op(),
     # ── users admin (CRUD + identities + merge) ────────────────────────────
     "rpc.app.users.admin_create": Op(request=UserCreate, response=schemas.UserRead),
     "rpc.app.users.admin_update": Op(request=UserUpdate, response=schemas.UserRead),

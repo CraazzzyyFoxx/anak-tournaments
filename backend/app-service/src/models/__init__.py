@@ -2,6 +2,7 @@
 from shared.models.achievements.achievement import *
 from shared.models.analytics.analytics import *
 from shared.models.balancer.balance import *
+from shared.models.catalog.alias_miss import *
 from shared.models.catalog.gamemode import *
 from shared.models.catalog.hero import *
 from shared.models.catalog.map import *

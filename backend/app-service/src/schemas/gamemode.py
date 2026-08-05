@@ -21,3 +21,4 @@ class GamemodeRead(BaseRead):
     name: str
     image_path: str
     description: str | None
+    aliases: list[str] = []

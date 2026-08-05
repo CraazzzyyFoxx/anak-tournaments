@@ -21,5 +21,6 @@ class MapRead(BaseRead):
     name: str
     image_path: str
     in_competitive: bool = True
+    aliases: list[str] = []
 
     gamemode: GamemodeRead | None

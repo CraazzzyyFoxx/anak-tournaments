@@ -5,6 +5,7 @@ import re
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.catalog_aliases import normalize_aliases
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import HeroRepository
@@ -53,6 +54,7 @@ async def create_hero(session: AsyncSession, data: admin_schemas.HeroCreate) -> 
         image_path=data.image_path or "",
         type=data.role,
         color=data.color,
+        aliases=normalize_aliases(data.aliases or []),
     )
     hero = await _repo.create(session, hero)
     await session.commit()
@@ -78,6 +80,8 @@ async def update_hero(session: AsyncSession, hero_id: int, data: admin_schemas.H
     role = update_data.pop("role", None)
     if role is not None:
         update_data["type"] = role
+    if "aliases" in update_data:
+        update_data["aliases"] = normalize_aliases(update_data["aliases"] or [])
 
     hero = await _repo.update_fields(session, hero, update_data)
     await session.commit()
