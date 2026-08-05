@@ -7762,6 +7762,26 @@
       },
       "summary": "Redeem a subscription code"
     },
+    "rpc.tournament.sub_requirement_get": {
+      "description": "Returns the workspace's subscription admission rule as `{mode, requirements: [{provider, min_tier_rank}]}`, shared by every tournament in the workspace whose registration form has require_subscription on; an empty object means nothing is enforced; requires team-read permission.",
+      "response": {
+        "array": false,
+        "ref": "tournament.WorkspaceSubscriptionRequirementRead"
+      },
+      "summary": "Get workspace subscription requirement"
+    },
+    "rpc.tournament.sub_requirement_upsert": {
+      "description": "Replaces the workspace's admission rule wholesale (no partial merge -- that would be a silent policy change). `mode` is 'all' or 'any'; each row names a provider and its min_tier_rank. An unknown mode or a row without a provider is rejected with 422 rather than degrading at check-in. An empty `requirements` list clears the rule, which disarms every tournament in the workspace whose toggle is on; requires team-update permission.",
+      "request": {
+        "array": false,
+        "ref": "tournament.WorkspaceSubscriptionRequirementUpsert"
+      },
+      "response": {
+        "array": false,
+        "ref": "tournament.WorkspaceSubscriptionRequirementRead"
+      },
+      "summary": "Set workspace subscription requirement"
+    },
     "rpc.tournament.tournament_finish": {
       "description": "Toggles a tournament's legacy finished flag and returns it with stages; superuser-only.",
       "response": {
@@ -26821,6 +26841,22 @@
           "default": null,
           "title": "Max Heroes"
         },
+        "mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "optional",
+                "forced"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mode"
+        },
         "require_verified": {
           "default": false,
           "title": "Require Verified",
@@ -33482,11 +33518,6 @@
           "default": false,
           "title": "Show Ranks",
           "type": "boolean"
-        },
-        "subscription_requirement_json": {
-          "additionalProperties": true,
-          "title": "Subscription Requirement Json",
-          "type": "object"
         }
       },
       "title": "RegistrationFormUpsert",
@@ -37083,6 +37114,30 @@
         "source_stage_id"
       ],
       "title": "WireFromGroupsRequest",
+      "type": "object"
+    },
+    "tournament.WorkspaceSubscriptionRequirementRead": {
+      "description": "The rule a whole workspace enforces, shared by every tournament in it.\n\n``requirement`` is the raw ``{mode, requirements: [{provider, min_tier_rank}]}``\nblob rather than a nested model on purpose: ``parse_requirement`` is the single\nauthority on that shape (it clamps thresholds and keeps the strictest duplicate),\nand a second Pydantic definition of it would be a second source of truth for the\nadmission rule.",
+      "properties": {
+        "requirement": {
+          "additionalProperties": true,
+          "title": "Requirement",
+          "type": "object"
+        }
+      },
+      "title": "WorkspaceSubscriptionRequirementRead",
+      "type": "object"
+    },
+    "tournament.WorkspaceSubscriptionRequirementUpsert": {
+      "description": "Replaces the rule wholesale -- a partial merge of an admission rule would be\na silent policy change, and an empty ``requirements`` list is the way to clear it.",
+      "properties": {
+        "requirement": {
+          "additionalProperties": true,
+          "title": "Requirement",
+          "type": "object"
+        }
+      },
+      "title": "WorkspaceSubscriptionRequirementUpsert",
       "type": "object"
     }
   }
