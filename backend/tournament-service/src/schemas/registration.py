@@ -370,11 +370,15 @@ class WorkspaceSubscriptionRequirementRead(BaseModel):
     """
 
     requirement: dict[str, Any] = Field(default_factory=dict)
-    #: How many live tournaments this rule currently gates. One workspace rule now
-    #: governs every tournament in the workspace, so clearing or tightening it is not
-    #: a local edit -- the admin surface names the blast radius rather than leaving the
-    #: organizer to guess it. Counts open, unfinished tournaments whose form has the
-    #: subscription toggle on, i.e. exactly the set the collector sweeps.
+    #: How many live tournaments this rule would gate. One workspace rule now governs
+    #: every tournament in the workspace, so clearing or tightening it is not a local
+    #: edit -- the admin surface names the blast radius rather than leaving the organizer
+    #: to guess it. Counts open, unfinished tournaments whose form has the subscription
+    #: toggle on: the collector's TOURNAMENT-side predicate only. It deliberately omits
+    #: the collector's inner join on the workspace rule row and its drop of empty blobs,
+    #: so it reports what a rule WOULD gate rather than only what one currently does --
+    #: otherwise it would read 0 for "toggles on, no rule saved yet", the very state the
+    #: card exists to warn about.
     enforcing_tournaments: int = 0
 
 

@@ -37,6 +37,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, Final, Protocol
 
+from loguru import logger
+
 from shared.core.enums import SubscriptionCheckState, SubscriptionCollectionSource
 from shared.subscriptions import (
     Outcome,
@@ -349,6 +351,13 @@ class SubscriptionResolver:
         whole admission stack trusts -- check-in, the participants list and the
         registration form all route through it -- so letting either escape would turn one
         bad row into three 500s, which is exactly the promise above.
+
+        Failing open is silent and PERMANENT -- the gate keeps admitting everybody for as
+        long as the row stays bad -- so the swallow logs, mirroring the collector's own
+        skip warning (``subscription_collection.service``). It is also the only signal
+        distinguishing bad data from a coding error inside ``parse_requirement``, since
+        the caught set is wide enough to hide an ``AttributeError`` raised by a genuine
+        bug rather than by a string blob.
         """
         blob = await self._store.load_requirement(workspace_id)
         if not blob:
@@ -356,6 +365,11 @@ class SubscriptionResolver:
         try:
             requirement = parse_requirement(blob)
         except (ValueError, TypeError, AttributeError):
+            logger.warning(
+                "Malformed subscription requirement for workspace_id={}: failing open, "
+                "nothing will be enforced until the row is fixed",
+                workspace_id,
+            )
             return None
         return requirement if requirement.requirements else None
 

@@ -237,13 +237,21 @@ async def load_workspace_requirement_blob(session: AsyncSession, workspace_id: i
 
 
 async def count_enforcing_tournaments(session: AsyncSession, workspace_id: int) -> int:
-    """Live tournaments this workspace's rule currently gates.
+    """Live tournaments this workspace's rule would gate.
 
-    Deliberately the same predicate the collector sweeps on
+    Applies the collector's TOURNAMENT-side predicate only
     (``find_tournaments_requiring_subscriptions``): open, unfinished, toggle on. A
     finished tournament still carrying the toggle is not "gated" in any sense the
     organizer cares about, and counting it would overstate the blast radius the admin
     screen is there to report honestly.
+
+    It deliberately omits the rest of what the collector sweeps on -- the inner join to
+    ``subscriptions.requirement ... is_default`` and the drop of targets whose blob
+    parses empty -- so this counts what a rule WOULD gate, not only what one currently
+    does. That is the question the admin card asks ("how many tournaments will the rule
+    you are about to save gate?"), and adding the join would read 0 in the one state
+    where the blast radius matters most: toggles on, no rule row yet, which is exactly
+    where an admin stands when they first open this card.
     """
     form = models.BalancerRegistrationForm
     return (

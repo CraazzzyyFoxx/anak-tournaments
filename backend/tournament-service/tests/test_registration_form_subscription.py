@@ -113,9 +113,12 @@ class TestWorkspaceRequirementUpsertSchema:
 
     def test_rejects_an_unknown_mode_at_the_api_boundary(self):
         """Better a 422 on save than a surprise at check-in time."""
-        # `match` pins it to the MODE error: without it the test passes on any
-        # validation failure at all, including one that has nothing to do with mode.
-        with pytest.raises(ValueError, match="mode"):
+        # Pinned to the MESSAGE, not the bare word "mode": Pydantic echoes the
+        # offending payload into ValidationError.__str__ as
+        # `input_value={'mode': 'most', ...}`, and `match` is an re.search over that
+        # string -- so `match="mode"` is satisfied by ANY failure on this input and
+        # would keep passing if the mode check were removed entirely.
+        with pytest.raises(ValueError, match="Unsupported subscription requirement mode"):
             WorkspaceSubscriptionRequirementUpsert(requirement={"mode": "most", "requirements": []})
 
     def test_rejects_a_requirement_without_a_provider(self):
