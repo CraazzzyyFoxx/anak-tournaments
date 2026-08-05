@@ -290,7 +290,10 @@ Fix: create it from the `.example` file, put in the real webhook, recreate the c
 ```bash
 printf '%s' 'https://discord.com/api/webhooks/<id>/<token>' \
   > monitoring/secrets/discord_webhook_url
-chmod 600 monitoring/secrets/discord_webhook_url
+# The image runs as nobody; a root-owned 600 file yields "permission denied"
+# at notify time even though the config loads fine.
+chown 65534:65534 monitoring/secrets/discord_webhook_url
+chmod 400 monitoring/secrets/discord_webhook_url
 docker compose -f docker-compose.monitoring.yml up -d alertmanager
 ```
 
