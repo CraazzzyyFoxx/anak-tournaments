@@ -1234,3 +1234,40 @@ git add -A && git commit -m "chore: re-export gateway manifest for roster shape 
 - Не хранить нули в карте слотов (D10).
 - Не чинить `tournament-service/src/schemas/admin/balancer.py:10` (четвёртая копия словаря ролей) — вне объёма, отдельная задача.
 - Не удалять мёртвый `shared/balancer/{types,protocol}.py` — вне объёма.
+
+---
+
+## Статус исполнения (2026-08-05)
+
+Реализация закончена и закоммичена на `develop`. Задачи 7+8, 12+13 и 10+11 были объединены по ходу: в каждой паре первая удаляла символ, который использовала вторая, поэтому по отдельности пакет не собирался.
+
+### Проверено в этой среде
+
+| Проверка | Результат |
+|---|---|
+| `shared` | 523 passed, 9 skipped |
+| `app-service` | 245 passed, 172 skipped |
+| `parser-service` | 253 passed |
+| `tournament-service` | 855 passed, 44 skipped |
+| `analytics-service` | 155 passed |
+| `identity-service` | 143 passed, 8 skipped |
+| `discord-service` | 12 passed |
+| `balancer-service` | 384 passed, 29 skipped, 1 failed — предсуществующее `test_api_key_limits_and_policy.py::test_workspace_policy_limits_api_key_to_own_workspace_and_jobs`; ни тест, ни `core/security/workspace_access.py` не входят в диапазон коммитов фичи (последняя правка — `88f9244b`, 2026-07-06) |
+| `ruff check` по файлам фичи | чисто |
+| `ruff format` по файлам фичи | приведено (коммит `42d3a692`); остальные 68 дрейфующих файлов репозитория — чужие, не тронуты |
+| `bunx tsc --noEmit` | чисто |
+| `bunx vitest run` | 59 файлов / 471 тест, 0 failed |
+| `bun run lint` | 0 ошибок; 8 предупреждений в предсуществующих файлах |
+| `bunx next build` | успешно, 65/65 страниц |
+| Манифест гейтвея | был устаревшим, ре-экспортирован (`282feb64`): ушли `team_size`, `role_deficits`, `DraftSlot.role`; пришли `RosterShapeRead`, `slot_code`, `slot_deficits`, `default_roster_slots_json` |
+| Зеркала правила | `grep` по `backend` и `frontend/src` не даёт ни одного живого вхождения `role_targets_for_team_size`, `selection.role_targets`, `_role_capacity`, `role_filled`, `roleTargetsForTeamSize`, `roundsForTeamSize`, `ROSTER_ROLES`, `role_deficits` |
+
+Смоук без Docker: `load_players_from_dict` на `{"flex": 6}` и `{"tank": 1, "flex": 5}` сохраняет всех игроков с синтезированным max-рейтингом и `flex` первым в preferences; на ролевой маске поведение прежнее побайтово. Балансерный прогон прогнан сквозь заглушку нативного модуля, повторяющую валидацию `context.rs`: 12 игроков размещены, `off_role_count = 0`, дискомфорт 0.
+
+### Осталось на живую среду (Task 15)
+
+Docker Desktop в этой среде не поднимается (демон недоступен по `npipe:////./pipe/dockerDesktopLinuxEngine`), поэтому три пункта НЕ выполнены и обязательны перед релизом:
+
+1. **`make migrate`** — ревизии `roster0001` (две nullable JSONB-колонки) и `roster0002` (`DROP COLUMN balancer.draft_session.team_size`) написаны и проверены AST-тестами против моделей, но НИ РАЗУ не применялись к реальной базе. Единственный head — `roster0002`.
+2. **Пересборка Rust `moo_core` под Linux.** В `native/moo_core/src/context.rs` изменена одна строка: `dps_role_idx` теперь принимает и `"Damage"`, и `"dps"`. Без пересборки нативного модуля правка не вступит в силу, и `dps_impact_weight` продолжит молча игнорироваться при lowercase-маске. Расхождение стережёт `test_config_consistency.py::test_rust_recognizes_every_canonical_role_code`, но он проверяет ИСХОДНИК, а не собранный артефакт.
+3. **Браузерная проверка:** вкладка Settings турнира → редактор формы ростера (пресеты, степперы, живой итог, предпросмотр, наследование, блокировка при живом драфте); затем полный прогон драфта на `{"flex": 6}` от создания сессии до экспорта команд и один прогон балансера на той же форме.
