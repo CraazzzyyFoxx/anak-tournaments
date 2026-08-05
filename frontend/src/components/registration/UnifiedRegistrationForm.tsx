@@ -130,7 +130,17 @@ export default function UnifiedRegistrationForm({
 }: UnifiedRegistrationFormProps) {
   const t = useTranslations();
   const openAccountSettings = useAccountSettingsModalStore((s) => s.open);
-  const [state, dispatch] = useReducer(formReducer, initialState);
+  // `flex_role.mode === "forced"` starts every role `main`, and it has to be the
+  // reducer's INITIAL state: `buildRolesPayload` only submits roles whose
+  // priority is not `off`, and the forced step renders no priority control, so an
+  // all-`off` start would submit no roles at all.
+  const flexRoleConfig = formConfig.built_in_fields?.flex_role;
+  const flexMode: "off" | "optional" | "forced" =
+    flexRoleConfig?.enabled === false ? "off" : flexRoleConfig?.mode === "forced" ? "forced" : "optional";
+  const [state, dispatch] = useReducer(formReducer, flexMode, (initialFlexMode) => ({
+    ...initialState,
+    roleSelections: createRoleSelections(initialFlexMode === "forced"),
+  }));
   const [error, setError] = useState<string | null>(null);
   // Step errors stay hidden until the registrant tries to advance: the form used
   // to open with a red "BattleTag is required" and a dead Next button.
@@ -177,7 +187,6 @@ export default function UnifiedRegistrationForm({
   const topHeroesEnabled = !!topHeroesConfig && topHeroesConfig.enabled !== false;
   const maxHeroes =
     topHeroesConfig?.max_heroes && topHeroesConfig.max_heroes > 0 ? topHeroesConfig.max_heroes : 5;
-  const flexEnabled = formConfig.built_in_fields?.flex_role?.enabled !== false;
 
   /**
    * Only steps that actually have something to fill in are offered.
@@ -701,7 +710,7 @@ export default function UnifiedRegistrationForm({
             allHeroes={allHeroes}
             topHeroesEnabled={topHeroesEnabled}
             maxHeroes={maxHeroes}
-            flexEnabled={flexEnabled}
+            flexMode={flexMode}
             hideHelperText={mode === "admin"}
           />
         )}

@@ -32,11 +32,20 @@ export const EMPTY_ROLE_SELECTION: RoleSelection = {
   topHeroes: [],
 };
 
-export function createRoleSelections(): RoleSelections {
+/**
+ * One entry per role, all `off` by default.
+ *
+ * `forced` is the tournament mode where role does not matter: every role starts
+ * `main`, which is both the target state and a hard requirement — the wizard
+ * only submits roles whose priority is not `off`, so an all-`off` start would
+ * send no roles at all in a step that renders no priority control.
+ */
+export function createRoleSelections(forced = false): RoleSelections {
+  const priority: RolePriority = forced ? "main" : "off";
   return {
-    tank: { ...EMPTY_ROLE_SELECTION },
-    dps: { ...EMPTY_ROLE_SELECTION },
-    support: { ...EMPTY_ROLE_SELECTION },
+    tank: { ...EMPTY_ROLE_SELECTION, priority },
+    dps: { ...EMPTY_ROLE_SELECTION, priority },
+    support: { ...EMPTY_ROLE_SELECTION, priority },
   };
 }
 

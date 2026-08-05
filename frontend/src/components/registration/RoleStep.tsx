@@ -27,7 +27,12 @@ interface RoleStepProps {
   allHeroes: Hero[];
   topHeroesEnabled: boolean;
   maxHeroes: number;
-  flexEnabled: boolean;
+  /**
+   * `off` — flex banned by the form. `optional` — the preset is offered.
+   * `forced` — a tournament where role does not matter: no priority column, no
+   * preset, every role permanently main.
+   */
+  flexMode: "off" | "optional" | "forced";
 }
 
 /**
@@ -49,10 +54,11 @@ export default function RoleStep({
   allHeroes,
   topHeroesEnabled,
   maxHeroes,
-  flexEnabled,
+  flexMode,
 }: RoleStepProps) {
   const t = useTranslations();
-  const isFlex = isFlexSelection(selections);
+  const isForced = flexMode === "forced";
+  const isFlex = isForced || isFlexSelection(selections);
   const isAdditionalRolesRequired =
     form.built_in_fields?.additional_roles?.enabled !== false &&
     form.built_in_fields?.additional_roles?.required === true;
@@ -75,10 +81,17 @@ export default function RoleStep({
    * Exactly one role may be `main`, unless every role is (which is how the
    * backend derives a flex registration). Anything in between is normalized by
    * demoting the mains the registrant did not just touch.
+   *
+   * In the forced mode three mains ARE the target state, so this is the
+   * identity. Combined with the absent priority control that makes `off`
+   * unreachable: `setSubrole`/`setHeroes` only ever promote.
    */
   const normalize = (next: RoleSelections, changed: RoleCode): RoleSelections => {
+    if (isForced) {
+      return next;
+    }
     const mains = ROLES.filter((role) => next[role.code].priority === "main");
-    if (mains.length <= 1 || (mains.length === ROLES.length && flexEnabled)) {
+    if (mains.length <= 1 || (mains.length === ROLES.length && flexMode === "optional")) {
       return next;
     }
     const keep = next[changed].priority === "main" ? changed : mains[0].code;
@@ -137,8 +150,9 @@ export default function RoleStep({
     onChange(next);
   };
 
-  const columnClass =
-    "sm:grid-cols-[minmax(6rem,0.8fr)_minmax(0,13rem)_minmax(0,1fr)_minmax(0,8.5rem)]";
+  const columnClass = isForced
+    ? "sm:grid-cols-[minmax(6rem,0.8fr)_minmax(0,1fr)_minmax(0,8.5rem)]"
+    : "sm:grid-cols-[minmax(6rem,0.8fr)_minmax(0,13rem)_minmax(0,1fr)_minmax(0,8.5rem)]";
 
   return (
     <div className="grid gap-3">
@@ -147,13 +161,15 @@ export default function RoleStep({
           <span />
         ) : (
           <p className="max-w-[38rem] text-xs leading-5 text-[color:var(--aqt-fg-muted)]">
-            {isAdditionalRolesRequired
-              ? t("registration.roles.matrix.hintRequired")
-              : t("registration.roles.matrix.hint")}
+            {isForced
+              ? t("registration.roles.matrix.hintForced")
+              : isAdditionalRolesRequired
+                ? t("registration.roles.matrix.hintRequired")
+                : t("registration.roles.matrix.hint")}
           </p>
         )}
 
-        {flexEnabled && (
+        {flexMode === "optional" && (
           <button
             type="button"
             aria-pressed={isFlex}
@@ -186,7 +202,7 @@ export default function RoleStep({
         )}
       >
         <span>{t("registration.roles.matrix.columnRole")}</span>
-        <span>{t("registration.roles.matrix.columnPriority")}</span>
+        {!isForced && <span>{t("registration.roles.matrix.columnPriority")}</span>}
         <span>{t("registration.roles.specialization")}</span>
         <span>{topHeroesEnabled ? t("registration.roles.topHeroes.title") : ""}</span>
       </div>
@@ -202,6 +218,7 @@ export default function RoleStep({
             heroes={heroesForRole(role.code)}
             topHeroesEnabled={topHeroesEnabled}
             maxHeroes={maxHeroes}
+            showPriority={!isForced}
             onPriorityChange={(priority) => setPriority(role.code, priority)}
             onSubroleChange={(subrole) => setSubrole(role.code, subrole)}
             onHeroesChange={(heroes) => setHeroes(role.code, heroes)}

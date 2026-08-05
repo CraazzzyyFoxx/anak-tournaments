@@ -88,8 +88,12 @@ let container = testWindow.document.createElement("div");
 let root = createRoot(container as unknown as Element);
 let latest: RoleSelections = createRoleSelections();
 
-function Harness() {
-  const [selections, setSelections] = useState<RoleSelections>(createRoleSelections());
+type FlexMode = "off" | "optional" | "forced";
+
+function Harness({ flexMode = "optional" as FlexMode }: { flexMode?: FlexMode }) {
+  const [selections, setSelections] = useState<RoleSelections>(
+    createRoleSelections(flexMode === "forced"),
+  );
   return (
     <RoleStep
       selections={selections}
@@ -101,18 +105,18 @@ function Harness() {
       allHeroes={HEROES}
       topHeroesEnabled
       maxHeroes={5}
-      flexEnabled
+      flexMode={flexMode}
     />
   );
 }
 
 /** Each case needs its own root: re-rendering into one keeps the previous state. */
-function mount() {
+function mount(flexMode: FlexMode = "optional") {
   container = testWindow.document.createElement("div");
   testWindow.document.body.appendChild(container);
   root = createRoot(container as unknown as Element);
-  latest = createRoleSelections();
-  act(() => root.render(<Harness />));
+  latest = createRoleSelections(flexMode === "forced");
+  act(() => root.render(<Harness flexMode={flexMode} />));
 }
 
 function surface() {
@@ -179,6 +183,51 @@ describe("RoleStep", () => {
     click('[aria-pressed]', 0);
     expect(isFlexSelection(latest)).toBe(false);
     expect(Object.values(latest).filter((entry) => entry.priority === "main")).toHaveLength(1);
+  });
+});
+
+describe("RoleStep forced-flex mode", () => {
+  it("renders no priority control and no flex preset", () => {
+    mount("forced");
+
+    // The priority radiogroups and the preset toggle are what disappear; the
+    // specialization select and the hero picker stay, one per role.
+    expect(surface().radios).toBe(0);
+    expect(container.querySelectorAll("[aria-pressed]").length).toBe(0);
+    expect(surface().controls).toBe(6);
+  });
+
+  it("starts with every role main, so the submission is flex", () => {
+    mount("forced");
+
+    expect(isFlexSelection(latest)).toBe(true);
+    expect(Object.values(latest).every((entry) => entry.priority === "main")).toBe(true);
+  });
+
+  it("has no control that can take a role out of the selection", () => {
+    // `off` is what would break a forced submission: buildRolesPayload only
+    // sends roles whose priority is not `off`. The priority radiogroup is the
+    // only control that can set it, and it is not rendered here — the
+    // specialization and hero controls only ever promote. Asserted structurally
+    // because the Radix Select opens a portal that happy-dom cannot drive.
+    mount("forced");
+
+    expect(container.querySelectorAll('[role="radiogroup"]').length).toBe(0);
+    expect(container.querySelectorAll('[role="radio"]').length).toBe(0);
+    expect(Object.values(latest).some((entry) => entry.priority === "off")).toBe(false);
+  });
+
+  it("still offers the preset in optional mode", () => {
+    mount("optional");
+
+    expect(container.querySelectorAll("[aria-pressed]").length).toBe(1);
+  });
+
+  it("offers neither the preset nor an all-main state when flex is banned", () => {
+    mount("off");
+
+    expect(container.querySelectorAll("[aria-pressed]").length).toBe(0);
+    expect(surface().radios).toBe(9);
   });
 });
 

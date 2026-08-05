@@ -330,6 +330,7 @@
       "matrix": {
         "hint": "Mark the roles you can play. Fallback roles are used during balancing when a team is short on one.",
         "hintRequired": "Mark your main role and at least one fallback role. Fallback roles are used during balancing when a team is short on one.",
+        "hintForced": "On this tournament everyone plays any role, so there is nothing to prioritise. Pick a specialization and your top heroes for each role if you like.",
         "columnRole": "Role",
         "columnPriority": "Priority",
         "off": "Skip",

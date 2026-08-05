@@ -32,6 +32,8 @@ export interface RoleMatrixRowProps {
   heroes: Hero[];
   topHeroesEnabled: boolean;
   maxHeroes: number;
+  /** Hidden in the forced-flex mode, where every role is main by definition. */
+  showPriority?: boolean;
   onPriorityChange: (priority: RolePriority) => void;
   onSubroleChange: (subrole: string) => void;
   onHeroesChange: (heroes: string[]) => void;
@@ -45,6 +47,7 @@ export function RoleMatrixRow({
   heroes,
   topHeroesEnabled,
   maxHeroes,
+  showPriority = true,
   onPriorityChange,
   onSubroleChange,
   onHeroesChange,
@@ -52,7 +55,7 @@ export function RoleMatrixRow({
   const t = useTranslations();
   const subroleId = useId();
   const accent = ROLE_ACCENTS[roleCode] ?? ROLE_ACCENTS.flex;
-  const active = selection.priority !== "off";
+  const active = showPriority ? selection.priority !== "off" : true;
 
   const priorityOptions: readonly SegmentedOption<RolePriority>[] = [
     { value: "off", label: t("registration.roles.matrix.off") },
@@ -64,7 +67,9 @@ export function RoleMatrixRow({
     <div
       className={cn(
         "grid items-center gap-2 rounded-xl border p-2 transition-colors",
-        "sm:grid-cols-[minmax(6rem,0.8fr)_minmax(0,13rem)_minmax(0,1fr)_minmax(0,8.5rem)]",
+        showPriority
+          ? "sm:grid-cols-[minmax(6rem,0.8fr)_minmax(0,13rem)_minmax(0,1fr)_minmax(0,8.5rem)]"
+          : "sm:grid-cols-[minmax(6rem,0.8fr)_minmax(0,1fr)_minmax(0,8.5rem)]",
         active
           ? "border-[color:var(--aqt-border-3)] bg-[color:var(--aqt-overlay-2)]"
           : "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-1)]",
@@ -86,12 +91,14 @@ export function RoleMatrixRow({
         </span>
       </div>
 
-      <SegmentedRadio
-        label={t("registration.roles.matrix.priorityLabel", { role: roleLabel })}
-        value={selection.priority}
-        options={priorityOptions}
-        onChange={onPriorityChange}
-      />
+      {showPriority && (
+        <SegmentedRadio
+          label={t("registration.roles.matrix.priorityLabel", { role: roleLabel })}
+          value={selection.priority}
+          options={priorityOptions}
+          onChange={onPriorityChange}
+        />
+      )}
 
       {/* The column headers only exist from `sm` up, so the stacked layout
           carries its own labels instead of leaving bare controls. */}
