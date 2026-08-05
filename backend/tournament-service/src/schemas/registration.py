@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from shared.core.enums import SubscriptionEnforcementStage
 from shared.subscriptions import VERIFICATION_METHODS, VerificationMethod, parse_requirement
 from src.schemas.division_grid import DivisionGridVersionRead
 
@@ -74,6 +75,9 @@ class RegistrationFormRead(BaseModel):
     open_profile_scope: str = "main"
     show_ranks: bool = False
     require_subscription: bool = False
+    # WHEN the requirement bites, once the toggle above is on. See
+    # ``enums.SubscriptionEnforcementStage``: ``registration`` implies check-in too.
+    subscription_stage: SubscriptionEnforcementStage = SubscriptionEnforcementStage.check_in
     # Server-resolved from the workspace's requirement and READ-ONLY: the rule is no
     # longer a property of the form (see WorkspaceSubscriptionRequirementUpsert). It
     # stays on the read model because the public check-in dialog and the wizard's
@@ -100,6 +104,9 @@ class RegistrationFormUpsert(BaseModel):
     open_profile_scope: str = "main"
     show_ranks: bool = False
     require_subscription: bool = False
+    # Defaults to the looser stage, so a client that does not know the field yet
+    # cannot silently turn a check-in requirement into a sign-up wall.
+    subscription_stage: SubscriptionEnforcementStage = SubscriptionEnforcementStage.check_in
     built_in_fields: dict[str, BuiltInFieldConfig] = Field(default_factory=dict)
     custom_fields: list[CustomFieldDefinition] = Field(default_factory=list)
 

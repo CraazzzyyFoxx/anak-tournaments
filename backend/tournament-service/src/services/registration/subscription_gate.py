@@ -1,17 +1,24 @@
 """Subscription admission gates.
 
-Two gates, one rule, different amounts of certainty available:
+One rule, two possible gates, and the tournament chooses how early it bites via
+``registration_form.subscription_stage`` (``enums.SubscriptionEnforcementStage``):
 
-- **Registration submit** blocks only what is *automatically* provable. A provider
-  the patron can still satisfy by pasting a challenge code is deferred (see
+- **Check-in** always enforces once ``require_subscription`` is on, and blocks on
+  any confirmed refusal. Every proof path is on screen by then, so nothing is
+  outstanding. This is the default and the only stage most tournaments want: a
+  roster is built at check-in, so that is where the answer matters.
+- **Registration submit** enforces ONLY when the stage is ``registration``, and
+  even then blocks only what is *automatically* provable. A provider the patron
+  can still satisfy by pasting a challenge code is deferred (see
   ``evaluate_requirement``'s ``deferred_providers``), because the phrase field is
   only offered at check-in — refusing someone one paste away from admission would
   be a lie about their standing.
-- **Check-in** blocks on any confirmed refusal. Every proof path is on screen by
-  then, so nothing is outstanding.
 
-Both fail OPEN on an undetermined verdict, exactly like ``require_open_profile``:
-a provider outage must never un-admit a subscriber.
+The stage is ordered, not a set: ``registration`` implies check-in too, so there
+is no way to configure "refuse sign-up but admit at check-in".
+
+Both gates fail OPEN on an undetermined verdict, exactly like
+``require_open_profile``: a provider outage must never un-admit a subscriber.
 
 Every composition subtlety lives in ``shared.subscriptions.requirement`` (Kleene
 three-valued logic). This module only decides *when* to ask and *what to say*.
@@ -21,7 +28,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from shared.core.enums import SubscriptionCollectionSource
+from shared.core.enums import SubscriptionCollectionSource, SubscriptionEnforcementStage
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.social import SocialProvider
 from shared.subscriptions import (
@@ -35,6 +42,7 @@ __all__ = (
     "assert_subscription_allows_check_in",
     "assert_subscription_allows_registration",
     "describe_requirement",
+    "enforces_at_registration",
 )
 
 # Display names for the refusal message. Falls back to the raw provider key so a
@@ -90,6 +98,22 @@ async def _enforceable_requirement(form: Any | None, resolver: RequirementEvalua
     return await resolver.load_requirement(workspace_id=form.workspace_id)
 
 
+def enforces_at_registration(form: Any | None) -> bool:
+    """Whether this form's requirement blocks at SIGN-UP, not just at check-in.
+
+    Reads the stage defensively (``getattr`` with the default) for the same reason
+    the rest of this module does: the gates are handed duck-typed form objects --
+    the ORM row in production, a stub in the unit tests -- and a form that predates
+    the column must behave like the default rather than raise mid-admission.
+
+    Anything unrecognised means check-in. An unknown stage is a config or migration
+    error, and the safe reading of one is the LOOSER gate: a typo must not start
+    refusing sign-ups nobody asked it to refuse.
+    """
+    stage = getattr(form, "subscription_stage", None) or SubscriptionEnforcementStage.check_in
+    return str(stage) == SubscriptionEnforcementStage.registration
+
+
 async def assert_subscription_allows_check_in(
     *,
     form: Any | None,
@@ -124,15 +148,26 @@ async def assert_subscription_allows_registration(
     auth_user_id: int,
     resolver: RequirementEvaluator,
 ) -> None:
-    """Raise 400 iff the requirement is refused by a path the patron cannot change here.
+    """Raise 400 iff the form enforces at sign-up AND the refusal is one the patron
+    cannot change on this screen.
 
-    Signing up used to be ungated on the argument that a provider outage during
-    open signups must not lock anybody out. That argument only ever covered the
-    *undetermined* verdict, which still passes; it never justified admitting a
-    patron the provider positively answered "no" about, only to refuse them at
-    check-in once the roster is being built. What genuinely cannot be decided here
-    is a code that has not been offered yet — that, and only that, is deferred.
+    Opt-in per tournament (``subscription_stage == registration``). The default is
+    check-in, on the argument that won: a roster is built at check-in, so refusing a
+    sign-up weeks earlier over a subscription the player can still buy converts a
+    soft requirement into a hard deadline nobody set. An organizer who does want the
+    early cut -- to keep the sign-up list itself subscriber-only -- says so on the form.
+
+    When it IS enabled, only the automatically-decided part refuses: what genuinely
+    cannot be decided here is a code that has not been offered yet, and that, and
+    only that, is deferred. Undetermined still fails open, so a provider outage
+    during open signups locks nobody out.
+
+    Returning early costs nothing: the stage is a plain attribute read, so a
+    check-in-only tournament never touches the DB or a provider on this path.
     """
+    if not enforces_at_registration(form):
+        return
+
     requirement = await _enforceable_requirement(form, resolver)
     if requirement is None:
         return

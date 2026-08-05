@@ -6,8 +6,10 @@ satisfy them too — so a UI inferring from ``reason`` alone would either hide a
 working input or offer one the server is about to reject with 400.
 
 ``blocks_registration`` answers a different question — whether SIGN-UP is refused
-right now — and must agree with the gate that enforces it, including the deferral
-of anything a challenge code could still change.
+right now — and must agree with the gate that enforces it: the same deferral of
+anything a challenge code could still change, AND the same opt-in on the form's
+``subscription_stage``. Promising a block on a check-in-staged tournament would
+disable a submit button the server would happily accept.
 
 Runs under stdlib unittest -- there is no pytest-asyncio here.
 """
@@ -50,10 +52,16 @@ USER = 42
 
 
 class _Form:
-    """Only the toggle and the workspace now -- the rule moved to the workspace."""
+    """Only the toggles and the workspace now -- the rule moved to the workspace.
+
+    Staged at ``registration`` so the ``blocks_registration`` cases below exercise the
+    composition rather than the opt-in; the opt-in itself is pinned in
+    ``TestStageGatesBlocksRegistration``.
+    """
 
     require_subscription = True
     workspace_id = WS
+    subscription_stage = "registration"
 
 
 def _requirement(*providers: str, mode: str = "any") -> dict:
@@ -100,9 +108,11 @@ class _FakeResolver:
         return self._code_providers
 
 
-async def _status(verdicts, code_providers, *, requirement=None):
+async def _status(verdicts, code_providers, *, requirement=None, stage="registration"):
     resolver = _FakeResolver(verdicts, code_providers, requirement or _requirement("boosty"))
-    read = await subscription_status_for_user(form=_Form(), auth_user_id=USER, resolver=resolver)
+    form = _Form()
+    form.subscription_stage = stage
+    read = await subscription_status_for_user(form=form, auth_user_id=USER, resolver=resolver)
     return read, resolver
 
 
@@ -227,4 +237,34 @@ class TestBlocksRegistration(IsolatedAsyncioTestCase):
 
     async def test_not_required_never_blocks(self):
         read = await subscription_status_for_user(form=None, auth_user_id=USER, resolver=_FakeResolver({}, set()))
+        assert read.blocks_registration is False
+
+
+class TestStageGatesBlocksRegistration(IsolatedAsyncioTestCase):
+    """The field must follow the form's choice, not just the verdicts.
+
+    Each case pairs a stage against the SAME refusal that blocks under
+    ``registration`` (``test_true_on_an_automatic_refusal`` above), so a regression
+    that ignores the stage cannot pass by accident.
+    """
+
+    async def test_check_in_stage_never_blocks_sign_up(self):
+        read, _ = await _status({"boosty": _verdict(SubscriptionState.INACTIVE)}, set(), stage="check_in")
+        assert read.blocks_registration is False
+        # Still refused overall -- that is the check-in answer, and the form shows it.
+        assert read.outcome == Outcome.REFUSED.value
+
+    async def test_a_form_predating_the_column_never_blocks_sign_up(self):
+        # A bare stub rather than `del` on `_Form`: the attribute is a CLASS attribute
+        # there, so deleting it from an instance raises instead of hiding it.
+        class _LegacyForm:
+            require_subscription = True
+            workspace_id = WS
+
+        resolver = _FakeResolver({"boosty": _verdict(SubscriptionState.INACTIVE)}, set(), _requirement("boosty"))
+        read = await subscription_status_for_user(form=_LegacyForm(), auth_user_id=USER, resolver=resolver)
+        assert read.blocks_registration is False
+
+    async def test_an_unrecognised_stage_never_blocks_sign_up(self):
+        read, _ = await _status({"boosty": _verdict(SubscriptionState.INACTIVE)}, set(), stage="whenever")
         assert read.blocks_registration is False

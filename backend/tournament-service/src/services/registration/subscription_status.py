@@ -33,7 +33,7 @@ from src.schemas.registration import (
     SubscriptionProviderVerdictRead,
     SubscriptionStatusRead,
 )
-from src.services.registration.subscription_gate import describe_requirement
+from src.services.registration.subscription_gate import describe_requirement, enforces_at_registration
 
 __all__ = (
     "REDEEM_ATTEMPT_LIMIT",
@@ -97,13 +97,15 @@ async def subscription_status_for_user(
         mode=requirement.mode,
         outcome=outcome.value,
         rule=describe_requirement(requirement),
-        # Same composition the registration gate runs, so the form can never
-        # promise an admission the gate is about to refuse (or vice versa). Note
-        # this read is non-forcing, so a patron who just subscribed may see a stale
-        # block for up to the entitlement TTL; the gate itself re-resolves live.
-        blocks_registration=evaluate_requirement(
-            requirement, verdicts, deferred_providers=code_providers
-        ).blocks_admission,
+        # Same composition the registration gate runs, and the same opt-in: a
+        # check-in-staged tournament never refuses sign-up, so promising a block here
+        # would disable a submit button the server would happily accept. Note this
+        # read is non-forcing, so a patron who just subscribed may see a stale block
+        # for up to the entitlement TTL; the gate itself re-resolves live.
+        blocks_registration=(
+            enforces_at_registration(form)
+            and evaluate_requirement(requirement, verdicts, deferred_providers=code_providers).blocks_admission
+        ),
         verdicts={
             provider: SubscriptionProviderVerdictRead(
                 state=verdict.state,

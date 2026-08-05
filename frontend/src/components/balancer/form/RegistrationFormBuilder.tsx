@@ -64,6 +64,7 @@ export default function RegistrationFormBuilder({
 }>) {
   const t = useTranslations("registrationFormAdmin.page");
   const scopeSelectId = useId();
+  const stageSelectId = useId();
 
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
@@ -75,6 +76,9 @@ export default function RegistrationFormBuilder({
   const [openProfileScope, setOpenProfileScope] = useState<"main" | "all">("main");
   const [showRanks, setShowRanks] = useState(false);
   const [requireSubscription, setRequireSubscription] = useState(false);
+  const [subscriptionStage, setSubscriptionStage] = useState<"registration" | "check_in">(
+    "check_in"
+  );
   const [builtInFields, setBuiltInFields] = useState<Record<string, BuiltInFieldConfig>>(() =>
     getBuiltInConfig({})
   );
@@ -116,6 +120,11 @@ export default function RegistrationFormBuilder({
       setAutoApprove(data.auto_approve ?? false);
       setRequireOpenProfile(data.require_open_profile ?? false);
       setRequireSubscription(data.require_subscription ?? false);
+      // Default to the looser stage on a form saved before the field existed, so
+      // loading an old form never silently arms a sign-up wall.
+      setSubscriptionStage(
+        data.subscription_stage === "registration" ? "registration" : "check_in"
+      );
       setOpenProfileScope((data.open_profile_scope as "main" | "all") ?? "main");
       setShowRanks(data.show_ranks ?? false);
       setBuiltInFields(getBuiltInConfig(data.built_in_fields ?? {}));
@@ -158,6 +167,7 @@ export default function RegistrationFormBuilder({
         open_profile_scope: openProfileScope,
         show_ranks: showRanks,
         require_subscription: requireSubscription,
+        subscription_stage: subscriptionStage,
         built_in_fields: Object.fromEntries(
           Object.entries(builtInFields).map(([key, value]) => [
             key,
@@ -409,6 +419,33 @@ export default function RegistrationFormBuilder({
                     />
                     {t("subscription.require")}
                   </label>
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <Label htmlFor={stageSelectId} className="text-muted-foreground">
+                      {t("subscription.stage")}
+                    </Label>
+                    <Select
+                      value={subscriptionStage}
+                      disabled={!requireSubscription}
+                      onValueChange={(value) => {
+                        setSubscriptionStage(value as "registration" | "check_in");
+                        setHasChanges(true);
+                      }}
+                    >
+                      <SelectTrigger
+                        id={stageSelectId}
+                        className="h-8 w-fit min-w-[230px] max-w-full text-sm"
+                        aria-label={t("subscription.stageAria")}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="check_in">{t("subscription.stageCheckIn")}</SelectItem>
+                        <SelectItem value="registration">
+                          {t("subscription.stageRegistration")}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <div className="space-y-1 text-sm">
                     {/* The workspace rule reaches this card as a projection ON the
                         form, so `resolvedRequirement === ""` means two different

@@ -113,6 +113,7 @@ def _form_to_read(
         open_profile_scope=form.open_profile_scope,
         show_ranks=form.show_ranks,
         require_subscription=form.require_subscription,
+        subscription_stage=form.subscription_stage,
         subscription_requirement_json=subscription_requirement or {},
         built_in_fields=form.built_in_fields_json or {},
         custom_fields=form.custom_fields_json or [],

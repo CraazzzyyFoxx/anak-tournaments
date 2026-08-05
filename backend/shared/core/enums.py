@@ -102,6 +102,27 @@ class SubscriptionCollectionSource(StrEnum):
     redeem = "redeem"
 
 
+class SubscriptionEnforcementStage(StrEnum):
+    """The EARLIEST admission gate a subscription requirement blocks at.
+
+    Ordered, not a set: ``registration`` implies check-in too. Requiring a
+    subscription to sign up while admitting an unsubscribed player at check-in
+    would be incoherent, so there is no "registration only" value to pick wrongly.
+
+    Off is not a member -- that is ``registration_form.require_subscription``
+    being false. Same shape as ``require_open_profile`` + ``open_profile_scope``
+    in the same table: one flag for whether, one value for how.
+    """
+
+    #: Blocks at sign-up (and at check-in). Only the automatically provable part
+    #: refuses at sign-up; anything a challenge code could still fix is deferred,
+    #: because that field is only offered at check-in.
+    registration = "registration"
+    #: Blocks at check-in only. Sign-up stays open to everybody, which is the
+    #: default: a roster is built at check-in, so that is where the answer matters.
+    check_in = "check_in"
+
+
 class LogEventType(StrEnum):
     MatchStart = "match_start"
     MatchEnd = "match_end"

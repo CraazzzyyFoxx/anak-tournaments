@@ -358,6 +358,9 @@ export interface AdminRegistrationForm {
   open_profile_scope?: "main" | "all";
   show_ranks?: boolean;
   require_subscription?: boolean;
+  /** WHEN the requirement blocks: `registration` refuses sign-up too, `check_in`
+   *  (the default) only refuses at check-in. Ordered — `registration` implies both. */
+  subscription_stage?: "registration" | "check_in";
   /** Server-resolved from the workspace requirement and read-only: the rule now
    *  lives on the workspace, so the upsert below deliberately has no counterpart.
    *  Still returned because the check-in dialog renders the composed rule. */
@@ -374,6 +377,7 @@ export interface AdminRegistrationFormUpsert {
   open_profile_scope?: "main" | "all";
   show_ranks?: boolean;
   require_subscription?: boolean;
+  subscription_stage?: "registration" | "check_in";
   built_in_fields: Record<string, BuiltInFieldConfig>;
   custom_fields: AdminCustomFieldDef[];
 }

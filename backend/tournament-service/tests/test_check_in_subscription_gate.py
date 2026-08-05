@@ -81,16 +81,20 @@ UNKNOWN = _v(SubscriptionState.UNKNOWN)
 
 
 class _Form:
-    """Only the toggle and the workspace now -- the rule moved to the workspace.
+    """Only the toggles and the workspace now -- the rule moved to the workspace.
+
+    ``subscription_stage`` defaults to ``check_in``, the real default, and this gate
+    must ignore it entirely -- see ``TestStageDoesNotWeakenCheckIn``.
 
     ``blob`` is kept as the test's way of saying "this workspace requires X"; ``_gate``
     hands it to the fake resolver, which is where the gate reads the rule from.
     """
 
-    def __init__(self, *, require_subscription=False, blob=None, workspace_id=7):
+    def __init__(self, *, require_subscription=False, blob=None, workspace_id=7, stage="check_in"):
         self.require_subscription = require_subscription
         self.workspace_id = workspace_id
         self.blob = blob or {}
+        self.subscription_stage = stage
 
 
 class _Resolver:
@@ -150,6 +154,35 @@ class TestNothingToEnforce(IsolatedAsyncioTestCase):
             resolver,
         )
         assert resolver.calls == []
+
+
+class TestStageDoesNotWeakenCheckIn(IsolatedAsyncioTestCase):
+    """``subscription_stage`` chooses whether SIGN-UP is gated. Check-in is not a
+    choice: once the toggle is on, this gate always enforces, at every stage value.
+
+    Without this, moving the stage-check into a shared helper could silently make
+    ``check_in`` mean "never enforce anything", i.e. the toggle would do nothing at all.
+    """
+
+    async def test_check_in_stage_still_refuses(self):
+        with self.assertRaises(HTTPException):
+            await _gate(
+                _Form(require_subscription=True, blob=BOOSTY_ONLY, stage="check_in"),
+                _Resolver({"boosty": INACTIVE}),
+            )
+
+    async def test_registration_stage_still_refuses(self):
+        with self.assertRaises(HTTPException):
+            await _gate(
+                _Form(require_subscription=True, blob=BOOSTY_ONLY, stage="registration"),
+                _Resolver({"boosty": INACTIVE}),
+            )
+
+    async def test_a_form_predating_the_column_still_refuses(self):
+        legacy = _Form(require_subscription=True, blob=BOOSTY_ONLY)
+        del legacy.subscription_stage
+        with self.assertRaises(HTTPException):
+            await _gate(legacy, _Resolver({"boosty": INACTIVE}))
 
 
 class TestSingleProvider(IsolatedAsyncioTestCase):

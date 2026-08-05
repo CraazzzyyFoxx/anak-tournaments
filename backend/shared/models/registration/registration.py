@@ -6,7 +6,7 @@ from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, Stri
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from shared.core import db
+from shared.core import db, enums
 
 if TYPE_CHECKING:
     from shared.models.catalog.hero import Hero
@@ -59,6 +59,18 @@ class BalancerRegistrationForm(db.TimeStampIntegerMixin):
     # mapped column in every SELECT, so leaving it would break every form query the
     # moment that migration lands.
     require_subscription: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
+    #: WHEN the requirement bites, once ``require_subscription`` is on. Ordered, not
+    #: a set -- ``registration`` implies check-in as well; see
+    #: ``enums.SubscriptionEnforcementStage``. Plain String like
+    #: ``open_profile_scope`` above, matching this schema's convention of storing
+    #: enum-like values as their StrEnum text rather than a PG enum type (which
+    #: would need a migration to add a value).
+    subscription_stage: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        server_default=enums.SubscriptionEnforcementStage.check_in.value,
+        default=enums.SubscriptionEnforcementStage.check_in.value,
+    )
 
     tournament: Mapped[Tournament] = relationship()
     workspace: Mapped[Workspace] = relationship()

@@ -1,15 +1,20 @@
 """The registration (sign-up) subscription gate.
 
-Signing up used to be ungated entirely; check-in was the only enforcement point.
-That let a confirmed non-subscriber occupy a slot for the whole registration
-window and discover the refusal only once the roster was being built. This gate
-closes that, but only for what can be decided WITHOUT asking the patron for
-anything: a provider they could still satisfy by pasting a code from a
+Sign-up enforcement is OPT-IN per tournament: it runs only when the form's
+``subscription_stage`` is ``registration``. The default, ``check_in``, leaves
+sign-up open to everybody -- a roster is built at check-in, so refusing an
+application weeks earlier over a subscription the player can still buy converts a
+soft requirement into a deadline nobody set.
+
+When it IS enabled, it blocks only what can be decided WITHOUT asking the patron
+for anything: a provider they could still satisfy by pasting a code from a
 subscriber-only post is deferred, because that field is offered at check-in and
 nowhere else.
 
-So this file pins three things the composition tests cannot:
+So this file pins what the composition tests cannot:
 
+- the stage decides whether the gate runs at all, and a check-in-staged form costs
+  neither a DB read nor a provider call,
 - the deferral set is asked for, and only when a refusal is on the table,
 - an ``all``-mode refusal on an independently-verified provider still blocks,
 - the refusal names sign-up, not check-in.
@@ -83,16 +88,22 @@ UNKNOWN = _v(SubscriptionState.UNKNOWN)
 
 
 class _Form:
-    """Only the toggle and the workspace now -- the rule moved to the workspace.
+    """Only the toggles and the workspace now -- the rule moved to the workspace.
+
+    ``subscription_stage`` defaults to ``registration`` because this file is about
+    the sign-up gate: the stage-specific behaviour is pinned explicitly in
+    ``TestStageDecidesWhetherSignUpIsGated``, and defaulting to ``check_in`` here
+    would make every other assertion in this file vacuously true.
 
     ``blob`` is kept as the test's way of saying "this workspace requires X"; ``_gate``
     hands it to the fake resolver, which is where the gate reads the rule from.
     """
 
-    def __init__(self, *, require_subscription=False, blob=None, workspace_id=7):
+    def __init__(self, *, require_subscription=False, blob=None, workspace_id=7, stage="registration"):
         self.require_subscription = require_subscription
         self.workspace_id = workspace_id
         self.blob = blob or {}
+        self.subscription_stage = stage
 
 
 class _Resolver:
@@ -155,6 +166,43 @@ class TestNothingToEnforce(IsolatedAsyncioTestCase):
     async def test_malformed_blob_does_not_block_sign_up(self):
         resolver = _Resolver({"boosty": INACTIVE})
         await _gate(_Form(require_subscription=True, blob={"mode": "most", "requirements": []}), resolver)
+        assert resolver.calls == []
+
+
+class TestStageDecidesWhetherSignUpIsGated(IsolatedAsyncioTestCase):
+    """The choice this gate is opt-in on.
+
+    Asserted with the resolver's call log, not just the absence of a raise: a check-in
+    staged tournament must not even ASK, or every sign-up would pay a live provider
+    call (``force_refresh=True``) to compute an answer it then throws away.
+    """
+
+    async def test_check_in_stage_never_blocks_a_confirmed_refusal(self):
+        resolver = _Resolver({"boosty": INACTIVE})
+        await _gate(_Form(require_subscription=True, blob=BOOSTY_ONLY, stage="check_in"), resolver)
+        assert resolver.calls == []
+        assert resolver.code_queries == []
+
+    async def test_registration_stage_blocks_the_same_refusal(self):
+        """The control for the case above: identical input, only the stage differs."""
+        resolver = _Resolver({"boosty": INACTIVE})
+        with self.assertRaises(HTTPException):
+            await _gate(_Form(require_subscription=True, blob=BOOSTY_ONLY, stage="registration"), resolver)
+        assert len(resolver.calls) == 1
+
+    async def test_a_form_predating_the_column_is_check_in(self):
+        """An ORM row loaded before the migration, or any stub without the attribute:
+        the missing value must read as the LOOSER stage, never start refusing."""
+        resolver = _Resolver({"boosty": INACTIVE})
+        legacy = _Form(require_subscription=True, blob=BOOSTY_ONLY)
+        del legacy.subscription_stage
+        await _gate(legacy, resolver)
+        assert resolver.calls == []
+
+    async def test_an_unrecognised_stage_is_check_in(self):
+        """A typo or a value from a newer writer must not gate sign-up by accident."""
+        resolver = _Resolver({"boosty": INACTIVE})
+        await _gate(_Form(require_subscription=True, blob=BOOSTY_ONLY, stage="Registration"), resolver)
         assert resolver.calls == []
 
 

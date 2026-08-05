@@ -3608,7 +3608,11 @@
       "subscription": {
         "title": "Subscription",
         "require": "Require an active subscription",
-        "hint": "Enforced twice. At sign-up only what can be verified automatically blocks (provider APIs / Discord roles); a provider verified by a code from a subscriber-only post is deferred, since that field is only offered at check-in. At check-in everything is enforced. A verdict that cannot be determined (provider down, account not linked) fails open and never blocks.",
+        "hint": "Where the requirement is checked is up to you. At check-in (the default) sign-up stays open to everybody and only check-in refuses — a roster is built there, so that is where the answer matters. At sign-up refuses the application itself as well, which keeps the list subscriber-only but turns a requirement players could still satisfy later into a deadline. Either way a verdict that cannot be determined (provider down, account not linked) fails open and never blocks; and at sign-up a provider verified by a code from a subscriber-only post never blocks either, since that field is only offered at check-in.",
+        "stage": "Check at",
+        "stageAria": "When to check the subscription",
+        "stageCheckIn": "Check-in only",
+        "stageRegistration": "Sign-up and check-in",
         "resolved": "This workspace requires: {rule}",
         "resolvedEmpty": "This workspace has no subscription rule configured, so the toggle above enforces nothing.",
         "resolvedUnknown": "This tournament has no saved form yet, so the workspace rule has not been read — save the form to see what the toggle will enforce.",

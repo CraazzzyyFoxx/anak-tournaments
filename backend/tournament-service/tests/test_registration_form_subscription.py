@@ -37,6 +37,7 @@ _ensure_test_env()
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from shared.core.enums import SubscriptionEnforcementStage  # noqa: E402
 from shared.subscriptions import Outcome, parse_requirement  # noqa: E402
 from src.schemas.registration import (  # noqa: E402
     RegistrationFormRead,
@@ -69,6 +70,7 @@ class _FormRow:
         self.built_in_fields_json = {}
         self.custom_fields_json = []
         self.require_subscription = False
+        self.subscription_stage = "check_in"
         for key, value in overrides.items():
             setattr(self, key, value)
 
@@ -77,6 +79,20 @@ class TestFormUpsertSchema:
     def test_the_toggle_defaults_off(self):
         """A tournament that never configures this must not start enforcing."""
         assert RegistrationFormUpsert().require_subscription is False
+
+    def test_the_stage_defaults_to_check_in(self):
+        """The looser stage. A client that never sends the field -- or an older one that
+        cannot -- must not arm a sign-up wall by omission."""
+        assert RegistrationFormUpsert().subscription_stage == SubscriptionEnforcementStage.check_in
+
+    def test_the_stage_rejects_a_value_outside_the_enum(self):
+        """Better a 422 on save than a stored typo that silently reads as check-in."""
+        try:
+            RegistrationFormUpsert(subscription_stage="whenever")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("an unknown stage must not validate")
 
     def test_the_rule_is_not_writable_through_the_form(self):
         """The rule moved to the workspace; the form must not carry a second copy.
