@@ -17,6 +17,8 @@ const SIZE = 88;
 const STROKE = 6;
 const R = (SIZE - STROKE) / 2;
 const C = 2 * Math.PI * R;
+/** Seconds at which the clock announces itself. A 250ms live region is unusable. */
+const ANNOUNCE_AT = [30, 10, 5];
 
 export function DraftClockRing({ expiresAt, paused, totalSeconds, accent }: DraftClockRingProps) {
   const t = useTranslations();
@@ -38,7 +40,22 @@ export function DraftClockRing({ expiresAt, paused, totalSeconds, accent }: Draf
   const seconds = ms == null ? null : Math.ceil(ms / 1000);
   const frac = ms == null || totalSeconds <= 0 ? 0 : Math.min(1, ms / (totalSeconds * 1000));
   const urgent = ms != null && isUrgent(ms);
-  const color = paused ? "var(--aqt-amber)" : accentToken(accent);
+  // Colour, not only the pulse: under prefers-reduced-motion the animation is
+  // suppressed, so motion alone would leave no urgency cue at all.
+  const color = paused ? "var(--aqt-amber)" : urgent ? "var(--aqt-live)" : accentToken(accent);
+  const label = paused
+    ? t("draft.clock.paused")
+    : seconds == null
+      ? t("draft.clock.idle")
+      : t("draft.clock.remaining", { seconds });
+
+  // Derived, not stateful: the text only exists while `seconds` sits on a
+  // threshold, and React skips identical text writes, so the live region gets
+  // exactly one announcement per threshold instead of one every 250ms tick.
+  const announcement =
+    !paused && seconds != null && ANNOUNCE_AT.includes(seconds)
+      ? t("draft.clock.remaining", { seconds })
+      : "";
 
   return (
     <div className="relative grid place-items-center" style={{ width: SIZE, height: SIZE }}>
@@ -51,10 +68,15 @@ export function DraftClockRing({ expiresAt, paused, totalSeconds, accent }: Draf
         />
       </svg>
       <span
+        role="timer"
+        aria-label={label}
         className={`absolute font-onest text-xl font-semibold tabular-nums ${urgent ? "animate-pulse motion-reduce:animate-none" : ""}`}
         style={{ color }}
       >
         {paused ? t("draft.clock.pauseCompact") : seconds == null ? "--" : `${seconds}`}
+      </span>
+      <span className="sr-only" aria-live="polite">
+        {announcement}
       </span>
     </div>
   );
