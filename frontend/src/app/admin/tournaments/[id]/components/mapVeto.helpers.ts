@@ -1,4 +1,4 @@
-import type { MapVetoConfig, Stage, VetoPreset, VetoSequenceToken } from "@/types/tournament.types";
+import type { MapVetoConfig, Stage, VetoSequenceToken } from "@/types/tournament.types";
 
 export type VetoLevelType = "tournament" | "stage" | "stage_round";
 export type VetoStepAction = "ban" | "pick" | "decider";
@@ -54,101 +54,97 @@ export function buildToken(action: VetoStepAction, side: VetoStepSide): VetoSequ
   return `${action}_${side}` as VetoSequenceToken;
 }
 
-export function tokenLabel(token: VetoSequenceToken): string {
-  if (token === "decider") return "Decider";
-  const action = tokenAction(token) === "ban" ? "Ban" : "Pick";
-  return `${action} ${tokenSide(token) === "first" ? "1st" : "2nd"}`;
+/**
+ * Message-key suffix for a step token. Callers resolve it under
+ * `mapVeto.step.*` — the helper stays locale-agnostic so the same token
+ * renders correctly on the RU and EN sides of the app.
+ */
+export type VetoStepLabelKey = "banFirst" | "banSecond" | "pickFirst" | "pickSecond" | "decider";
+
+export function tokenLabelKey(token: VetoSequenceToken): VetoStepLabelKey {
+  switch (token) {
+    case "ban_first":
+      return "banFirst";
+    case "ban_second":
+      return "banSecond";
+    case "pick_first":
+      return "pickFirst";
+    case "pick_second":
+      return "pickSecond";
+    default:
+      return "decider";
+  }
 }
+
+/**
+ * Maps actually played in a series: every pick plus the decider. Derived from
+ * the stored sequence rather than the preset label, so a hand-edited custom
+ * sequence reports the truth instead of its nearest preset.
+ */
+export function getMapsPlayedCount(sequence: VetoSequenceToken[]): number {
+  return sequence.filter((token) => tokenAction(token) !== "ban").length;
+}
+
+/**
+ * A validation failure as data, not prose: `key` resolves under
+ * `mapVetoAdmin.validation.*` and `values` feeds ICU arguments.
+ */
+export type VetoValidationIssue =
+  | {
+      key: "emptyPool" | "emptySequence" | "multipleDeciders" | "deciderNotLast" | "noPickOrDecider";
+      values?: undefined;
+    }
+  | { key: "sequenceLongerThanPool"; values: { steps: number; maps: number } };
 
 /** Mirrors backend config-upsert validation so errors surface before save. */
 export function validateVetoConfigForm(
   sequence: VetoSequenceToken[],
   mapIds: number[]
-): string[] {
-  const errors: string[] = [];
+): VetoValidationIssue[] {
+  const issues: VetoValidationIssue[] = [];
   if (mapIds.length === 0) {
-    errors.push("Select at least one map for the pool.");
+    issues.push({ key: "emptyPool" });
   }
   if (sequence.length === 0) {
-    errors.push("The sequence must contain at least one step.");
+    issues.push({ key: "emptySequence" });
   } else {
     const deciderCount = sequence.filter((token) => token === "decider").length;
     if (deciderCount > 1) {
-      errors.push("Only one decider step is allowed.");
+      issues.push({ key: "multipleDeciders" });
     } else if (deciderCount === 1 && sequence[sequence.length - 1] !== "decider") {
-      errors.push("The decider step must be the last step.");
+      issues.push({ key: "deciderNotLast" });
     }
     if (!sequence.some((token) => tokenAction(token) !== "ban")) {
-      errors.push("The sequence needs at least one pick or a decider.");
+      issues.push({ key: "noPickOrDecider" });
     }
   }
   if (mapIds.length > 0 && sequence.length > mapIds.length) {
-    errors.push(
-      `The sequence has ${sequence.length} steps but the pool only has ${mapIds.length} maps.`
-    );
+    issues.push({
+      key: "sequenceLongerThanPool",
+      values: { steps: sequence.length, maps: mapIds.length }
+    });
   }
-  return errors;
+  return issues;
 }
 
-export function getVetoLevelLabel(
-  config: MapVetoConfig,
+/**
+ * Which cascade level a config sits on, as data. Callers render it through
+ * `mapVeto.scope.*` so the stage name is interpolated in the active locale.
+ * `stageName` is null when the stage is outside the loaded set, letting the
+ * caller fall back to a translated placeholder rather than an English one.
+ */
+export type VetoLevelDescriptor =
+  | { kind: "tournament" }
+  | { kind: "stage"; stageId: number; stageName: string | null }
+  | { kind: "stageRound"; stageId: number; stageName: string | null; round: number };
+
+export function getVetoLevelDescriptor(
+  config: Pick<MapVetoConfig, "stage_id" | "round">,
   stagesById: Map<number, Stage>
-): string {
-  if (config.stage_id == null) return "Tournament default";
-  const stageName = stagesById.get(config.stage_id)?.name ?? `Stage #${config.stage_id}`;
-  if (config.round == null) return `Stage: ${stageName}`;
-  return `Stage: ${stageName} · Round ${config.round}`;
-}
-
-export function getVetoPresetLabel(preset: VetoPreset | null): string {
-  switch (preset) {
-    case "bo1":
-      return "Bo1";
-    case "bo2":
-      return "Bo2";
-    case "bo3":
-      return "Bo3";
-    case "bo5":
-      return "Bo5";
-    default:
-      return "Custom";
-  }
-}
-
-export interface FormatSlotConfig {
-  slotNumber: number;
-  label: string;
-  suggestedGamemode: string;
-}
-
-export function getFormatSlots(preset: VetoPreset): FormatSlotConfig[] {
-  switch (preset) {
-    case "bo1":
-      return [{ slotNumber: 1, label: "Map 1", suggestedGamemode: "Control" }];
-    case "bo2":
-      return [
-        { slotNumber: 1, label: "Map 1", suggestedGamemode: "Control" },
-        { slotNumber: 2, label: "Map 2", suggestedGamemode: "Hybrid" }
-      ];
-    case "bo3":
-      return [
-        { slotNumber: 1, label: "Map 1", suggestedGamemode: "Control" },
-        { slotNumber: 2, label: "Map 2", suggestedGamemode: "Hybrid" },
-        { slotNumber: 3, label: "Map 3", suggestedGamemode: "Flashpoint" }
-      ];
-    case "bo5":
-      return [
-        { slotNumber: 1, label: "Map 1", suggestedGamemode: "Control" },
-        { slotNumber: 2, label: "Map 2", suggestedGamemode: "Hybrid" },
-        { slotNumber: 3, label: "Map 3", suggestedGamemode: "Flashpoint" },
-        { slotNumber: 4, label: "Map 4", suggestedGamemode: "Push" },
-        { slotNumber: 5, label: "Map 5", suggestedGamemode: "Control" }
-      ];
-    default:
-      return [
-        { slotNumber: 1, label: "Map 1", suggestedGamemode: "Control" },
-        { slotNumber: 2, label: "Map 2", suggestedGamemode: "Hybrid" },
-        { slotNumber: 3, label: "Map 3", suggestedGamemode: "Escort" }
-      ];
-  }
+): VetoLevelDescriptor {
+  const stageId = config.stage_id;
+  if (stageId == null) return { kind: "tournament" };
+  const stageName = stagesById.get(stageId)?.name ?? null;
+  if (config.round == null) return { kind: "stage", stageId, stageName };
+  return { kind: "stageRound", stageId, stageName, round: config.round };
 }

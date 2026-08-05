@@ -5,7 +5,8 @@ import {
   BO5_SEQUENCE,
   buildBo1Sequence,
   buildToken,
-  tokenLabel,
+  getMapsPlayedCount,
+  tokenLabelKey,
   validateVetoConfigForm
 } from "./mapVeto.helpers";
 
@@ -25,9 +26,9 @@ describe("buildBo1Sequence", () => {
       const sequence = buildBo1Sequence(size);
       expect(sequence).toHaveLength(size);
       expect(sequence[sequence.length - 1]).toBe("decider");
-      expect(validateVetoConfigForm(sequence, Array.from({ length: size }, (_, i) => i + 1))).toEqual(
-        []
-      );
+      expect(
+        validateVetoConfigForm(sequence, Array.from({ length: size }, (_, i) => i + 1))
+      ).toEqual([]);
     }
   });
 });
@@ -41,46 +42,68 @@ describe("preset sequences", () => {
 
 describe("validateVetoConfigForm", () => {
   it("rejects an empty pool and empty sequence", () => {
-    const errors = validateVetoConfigForm([], []);
-    expect(errors).toContain("Select at least one map for the pool.");
-    expect(errors).toContain("The sequence must contain at least one step.");
+    expect(validateVetoConfigForm([], [])).toEqual([
+      { key: "emptyPool" },
+      { key: "emptySequence" }
+    ]);
   });
 
   it("rejects multiple deciders", () => {
-    expect(validateVetoConfigForm(["decider", "decider"], [1, 2])).toContain(
-      "Only one decider step is allowed."
-    );
+    expect(validateVetoConfigForm(["decider", "decider"], [1, 2])).toContainEqual({
+      key: "multipleDeciders"
+    });
   });
 
   it("rejects a decider that is not the last step", () => {
-    expect(validateVetoConfigForm(["decider", "ban_first"], [1, 2, 3])).toContain(
-      "The decider step must be the last step."
-    );
+    expect(validateVetoConfigForm(["decider", "ban_first"], [1, 2, 3])).toContainEqual({
+      key: "deciderNotLast"
+    });
   });
 
-  it("rejects a sequence longer than the pool", () => {
-    expect(validateVetoConfigForm(BO3_SEQUENCE, [1, 2, 3])).toContain(
-      "The sequence has 5 steps but the pool only has 3 maps."
-    );
+  it("reports the step and map counts when the sequence outgrows the pool", () => {
+    expect(validateVetoConfigForm(BO3_SEQUENCE, [1, 2, 3])).toContainEqual({
+      key: "sequenceLongerThanPool",
+      values: { steps: 5, maps: 3 }
+    });
   });
 
   it("rejects ban-only sequences", () => {
-    expect(validateVetoConfigForm(["ban_first", "ban_second"], [1, 2, 3])).toContain(
-      "The sequence needs at least one pick or a decider."
-    );
+    expect(validateVetoConfigForm(["ban_first", "ban_second"], [1, 2, 3])).toContainEqual({
+      key: "noPickOrDecider"
+    });
   });
 
   it("accepts a pick-based sequence without a decider", () => {
     expect(validateVetoConfigForm(["pick_first", "pick_second"], [1, 2, 3])).toEqual([]);
   });
+
+  it("returns keys, never prose, so both locales render the same issue", () => {
+    for (const issue of validateVetoConfigForm(["decider", "ban_first"], [])) {
+      expect(typeof issue.key).toBe("string");
+      expect(issue.key).toMatch(/^[a-z][A-Za-z]+$/);
+    }
+  });
+});
+
+describe("getMapsPlayedCount", () => {
+  it("counts picks and the decider, ignoring bans", () => {
+    expect(getMapsPlayedCount(BO3_SEQUENCE)).toBe(3);
+    expect(getMapsPlayedCount(BO5_SEQUENCE)).toBe(5);
+    expect(getMapsPlayedCount(buildBo1Sequence(7))).toBe(1);
+  });
+
+  it("reports the truth for a hand-edited sequence instead of its nearest preset", () => {
+    expect(getMapsPlayedCount(["ban_first", "pick_first", "pick_second"])).toBe(2);
+  });
 });
 
 describe("token round-trip", () => {
-  it("builds side-agnostic tokens and labels them", () => {
+  it("builds side-agnostic tokens and maps them to message keys", () => {
     expect(buildToken("ban", "first")).toBe("ban_first");
     expect(buildToken("pick", "second")).toBe("pick_second");
     expect(buildToken("decider", "first")).toBe("decider");
-    expect(tokenLabel("ban_second")).toBe("Ban 2nd");
-    expect(tokenLabel("decider")).toBe("Decider");
+    expect(tokenLabelKey("ban_second")).toBe("banSecond");
+    expect(tokenLabelKey("pick_first")).toBe("pickFirst");
+    expect(tokenLabelKey("decider")).toBe("decider");
   });
 });
