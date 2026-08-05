@@ -412,9 +412,7 @@ def register(broker: Any, logger: Any) -> None:
             # lazy-load.
             available = [p for p in snapshot.players if p.status == "available"]
             shape = await feasibility.resolve_shape(session, draft)
-            counts = selection._team_slot_counts(
-                snapshot.players, snapshot.picks, current.draft_team_id, shape
-            )
+            counts = selection._team_slot_counts(snapshot.players, snapshot.picks, current.draft_team_id, shape)
             capacity = selection._role_openings(shape, counts)
             fit_players = [
                 sug.FitPlayer(
@@ -469,9 +467,7 @@ def register(broker: Any, logger: Any) -> None:
             payload = DraftSessionCreateRequest.model_validate(c.payload(data))
             # The roster shape is the tournament's, not the request's: a draft
             # cannot be created at a size the tournament does not run.
-            shape = await get_effective_roster_shape(
-                session, tournament_id=tournament_id, workspace_id=workspace_id
-            )
+            shape = await get_effective_roster_shape(session, tournament_id=tournament_id, workspace_id=workspace_id)
             draft = await lifecycle.create_session(
                 session,
                 tournament_id=tournament_id,
@@ -507,9 +503,7 @@ def register(broker: Any, logger: Any) -> None:
             ws_id = await _get_tournament_workspace_id(session, tournament_id)
             c.require_workspace_permission(data, user, ws_id, "team", "import")
             payload = DraftSeedRequest.model_validate(c.payload(data))
-            draft = await session.scalar(
-                sa.select(DraftSession).where(DraftSession.id == session_id).with_for_update()
-            )
+            draft = await session.scalar(sa.select(DraftSession).where(DraftSession.id == session_id).with_for_update())
             if draft is None:
                 raise HTTPException(status_code=404, detail="Draft session not found")
             lifecycle.validate_seed_version(draft, expected_version=payload.expected_version)

@@ -29,9 +29,7 @@ from sqlalchemy.schema import CreateTable
 
 from shared import models
 
-MIGRATION = (
-    pathlib.Path(__file__).resolve().parents[2] / "migrations" / "versions" / "roster0001_add_roster_slots.py"
-)
+MIGRATION = pathlib.Path(__file__).resolve().parents[2] / "migrations" / "versions" / "roster0001_add_roster_slots.py"
 # The follow-up revision that retires the scalar this shape replaced.
 DROP_MIGRATION = MIGRATION.with_name("roster0002_drop_draft_session_team_size.py")
 

@@ -226,10 +226,7 @@ def _role_openings(shape: RosterShape, counts: Mapping[str, int]) -> dict[DraftR
     """
     targets = shape.slots
     free_flex = max(0, targets.get(FLEX_SLOT_CODE, 0) - counts.get(FLEX_SLOT_CODE, 0))
-    return {
-        role: max(0, targets.get(role.value, 0) - counts.get(role.value, 0)) + free_flex
-        for role in DraftRole
-    }
+    return {role: max(0, targets.get(role.value, 0) - counts.get(role.value, 0)) + free_flex for role in DraftRole}
 
 
 async def _team_avg_drafted_rank(session: AsyncSession, draft_session_id: int) -> dict[int, float]:
@@ -346,7 +343,6 @@ def resolve_pick_slot(
             status_code=422,
         )
     return SlotDecision(role=role, recorded_role=role.value if shape.has_role_slots else None)
-
 
 
 def _unsafe_pick_error(report: feasibility.DraftFeasibilityReport) -> ApiHTTPException:

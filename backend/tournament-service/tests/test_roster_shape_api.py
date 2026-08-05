@@ -374,14 +374,10 @@ class RosterLockedByDraftTests(IsolatedAsyncioTestCase):
         for terminal in ("cancelled", "completed"):
             with self.subTest(status=terminal):
                 session = _LockProbeSession(draft_status=None)
-                read, _, _ = await _read(
-                    _tournament(tournament_id=21), ["roster_shape"], session=session
-                )
+                read, _, _ = await _read(_tournament(tournament_id=21), ["roster_shape"], session=session)
 
                 self.assertIs(False, read.roster_locked_by_draft)
-                compiled = str(
-                    session.scalar_calls[0].compile(compile_kwargs={"literal_binds": True})
-                )
+                compiled = str(session.scalar_calls[0].compile(compile_kwargs={"literal_binds": True}))
                 self.assertIn(terminal, compiled)
 
     async def test_no_sessions_at_all_does_not_lock_the_shape(self) -> None:
@@ -396,9 +392,7 @@ class RosterLockedByDraftTests(IsolatedAsyncioTestCase):
         for entities in ([], ["stages", "division_grid_version"]):
             with self.subTest(entities=entities):
                 session = _LockProbeSession(draft_status="picking")
-                read, _, _ = await _read(
-                    _tournament(tournament_id=23), entities, session=session
-                )
+                read, _, _ = await _read(_tournament(tournament_id=23), entities, session=session)
 
                 self.assertIsNone(read.roster_locked_by_draft)
                 self.assertEqual([], session.scalar_calls)

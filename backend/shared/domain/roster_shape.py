@@ -37,9 +37,7 @@ __all__ = (
 
 FLEX_SLOT_CODE: Final[str] = "flex"
 ROSTER_SLOT_CODES: Final[tuple[str, ...]] = (*REGISTRATION_ROLE_CODES, FLEX_SLOT_CODE)
-DEFAULT_ROSTER_SLOTS: Final[Mapping[str, int]] = MappingProxyType(
-    {"tank": 1, "dps": 2, "support": 2}
-)
+DEFAULT_ROSTER_SLOTS: Final[Mapping[str, int]] = MappingProxyType({"tank": 1, "dps": 2, "support": 2})
 # A one-slot roster has nothing to draft and nothing to balance: the captain
 # fills the only slot.
 MIN_TEAM_SIZE: Final[int] = 2
@@ -82,8 +80,7 @@ class RosterShape:
         if not isinstance(self.entries, tuple):
             raise RosterShapeError(
                 "roster_slots_not_canonical",
-                "Roster shape entries must be a tuple of (slot code, count) pairs, "
-                f"got {type(self.entries).__name__}",
+                f"Roster shape entries must be a tuple of (slot code, count) pairs, got {type(self.entries).__name__}",
             )
         if not self.entries:
             raise RosterShapeError(
@@ -96,8 +93,7 @@ class RosterShape:
             if code not in ROSTER_SLOT_CODES:
                 raise RosterShapeError(
                     "roster_slots_unknown_code",
-                    f"Unknown roster slot code {code!r}; "
-                    f"valid codes are {', '.join(ROSTER_SLOT_CODES)}",
+                    f"Unknown roster slot code {code!r}; valid codes are {', '.join(ROSTER_SLOT_CODES)}",
                 )
             # bool is an int subclass -- True would silently pass as 1.
             if isinstance(count, bool) or not isinstance(count, int) or count < 1:
@@ -109,8 +105,7 @@ class RosterShape:
             if index <= previous_index:
                 raise RosterShapeError(
                     "roster_slots_not_canonical",
-                    "Roster slots must be unique and ordered as "
-                    f"{', '.join(ROSTER_SLOT_CODES)}",
+                    f"Roster slots must be unique and ordered as {', '.join(ROSTER_SLOT_CODES)}",
                 )
             previous_index = index
 
@@ -180,9 +175,7 @@ def parse_roster_slots(raw: Any) -> RosterShape:
         )
 
     # Size is validated by RosterShape.__post_init__ on the normalized entries.
-    return RosterShape(
-        entries=tuple((code, counts[code]) for code in ROSTER_SLOT_CODES if code in counts)
-    )
+    return RosterShape(entries=tuple((code, counts[code]) for code in ROSTER_SLOT_CODES if code in counts))
 
 
 # Parsed at import time, so the canonical default is proven valid on module load

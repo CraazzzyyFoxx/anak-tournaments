@@ -64,11 +64,7 @@ async def get_active_session(session: AsyncSession, tournament_id: int) -> Draft
 def public_additional_info(additional_info: dict | None) -> dict:
     """Remove organizer-only metadata from the public draft snapshot."""
 
-    return {
-        key: value
-        for key, value in (additional_info or {}).items()
-        if key not in _PRIVATE_ADDITIONAL_INFO_KEYS
-    }
+    return {key: value for key, value in (additional_info or {}).items() if key not in _PRIVATE_ADDITIONAL_INFO_KEYS}
 
 
 async def session_read(session: AsyncSession, draft_session: DraftSession) -> DraftSessionRead:
@@ -88,9 +84,7 @@ async def build_board(session: AsyncSession, draft_session: DraftSession) -> Dra
     # transaction (services.draft.realtime), so new event -> new key -> fresh
     # board, and an unchanged id can safely serve the cached snapshot.
     topic = realtime_topics.draft(draft_session.tournament_id)
-    last_event_id = await session.scalar(
-        sa.select(sa.func.max(WorkspaceEvent.id)).where(WorkspaceEvent.topic == topic)
-    )
+    last_event_id = await session.scalar(sa.select(sa.func.max(WorkspaceEvent.id)).where(WorkspaceEvent.topic == topic))
     cache_key = _board_cache_key(draft_session.id, last_event_id)
     if cache.is_setup():
         try:

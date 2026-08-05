@@ -135,9 +135,7 @@ def test_slot_filled_needs_both_the_role_and_the_flex_capacity_gone() -> None:
     counts_with_flex_used = dict(counts, flex=1)
     assert selection._role_openings(shape, counts_with_flex_used)[DraftRole.TANK] == 0
     with pytest.raises(Exception) as exc_info:
-        selection.resolve_pick_slot(
-            shape, counts_with_flex_used, _player(5, DraftRole.TANK), DraftRole.TANK
-        )
+        selection.resolve_pick_slot(shape, counts_with_flex_used, _player(5, DraftRole.TANK), DraftRole.TANK)
 
     assert _code(exc_info.value) == "slot_filled"
 
@@ -184,9 +182,7 @@ def test_a_role_slot_roster_keeps_the_existing_target_role_rules() -> None:
     shape = _shape({"tank": 1, "dps": 2, "support": 2})
     counts = selection._team_slot_counts((), (), 10, shape)
 
-    decision = selection.resolve_pick_slot(
-        shape, counts, _player(1, DraftRole.DPS, DraftRole.TANK), DraftRole.TANK
-    )
+    decision = selection.resolve_pick_slot(shape, counts, _player(1, DraftRole.DPS, DraftRole.TANK), DraftRole.TANK)
     assert decision.role is DraftRole.TANK
     assert decision.recorded_role == "tank"
 
@@ -195,9 +191,7 @@ def test_a_role_slot_roster_keeps_the_existing_target_role_rules() -> None:
     assert _code(illegal.value) == "illegal_role"
 
     with pytest.raises(Exception) as filled:
-        selection.resolve_pick_slot(
-            shape, dict(counts, tank=1), _player(3, DraftRole.TANK), DraftRole.TANK
-        )
+        selection.resolve_pick_slot(shape, dict(counts, tank=1), _player(3, DraftRole.TANK), DraftRole.TANK)
     assert _code(filled.value) == "slot_filled"
 
 
@@ -230,14 +224,8 @@ def test_team_slot_counts_fill_role_slots_first_and_flex_with_the_remainder() ->
 
 def test_an_overfilled_role_spills_into_flex_instead_of_inflating_the_role_count() -> None:
     shape = _shape({"tank": 1, "flex": 2})
-    picked = tuple(
-        _player(index, DraftRole.TANK, status=DraftPlayerStatus.PICKED, team_id=10)
-        for index in (1, 2, 3)
-    )
-    picks = tuple(
-        _pick(player.id, player_id=player.id, team_id=10, target_role=DraftRole.TANK)
-        for player in picked
-    )
+    picked = tuple(_player(index, DraftRole.TANK, status=DraftPlayerStatus.PICKED, team_id=10) for index in (1, 2, 3))
+    picks = tuple(_pick(player.id, player_id=player.id, team_id=10, target_role=DraftRole.TANK) for player in picked)
 
     counts = selection._team_slot_counts(picked, picks, 10, shape)
 

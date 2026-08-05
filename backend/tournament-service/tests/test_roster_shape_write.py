@@ -52,8 +52,7 @@ from src.services.admin import tournament as admin_tournament  # noqa: E402
 # The exact detail the guard produced before it took a ``change`` argument. Its
 # two existing callers pass no ``change``, so this string must stay byte-identical.
 _LEGACY_DETAIL = (
-    "Cannot change team formation while a draft session is active "
-    "(status: live). Cancel or complete the draft first."
+    "Cannot change team formation while a draft session is active (status: live). Cancel or complete the draft first."
 )
 
 _STORED_ROLE_SHAPE = {"tank": 1, "dps": 2, "support": 2}
@@ -78,9 +77,7 @@ def test_update_normalizes_zero_counts_away() -> None:
     # A role-less roster arrives from the form as "every role zero, flex six".
     # Storing the zeros would make ``has_role_slots`` answer on key presence
     # instead of on real slots.
-    model = admin_schemas.TournamentUpdate(
-        roster_slots_json={"tank": 0, "dps": 0, "support": 0, "flex": 6}
-    )
+    model = admin_schemas.TournamentUpdate(roster_slots_json={"tank": 0, "dps": 0, "support": 0, "flex": 6})
     assert model.roster_slots_json == {"flex": 6}
 
 
@@ -110,9 +107,7 @@ def test_create_rejects_invalid_slots_with_the_machine_readable_code(raw, code) 
 
 
 def test_create_defaults_to_inheriting() -> None:
-    created = admin_schemas.TournamentCreate(
-        workspace_id=1, name="T", start_date="2026-01-01", end_date="2026-01-02"
-    )
+    created = admin_schemas.TournamentCreate(workspace_id=1, name="T", start_date="2026-01-01", end_date="2026-01-02")
     assert created.roster_slots_json is None
 
 
@@ -121,9 +116,7 @@ def test_explicit_none_clears_the_override_and_is_distinct_from_omission() -> No
     # field means "don't touch it". ``exclude_unset`` is what keeps them apart.
     cleared = admin_schemas.TournamentUpdate(roster_slots_json=None)
     assert cleared.model_dump(exclude_unset=True) == {"roster_slots_json": None}
-    assert "roster_slots_json" not in admin_schemas.TournamentUpdate(name="x").model_dump(
-        exclude_unset=True
-    )
+    assert "roster_slots_json" not in admin_schemas.TournamentUpdate(name="x").model_dump(exclude_unset=True)
 
 
 # ─── Guard ───────────────────────────────────────────────────────────────────
@@ -268,9 +261,7 @@ def test_unchanged_roster_shape_does_not_trip_the_guard(monkeypatch) -> None:
     error, session, tournament, spy = _run_update(
         monkeypatch,
         draft_status="live",
-        update=admin_schemas.TournamentUpdate(
-            roster_slots_json=dict(_STORED_ROLE_SHAPE), name="renamed"
-        ),
+        update=admin_schemas.TournamentUpdate(roster_slots_json=dict(_STORED_ROLE_SHAPE), name="renamed"),
         stored_slots=dict(_STORED_ROLE_SHAPE),
     )
     assert error is None
@@ -286,9 +277,7 @@ def test_reordered_and_padded_resend_still_counts_as_unchanged(monkeypatch) -> N
     error, session, _, spy = _run_update(
         monkeypatch,
         draft_status="live",
-        update=admin_schemas.TournamentUpdate(
-            roster_slots_json={"support": 2, "dps": 2, "tank": 1, "flex": 0}
-        ),
+        update=admin_schemas.TournamentUpdate(roster_slots_json={"support": 2, "dps": 2, "tank": 1, "flex": 0}),
         stored_slots=dict(_STORED_ROLE_SHAPE),
     )
     assert error is None

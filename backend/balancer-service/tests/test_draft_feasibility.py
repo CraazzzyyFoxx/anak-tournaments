@@ -309,18 +309,13 @@ def test_build_state_uses_captain_primary_role_pick_target_role_and_flex_semanti
         feasibility.DraftAssignment(player_id=101, team_id=10, slot_code="tank"),
         feasibility.DraftAssignment(player_id=102, team_id=10, slot_code="support"),
     )
-    assert state.players == (
-        feasibility.EligiblePlayer(player_id=103, playable_roles=frozenset(DraftRole)),
-    )
+    assert state.players == (feasibility.EligiblePlayer(player_id=103, playable_roles=frozenset(DraftRole)),)
 
 
 def test_options_for_supported_scale_complete_under_latency_budget() -> None:
     _, feasibility = _load_feature_modules()
     team_ids = tuple(range(1, 13))
-    assignments = tuple(
-        _assignment(feasibility, 10_000 + team_id, team_id, "tank")
-        for team_id in team_ids
-    )
+    assignments = tuple(_assignment(feasibility, 10_000 + team_id, team_id, "tank") for team_id in team_ids)
     players = [
         _player(
             feasibility,
@@ -403,9 +398,7 @@ def test_flex_slot_never_absorbs_the_deficit_of_an_unfillable_role_slot() -> Non
     assert report.is_feasible is False
     assert report.matched_slots == 1
     assert [slot.slot_code for slot in report.unmatched_slots] == ["tank"]
-    assert [(d.slot_code, d.unmatched_slots, d.eligible_players) for d in report.slot_deficits] == [
-        ("tank", 1, 0)
-    ]
+    assert [(d.slot_code, d.unmatched_slots, d.eligible_players) for d in report.slot_deficits] == [("tank", 1, 0)]
 
 
 def test_player_level_flex_still_covers_a_role_slot() -> None:

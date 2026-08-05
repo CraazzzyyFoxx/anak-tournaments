@@ -47,9 +47,7 @@ def test_update_accepts_a_flex_only_default() -> None:
 
 
 def test_update_normalizes_zero_counts_away() -> None:
-    model = schemas.WorkspaceUpdate(
-        default_roster_slots_json={"tank": 0, "dps": 0, "support": 0, "flex": 6}
-    )
+    model = schemas.WorkspaceUpdate(default_roster_slots_json={"tank": 0, "dps": 0, "support": 0, "flex": 6})
     assert model.default_roster_slots_json == {"flex": 6}
 
 
@@ -117,19 +115,13 @@ def test_service_update_accepts_the_roster_default() -> None:
     # The deliberate difference from ``default_division_grid_version_id``: this
     # field is edited in place, so it needs no activation endpoint.
     workspace = _FakeWorkspace(dict(_STORED))
-    asyncio.run(
-        workspace_service.update(_FakeSession(), workspace, {"default_roster_slots_json": {"flex": 6}})
-    )
+    asyncio.run(workspace_service.update(_FakeSession(), workspace, {"default_roster_slots_json": {"flex": 6}}))
     assert workspace.default_roster_slots_json == {"flex": 6}
 
 
 def test_service_update_still_rejects_the_division_grid_version() -> None:
     with pytest.raises(BaseAPIException) as exc_info:
-        asyncio.run(
-            workspace_service.update(
-                _FakeSession(), _FakeWorkspace(), {"default_division_grid_version_id": 3}
-            )
-        )
+        asyncio.run(workspace_service.update(_FakeSession(), _FakeWorkspace(), {"default_division_grid_version_id": 3}))
     assert exc_info.value.status_code == 400
 
 
@@ -170,7 +162,5 @@ def test_resending_the_same_default_does_not_invalidate(monkeypatch) -> None:
 
 
 def test_unrelated_edits_do_not_invalidate(monkeypatch) -> None:
-    _, _, spy = _run_registry_update(
-        monkeypatch, schemas.WorkspaceUpdate(name="renamed"), stored=dict(_STORED)
-    )
+    _, _, spy = _run_registry_update(monkeypatch, schemas.WorkspaceUpdate(name="renamed"), stored=dict(_STORED))
     assert spy.calls == []

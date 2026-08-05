@@ -62,7 +62,7 @@ class RosterShapeRead(BaseModel):
     source: Literal["tournament", "workspace", "default"] | None = None
 
     @classmethod
-    def from_shape(cls, shape: RosterShape, *, source: str | None = None) -> "RosterShapeRead":
+    def from_shape(cls, shape: RosterShape, *, source: str | None = None) -> RosterShapeRead:
         """Project a domain shape, keeping every derived value on one payload.
 
         ``source`` names the level the value is STORED at, not what it resolved

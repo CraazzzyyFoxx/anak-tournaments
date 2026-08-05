@@ -117,10 +117,10 @@ def build_feasibility_state(
     for player in players:
         primary_role = _as_role(player.primary_role)
         if player.status == DraftPlayerStatus.AVAILABLE.value:
-            playable_roles = frozenset(DraftRole) if player.is_flex else frozenset(
-                role
-                for entry in player.roles
-                if (role := _as_role(entry.role)) is not None
+            playable_roles = (
+                frozenset(DraftRole)
+                if player.is_flex
+                else frozenset(role for entry in player.roles if (role := _as_role(entry.role)) is not None)
             )
             if primary_role is not None:
                 playable_roles = playable_roles | {primary_role}
@@ -185,14 +185,10 @@ async def load_snapshot(session: AsyncSession, draft_session: DraftSession) -> D
     ).all()
     players = (
         await session.scalars(
-            sa.select(DraftPlayer)
-            .where(DraftPlayer.session_id == draft_session.id)
-            .options(*loaders.player_options())
+            sa.select(DraftPlayer).where(DraftPlayer.session_id == draft_session.id).options(*loaders.player_options())
         )
     ).all()
-    picks = (
-        await session.scalars(sa.select(DraftPick).where(DraftPick.session_id == draft_session.id))
-    ).all()
+    picks = (await session.scalars(sa.select(DraftPick).where(DraftPick.session_id == draft_session.id))).all()
     return DraftSnapshot(teams=tuple(teams), players=tuple(players), picks=tuple(picks))
 
 
@@ -351,8 +347,7 @@ def analyze_draft_feasibility(
     assigned_player_ids = {assignment.player_id for assignment in all_assignments}
     available_players = tuple(player for player in players if player.player_id not in assigned_player_ids)
     slots_by_code = {
-        code: tuple(slot for slot in slots if slot.slot_code == code)
-        for code in _ordered_slot_codes(slot_targets)
+        code: tuple(slot for slot in slots if slot.slot_code == code) for code in _ordered_slot_codes(slot_targets)
     }
     eligible_slots = {
         player.player_id: tuple(
@@ -370,9 +365,7 @@ def analyze_draft_feasibility(
     )
     unmatched_codes = {slot.slot_code for slot in matching.unmatched_slots}
     blocking_players = tuple(
-        player.player_id
-        for player in available_players
-        if any(_slot_fits(player, code) for code in unmatched_codes)
+        player.player_id for player in available_players if any(_slot_fits(player, code) for code in unmatched_codes)
     )
     unmatched_counts = Counter(slot.slot_code for slot in matching.unmatched_slots)
     slot_deficits = tuple(
@@ -441,9 +434,7 @@ def evaluate_pick_options(
                     slot_targets=slot_targets,
                     players=players,
                     assignments=assignments,
-                    hypothetical=DraftAssignment(
-                        player_id=player.player_id, team_id=team_id, slot_code=role.value
-                    ),
+                    hypothetical=DraftAssignment(player_id=player.player_id, team_id=team_id, slot_code=role.value),
                 )
                 representative_id = player.player_id
                 report_cache[cache_key] = (representative_id, report)
