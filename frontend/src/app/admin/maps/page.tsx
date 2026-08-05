@@ -28,6 +28,7 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -43,13 +44,31 @@ import { apiFetch } from "@/lib/api-fetch";
 import type { Gamemode } from "@/types/gamemode.types";
 import type { PaginatedResponse } from "@/types/pagination.types";
 import { usePermissions } from "@/hooks/usePermissions";
+import { formatAliasesInput, parseAliasesInput } from "@/lib/catalog-aliases";
 import { hasUnsavedChanges } from "@/lib/form-change";
 
+// Key order matters: `hasUnsavedChanges` compares JSON, so `getMapForm` below
+// must list the same fields in the same order or every dialog opens dirty.
 const emptyMapForm: MapCreateInput = {
   name: "",
   gamemode_id: 0,
   in_competitive: true,
+  aliases: [],
 };
+
+function getMapForm(map: MapRead | null): MapCreateInput | MapUpdateInput {
+  if (!map) {
+    return { ...emptyMapForm };
+  }
+
+  return {
+    name: map.name,
+    gamemode_id: map.gamemode_id,
+    in_competitive: map.in_competitive !== false,
+    aliases: map.aliases ?? [],
+  };
+}
+
 const GAMEMODE_QUERY_PARAM = "gamemode_id";
 function parseGamemodeQueryParam(value: string | null): number | null {
   if (!value) return null;
@@ -66,6 +85,7 @@ export default function MapsAdminPage() {
   const formId = useId();
   const nameFieldId = `${formId}-name`;
   const gamemodeFieldId = `${formId}-gamemode`;
+  const aliasesFieldId = `${formId}-aliases`;
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingMap, setEditingMap] = useState<MapRead | null>(null);
   const [deletingMap, setDeletingMap] = useState<MapRead | null>(null);
@@ -144,9 +164,7 @@ export default function MapsAdminPage() {
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
   };
 
-  const formInitial = editingMap
-    ? { name: editingMap.name, gamemode_id: editingMap.gamemode_id, in_competitive: editingMap.in_competitive !== false }
-    : emptyMapForm;
+  const formInitial = getMapForm(editingMap);
 
   const isFormDirty = (createDialogOpen || !!editingMap) && hasUnsavedChanges(formData, formInitial);
   const columns: ColumnDef<MapRead>[] = [
@@ -211,6 +229,20 @@ export default function MapsAdminPage() {
       },
     },
     {
+      id: "aliases",
+      header: "Aliases",
+      size: 96,
+      enableSorting: false,
+      cell: ({ row }) => {
+        const count = row.original.aliases?.length ?? 0;
+        return count > 0 ? (
+          <Badge variant="secondary">{count}</Badge>
+        ) : (
+          <span className="text-sm text-muted-foreground">—</span>
+        );
+      },
+    },
+    {
       id: "actions",
       size: 50,
       cell: ({ row }) => {
@@ -231,7 +263,7 @@ export default function MapsAdminPage() {
                 onClick={() => {
                   updateMutation.reset();
                   setEditingMap(map);
-                  setFormData({ name: map.name, gamemode_id: map.gamemode_id, in_competitive: map.in_competitive !== false });
+                  setFormData(getMapForm(map));
                 }}
               >
                 <Pencil aria-hidden className="mr-2 h-4 w-4" />
@@ -320,7 +352,7 @@ export default function MapsAdminPage() {
                 const map = row.original;
                 updateMutation.reset();
                 setEditingMap(map);
-                setFormData({ name: map.name, gamemode_id: map.gamemode_id, in_competitive: map.in_competitive !== false });
+                setFormData(getMapForm(map));
               }
             : undefined
         }
@@ -374,6 +406,21 @@ export default function MapsAdminPage() {
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor={aliasesFieldId}>Aliases</Label>
+            <Textarea
+              id={aliasesFieldId}
+              value={formatAliasesInput(formData.aliases ?? [])}
+              onChange={(e) => setFormData({ ...formData, aliases: parseAliasesInput(e.target.value) })}
+              placeholder={"Илиос\nHollywood (Halloween)"}
+              rows={5}
+              className="font-mono text-xs"
+            />
+            <p className="text-xs text-muted-foreground">
+              One alias per line — names as they appear in match logs.
+            </p>
           </div>
 
           <div className="flex items-center gap-2 pt-2">

@@ -27,6 +27,7 @@ export default defineConfig({
       "src/app/admin/tournaments/**/components/*.test.tsx",
       "src/app/admin/tournaments/[id]/tab-guards.test.ts",
       "src/app/admin/players/**/*.test.ts",
+      "src/app/admin/__tests__/**/*.test.ts",
       // `include` is an allow-list: a test file outside it never runs and the
       // suite still reports green. Both data-browser dirs are listed up front
       // so the first test added under either one actually executes.

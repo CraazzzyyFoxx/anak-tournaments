@@ -15,7 +15,9 @@ import {
 } from "@/components/admin/CatalogToolbarActions";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -39,15 +41,19 @@ import adminService from "@/services/admin.service";
 import type { Hero } from "@/types/hero.types";
 import type { HeroCreateInput, HeroUpdateInput } from "@/types/admin.types";
 import { usePermissions } from "@/hooks/usePermissions";
+import { formatAliasesInput, parseAliasesInput } from "@/lib/catalog-aliases";
 import { hasUnsavedChanges } from "@/lib/form-change";
 
 const HERO_ROLES = ["Tank", "Damage", "Support"];
 /** Overwatch blue: the form default, the color-picker fallback and the hex hint. */
 const DEFAULT_HERO_COLOR = "#3b82f6";
+// Key order matters: `hasUnsavedChanges` compares JSON, so `getHeroForm` below
+// must list the shared fields in the same order or every dialog opens dirty.
 const emptyHeroForm: HeroCreateInput = {
   name: "",
   role: "Damage",
   color: DEFAULT_HERO_COLOR,
+  aliases: [],
 };
 
 /** The backend sends `type`; `role` is the legacy field kept for older payloads. */
@@ -65,6 +71,7 @@ function getHeroForm(hero: Hero | null): HeroCreateInput | HeroUpdateInput {
     role: getHeroRoleValue(hero),
     color: hero.color,
     image_path: hero.image_path,
+    aliases: hero.aliases ?? [],
   };
 }
 
@@ -77,6 +84,7 @@ export default function HeroesAdminPage() {
   const roleFieldId = `${formId}-role`;
   const colorFieldId = `${formId}-color`;
   const colorPickerId = `${formId}-color-picker`;
+  const aliasesFieldId = `${formId}-aliases`;
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingHero, setEditingHero] = useState<Hero | null>(null);
   const [deletingHero, setDeletingHero] = useState<Hero | null>(null);
@@ -195,6 +203,20 @@ export default function HeroesAdminPage() {
               <span className="sr-only">{role}</span>
             </div>
           </div>
+        );
+      },
+    },
+    {
+      id: "aliases",
+      header: "Aliases",
+      size: 96,
+      enableSorting: false,
+      cell: ({ row }) => {
+        const count = row.original.aliases?.length ?? 0;
+        return count > 0 ? (
+          <Badge variant="secondary">{count}</Badge>
+        ) : (
+          <span className="text-sm text-muted-foreground">—</span>
         );
       },
     },
@@ -378,6 +400,22 @@ export default function HeroesAdminPage() {
                 className="flex-1 font-mono"
               />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor={aliasesFieldId}>Aliases</Label>
+            <Textarea
+              id={aliasesFieldId}
+              value={formatAliasesInput(formData.aliases ?? [])}
+              onChange={(e) => setFormData({ ...formData, aliases: parseAliasesInput(e.target.value) })}
+              placeholder={"Ана\nアナ"}
+              rows={5}
+              className="font-mono text-xs"
+            />
+            <p className="text-xs text-muted-foreground">
+              One alias per line — names as they appear in match logs. The hero sync fills these
+              from every Blizzard locale; manual entries survive it.
+            </p>
           </div>
         </div>
       </EntityFormDialog>

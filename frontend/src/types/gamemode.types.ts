@@ -6,4 +6,6 @@ export interface Gamemode {
   image_path: string;
   slug: string;
   description: string;
+  /** Names this gamemode appears under in match logs; maintained by hand. */
+  aliases: string[];
 }

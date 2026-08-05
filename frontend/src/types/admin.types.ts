@@ -855,6 +855,7 @@ export interface HeroCreateInput {
   role: string;
   color?: string;
   image_path?: string;
+  aliases?: string[];
 }
 
 export interface HeroUpdateInput {
@@ -862,6 +863,7 @@ export interface HeroUpdateInput {
   role?: string;
   color?: string;
   image_path?: string;
+  aliases?: string[];
 }
 
 // ─── Gamemode ────────────────────────────────────────────────────────────────
@@ -871,14 +873,17 @@ export interface Gamemode {
   created_at: Date;
   updated_at?: Date | null;
   name: string;
+  aliases: string[];
 }
 
 export interface GamemodeCreateInput {
   name: string;
+  aliases?: string[];
 }
 
 export interface GamemodeUpdateInput {
   name?: string;
+  aliases?: string[];
 }
 
 // ─── Map ─────────────────────────────────────────────────────────────────────
@@ -887,12 +892,49 @@ export interface MapCreateInput {
   name: string;
   gamemode_id: number;
   in_competitive?: boolean;
+  aliases?: string[];
 }
 
 export interface MapUpdateInput {
   name?: string;
   gamemode_id?: number;
   in_competitive?: boolean;
+  aliases?: string[];
+}
+
+// ─── Catalog aliases ─────────────────────────────────────────────────────────
+
+/** Catalog entity an alias (or an unresolved log name) belongs to. */
+export type CatalogEntityType = "hero" | "map" | "gamemode";
+
+/**
+ * A name the log parser could not resolve. Upserted per `(entity_type,
+ * raw_name)`, so `occurrences` counts how often the gap actually bites.
+ */
+export interface CatalogAliasMissRead {
+  id: number;
+  entity_type: CatalogEntityType;
+  raw_name: string;
+  occurrences: number;
+  first_seen_at: string;
+  last_seen_at: string;
+  last_log_record_id: number | null;
+  /** Owning tournament of `last_log_record_id`; null once the record is gone. */
+  last_log_tournament_id: number | null;
+  resolved_at: string | null;
+}
+
+export interface CatalogAliasMissQuery {
+  page?: number;
+  per_page?: number;
+  entity_type?: CatalogEntityType;
+  include_resolved?: boolean;
+}
+
+export interface CatalogAliasAttachInput {
+  entity_type: CatalogEntityType;
+  entity_id: number;
+  alias: string;
 }
 
 // ─── Achievement ─────────────────────────────────────────────────────────────

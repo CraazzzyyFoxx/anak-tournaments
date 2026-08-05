@@ -54,6 +54,9 @@ import {
   GamemodeUpdateInput,
   MapCreateInput,
   MapUpdateInput,
+  CatalogAliasAttachInput,
+  CatalogAliasMissQuery,
+  CatalogAliasMissRead,
   AchievementCreateInput,
   AchievementUpdateInput,
   AchievementRegistryEntry,
@@ -889,6 +892,44 @@ class AdminService {
       method: "POST"
     });
     return response.json();
+  }
+
+  // ─── Catalog aliases (superuser) ───────────────────────────────────────────
+
+  /**
+   * Names the log parser could not resolve, worst offenders first. Open misses
+   * only unless `include_resolved` asks for the dismissed ones too.
+   */
+  async getCatalogAliasMisses(
+    params: CatalogAliasMissQuery = {}
+  ): Promise<PaginatedResponse<CatalogAliasMissRead>> {
+    const response = await apiFetch("/api/v1/admin/catalog-aliases/misses", {
+      query: {
+        ...(params.page != null && { page: params.page }),
+        ...(params.per_page != null && { per_page: params.per_page }),
+        ...(params.entity_type && { entity_type: params.entity_type }),
+        ...(params.include_resolved && { include_resolved: params.include_resolved })
+      }
+    });
+    return response.json();
+  }
+
+  /**
+   * Appends the alias to the entity and closes the miss in one transaction —
+   * the union happens server-side so two admins cannot clobber each other.
+   */
+  async attachCatalogAlias(data: CatalogAliasAttachInput): Promise<void> {
+    await apiFetch("/api/v1/admin/catalog-aliases/attach", {
+      method: "POST",
+      body: data
+    });
+  }
+
+  /** Marks the miss resolved without touching any entity. */
+  async dismissCatalogAliasMiss(id: number): Promise<void> {
+    await apiFetch(`/api/v1/admin/catalog-aliases/misses/${id}/dismiss`, {
+      method: "POST"
+    });
   }
 
   // ─── Achievement CRUD ──────────────────────────────────────────────────────

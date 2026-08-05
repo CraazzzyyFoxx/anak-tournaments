@@ -14,8 +14,10 @@ import {
 } from "@/components/admin/CatalogToolbarActions";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   DropdownMenu,
@@ -29,15 +31,27 @@ import {
 import adminService from "@/services/admin.service";
 import type { Gamemode, GamemodeCreateInput, GamemodeUpdateInput } from "@/types/admin.types";
 import { usePermissions } from "@/hooks/usePermissions";
+import { formatAliasesInput, parseAliasesInput } from "@/lib/catalog-aliases";
 import { hasUnsavedChanges } from "@/lib/form-change";
 
-const emptyGamemodeForm: GamemodeCreateInput = { name: "" };
+// Key order matters: `hasUnsavedChanges` compares JSON, so the edit form below
+// must list the same fields in the same order or every dialog opens dirty.
+const emptyGamemodeForm: GamemodeCreateInput = { name: "", aliases: [] };
+
+function getGamemodeForm(gamemode: Gamemode | null): GamemodeCreateInput | GamemodeUpdateInput {
+  if (!gamemode) {
+    return { ...emptyGamemodeForm };
+  }
+
+  return { name: gamemode.name, aliases: gamemode.aliases ?? [] };
+}
 
 export default function GamemodesAdminPage() {
   const queryClient = useQueryClient();
   const { isSuperuser } = usePermissions();
   const formId = useId();
   const nameFieldId = `${formId}-name`;
+  const aliasesFieldId = `${formId}-aliases`;
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingGamemode, setEditingGamemode] = useState<Gamemode | null>(null);
   const [deletingGamemode, setDeletingGamemode] = useState<Gamemode | null>(null);
@@ -92,7 +106,7 @@ export default function GamemodesAdminPage() {
     }
   };
 
-  const formInitial = editingGamemode ? { name: editingGamemode.name } : emptyGamemodeForm;
+  const formInitial = getGamemodeForm(editingGamemode);
   const isFormDirty = (createDialogOpen || !!editingGamemode) && hasUnsavedChanges(formData, formInitial);
 
   const columns: ColumnDef<Gamemode>[] = [
@@ -105,6 +119,20 @@ export default function GamemodesAdminPage() {
     {
       accessorKey: "name",
       header: "Name",
+    },
+    {
+      id: "aliases",
+      header: "Aliases",
+      size: 96,
+      enableSorting: false,
+      cell: ({ row }) => {
+        const count = row.original.aliases?.length ?? 0;
+        return count > 0 ? (
+          <Badge variant="secondary">{count}</Badge>
+        ) : (
+          <span className="text-sm text-muted-foreground">—</span>
+        );
+      },
     },
     {
       id: "actions",
@@ -127,7 +155,7 @@ export default function GamemodesAdminPage() {
                 onClick={() => {
                   updateMutation.reset();
                   setEditingGamemode(gamemode);
-                  setFormData({ name: gamemode.name });
+                  setFormData(getGamemodeForm(gamemode));
                 }}
               >
                 <Pencil aria-hidden className="mr-2 h-4 w-4" />
@@ -184,7 +212,7 @@ export default function GamemodesAdminPage() {
                 const gamemode = row.original;
                 updateMutation.reset();
                 setEditingGamemode(gamemode);
-                setFormData({ name: gamemode.name });
+                setFormData(getGamemodeForm(gamemode));
               }
             : undefined
         }
@@ -219,6 +247,21 @@ export default function GamemodesAdminPage() {
               placeholder="Gamemode name"
               required
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor={aliasesFieldId}>Aliases</Label>
+            <Textarea
+              id={aliasesFieldId}
+              value={formatAliasesInput(formData.aliases ?? [])}
+              onChange={(e) => setFormData({ ...formData, aliases: parseAliasesInput(e.target.value) })}
+              placeholder={"Контроль\nコントロール"}
+              rows={5}
+              className="font-mono text-xs"
+            />
+            <p className="text-xs text-muted-foreground">
+              One alias per line — names as they appear in match logs.
+            </p>
           </div>
         </div>
       </EntityFormDialog>
