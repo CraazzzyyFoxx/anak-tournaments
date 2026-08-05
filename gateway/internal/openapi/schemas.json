@@ -26846,6 +26846,7 @@
             {
               "enum": [
                 "optional",
+                "all_roles",
                 "forced"
               ],
               "type": "string"
