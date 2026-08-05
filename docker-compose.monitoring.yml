@@ -44,7 +44,10 @@ services:
           memory: 256M
 
   alertmanager:
-    image: prom/alertmanager:v0.27.0
+    # v0.28+ is REQUIRED: v0.27.0 parses `webhook_url_file` in discord_configs but
+    # its receiver validation still demands `webhook_url`, so a file-backed Discord
+    # webhook fails config load with "no discord webhook URL provided".
+    image: prom/alertmanager:v0.28.1
     restart: unless-stopped
     command:
       - "--config.file=/etc/alertmanager/alertmanager.yml"

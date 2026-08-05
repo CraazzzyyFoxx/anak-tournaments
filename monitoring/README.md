@@ -279,11 +279,33 @@ docker exec owt-monitoring-prometheus-1 \
 routing problem. Sentry-side lag is under a minute, and app sampling is 10%, so a
 quiet environment needs a few requests before anything shows up.
 
-### Alertmanager starts but Discord alerts are not delivered
+### Alertmanager restarts in a loop / Discord alerts are not delivered
 
-Cause: `monitoring/secrets/discord_webhook_url` is missing, empty, or invalid.
+Cause: `monitoring/secrets/discord_webhook_url` is missing, empty, or invalid. The file
+is gitignored, so a fresh checkout never has it and `alertmanager` crash-loops with
+`Loading configuration file failed ... no discord webhook URL provided`.
 
-Fix: create it from the `.example` file, put in the real webhook, restart `alertmanager`.
+Fix: create it from the `.example` file, put in the real webhook, recreate the container:
+
+```bash
+printf '%s' 'https://discord.com/api/webhooks/<id>/<token>' \
+  > monitoring/secrets/discord_webhook_url
+chmod 600 monitoring/secrets/discord_webhook_url
+docker compose -f docker-compose.monitoring.yml up -d alertmanager
+```
+
+The same log line on an image older than `v0.28.0` is a different bug: those versions
+read `webhook_url_file` but still require `webhook_url`, so the secret file alone never
+satisfies them. Keep the pinned `prom/alertmanager:v0.28.1` or newer.
+
+Verify delivery end to end by posting a synthetic alert:
+
+```bash
+docker exec owt-monitoring-alertmanager-1 wget -qO- \
+  --header='Content-Type: application/json' \
+  --post-data='[{"labels":{"alertname":"WebhookSmokeTest","severity":"warning"},"annotations":{"summary":"manual test","description":"verifying Discord delivery"}}]' \
+  http://localhost:9093/api/v2/alerts
+```
 
 ### Loki is healthy but no logs appear in Grafana
 
