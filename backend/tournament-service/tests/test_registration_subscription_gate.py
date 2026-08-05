@@ -46,9 +46,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.subscriptions import (  # noqa: E402
+    SubscriptionRequirement,
     SubscriptionState,
     SubscriptionVerdict,
     evaluate_requirement,
+    parse_requirement,
 )
 from src.services.registration.subscription_gate import (  # noqa: E402
     assert_subscription_allows_registration,
@@ -78,11 +80,31 @@ INACTIVE = _v(SubscriptionState.INACTIVE)
 UNKNOWN = _v(SubscriptionState.UNKNOWN)
 
 
+def _rule(blob: dict | None) -> SubscriptionRequirement | None:
+    """What the real resolver would hand back for ``blob``.
+
+    Mirrors ``SubscriptionResolver.load_requirement``'s fail-open contract (unit-tested
+    in ``shared/tests/test_subscription_load_requirement.py``) so the cases below keep
+    exercising the gate's own decisions rather than the parse.
+    """
+    try:
+        requirement = parse_requirement(blob)
+    except ValueError:
+        return None
+    return requirement if requirement.requirements else None
+
+
 class _Form:
+    """Only the toggle and the workspace now -- the rule moved to the workspace.
+
+    ``blob`` is kept as the test's way of saying "this workspace requires X"; ``_gate``
+    hands it to the fake resolver, which is where the gate reads the rule from.
+    """
+
     def __init__(self, *, require_subscription=False, blob=None, workspace_id=7):
         self.require_subscription = require_subscription
-        self.subscription_requirement_json = blob or {}
         self.workspace_id = workspace_id
+        self.blob = blob or {}
 
 
 class _Resolver:
@@ -97,6 +119,7 @@ class _Resolver:
         self._code_providers = code_providers or set()
         self.calls: list[dict] = []
         self.code_queries: list[tuple[int, tuple[str, ...]]] = []
+        self.requirement: SubscriptionRequirement | None = None
 
     async def evaluate(self, *, workspace_id, auth_user_ids, requirement, force_refresh=False, source="scheduled"):
         self.calls.append(
@@ -115,8 +138,12 @@ class _Resolver:
         self.code_queries.append((workspace_id, tuple(providers)))
         return self._code_providers
 
+    async def load_requirement(self, *, workspace_id):
+        return self.requirement
+
 
 async def _gate(form, resolver, *, auth_user_id=USER):
+    resolver.requirement = _rule(getattr(form, "blob", None))
     await assert_subscription_allows_registration(form=form, auth_user_id=auth_user_id, resolver=resolver)
 
 

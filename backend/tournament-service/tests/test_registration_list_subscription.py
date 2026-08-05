@@ -41,9 +41,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from shared.subscriptions import (  # noqa: E402
     Outcome,
+    SubscriptionRequirement,
     SubscriptionState,
     SubscriptionVerdict,
     evaluate_requirement,
+    parse_requirement,
 )
 from src.schemas.registration import RegistrationRead  # noqa: E402
 from src.services.registration.subscription_reads import (  # noqa: E402
@@ -73,17 +75,36 @@ INACTIVE = _v(SubscriptionState.INACTIVE)
 UNKNOWN = _v(SubscriptionState.UNKNOWN)
 
 
+def _rule(blob: dict | None) -> SubscriptionRequirement | None:
+    """What the real resolver would hand back for ``blob``.
+
+    Mirrors ``SubscriptionResolver.load_requirement``'s fail-open contract (unit-tested
+    in ``shared/tests/test_subscription_load_requirement.py``).
+    """
+    try:
+        requirement = parse_requirement(blob)
+    except ValueError:
+        return None
+    return requirement if requirement.requirements else None
+
+
 class _Form:
-    def __init__(self, *, require_subscription=True, blob=None, workspace_id=7):
+    """Only the toggle and the workspace now -- the rule moved to the workspace."""
+
+    def __init__(self, *, require_subscription=True, workspace_id=7):
         self.require_subscription = require_subscription
-        self.subscription_requirement_json = blob if blob is not None else EITHER
         self.workspace_id = workspace_id
 
 
 class _Resolver:
-    def __init__(self, per_user: dict[int, dict[str, SubscriptionVerdict]]) -> None:
+    def __init__(self, per_user: dict[int, dict[str, SubscriptionVerdict]], blob: dict | None = None) -> None:
         self._per_user = per_user
+        # The workspace rule; `EITHER` keeps the default every case below assumed.
+        self._blob = EITHER if blob is None else blob
         self.calls: list[dict] = []
+
+    async def load_requirement(self, *, workspace_id):
+        return _rule(self._blob)
 
     async def evaluate(self, *, workspace_id, auth_user_ids, requirement, force_refresh=False):
         self.calls.append(
@@ -121,10 +142,8 @@ class TestNotRequired(IsolatedAsyncioTestCase):
         assert resolver.calls == []
 
     async def test_empty_requirement_returns_empty(self):
-        resolver = _Resolver({})
-        result = await build_subscription_reads(
-            form=_Form(blob={}), auth_user_id_by_registration={10: 1}, resolver=resolver
-        )
+        resolver = _Resolver({}, {})
+        result = await build_subscription_reads(form=_Form(), auth_user_id_by_registration={10: 1}, resolver=resolver)
         assert result == {}
         assert resolver.calls == []
 
@@ -171,9 +190,9 @@ class TestBatching(IsolatedAsyncioTestCase):
 
 class TestPerRegistrationPayload(IsolatedAsyncioTestCase):
     async def test_maps_outcome_back_onto_every_registration(self):
-        resolver = _Resolver({1: {"boosty": ACTIVE_2}, 2: {"boosty": INACTIVE}})
+        resolver = _Resolver({1: {"boosty": ACTIVE_2}, 2: {"boosty": INACTIVE}}, BOOSTY_ONLY)
         result = await build_subscription_reads(
-            form=_Form(blob=BOOSTY_ONLY),
+            form=_Form(),
             auth_user_id_by_registration={10: 1, 11: 2},
             resolver=resolver,
         )
@@ -181,18 +200,18 @@ class TestPerRegistrationPayload(IsolatedAsyncioTestCase):
         assert result[11].outcome is Outcome.REFUSED
 
     async def test_two_registrations_of_one_account_share_the_verdict(self):
-        resolver = _Resolver({1: {"boosty": ACTIVE_2}})
+        resolver = _Resolver({1: {"boosty": ACTIVE_2}}, BOOSTY_ONLY)
         result = await build_subscription_reads(
-            form=_Form(blob=BOOSTY_ONLY),
+            form=_Form(),
             auth_user_id_by_registration={10: 1, 11: 1},
             resolver=resolver,
         )
         assert result[10].outcome is result[11].outcome
 
     async def test_carries_per_provider_verdicts_for_the_chips(self):
-        resolver = _Resolver({1: {"boosty": INACTIVE, "twitch": ACTIVE_1}})
+        resolver = _Resolver({1: {"boosty": INACTIVE, "twitch": ACTIVE_1}}, EITHER)
         result = await build_subscription_reads(
-            form=_Form(blob=EITHER),
+            form=_Form(),
             auth_user_id_by_registration={10: 1},
             resolver=resolver,
         )
@@ -201,9 +220,9 @@ class TestPerRegistrationPayload(IsolatedAsyncioTestCase):
 
     async def test_any_mode_passes_even_though_one_chip_is_red(self):
         """The exact case the UI summary line exists for."""
-        resolver = _Resolver({1: {"boosty": INACTIVE, "twitch": ACTIVE_1}})
+        resolver = _Resolver({1: {"boosty": INACTIVE, "twitch": ACTIVE_1}}, EITHER)
         result = await build_subscription_reads(
-            form=_Form(blob=EITHER),
+            form=_Form(),
             auth_user_id_by_registration={10: 1},
             resolver=resolver,
         )

@@ -37,8 +37,10 @@ from datetime import UTC, datetime  # noqa: E402
 
 from shared.subscriptions import (  # noqa: E402
     Outcome,
+    SubscriptionRequirement,
     SubscriptionState,
     SubscriptionVerdict,
+    parse_requirement,
 )
 from src.services.registration.subscription_status import subscription_status_for_user  # noqa: E402
 
@@ -47,11 +49,10 @@ USER = 42
 
 
 class _Form:
+    """Only the toggle and the workspace now -- the rule moved to the workspace."""
+
     require_subscription = True
     workspace_id = WS
-
-    def __init__(self, requirement: dict) -> None:
-        self.subscription_requirement_json = requirement
 
 
 def _requirement(*providers: str, mode: str = "any") -> dict:
@@ -70,11 +71,33 @@ def _verdict(state: str, *, reason: str | None = None) -> SubscriptionVerdict:
     )
 
 
+def _rule(blob: dict | None) -> SubscriptionRequirement | None:
+    """What the real resolver would hand back for ``blob``.
+
+    Mirrors ``SubscriptionResolver.load_requirement``'s fail-open contract (unit-tested
+    in ``shared/tests/test_subscription_load_requirement.py``).
+    """
+    try:
+        requirement = parse_requirement(blob)
+    except ValueError:
+        return None
+    return requirement if requirement.requirements else None
+
+
 class _FakeResolver:
-    def __init__(self, verdicts: dict[str, SubscriptionVerdict], code_providers: set[str]) -> None:
+    def __init__(
+        self,
+        verdicts: dict[str, SubscriptionVerdict],
+        code_providers: set[str],
+        requirement: dict | None = None,
+    ) -> None:
         self._verdicts = verdicts
         self._code_providers = code_providers
+        self._requirement = requirement
         self.code_queries: list[tuple[int, tuple[str, ...]]] = []
+
+    async def load_requirement(self, *, workspace_id):
+        return _rule(self._requirement)
 
     async def evaluate(self, *, workspace_id, auth_user_ids, requirement, force_refresh=False):
         outcome = (
@@ -90,12 +113,8 @@ class _FakeResolver:
 
 
 async def _status(verdicts, code_providers, *, requirement=None):
-    resolver = _FakeResolver(verdicts, code_providers)
-    read = await subscription_status_for_user(
-        form=_Form(requirement or _requirement("boosty")),
-        auth_user_id=USER,
-        resolver=resolver,
-    )
+    resolver = _FakeResolver(verdicts, code_providers, requirement or _requirement("boosty"))
+    read = await subscription_status_for_user(form=_Form(), auth_user_id=USER, resolver=resolver)
     return read, resolver
 
 
@@ -112,9 +131,9 @@ class TestNotRequired(IsolatedAsyncioTestCase):
 
     async def test_malformed_requirement_degrades_instead_of_500ing(self):
         read = await subscription_status_for_user(
-            form=_Form({"mode": "nonsense", "requirements": "not-a-list"}),
+            form=_Form(),
             auth_user_id=USER,
-            resolver=_FakeResolver({}, set()),
+            resolver=_FakeResolver({}, set(), {"mode": "nonsense", "requirements": "not-a-list"}),
         )
         assert read.required is False
 
@@ -179,7 +198,6 @@ class TestVerdictNarrowing(IsolatedAsyncioTestCase):
         assert read.required is True
         assert read.outcome == Outcome.SATISFIED.value
         assert read.rule
-
 
 
 class TestBlocksRegistration(IsolatedAsyncioTestCase):

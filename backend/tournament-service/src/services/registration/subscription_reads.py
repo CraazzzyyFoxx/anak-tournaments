@@ -21,7 +21,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
-from shared.subscriptions import Outcome, SubscriptionRequirement, SubscriptionVerdict, parse_requirement
+from shared.subscriptions import Outcome, SubscriptionRequirement, SubscriptionVerdict
 
 __all__ = (
     "RegistrationSubscription",
@@ -46,6 +46,8 @@ class RequirementEvaluator(Protocol):
         requirement: SubscriptionRequirement,
         force_refresh: bool = False,
     ) -> dict[int, tuple[Outcome, dict[str, SubscriptionVerdict]]]: ...
+
+    async def load_requirement(self, *, workspace_id: int) -> SubscriptionRequirement | None: ...
 
 
 def serialize_verdicts(
@@ -112,13 +114,11 @@ async def build_subscription_reads(
     if not auth_user_id_by_registration:
         return {}
 
-    try:
-        requirement = parse_requirement(getattr(form, "subscription_requirement_json", None))
-    except ValueError:
-        # Malformed config is rejected on save; surfacing nothing beats 500ing a
-        # public participants list.
-        return {}
-    if not requirement.requirements:
+    # The workspace owns the rule; the resolver owns the parse and fails open on a
+    # malformed row, so a bad config row surfaces nothing rather than 500ing a public
+    # participants list.
+    requirement = await resolver.load_requirement(workspace_id=form.workspace_id)
+    if requirement is None:
         return {}
 
     user_ids = list(dict.fromkeys(uid for uid in auth_user_id_by_registration.values() if uid is not None))

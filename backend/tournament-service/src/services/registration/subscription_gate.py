@@ -29,7 +29,6 @@ from shared.subscriptions import (
     SubscriptionRequirement,
     SubscriptionVerdict,
     evaluate_requirement,
-    parse_requirement,
 )
 
 __all__ = (
@@ -59,6 +58,8 @@ class RequirementEvaluator(Protocol):
 
     async def accepted_code_providers(self, *, workspace_id: int, providers: Any) -> set[str]: ...
 
+    async def load_requirement(self, *, workspace_id: int) -> SubscriptionRequirement | None: ...
+
 
 def describe_requirement(requirement: SubscriptionRequirement) -> str:
     """Human-readable rule, e.g. ``Boosty уровень 2 или Twitch``.
@@ -77,20 +78,16 @@ def describe_requirement(requirement: SubscriptionRequirement) -> str:
     return conjunction.join(parts)
 
 
-def _enforceable_requirement(form: Any | None) -> SubscriptionRequirement | None:
+async def _enforceable_requirement(form: Any | None, resolver: RequirementEvaluator) -> SubscriptionRequirement | None:
     """The rule to enforce, or ``None`` when there is nothing to enforce.
 
-    A malformed ``mode`` is rejected when the form is saved. If one reached the
-    database anyway, refusing every patron mid-tournament is the worse failure
-    mode, so this fails open too.
+    The toggle is the tournament's decision and lives on the form; the rule itself is
+    the workspace's and is fetched through the resolver, which also owns the parse and
+    its fail-open behaviour (a malformed row must not refuse every patron mid-tournament).
     """
     if form is None or not getattr(form, "require_subscription", False):
         return None
-    try:
-        requirement = parse_requirement(getattr(form, "subscription_requirement_json", None))
-    except ValueError:
-        return None
-    return requirement if requirement.requirements else None
+    return await resolver.load_requirement(workspace_id=form.workspace_id)
 
 
 async def assert_subscription_allows_check_in(
@@ -100,7 +97,7 @@ async def assert_subscription_allows_check_in(
     resolver: RequirementEvaluator,
 ) -> None:
     """Raise 400 iff the composed requirement is a CONFIRMED refusal."""
-    requirement = _enforceable_requirement(form)
+    requirement = await _enforceable_requirement(form, resolver)
     if requirement is None:
         return
 
@@ -136,7 +133,7 @@ async def assert_subscription_allows_registration(
     check-in once the roster is being built. What genuinely cannot be decided here
     is a code that has not been offered yet — that, and only that, is deferred.
     """
-    requirement = _enforceable_requirement(form)
+    requirement = await _enforceable_requirement(form, resolver)
     if requirement is None:
         return
 

@@ -28,7 +28,6 @@ from shared.subscriptions import (
     SubscriptionRequirement,
     SubscriptionVerdict,
     evaluate_requirement,
-    parse_requirement,
 )
 from src.schemas.registration import (
     SubscriptionProviderVerdictRead,
@@ -61,6 +60,8 @@ class RequirementEvaluator(Protocol):
 
     async def accepted_code_providers(self, *, workspace_id: int, providers: Any) -> set[str]: ...
 
+    async def load_requirement(self, *, workspace_id: int) -> SubscriptionRequirement | None: ...
+
 
 async def subscription_status_for_user(
     *,
@@ -71,14 +72,11 @@ async def subscription_status_for_user(
     if form is None or not getattr(form, "require_subscription", False):
         return SubscriptionStatusRead(required=False)
 
-    try:
-        requirement = parse_requirement(getattr(form, "subscription_requirement_json", None))
-    except ValueError:
-        # Malformed config is rejected on save; reporting "not required" beats
-        # surfacing a 500 on the registration form.
-        return SubscriptionStatusRead(required=False)
-
-    if not requirement.requirements:
+    # The workspace owns the rule; the resolver owns the parse and fails open on a
+    # malformed row, so "nothing enforceable" and "config is bad" both read as
+    # not-required here rather than 500ing the registration form.
+    requirement = await resolver.load_requirement(workspace_id=form.workspace_id)
+    if requirement is None:
         return SubscriptionStatusRead(required=False)
 
     outcomes = await resolver.evaluate(

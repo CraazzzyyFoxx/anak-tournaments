@@ -52,20 +52,29 @@ def _chunked(items: list[int], size: int) -> list[list[int]]:
 async def find_tournaments_requiring_subscriptions(session: AsyncSession) -> list[TournamentTarget]:
     """Active, open tournaments whose registration form enforces a subscription.
 
-    Forms whose requirement is empty or malformed are dropped here rather than
-    later: ``require_subscription`` is a master toggle kept separate from the
-    rule blob, so it can legitimately be on while the blob is still empty, and
-    there is nothing to check for such a tournament.
+    ``require_subscription`` is the per-tournament toggle; the rule itself belongs to
+    the workspace. The join to ``subscriptions.requirement`` is deliberately **inner**:
+    a workspace with no rule has nothing to collect, which is exactly the row the old
+    per-form code dropped afterwards via ``if not requirement.requirements``. A rule
+    that parses to nothing enforceable, or fails to parse at all, is still dropped
+    below -- an empty blob is reachable through the workspace editor too.
     """
     stmt = (
         sa.select(
             models.Tournament.id,
             models.Tournament.workspace_id,
-            models.BalancerRegistrationForm.subscription_requirement_json,
+            models.WorkspaceSubscriptionRequirement.requirement_json,
         )
         .join(
             models.BalancerRegistrationForm,
             models.Tournament.id == models.BalancerRegistrationForm.tournament_id,
+        )
+        .join(
+            models.WorkspaceSubscriptionRequirement,
+            sa.and_(
+                models.WorkspaceSubscriptionRequirement.workspace_id == models.Tournament.workspace_id,
+                models.WorkspaceSubscriptionRequirement.is_default.is_(True),
+            ),
         )
         .where(
             models.Tournament.is_finished.is_(False),

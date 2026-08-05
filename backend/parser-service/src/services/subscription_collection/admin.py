@@ -219,19 +219,28 @@ async def _requirements_for_user(session: AsyncSession, auth_user_id: int) -> li
     A manual re-check only makes sense for tournaments whose form enforces a
     subscription AND where this player is a live registrant: resolving anything
     else would write entitlements for a rule nobody is being held to.
+
+    The rule comes from the workspace, joined **inner** for the same reason as in
+    ``service.find_tournaments_requiring_subscriptions``: a workspace with no rule
+    holds nobody to anything, so there is nothing to re-check.
     """
     reg = models.BalancerRegistration
     member = models.WorkspaceMember
     player = models.User
     form = models.BalancerRegistrationForm
+    req = models.WorkspaceSubscriptionRequirement
     rows = (
         await session.execute(
-            sa.select(models.Tournament.workspace_id, form.subscription_requirement_json)
+            sa.select(models.Tournament.workspace_id, req.requirement_json)
             .select_from(reg)
             .join(member, reg.workspace_member_id == member.id)
             .join(player, member.player_id == player.id)
             .join(models.Tournament, reg.tournament_id == models.Tournament.id)
             .join(form, form.tournament_id == models.Tournament.id)
+            .join(
+                req,
+                sa.and_(req.workspace_id == models.Tournament.workspace_id, req.is_default.is_(True)),
+            )
             .where(
                 player.auth_user_id == auth_user_id,
                 reg.deleted_at.is_(None),

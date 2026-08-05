@@ -2,9 +2,9 @@
 
 Skipped unless ``SUBSCRIPTIONS_IT_DSN`` is set, so the default suite stays
 database-free. The unit tests inject a fake resolver; this exercises the whole
-chain — ``provider_config`` and ``entitlement`` rows in the ``subscriptions``
-schema, the resolver, the Kleene composition, and the gate's HTTP error — on real
-Postgres.
+chain — ``provider_config``, ``requirement`` and ``entitlement`` rows in the
+``subscriptions`` schema, the resolver, the Kleene composition, and the gate's HTTP
+error — on real Postgres.
 
 One behaviour discovered here and worth stating plainly: the gate always resolves
 with ``force_refresh=True``, because a stale ``active`` must not be trusted at
@@ -23,6 +23,7 @@ Run against a scratch/dev database::
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import sys
 import unittest
@@ -58,10 +59,11 @@ BOOSTY_TIER_2 = {"mode": "all", "requirements": [{"provider": "boosty", "min_tie
 
 
 class _Form:
-    def __init__(self, workspace_id: int, blob: dict) -> None:
+    """Only the toggle and the workspace now -- the rule lives in the database."""
+
+    def __init__(self, workspace_id: int) -> None:
         self.workspace_id = workspace_id
         self.require_subscription = True
-        self.subscription_requirement_json = blob
 
 
 class _StubStrategy:
@@ -109,6 +111,10 @@ class TestCheckInGate(IsolatedAsyncioTestCase):
             sa.text("delete from subscriptions.provider_config where workspace_id = :w"),
             {"w": self.ws},
         )
+        await self._session.execute(
+            sa.text("delete from subscriptions.requirement where workspace_id = :w"),
+            {"w": self.ws},
+        )
         await self._session.commit()
         await self._session.close()
         await self._engine.dispose()
@@ -128,6 +134,22 @@ class TestCheckInGate(IsolatedAsyncioTestCase):
             evidence={},
         )
 
+    async def _set_workspace_requirement(self, blob: dict) -> None:
+        """The rule is the workspace's now, so the gate reads it back out of Postgres."""
+        await self._session.execute(
+            sa.text("delete from subscriptions.requirement where workspace_id = :w"),
+            {"w": self.ws},
+        )
+        await self._session.execute(
+            sa.text(
+                "insert into subscriptions.requirement "
+                "(workspace_id, name, requirement_json, is_default) "
+                "values (:w, 'default', :blob, true)"
+            ),
+            {"w": self.ws, "blob": json.dumps(blob)},
+        )
+        await self._session.commit()
+
     async def _blocks(self, blob: dict, live: dict[str, tuple[str, int | None]]) -> bool:
         """True when the gate refuses check-in. Providers absent from ``live`` have
         no strategy and therefore resolve to ``unknown``."""
@@ -144,10 +166,9 @@ class TestCheckInGate(IsolatedAsyncioTestCase):
                 provider: _StubStrategy(self._verdict(state, tier)) for provider, (state, tier) in live.items()
             },
         )
+        await self._set_workspace_requirement(blob)
         try:
-            await assert_subscription_allows_check_in(
-                form=_Form(self.ws, blob), auth_user_id=self.au, resolver=resolver
-            )
+            await assert_subscription_allows_check_in(form=_Form(self.ws), auth_user_id=self.au, resolver=resolver)
         except BaseAPIException:
             return True
         return False
