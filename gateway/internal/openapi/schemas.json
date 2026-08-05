@@ -7401,7 +7401,7 @@
       "summary": "Check in to tournament"
     },
     "rpc.tournament.reg_pub_create": {
-      "description": "Lets a user self-register for a tournament (201 Created) after validating the form is open and the input; rejects duplicates with 409, refuses with 400 when a required subscription is confirmed missing by an automatic check (a verdict a challenge code could still change is deferred to check-in, and an undetermined verdict fails open), and requires authentication.",
+      "description": "Lets a user self-register for a tournament (201 Created) after validating the form is open and the input; rejects duplicates with 409, refuses with 400 only when the form's subscription_stage is 'registration' and a required subscription is confirmed missing by an automatic check (a verdict a challenge code could still change is deferred to check-in, and an undetermined verdict fails open), and requires authentication. With the default stage 'check_in' sign-up is never refused on a subscription.",
       "request": {
         "array": false,
         "ref": "tournament.RegistrationCreate"
@@ -34053,6 +34053,10 @@
           "title": "Subscription Requirement Json",
           "type": "object"
         },
+        "subscription_stage": {
+          "$ref": "#/components/schemas/tournament.SubscriptionEnforcementStage",
+          "default": "check_in"
+        },
         "tournament_id": {
           "title": "Tournament Id",
           "type": "integer"
@@ -34116,6 +34120,10 @@
           "default": false,
           "title": "Show Ranks",
           "type": "boolean"
+        },
+        "subscription_stage": {
+          "$ref": "#/components/schemas/tournament.SubscriptionEnforcementStage",
+          "default": "check_in"
         }
       },
       "title": "RegistrationFormUpsert",
@@ -36117,6 +36125,15 @@
       ],
       "title": "SubroleOption",
       "type": "object"
+    },
+    "tournament.SubscriptionEnforcementStage": {
+      "description": "The EARLIEST admission gate a subscription requirement blocks at.\n\nOrdered, not a set: ``registration`` implies check-in too. Requiring a\nsubscription to sign up while admitting an unsubscribed player at check-in\nwould be incoherent, so there is no \"registration only\" value to pick wrongly.\n\nOff is not a member -- that is ``registration_form.require_subscription``\nbeing false. Same shape as ``require_open_profile`` + ``open_profile_scope``\nin the same table: one flag for whether, one value for how.",
+      "enum": [
+        "registration",
+        "check_in"
+      ],
+      "title": "SubscriptionEnforcementStage",
+      "type": "string"
     },
     "tournament.SubscriptionProviderConfigListResponse": {
       "properties": {
