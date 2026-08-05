@@ -365,6 +365,12 @@ class WorkspaceSubscriptionRequirementRead(BaseModel):
     """
 
     requirement: dict[str, Any] = Field(default_factory=dict)
+    #: How many live tournaments this rule currently gates. One workspace rule now
+    #: governs every tournament in the workspace, so clearing or tightening it is not
+    #: a local edit -- the admin surface names the blast radius rather than leaving the
+    #: organizer to guess it. Counts open, unfinished tournaments whose form has the
+    #: subscription toggle on, i.e. exactly the set the collector sweeps.
+    enforcing_tournaments: int = 0
 
 
 class WorkspaceSubscriptionRequirementUpsert(BaseModel):

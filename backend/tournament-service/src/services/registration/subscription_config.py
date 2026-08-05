@@ -236,9 +236,35 @@ async def load_workspace_requirement_blob(session: AsyncSession, workspace_id: i
     return dict(blob) if blob else {}
 
 
+async def count_enforcing_tournaments(session: AsyncSession, workspace_id: int) -> int:
+    """Live tournaments this workspace's rule currently gates.
+
+    Deliberately the same predicate the collector sweeps on
+    (``find_tournaments_requiring_subscriptions``): open, unfinished, toggle on. A
+    finished tournament still carrying the toggle is not "gated" in any sense the
+    organizer cares about, and counting it would overstate the blast radius the admin
+    screen is there to report honestly.
+    """
+    form = models.BalancerRegistrationForm
+    return (
+        await session.scalar(
+            sa.select(sa.func.count())
+            .select_from(models.Tournament)
+            .join(form, form.tournament_id == models.Tournament.id)
+            .where(
+                models.Tournament.workspace_id == workspace_id,
+                models.Tournament.is_finished.is_(False),
+                form.require_subscription.is_(True),
+                form.is_open.is_(True),
+            )
+        )
+    ) or 0
+
+
 async def get_workspace_requirement(session: AsyncSession, workspace_id: int) -> WorkspaceSubscriptionRequirementRead:
     return WorkspaceSubscriptionRequirementRead(
-        requirement=await load_workspace_requirement_blob(session, workspace_id)
+        requirement=await load_workspace_requirement_blob(session, workspace_id),
+        enforcing_tournaments=await count_enforcing_tournaments(session, workspace_id),
     )
 
 
