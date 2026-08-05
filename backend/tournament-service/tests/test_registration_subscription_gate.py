@@ -50,11 +50,13 @@ from shared.subscriptions import (  # noqa: E402
     SubscriptionState,
     SubscriptionVerdict,
     evaluate_requirement,
-    parse_requirement,
 )
 from src.services.registration.subscription_gate import (  # noqa: E402
     assert_subscription_allows_registration,
 )
+
+# The resolver's fail-open contract, defined once -- see that module's docstring.
+from tests._subscription_fakes import resolver_rule as _rule  # noqa: E402
 
 BOOSTY_ONLY = {"mode": "all", "requirements": [{"provider": "boosty", "min_tier_rank": 2}]}
 BOTH = {"mode": "all", "requirements": [{"provider": "boosty"}, {"provider": "twitch"}]}
@@ -78,20 +80,6 @@ ACTIVE_2 = _v(SubscriptionState.ACTIVE, 2)
 ACTIVE_1 = _v(SubscriptionState.ACTIVE, 1)
 INACTIVE = _v(SubscriptionState.INACTIVE)
 UNKNOWN = _v(SubscriptionState.UNKNOWN)
-
-
-def _rule(blob: dict | None) -> SubscriptionRequirement | None:
-    """What the real resolver would hand back for ``blob``.
-
-    Mirrors ``SubscriptionResolver.load_requirement``'s fail-open contract (unit-tested
-    in ``shared/tests/test_subscription_load_requirement.py``) so the cases below keep
-    exercising the gate's own decisions rather than the parse.
-    """
-    try:
-        requirement = parse_requirement(blob)
-    except ValueError:
-        return None
-    return requirement if requirement.requirements else None
 
 
 class _Form:

@@ -41,17 +41,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from shared.subscriptions import (  # noqa: E402
     Outcome,
-    SubscriptionRequirement,
     SubscriptionState,
     SubscriptionVerdict,
     evaluate_requirement,
-    parse_requirement,
 )
 from src.schemas.registration import RegistrationRead  # noqa: E402
 from src.services.registration.subscription_reads import (  # noqa: E402
     build_subscription_reads,
     serialize_verdicts,
 )
+
+# The resolver's fail-open contract, defined once -- see that module's docstring.
+from tests._subscription_fakes import resolver_rule as _rule  # noqa: E402
 
 EITHER = {"mode": "any", "requirements": [{"provider": "boosty"}, {"provider": "twitch"}]}
 BOOSTY_ONLY = {"requirements": [{"provider": "boosty", "min_tier_rank": 2}]}
@@ -73,19 +74,6 @@ ACTIVE_2 = _v(SubscriptionState.ACTIVE, 2, "Уровень 2")
 ACTIVE_1 = _v(SubscriptionState.ACTIVE, 1)
 INACTIVE = _v(SubscriptionState.INACTIVE)
 UNKNOWN = _v(SubscriptionState.UNKNOWN)
-
-
-def _rule(blob: dict | None) -> SubscriptionRequirement | None:
-    """What the real resolver would hand back for ``blob``.
-
-    Mirrors ``SubscriptionResolver.load_requirement``'s fail-open contract (unit-tested
-    in ``shared/tests/test_subscription_load_requirement.py``).
-    """
-    try:
-        requirement = parse_requirement(blob)
-    except ValueError:
-        return None
-    return requirement if requirement.requirements else None
 
 
 class _Form:
