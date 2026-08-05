@@ -102,18 +102,37 @@ def _patched(get_tournament: AsyncMock, get_workspace: AsyncMock) -> Any:
     )
 
 
+class _LockProbeSession:
+    """A session that answers only the draft-lock probe, and counts it.
+
+    With both level getters patched, the roster-shape branch issues exactly one
+    query: `has_unfinished_draft_session`. Counting `scalar` therefore proves
+    both halves of the opt-in contract -- the probe runs when the entity is
+    requested, and never runs when it is not.
+    """
+
+    def __init__(self, *, draft_status: str | None = None) -> None:
+        self.draft_status = draft_status
+        self.scalar_calls: list[Any] = []
+
+    async def scalar(self, statement: Any) -> Any:
+        self.scalar_calls.append(statement)
+        return self.draft_status
+
+
 async def _read(
     tournament: models.Tournament,
     entities: list[str],
     *,
     tournament_slots: dict[str, int] | None = None,
     workspace_slots: dict[str, int] | None = None,
+    session: _LockProbeSession | None = None,
 ) -> tuple[schemas.TournamentRead, AsyncMock, AsyncMock]:
     get_tournament, get_workspace = _levels(tournament_slots, workspace_slots)
     first, second = _patched(get_tournament, get_workspace)
     with first, second:
         read = await tournament_flows.to_pydantic(
-            cast(AsyncSession, object()),
+            cast(AsyncSession, session if session is not None else _LockProbeSession()),
             tournament,
             entities,
         )
@@ -261,8 +280,8 @@ class RosterShapeWiringTests(IsolatedAsyncioTestCase):
         # Drives the REAL `roster_shape_access` getters (unpatched) against a
         # fake session, so a wrong import or argument order in `to_pydantic`
         # cannot hide behind mocks. Order is tournament level first, then
-        # workspace level.
-        scalars = iter([{"flex": 4}, None])
+        # workspace level, then the draft-lock probe.
+        scalars = iter([{"flex": 4}, None, None])
         calls: list[object] = []
 
         class _FakeSession:
@@ -281,7 +300,7 @@ class RosterShapeWiringTests(IsolatedAsyncioTestCase):
         assert read.roster_shape is not None
         self.assertEqual("tournament", read.roster_shape.source)
         self.assertEqual({"flex": 4}, read.roster_shape.slots)
-        self.assertEqual(2, len(calls))
+        self.assertEqual(3, len(calls))
 
 
 class RosterShapeReadSchemaTests(IsolatedAsyncioTestCase):
@@ -323,14 +342,66 @@ class AdminTournamentSerializerTests(IsolatedAsyncioTestCase):
         tournament = _tournament(tournament_id=12, roster_slots_json={"tank": 2, "dps": 2, "support": 2})
 
         with first, second:
-            dumped = await registry._ser_tournament(cast(AsyncSession, object()), tournament)
+            dumped = await registry._ser_tournament(
+                cast(AsyncSession, _LockProbeSession(draft_status="picking")), tournament
+            )
 
         self.assertIsNotNone(dumped["roster_shape"])
         self.assertEqual("tournament", dumped["roster_shape"]["source"])
         self.assertEqual({"tank": 2, "dps": 2, "support": 2}, dumped["roster_shape"]["slots"])
         self.assertEqual(6, dumped["roster_shape"]["team_size"])
         self.assertEqual({"tank": 2, "dps": 2, "support": 2}, dumped["roster_slots_json"])
+        # The Settings tab needs the lock alongside the shape: without it the
+        # editor stays enabled and the block only surfaces as a 400 on save.
+        self.assertIs(True, dumped["roster_locked_by_draft"])
         get_tournament.assert_awaited_once()
+
+
+class RosterLockedByDraftTests(IsolatedAsyncioTestCase):
+    """`roster_locked_by_draft` mirrors the write-path guard, opt-in like the shape."""
+
+    async def test_unfinished_session_locks_the_shape(self) -> None:
+        session = _LockProbeSession(draft_status="picking")
+        read, _, _ = await _read(_tournament(tournament_id=20), ["roster_shape"], session=session)
+
+        self.assertIs(True, read.roster_locked_by_draft)
+        self.assertEqual(1, len(session.scalar_calls))
+
+    async def test_terminal_session_does_not_lock_the_shape(self) -> None:
+        # A cancelled/completed session is invisible to the guard's
+        # `status NOT IN (...)` filter, so the probe comes back empty -- exactly
+        # what Postgres returns for a terminal row.
+        for terminal in ("cancelled", "completed"):
+            with self.subTest(status=terminal):
+                session = _LockProbeSession(draft_status=None)
+                read, _, _ = await _read(
+                    _tournament(tournament_id=21), ["roster_shape"], session=session
+                )
+
+                self.assertIs(False, read.roster_locked_by_draft)
+                compiled = str(
+                    session.scalar_calls[0].compile(compile_kwargs={"literal_binds": True})
+                )
+                self.assertIn(terminal, compiled)
+
+    async def test_no_sessions_at_all_does_not_lock_the_shape(self) -> None:
+        session = _LockProbeSession(draft_status=None)
+        read, _, _ = await _read(_tournament(tournament_id=22), ["roster_shape"], session=session)
+
+        self.assertIs(False, read.roster_locked_by_draft)
+
+    async def test_probe_is_never_issued_when_the_entity_is_not_requested(self) -> None:
+        # Same opt-in reason as `roster_shape`, but this one costs a real query:
+        # the six nested `TournamentRead` callsites must not pay for it per row.
+        for entities in ([], ["stages", "division_grid_version"]):
+            with self.subTest(entities=entities):
+                session = _LockProbeSession(draft_status="picking")
+                read, _, _ = await _read(
+                    _tournament(tournament_id=23), entities, session=session
+                )
+
+                self.assertIsNone(read.roster_locked_by_draft)
+                self.assertEqual([], session.scalar_calls)
 
 
 class WorkspaceReadTests(IsolatedAsyncioTestCase):

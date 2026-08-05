@@ -67,9 +67,14 @@ class TournamentRead(BaseRead):
     division_grid_version_id: int | None
     division_grid_version: DivisionGridVersionRead | None = None
     roster_slots_json: dict[str, int] | None = None
-    # Opt-in entity (D16): TournamentRead is nested in six other schemas that are
-    # built from ORM rows without a session, so this cannot be required.
+    # Opt-in entities (D16): TournamentRead is nested in six other schemas that
+    # are built from ORM rows without a session, so neither of these can be
+    # required -- filling them unconditionally would cost a query per nested row.
     roster_shape: RosterShapeRead | None = None
+    # `True` while a draft session is in flight, i.e. while the write-path guard
+    # would reject a roster-shape change. Lets the admin form disable the editor
+    # up front instead of surfacing the block as a 400 on save.
+    roster_locked_by_draft: bool | None = None
 
 
 class OwalStandingDay(BaseModel):

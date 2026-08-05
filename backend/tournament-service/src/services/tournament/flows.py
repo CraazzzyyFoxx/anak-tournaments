@@ -13,6 +13,7 @@ from shared.models.identity.auth_user import AuthUser
 from shared.services.challonge_refs import ChallongeRef, resolve_stage_challonge, resolve_tournament_challonge
 from shared.services.division_grid_normalization import DivisionGridNormalizationError, DivisionGridNormalizer
 from shared.services.division_grid_resolution import resolve_tournament_division
+from shared.services.draft_guards import has_unfinished_draft_session
 from shared.services.roster_shape_access import get_tournament_roster_slots, get_workspace_roster_slots
 from shared.services.tournament_visibility import visible_tournaments_predicate
 from src import models, schemas
@@ -116,6 +117,7 @@ async def to_pydantic(
                 from_attributes=True,
             )
     roster_shape = None
+    roster_locked_by_draft = None
     if _entity_requested(entities, "roster_shape"):
         # Both levels are read explicitly so `source` is KNOWN rather than
         # reverse-engineered from the resolved shape: an override that happens to
@@ -126,6 +128,10 @@ async def to_pydantic(
         shape = resolve_roster_shape(tournament_slots, workspace_slots)
         source = "tournament" if tournament_slots else "workspace" if workspace_slots else "default"
         roster_shape = schemas.RosterShapeRead.from_shape(shape, source=source)
+        # Same opt-in gate, same reason: this one DOES cost a query, so nested
+        # reads must not pay for it. The write-path guard uses the same predicate,
+        # so the form disables exactly what a save would reject.
+        roster_locked_by_draft = await has_unfinished_draft_session(session, tournament.id)
     tournament_challonge_id, tournament_challonge_slug = challonge_ref if challonge_ref is not None else (None, None)
     return schemas.TournamentRead(
         id=tournament.id,
@@ -154,6 +160,7 @@ async def to_pydantic(
         division_grid_version=division_grid_version,
         roster_slots_json=tournament.roster_slots_json,
         roster_shape=roster_shape,
+        roster_locked_by_draft=roster_locked_by_draft,
         stages=stages,
         participants_count=participants_count,
         registrations_count=registrations_count,
