@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Lock, Users } from "lucide-react";
 import { useTranslations } from "next-intl";
 
@@ -67,24 +67,27 @@ export function RosterShapeEditor({
   const [selection, setSelection] = useState<RosterShapeSelection>(() =>
     initialSelection(value, inherited)
   );
-
   // `value` is the payload, which cannot express the editor's whole state: it
   // drops the counts kept under `inherit` and the mode behind an override that
   // equals a preset. So it is re-seeded only when the prop actually diverges
   // from what this editor last emitted -- a parent reset or a background
   // refetch -- and never on the editor's own round trip through the parent.
-  const emitted = useRef(JSON.stringify(value));
-  useEffect(() => {
-    const incoming = JSON.stringify(value);
-    if (incoming === emitted.current) return;
-    emitted.current = incoming;
-    setSelection(initialSelection(value, effective?.slots ?? {}));
-  }, [value, effective]);
+  //
+  // Adjusted during render rather than in an effect: React re-runs the component
+  // with the new state before committing, so the stale selection is never
+  // painted. An effect would paint it first, then correct it -- and would trip
+  // react-hooks/set-state-in-effect for exactly that reason.
+  const [lastEmitted, setLastEmitted] = useState(() => JSON.stringify(value));
+  const incoming = JSON.stringify(value);
+  if (incoming !== lastEmitted) {
+    setLastEmitted(incoming);
+    setSelection(initialSelection(value, inherited));
+  }
 
   const apply = (next: RosterShapeSelection) => {
     setSelection(next);
     const payload = slotsPayload(next);
-    emitted.current = JSON.stringify(payload);
+    setLastEmitted(JSON.stringify(payload));
     onChange(payload);
   };
 
