@@ -2,6 +2,7 @@ import typing
 from datetime import datetime
 
 from sqlalchemy import Boolean, CheckConstraint, Enum, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db, enums
@@ -78,6 +79,10 @@ class Tournament(db.TimeStampIntegerMixin):
         nullable=True,
         index=True,
     )
+    # Per-team roster shape override, e.g. ``{"tank": 1, "dps": 2, "support": 2}``.
+    # NULL means "inherit from the workspace default", NOT "an empty roster" — the
+    # resolution chain lives in ``shared.domain.roster_shape.resolve_roster_shape``.
+    roster_slots_json: Mapped[dict[str, int] | None] = mapped_column(JSONB, nullable=True)
 
     workspace: Mapped[Workspace] = relationship()
     division_grid_version: Mapped["DivisionGridVersion | None"] = relationship(

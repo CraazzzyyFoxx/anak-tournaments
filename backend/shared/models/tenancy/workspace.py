@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db
@@ -66,6 +67,11 @@ class Workspace(db.TimeStampIntegerMixin):
         nullable=True,
         index=True,
     )
+    # Workspace-wide default per-team roster shape, e.g.
+    # ``{"tank": 1, "dps": 2, "support": 2}``. NULL means "inherit the built-in
+    # 5v5 default", NOT "an empty roster" — the resolution chain lives in
+    # ``shared.domain.roster_shape.resolve_roster_shape``.
+    default_roster_slots_json: Mapped[dict[str, int] | None] = mapped_column(JSONB, nullable=True)
     members: Mapped[list["WorkspaceMember"]] = relationship(back_populates="workspace", passive_deletes=True)
     default_division_grid_version: Mapped["DivisionGridVersion | None"] = relationship(
         foreign_keys=[default_division_grid_version_id],
