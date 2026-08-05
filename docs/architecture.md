@@ -112,7 +112,9 @@ via FastStream. See [`backend/shared/README.md`](../backend/shared/README.md) fo
 - **Realtime.** Workers publish to Redis topics (`tournament:{id}:bracket`,
   `encounter:{id}:map-veto`, `tournament:{id}:balancer`, `workspace:{id}:analytics_jobs`,
   workspace `logs.updated`) via `realtime.workspace_event` rows; the gateway relays them to
-  WebSocket clients with replay.
+  WebSocket clients with replay. `workspace:{id}:subscriptions` is non-durable (no event row,
+  no replay): one thin `subscription.updated` per resolve pass that actually moved a verdict,
+  which the admin subscription views and the tournament hub refetch on.
 - **Discord ingest.** The bot uploads match-log attachments as base64 to
   `UPLOAD_MATCH_LOG_QUEUE`; parser results return over a fanout `MATCH_LOG_RESULT_EXCHANGE`
   (per-replica exclusive queue) correlated by `ResultWaiter`.

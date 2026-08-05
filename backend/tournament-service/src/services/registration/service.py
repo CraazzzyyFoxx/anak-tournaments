@@ -25,6 +25,7 @@ from shared.services.profile_visibility import resolve_profiles_open
 from shared.services.subscription_wiring import build_resolver
 from src import models
 from src.core.config import settings
+from src.core.redis import get_realtime_redis
 from src.schemas.registration import (
     RegistrationCreate,
     RegistrationFormUpsert,
@@ -836,6 +837,7 @@ async def build_public_registration_list(
             discord_bot_token=settings.discord_token,
             twitch_client_id=settings.twitch_client_id,
             proxy=settings.proxy_url,
+            redis=get_realtime_redis(),
         ),
     )
 

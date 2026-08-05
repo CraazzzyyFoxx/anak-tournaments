@@ -12,6 +12,8 @@ must not read any single service's settings.
 
 from __future__ import annotations
 
+from typing import Any
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.social import SocialProvider
@@ -19,19 +21,31 @@ from shared.services.subscription_entitlements import (
     CheckLogSink,
     EntitlementStore,
     ProviderStrategy,
+    SubscriptionEventSink,
     SubscriptionResolver,
 )
+from shared.services.subscription_realtime import RedisSubscriptionEventSink
 from shared.services.subscription_store import SqlCheckLogSink, SqlEntitlementStore
 from shared.services.subscription_strategies import (
     BoostyDiscordStrategy,
     TwitchSubscriptionStrategy,
 )
 
-__all__ = ("build_log_sink", "build_resolver", "build_store", "build_strategies")
+__all__ = ("build_event_sink", "build_log_sink", "build_resolver", "build_store", "build_strategies")
 
 
 def build_log_sink(session: AsyncSession) -> CheckLogSink:
     return SqlCheckLogSink(session)
+
+
+def build_event_sink(redis: Any | None) -> SubscriptionEventSink | None:
+    """Realtime invalidation sink, or ``None`` when the caller has no Redis.
+
+    Optional rather than required so a test (or a CLI one-off) can build a working
+    resolver with nothing but a session: no sink means no signal, and every
+    admission decision is unaffected.
+    """
+    return RedisSubscriptionEventSink(redis) if redis is not None else None
 
 
 def build_store(session: AsyncSession) -> EntitlementStore:
@@ -68,6 +82,7 @@ def build_resolver(
     discord_bot_token: str | None = None,
     twitch_client_id: str | None = None,
     proxy: str | None = None,
+    redis: Any | None = None,
 ) -> SubscriptionResolver:
     return SubscriptionResolver(
         store=build_store(session),
@@ -81,4 +96,7 @@ def build_resolver(
         # tab, and the registration/check-in gates are exactly the checks an
         # organizer later asks "why was this player refused?" about.
         log_sink=build_log_sink(session),
+        # ...and tells the workspace when a verdict actually moved, so an open page
+        # shows it without polling. Absent Redis, silently no signal.
+        event_sink=build_event_sink(redis),
     )

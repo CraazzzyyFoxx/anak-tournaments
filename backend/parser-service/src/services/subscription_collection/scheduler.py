@@ -93,6 +93,7 @@ async def run_subscription_collection_tick(
                 twitch_client_id=settings.twitch_client_id,
                 proxy=settings.proxy_url,
                 batch_size=cfg.batch_size,
+                redis=redis_client,
             )
             logger.info("Subscription collection tick processed {} users", count)
             return count

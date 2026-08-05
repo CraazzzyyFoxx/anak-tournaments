@@ -11,6 +11,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { useRealtimeTopic } from "@/hooks/useRealtimeTopic";
 import { useSyncActiveWorkspace } from "@/hooks/useSyncActiveWorkspace";
 import { useTournamentRealtime } from "@/hooks/useTournamentRealtime";
+import { tournamentQueryKeys } from "@/lib/tournament-query-keys";
 import encounterService from "@/services/encounter.service";
 import teamService from "@/services/team.service";
 import { TournamentWorkspaceHeader } from "./components/TournamentWorkspaceHeader";
@@ -134,6 +135,24 @@ export function TournamentHubShell({
     isValidTournamentId ? `tournament:${tournamentId}:balancer` : null,
     (event) => {
       if (event.event_type === "balancer.presence") return;
+      scheduleReadinessInvalidate();
+    }
+  );
+
+  // Subscription verdicts ride on every registration read (`subscription_outcome`
+  // drives the admission grouping), so a background sweep or another admin's
+  // re-check changes this page with no local mutation to hang an invalidation on.
+  // Workspace-scoped, not tournament-scoped: an entitlement is
+  // (workspace, user, provider) and one change is visible in every tournament.
+  useRealtimeTopic(
+    isValidTournamentId && tournamentWorkspaceId != null
+      ? `workspace:${tournamentWorkspaceId}:subscriptions`
+      : null,
+    () => {
+      if (tournamentWorkspaceId == null) return;
+      void queryClient.invalidateQueries({
+        queryKey: tournamentQueryKeys.registrationsList(tournamentWorkspaceId, tournamentId)
+      });
       scheduleReadinessInvalidate();
     }
   );

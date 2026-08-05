@@ -36,13 +36,16 @@ from faststream.rabbit.annotations import RabbitMessage
 
 from shared.balancer_registration_statuses import get_status_metas_map
 from shared.balancer_subrole_catalog import resolve_subrole_catalog
+from shared.core.enums import SubscriptionCollectionSource
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.identity import rehydrate_user
 from shared.services.profile_visibility import resolve_profiles_open
+from shared.services.subscription_realtime import publish_subscriptions_updated
 from shared.services.subscription_wiring import build_resolver, build_store
 from shared.services.tournament_visibility import assert_tournament_viewable
 from src import models, schemas
 from src.core.config import settings
+from src.core.redis import get_realtime_redis
 from src.rpc._helpers import (
     _dump,
     _identity,
@@ -105,6 +108,9 @@ def _subscription_resolver(session: Any) -> Any:
         discord_bot_token=settings.discord_token,
         twitch_client_id=settings.twitch_client_id,
         proxy=settings.proxy_url,
+        # A gate that flips somebody's verdict tells the workspace so, so an open
+        # admin list stops showing the stale outcome.
+        redis=get_realtime_redis(),
     )
 
 
@@ -493,6 +499,14 @@ def register(broker: Any, logger: Any) -> None:
                 submitted_code=body.code,
             )
             await session.commit()
+            # Redemption writes the entitlement straight through the store, so the
+            # resolver's own signal never fires for it. Published here, after the
+            # commit, which also makes this the one path with no ordering caveat.
+            await publish_subscriptions_updated(
+                get_realtime_redis(),
+                form.workspace_id,
+                reason=SubscriptionCollectionSource.redeem,
+            )
             return _dump(
                 await subscription_status_for_user(
                     form=form,

@@ -269,6 +269,7 @@ async def trigger_collection(
     discord_bot_token: str | None = None,
     twitch_client_id: str | None = None,
     proxy: str | None = None,
+    redis: Any | None = None,
 ) -> int:
     """Force a live re-check for one player, or sweep every active tournament.
 
@@ -288,6 +289,7 @@ async def trigger_collection(
             proxy=proxy,
             batch_size=cfg.batch_size,
             source=SubscriptionCollectionSource.manual,
+            redis=redis,
         )
 
     auth_user_id = await _auth_user_id_for_player(session, user_id)
@@ -304,6 +306,7 @@ async def trigger_collection(
         discord_bot_token=discord_bot_token,
         twitch_client_id=twitch_client_id,
         proxy=proxy,
+        redis=redis,
     )
 
     checked = 0

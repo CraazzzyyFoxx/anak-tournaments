@@ -12,6 +12,7 @@ admin Subscription-collection tab.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import sqlalchemy as sa
 from loguru import logger
@@ -134,6 +135,7 @@ async def collect_subscriptions_for_active_tournaments(
     proxy: str | None = None,
     batch_size: int = 50,
     source: str = SubscriptionCollectionSource.scheduled,
+    redis: Any | None = None,
 ) -> int:
     """Check and update subscriptions for participants in active tournaments requiring subscriptions.
 
@@ -154,6 +156,7 @@ async def collect_subscriptions_for_active_tournaments(
         discord_bot_token=discord_bot_token,
         twitch_client_id=twitch_client_id,
         proxy=proxy,
+        redis=redis,
     )
 
     total_processed = 0

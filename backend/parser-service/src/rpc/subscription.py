@@ -19,6 +19,7 @@ from src.schemas.admin import subscription_collection as sc_schemas
 from src.services.subscription_collection import admin as subscription_admin
 
 from . import _common as c
+from ._clients import realtime_redis
 
 _SF = db.async_session_maker
 
@@ -82,6 +83,7 @@ def register(broker: Any, logger: Any) -> None:
                 discord_bot_token=settings.discord_token,
                 twitch_client_id=settings.twitch_client_id,
                 proxy=settings.proxy_url,
+                redis=realtime_redis,
             )
             return sc_schemas.SubscriptionCollectTriggerResponse(checked=checked)
 

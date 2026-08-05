@@ -8,6 +8,7 @@ __all__ = (
     "logs",
     "map_veto",
     "realtime_channel",
+    "subscriptions",
     "workspace_notifications",
 )
 
@@ -55,6 +56,20 @@ def logs(workspace_id: int) -> str:
 
 def workspace_notifications(workspace_id: int) -> str:
     return f"workspace:{int(workspace_id)}:notifications"
+
+
+def subscriptions(workspace_id: int) -> str:
+    """Topic for subscription-entitlement changes within a workspace.
+
+    Carries a thin ``subscription.updated`` signal (no verdict, no user); the
+    admin subscription views and the tournament hub refetch on receipt. Workspace
+    scoped because an entitlement is (workspace, user, provider) — one change is
+    visible in every tournament that workspace runs. Gated by workspace
+    membership via the existing ``workspace:*:*`` ACL rule, which is also why the
+    public participants list does NOT get this signal: who is being checked is
+    not spectator data.
+    """
+    return f"workspace:{int(workspace_id)}:subscriptions"
 
 
 def analytics_jobs(workspace_id: int) -> str:

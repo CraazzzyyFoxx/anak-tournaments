@@ -26,6 +26,7 @@ from shared.schemas.events import TournamentComputationJobEvent
 from src.core import config, db
 from src.core.broker import set_worker_broker
 from src.core.caching import configure_cache
+from src.core.redis import close_realtime_redis
 from src.rpc import admin_misc, integrations, public_rpc, registration_admin, stage_admin, veto_admin
 from src.rpc import reads as rpc_reads
 from src.services.admin import registry as admin_registry
@@ -174,6 +175,9 @@ async def stop_scheduler() -> None:
     # flows commit incrementally (per encounter / per batch) and are idempotent
     # on re-run, so an interrupted job resumes cleanly on the next tick.
     scheduler.shutdown(wait=False)
+    # The realtime publisher's pooled client: unclosed, it leaks a connection per
+    # worker restart (the same leak challonge.sync's own client was fixed for).
+    await close_realtime_redis()
 
 
 @broker.subscriber(TOURNAMENT_BRACKET_JOBS_QUEUE, exchange=TOURNAMENT_COMPUTE_EXCHANGE, channel=_JOBS_CHANNEL)

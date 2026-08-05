@@ -62,6 +62,7 @@ __all__ = (
     "ProviderConfigRow",
     "ProviderStrategy",
     "StoredEntitlement",
+    "SubscriptionEventSink",
     "SubscriptionResolver",
 )
 
@@ -156,6 +157,21 @@ class CheckLogSink(Protocol):
     ) -> None: ...
 
 
+class SubscriptionEventSink(Protocol):
+    """Realtime "something changed" boundary -- one signal per resolve pass.
+
+    Separate from ``CheckLogSink``: that records every ATTEMPT (an unchanged
+    re-check included) because it is the audit trail, while this fires only when a
+    verdict actually moved, because it exists to invalidate a client cache. Wiring
+    it to attempts instead would make the collector's every-tick ``force_refresh``
+    sweep refetch every open admin page forever.
+
+    A resolver without a sink behaves exactly as before.
+    """
+
+    async def subscriptions_updated(self, *, workspace_id: int, reason: str) -> None: ...
+
+
 class SubscriptionResolver:
     def __init__(
         self,
@@ -165,12 +181,14 @@ class SubscriptionResolver:
         now: Callable[[], datetime] | None = None,
         ttl_seconds: int = SUBSCRIPTION_TTL_SECONDS,
         log_sink: CheckLogSink | None = None,
+        event_sink: SubscriptionEventSink | None = None,
     ) -> None:
         self._store = store
         self._strategies = strategies
         self._now = now or (lambda: datetime.now(UTC))
         self._ttl_seconds = ttl_seconds
         self._log_sink = log_sink
+        self._event_sink = event_sink
 
     # ── raw verdicts ──────────────────────────────────────────────────────────
 
@@ -192,6 +210,11 @@ class SubscriptionResolver:
         stored = await self._store.load_entitlements(workspace_id, user_ids, wanted)
 
         out: dict[int, dict[str, SubscriptionVerdict]] = {uid: {} for uid in user_ids}
+        # One realtime signal for the whole pass, folded here rather than per user:
+        # a sweep that flips 40 verdicts must cost every open admin page one
+        # refetch, not forty. `resolve` is already scoped to a single workspace,
+        # so a bool is the whole bookkeeping.
+        changed = False
 
         for provider in wanted:
             unusable = self._unusable_reason(provider, configs.get(provider))
@@ -267,6 +290,7 @@ class SubscriptionResolver:
                     )
                     continue
                 out[uid][provider] = verdict
+                changed = changed or self._differs(stored.get((uid, provider)), verdict)
                 await self._store.upsert(workspace_id, uid, provider, verdict)
                 await self._log(
                     workspace_id=workspace_id,
@@ -276,6 +300,9 @@ class SubscriptionResolver:
                     source=source,
                     verdict=verdict,
                 )
+
+        if changed:
+            await self._emit_updated(workspace_id=workspace_id, reason=source)
 
         return out
 
@@ -403,6 +430,39 @@ class SubscriptionResolver:
                 verdict=verdict,
                 error=error,
             )
+        except Exception:  # pragma: no cover - defensive; see docstring
+            pass
+
+    @staticmethod
+    def _differs(previous: StoredEntitlement | None, verdict: SubscriptionVerdict) -> bool:
+        """Whether this verdict is news, i.e. worth a realtime signal.
+
+        Compares only what a reader can see -- state, tier and how it was proven --
+        never ``checked_at``/``evidence``: every forced re-check rewrites those, so
+        including them would make the collector's every-tick sweep "change"
+        everything and defeat the point of the flag.
+
+        No stored row at all IS news: it is the patron's first verdict.
+        """
+        if previous is None:
+            return True
+        return (previous.state, previous.tier_rank, previous.source) != (
+            verdict.state,
+            verdict.tier_rank,
+            verdict.source,
+        )
+
+    async def _emit_updated(self, *, workspace_id: int, reason: str) -> None:
+        """Signal the workspace that entitlements moved, if a sink is wired.
+
+        Swallows failures for the same reason as ``_log``: a client that misses an
+        invalidation refetches on its next reconnect, while an admission decision
+        that fails because Redis blinked is a real outage.
+        """
+        if self._event_sink is None:
+            return
+        try:
+            await self._event_sink.subscriptions_updated(workspace_id=workspace_id, reason=reason)
         except Exception:  # pragma: no cover - defensive; see docstring
             pass
 

@@ -1,11 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
+import { useDebounce } from "use-debounce";
 
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useRealtimeTopic } from "@/hooks/useRealtimeTopic";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
 import { SubscriptionHealthDashboard } from "./_components/subscription-health";
@@ -25,6 +28,11 @@ interface SelectedPlayer {
 type TabValue = "status" | "settings" | "providers";
 
 const TABS: readonly TabValue[] = ["status", "settings", "providers"];
+
+// Collapse a burst into one refetch: a sweep publishes one signal per resolve
+// pass, but a manual re-check of a player registered in several workspaces still
+// lands several in a row.
+const REALTIME_REFRESH_DEBOUNCE_MS = 500;
 
 export default function SubscriptionCollectionAdminPage() {
   // Mirrors /admin/rank: the collector's global config stays superuser-only, while
@@ -58,6 +66,20 @@ export default function SubscriptionCollectionAdminPage() {
   });
   const [selected, setSelected] = useState<SelectedPlayer | null>(null);
   const openPlayer = (userId: number, label: string) => setSelected({ userId, label });
+
+  // Every query on this page lives under the `["admin","subscriptions"]` prefix,
+  // so one invalidation covers health, the check log and the per-player panel.
+  // The signal is workspace-scoped, which is exactly this page's scope.
+  const queryClient = useQueryClient();
+  const refetchAll = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ["admin", "subscriptions"] });
+  }, [queryClient]);
+  const [scheduleRefetch] = useDebounce(refetchAll, REALTIME_REFRESH_DEBOUNCE_MS);
+  useRealtimeTopic(
+    currentWorkspaceId != null ? `workspace:${currentWorkspaceId}:subscriptions` : null,
+    () => scheduleRefetch(),
+    [scheduleRefetch]
+  );
 
   const showSettingsTab = activeTab === "settings" && isSuperuser;
   const showProvidersTab = activeTab === "providers" && canConfigureWorkspace;
