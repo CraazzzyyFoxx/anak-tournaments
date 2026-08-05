@@ -29,7 +29,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { notify } from "@/lib/notify";
 import { MUTED_BUTTON_CLASS } from "@/app/balancer/components/balancer-page-helpers";
 import SubscriptionRequirementEditor from "@/components/admin/subscriptions/SubscriptionRequirementEditor";
-import SubscriptionProvidersCard from "@/components/admin/subscriptions/SubscriptionProviderCard";
 import type { SubscriptionRequirement } from "@/types/registration.types";
 import { ROLES, canonicalToRegistrationRole } from "@/lib/roles";
 import adminService from "@/services/admin.service";
@@ -428,12 +427,6 @@ export default function RegistrationFormBuilder({
                   />
                 </CardContent>
               </Card>
-
-              {/* Sibling, not nested: this configures workspace-wide provider
-                  credentials and saves itself, so keeping it inside the
-                  tournament's subscription rule made two Save buttons look like
-                  one decision. */}
-              {workspaceId && <SubscriptionProvidersCard workspaceId={workspaceId} />}
 
               <Card>
                 <CardHeader>
