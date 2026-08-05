@@ -179,11 +179,32 @@ async def create_manual_registration(
     stream_pov: bool = False,
     notes: str | None,
     admin_notes: str | None,
+    custom_fields_json: dict[str, Any] | None = None,
+    status_value: str | None = None,
+    balancer_status_value: str | None = None,
     roles: list[dict[str, Any]],
     auth_user_id: int | None = None,
 ) -> models.BalancerRegistration:
     battle_tag = normalize_battle_tag(battle_tag)
     await ensure_unique_battle_tag(session, tournament_id=tournament_id, battle_tag=battle_tag)
+
+    # "approved" is the historical default for a manual row; the admin editor may
+    # override it, in which case the value goes through the same custom-status
+    # catalog check the PATCH path uses.
+    resolved_status = status_value or "approved"
+    resolved_balancer_status = balancer_status_value or "not_in_balancer"
+    if status_value is not None or balancer_status_value is not None:
+        workspace_id = await session.scalar(
+            sa.select(models.Tournament.workspace_id).where(models.Tournament.id == tournament_id)
+        )
+        if status_value is not None:
+            await validate_registration_status_value(
+                session, workspace_id=workspace_id, scope="registration", value=status_value
+            )
+        if balancer_status_value is not None:
+            await validate_registration_status_value(
+                session, workspace_id=workspace_id, scope="balancer", value=balancer_status_value
+            )
 
     form = await get_registration_form(session, tournament_id)
     config = (form.built_in_fields_json or {}).get("top_heroes") if form else None
@@ -213,7 +234,12 @@ async def create_manual_registration(
         stream_pov=stream_pov,
         notes=notes,
         admin_notes=admin_notes,
-        status="approved",
+        custom_fields_json=custom_fields_json or None,
+        status=resolved_status,
+        balancer_status=resolved_balancer_status,
+        # Not derived from ``resolved_balancer_status``: unlike the PATCH path, a
+        # manual row defaults to "not_in_balancer" simply because nothing has
+        # balanced yet — that is not an exclusion.
         exclude_from_balancer=False,
         submitted_at=datetime.now(UTC),
         balancer_profile_overridden_at=datetime.now(UTC),
@@ -232,7 +258,12 @@ async def create_manual_registration(
     # by ensure_player_identity). Without it, manual rows stay unlinked as before.
     if auth_user_id is not None:
         await ensure_player_identity(session, registration, auth_user_id=auth_user_id)
-    await enqueue_registration_approved(session, registration)
+    if resolved_status == "approved":
+        await enqueue_registration_approved(session, registration)
+    else:
+        # The approval event carries the realtime nudge; a row created in any
+        # other state still has to reach the live participant list.
+        _register_registration_changed(session, registration)
     await session.commit()
     return await get_registration_by_id(session, registration.id)
 
@@ -250,6 +281,7 @@ async def update_registration_profile(
     stream_pov: bool | None = None,
     notes: str | None,
     admin_notes: str | None,
+    custom_fields_json: dict[str, Any] | None = None,
     status_value: str | None,
     balancer_status_value: str | None,
     roles: list[dict[str, Any]] | None,
@@ -283,6 +315,11 @@ async def update_registration_profile(
         registration.stream_pov = stream_pov
     if notes is not None:
         registration.notes = notes
+    if custom_fields_json is not None:
+        # Replaced, not merged: the admin editor renders every definition on the
+        # form, so the payload is the complete answer set. Clearing one field
+        # there has to clear it here.
+        registration.custom_fields_json = custom_fields_json or None
     if status_value is not None:
         await validate_registration_status_value(
             session,

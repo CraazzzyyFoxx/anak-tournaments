@@ -61,7 +61,8 @@ export default defineConfig({
       // tests. `RoleStep.behavior.test.tsx` is `.tsx` yet imports `bun:test`,
       // so a directory glob here drags it into vitest and it fails on the import.
       "src/components/registration/SubscriptionRow.behavior.test.tsx",
-      "src/components/registration/CheckInSubscriptionProof.behavior.test.tsx"
+      "src/components/registration/CheckInSubscriptionProof.behavior.test.tsx",
+      "src/components/registration/DetailsStep.behavior.test.tsx"
     ]
   }
 });

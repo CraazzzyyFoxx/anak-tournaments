@@ -453,6 +453,7 @@ async def create_registration(
     smurf_tags: list[str] | None,
     discord_nick: str | None,
     twitch_nick: str | None,
+    boosty_nick: str | None,
     stream_pov: bool,
     notes: str | None,
     custom_fields: dict[str, Any] | None,
@@ -490,6 +491,7 @@ async def create_registration(
         smurf_tags_json=cleaned_smurf_tags or None,
         discord_nick=discord_nick,
         twitch_nick=twitch_nick,
+        boosty_nick=boosty_nick,
         stream_pov=stream_pov,
         notes=notes,
         custom_fields_json=custom_fields,
@@ -551,21 +553,46 @@ async def create_registration(
     return registration
 
 
+# ``RegistrationUpdate`` field -> ORM column for the public self-service PATCH.
+#
+# Explicit because the previous implementation did ``setattr(registration, key,
+# value)`` straight off the payload keys: every key whose name did not happen to
+# match a mapped column landed in the instance ``__dict__`` and died with the
+# session. ``custom_fields`` (the column is ``custom_fields_json``) and the long
+# removed ``primary_role`` were both silently dropped that way.
+_SELF_UPDATE_COLUMNS: dict[str, str] = {
+    "battle_tag": "battle_tag",
+    "discord_nick": "discord_nick",
+    "twitch_nick": "twitch_nick",
+    "boosty_nick": "boosty_nick",
+    "stream_pov": "stream_pov",
+    "notes": "notes",
+    "custom_fields": "custom_fields_json",
+}
+
+
 async def update_registration(
     session: AsyncSession,
     registration: models.BalancerRegistration,
     **kwargs: Any,
 ) -> models.BalancerRegistration:
     for key, value in kwargs.items():
-        if value is not None:
-            if key == "battle_tag":
-                value = _clean_battle_tag(value)
-            elif key == "smurf_tags":
-                cleaned_smurf_tags = [_clean_battle_tag(tag) for tag in value]
-                value = [tag for tag in cleaned_smurf_tags if tag] or None
-            setattr(registration, key, value)
-    if "battle_tag" in kwargs and kwargs["battle_tag"] is not None:
-        registration.battle_tag_normalized = _normalize_battle_tag(registration.battle_tag)
+        column = _SELF_UPDATE_COLUMNS.get(key)
+        if column is None:
+            # A schema field with no column mapping is a bug in this module, not
+            # a client error — raise instead of dropping the value on the floor.
+            raise ValueError(f"update_registration: unmapped payload field {key!r}")
+        if value is None:
+            continue
+        if key == "battle_tag":
+            value = _clean_battle_tag(value)
+            registration.battle_tag_normalized = _normalize_battle_tag(value)
+        elif key == "custom_fields":
+            # Merged, not replaced: ``_validate_custom_field`` skips definitions
+            # the payload omits when ``partial=True``, i.e. a subset is a legal
+            # PATCH body — replacing wholesale would wipe the omitted answers.
+            value = {**(registration.custom_fields_json or {}), **value}
+        setattr(registration, column, value)
     register_tournament_realtime_update(session, registration.tournament_id, "structure_changed")
     await session.commit()
     await session.refresh(registration)
@@ -713,6 +740,7 @@ async def submit_public_registration(
             smurf_tags=body.smurf_tags,
             discord_nick=body.discord_nick,
             twitch_nick=body.twitch_nick,
+            boosty_nick=body.boosty_nick,
             stream_pov=body.stream_pov,
             notes=body.notes,
             custom_fields=body.custom_fields,

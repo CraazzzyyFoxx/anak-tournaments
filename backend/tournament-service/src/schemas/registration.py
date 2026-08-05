@@ -134,7 +134,9 @@ class RegistrationUpdate(BaseModel):
     discord_nick: str | None = None
     twitch_nick: str | None = None
     boosty_nick: str | None = None
-    primary_role: str | None = None
+    # No ``primary_role``: the column was normalized away into
+    # ``balancer.registration_role`` (migration q7l9m1n5o6p7). It stayed on this
+    # schema long after that, so the write path had nowhere to put it.
     stream_pov: bool | None = None
     notes: str | None = None
     custom_fields: dict[str, Any] | None = None

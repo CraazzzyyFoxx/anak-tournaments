@@ -1,0 +1,315 @@
+"""Every field a registration form collects has to reach a column.
+
+Four write paths accept a registration payload (public create, public self
+PATCH, admin manual create, admin profile PATCH) and each of them used to drop
+part of it on the floor -- silently, because a value that is never passed on and
+a value assigned to an attribute SQLAlchemy does not map both look exactly like
+success:
+
+- ``create_registration`` had no ``boosty_nick`` parameter at all, so a Boosty
+  handle the form could mark *required* was validated and then discarded.
+- ``update_registration`` did ``setattr(registration, key, value)`` straight off
+  the payload keys, so ``custom_fields`` (the column is ``custom_fields_json``)
+  and the long-removed ``primary_role`` landed in the instance ``__dict__`` and
+  died with the session.
+- ``create_manual_registration`` hard-coded ``status="approved"`` and knew
+  nothing about custom fields, so the admin editor's status choice and every
+  custom-field answer were dropped.
+- ``update_registration_profile`` had no ``custom_fields_json`` parameter.
+
+The parity tests below are the general guard: a new field on a request schema
+that no writer accepts fails the suite instead of the next registrant.
+
+Runs under stdlib unittest -- no pytest-asyncio in this repo.
+"""
+
+from __future__ import annotations
+
+import inspect
+import os
+import sys
+from pathlib import Path
+from typing import Any
+from unittest import IsolatedAsyncioTestCase, mock
+
+
+def _ensure_test_env() -> None:
+    for key, value in {
+        "POSTGRES_HOST": "localhost",
+        "POSTGRES_PORT": "5432",
+        "POSTGRES_DB": "tournament_test",
+        "POSTGRES_USER": "postgres",
+        "POSTGRES_PASSWORD": "postgres",
+        "JWT_SECRET_KEY": "test-secret",
+        "REDIS_URL": "redis://localhost:6379",
+    }.items():
+        os.environ.setdefault(key, value)
+
+
+_ensure_test_env()
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from src import models  # noqa: E402
+from src.schemas.admin import balancer as admin_schemas  # noqa: E402
+from src.schemas.registration import RegistrationCreate, RegistrationUpdate  # noqa: E402
+from src.services.registration import lifecycle as reg_lifecycle  # noqa: E402
+from src.services.registration import service as reg_service  # noqa: E402
+
+
+class _RecordingSession:
+    """Stands in for the AsyncSession. ``info`` backs
+    ``register_tournament_realtime_update``; ``scalar`` answers the one
+    workspace-id lookup the manual-create path makes."""
+
+    def __init__(self, *, scalar_value: Any = 42) -> None:
+        self.info: dict = {}
+        self.added: list[Any] = []
+        self.commits = 0
+        self._scalar_value = scalar_value
+
+    def add(self, obj: Any) -> None:
+        self.added.append(obj)
+
+    async def flush(self) -> None:
+        return None
+
+    async def commit(self) -> None:
+        self.commits += 1
+
+    async def refresh(self, obj: Any) -> None:
+        return None
+
+    async def scalar(self, *_args: Any, **_kwargs: Any) -> Any:
+        return self._scalar_value
+
+
+async def _noop(*_args: Any, **_kwargs: Any) -> None:
+    return None
+
+
+class TestPublicCreatePersistsEveryHandle(IsolatedAsyncioTestCase):
+    async def _create(self, **overrides: Any) -> models.BalancerRegistration:
+        session = _RecordingSession()
+        payload: dict[str, Any] = {
+            "tournament_id": 7,
+            "workspace_id": 1,
+            "auth_user_id": None,
+            "battle_tag": "Player#1234",
+            "smurf_tags": None,
+            "discord_nick": "player",
+            "twitch_nick": "player_tv",
+            "boosty_nick": "player_boosty",
+            "stream_pov": False,
+            "notes": None,
+            "custom_fields": None,
+            **overrides,
+        }
+        # ensure_player_identity and the RBAC grant are the only DB reachers on
+        # this path; the row itself is built purely in memory.
+        with (
+            mock.patch.object(reg_service, "ensure_player_identity", _noop),
+            mock.patch.object(reg_service, "assign_workspace_system_role", _noop),
+            mock.patch.object(reg_service, "enqueue_registration_approved", _noop),
+        ):
+            return await reg_service.create_registration(session, **payload)
+
+    async def test_boosty_nick_reaches_the_column(self) -> None:
+        registration = await self._create()
+
+        assert registration.boosty_nick == "player_boosty"
+
+    async def test_the_other_handles_still_land(self) -> None:
+        registration = await self._create()
+
+        assert registration.battle_tag == "Player#1234"
+        assert registration.discord_nick == "player"
+        assert registration.twitch_nick == "player_tv"
+
+    async def test_custom_field_answers_reach_the_json_column(self) -> None:
+        registration = await self._create(custom_fields={"vk": "vk.com/player"})
+
+        assert registration.custom_fields_json == {"vk": "vk.com/player"}
+
+    def test_every_create_field_is_a_writer_parameter(self) -> None:
+        """Parity guard for the whole class of bug ``boosty_nick`` belonged to."""
+        # ``roles`` is written as its own normalized rows by
+        # submit_public_registration, not as a column on this call.
+        written_elsewhere = {"roles"}
+        parameters = set(inspect.signature(reg_service.create_registration).parameters)
+
+        missing = set(RegistrationCreate.model_fields) - written_elsewhere - parameters
+
+        assert missing == set(), f"RegistrationCreate fields no writer accepts: {sorted(missing)}"
+
+
+class TestSelfUpdateColumnMapping(IsolatedAsyncioTestCase):
+    def _registration(self, **kwargs: Any) -> models.BalancerRegistration:
+        return models.BalancerRegistration(id=1, tournament_id=7, status="pending", **kwargs)
+
+    async def test_custom_fields_land_in_the_json_column(self) -> None:
+        registration = self._registration()
+
+        await reg_service.update_registration(_RecordingSession(), registration, custom_fields={"vk": "vk.com/player"})
+
+        assert registration.custom_fields_json == {"vk": "vk.com/player"}
+
+    async def test_custom_fields_merge_with_the_stored_answers(self) -> None:
+        """``_validate_custom_field`` skips definitions a partial body omits, so
+        a subset is a legal PATCH -- replacing wholesale would wipe the rest."""
+        registration = self._registration(custom_fields_json={"vk": "old", "tg": "kept"})
+
+        await reg_service.update_registration(_RecordingSession(), registration, custom_fields={"vk": "new"})
+
+        assert registration.custom_fields_json == {"vk": "new", "tg": "kept"}
+
+    async def test_battle_tag_is_cleaned_and_normalized(self) -> None:
+        registration = self._registration()
+
+        await reg_service.update_registration(_RecordingSession(), registration, battle_tag="Player # 1234")
+
+        assert registration.battle_tag == "Player#1234"
+        assert registration.battle_tag_normalized == "player#1234"
+
+    async def test_an_unmapped_field_raises_instead_of_vanishing(self) -> None:
+        with self.assertRaises(ValueError):
+            await reg_service.update_registration(_RecordingSession(), self._registration(), primary_role="tank")
+
+    def test_every_update_field_is_mapped_to_a_column(self) -> None:
+        unmapped = set(RegistrationUpdate.model_fields) - set(reg_service._SELF_UPDATE_COLUMNS)
+
+        assert unmapped == set(), f"RegistrationUpdate fields with no column: {sorted(unmapped)}"
+
+    def test_every_mapped_column_exists_on_the_model(self) -> None:
+        """The mapping is only worth having if it is checked against the mapper."""
+        mapped = set(models.BalancerRegistration.__mapper__.columns.keys())
+
+        assert set(reg_service._SELF_UPDATE_COLUMNS.values()) <= mapped
+
+
+class TestManualCreateHonorsTheEditor(IsolatedAsyncioTestCase):
+    async def _create(self, **overrides: Any) -> tuple[models.BalancerRegistration, list[str]]:
+        session = _RecordingSession()
+        events: list[str] = []
+
+        async def _approved(*_args: Any, **_kwargs: Any) -> None:
+            events.append("approved")
+
+        payload: dict[str, Any] = {
+            "tournament_id": 7,
+            "display_name": None,
+            "battle_tag": "Player#1234",
+            "smurf_tags_json": None,
+            "discord_nick": None,
+            "twitch_nick": None,
+            "notes": None,
+            "admin_notes": None,
+            "roles": [],
+            **overrides,
+        }
+        with (
+            mock.patch.object(reg_lifecycle, "ensure_unique_battle_tag", _noop),
+            mock.patch.object(reg_lifecycle, "get_registration_form", mock.AsyncMock(return_value=None)),
+            mock.patch.object(reg_lifecycle, "validate_registration_status_value", _noop),
+            mock.patch.object(reg_lifecycle, "enqueue_registration_approved", _approved),
+            mock.patch.object(
+                reg_lifecycle,
+                "get_registration_by_id",
+                mock.AsyncMock(side_effect=lambda _s, _i: session.added[0]),
+            ),
+        ):
+            registration = await reg_lifecycle.create_manual_registration(session, **payload)
+        return registration, events
+
+    async def test_the_default_is_still_approved(self) -> None:
+        registration, events = await self._create()
+
+        assert registration.status == "approved"
+        assert events == ["approved"]
+
+    async def test_the_chosen_status_is_used(self) -> None:
+        registration, _ = await self._create(status_value="pending")
+
+        assert registration.status == "pending"
+
+    async def test_a_non_approved_row_fires_no_approval_event(self) -> None:
+        _, events = await self._create(status_value="pending")
+
+        assert events == []
+
+    async def test_the_chosen_balancer_status_is_used(self) -> None:
+        registration, _ = await self._create(balancer_status_value="ready")
+
+        assert registration.balancer_status == "ready"
+        # Unlike the PATCH path, "not_in_balancer" on a fresh manual row means
+        # "nothing has balanced yet", so nothing here may set an exclusion.
+        assert registration.exclude_from_balancer is False
+
+    async def test_custom_field_answers_are_written(self) -> None:
+        registration, _ = await self._create(custom_fields_json={"vk": "vk.com/player"})
+
+        assert registration.custom_fields_json == {"vk": "vk.com/player"}
+
+    def test_every_admin_create_field_is_a_writer_parameter(self) -> None:
+        # ``roles`` arrives as dicts under the same name; ``auth_user_id`` too.
+        renamed = {"status": "status_value", "balancer_status": "balancer_status_value"}
+        parameters = set(inspect.signature(reg_lifecycle.create_manual_registration).parameters)
+
+        missing = {
+            renamed.get(name, name) for name in admin_schemas.BalancerRegistrationCreateRequest.model_fields
+        } - parameters
+
+        assert missing == set(), f"create request fields no writer accepts: {sorted(missing)}"
+
+
+class TestAdminProfileUpdateCustomFields(IsolatedAsyncioTestCase):
+    async def _update(self, registration: models.BalancerRegistration, **overrides: Any) -> None:
+        payload: dict[str, Any] = {
+            "display_name": None,
+            "battle_tag": None,
+            "smurf_tags_json": None,
+            "discord_nick": None,
+            "twitch_nick": None,
+            "notes": None,
+            "admin_notes": None,
+            "status_value": None,
+            "balancer_status_value": None,
+            "roles": None,
+            **overrides,
+        }
+        with (
+            mock.patch.object(reg_lifecycle, "get_registration_by_id", mock.AsyncMock(return_value=registration)),
+            mock.patch.object(reg_lifecycle, "_register_registration_changed", lambda *_a, **_k: None),
+        ):
+            await reg_lifecycle.update_registration_profile(_RecordingSession(), registration.id, **payload)
+
+    async def test_custom_fields_replace_the_stored_answers(self) -> None:
+        """The admin editor renders every definition on the form, so its payload
+        is the complete answer set -- clearing a field there must clear it here."""
+        registration = models.BalancerRegistration(
+            id=1, tournament_id=7, status="approved", custom_fields_json={"vk": "old", "tg": "dropped"}
+        )
+
+        await self._update(registration, custom_fields_json={"vk": "new"})
+
+        assert registration.custom_fields_json == {"vk": "new"}
+
+    async def test_omitting_them_leaves_the_stored_answers_alone(self) -> None:
+        registration = models.BalancerRegistration(
+            id=1, tournament_id=7, status="approved", custom_fields_json={"vk": "kept"}
+        )
+
+        await self._update(registration)
+
+        assert registration.custom_fields_json == {"vk": "kept"}
+
+    def test_every_admin_update_field_is_a_writer_parameter(self) -> None:
+        renamed = {"status": "status_value", "balancer_status": "balancer_status_value"}
+        parameters = set(inspect.signature(reg_lifecycle.update_registration_profile).parameters)
+
+        missing = {
+            renamed.get(name, name) for name in admin_schemas.BalancerRegistrationUpdateRequest.model_fields
+        } - parameters
+
+        assert missing == set(), f"update request fields no writer accepts: {sorted(missing)}"

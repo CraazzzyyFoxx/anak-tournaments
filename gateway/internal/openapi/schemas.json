@@ -25350,6 +25350,18 @@
           "default": null,
           "title": "Auth User Id"
         },
+        "balancer_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Balancer Status"
+        },
         "battle_tag": {
           "anyOf": [
             {
@@ -25373,6 +25385,19 @@
           ],
           "default": null,
           "title": "Boosty Nick"
+        },
+        "custom_fields_json": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Custom Fields Json"
         },
         "discord_nick": {
           "anyOf": [
@@ -25431,6 +25456,18 @@
           ],
           "default": null,
           "title": "Smurf Tags Json"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status"
         },
         "stream_pov": {
           "default": false,
@@ -26691,6 +26728,19 @@
           ],
           "default": null,
           "title": "Boosty Nick"
+        },
+        "custom_fields_json": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Custom Fields Json"
         },
         "discord_nick": {
           "anyOf": [
@@ -33897,18 +33947,6 @@
           ],
           "default": null,
           "title": "Notes"
-        },
-        "primary_role": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Primary Role"
         },
         "stream_pov": {
           "anyOf": [

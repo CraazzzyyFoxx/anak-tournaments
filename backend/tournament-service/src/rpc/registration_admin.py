@@ -220,6 +220,9 @@ def register(broker: Any, logger: Any) -> None:
                 stream_pov=body.stream_pov,
                 notes=body.notes,
                 admin_notes=body.admin_notes,
+                custom_fields_json=body.custom_fields_json,
+                status_value=body.status,
+                balancer_status_value=body.balancer_status,
                 roles=[role.model_dump() for role in body.roles],
                 auth_user_id=body.auth_user_id,
             )
@@ -256,6 +259,7 @@ def register(broker: Any, logger: Any) -> None:
                 stream_pov=body.stream_pov,
                 notes=body.notes,
                 admin_notes=body.admin_notes,
+                custom_fields_json=body.custom_fields_json,
                 status_value=body.status,
                 balancer_status_value=body.balancer_status,
                 roles=[role.model_dump() for role in body.roles] if body.roles is not None else None,

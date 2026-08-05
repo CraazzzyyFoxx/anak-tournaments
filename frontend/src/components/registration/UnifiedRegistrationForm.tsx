@@ -236,7 +236,10 @@ export default function UnifiedRegistrationForm({
   });
   const allHeroes = heroesQuery.data?.results ?? [];
 
-  // Map initial values
+  // Map initial values. `formConfig` is read but deliberately not a dependency:
+  // it is a fresh object on most parent renders, and re-running this effect
+  // would overwrite whatever the operator has typed since.
+  const publicPrefillApplied = useRef(false);
   useEffect(() => {
     if (mode === "admin" && initialData) {
       const initRanks: Record<string, string> = { tank: "", dps: "", support: "" };
@@ -257,6 +260,19 @@ export default function UnifiedRegistrationForm({
         };
       }
 
+      // Stored answers are typed JSON; the form state is all strings.
+      const initCustomFields: Record<string, string> = {};
+      for (const field of formConfig.custom_fields) {
+        const stored = initialData.custom_fields_json?.[field.key];
+        if (stored == null) continue;
+        initCustomFields[field.key] =
+          field.type === "checkbox"
+            ? stored === true || stored === "true"
+              ? "true"
+              : "false"
+            : String(stored);
+      }
+
       dispatch({
         type: "INIT_VALUES",
         values: {
@@ -266,6 +282,10 @@ export default function UnifiedRegistrationForm({
           discordNick: initialData.discord_nick ?? "",
           twitchNick: initialData.twitch_nick ?? "",
           boostyNick: initialData.boosty_nick ?? "",
+          // Without these two the editor opened blank on data that exists and
+          // the submit below wrote the blank back — a silent wipe on every save.
+          notes: initialData.notes ?? "",
+          customFieldsValues: initCustomFields,
           adminNotes: initialData.admin_notes ?? "",
           streamPov: initialData.stream_pov ?? false,
           status: initialData.status ?? "approved",
@@ -274,7 +294,7 @@ export default function UnifiedRegistrationForm({
           ranks: initRanks,
         },
       });
-    } else if (mode === "public" && userProfile) {
+    } else if (mode === "public" && userProfile && !publicPrefillApplied.current) {
       const init: Partial<UnifiedFormState> = {};
       const accounts = userProfile.social_accounts ?? [];
       const bts = accounts.filter((a) => a.provider === "battlenet").map((a) => a.username);
@@ -285,6 +305,13 @@ export default function UnifiedRegistrationForm({
       if (isEnabled("discord_nick") && dcs.length > 0) init.discordNick = dcs[0];
       if (isEnabled("twitch_nick") && tws.length > 0) init.twitchNick = tws[0];
       if (isEnabled("boosty_nick") && bss.length > 0) init.boostyNick = bss[0];
+      // The dispatch was missing outright, so this whole block computed a
+      // prefill and threw it away. Applied once: a background refetch of the
+      // profile must not stomp on handles the registrant has since edited.
+      if (Object.keys(init).length > 0) {
+        publicPrefillApplied.current = true;
+        dispatch({ type: "INIT_VALUES", values: init });
+      }
     }
   }, [mode, initialData, userProfile]);
 
@@ -430,17 +457,18 @@ export default function UnifiedRegistrationForm({
       return notesValidationError;
     }
 
-    if (mode === "public") {
-      for (const field of formConfig.custom_fields) {
-        const rawValue = state.customFieldsValues[field.key] ?? "";
-        const isFilled = field.type === "checkbox" ? true : rawValue.trim() !== "";
-        if (field.required && !isFilled) {
-          return t("registration.wizard.validation.fieldRequired", { label: field.label });
-        }
-        const customFieldValidationError = getCustomFieldValidationError(field, rawValue, t);
-        if (customFieldValidationError) {
-          return customFieldValidationError;
-        }
+    for (const field of formConfig.custom_fields) {
+      const rawValue = state.customFieldsValues[field.key] ?? "";
+      const isFilled = field.type === "checkbox" ? true : rawValue.trim() !== "";
+      // `required` is a rule for the registrant. An admin editing a row that
+      // predates the definition must not be locked out of unrelated fixes, so
+      // only the format check runs on both sides.
+      if (mode === "public" && field.required && !isFilled) {
+        return t("registration.wizard.validation.fieldRequired", { label: field.label });
+      }
+      const customFieldValidationError = getCustomFieldValidationError(field, rawValue, t);
+      if (customFieldValidationError) {
+        return customFieldValidationError;
       }
     }
 
@@ -473,6 +501,25 @@ export default function UnifiedRegistrationForm({
         ...(selection.topHeroes.length > 0 ? { top_heroes: selection.topHeroes } : {}),
       };
     });
+
+  /**
+   * Custom-field answers in the shape both APIs store: string values keyed by
+   * definition key, empty answers omitted so clearing a field clears the stored
+   * one. Shared, because the admin editor used to send no custom fields at all.
+   */
+  const buildCustomFieldsPayload = (): Record<string, string> =>
+    Object.fromEntries(
+      formConfig.custom_fields
+        .map((field) => [
+          field.key,
+          field.type === "checkbox"
+            ? state.customFieldsValues[field.key] === "true"
+              ? "true"
+              : "false"
+            : (state.customFieldsValues[field.key] ?? ""),
+        ])
+        .filter(([, value]) => value !== "")
+    );
 
   const focusFirstProblem = () => {
     const invalid = stepRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]');
@@ -507,16 +554,7 @@ export default function UnifiedRegistrationForm({
         roles: rolesPayload.length > 0 ? rolesPayload : undefined,
         stream_pov: isEnabled("stream_pov") ? state.streamPov : undefined,
         notes: isEnabled("notes") ? (state.notes || undefined) : undefined,
-        custom_fields: Object.fromEntries(
-          formConfig.custom_fields
-            .map((f) => [
-              f.key,
-              f.type === "checkbox"
-                ? (state.customFieldsValues[f.key] === "true" ? "true" : "false")
-                : (state.customFieldsValues[f.key] ?? ""),
-            ])
-            .filter(([, v]) => v !== "")
-        ),
+        custom_fields: buildCustomFieldsPayload(),
       });
       return;
     }
@@ -529,6 +567,7 @@ export default function UnifiedRegistrationForm({
       twitch_nick: state.twitchNick || null,
       boosty_nick: state.boostyNick || null,
       notes: state.notes || null,
+      custom_fields_json: buildCustomFieldsPayload(),
       admin_notes: state.adminNotes || null,
       is_flex: isFlexSelection(state.roleSelections),
       stream_pov: state.streamPov,

@@ -473,6 +473,10 @@ export interface AdminRegistrationCreateInput {
   stream_pov?: boolean;
   notes?: string | null;
   admin_notes?: string | null;
+  /** Answers to the tournament's custom field definitions, keyed by field key. */
+  custom_fields_json?: Record<string, string> | null;
+  status?: string | null;
+  balancer_status?: string | null;
   is_flex?: boolean;
   roles?: AdminRegistrationRole[];
   /** Site account to anchor this registration on (its player). */
@@ -488,6 +492,9 @@ export interface AdminRegistrationUpdateInput {
   boosty_nick?: string | null;
   notes?: string | null;
   admin_notes?: string | null;
+  stream_pov?: boolean | null;
+  /** Replaced wholesale when present; omit to leave the stored answers alone. */
+  custom_fields_json?: Record<string, string> | null;
   is_flex?: boolean | null;
   status?: string | null;
   balancer_status?: string | null;

@@ -279,7 +279,8 @@ export interface RegistrationUpdateInput {
   discord_nick?: string;
   twitch_nick?: string;
   boosty_nick?: string;
-  primary_role?: string;
+  /* No `primary_role`: the column is long gone (roles are normalized rows now)
+     and the server had nowhere to write it. */
   stream_pov?: boolean;
   notes?: string;
   custom_fields?: Record<string, unknown>;

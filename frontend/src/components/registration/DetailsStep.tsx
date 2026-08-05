@@ -109,6 +109,19 @@ export default function DetailsStep({
         />
       )}
 
+      {/* Participant-facing data, so it belongs above the admin-only block and
+          in BOTH modes. It used to be gated on `mode === "public"`, which left
+          the admin editor unable to see or fix a single custom-field answer. */}
+      {form.custom_fields.map((field) => (
+        <CustomField
+          key={field.key}
+          definition={field}
+          value={values[field.key] ?? ""}
+          onChange={(v) => onUpdate(field.key, v)}
+          onValidationChange={(error) => onFieldValidationChange(field.key, error)}
+        />
+      ))}
+
       {mode === "admin" && onAdminNotesChange && (
         <FormField
           multiline
@@ -183,16 +196,6 @@ export default function DetailsStep({
           </Select>
         </div>
       )}
-
-      {mode === "public" && form.custom_fields.map((field) => (
-        <CustomField
-          key={field.key}
-          definition={field}
-          value={values[field.key] ?? ""}
-          onChange={(v) => onUpdate(field.key, v)}
-          onValidationChange={(error) => onFieldValidationChange(field.key, error)}
-        />
-      ))}
     </div>
   );
 }

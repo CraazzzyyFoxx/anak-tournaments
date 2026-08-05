@@ -402,6 +402,13 @@ class BalancerRegistrationCreateRequest(BaseModel):
     stream_pov: bool = False
     notes: str | None = None
     admin_notes: str | None = None
+    # Answers to the tournament's custom field definitions, keyed by definition
+    # key — the same shape the public ``RegistrationCreate.custom_fields`` sends.
+    custom_fields_json: dict[str, Any] | None = None
+    # Review state chosen in the admin editor. ``None`` keeps the historical
+    # "manual rows land approved" default.
+    status: RegistrationStatus | None = None
+    balancer_status: BalancerStatus | None = None
     roles: list[BalancerRegistrationRoleInput] = Field(default_factory=list)
     # Site account to anchor this manual registration on (its player/member).
     # None = unlinked (the historical behavior).
@@ -418,6 +425,9 @@ class BalancerRegistrationUpdateRequest(BaseModel):
     stream_pov: bool | None = None
     notes: str | None = None
     admin_notes: str | None = None
+    # Replaced wholesale when present (the admin editor submits every definition
+    # on the form), left untouched when omitted.
+    custom_fields_json: dict[str, Any] | None = None
     status: RegistrationStatus | None = None
     balancer_status: BalancerStatus | None = None
     roles: list[BalancerRegistrationRoleInput] | None = None
