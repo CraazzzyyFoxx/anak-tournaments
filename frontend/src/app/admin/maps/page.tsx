@@ -16,7 +16,17 @@ import {
 } from "@/components/admin/CatalogToolbarActions";
 import { EntityFormDialog } from "@/components/admin/EntityFormDialog";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -24,18 +34,8 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
+  SelectValue
 } from "@/components/ui/select";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Badge } from "@/components/ui/badge";
-
 import adminService from "@/services/admin.service";
 import type { MapRead } from "@/types/map.types";
 import type { MapCreateInput, MapUpdateInput } from "@/types/admin.types";
@@ -48,9 +48,9 @@ import { hasUnsavedChanges } from "@/lib/form-change";
 const emptyMapForm: MapCreateInput = {
   name: "",
   gamemode_id: 0,
+  in_competitive: true,
 };
 const GAMEMODE_QUERY_PARAM = "gamemode_id";
-
 function parseGamemodeQueryParam(value: string | null): number | null {
   if (!value) return null;
   const parsed = Number(value);
@@ -144,9 +144,11 @@ export default function MapsAdminPage() {
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
   };
 
-  const formInitial = editingMap ? { name: editingMap.name, gamemode_id: editingMap.gamemode_id } : emptyMapForm;
-  const isFormDirty = (createDialogOpen || !!editingMap) && hasUnsavedChanges(formData, formInitial);
+  const formInitial = editingMap
+    ? { name: editingMap.name, gamemode_id: editingMap.gamemode_id, in_competitive: editingMap.in_competitive !== false }
+    : emptyMapForm;
 
+  const isFormDirty = (createDialogOpen || !!editingMap) && hasUnsavedChanges(formData, formInitial);
   const columns: ColumnDef<MapRead>[] = [
     {
       accessorKey: "id",
@@ -192,6 +194,23 @@ export default function MapsAdminPage() {
       },
     },
     {
+      accessorKey: "in_competitive",
+      header: "Mode Pool",
+      size: 120,
+      cell: ({ row }) => {
+        const map = row.original;
+        return map.in_competitive !== false ? (
+          <Badge variant="secondary" className="border-success/30 text-success bg-success/10">
+            Competitive
+          </Badge>
+        ) : (
+          <Badge variant="outline" className="text-muted-foreground">
+            Casual
+          </Badge>
+        );
+      },
+    },
+    {
       id: "actions",
       size: 50,
       cell: ({ row }) => {
@@ -212,7 +231,7 @@ export default function MapsAdminPage() {
                 onClick={() => {
                   updateMutation.reset();
                   setEditingMap(map);
-                  setFormData({ name: map.name, gamemode_id: map.gamemode_id });
+                  setFormData({ name: map.name, gamemode_id: map.gamemode_id, in_competitive: map.in_competitive !== false });
                 }}
               >
                 <Pencil aria-hidden className="mr-2 h-4 w-4" />
@@ -301,7 +320,7 @@ export default function MapsAdminPage() {
                 const map = row.original;
                 updateMutation.reset();
                 setEditingMap(map);
-                setFormData({ name: map.name, gamemode_id: map.gamemode_id });
+                setFormData({ name: map.name, gamemode_id: map.gamemode_id, in_competitive: map.in_competitive !== false });
               }
             : undefined
         }
@@ -355,6 +374,19 @@ export default function MapsAdminPage() {
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="flex items-center gap-2 pt-2">
+            <Checkbox
+              id={`${formId}-in-competitive`}
+              checked={formData.in_competitive !== false}
+              onCheckedChange={(checked) =>
+                setFormData({ ...formData, in_competitive: Boolean(checked) })
+              }
+            />
+            <Label htmlFor={`${formId}-in-competitive`} className="cursor-pointer font-medium text-sm">
+              Competitive map (Входит в соревновательный пул)
+            </Label>
           </div>
         </div>
       </EntityFormDialog>

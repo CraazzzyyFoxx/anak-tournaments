@@ -18,6 +18,7 @@ class MapCreate(BaseModel):
 
     name: str
     gamemode_id: int
+    in_competitive: bool = True
 
 
 class MapUpdate(BaseModel):
@@ -25,7 +26,7 @@ class MapUpdate(BaseModel):
 
     name: str | None = None
     gamemode_id: int | None = None
-
+    in_competitive: bool | None = None
 
 class MapListQueryParams(
     pagination.PaginationSortQueryParams[typing.Literal["id", "name", "gamemode_id", "created_at", "updated_at"]]

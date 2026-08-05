@@ -194,7 +194,10 @@ export function TournamentMapVetoTab({
     queryFn: () => mapService.getAll({ perPage: -1, sort: "name", order: "asc" })
   });
 
-  const maps = useMemo(() => mapsQuery.data?.results ?? [], [mapsQuery.data]);
+  const maps = useMemo(() => {
+    const raw = mapsQuery.data?.results ?? [];
+    return raw.filter((map) => map.in_competitive !== false);
+  }, [mapsQuery.data]);
   const mapsById = useMemo(() => new Map(maps.map((map) => [map.id, map])), [maps]);
   const stagesById = useMemo(() => new Map(stages.map((stage) => [stage.id, stage])), [stages]);
 

@@ -55,7 +55,7 @@ async def create_map(session: AsyncSession, data: admin_schemas.MapCreate) -> mo
             detail=f"Map with name '{data.name}' already exists",
         )
 
-    map_obj = models.Map(name=data.name, gamemode_id=data.gamemode_id)
+    map_obj = models.Map(name=data.name, gamemode_id=data.gamemode_id, in_competitive=data.in_competitive)
 
     await _map_repo.create(session, map_obj)
     await session.commit()

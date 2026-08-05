@@ -7,6 +7,7 @@ export interface MapRead {
   name: string;
   image_path: string;
   gamemode_id: number;
+  in_competitive: boolean;
 
   gamemode: Gamemode;
 }

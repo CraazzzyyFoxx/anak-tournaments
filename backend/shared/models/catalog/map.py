@@ -14,5 +14,5 @@ class Map(db.TimeStampIntegerMixin):
     gamemode_id: Mapped[int] = mapped_column(ForeignKey(Gamemode.id))
     name: Mapped[str] = mapped_column(String(), unique=True)
     image_path: Mapped[str] = mapped_column(String())
-
+    in_competitive: Mapped[bool] = mapped_column(db.Boolean(), default=True, server_default=db.text("true"))
     gamemode: Mapped[Gamemode] = relationship(back_populates="maps")

@@ -20,5 +20,5 @@ class MapRead(BaseRead):
     gamemode_id: int
     name: str
     image_path: str
-
+    in_competitive: bool = True
     gamemode: GamemodeRead | None

@@ -886,11 +886,13 @@ export interface GamemodeUpdateInput {
 export interface MapCreateInput {
   name: string;
   gamemode_id: number;
+  in_competitive?: boolean;
 }
 
 export interface MapUpdateInput {
   name?: string;
   gamemode_id?: number;
+  in_competitive?: boolean;
 }
 
 // ─── Achievement ─────────────────────────────────────────────────────────────
