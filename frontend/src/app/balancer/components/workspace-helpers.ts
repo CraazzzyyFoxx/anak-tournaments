@@ -1,5 +1,6 @@
 import {
   AdminRegistration,
+  AdminRegistrationRole,
   BalancerApplication,
   BalancerPlayerExportResponse,
   BalancerPlayerRecord,
@@ -442,9 +443,62 @@ export function isRegistrationAvailableForBalancer(registration: AdminRegistrati
   return registration.status === "approved" && !registration.deleted_at;
 }
 
+/** Options for `createSyntheticPlayerFromRegistration`. */
+export interface SyntheticPlayerOptions {
+  /** `flex_role.mode === "forced"`: rate the player by their highest rank. */
+  forcedFlex?: boolean;
+}
+
+/**
+ * Effective per-role entries for a forced-flex registrant: one rank for all
+ * three roles, the maximum across the roles that carry one.
+ *
+ * This is what makes the mode work. In the balancer, eligibility for a role is
+ * the presence of a rating for it — `isActive && rank > 0` in the payload,
+ * `role in ratings` in the solver — not the `isFullFlex` flag, which only zeroes
+ * discomfort. Without flattening, a player ranked on DPS alone could never be
+ * placed as tank however flex they declared themselves.
+ *
+ * `ow_rank_value` is NOT replicated across the three entries. One effective rank
+ * against one effective OW rank is a single comparison, so it is attached to the
+ * role that actually produced the OW maximum and left null on the other two.
+ * `computeRankDeltasByRole` needs both values, so the admin gets exactly one
+ * `rank_delta_warning` carrying the meaningful number — replicating the OW rank
+ * would emit the same chip three times, and leaving it per-role would compare an
+ * effective rank against an unrelated role's OW rank and fire a spurious one. A
+ * player carrying any issue is refused by the balance run (`runBalanceMutation`),
+ * so getting this wrong does not just clutter the UI.
+ */
+export function flattenRolesToMaxRank(
+  roles: AdminRegistrationRole[],
+  grid: DivisionGrid
+): BalancerPlayerRoleEntry[] {
+  const maxOf = (pick: (role: AdminRegistrationRole) => number | null | undefined) => {
+    const values = roles.map(pick).filter((value): value is number => value != null);
+    return values.length > 0 ? Math.max(...values) : null;
+  };
+  const effRank = maxOf((role) => role.rank_value);
+  const effOwRank = maxOf((role) => role.ow_rank_value);
+  const owSourceRole = roles.find((role) => role.ow_rank_value === effOwRank)?.role ?? null;
+
+  return ROLE_ORDER.map((code, index) => {
+    const source = roles.find((role) => role.role === code);
+    return {
+      role: code,
+      subtype: source?.subrole ?? null,
+      priority: source?.priority ?? index,
+      division_number: resolveDivisionFromRankHelper(effRank, grid),
+      rank_value: effRank,
+      is_active: effRank !== null,
+      ow_rank_value: code === owSourceRole ? effOwRank : null
+    };
+  });
+}
+
 export function createSyntheticPlayerFromRegistration(
   registration: AdminRegistration,
-  grid: DivisionGrid = DEFAULT_DIVISION_GRID
+  grid: DivisionGrid = DEFAULT_DIVISION_GRID,
+  options: SyntheticPlayerOptions = {}
 ): BalancerPlayerRecord {
   const battleTag = getRegistrationDisplayName(registration);
   const isFlex = isRegistrationFlex(registration);
@@ -455,15 +509,17 @@ export function createSyntheticPlayerFromRegistration(
     battle_tag: battleTag,
     battle_tag_normalized: registration.battle_tag_normalized ?? battleTag.toLowerCase(),
     user_id: registration.user_id,
-    role_entries_json: registration.roles.map((role) => ({
-      role: role.role,
-      subtype: role.subrole,
-      priority: role.priority,
-      division_number: resolveDivisionFromRankHelper(role.rank_value, grid),
-      rank_value: role.rank_value,
-      is_active: role.is_active,
-      ow_rank_value: role.ow_rank_value ?? null
-    })),
+    role_entries_json: options.forcedFlex
+      ? flattenRolesToMaxRank(registration.roles, grid)
+      : registration.roles.map((role) => ({
+          role: role.role,
+          subtype: role.subrole,
+          priority: role.priority,
+          division_number: resolveDivisionFromRankHelper(role.rank_value, grid),
+          rank_value: role.rank_value,
+          is_active: role.is_active,
+          ow_rank_value: role.ow_rank_value ?? null
+        })),
     is_flex: isFlex,
     is_in_pool: isRegistrationIncludedInBalancer(registration),
     admin_notes: registration.admin_notes

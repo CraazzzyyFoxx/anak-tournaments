@@ -14,7 +14,13 @@ import {
   isRegistrationIncludedInBalancer,
   type PlayerValidationIssue,
 } from "@/app/balancer/components/workspace-helpers";
-import type { AdminRegistration, BalancerApplication, BalancerPlayerRecord } from "@/types/balancer-admin.types";
+import type {
+  AdminRegistration,
+  AdminRegistrationRole,
+  BalancerApplication,
+  BalancerPlayerRecord,
+} from "@/types/balancer-admin.types";
+import { DEFAULT_DIVISION_GRID } from "@/lib/division-grid";
 import type { StatusMeta, StatusScope } from "@/types/registration.types";
 
 type TestFunction = () => void | Promise<void>;
@@ -443,5 +449,112 @@ describe("synthetic registration helpers", () => {
     expect(application.primary_role).toBeNull();
     expect(application.additional_roles_json).toEqual(["tank", "support"]);
     expect(application.player).toBe(player);
+  });
+});
+
+describe("forced-flex effective ranks", () => {
+  const role = (
+    roleCode: "tank" | "dps" | "support",
+    rank: number | null,
+    ow: number | null = null,
+    extra: { is_active?: boolean; subrole?: string | null; priority?: number } = {},
+  ): AdminRegistrationRole => ({
+    role: roleCode,
+    subrole: extra.subrole ?? null,
+    is_primary: true,
+    priority: extra.priority ?? 0,
+    rank_value: rank,
+    is_active: extra.is_active ?? true,
+    ow_rank_value: ow,
+  });
+
+  const forced = (roles: AdminRegistrationRole[]) =>
+    createSyntheticPlayerFromRegistration(createRegistration({ roles }), DEFAULT_DIVISION_GRID, {
+      forcedFlex: true,
+    });
+
+  it("applies the max rank to all three roles", () => {
+    const player = forced([role("dps", 3900), role("support", 2400, null, { priority: 1 })]);
+
+    expect(player.role_entries_json.map((entry) => entry.role)).toEqual(["tank", "dps", "support"]);
+    expect(player.role_entries_json.every((entry) => entry.rank_value === 3900)).toBe(true);
+  });
+
+  it("covers the unranked roles from a single ranked one", () => {
+    const player = forced([role("dps", 3900)]);
+
+    expect(player.role_entries_json.every((entry) => entry.rank_value === 3900)).toBe(true);
+    expect(player.role_entries_json.every((entry) => entry.is_active)).toBe(true);
+  });
+
+  it("attaches the effective OW rank to the role that produced it", () => {
+    // Replicating it across all three would emit the same rank_delta_warning
+    // three times; leaving it per-role would compare an effective rank against
+    // an unrelated role's OW rank. One comparison, one carrier.
+    const player = forced([role("dps", 3900, 4100), role("support", 2400, 2000, { priority: 1 })]);
+
+    const owByRole: Record<string, number | null> = Object.fromEntries(
+      player.role_entries_json.map((entry) => [entry.role, entry.ow_rank_value]),
+    );
+    expect(owByRole.dps).toBe(4100);
+    expect(owByRole.support).toBeNull();
+    expect(owByRole.tank).toBeNull();
+  });
+
+  it("yields one rank-delta chip instead of three", () => {
+    const player = forced([role("dps", 3900, 4400), role("support", 2400, 2000, { priority: 1 })]);
+
+    const issues = getPlayerValidationIssues(player, null, { rank_delta_threshold: 300 });
+
+    expect(issues.filter((issue) => issue.code === "rank_delta_warning").length).toBe(1);
+  });
+
+  it("keeps a within-threshold delta silent", () => {
+    const player = forced([role("dps", 3900, 4100), role("support", 2400, 2000, { priority: 1 })]);
+
+    const issues = getPlayerValidationIssues(player, null, { rank_delta_threshold: 300 });
+
+    expect(issues.length).toBe(0);
+  });
+
+  it("counts an inactive role's rank and makes the role playable", () => {
+    const player = forced([role("tank", 3100, null, { is_active: false })]);
+
+    expect(player.role_entries_json.every((entry) => entry.rank_value === 3100)).toBe(true);
+    expect(player.role_entries_json.every((entry) => entry.is_active)).toBe(true);
+  });
+
+  it("leaves a rankless registration out of the pool", () => {
+    const player = forced([role("dps", null)]);
+
+    expect(player.role_entries_json.every((entry) => entry.rank_value === null)).toBe(true);
+    expect(player.role_entries_json.every((entry) => entry.is_active === false)).toBe(true);
+    expect(
+      getPlayerValidationIssues(player, null).some((issue) => issue.code === "missing_ranked_role"),
+    ).toBe(true);
+  });
+
+  it("keeps each role's own specialization", () => {
+    const player = forced([
+      role("dps", 3900, null, { subrole: "hitscan" }),
+      role("support", 2400, null, { subrole: "main_heal", priority: 1 }),
+    ]);
+
+    const subtypeByRole: Record<string, string | null> = Object.fromEntries(
+      player.role_entries_json.map((entry) => [entry.role, entry.subtype]),
+    );
+    expect(subtypeByRole.dps).toBe("hitscan");
+    expect(subtypeByRole.support).toBe("main_heal");
+    expect(subtypeByRole.tank).toBeNull();
+  });
+
+  it("changes nothing when the mode is optional", () => {
+    const roles = [role("dps", 3900, 4100), role("support", 2400, 2000, { priority: 1 })];
+    const registration = createRegistration({ roles });
+
+    const player = createSyntheticPlayerFromRegistration(registration);
+
+    expect(player.role_entries_json.map((entry) => entry.rank_value)).toEqual([3900, 2400]);
+    expect(player.role_entries_json.map((entry) => entry.ow_rank_value)).toEqual([4100, 2000]);
   });
 });

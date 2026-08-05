@@ -193,6 +193,15 @@ export function BalancerMainPageClient() {
     enabled: workspaceId !== null
   });
 
+  // Same query key as the registrations tab, so the cache is shared. Only the
+  // flex mode is read: in a forced-flex tournament role is not a constraint and
+  // every pool player is rated by their highest rank across all roles.
+  const registrationFormQuery = useQuery({
+    queryKey: ["balancer-admin", "registration-form", tournamentId],
+    queryFn: () => balancerAdminService.getRegistrationForm(tournamentId as number),
+    enabled: tournamentId !== null
+  });
+
   /* eslint-disable react-hooks/set-state-in-effect -- Local balancer state intentionally resets when the selected tournament or saved balance changes. */
   useEffect(() => {
     setVariants([]);
@@ -257,6 +266,10 @@ export function BalancerMainPageClient() {
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const registrations = registrationsQuery.data ?? [];
+  // Fails closed: an unloaded or failed form read is treated as optional. Guessing
+  // "forced" would silently inflate every player's effective rank.
+  const flexRoleConfig = registrationFormQuery.data?.built_in_fields?.flex_role;
+  const forcedFlex = flexRoleConfig?.enabled !== false && flexRoleConfig?.mode === "forced";
   const {
     registrationsById,
     applications,
@@ -269,8 +282,8 @@ export function BalancerMainPageClient() {
     invalidPlayerStates,
     flexPoolCount
   } = useMemo(
-    () => buildBalancerPageCollections(registrations, divisionGrid),
-    [divisionGrid, registrations]
+    () => buildBalancerPageCollections(registrations, divisionGrid, forcedFlex),
+    [divisionGrid, registrations, forcedFlex]
   );
 
   const workspaceBalancerConfig = workspaceBalancerConfigQuery.data ?? null;
