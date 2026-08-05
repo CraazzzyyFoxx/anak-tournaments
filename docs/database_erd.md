@@ -17,7 +17,7 @@ challonge), `registration/`, `balancer/` (balance, draft), `matches/`,
 
 > **Актуальность.** Документ отражает финальное состояние после
 > identity/workspace-рефактора и нормализаций Challonge / map-veto / draft /
-> predictions. Alembic head — **`wsguild0002`**. Сводка изменений — в конце
+> predictions. Alembic head — **`wsreq0002`**. Сводка изменений — в конце
 > файла («История изменений схемы»).
 
 > Соглашение об именах на диаграммах: имя сущности = `SCHEMA_TABLE`, потому что
@@ -46,6 +46,7 @@ challonge), `registration/`, `balancer/` (balance, draft), `matches/`,
 | `analytics` | Аналитика и ML | `tournament`, `shifts`, `performance`, `standings_distribution`, `match_quality`, `ml_*`, `job`, … | analytics-service |
 | `log_processing` | Загрузка/парсинг логов | `record`, `discord_channel` | parser / discord |
 | `realtime` | Журнал realtime-событий | `workspace_event` | gateway (Go) |
+| `subscriptions` | Подписки и энтайтлменты | `provider_config`, `requirement`, `entitlement`, `check_log` | tournament / parser |
 
 Общие «хабы», к которым сходятся почти все домены:
 
@@ -67,6 +68,7 @@ flowchart TB
         PLAYERS["players<br/>(игроки, соц-аккаунты)"]
         WS["public.workspace<br/>+ workspace_member"]
         GRID["public.division_grid*<br/>(сетки дивизионов)"]
+        SUBS["subscriptions<br/>(провайдеры, правило, вердикты)"]
     end
 
     subgraph COMPETITION["Соревнование"]
@@ -97,6 +99,8 @@ flowchart TB
     WS --> PLAYERS
     AUTH -. "1:0..1" .-> PLAYERS
     WS --> GRID
+    SUBS --> WS
+    SUBS --> AUTH
 
     TOUR --> WS
     TOUR --> GRID
@@ -1437,6 +1441,87 @@ erDiagram
 
 ---
 
+## 13. Подписки и энтайтлменты (`subscriptions`)
+
+Проверка подписок как условие допуска к регистрации/чек-ину. `provider_config` —
+как воркспейс верифицирует подписку у конкретного провайдера; `requirement` —
+какое правило он требует (`{mode, requirements: [{provider, min_tier_rank}]}`);
+`entitlement` — последний известный вердикт по (воркспейс, аккаунт, провайдер);
+`check_log` — append-only история живых обращений к провайдеру (зеркало
+`overwatch_rank.fetch_log`).
+
+> **Правило допуска живёт на воркспейсе** (`wsreq0001`), а не на форме: одно
+> правило общее для всех турниров воркспейса, тогда как
+> `balancer.registration_form.require_subscription` остаётся пер-турнирным
+> тумблером. Таблица заведена под пресеты: больше строк плюс nullable FK на
+> форме — чисто аддитивное изменение, тогда как колонка на `workspace`
+> потребовала бы миграции данных.
+
+> `state` — три значения (`active`/`inactive`/`unknown`), и `unknown` **fail-open**:
+> недоступность провайдера не должна запирать вход. Композиция вердиктов —
+> трёхзначная логика Клини, поэтому блокировка происходит только при
+> уверенности.
+
+```mermaid
+erDiagram
+    SUBSCRIPTION_PROVIDER_CONFIG {
+        int id PK
+        int workspace_id FK "UK(workspace, provider)"
+        string provider "discord_role / challenge_code / twitch_helix"
+        bool enabled "server_default false — создание конфига не включает проверку"
+        json config_json "снежинка гильдии тут не хранится — инжектится из workspace"
+    }
+    SUBSCRIPTION_REQUIREMENT {
+        int id PK
+        int workspace_id FK "UK(workspace, name) + частичный unique на дефолт"
+        string name "server_default 'default'"
+        json requirement_json "{mode, requirements: [{provider, min_tier_rank}]}"
+        bool is_default
+    }
+    SUBSCRIPTION_ENTITLEMENT {
+        int id PK
+        int workspace_id FK "UK(workspace, auth_user, provider)"
+        int auth_user_id FK "→ auth.user"
+        string provider
+        string state "active/inactive/unknown (default unknown, fail-open)"
+        int tier_rank "nullable — подписка без доказанного уровня читается как 1"
+        string tier_label "nullable"
+        string source "nullable — чем доказано"
+        timestamp checked_at "nullable"
+        timestamp expires_at "nullable"
+        json evidence_json "nullable"
+    }
+    SUBSCRIPTION_CHECK_LOG {
+        int id PK
+        int workspace_id FK "nullable (SET NULL)"
+        int auth_user_id FK "nullable (SET NULL) — история переживает удаление аккаунта"
+        string provider
+        string state
+        int tier_rank "nullable"
+        string tier_label "nullable"
+        string source "что запустило проверку (scheduled/manual/…)"
+        string mechanism "nullable — чем доказано, в отличие от source"
+        string reason "nullable — причина вердикта (not_subscribed, missing_scope, …)"
+        string error "nullable"
+        timestamp created_at "время завершения проверки; ничего не обновляется"
+    }
+    WORKSPACE {
+        int id PK
+    }
+    AUTH_USER {
+        int id PK
+    }
+
+    WORKSPACE ||--o{ SUBSCRIPTION_PROVIDER_CONFIG : "как верифицируем (UK по provider)"
+    WORKSPACE ||--o{ SUBSCRIPTION_REQUIREMENT : "правило допуска (один дефолт)"
+    WORKSPACE ||--o{ SUBSCRIPTION_ENTITLEMENT : "вердикты воркспейса"
+    AUTH_USER ||--o{ SUBSCRIPTION_ENTITLEMENT : "владелец подписки"
+    WORKSPACE |o--o{ SUBSCRIPTION_CHECK_LOG : "скоуп (SET NULL)"
+    AUTH_USER |o--o{ SUBSCRIPTION_CHECK_LOG : "проверяемый (SET NULL)"
+```
+
+---
+
 ## Заметки по чтению диаграмм
 
 - **Мультитенантность.** Почти каждая бизнес-таблица несёт `workspace_id`
@@ -1464,7 +1549,7 @@ erDiagram
 
 ## История изменений схемы
 
-Документ актуализирован под финальное состояние (Alembic head — **`wsguild0002`**).
+Документ актуализирован под финальное состояние (Alembic head — **`wsreq0002`**).
 Ключевые изменения относительно прежнего mid-refactor состояния:
 
 - **Identity/workspace-рефактор.** `players.user.auth_user_id` (unique nullable;
@@ -1507,3 +1592,15 @@ erDiagram
   недеплоимо: старая ORM всё ещё маппит `guild_id`, поэтому ранний DROP останавливает
   сбор логов, а новый `load_configs` джойнит колонку воркспейса, поэтому ранний код
   ломает чтение подписок.
+- **Правило подписки на воркспейсе (`wsreq0001` + `wsreq0002`).** Новая таблица
+  `subscriptions.requirement` (`workspace_id`, `name`, `requirement_json`,
+  `is_default`; UK `(workspace_id, name)` плюс частичный unique на дефолтную строку) —
+  единственный источник правила допуска, общего для всех турниров воркспейса.
+  Пара expand/contract, порядок обязателен: `wsreq0001` создаёт таблицу и бэкфиллит
+  её из форм (до раскатки кода, потому что новый `load_requirement` селектит эту
+  таблицу), затем `wsreq0002` удаляет столбец с правилом из
+  `balancer.registration_form` (после раскатки, потому что старая ORM всё ещё маппит
+  его и SQLAlchemy эмитит его в каждом `SELECT`). Бэкфилл не выбирает правило за
+  организатора: если у воркспейса больше одного различного правила, `wsreq0001`
+  падает и откатывается, а не назначает одно из них. Тумблер `require_subscription`
+  остался на форме — он и есть пер-турнирное решение.

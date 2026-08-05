@@ -1,4 +1,4 @@
-// Ground truth for this page is docs/database_erd.md (Alembic head: dbarch06).
+// Ground truth for this page is docs/database_erd.md (Alembic head: wsreq0002).
 // The `mermaid` strings below are copied VERBATIM from that file's per-domain
 // ```mermaid erDiagram``` blocks — do not hand-edit them. If the schema changes,
 // regenerate database_erd.md and re-copy the blocks here.
@@ -115,6 +115,12 @@ export const schemaOverview: SchemaOverviewRow[] = [
     domain: "Журнал realtime-событий",
     keyTables: "workspace_event",
     owner: "gateway (Go)"
+  },
+  {
+    schema: "subscriptions",
+    domain: "Подписки и энтайтлменты",
+    keyTables: "provider_config, requirement, entitlement, check_log",
+    owner: "tournament / parser"
   }
 ];
 
@@ -151,6 +157,7 @@ export const domainMapMermaid = `flowchart TB
         PLAYERS["players<br/>(игроки, соц-аккаунты)"]
         WS["public.workspace<br/>+ workspace_member"]
         GRID["public.division_grid*<br/>(сетки дивизионов)"]
+        SUBS["subscriptions<br/>(провайдеры, правило, вердикты)"]
     end
 
     subgraph COMPETITION["Соревнование"]
@@ -181,6 +188,8 @@ export const domainMapMermaid = `flowchart TB
     WS --> PLAYERS
     AUTH -. "1:0..1" .-> PLAYERS
     WS --> GRID
+    SUBS --> WS
+    SUBS --> AUTH
 
     TOUR --> WS
     TOUR --> GRID
@@ -1450,6 +1459,71 @@ export const domains: DiagramDomain[] = [
     TOURNAMENT |o--o| RECALCULATION_STATE : "счётчик поколений (1:1)"
     AUTH_USER |o--o{ SETTINGS : "кто менял"
     AUTH_USER |o--o{ COMPUTATION_JOB : "инициатор"`
+  },
+  {
+    key: "subscriptions",
+    section: "§13",
+    title: "Подписки и энтайтлменты",
+    schemaLabel: "subscriptions",
+    schemas: ["subscriptions"],
+    tableCount: 4,
+    description:
+      "Проверка подписок как условие допуска: provider_config (как верифицируем), requirement (правило воркспейса, общее для всех его турниров), entitlement (последний вердикт, unknown = fail-open), check_log (append-only история обращений к провайдеру).",
+    mermaid: `erDiagram
+    SUBSCRIPTION_PROVIDER_CONFIG {
+        int id PK
+        int workspace_id FK "UK(workspace, provider)"
+        string provider "discord_role / challenge_code / twitch_helix"
+        bool enabled "server_default false — создание конфига не включает проверку"
+        json config_json "снежинка гильдии тут не хранится — инжектится из workspace"
+    }
+    SUBSCRIPTION_REQUIREMENT {
+        int id PK
+        int workspace_id FK "UK(workspace, name) + частичный unique на дефолт"
+        string name "server_default 'default'"
+        json requirement_json "{mode, requirements: [{provider, min_tier_rank}]}"
+        bool is_default
+    }
+    SUBSCRIPTION_ENTITLEMENT {
+        int id PK
+        int workspace_id FK "UK(workspace, auth_user, provider)"
+        int auth_user_id FK "→ auth.user"
+        string provider
+        string state "active/inactive/unknown (default unknown, fail-open)"
+        int tier_rank "nullable — подписка без доказанного уровня читается как 1"
+        string tier_label "nullable"
+        string source "nullable — чем доказано"
+        timestamp checked_at "nullable"
+        timestamp expires_at "nullable"
+        json evidence_json "nullable"
+    }
+    SUBSCRIPTION_CHECK_LOG {
+        int id PK
+        int workspace_id FK "nullable (SET NULL)"
+        int auth_user_id FK "nullable (SET NULL) — история переживает удаление аккаунта"
+        string provider
+        string state
+        int tier_rank "nullable"
+        string tier_label "nullable"
+        string source "что запустило проверку (scheduled/manual/…)"
+        string mechanism "nullable — чем доказано, в отличие от source"
+        string reason "nullable — причина вердикта (not_subscribed, missing_scope, …)"
+        string error "nullable"
+        timestamp created_at "время завершения проверки; ничего не обновляется"
+    }
+    WORKSPACE {
+        int id PK
+    }
+    AUTH_USER {
+        int id PK
+    }
+
+    WORKSPACE ||--o{ SUBSCRIPTION_PROVIDER_CONFIG : "как верифицируем (UK по provider)"
+    WORKSPACE ||--o{ SUBSCRIPTION_REQUIREMENT : "правило допуска (один дефолт)"
+    WORKSPACE ||--o{ SUBSCRIPTION_ENTITLEMENT : "вердикты воркспейса"
+    AUTH_USER ||--o{ SUBSCRIPTION_ENTITLEMENT : "владелец подписки"
+    WORKSPACE |o--o{ SUBSCRIPTION_CHECK_LOG : "скоуп (SET NULL)"
+    AUTH_USER |o--o{ SUBSCRIPTION_CHECK_LOG : "проверяемый (SET NULL)"`
   }
 ];
 
@@ -1504,11 +1578,15 @@ export const changeLog: DocEntry[] = [
   {
     term: "Гигиена индексов/FK (dbarch01)",
     body: "Индексы на `auth.user_roles`/`auth.role_permissions`; новые FK: `achievements.evaluation_result.run_id → evaluation_run`, `players.user_merge_audit.source_user_id`/`target_user_id → players.user`, `auth.user_permission_deny.created_by → auth.user`; перенос типа `encounterstatus` `public` → `tournament`; частичный unique-индекс на `players.social_account` для NULL-хендлов."
+  },
+  {
+    term: "Правило подписки на воркспейсе (wsreq0001 + wsreq0002)",
+    body: "Новая таблица `subscriptions.requirement` (`workspace_id`, `name`, `requirement_json`, `is_default`; UK `(workspace_id, name)` плюс частичный unique на дефолтную строку) — единственный источник правила допуска, общего для всех турниров воркспейса. Пара expand/contract, порядок обязателен: `wsreq0001` создаёт таблицу и бэкфиллит её из форм (до раскатки кода, потому что новый `load_requirement` селектит эту таблицу), затем `wsreq0002` удаляет столбец с правилом из `balancer.registration_form` (после раскатки, потому что старая ORM всё ещё маппит его и SQLAlchemy эмитит его в каждом `SELECT`). Бэкфилл не выбирает правило за организатора: если у воркспейса больше одного различного правила, `wsreq0001` падает и откатывается. Тумблер `require_subscription` остался на форме — он и есть пер-турнирное решение."
   }
 ];
 
 /** Alembic head reflected by this documentation. */
-export const ALEMBIC_HEAD = "dbarch06";
+export const ALEMBIC_HEAD = "wsreq0002";
 
 /** Total domain-owned tables across all diagrams (for the topbar subtitle). */
 export const TOTAL_TABLES = domains.reduce((sum, d) => sum + d.tableCount, 0);
