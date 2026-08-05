@@ -15712,6 +15712,21 @@
           "default": null,
           "title": "Default Division Grid Version Id"
         },
+        "default_roster_slots_json": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Default Roster Slots Json"
+        },
         "description": {
           "anyOf": [
             {
@@ -16190,6 +16205,21 @@
           ],
           "title": "Default Division Grid Version Id"
         },
+        "default_roster_slots_json": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Default Roster Slots Json"
+        },
         "description": {
           "anyOf": [
             {
@@ -16449,6 +16479,21 @@
           ],
           "default": null,
           "title": "Default Division Grid Version Id"
+        },
+        "default_roster_slots_json": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Default Roster Slots Json"
         },
         "description": {
           "anyOf": [
@@ -17042,11 +17087,11 @@
           "default": null,
           "title": "Reason Code"
         },
-        "role_deficits": {
+        "slot_deficits": {
           "items": {
-            "$ref": "#/components/schemas/balancer.DraftRoleDeficitRead"
+            "$ref": "#/components/schemas/balancer.DraftSlotDeficitRead"
           },
-          "title": "Role Deficits",
+          "title": "Slot Deficits",
           "type": "array"
         },
         "total_open_slots": {
@@ -17066,7 +17111,7 @@
         "total_open_slots",
         "matched_slots",
         "unmatched_slots",
-        "role_deficits",
+        "slot_deficits",
         "blocking_player_ids"
       ],
       "title": "DraftFeasibilityResponse",
@@ -17755,28 +17800,6 @@
       "title": "DraftRole",
       "type": "string"
     },
-    "balancer.DraftRoleDeficitRead": {
-      "properties": {
-        "eligible_players": {
-          "title": "Eligible Players",
-          "type": "integer"
-        },
-        "role": {
-          "$ref": "#/components/schemas/balancer.DraftRole"
-        },
-        "unmatched_slots": {
-          "title": "Unmatched Slots",
-          "type": "integer"
-        }
-      },
-      "required": [
-        "role",
-        "unmatched_slots",
-        "eligible_players"
-      ],
-      "title": "DraftRoleDeficitRead",
-      "type": "object"
-    },
     "balancer.DraftRoleEditRequest": {
       "properties": {
         "expected_version": {
@@ -18002,6 +18025,7 @@
       "type": "object"
     },
     "balancer.DraftSessionCreateRequest": {
+      "description": "Everything about a new draft EXCEPT its size.\n\n``rounds`` is derived from the tournament's roster shape server-side, so the\nadmin form has nothing to submit and nothing to keep in sync.",
       "properties": {
         "allow_admin_override": {
           "default": true,
@@ -18025,11 +18049,6 @@
           "$ref": "#/components/schemas/balancer.DraftPoolSource",
           "default": "balancer_balance"
         },
-        "rounds": {
-          "default": 4,
-          "title": "Rounds",
-          "type": "integer"
-        },
         "settings": {
           "additionalProperties": true,
           "title": "Settings",
@@ -18046,11 +18065,6 @@
           ],
           "default": null,
           "title": "Source Balance Id"
-        },
-        "team_size": {
-          "default": 5,
-          "title": "Team Size",
-          "type": "integer"
         }
       },
       "title": "DraftSessionCreateRequest",
@@ -18190,6 +18204,9 @@
         "pool_source": {
           "$ref": "#/components/schemas/balancer.DraftPoolSource"
         },
+        "roster_shape": {
+          "$ref": "#/components/schemas/balancer.RosterShapeRead"
+        },
         "rounds": {
           "title": "Rounds",
           "type": "integer"
@@ -18213,10 +18230,6 @@
         "status": {
           "$ref": "#/components/schemas/balancer.DraftStatus"
         },
-        "team_size": {
-          "title": "Team Size",
-          "type": "integer"
-        },
         "tournament_id": {
           "title": "Tournament Id",
           "type": "integer"
@@ -18239,7 +18252,7 @@
         "format",
         "rounds",
         "pick_time_seconds",
-        "team_size",
+        "roster_shape",
         "current_pick_id",
         "pool_source",
         "source_balance_id",
@@ -18253,14 +18266,38 @@
       "title": "DraftSessionRead",
       "type": "object"
     },
+    "balancer.DraftSlotDeficitRead": {
+      "properties": {
+        "eligible_players": {
+          "title": "Eligible Players",
+          "type": "integer"
+        },
+        "slot_code": {
+          "title": "Slot Code",
+          "type": "string"
+        },
+        "unmatched_slots": {
+          "title": "Unmatched Slots",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "slot_code",
+        "unmatched_slots",
+        "eligible_players"
+      ],
+      "title": "DraftSlotDeficitRead",
+      "type": "object"
+    },
     "balancer.DraftSlotRead": {
       "properties": {
         "ordinal": {
           "title": "Ordinal",
           "type": "integer"
         },
-        "role": {
-          "$ref": "#/components/schemas/balancer.DraftRole"
+        "slot_code": {
+          "title": "Slot Code",
+          "type": "string"
         },
         "team_id": {
           "title": "Team Id",
@@ -18269,7 +18306,7 @@
       },
       "required": [
         "team_id",
-        "role",
+        "slot_code",
         "ordinal"
       ],
       "title": "DraftSlotRead",
@@ -18682,6 +18719,60 @@
         "demand"
       ],
       "title": "RoleFeasibility",
+      "type": "object"
+    },
+    "balancer.RosterShapeRead": {
+      "description": "A resolved roster shape. The frontend never recomputes the fallback chain.",
+      "properties": {
+        "draft_rounds": {
+          "title": "Draft Rounds",
+          "type": "integer"
+        },
+        "flex_slots": {
+          "title": "Flex Slots",
+          "type": "integer"
+        },
+        "has_role_slots": {
+          "title": "Has Role Slots",
+          "type": "boolean"
+        },
+        "slots": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Slots",
+          "type": "object"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "enum": [
+                "tournament",
+                "workspace",
+                "default"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "team_size": {
+          "title": "Team Size",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "slots",
+        "team_size",
+        "flex_slots",
+        "has_role_slots",
+        "draft_rounds"
+      ],
+      "title": "RosterShapeRead",
       "type": "object"
     },
     "balancer.Statistics": {
@@ -34632,13 +34723,21 @@
           "type": "object"
         },
         "source": {
-          "enum": [
-            "tournament",
-            "workspace",
-            "default"
+          "anyOf": [
+            {
+              "enum": [
+                "tournament",
+                "workspace",
+                "default"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
           ],
-          "title": "Source",
-          "type": "string"
+          "default": null,
+          "title": "Source"
         },
         "team_size": {
           "title": "Team Size",
@@ -34650,8 +34749,7 @@
         "team_size",
         "flex_slots",
         "has_role_slots",
-        "draft_rounds",
-        "source"
+        "draft_rounds"
       ],
       "title": "RosterShapeRead",
       "type": "object"
@@ -36888,6 +36986,21 @@
           "title": "Name",
           "type": "string"
         },
+        "roster_slots_json": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Roster Slots Json"
+        },
         "start_date": {
           "format": "date",
           "title": "Start Date",
@@ -37228,6 +37341,18 @@
           ],
           "default": null,
           "title": "Registrations Count"
+        },
+        "roster_locked_by_draft": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Roster Locked By Draft"
         },
         "roster_shape": {
           "anyOf": [
@@ -37583,6 +37708,21 @@
           ],
           "default": null,
           "title": "Name"
+        },
+        "roster_slots_json": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Roster Slots Json"
         },
         "start_date": {
           "anyOf": [
