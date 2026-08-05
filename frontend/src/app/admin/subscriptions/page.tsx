@@ -42,9 +42,19 @@ export default function SubscriptionCollectionAdminPage() {
   // clicking around must not be fought by a URL that no longer reflects it. Anything
   // absent or unrecognised keeps the historical default rather than 404ing a tab -- the
   // param is a convenience, not a route.
+  //
+  // Clamped against permission, not just membership of TABS. The link is rendered in the
+  // registration form builder under a DIFFERENT permission, so a user without
+  // `team.update` can follow it; without the clamp `activeTab` would sit on a tab whose
+  // ToggleGroupItem is not even in the tree, leaving the group with nothing selected
+  // while the status dashboard renders -- the page silently ignoring the link they just
+  // followed.
   const [activeTab, setActiveTab] = useState<TabValue>(() => {
     const requested = searchParams.get("tab");
-    return TABS.includes(requested as TabValue) ? (requested as TabValue) : "status";
+    if (!TABS.includes(requested as TabValue)) return "status";
+    if (requested === "providers" && !canConfigureWorkspace) return "status";
+    if (requested === "settings" && !isSuperuser) return "status";
+    return requested as TabValue;
   });
   const [selected, setSelected] = useState<SelectedPlayer | null>(null);
   const openPlayer = (userId: number, label: string) => setSelected({ userId, label });

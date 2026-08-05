@@ -26,10 +26,16 @@ import type { SubscriptionRequirement } from "@/types/registration.types";
 
 const EMPTY_REQUIREMENT: SubscriptionRequirement = { mode: "all", requirements: [] };
 
-/** Rule equality as the SERVER sees it: mode plus the provider/threshold set. Order is
- *  not part of the rule (`parse_requirement` dedupes into a dict and the Kleene
- *  composition is commutative), so reordering the editor's rows must not be reported as
- *  a policy change. */
+/** A deliberately STRICTER approximation of server equality: mode plus the sorted
+ *  provider/threshold set. Order is not part of the rule (`parse_requirement` dedupes
+ *  into a dict and the Kleene composition is commutative), so reordering the editor's
+ *  rows must not read as a policy change.
+ *
+ *  It does NOT reproduce the rest of `parse_requirement` -- dedupe-by-provider keeping
+ *  the strictest threshold, clamping `min_tier_rank` to at least 1, coercing a non-int
+ *  rank, dropping a blank provider -- so it can report a change the server would
+ *  collapse to nothing. Every divergence over-warns, never under-warns, which is the
+ *  safe direction for a warning about admission. */
 function sameRule(a: SubscriptionRequirement, b: SubscriptionRequirement): boolean {
   if ((a.mode ?? "all") !== (b.mode ?? "all")) return false;
   const key = (r: SubscriptionRequirement) =>
@@ -102,10 +108,14 @@ export function WorkspaceRequirementCard({ workspaceId }: { workspaceId: number 
   const changed = draft !== null && !sameRule(value, stored);
   // Emptying is called out separately: it disarms every tournament whose own
   // `require_subscription` toggle is still on, and those then admit everybody without
-  // saying so -- the opposite failure from the one above.
-  const disarming = (value.requirements?.length ?? 0) === 0;
-  // The server counts the tournaments actually gated by this rule (same predicate the
-  // collector sweeps on), so the copy can name the blast radius instead of gesturing at it.
+  // saying so -- the opposite failure from the one above. Both halves matter: without
+  // the stored-side test, building up a rule and then deleting the rows again reports
+  // "clearing" for a workspace that never had one.
+  const disarming =
+    (stored.requirements?.length ?? 0) > 0 && (value.requirements?.length ?? 0) === 0;
+  // How many tournaments the rule WOULD gate (open, unfinished, toggle on), so the copy
+  // can name the blast radius instead of gesturing at it. Fetched with the rule and not
+  // refetched on focus, so the copy says "currently", never "right now".
   const enforcingTournaments = requirementQuery.data?.enforcing_tournaments ?? 0;
 
   return (
