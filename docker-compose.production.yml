@@ -609,11 +609,15 @@ services:
     deploy:
       resources:
         limits:
+          # nginx is the sole external edge and the rate-limit/conn-limit layer.
+          # At 0.25 cpu it hits CFS throttling under a flood, i.e. the defence
+          # fails before the thing it defends; limit_req/limit_conn shared zones
+          # are also preallocated, so 64M cannot hold them plus body buffers.
+          cpus: '1.00'
+          memory: 256M
+        reservations:
           cpus: '0.25'
           memory: 64M
-        reservations:
-          cpus: '0.05'
-          memory: 32M
     # Plain-HTTP app entry (sole external edge, replaces Kong): TLS is terminated
     # by Traefik in front of nginx, so no certs/443 here. nginx publishes the
     # host port Traefik already targets (APP_PORT, was Kong's), so no Traefik
