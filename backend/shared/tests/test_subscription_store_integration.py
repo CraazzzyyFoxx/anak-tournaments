@@ -12,7 +12,9 @@ the things that only real Postgres has an opinion about:
 - the schema-qualified table names resolving at all,
 - the join onto ``workspace`` that sources ``guild_id``: the provider blob no
   longer carries one, and a stale key left inside ``config_json`` must lose to
-  the workspace column.
+  the workspace column,
+- the default-row predicate in ``load_requirement`` selecting the right row and
+  the ``json`` column round-tripping the rule unchanged.
 
 Run against a scratch/dev database, e.g.::
 
@@ -90,6 +92,10 @@ class TestSqlEntitlementStore(IsolatedAsyncioTestCase):
         await self._session.execute(
             sa.text("update workspace set discord_guild_id=:g where id=:w"),
             {"g": self._guild_before, "w": self.ws},
+        )
+        await self._session.execute(
+            sa.text("delete from subscriptions.requirement where workspace_id=:w"),
+            {"w": self.ws},
         )
         await self._session.commit()
         await self._session.close()
@@ -208,3 +214,20 @@ class TestSqlEntitlementStore(IsolatedAsyncioTestCase):
         assert verdict.state == "active"
         assert verdict.tier_rank == 3
         assert verdict.source == "challenge_code"
+
+    async def test_load_requirement_round_trips_the_default_row(self):
+        """The rule the whole admission stack hangs off, read back out of `json`."""
+        assert await self.store.load_requirement(self.ws) is None
+
+        await self._session.execute(
+            sa.text(
+                "insert into subscriptions.requirement "
+                "(workspace_id, name, requirement_json, is_default) "
+                "values (:ws,'default',:blob,true)"
+            ),
+            {"ws": self.ws, "blob": '{"mode":"all","requirements":[{"provider":"boosty","min_tier_rank":2}]}'},
+        )
+        await self._session.commit()
+
+        blob = await self.store.load_requirement(self.ws)
+        assert blob == {"mode": "all", "requirements": [{"provider": "boosty", "min_tier_rank": 2}]}

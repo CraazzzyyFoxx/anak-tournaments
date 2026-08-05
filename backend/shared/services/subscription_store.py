@@ -14,6 +14,11 @@ Two implementations, matching the resolver's two write boundaries:
 ``load_configs`` is the single place a ``ProviderConfigRow`` is born, and therefore
 the single injection point for workspace-scoped values: it joins ``workspace`` to
 source ``guild_id``, so the resolver keeps reading it out of ``config`` unchanged.
+
+``load_requirement`` is the second such value, and the reason this file -- not the
+call sites -- owns it: the admission rule is configured per workspace, so a gate
+that only knows a tournament form should not also have to know which table the rule
+lives in.
 """
 
 from __future__ import annotations
@@ -61,6 +66,13 @@ class SqlEntitlementStore:
             )
             for provider, enabled, config, guild_id in rows.all()
         }
+
+    async def load_requirement(self, workspace_id: int) -> dict[str, Any] | None:
+        req = models.WorkspaceSubscriptionRequirement
+        blob = await self._session.scalar(
+            sa.select(req.requirement_json).where(req.workspace_id == workspace_id, req.is_default.is_(True))
+        )
+        return dict(blob) if blob else None
 
     async def load_entitlements(
         self,

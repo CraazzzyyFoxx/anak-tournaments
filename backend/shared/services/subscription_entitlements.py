@@ -48,6 +48,7 @@ from shared.subscriptions import (
     accepts_live,
     accepts_source,
     evaluate_requirement,
+    parse_requirement,
     parse_verification_method,
 )
 from shared.subscriptions.challenge_code import has_live_code
@@ -100,6 +101,8 @@ class EntitlementStore(Protocol):
     """Data-access boundary. One call per concern, never one per provider."""
 
     async def load_configs(self, workspace_id: int, providers: Sequence[str]) -> dict[str, ProviderConfigRow]: ...
+
+    async def load_requirement(self, workspace_id: int) -> dict[str, Any] | None: ...
 
     async def load_entitlements(
         self,
@@ -325,6 +328,27 @@ class SubscriptionResolver:
             and accepts_code(parse_verification_method(row.config))
             and has_live_code(row.config, now=now)
         }
+
+    async def load_requirement(self, *, workspace_id: int) -> SubscriptionRequirement | None:
+        """The workspace's enforceable rule, or ``None`` when there is nothing to enforce.
+
+        Here rather than on the caller for the same reason as ``accepted_code_providers``:
+        it is a workspace-scoped question that is not ``evaluate``, and routing it through
+        the store keeps every gate free of both the query and the parse.
+
+        Fails OPEN on a malformed blob, matching what every call site did inline before
+        this moved: refusing every patron mid-tournament because one config row is bad is
+        the worse failure. An empty rule collapses to ``None`` too, so "toggle on, nothing
+        configured" stays the documented no-op that never calls a provider.
+        """
+        blob = await self._store.load_requirement(workspace_id)
+        if not blob:
+            return None
+        try:
+            requirement = parse_requirement(blob)
+        except ValueError:
+            return None
+        return requirement if requirement.requirements else None
 
     # ── internals ─────────────────────────────────────────────────────────────
 
