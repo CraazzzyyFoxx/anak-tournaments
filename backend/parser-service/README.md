@@ -17,7 +17,18 @@ See [`../../docs/architecture.md`](../../docs/architecture.md) for the system ov
 The RPC surface is grouped as representative `rpc.parser.*` methods served behind the gateway:
 
 - **Match-log ingestion** — parse and normalize match-log data into the [`shared/`](../shared/README.md)
-  models.
+  models. Logs carry map/gamemode/hero names in the reporting client's locale, so names resolve
+  through the `aliases` column on `overwatch.{hero,map,gamemode}` — never through code. Anything
+  that resolves to neither the canonical name nor an alias lands in `overwatch.catalog_alias_miss`,
+  the "add an alias" queue behind `/admin/aliases`, keyed on `(entity_type, raw_name)` with an
+  occurrence counter. A miss is recorded in its own transaction, so the 404 that fails an unknown
+  map cannot roll it away; hero misses are batched per log because they are soft (an unknown hero
+  drops the kill/stat row and the log still completes). See `src/services/catalog_aliases.py`.
+- **OverFast catalog sync** — `rpc.parser.metadata.sync_{heroes,maps,gamemodes}` (superuser).
+  The hero sync pulls all 13 Blizzard locales (`GET /heroes?locale=…`, one request per locale) and
+  folds the localised names into `hero.aliases`; it only ever adds, never removes. OverFast exposes
+  no `locale` parameter for `/maps` or `/gamemodes`, so map and gamemode aliases are admin-supplied
+  (localisations, seasonal variants, apostrophe spellings).
 - **Event consumers** — upload + process match-log (durable job channel), achievement evaluate,
   tournament encounter-completed, rank fetch (+ priority), and registration-approved rank check.
 - **OverFast rank fetch** — a Redis leader-locked APScheduler that fetches player ranks from the
@@ -38,7 +49,12 @@ The RPC surface is grouped as representative `rpc.parser.*` methods served behin
 - **Redis** — scheduler leader lock and caching.
 - **RabbitMQ** — RPC transport, event consumers, and durable job queues.
 - **S3** — match-log storage.
-- **External OverFast API** — rank data, reached via the outbound proxy.
+- **External OverFast API** — rank data plus the hero/map/gamemode catalog (heroes in all 13
+  Blizzard locales), reached via the outbound proxy.
+
+> **Adding a map, hero or locale needs no deploy.** Run the OverFast sync for heroes, or add the
+> alias in `/admin/{heroes,maps,gamemodes}` — or straight from the miss queue in `/admin/aliases`,
+> which attaches the alias and closes the miss in one request.
 
 ## Configuration & environment
 

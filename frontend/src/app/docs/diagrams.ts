@@ -733,20 +733,22 @@ export const domains: DiagramDomain[] = [
     title: "Матч-логи и справочник Overwatch",
     schemaLabel: "matches + overwatch",
     schemas: ["matches", "overwatch"],
-    tableCount: 7,
+    tableCount: 8,
     description:
-      "Разобранные лог-файлы: match, per-round statistics, kill_feed, события/ассисты. Справочник — hero/map/gamemode. mv_hero_global_stats — materialized view.",
+      "Разобранные лог-файлы: match, per-round statistics, kill_feed, события/ассисты. Справочник — hero/map/gamemode, каждый несёт aliases (имена из логов на локали клиента). Нераспознанные имена копятся в catalog_alias_miss — очередь «добавьте алиас» в админке. mv_hero_global_stats — materialized view.",
     mermaid: `erDiagram
     GAMEMODE {
         int id PK
         string slug UK
         string name UK
+        json aliases "JSONB list[str], default '[]' — ручные"
     }
     MAP {
         int id PK
         int gamemode_id FK
         string name UK
         string image_path
+        json aliases "JSONB list[str], default '[]' — ручные"
     }
     HERO {
         int id PK
@@ -754,6 +756,17 @@ export const domains: DiagramDomain[] = [
         string name UK
         string type "tank/damage/support"
         string color
+        json aliases "JSONB list[str], default '[]' — 13 локалей OverFast"
+    }
+    CATALOG_ALIAS_MISS {
+        int id PK
+        string entity_type "enum: hero/map/gamemode; UK(entity_type, raw_name)"
+        string raw_name "имя из лога, 128"
+        int occurrences "инкремент на повторном промахе"
+        datetime first_seen_at
+        datetime last_seen_at
+        int last_log_record_id FK "nullable → log_processing.record (ON DELETE SET NULL)"
+        datetime resolved_at "nullable; сбрасывается при повторном промахе"
     }
     MATCH {
         int id PK

@@ -17,7 +17,7 @@ challonge), `registration/`, `balancer/` (balance, draft), `matches/`,
 
 > **Актуальность.** Документ отражает финальное состояние после
 > identity/workspace-рефактора и нормализаций Challonge / map-veto / draft /
-> predictions. Alembic head — **`wsreq0002`**. Сводка изменений — в конце
+> predictions. Alembic head — **`catalias0001`**. Сводка изменений — в конце
 > файла («История изменений схемы»).
 
 > Соглашение об именах на диаграммах: имя сущности = `SCHEMA_TABLE`, потому что
@@ -692,18 +692,28 @@ erDiagram
 `gamemode`. `mv_hero_global_stats` — materialized view с глобальными рекордами
 по героям (не таблица).
 
+Логи приходят с именами карт, режимов и героев на локали клиента игрока,
+поэтому каждая сущность справочника несёт `aliases` (JSONB-массив строк):
+у героев его наполняет синк OverFast по 13 локалям Blizzard, у карт и режимов
+записи ручные (у `/maps` и `/gamemodes` параметра `locale` нет). Имя, которое
+не разрешилось ни в канон, ни в алиас, попадает в `catalog_alias_miss` —
+очередь «добавьте алиас» в админке, ключ `(entity_type, raw_name)` со
+счётчиком `occurrences` (`catalias0001`).
+
 ```mermaid
 erDiagram
     GAMEMODE {
         int id PK
         string slug UK
         string name UK
+        json aliases "JSONB list[str], default '[]' (catalias0001) — ручные"
     }
     MAP {
         int id PK
         int gamemode_id FK
         string name UK
         string image_path
+        json aliases "JSONB list[str], default '[]' (catalias0001) — ручные"
     }
     HERO {
         int id PK
@@ -711,6 +721,17 @@ erDiagram
         string name UK
         string type "tank/damage/support"
         string color
+        json aliases "JSONB list[str], default '[]' (catalias0001) — 13 локалей OverFast"
+    }
+    CATALOG_ALIAS_MISS {
+        int id PK
+        string entity_type "enum catalogentitytype: hero/map/gamemode; UK(entity_type, raw_name)"
+        string raw_name "имя из лога, 128"
+        int occurrences "инкремент на повторном промахе"
+        datetime first_seen_at
+        datetime last_seen_at
+        int last_log_record_id FK "nullable → log_processing.record (ON DELETE SET NULL)"
+        datetime resolved_at "nullable; сбрасывается в NULL при повторном промахе"
     }
     MATCH {
         int id PK
@@ -1549,7 +1570,7 @@ erDiagram
 
 ## История изменений схемы
 
-Документ актуализирован под финальное состояние (Alembic head — **`wsreq0002`**).
+Документ актуализирован под финальное состояние (Alembic head — **`catalias0001`**).
 Ключевые изменения относительно прежнего mid-refactor состояния:
 
 - **Identity/workspace-рефактор.** `players.user.auth_user_id` (unique nullable;
@@ -1604,3 +1625,17 @@ erDiagram
   организатора: если у воркспейса больше одного различного правила, `wsreq0001`
   падает и откатывается, а не назначает одно из них. Тумблер `require_subscription`
   остался на форме — он и есть пер-турнирное решение.
+- **Алиасы справочника Overwatch (`catalias0001`).** `aliases` (JSONB `list[str]`,
+  `NOT NULL DEFAULT '[]'`) на `overwatch.hero`/`map`/`gamemode` плюс таблица
+  `overwatch.catalog_alias_miss` (`UK(entity_type, raw_name)`, `occurrences`,
+  `resolved_at`, nullable FK на `log_processing.record`). Заменяет три
+  хардкод-словаря переводов в `parser-service/src/core/enums.py`
+  (`game_mode_dict`, `map_name_dict`, `hero_translation` — 103 записи), которые
+  требовали передеплоя сервиса на каждую новую карту, героя или локаль клиента.
+  Data-миграция переносит все 103 записи (7 режимов, 32 карты, 50 героев —
+  число различных канонических целей) и печатает предупреждение по каждому
+  каноническому имени, которого нет в каталоге, вместо тихой потери. Дальше
+  алиасы героев наполняет синк OverFast по 13 локалям Blizzard, алиасы карт и
+  режимов — ручные (у `/maps` и `/gamemodes` параметра `locale` нет).
+  Одна ревизия, expand/contract не нужен: колонка nullable-по-умолчанию для
+  старого кода невидима, а новый код читает её сразу после применения.
