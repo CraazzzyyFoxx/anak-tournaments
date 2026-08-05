@@ -50,20 +50,7 @@ class AdminVetoAct(BaseModel):
     action: Literal["pick", "ban"]
 
 
-def _serialize_config(config: models.MapVetoConfig) -> dict[str, Any]:
-    """Config DTO — ``map_pool`` must be loaded (relationship orders by sort_order)."""
-    return {
-        "id": config.id,
-        "tournament_id": config.tournament_id,
-        "stage_id": config.stage_id,
-        "round": config.round,
-        "preset": config.preset,
-        "first_pick_rule": config.first_pick_rule,
-        "turn_timer_seconds": config.turn_timer_seconds,
-        "sequence": list(config.veto_sequence_json or []),
-        "map_ids": [entry.map_id for entry in config.map_pool],
-    }
-
+_serialize_config = map_veto_service.serialize_veto_config
 
 async def _load_encounter(session: Any, encounter_id: int) -> models.Encounter:
     encounter = await session.scalar(select(models.Encounter).where(models.Encounter.id == encounter_id))

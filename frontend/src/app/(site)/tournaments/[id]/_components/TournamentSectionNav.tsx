@@ -3,19 +3,21 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
 import {
   ArrowLeft,
   ArrowRight,
   BarChart3,
   Calendar,
+  ChevronLeft,
+  ChevronRight,
   ClipboardList,
   LayoutGrid,
   ListOrdered,
+  Map,
   Trophy,
   Users
 } from "lucide-react";
-import { useTranslations } from "next-intl";
-
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { StageSummary, TournamentStatus } from "@/types/tournament.types";
@@ -34,6 +36,7 @@ const icons: Record<TournamentSectionId, React.ComponentType<{ className?: strin
   teams: Users,
   participants: ClipboardList,
   matches: Calendar,
+  maps: Map,
   heroes: Trophy,
   standings: BarChart3,
   draft: ListOrdered

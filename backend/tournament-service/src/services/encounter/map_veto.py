@@ -75,6 +75,19 @@ def get_current_step(
     return completed, veto_sequence[completed]
 
 
+
+def serialize_veto_config(config: models.MapVetoConfig) -> dict[str, Any]:
+    return {
+        "id": config.id,
+        "tournament_id": config.tournament_id,
+        "stage_id": config.stage_id,
+        "round": config.round,
+        "preset": config.preset,
+        "first_pick_rule": config.first_pick_rule,
+        "turn_timer_seconds": config.turn_timer_seconds,
+        "sequence": list(config.veto_sequence_json or []),
+        "map_ids": [entry.map_id for entry in config.map_pool],
+    }
 def serialize_map_pool_entry(entry: models.EncounterMapPool) -> dict[str, Any]:
     return {
         "id": entry.id,

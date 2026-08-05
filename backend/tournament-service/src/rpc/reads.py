@@ -17,12 +17,15 @@ from shared.rpc.identity import rehydrate_user_optional
 from shared.rpc.query import build_query_model
 from shared.services.division_grid_access import build_workspace_division_grid_normalizer
 from shared.services.division_grid_normalization import DivisionGridNormalizationError
+import sqlalchemy as sa
+from sqlalchemy.orm import selectinload
 from shared.services.tournament_visibility import assert_tournament_viewable
-from src import schemas
+from src import models, schemas
 from src.core.workspace import get_division_grid
 from src.rpc._helpers import _bool, _q, _q1, _read, _require_id
 from src.services import visibility_resolvers
 from src.services.encounter import flows as encounter_flows
+from src.services.encounter import map_veto as map_veto_service
 from src.services.standings import flows as standings_flows
 from src.services.team import flows as team_flows
 from src.services.tournament import flows as tournament_flows
@@ -276,3 +279,24 @@ def register(broker: Any, logger: Any) -> None:
             return await team_flows.get_all(session, params, workspace_id=_q1(data, "workspace_id", int))
 
         return await _read(logger, op, exclude_none=True)
+    @broker.subscriber("rpc.tournament.get_veto_configs")
+    async def _get_veto_configs(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            viewer = rehydrate_user_optional(data.get("identity"))
+            tournament_id = _require_id(data)
+            await assert_tournament_viewable(session, viewer, tournament_id)
+            stmt = (
+                sa.select(models.MapVetoConfig)
+                .where(models.MapVetoConfig.tournament_id == tournament_id)
+                .options(selectinload(models.MapVetoConfig.map_pool))
+                .order_by(
+                    models.MapVetoConfig.stage_id.asc().nulls_first(),
+                    models.MapVetoConfig.round.asc().nulls_first(),
+                    models.MapVetoConfig.id.asc(),
+                )
+            )
+            result = await session.scalars(stmt)
+            configs = result.unique().all()
+            return {"configs": [map_veto_service.serialize_veto_config(config) for config in configs]}
+
+        return await _read(logger, op)
