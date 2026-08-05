@@ -69,7 +69,8 @@ export default defineConfig({
       // mirrors the backend's best-of resolution and sequence generation, and
       // the veto room runs the SERVER's sequence — an unrun drift check is
       // worse than none, since it reports green either way.
-      "src/lib/best-of.test.ts"
+      "src/lib/best-of.test.ts",
+      "src/lib/roster-shape.test.ts"
     ]
   }
 });
