@@ -26,3 +26,10 @@ jobs:
       - name: Ruff lint + format check
         run: uv run bash scripts/lint.sh
         working-directory: backend
+      # The OpenAPI manifest the gateway embeds is hand-committed, exported from
+      # the services' Pydantic models. Nothing forced the two to agree, and the
+      # manifest has silently drifted before (+724/-175), leaving the public docs
+      # advertising a contract the services no longer implement. ~10s.
+      - name: OpenAPI manifest is up to date
+        run: bash scripts/export_openapi_schemas.sh --check
+        working-directory: backend
