@@ -57,6 +57,8 @@ interface PlayerPoolProps {
   onFiltersChange: (patch: Partial<{ role: DraftPoolRoleFilter; sort: DraftPoolSort; query: string }>) => void;
   onResetFilters: () => void;
   divisionGrid: DivisionGrid;
+  /** Unique per mounted instance: the mobile and desktop trees both render a pool. */
+  headingId?: string;
 }
 
 export function PlayerPool({
@@ -74,7 +76,8 @@ export function PlayerPool({
   onToggleShortlist,
   onFiltersChange,
   onResetFilters,
-  divisionGrid
+  divisionGrid,
+  headingId = "player-pool-heading"
 }: PlayerPoolProps) {
   const t = useTranslations("draftRedesign");
   const [heroFilter, setHeroFilter] = useState<Set<string>>(() => new Set());
@@ -104,9 +107,9 @@ export function PlayerPool({
     });
   };
   return (
-    <section aria-labelledby="player-pool-heading">
+    <section aria-labelledby={headingId}>
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-[color:var(--aqt-border)] pb-3">
-        <h2 id="player-pool-heading" className="font-onest text-lg font-semibold">{t("availablePool")}</h2>
+        <h2 id={headingId} className="font-onest text-lg font-semibold">{t("availablePool")}</h2>
         <span className="font-mono text-xs text-[color:var(--aqt-fg-muted)]">{visiblePlayers.length}/{totalPlayers}</span>
       </div>
 
@@ -242,40 +245,40 @@ export function PlayerPool({
               <article
                 key={player.id}
                 className={cn(
-                  "group grid min-h-[64px] grid-cols-[1fr_auto] items-center gap-3 border-b border-l-2 border-[color:var(--aqt-border)] py-2.5 pl-3",
-                  isSelected && "bg-[color:var(--aqt-teal)]/10",
-                  blocked && "opacity-55"
+                  "group relative grid min-h-[64px] grid-cols-[1fr_auto] items-center gap-3 border-b border-l-2 border-[color:var(--aqt-border)] py-2.5 pl-3",
+                  isSelected && "bg-[color:var(--aqt-teal)]/10"
                 )}
                 style={{ borderLeftColor: isSelected ? ROLE_ACCENT[player.primary_role] : "transparent" }}
               >
-                <div
-                  role="button"
-                  tabIndex={0}
+                {/* Full-row select target. A real button with a short name, so the
+                    profile link below is a sibling instead of nested interactive
+                    content that would swallow the accessible name. */}
+                <button
+                  type="button"
                   onClick={selectPlayer}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      selectPlayer();
-                    }
-                  }}
-                  className="min-h-11 min-w-0 cursor-pointer rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
                   aria-pressed={isSelected}
-                >
+                  aria-label={t("selectPlayer", { player: player.battle_tag ?? `#${player.id}` })}
+                  className="absolute inset-0 z-0 cursor-pointer rounded-md outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--aqt-teal)]"
+                />
+                {/* pointer-events-none lets clicks fall through to the select
+                    button above; elements that carry a `title` opt back in. */}
+                <div className="pointer-events-none relative z-10 min-w-0">
                   <span className="flex items-center gap-2">
                     {profileSlug ? (
                       <Link
                         href={`/users/${profileSlug}`}
-                        onClick={(event) => event.stopPropagation()}
-                        onKeyDown={(event) => event.stopPropagation()}
-                        className="truncate font-medium hover:text-[color:var(--aqt-teal)] hover:underline"
+                        className={cn(
+                          "pointer-events-auto truncate font-medium hover:text-[color:var(--aqt-teal)] hover:underline",
+                          blocked && "text-[color:var(--aqt-fg-dim)]"
+                        )}
                       >
                         {player.battle_tag}
                       </Link>
                     ) : (
-                      <span className="truncate font-medium">{`#${player.id}`}</span>
+                      <span className={cn("truncate font-medium", blocked && "text-[color:var(--aqt-fg-dim)]")}>{`#${player.id}`}</span>
                     )}
-                    {blocked ? <Ban className="h-4 w-4 shrink-0 text-[color:var(--aqt-live)]" aria-label={t("unsafeOption")} /> : safetyRequired ? <ShieldCheck className="h-4 w-4 shrink-0 text-[color:var(--aqt-support)]" aria-label={t("safeOption")} /> : null}
-                    <span className="ml-auto shrink-0" title={divisionTitle}>
+                    {blocked ? <Ban className="h-4 w-4 shrink-0 text-[color:var(--aqt-live)]" role="img" aria-label={t("unsafeOption")} /> : safetyRequired ? <ShieldCheck className="h-4 w-4 shrink-0 text-[color:var(--aqt-support)]" role="img" aria-label={t("safeOption")} /> : null}
+                    <span className={cn("pointer-events-auto ml-auto shrink-0", blocked && "opacity-60")} title={divisionTitle}>
                       {division != null ? (
                         <DivisionIcon division={division} tournamentGrid={divisionGrid} width={28} height={28} className="h-7 w-7 object-contain" />
                       ) : (
@@ -283,8 +286,8 @@ export function PlayerPool({
                       )}
                     </span>
                   </span>
-                  <span className="mt-1 flex flex-wrap items-center gap-1.5">
-                    <span className="inline-flex min-w-0 items-center gap-1" title={t(`roles.${player.primary_role}`)}>
+                  <span className={cn("mt-1 flex flex-wrap items-center gap-1.5", blocked && "opacity-60")}>
+                    <span className="pointer-events-auto inline-flex min-w-0 items-center gap-1" title={t(`roles.${player.primary_role}`)}>
                       <PlayerRoleIcon role={getRoleIconName(player.primary_role)} size={18} color={ROLE_ACCENT[player.primary_role]} />
                       {player.sub_role && (
                         <span className="truncate text-[11px] uppercase tracking-wide text-[color:var(--aqt-fg-muted)]">
@@ -301,7 +304,7 @@ export function PlayerPool({
                       </span>
                     )}
                     {heroes.length > 0 && (
-                      <AvatarStack size={24} max={4} className="ml-1">
+                      <AvatarStack size={24} max={4} className="pointer-events-auto ml-1">
                         {heroes.map((hero) => (
                           <Avatar key={hero.slug} className="h-6 w-6" title={hero.slug}>
                             <AvatarImage src={getHeroIconUrl(hero.slug, hero.imagePath)} alt={hero.slug} />
@@ -310,13 +313,15 @@ export function PlayerPool({
                       </AvatarStack>
                     )}
                   </span>
+                  {/* Full-strength colour: this line is the only explanation of the
+                      block, so it must never be dimmed with the row. */}
                   {blocked && <span className="mt-1 block text-xs text-[color:var(--aqt-live)]">{t("unsafePlayerReason")}</span>}
                 </div>
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="h-9 w-9"
+                  className="relative z-10 h-11 w-11"
                   onClick={() => onToggleShortlist(player.id)}
                   aria-pressed={bookmarked}
                   aria-label={bookmarked ? t("removeShortlist") : t("addShortlist")}
