@@ -4,8 +4,11 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
+from shared.repository import MapRepository
 from src import models
 from src.core import pagination, utils
+
+_map_repo = MapRepository()
 
 
 def map_entities(in_entities: list[str], child: typing.Any | None = None) -> list[_AbstractLoad]:
@@ -45,14 +48,13 @@ async def get_by_names(session: AsyncSession, names: list[str]) -> dict[str, mod
     return maps
 
 
-async def get_by_name_and_gamemode(session: AsyncSession, name: str, gamemode: str) -> models.Map | None:
-    query = (
-        sa.select(models.Map)
-        .join(models.Gamemode)
-        .where(sa.and_(models.Map.name == name, models.Gamemode.name == gamemode))
-    )
-    result = await session.execute(query)
-    return result.scalar_one_or_none()
+async def get_by_name_or_alias_and_gamemode(session: AsyncSession, name: str, gamemode: str) -> models.Map | None:
+    """Resolve a map by name-or-alias inside a gamemode by name-or-alias.
+
+    Thin wrapper over the repository — it owns the predicate so the SQL stays
+    assertable without a database.
+    """
+    return await _map_repo.get_by_name_or_alias_and_gamemode(session, name=name, gamemode=gamemode)
 
 
 async def get_all(

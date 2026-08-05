@@ -21,6 +21,7 @@ from shared.schemas.events import (
 from src import models
 from src.core import enums, errors, pagination
 from src.core.config import settings
+from src.services import catalog_aliases
 from src.services.baselines import service as baselines_service
 from src.services.encounter import flows as encounter_flows
 from src.services.encounter import service as encounter_service
@@ -108,7 +109,11 @@ class MatchLogProcessor:
         # across two differently normalised columns.
         self.log_record_id: int | None = log_record_id
         self.df: pd.DataFrame = self._load_and_format_data(data_in)
-        self.heroes_map: dict[str, models.Hero] = {}  # Hero cache
+        self.heroes_map: dict[str, models.Hero] = {}  # Hero cache: canonical names + aliases
+        # Hero names that matched neither a canonical name nor an alias. Batched
+        # here rather than written on the spot: `get_hero` is synchronous (no
+        # `await` possible) and runs once per kill event. Flushed in `start()`.
+        self.hero_misses: set[str] = set()
         self._s3 = s3
 
     def _load_and_format_data(self, data_in: list[str]) -> pd.DataFrame:
@@ -253,28 +258,32 @@ class MatchLogProcessor:
 
         row_data = match_start_events.iloc[0]["data"]
         gamemode_raw, map_name_raw = row_data[1], row_data[0]
-        gamemode = enums.game_mode_dict.get(gamemode_raw, gamemode_raw)
-        map_name = enums.map_name_dict.get(map_name_raw, map_name_raw)
-        return await map_flows.get_by_name_and_gamemode(session, map_name, gamemode)
+        # Raw, untranslated: `aliases` in the catalog carries what the three
+        # hardcoded dicts used to, and an unresolved name lands in the miss queue.
+        return await map_flows.get_by_name_or_alias_and_gamemode(
+            session, map_name_raw, gamemode_raw, log_record_id=self.log_record_id
+        )
 
     async def _preload_data(self, session: AsyncSession):
         heroes_db, _ = await hero_service.get_all(session, pagination.PaginationSortParams(per_page=-1))
-        self.heroes_map = {hero.name: hero for hero in heroes_db}
-        for alias, real_name in enums.hero_translation.items():
-            if real_name in self.heroes_map and alias not in self.heroes_map:
-                self.heroes_map[alias] = self.heroes_map[real_name]
+        self.heroes_map = {}
+        for hero in heroes_db:
+            self.heroes_map[hero.name] = hero
+            # `setdefault`, not `[alias] =`: one hero's canonical name must never
+            # be shadowed by another hero's alias.
+            for alias in hero.aliases:
+                self.heroes_map.setdefault(alias, hero)
 
     def get_hero(self, hero_name: str) -> models.Hero:
-        hero_name_translated = enums.hero_translation.get(hero_name, hero_name)
-        hero = self.heroes_map.get(hero_name_translated)
+        hero = self.heroes_map.get(hero_name)
         if not hero:
+            # A hero miss is soft — all three callers swallow it (kill skipped,
+            # `hero_id=None`, stat row skipped). So the name has to reach the
+            # queue, otherwise the data loss shows up only in the service log.
+            self.hero_misses.add(hero_name)
             raise errors.ApiHTTPException(
                 status_code=404,
-                detail=[
-                    errors.ApiExc(
-                        code="hero_not_found", msg=f"Hero '{hero_name_translated}' not found in preloaded cache."
-                    )
-                ],
+                detail=[errors.ApiExc(code="hero_not_found", msg=f"Hero '{hero_name}' not found in preloaded cache.")],
             )
         return hero
 
@@ -1025,6 +1034,13 @@ class MatchLogProcessor:
 
         logger.info(f"Processing stats for match {match_model.id}")
         stats = await self.create_stats(session, match_model, players_map, kill_feed=kill_feed_db_objects)
+
+        # Own transaction, and before the commit below, so the queue records the
+        # gaps whether this log ends up committed or rolled back.
+        if self.hero_misses:
+            await catalog_aliases.record_misses(
+                enums.CatalogEntityType.hero, self.hero_misses, log_record_id=self.log_record_id
+            )
 
         all_objects = kill_feed_db_objects + events + stats
         try:
