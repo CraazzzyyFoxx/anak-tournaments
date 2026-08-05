@@ -402,14 +402,17 @@ git commit -m "feat(shared): resolve roster shape through tournament/workspace f
 
 # Фаза 2. Хранение и резолвер
 
-## Task 3: Модели и миграция
+## Task 3: Модели и миграция (только добавление колонок)
+
+> **Изменено относительно первой редакции плана.** `DROP COLUMN balancer.draft_session.team_size` здесь НЕ делается. Балансер перестаёт читать эту колонку только в Task 9, и если снять её сейчас, то между Task 3 и Task 9 весь `balancer-service/tests` красный: тесты конструируют `DraftSession(..., team_size=3)` напрямую (`test_draft_role_edit.py:42`, `test_draft_integration.py:160` и далее). Drop переехал в Task 9 отдельной ревизией — туда, где код перестаёт писать колонку. Каждый промежуточный коммит остаётся зелёным.
 
 **Files:**
 - Modify: `backend/shared/models/tournament/tournament.py` (после `division_grid_version_id`, ~строка 80)
 - Modify: `backend/shared/models/tenancy/workspace.py` (после `default_division_grid_version_id`, ~строка 68)
-- Modify: `backend/shared/models/balancer/draft.py:71` — удалить `team_size`
 - Create: `backend/migrations/versions/<rev>_add_roster_slots.py`
 - Test: `backend/shared/tests/test_roster_slots_migration_matches_models.py`
+
+Не трогать: `backend/shared/models/balancer/draft.py` — `team_size` остаётся до Task 9.
 
 **Step 1: Написать падающий тест**
 
@@ -417,7 +420,7 @@ git commit -m "feat(shared): resolve roster shape through tournament/workspace f
 
 - `tournament.roster_slots_json` — JSONB, nullable, есть и в модели, и в ревизии;
 - `workspace.default_roster_slots_json` — JSONB, nullable, есть в обоих;
-- `balancer.draft_session.team_size` — **отсутствует** в модели и снят `op.drop_column` в ревизии.
+- ревизия НЕ содержит `op.drop_column` — это гарантия обратимости и того, что колонка `team_size` не снята раньше времени.
 
 **Step 2: Запустить, убедиться что падает**
 
@@ -440,7 +443,7 @@ Expected: FAIL — колонок нет
     )
 ```
 
-`draft.py` — удалить строку `team_size: Mapped[int] = mapped_column(...)`.
+Проверить, как `JSONB` уже импортируется в этих файлах — в репозитории есть и `sqlalchemy.JSON`, и `postgresql.JSONB`; повторить локальную конвенцию файла, а не вводить свою.
 
 **Step 4: Ревизия**
 
@@ -457,22 +460,14 @@ def upgrade() -> None:
         "workspace",
         sa.Column("default_roster_slots_json", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     )
-    # Last: the derived copy of team size. Until this point the two coexist, so
-    # the revision is safe to stop at any earlier statement.
-    op.drop_column("draft_session", "team_size", schema="balancer")
 
 
 def downgrade() -> None:
-    op.add_column(
-        "draft_session",
-        sa.Column("team_size", sa.Integer(), server_default="5", nullable=False),
-        schema="balancer",
-    )
-    # Every pre-feature session had rounds == team_size - 1 by construction.
-    op.execute("UPDATE balancer.draft_session SET team_size = rounds + 1")
     op.drop_column("workspace", "default_roster_slots_json")
     op.drop_column("tournament", "roster_slots_json", schema="tournament")
 ```
+
+Обе колонки `NULL` для всех существующих строк, что через fallback даёт в точности сегодняшнее `{"tank":1,"dps":2,"support":2}`. Бэкфилл не нужен.
 
 **Step 5: Запустить тест и миграцию**
 
@@ -485,7 +480,7 @@ Expected: `Running upgrade ... -> <rev>, add_roster_slots`
 
 ```bash
 git add backend/shared/models backend/migrations/versions backend/shared/tests/test_roster_slots_migration_matches_models.py
-git commit -m "feat(db): add roster_slots columns, drop draft_session.team_size"
+git commit -m "feat(db): add roster_slots columns to tournament and workspace"
 ```
 
 ---
@@ -764,7 +759,11 @@ git commit -am "feat(draft): allow overflow picks into flex slots"
 - Modify: `backend/balancer-service/src/services/draft/lifecycle.py:93-99, 182-216`
 - Modify: `backend/balancer-service/src/schemas/draft.py:65-96, 275-276`
 - Modify: `backend/balancer-service/src/rpc/draft.py:474-475, 602-603`
+- Modify: `backend/shared/models/balancer/draft.py:71` — удалить `team_size`
+- Create: `backend/migrations/versions/<rev>_drop_draft_session_team_size.py`
 - Test: `backend/balancer-service/tests/test_draft_schemas.py`
+
+> **Колонка снимается здесь, а не в Task 3.** Это последняя точка, где код перестаёт читать и писать `team_size`; снять её раньше означало бы красный `balancer-service/tests` на протяжении шести задач, потому что тесты конструируют `DraftSession(..., team_size=3)` напрямую.
 
 **Step 1: Написать падающий тест**
 
@@ -789,6 +788,30 @@ git commit -am "feat(draft): allow overflow picks into flex slots"
 
 Run: `cd backend && uv run pytest balancer-service/tests -v`
 Expected: PASS
+
+**Step 4b: Ревизия — снять колонку**
+
+Отдельная ревизия, `down_revision` = ревизия из Task 3 (или текущий head, если между ними легли чужие). `cd backend && uv run alembic heads`.
+
+```python
+def upgrade() -> None:
+    op.drop_column("draft_session", "team_size", schema="balancer")
+
+
+def downgrade() -> None:
+    op.add_column(
+        "draft_session",
+        sa.Column("team_size", sa.Integer(), server_default="5", nullable=False),
+        schema="balancer",
+    )
+    # Every pre-feature session had rounds == team_size - 1 by construction, so
+    # the column is reconstructible without data loss.
+    op.execute("UPDATE balancer.draft_session SET team_size = rounds + 1")
+```
+
+Затем удалить `team_size: Mapped[int] = mapped_column(...)` из `backend/shared/models/balancer/draft.py:71` и прогнать `make migrate`.
+
+Порядок внутри задачи важен: сначала код перестаёт обращаться к колонке и тесты зелёные, только потом снимается колонка и модель. Иначе между двумя шагами сьют красный.
 
 **Step 5: Commit**
 
