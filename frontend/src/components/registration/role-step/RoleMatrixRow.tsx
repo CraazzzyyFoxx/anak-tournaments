@@ -28,7 +28,7 @@ export interface RoleMatrixRowProps {
   roleLabel: string;
   selection: RoleSelection;
   subroleOptions: readonly SubroleOption[];
-  /** Heroes offered for this row — role-filtered, or the full roster for flex. */
+  /** Heroes offered for this row — always filtered to the role's own class. */
   heroes: Hero[];
   topHeroesEnabled: boolean;
   maxHeroes: number;

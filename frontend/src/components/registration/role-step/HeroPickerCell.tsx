@@ -17,7 +17,7 @@ const PREVIEW_LIMIT = 3;
 interface HeroPickerCellProps {
   roleCode: string;
   roleLabel: string;
-  /** Heroes to offer — pre-filtered to the role's class, or all heroes for flex. */
+  /** Heroes to offer — pre-filtered to the role's class. */
   heroes: Hero[];
   selected: string[];
   max: number;

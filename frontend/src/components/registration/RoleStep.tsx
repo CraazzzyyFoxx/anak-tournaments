@@ -74,15 +74,31 @@ export default function RoleStep({
     form.built_in_fields?.additional_roles?.enabled !== false &&
     form.built_in_fields?.additional_roles?.required === true;
 
+  /**
+   * The roster offered for one row, always filtered to that row's role.
+   *
+   * Flex used to widen this to the full roster, which made sense while flex
+   * rendered a *single* hero block (pre-matrix `RoleStep`): the picker was not
+   * attached to a role. Here every row IS a role and its picks are submitted
+   * under that role's `top_heroes`, so the full roster would offer Ana as a tank
+   * pick — and the backend only tolerates that while the submission stays flex
+   * (`_validate_role_heroes`), rejecting it the moment it does not.
+   *
+   * Already-selected slugs stay in the roster whatever their class: an existing
+   * flex registration may carry a cross-class pick, and a tile that is not
+   * offered cannot be deselected — the registrant would be stuck with a hero the
+   * backend rejects as soon as they stop being flex.
+   */
   const heroesForRole = (roleCode: string): Hero[] => {
-    if (isFlex) {
-      return allHeroes;
-    }
     const canonical = REGISTRATION_TO_CANONICAL[roleCode as RoleCode];
     if (!canonical) {
       return allHeroes;
     }
-    return allHeroes.filter((hero) => (hero.role || hero.type || "").toLowerCase() === canonical);
+    const selected = selections[roleCode as RoleCode].topHeroes;
+    return allHeroes.filter(
+      (hero) =>
+        (hero.role || hero.type || "").toLowerCase() === canonical || selected.includes(hero.slug),
+    );
   };
 
   const subroleOptionsFor = (roleCode: string, priority: RolePriority) =>
@@ -93,6 +109,11 @@ export default function RoleStep({
    * backend derives a flex registration). Anything in between is normalized by
    * demoting the mains the registrant did not just touch.
    *
+   * All three mains survive in every mode that permits flex, not just
+   * `optional`: `all_roles` expresses flex the same way, and since
+   * `setSubrole`/`setHeroes` route through here, trimming it would turn picking
+   * a specialization into "that role is now my main".
+   *
    * In the forced mode three mains ARE the target state, so this is the
    * identity. Combined with the absent priority control that makes `off`
    * unreachable: `setSubrole`/`setHeroes` only ever promote.
@@ -102,10 +123,13 @@ export default function RoleStep({
       return next;
     }
     const mains = ROLES.filter((role) => next[role.code].priority === "main");
-    if (mains.length <= 1 || (mains.length === ROLES.length && flexMode === "optional")) {
+    if (mains.length <= 1 || (mains.length === ROLES.length && flexMode !== "off")) {
       return next;
     }
-    const keep = next[changed].priority === "main" ? changed : mains[0].code;
+    // A promotion names its own winner. A demotion does not: crowning a survivor
+    // hands the registrant a main role they never picked, so leaving flex leaves
+    // the step with no main at all and the validation asks for one.
+    const keep: RoleCode | null = next[changed].priority === "main" ? changed : null;
     for (const role of mains) {
       if (role.code !== keep) {
         next[role.code] = { ...next[role.code], priority: "fallback" };

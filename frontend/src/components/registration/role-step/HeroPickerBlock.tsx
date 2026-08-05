@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import type { Hero } from "@/types/hero.types";
 
 interface HeroPickerBlockProps {
-  /** Heroes to offer — pre-filtered to the role's class, or all heroes for Flex. */
+  /** Heroes to offer — pre-filtered to the role's class. */
   heroes: Hero[];
   /** Selected hero slugs in priority order (1 = top pick). */
   selected: string[];

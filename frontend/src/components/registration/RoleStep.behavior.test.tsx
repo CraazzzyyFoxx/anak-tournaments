@@ -1,6 +1,14 @@
 import { afterAll, describe, expect, it, mock } from "bun:test";
 import { Window } from "happy-dom";
-import { act, useState, type ReactNode } from "react";
+import {
+  act,
+  cloneElement,
+  createContext,
+  useContext,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 
 import type { Hero } from "@/types/hero.types";
 import type { RegistrationForm } from "@/types/registration.types";
@@ -24,12 +32,34 @@ mock.module("next/image", () => ({
   // eslint-disable-next-line @next/next/no-img-element -- test stand-in, never shipped
   default: ({ alt }: { alt: string }) => <img alt={alt} />,
 }));
-// Radix portals and pointer measurement do not work under happy-dom, and the
-// closed state is what this test measures: only the trigger is on the surface.
+// Radix portals and pointer measurement do not work under happy-dom, so the
+// popover is stood in by an open/closed switch driven through the trigger. The
+// closed state is what the control-set assertions measure — the roster only
+// lands on the surface once its own trigger is clicked.
+const PopoverCtx = createContext<{ open: boolean; setOpen: (open: boolean) => void }>({
+  open: false,
+  setOpen: () => {},
+});
 mock.module("@/components/ui/popover", () => ({
-  Popover: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  PopoverTrigger: ({ children }: { children: ReactNode }) => <>{children}</>,
-  PopoverContent: () => null,
+  Popover: ({
+    children,
+    open = false,
+    onOpenChange = () => {},
+  }: {
+    children: ReactNode;
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
+  }) => (
+    <PopoverCtx.Provider value={{ open, setOpen: onOpenChange }}>
+      <div>{children}</div>
+    </PopoverCtx.Provider>
+  ),
+  PopoverTrigger: ({ children }: { children: ReactElement }) => {
+    const { open, setOpen } = useContext(PopoverCtx);
+    return cloneElement(children, { onClick: () => setOpen(!open) });
+  },
+  PopoverContent: ({ children }: { children: ReactNode }) =>
+    useContext(PopoverCtx).open ? <div>{children}</div> : null,
 }));
 mock.module("@/components/ui/select", () => ({
   Select: ({ children }: { children: ReactNode }) => <div>{children}</div>,
@@ -94,8 +124,16 @@ let container = testWindow.document.createElement("div");
 let root = createRoot(container as unknown as Element);
 let latest: RoleSelections = createRoleSelections();
 
-function Harness({ flexMode = "optional" as FlexMode }: { flexMode?: FlexMode }) {
-  const [selections, setSelections] = useState<RoleSelections>(createRoleSelections(flexMode));
+function Harness({
+  flexMode = "optional" as FlexMode,
+  initial,
+}: {
+  flexMode?: FlexMode;
+  initial?: RoleSelections;
+}) {
+  const [selections, setSelections] = useState<RoleSelections>(
+    initial ?? createRoleSelections(flexMode),
+  );
   return (
     <RoleStep
       selections={selections}
@@ -113,12 +151,12 @@ function Harness({ flexMode = "optional" as FlexMode }: { flexMode?: FlexMode })
 }
 
 /** Each case needs its own root: re-rendering into one keeps the previous state. */
-function mount(flexMode: FlexMode = "optional") {
+function mount(flexMode: FlexMode = "optional", initial?: RoleSelections) {
   container = testWindow.document.createElement("div");
   testWindow.document.body.appendChild(container);
   root = createRoot(container as unknown as Element);
-  latest = createRoleSelections(flexMode);
-  act(() => root.render(<Harness flexMode={flexMode} />));
+  latest = initial ?? createRoleSelections(flexMode);
+  act(() => root.render(<Harness flexMode={flexMode} initial={initial} />));
 }
 
 function surface() {
@@ -136,6 +174,19 @@ function click(selector: string, index = 0) {
   act(() => {
     el.dispatchEvent(new testWindow.MouseEvent("click", { bubbles: true }) as unknown as Event);
   });
+}
+
+/** Row order is tank, dps, support — one hero-picker trigger each. */
+const HERO_TRIGGER = 'button[aria-label="registration.roles.matrix.heroesLabel"]';
+
+/** Slugs the open roster of `row` offers; the tiles carry the hero name. */
+function roster(row: number) {
+  click(HERO_TRIGGER, row);
+  const titles = Array.from(container.querySelectorAll("button[title]")).map((tile) =>
+    (tile as unknown as HTMLElement).getAttribute("title"),
+  );
+  click(HERO_TRIGGER, row);
+  return titles;
 }
 
 /** `[role="radio"]` order is tank(off,fallback,main), dps(...), support(...). */
@@ -185,6 +236,67 @@ describe("RoleStep", () => {
     click('[aria-pressed]', 0);
     expect(isFlexSelection(latest)).toBe(false);
     expect(Object.values(latest).filter((entry) => entry.priority === "main")).toHaveLength(1);
+  });
+});
+
+describe("RoleStep flex hero roster", () => {
+  it("offers only the row's own heroes, flex or not", () => {
+    // Flex used to widen every row to the full roster, a leftover from the
+    // layout where flex had ONE hero block instead of one per role. Picks are
+    // submitted under the row's role, so Ana as a tank pick is a 422 the moment
+    // the submission stops being flex.
+    mount();
+    expect(roster(0)).toEqual(["reinhardt", "dva"]);
+
+    click("[aria-pressed]", 0); // flex preset — every role main
+    expect(isFlexSelection(latest)).toBe(true);
+
+    expect(roster(0)).toEqual(["reinhardt", "dva"]);
+    expect(roster(1)).toEqual(["genji", "ashe"]);
+    expect(roster(2)).toEqual(["ana", "kiriko"]);
+  });
+
+  it("keeps the all-roles flex choice when a top hero is picked", () => {
+    // `setHeroes` normalizes, and normalization used to keep three mains only in
+    // the optional mode — so one hero pick silently demoted two roles and made
+    // the touched one the priority role the registrant never chose.
+    mount("all_roles");
+    click('[role="radio"]', 3); // flex
+    expect(priorityChoice(latest)).toBe("flex");
+
+    click(HERO_TRIGGER, 0);
+    click("button[title]", 0);
+
+    expect(latest.tank.topHeroes).toEqual(["reinhardt"]);
+    expect(priorityChoice(latest)).toBe("flex");
+    expect(isFlexSelection(latest)).toBe(true);
+  });
+
+  it("elects no main when a role is demoted out of the flex preset", () => {
+    // Two mains is not a state the form can submit, but picking the survivor for
+    // the registrant is worse: it assigns a main role nobody chose.
+    mount();
+    click("[aria-pressed]", 0);
+    click('[role="radio"]', MAIN.tank - 1); // tank → fallback
+
+    expect(latest.tank.priority).toBe("fallback");
+    expect(Object.values(latest).filter((entry) => entry.priority === "main")).toHaveLength(0);
+  });
+
+  it("keeps a stale cross-class pick in the roster so it can be removed", () => {
+    // An existing flex registration may carry one: the backend accepted it while
+    // the submission was flex. Filtering it out of the roster would leave it
+    // selected and unreachable, and the next non-flex submit would 422 on it.
+    const loaded = createRoleSelections("optional");
+    loaded.tank = { ...loaded.tank, priority: "main", topHeroes: ["ana"] };
+    mount("optional", loaded);
+
+    expect(roster(0)).toEqual(["reinhardt", "dva", "ana"]);
+
+    click(HERO_TRIGGER, 0);
+    click('button[title="ana"]');
+
+    expect(latest.tank.topHeroes).toEqual([]);
   });
 });
 
