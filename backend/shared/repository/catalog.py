@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import typing
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -12,6 +14,17 @@ from shared.core import enums
 from shared.core.pagination import PaginationSortParams, PaginationSortSearchParams
 from shared.repository.base import BaseRepository
 from shared.services.tournament_visibility import visible_tournament_ids_subquery
+
+
+def _jsonb_array(value: str) -> sa.Cast[typing.Any]:
+    """`'["value"]'::jsonb` as an explicit cast of a string literal.
+
+    JSONB has no literal renderer, so binding a Python list directly makes the
+    statement impossible to compile with `literal_binds` — i.e. impossible to
+    assert on without a live connection. Casting a serialised string keeps the
+    emitted SQL identical and the query inspectable.
+    """
+    return sa.cast(sa.literal(json.dumps([value])), JSONB)
 
 
 class HeroRepository(BaseRepository[models.Hero]):
@@ -165,7 +178,33 @@ class MapRepository(BaseRepository[models.Map]):
         options = [selectinload(models.Map.gamemode)] if with_gamemode else None
         return await self.get_by(session, options=options, name=name)
 
-    async def get_by_name_and_gamemode(
+    @staticmethod
+    def build_name_or_alias_query(*, name: str, gamemode: str) -> sa.Select:
+        """Map by name-or-alias inside a gamemode by name-or-alias.
+
+        Replaces the three hardcoded translation dicts the parser used to carry:
+        `aliases` is filled by the OverFast sync (heroes) and by the admin UI
+        (maps, gamemodes). Kept synchronous and separate from the executing
+        wrapper so the predicates can be asserted without a database.
+
+        `JSONB.contains(...)` compiles to `aliases @> CAST('["…"]' AS JSONB)`.
+        """
+        # ponytail: no GIN index on aliases — ~45 maps and ~10 gamemodes, one
+        # query per log. Add `USING gin (aliases jsonb_path_ops)` when maps
+        # reach the hundreds.
+        return (
+            sa.select(models.Map)
+            .join(models.Gamemode)
+            .where(
+                sa.or_(models.Map.name == name, models.Map.aliases.contains(_jsonb_array(name))),
+                sa.or_(
+                    models.Gamemode.name == gamemode,
+                    models.Gamemode.aliases.contains(_jsonb_array(gamemode)),
+                ),
+            )
+        )
+
+    async def get_by_name_or_alias_and_gamemode(
         self,
         session: AsyncSession,
         *,
@@ -173,9 +212,7 @@ class MapRepository(BaseRepository[models.Map]):
         gamemode: str,
         with_gamemode: bool = False,
     ) -> models.Map | None:
-        query = (
-            sa.select(models.Map).join(models.Gamemode).where(models.Map.name == name, models.Gamemode.name == gamemode)
-        )
+        query = self.build_name_or_alias_query(name=name, gamemode=gamemode)
         if with_gamemode:
             query = query.options(selectinload(models.Map.gamemode))
         result = await session.execute(query)

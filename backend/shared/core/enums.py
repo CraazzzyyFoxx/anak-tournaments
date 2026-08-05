@@ -10,6 +10,18 @@ class HeroClass(StrEnum):
     support = "Support"
 
 
+class CatalogEntityType(StrEnum):
+    """Catalog entity an alias (or an unresolved-name miss) belongs to.
+
+    Match logs carry map/gamemode/hero names in the reporting client's locale,
+    so every catalog entity keeps a list of alternative names it answers to.
+    """
+
+    hero = "hero"
+    map = "map"
+    gamemode = "gamemode"
+
+
 class RankPlatform(StrEnum):
     """Overwatch competitive platform as exposed by OverFast."""
 
@@ -396,6 +408,7 @@ class AbilityEvent(StrEnum):
 # these names and never leaks re-imported stdlib/typing helpers.
 __all__ = [
     "HeroClass",
+    "CatalogEntityType",
     "RankPlatform",
     "RankRole",
     "RankDivision",
