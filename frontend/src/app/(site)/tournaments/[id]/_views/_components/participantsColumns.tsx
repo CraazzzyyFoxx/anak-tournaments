@@ -1,7 +1,7 @@
 "use client";
 
 import { type ReactNode, useMemo } from "react";
-import { CheckCircle2, ExternalLink, XCircle } from "lucide-react";
+import { CheckCircle2, XCircle } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -16,7 +16,6 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import type {
-  CustomFieldDefinition,
   Registration,
   RegistrationForm,
   RegistrationRole,
@@ -34,6 +33,7 @@ import {
   RegistrationStatusBadge,
 } from "@/components/status/RegistrationBadges";
 import TournamentHistoryCell from "./TournamentHistoryCell";
+import { renderCustomFieldValue } from "@/components/registration/customFieldValue";
 import { useTranslations } from "next-intl";
 import { formatSubroleSlug } from "@/lib/roles";
 import { resolveDivisionFromRank, DEFAULT_DIVISION_GRID } from "@/lib/division-grid";
@@ -392,46 +392,6 @@ function StreamPovCell({ value }: { value: boolean | null | undefined }) {
 }
 
 // ---------------------------------------------------------------------------
-// Custom field value renderer
-// ---------------------------------------------------------------------------
-
-function renderCustomFieldValue(
-  field: CustomFieldDefinition,
-  value: unknown,
-  t: Translator,
-): ReactNode {
-  if (value === null || value === undefined)
-    return <span className="text-[color:var(--aqt-fg-dim)]">&mdash;</span>;
-
-  switch (field.type) {
-    case "checkbox":
-      return (
-        <span className="text-[color:var(--aqt-fg-muted)]">{value ? t("common.yes") : t("common.no")}</span>
-      );
-    case "url":
-      return (
-        <a
-          href={String(value)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 text-[color:var(--aqt-fg-muted)] underline decoration-[color:var(--aqt-border-3)] hover:text-[color:var(--aqt-fg)]"
-        >
-          <span className="max-w-[120px] truncate">{String(value)}</span>
-          <ExternalLink className="size-3 shrink-0" aria-hidden />
-        </a>
-      );
-    case "select":
-      return (
-        <span className="inline-flex items-center rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-3)] px-1.5 py-0.5 text-xs font-medium text-[color:var(--aqt-fg-muted)]">
-          {String(value)}
-        </span>
-      );
-    default:
-      return <span className="text-[color:var(--aqt-fg-muted)]">{String(value)}</span>;
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Date formatter
 // ---------------------------------------------------------------------------
 
@@ -518,6 +478,16 @@ const BUILT_IN_FIELD_DEFS: Record<string, BuiltInFieldDef> = {
     ),
     searchValue: (reg) => reg.twitch_nick,
   },
+  boosty_nick: {
+    id: "boosty_nick",
+    label: "Boosty",
+    defaultVisible: false,
+    responsive: "md",
+    render: (reg) => (
+      <span className="text-[color:var(--aqt-fg-muted)]">{reg.boosty_nick ?? "\u2014"}</span>
+    ),
+    searchValue: (reg) => reg.boosty_nick ?? null,
+  },
   primary_role: {
     id: "roles",
     label: "Roles",
@@ -591,6 +561,8 @@ export function buildParticipantColumns(
         return t("registration.accounts.discord");
       case "twitch_nick":
         return t("registration.accounts.twitch");
+      case "boosty_nick":
+        return t("registration.accounts.boosty");
       case "primary_role":
       case "roles":
         return t("common.rolesList");
@@ -628,6 +600,7 @@ export function buildParticipantColumns(
     "smurf_tags",
     "discord_nick",
     "twitch_nick",
+    "boosty_nick",
     "stream_pov",
     "notes",
   ] as const;
@@ -695,11 +668,10 @@ export function buildParticipantColumns(
         defaultVisible: false,
         responsive: "md",
         render: (reg) =>
-          renderCustomFieldValue(
-            field,
-            reg.custom_fields_json?.[field.key] ?? null,
-            t,
-          ),
+          renderCustomFieldValue(field, reg.custom_fields_json?.[field.key] ?? null, {
+            yes: t("common.yes"),
+            no: t("common.no"),
+          }),
         searchValue:
           field.type === "text" || field.type === "select"
             ? (reg) => {

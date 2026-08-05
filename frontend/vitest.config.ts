@@ -43,6 +43,7 @@ export default defineConfig({
       "src/app/balancer/tool-context.test.ts",
       "src/app/balancer/redirect-map.test.ts",
       "src/app/**/users/compare/**/*.test.ts",
+      "src/app/(site)/tournaments/[id]/_views/_components/participantsColumns.test.tsx",
       "src/components/tournaments/**/*.test.ts",
       // File-level, not `**/*.test.tsx`: this folder also holds `bun:test`
       // files, which fail on the import when vitest picks them up.

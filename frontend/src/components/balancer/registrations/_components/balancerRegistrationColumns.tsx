@@ -22,7 +22,8 @@ import type {
   AdminRegistration,
   AdminRegistrationRole,
 } from "@/types/balancer-admin.types";
-import type { SubroleCatalog } from "@/types/registration.types";
+import type { CustomFieldDefinition, SubroleCatalog } from "@/types/registration.types";
+import { renderCustomFieldValue } from "@/components/registration/customFieldValue";
 
 export interface BalancerRegistrationColumnDefinition {
   id: string;
@@ -86,6 +87,7 @@ function ParticipantCell({ registration }: { registration: AdminRegistration }) 
       : null,
     registration.discord_nick,
     registration.twitch_nick,
+    registration.boosty_nick,
     registration.source_record_key,
   ].filter(Boolean);
 
@@ -264,6 +266,7 @@ export function buildBalancerRegistrationColumns(
   subroleCatalog?: SubroleCatalog,
   requireOpenProfile = false,
   requireSubscription = false,
+  customFields: CustomFieldDefinition[] = [],
 ): BalancerRegistrationColumnDefinition[] {
   return [
     {
@@ -280,6 +283,7 @@ export function buildBalancerRegistrationColumns(
           registration.display_name,
           registration.discord_nick,
           registration.twitch_nick,
+          registration.boosty_nick,
           registration.source_record_key,
         ]
           .filter(Boolean)
@@ -471,5 +475,20 @@ export function buildBalancerRegistrationColumns(
           ? [registration.exclude_reason, "excluded from balancer"].filter(Boolean).join(" ")
           : null,
     },
+    // One column per organizer-defined field, same definitions the public
+    // roster renders. Off by default: a form may define a dozen of them.
+    ...customFields.map((field) => ({
+      id: `custom_${field.key}`,
+      label: field.label,
+      category: "admin" as const,
+      defaultVisible: false,
+      responsive: "lg" as const,
+      render: (registration: AdminRegistration) =>
+        renderCustomFieldValue(field, registration.custom_fields_json?.[field.key] ?? null),
+      searchValue: (registration: AdminRegistration) => {
+        const value = registration.custom_fields_json?.[field.key];
+        return value == null || value === "" ? null : String(value);
+      },
+    })),
   ];
 }

@@ -346,9 +346,16 @@ export default function RegistrationsTable({
   const requireOpenProfile = formQuery.data?.require_open_profile ?? false;
   const requireSubscription = formQuery.data?.require_subscription ?? false;
 
+  const customFields = roleForm.custom_fields;
   const allColumns = useMemo(
-    () => buildBalancerRegistrationColumns(subroleCatalog, requireOpenProfile, requireSubscription),
-    [subroleCatalog, requireOpenProfile, requireSubscription]
+    () =>
+      buildBalancerRegistrationColumns(
+        subroleCatalog,
+        requireOpenProfile,
+        requireSubscription,
+        customFields
+      ),
+    [subroleCatalog, requireOpenProfile, requireSubscription, customFields]
   );
   const { visibleColumns, visibility, toggleColumn, resetToDefaults } = useColumnVisibility(
     "balancer-registrations-table-columns",
@@ -1242,13 +1249,19 @@ export default function RegistrationsTable({
                                           </dd>
                                         </div>
                                       ) : null}
-                                      {registration.discord_nick || registration.twitch_nick ? (
+                                      {registration.discord_nick ||
+                                      registration.twitch_nick ||
+                                      registration.boosty_nick ? (
                                         <div className="flex justify-between gap-3">
                                           <dt className="text-[color:var(--aqt-fg-dim)]">
                                             Contact
                                           </dt>
                                           <dd className="text-right">
-                                            {[registration.discord_nick, registration.twitch_nick]
+                                            {[
+                                              registration.discord_nick,
+                                              registration.twitch_nick,
+                                              registration.boosty_nick,
+                                            ]
                                               .filter(Boolean)
                                               .join(" · ")}
                                           </dd>

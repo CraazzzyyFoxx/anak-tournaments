@@ -853,10 +853,6 @@ async def build_public_registration_list(
                 workspace_id=workspace_id,
                 status_meta_map=status_meta_map,
                 show_ranks=show_ranks,
-                # Anonymous endpoint: strip custom fields (may hold PII,
-                # admin-only). Notes and smurf tags stay public — see
-                # _reg_to_read.
-                include_private=False,
                 profiles_open=profiles_open_map.get(r.id),
                 subscription_outcome=(subscription_reads[r.id].outcome.value if r.id in subscription_reads else None),
                 subscription_verdicts=(

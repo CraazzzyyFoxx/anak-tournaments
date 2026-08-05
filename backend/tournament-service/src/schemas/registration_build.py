@@ -126,22 +126,22 @@ def _reg_to_read(
     workspace_id: int,
     status_meta_map: dict[str, dict[str, dict[str, object]]] | None = None,
     show_ranks: bool = False,
-    include_private: bool = True,
     profiles_open: bool | None = None,
     subscription_outcome: str | None = None,
     subscription_verdicts: dict[str, Any] | None = None,
 ) -> RegistrationRead:
     """Serialize a registration for public API responses.
 
-    ``include_private=False`` is for anonymous/list contexts: it strips
-    organizer-defined custom fields, which may contain PII and are only meant
-    for the registrant themselves and admins. Free-text ``notes`` stay public:
-    they are the participant-facing "anything you'd like organizers to know"
-    form field and are rendered as a column on the public participants roster.
-    Smurf tags stay public too: they are declared alternate battle tags, the
-    same anti-smurf transparency class as ``battle_tag``/``discord_nick``/
-    ``twitch_nick`` (all already public), and the participants roster exists
-    precisely to surface them.
+    Everything the registration form collects is roster data: the participants
+    table renders a column per built-in field and per organizer-defined custom
+    field, and the organizer chooses what to ask. ``custom_fields_json`` used to
+    be stripped here for anonymous callers, which left every custom column on
+    the public roster permanently empty while the header advertised it.
+
+    Free-text ``notes`` and smurf tags are public for the same reason: notes are
+    the participant-facing "anything you'd like organizers to know" field, and
+    declared alternate battle tags are the anti-smurf transparency the roster
+    exists to surface.
     """
     roles = (
         [
@@ -174,7 +174,7 @@ def _reg_to_read(
         stream_pov=reg.stream_pov,
         roles=roles,
         notes=reg.notes,
-        custom_fields_json=reg.custom_fields_json if include_private else None,
+        custom_fields_json=reg.custom_fields_json,
         status=reg.status,
         status_meta=(status_meta_map["registration"].get(reg.status) if status_meta_map is not None else None)
         or build_unknown_status_meta("registration", reg.status),
