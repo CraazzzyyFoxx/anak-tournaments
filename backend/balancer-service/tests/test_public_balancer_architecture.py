@@ -363,11 +363,19 @@ class BalancerJobStoreTests(IsolatedAsyncioTestCase):
             {"algorithm": "moo"},
             workspace_id=10,
             created_by=20,
+            role_mask={"tank": 1, "flex": 4},
         )
 
         payload = await store.get_job_payload(job_id)
 
-        self.assertEqual(payload, {"player_data": {"players": {}}, "config_overrides": {"algorithm": "moo"}})
+        self.assertEqual(
+            payload,
+            {
+                "player_data": {"players": {}},
+                "config_overrides": {"algorithm": "moo"},
+                "role_mask": {"tank": 1, "flex": 4},
+            },
+        )
 
     async def test_get_job_meta_uses_persisted_events_count_without_llen(self) -> None:
         store = BalancerJobStore.__new__(BalancerJobStore)
@@ -516,9 +524,11 @@ class MooDeterminismTests(TestCase):
                 for index in range(1, 7)
             }
         }
+        # The mask is no longer a config override: it is the tournament's
+        # resolved roster shape, handed to the run directly.
+        role_mask = {"tank": 1}
         config_overrides = {
             "algorithm": "moo",
-            "role_mask": {"Tank": 1},
             "population_size": 10,
             "generation_count": 10,
             "mutation_strength": 1,
@@ -548,7 +558,7 @@ class MooDeterminismTests(TestCase):
 
         with patch("src.services.balancer.algorithm.moo_backend.platform.system", return_value="Linux"):
             with patch("src.services.balancer.algorithm.moo_backend._load_native_module", return_value=native_module):
-                runs = [balance_teams_moo(input_data, config_overrides)[0]["teams"] for _ in range(3)]
+                runs = [balance_teams_moo(input_data, config_overrides, None, role_mask)[0]["teams"] for _ in range(3)]
 
         self.assertEqual(runs[0], runs[1])
         self.assertEqual(runs[1], runs[2])
@@ -578,9 +588,9 @@ class MooDeterminismTests(TestCase):
                 }
             }
 
+        role_mask = {"tank": 1}
         config_overrides = {
             "algorithm": "moo",
-            "role_mask": {"Tank": 1},
             "population_size": 10,
             "generation_count": 10,
             "mutation_strength": 1,
@@ -607,8 +617,12 @@ class MooDeterminismTests(TestCase):
 
         with patch("src.services.balancer.algorithm.moo_backend.platform.system", return_value="Linux"):
             with patch("src.services.balancer.algorithm.moo_backend._load_native_module", return_value=native_module):
-                ordered_run = balance_teams_moo(make_input([1, 2, 3, 4, 5, 6]), config_overrides)[0]["teams"]
-                reversed_run = balance_teams_moo(make_input([6, 5, 4, 3, 2, 1]), config_overrides)[0]["teams"]
+                ordered_run = balance_teams_moo(make_input([1, 2, 3, 4, 5, 6]), config_overrides, None, role_mask)[0][
+                    "teams"
+                ]
+                reversed_run = balance_teams_moo(make_input([6, 5, 4, 3, 2, 1]), config_overrides, None, role_mask)[0][
+                    "teams"
+                ]
 
         self.assertEqual(ordered_run, reversed_run)
         self.assertEqual(observed_player_orders[0], observed_player_orders[1])

@@ -25,6 +25,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 REPO_BACKEND_ROOT = Path(__file__).resolve().parents[2]
 BALANCER_SERVICE_ROOT = REPO_BACKEND_ROOT / "balancer-service"
 
@@ -48,7 +50,7 @@ os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
 os.environ.setdefault("S3_BUCKET_NAME", "test")
 os.environ["DEBUG"] = "false"
 
-from shared.domain.roster_shape import FLEX_SLOT_CODE  # noqa: E402
+from shared.domain.roster_shape import DEFAULT_ROSTER_SLOTS, FLEX_SLOT_CODE  # noqa: E402
 from src.services.balancer.algorithm.entities import Team  # noqa: E402
 from src.services.balancer.algorithm.moo_backend import _serialize_native_request  # noqa: E402
 from src.services.balancer.algorithm.player_loader import (  # noqa: E402
@@ -56,10 +58,15 @@ from src.services.balancer.algorithm.player_loader import (  # noqa: E402
     parse_player_node,
 )
 from src.services.balancer.algorithm.result_serializer import teams_to_json  # noqa: E402
+from src.services.balancer.algorithm.runtime import _prepare_balance_context  # noqa: E402
 from src.services.balancer.config.defaults import AlgorithmConfig  # noqa: E402
+from src.services.balancer.config.presets import ConfigBuilder, ConfigPresets  # noqa: E402
+from src.services.balancer.config.provider import EDITABLE_CONFIG_FIELD_KEYS  # noqa: E402
+from src.services.balancer.config.public_contract import PUBLIC_CONFIG_KEYS  # noqa: E402
 
 FLEX_ONLY_MASK = {FLEX_SLOT_CODE: 6}
 ROLE_MASK = {"tank": 1, "dps": 2, "support": 2}
+LEGACY_ROLE_MASK = {"Tank": 1, "Damage": 2, "Support": 2}
 
 
 def _class(rank: int, priority: int, *, is_active: bool = True, subtype: str = "") -> dict[str, Any]:
@@ -255,3 +262,103 @@ def test_native_request_carries_the_flex_mask_and_flex_ratings() -> None:
         assert FLEX_SLOT_CODE in entry["ratings"]
         assert entry["preferences"][0] == FLEX_SLOT_CODE
         assert entry["seed_role"] == FLEX_SLOT_CODE
+
+
+# ---------------------------------------------------------------------------
+# 10-11. The mask is no longer a balancer setting
+# ---------------------------------------------------------------------------
+
+
+def test_role_mask_is_not_an_editable_or_public_config_field() -> None:
+    # It is a projection of the tournament roster shape, resolved per run; an
+    # editable copy would be a second source of truth that silently wins.
+    assert "role_mask" not in EDITABLE_CONFIG_FIELD_KEYS
+    assert "role_mask" not in PUBLIC_CONFIG_KEYS
+
+
+def test_default_role_mask_is_the_canonical_roster_shape() -> None:
+    assert AlgorithmConfig().role_mask == DEFAULT_ROSTER_SLOTS
+    assert ConfigPresets.DEFAULT["role_mask"] == DEFAULT_ROSTER_SLOTS
+
+
+# ---------------------------------------------------------------------------
+# 12. Saved legacy configs keep resolving
+# ---------------------------------------------------------------------------
+
+
+def test_legacy_capitalized_mask_still_resolves_player_roles() -> None:
+    # ``balance.config_json`` rows saved before the roster shape existed carry
+    # {"Tank": 1, "Damage": 2, "Support": 2}. ``resolve_input_role_name`` is the
+    # bridge that keeps them loadable; deleting it would break every old row.
+    player = parse_player_node(
+        "u-5",
+        _node("Legacy", {"Tank": _class(2600, 1), "Damage": _class(2900, 0), "Support": _class(3100, 2)}),
+        LEGACY_ROLE_MASK,
+    )
+
+    assert player is not None
+    assert player.ratings == {"Tank": 2600, "Damage": 2900, "Support": 3100}
+    assert player.preferences == ["Damage", "Tank", "Support"]
+    assert FLEX_SLOT_CODE not in player.ratings
+
+
+# ---------------------------------------------------------------------------
+# 13. ConfigBuilder validates through the canon
+# ---------------------------------------------------------------------------
+
+
+def test_config_builder_normalizes_the_mask_through_the_roster_canon() -> None:
+    built = ConfigBuilder().with_role_mask({FLEX_SLOT_CODE: 5, "tank": 1}).build()
+
+    # Canonical order comes from ROSTER_SLOT_CODES, not from the caller.
+    assert list(built["role_mask"].items()) == [("tank", 1), (FLEX_SLOT_CODE, 5)]
+
+
+@pytest.mark.parametrize(
+    "garbage",
+    [
+        {},
+        {"tank": 0},
+        {"Tank": 1, "Damage": 2, "Support": 2},
+        {"tank": "1"},
+        {"tank": 1, "healer": 2},
+        {"tank": 99},
+        [("tank", 1)],
+    ],
+)
+def test_config_builder_rejects_a_mask_the_canon_rejects(garbage: Any) -> None:
+    with pytest.raises(ValueError):
+        ConfigBuilder().with_role_mask(garbage)
+
+
+# ---------------------------------------------------------------------------
+# 14. The run takes the mask from the resolver
+# ---------------------------------------------------------------------------
+
+
+def test_balance_run_takes_the_mask_from_the_resolved_roster_shape() -> None:
+    payload = {
+        "players": {
+            f"u-{index}": _node(
+                f"Player {index}",
+                {("Tank", "Damage", "Support")[index % 3]: _class(2500 + index, 0)},
+            )
+            for index in range(12)
+        }
+    }
+
+    # Captains stay on: role assignment and captain pinning must also survive a
+    # roster with no role slots, since that is what the whole run depends on.
+    config, valid_players, num_teams, _, role_assignment, _ = _prepare_balance_context(
+        payload,
+        # A stale saved config must not win over the tournament's shape.
+        {"role_mask": ROLE_MASK},
+        None,
+        role_mask=dict(FLEX_ONLY_MASK),
+    )
+
+    assert config.role_mask == FLEX_ONLY_MASK
+    assert num_teams == 2
+    assert len(valid_players) == 12
+    assert set(role_assignment.values()) == {FLEX_SLOT_CODE}
+    assert sum(1 for player in valid_players if player.is_captain) == num_teams

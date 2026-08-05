@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from shared.domain.roster_shape import DEFAULT_ROSTER_SLOTS, parse_roster_slots
+
 
 class ConfigPresets:
     """Pre-configured settings for common balancing scenarios."""
@@ -20,7 +22,7 @@ class ConfigPresets:
     # Balanced default — fits the majority of tournaments. Compute budget tuned
     # for sub-second runs on Rust MOO with 4 islands in parallel.
     DEFAULT: dict[str, Any] = {
-        "role_mask": {"Tank": 1, "Damage": 2, "Support": 2},
+        "role_mask": dict(DEFAULT_ROSTER_SLOTS),
         "population_size": 60,
         "generation_count": 120,
         "mutation_rate": 0.35,
@@ -141,9 +143,12 @@ class ConfigBuilder:
             self.config = ConfigPresets.DEFAULT.copy()
 
     def with_role_mask(self, role_mask: dict[str, int]) -> ConfigBuilder:
-        if not role_mask or not any(value > 0 for value in role_mask.values()):
-            raise ValueError("Role mask must have at least one role with count > 0")
-        self.config["role_mask"] = role_mask
+        # ``parse_roster_slots`` is the one validator for a slot map (known
+        # codes, positive counts, team size in range) and it normalizes the
+        # order, so a hand-built config and a tournament shape are the same
+        # shape. ``RosterShapeError`` is a ``ValueError``, so callers that
+        # already catch one keep working.
+        self.config["role_mask"] = parse_roster_slots(role_mask).slots
         return self
 
     def with_population(self, population_size: int, generation_count: int) -> ConfigBuilder:

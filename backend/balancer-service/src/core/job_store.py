@@ -112,6 +112,7 @@ class BalancerJobStore:
         created_by: int | None = None,
         credential_type: str = "access_token",
         api_key_id: int | None = None,
+        role_mask: dict[str, int] | None = None,
     ) -> str:
         job_id = job_id or uuid.uuid4().hex
         now = time.time()
@@ -135,6 +136,11 @@ class BalancerJobStore:
         payload = {
             "player_data": input_data,
             "config_overrides": config_overrides,
+            # The tournament's roster shape as resolved when the job was
+            # accepted. It rides the payload rather than ``config_overrides``
+            # because it is not an override: a saved config cannot change the
+            # shape of the teams the tournament fields.
+            "role_mask": role_mask,
         }
 
         # The player-data payload can reach 25MB; serialize off the event loop.

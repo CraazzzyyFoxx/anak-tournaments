@@ -27,7 +27,16 @@ impl Context {
             .collect();
 
         let tank_role_idx = roles.iter().position(|r| r.eq_ignore_ascii_case("Tank"));
-        let dps_role_idx = roles.iter().position(|r| r.eq_ignore_ascii_case("Damage"));
+        // Два написания у одной роли: канон проекта — код `dps`
+        // (shared/domain/roster_shape.py), а `Damage` остаётся ради сохранённых
+        // легаси-конфигов в balance.config_json, чью маску мы обязаны читать.
+        // Без второго варианта dps_role_idx оказывается None на канонической
+        // маске, и objectives.rs молча подставляет impact 1.0 вместо
+        // dps_impact_weight. `flex` здесь намеренно отсутствует: у слота без
+        // роли нет ролевого веса влияния, impact 1.0 для него — верная семантика.
+        let dps_role_idx = roles
+            .iter()
+            .position(|r| r.eq_ignore_ascii_case("Damage") || r.eq_ignore_ascii_case("dps"));
         let support_role_idx = roles.iter().position(|r| r.eq_ignore_ascii_case("Support"));
 
         // Валидация входа: без неё избыток игроков молча выпадает из результата

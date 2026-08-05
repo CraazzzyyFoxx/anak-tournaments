@@ -59,7 +59,7 @@ def test_config_payload_exposes_complete_editable_field_metadata() -> None:
     assert fields_by_key["tank_impact_weight"]["limits"] == {"min": 0.0, "max": 10000.0}
     assert fields_by_key["mutation_rate_min"]["limits"] == {"min": 0.0, "max": 1.0}
     assert fields_by_key["island_count"]["limits"] == {"min": 1, "max": 64}
-    assert fields_by_key["role_mask"]["type"] == "role_mask"
+    assert "role_mask" not in field_keys
     assert "input_role_mapping" not in field_keys
     assert "elitism_rate" not in field_keys
     assert "stagnation_threshold" not in field_keys
@@ -88,15 +88,15 @@ def test_normalize_tournament_config_payload_keeps_only_valid_editable_fields() 
         {
             "population_size": 150,
             "use_captains": None,
+            # No longer editable: the per-team slot counts come from the
+            # tournament roster shape, so a saved copy is dropped rather than
+            # allowed to contradict it.
             "role_mask": {"Tank": 1, "Damage": 2, "Support": 2},
             "workspace_id": 7,
         }
     )
 
-    assert normalized == {
-        "population_size": 150,
-        "role_mask": {"Tank": 1, "Damage": 2, "Support": 2},
-    }
+    assert normalized == {"population_size": 150}
 
 
 def test_normalize_tournament_config_payload_ignores_legacy_role_mapping() -> None:

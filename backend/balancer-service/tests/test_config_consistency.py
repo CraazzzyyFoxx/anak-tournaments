@@ -47,6 +47,7 @@ os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
 os.environ.setdefault("S3_BUCKET_NAME", "test")
 os.environ["DEBUG"] = "false"
 
+from shared.domain.roster_shape import DEFAULT_ROSTER_SLOTS  # noqa: E402
 from src.services.balancer.algorithm.moo_backend import _serialize_native_request  # noqa: E402
 from src.services.balancer.config.defaults import AlgorithmConfig  # noqa: E402
 from src.services.balancer.config.presets import ConfigPresets  # noqa: E402
@@ -123,7 +124,11 @@ def test_config_payload_exposes_expected_top_level_keys() -> None:
 # ``rating_scale_ceiling`` is a rating-normalisation constant applied Python-side
 # by RatingNormalizer, not a solver knob: it is intentionally absent from the
 # public write allowlist and from the native payload.
-NON_PUBLIC_ALGORITHM_FIELDS = {"rating_scale_ceiling"}
+# ``role_mask`` is a projection of the tournament roster shape, resolved per run
+# by ``_prepare_balance_context``: it stays an ``AlgorithmConfig`` field (the
+# native payload needs it) but is deliberately not writable, so a saved config
+# cannot contradict the shape the tournament actually fields.
+NON_PUBLIC_ALGORITHM_FIELDS = {"rating_scale_ceiling", "role_mask"}
 
 # ``algorithm`` is accepted for backwards compatibility and then unconditionally
 # dropped: ``ConfigOverrides`` has ``extra="forbid"`` and no ``algorithm`` field,
@@ -268,3 +273,48 @@ def test_rust_only_allowlist_has_no_stale_entries() -> None:
     stale = RUST_ONLY_CONFIG_FIELDS - rust_fields
 
     assert stale == set(), f"RUST_ONLY_CONFIG_FIELDS lists fields no longer in ConfigSpec: {sorted(stale)}"
+
+
+# ---------------------------------------------------------------------------
+# Python <-> Rust ring: roster slot codes <-> role-impact index detection
+# ---------------------------------------------------------------------------
+
+MOO_CORE_CONTEXT_RS = BALANCER_SERVICE_ROOT / "native" / "moo_core" / "src" / "context.rs"
+
+
+def _rust_role_idx_spellings() -> set[str]:
+    """Role names ``Context::from_request`` recognises for the impact weights.
+
+    Same genre as ``_rust_config_spec_fields`` above and as
+    ``shared/tests/test_gateway_raw_sql_matches_models.py``: compare a canon
+    against a hand-written artefact by reading it.
+    """
+    source = MOO_CORE_CONTEXT_RS.read_text(encoding="utf-8")
+    role_idx_block = "".join(line for line in source.splitlines(keepends=True) if "eq_ignore_ascii_case" in line)
+    spellings = {match.lower() for match in re.findall(r'eq_ignore_ascii_case\("([^"]+)"\)', role_idx_block)}
+
+    assert spellings, f"parsed no role spellings out of {MOO_CORE_CONTEXT_RS} — the parser or the file changed"
+    return spellings
+
+
+def test_rust_recognizes_every_canonical_role_code() -> None:
+    """A role code Rust does not recognise loses its impact weight silently.
+
+    ``objectives.rs`` picks ``tank/dps/support_impact_weight`` by comparing the
+    role index against ``Context.*_role_idx``; an unmatched spelling leaves the
+    index ``None`` and the objective falls back to ``impact = 1.0`` with no
+    error anywhere. Rust cannot be compiled on every dev machine (the crate
+    builds on Linux only), so this text check is the cheap early warning.
+
+    ``flex`` is deliberately NOT expected here: a slot with no role has no role
+    impact weight, so ``impact = 1.0`` is the correct semantics for it, not a bug.
+    """
+    spellings = _rust_role_idx_spellings()
+
+    unrecognized = {code for code in DEFAULT_ROSTER_SLOTS if code not in spellings}
+
+    assert unrecognized == set(), (
+        f"native/moo_core/src/context.rs does not match roster slot codes {sorted(unrecognized)}: "
+        "their impact weight would silently degrade to 1.0. Add the spelling to the "
+        "matching *_role_idx lookup."
+    )

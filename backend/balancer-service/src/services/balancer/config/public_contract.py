@@ -7,8 +7,9 @@ from pydantic import ValidationError
 
 from src.services.balancer.config.defaults import AlgorithmConfig
 
+# ``role_mask`` is deliberately absent: a saved config must not be able to
+# contradict the tournament's roster shape, which is resolved per run.
 PUBLIC_CONFIG_KEYS = {
-    "role_mask",
     "algorithm",
     "population_size",
     "generation_count",

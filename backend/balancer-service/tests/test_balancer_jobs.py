@@ -29,11 +29,18 @@ os.environ.setdefault("S3_ENDPOINT_URL", "http://localhost")
 os.environ.setdefault("S3_BUCKET_NAME", "test")
 os.environ["DEBUG"] = "false"
 
+from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
 from src.services.balancer import jobs  # noqa: E402
 from src.services.balancer import solver as solver_module  # noqa: E402
 from src.services.balancer.config.provider import get_balancer_config_payload  # noqa: E402
 
 JOBS = "src.services.balancer.jobs"
+FLEX_SHAPE = parse_roster_slots({"tank": 1, "flex": 4})
+
+
+def _shape_resolver(shape=FLEX_SHAPE) -> AsyncMock:
+    """Stand in for the DB-backed roster-shape lookup ``create_job`` performs."""
+    return AsyncMock(return_value=shape)
 
 
 def _noop_limiter() -> SimpleNamespace:
@@ -65,6 +72,7 @@ class CreateJobTests(IsolatedAsyncioTestCase):
                 credential_type,
                 api_key_id,
                 tournament_id=None,
+                role_mask=None,
             ):
                 created.update(
                     input_data=input_data,
@@ -75,6 +83,7 @@ class CreateJobTests(IsolatedAsyncioTestCase):
                     created_by=created_by,
                     credential_type=credential_type,
                     api_key_id=api_key_id,
+                    role_mask=role_mask,
                 )
                 return "job-123"
 
@@ -104,8 +113,10 @@ class CreateJobTests(IsolatedAsyncioTestCase):
             patch(f"{JOBS}._payload_parser", FakeParser()),
             patch(f"{JOBS}.is_api_key_principal", return_value=False),
             patch(f"{JOBS}.BalancerJobPublisher", FakePublisher),
+            patch(f"{JOBS}.get_effective_roster_shape", _shape_resolver()),
         ):
             response = await jobs.create_job(
+                session=SimpleNamespace(),
                 uploaded_file=SimpleNamespace(filename="players.json"),
                 raw_config='{"algorithm": "moo"}',
                 workspace_id=77,
@@ -121,6 +132,9 @@ class CreateJobTests(IsolatedAsyncioTestCase):
         self.assertEqual(created["config_overrides"], {"algorithm": "moo"})
         self.assertEqual(created["credential_type"], "access_token")
         self.assertIsNone(created["api_key_id"])
+        # The queued payload records the tournament's roster shape, not a
+        # request-supplied mask: that is what the run balances against.
+        self.assertEqual(created["role_mask"], {"tank": 1, "flex": 4})
 
     async def test_publishes_realtime_queued_event_when_tournament_scoped(self) -> None:
         class FakeStore:
@@ -155,8 +169,10 @@ class CreateJobTests(IsolatedAsyncioTestCase):
             patch(f"{JOBS}.is_api_key_principal", return_value=False),
             patch(f"{JOBS}.BalancerJobPublisher", FakePublisher),
             patch(f"{JOBS}.emit_balancer_job_event", emit),
+            patch(f"{JOBS}.get_effective_roster_shape", _shape_resolver()),
         ):
             await jobs.create_job(
+                session=SimpleNamespace(),
                 uploaded_file=SimpleNamespace(filename="players.json"),
                 raw_config=None,
                 workspace_id=77,
@@ -189,6 +205,7 @@ class CreateJobTests(IsolatedAsyncioTestCase):
                 credential_type,
                 api_key_id,
                 tournament_id=None,
+                role_mask=None,
             ):
                 created.update(job_id=job_id, credential_type=credential_type, api_key_id=api_key_id)
                 return job_id
@@ -227,8 +244,10 @@ class CreateJobTests(IsolatedAsyncioTestCase):
             ),
             patch(f"{JOBS}.validate_api_key_config_policy"),
             patch(f"{JOBS}.BalancerJobPublisher", FakePublisher),
+            patch(f"{JOBS}.get_effective_roster_shape", _shape_resolver()),
         ):
             response = await jobs.create_job(
+                session=SimpleNamespace(),
                 uploaded_file=SimpleNamespace(filename="players.json", size=1024),
                 raw_config='{"algorithm": "moo", "population_size": 150}',
                 workspace_id=77,
@@ -302,9 +321,17 @@ _VARIANT = {
 
 class ExecuteJobTests(IsolatedAsyncioTestCase):
     async def test_executes_job_and_marks_result(self) -> None:
-        store = _make_fake_store({"player_data": {"players": {}}, "config_overrides": {"algorithm": "moo"}})
+        store = _make_fake_store(
+            {
+                "player_data": {"players": {}},
+                "config_overrides": {"algorithm": "moo"},
+                "role_mask": {"tank": 1, "flex": 4},
+            }
+        )
+        seen: dict = {}
 
-        async def fake_run_balance(input_data, config_overrides, progress_callback):
+        async def fake_run_balance(input_data, config_overrides, progress_callback, role_mask=None):
+            seen["role_mask"] = role_mask
             progress_callback({"status": "running", "stage": "optimizing", "message": "Working"})
             return {"variants": [dict(_VARIANT)]}
 
@@ -317,6 +344,8 @@ class ExecuteJobTests(IsolatedAsyncioTestCase):
         self.assertEqual(store.succeeded[0], "job-42")
         self.assertEqual(store.succeeded[1]["variants"][0]["teams"], [])
         self.assertIsNone(store.failed)
+        # The shape resolved at creation reaches the solver untouched.
+        self.assertEqual(seen["role_mask"], {"tank": 1, "flex": 4})
 
     async def test_flushes_last_throttled_progress_update_before_completion(self) -> None:
         messages: list[str] = []
@@ -326,7 +355,7 @@ class ExecuteJobTests(IsolatedAsyncioTestCase):
             optimizing_messages=messages,
         )
 
-        async def fake_run_balance(input_data, config_overrides, progress_callback):
+        async def fake_run_balance(input_data, config_overrides, progress_callback, role_mask=None):
             progress_callback(
                 {"status": "running", "stage": "optimizing", "message": "Phase 1", "progress": {"percent": 0.0}}
             )
@@ -351,8 +380,9 @@ class ExecuteJobTests(IsolatedAsyncioTestCase):
         )
         seen: dict = {}
 
-        async def fake_run_balance(input_data, config_overrides, progress_callback):
+        async def fake_run_balance(input_data, config_overrides, progress_callback, role_mask=None):
             seen["config_overrides"] = config_overrides
+            seen["role_mask"] = role_mask
             return {"variants": [dict(_VARIANT)]}
 
         with (
@@ -362,6 +392,9 @@ class ExecuteJobTests(IsolatedAsyncioTestCase):
             await jobs.execute_balance_job("job-legacy")
 
         self.assertEqual(seen["config_overrides"], {})
+        # A payload queued before roster shapes reached the balancer leaves the
+        # mask unset, and the AlgorithmConfig default stands in.
+        self.assertIsNone(seen["role_mask"])
 
 
 class SolverTests(IsolatedAsyncioTestCase):

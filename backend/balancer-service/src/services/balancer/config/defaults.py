@@ -10,6 +10,8 @@ from __future__ import annotations
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from shared.domain.roster_shape import DEFAULT_ROSTER_SLOTS
+
 
 class AlgorithmConfig(BaseSettings):
     """Configuration for balancer solver parameters."""
@@ -19,10 +21,12 @@ class AlgorithmConfig(BaseSettings):
         extra="ignore",
     )
 
-    # Role configuration
+    # Role configuration. Not an editable setting: every run overwrites it with
+    # the tournament's resolved roster shape (see ``algorithm/runtime.py``).
+    # This default is only the fallback for a run with no shape behind it.
     role_mask: dict[str, int] = Field(
-        default={"Tank": 1, "Damage": 2, "Support": 2},
-        description="Default role mask defining required players per role",
+        default_factory=lambda: dict(DEFAULT_ROSTER_SLOTS),
+        description="Per-team slot counts the solver fills; a projection of the tournament roster shape",
     )
 
     # Shared optimizer parameters

@@ -50,8 +50,9 @@ CONFIG_LIMITS: dict[str, dict[str, int | float]] = {
     "rank_comfort_tilt": {"min": 0.0, "max": 1.0},
 }
 
+# ``role_mask`` is deliberately absent: it is a projection of the tournament
+# roster shape, resolved per run, not a knob an operator sets on the balancer.
 EDITABLE_CONFIG_FIELD_KEYS = {
-    "role_mask",
     "population_size",
     "generation_count",
     "mutation_rate",
@@ -97,13 +98,6 @@ SYSTEM_CONFIG_FIELD_KEYS = {
 }
 
 CONFIG_FIELD_DEFINITIONS: list[dict[str, typing.Any]] = [
-    {
-        "key": "role_mask",
-        "label": "Role mask",
-        "description": "Required player count per team role. Default Overwatch format is 1 Tank, 2 Damage, 2 Support.",
-        "type": "role_mask",
-        "group": "Roles",
-    },
     {
         "key": "population_size",
         "label": "Population size",
