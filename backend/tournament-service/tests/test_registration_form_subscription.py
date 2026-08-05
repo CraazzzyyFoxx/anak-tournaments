@@ -79,8 +79,28 @@ class TestFormUpsertSchema:
         assert RegistrationFormUpsert().require_subscription is False
 
     def test_the_rule_is_not_writable_through_the_form(self):
-        """The rule moved to the workspace; the form must not carry a second copy."""
+        """The rule moved to the workspace; the form must not carry a second copy.
+
+        Asserted through `model_validate` rather than `hasattr` on a default instance:
+        the field being undeclared is only half the contract. The other half is what
+        happens to a stale client that still POSTs it -- the key is DROPPED and the save
+        succeeds (200, not 422). That tolerance is deliberate (see the model), so it is
+        pinned here rather than left to be discovered.
+        """
         assert not hasattr(RegistrationFormUpsert(), "subscription_requirement_json")
+
+        body = RegistrationFormUpsert.model_validate(
+            {
+                "is_open": True,
+                "require_subscription": True,
+                "subscription_requirement_json": {
+                    "mode": "all",
+                    "requirements": [{"provider": "boosty", "min_tier_rank": 2}],
+                },
+            }
+        )
+        assert "subscription_requirement_json" not in body.model_dump()
+        assert body.require_subscription is True
 
 
 class TestWorkspaceRequirementUpsertSchema:
@@ -93,7 +113,9 @@ class TestWorkspaceRequirementUpsertSchema:
 
     def test_rejects_an_unknown_mode_at_the_api_boundary(self):
         """Better a 422 on save than a surprise at check-in time."""
-        with pytest.raises(ValueError):
+        # `match` pins it to the MODE error: without it the test passes on any
+        # validation failure at all, including one that has nothing to do with mode.
+        with pytest.raises(ValueError, match="mode"):
             WorkspaceSubscriptionRequirementUpsert(requirement={"mode": "most", "requirements": []})
 
     def test_rejects_a_requirement_without_a_provider(self):

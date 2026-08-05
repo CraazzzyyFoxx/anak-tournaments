@@ -114,15 +114,19 @@ async def build_subscription_reads(
     if not auth_user_id_by_registration:
         return {}
 
+    # Cheapest guard first. `load_requirement` is a DB round trip, so a list whose
+    # registrations all lack an `auth_user_id` must not pay for a rule it would
+    # discard one line later -- the docstring above promises this calls nothing when
+    # there is nothing to report.
+    user_ids = list(dict.fromkeys(uid for uid in auth_user_id_by_registration.values() if uid is not None))
+    if not user_ids:
+        return {}
+
     # The workspace owns the rule; the resolver owns the parse and fails open on a
     # malformed row, so a bad config row surfaces nothing rather than 500ing a public
     # participants list.
     requirement = await resolver.load_requirement(workspace_id=form.workspace_id)
     if requirement is None:
-        return {}
-
-    user_ids = list(dict.fromkeys(uid for uid in auth_user_id_by_registration.values() if uid is not None))
-    if not user_ids:
         return {}
 
     outcomes = await resolver.evaluate(

@@ -81,3 +81,20 @@ class TestLoadRequirement(IsolatedAsyncioTestCase):
         """
         resolver, _ = _resolver({WS: {"mode": "most", "requirements": [{"provider": "boosty"}]}})
         assert await resolver.load_requirement(workspace_id=WS) is None
+
+    async def test_a_requirements_string_fails_open_instead_of_raising(self):
+        """``{"requirements": "boosty"}`` -- the shape that used to 500 three endpoints.
+
+        ``parse_requirement`` iterates the string and calls ``row.get`` on a ``str``,
+        which raises ``AttributeError``, not ``ValueError``. Nothing validates this blob's
+        shape on write, and this resolver is the single chokepoint check-in, the
+        participants list and the registration form all trust, so the fail-open promise
+        has to cover it too.
+        """
+        resolver, _ = _resolver({WS: {"requirements": "boosty"}})
+        assert await resolver.load_requirement(workspace_id=WS) is None
+
+    async def test_a_non_iterable_requirements_value_fails_open(self):
+        """Same promise, the ``TypeError`` arm: ``for row in 5`` is not iterable."""
+        resolver, _ = _resolver({WS: {"requirements": 5}})
+        assert await resolver.load_requirement(workspace_id=WS) is None

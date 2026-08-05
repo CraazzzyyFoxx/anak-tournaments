@@ -79,6 +79,11 @@ class RegistrationFormRead(BaseModel):
 
 
 class RegistrationFormUpsert(BaseModel):
+    # No `subscription_requirement_json`: the rule is workspace-scoped now. A stale
+    # client that still sends it is TOLERATED, not rejected -- Pydantic's default
+    # `extra="ignore"` drops the key and the rest of the save succeeds. Deliberate: no
+    # schema in this module sets `extra`, and turning every unknown field into a 422 is
+    # a separate decision with a much wider blast radius than this move.
     is_open: bool = False
     auto_approve: bool = False
     require_open_profile: bool = False

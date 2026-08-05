@@ -340,13 +340,22 @@ class SubscriptionResolver:
         this moved: refusing every patron mid-tournament because one config row is bad is
         the worse failure. An empty rule collapses to ``None`` too, so "toggle on, nothing
         configured" stays the documented no-op that never calls a provider.
+
+        The caught set is wider than ``parse_requirement``'s documented ``ValueError``
+        (unknown ``mode``) on purpose, because the blob is arbitrary stored JSON and only
+        its *shape* is validated on write: ``{"requirements": "boosty"}`` iterates the
+        string and raises ``AttributeError`` on ``row.get``, ``{"requirements": 5}``
+        raises ``TypeError`` on the ``for``. This function is the single chokepoint the
+        whole admission stack trusts -- check-in, the participants list and the
+        registration form all route through it -- so letting either escape would turn one
+        bad row into three 500s, which is exactly the promise above.
         """
         blob = await self._store.load_requirement(workspace_id)
         if not blob:
             return None
         try:
             requirement = parse_requirement(blob)
-        except ValueError:
+        except (ValueError, TypeError, AttributeError):
             return None
         return requirement if requirement.requirements else None
 
