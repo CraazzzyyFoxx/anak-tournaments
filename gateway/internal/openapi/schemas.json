@@ -558,6 +558,116 @@
       "description": "Uploads an achievements/divisions asset to S3 (superuser only), optionally workspace-scoped, returning its key and public URL; 422 on invalid asset_type.",
       "summary": "Upload asset"
     },
+    "rpc.app.catalog_aliases.attach": {
+      "description": "Adds the raw name to the target entity's aliases and closes the matching miss in one transaction; 404 if the entity is missing (superuser only).",
+      "request": {
+        "array": false,
+        "ref": "app.CatalogAliasAttach"
+      },
+      "summary": "Attach a catalog alias"
+    },
+    "rpc.app.catalog_aliases.dismiss": {
+      "description": "Marks an alias miss resolved without attaching it; the row reopens if the same name reappears in a log. 404 if the miss is missing (superuser only).",
+      "summary": "Dismiss a catalog alias miss"
+    },
+    "rpc.app.catalog_aliases.misses_list": {
+      "description": "Returns a paginated queue of hero/map/gamemode names from match logs that no alias resolved, ordered by occurrences then recency; open misses only unless include_resolved=true (superuser only).",
+      "query_params": [
+        {
+          "name": "page",
+          "required": false,
+          "schema": {
+            "default": 1,
+            "minimum": 1,
+            "title": "Page",
+            "type": "integer"
+          }
+        },
+        {
+          "name": "per_page",
+          "required": false,
+          "schema": {
+            "default": 50,
+            "maximum": 500,
+            "minimum": -1,
+            "title": "Per Page",
+            "type": "integer"
+          }
+        },
+        {
+          "name": "entities",
+          "required": false,
+          "schema": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Entities",
+            "type": "array"
+          }
+        },
+        {
+          "name": "only_count",
+          "required": false,
+          "schema": {
+            "default": false,
+            "title": "Only Count",
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "sort",
+          "required": false,
+          "schema": {
+            "default": "occurrences",
+            "enum": [
+              "id",
+              "occurrences",
+              "first_seen_at",
+              "last_seen_at"
+            ],
+            "title": "Sort",
+            "type": "string"
+          }
+        },
+        {
+          "name": "order",
+          "required": false,
+          "schema": {
+            "$ref": "#/components/schemas/app.SortOrder",
+            "default": "asc"
+          }
+        },
+        {
+          "name": "entity_type",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/app.CatalogEntityType"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        {
+          "name": "include_resolved",
+          "required": false,
+          "schema": {
+            "default": false,
+            "title": "Include Resolved",
+            "type": "boolean"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "app.Paginated_CatalogAliasMissRead_"
+      },
+      "summary": "List catalog alias misses"
+    },
     "rpc.app.gamemodes.admin_create": {
       "description": "Creates a gamemode (superuser only).",
       "request": {
@@ -9966,6 +10076,180 @@
       "title": "AchievementTournamentLink",
       "type": "object"
     },
+    "app.CatalogAliasAttach": {
+      "description": "Attach `alias` to one catalog entity and close the matching miss.",
+      "properties": {
+        "alias": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Alias",
+          "type": "string"
+        },
+        "entity_id": {
+          "title": "Entity Id",
+          "type": "integer"
+        },
+        "entity_type": {
+          "$ref": "#/components/schemas/app.CatalogEntityType"
+        }
+      },
+      "required": [
+        "entity_type",
+        "entity_id",
+        "alias"
+      ],
+      "title": "CatalogAliasAttach",
+      "type": "object"
+    },
+    "app.CatalogAliasMissListQueryParams": {
+      "properties": {
+        "entities": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Entities",
+          "type": "array"
+        },
+        "entity_type": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/app.CatalogEntityType"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "include_resolved": {
+          "default": false,
+          "title": "Include Resolved",
+          "type": "boolean"
+        },
+        "only_count": {
+          "default": false,
+          "title": "Only Count",
+          "type": "boolean"
+        },
+        "order": {
+          "$ref": "#/components/schemas/app.SortOrder",
+          "default": "asc"
+        },
+        "page": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Page",
+          "type": "integer"
+        },
+        "per_page": {
+          "default": 50,
+          "maximum": 500,
+          "minimum": -1,
+          "title": "Per Page",
+          "type": "integer"
+        },
+        "sort": {
+          "default": "occurrences",
+          "enum": [
+            "id",
+            "occurrences",
+            "first_seen_at",
+            "last_seen_at"
+          ],
+          "title": "Sort",
+          "type": "string"
+        }
+      },
+      "title": "CatalogAliasMissListQueryParams",
+      "type": "object"
+    },
+    "app.CatalogAliasMissRead": {
+      "description": "One unresolved catalog name, with how often logs have hit it.",
+      "properties": {
+        "entity_type": {
+          "$ref": "#/components/schemas/app.CatalogEntityType"
+        },
+        "first_seen_at": {
+          "format": "date-time",
+          "title": "First Seen At",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "last_log_record_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Log Record Id"
+        },
+        "last_log_tournament_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Log Tournament Id"
+        },
+        "last_seen_at": {
+          "format": "date-time",
+          "title": "Last Seen At",
+          "type": "string"
+        },
+        "occurrences": {
+          "title": "Occurrences",
+          "type": "integer"
+        },
+        "raw_name": {
+          "title": "Raw Name",
+          "type": "string"
+        },
+        "resolved_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resolved At"
+        }
+      },
+      "required": [
+        "id",
+        "entity_type",
+        "raw_name",
+        "occurrences",
+        "first_seen_at",
+        "last_seen_at"
+      ],
+      "title": "CatalogAliasMissRead",
+      "type": "object"
+    },
+    "app.CatalogEntityType": {
+      "description": "Catalog entity an alias (or an unresolved-name miss) belongs to.\n\nMatch logs carry map/gamemode/hero names in the reporting client's locale,\nso every catalog entity keeps a list of alternative names it answers to.",
+      "enum": [
+        "hero",
+        "map",
+        "gamemode"
+      ],
+      "title": "CatalogEntityType",
+      "type": "string"
+    },
     "app.DashboardActiveTournamentStats": {
       "properties": {
         "encounters_missing_logs": {
@@ -10401,6 +10685,21 @@
     "app.GamemodeCreate": {
       "description": "Schema for creating a gamemode",
       "properties": {
+        "aliases": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Aliases"
+        },
         "name": {
           "title": "Name",
           "type": "string"
@@ -10414,6 +10713,14 @@
     },
     "app.GamemodeRead": {
       "properties": {
+        "aliases": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Aliases",
+          "type": "array"
+        },
         "description": {
           "anyOf": [
             {
@@ -10455,6 +10762,21 @@
     "app.GamemodeUpdate": {
       "description": "Schema for updating a gamemode",
       "properties": {
+        "aliases": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Aliases"
+        },
         "name": {
           "anyOf": [
             {
@@ -10483,6 +10805,21 @@
     "app.HeroCreate": {
       "description": "Schema for creating a hero",
       "properties": {
+        "aliases": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Aliases"
+        },
         "color": {
           "anyOf": [
             {
@@ -10842,6 +11179,14 @@
     },
     "app.HeroRead": {
       "properties": {
+        "aliases": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Aliases",
+          "type": "array"
+        },
         "color": {
           "title": "Color",
           "type": "string"
@@ -10961,6 +11306,21 @@
     "app.HeroUpdate": {
       "description": "Schema for updating a hero",
       "properties": {
+        "aliases": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Aliases"
+        },
         "color": {
           "anyOf": [
             {
@@ -11162,9 +11522,29 @@
     "app.MapCreate": {
       "description": "Schema for creating a map",
       "properties": {
+        "aliases": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Aliases"
+        },
         "gamemode_id": {
           "title": "Gamemode Id",
           "type": "integer"
+        },
+        "in_competitive": {
+          "default": true,
+          "title": "In Competitive",
+          "type": "boolean"
         },
         "name": {
           "title": "Name",
@@ -11180,6 +11560,14 @@
     },
     "app.MapRead": {
       "properties": {
+        "aliases": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Aliases",
+          "type": "array"
+        },
         "gamemode": {
           "anyOf": [
             {
@@ -11202,6 +11590,11 @@
           "title": "Image Path",
           "type": "string"
         },
+        "in_competitive": {
+          "default": true,
+          "title": "In Competitive",
+          "type": "boolean"
+        },
         "name": {
           "title": "Name",
           "type": "string"
@@ -11220,6 +11613,21 @@
     "app.MapUpdate": {
       "description": "Schema for updating a map",
       "properties": {
+        "aliases": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Aliases"
+        },
         "gamemode_id": {
           "anyOf": [
             {
@@ -11231,6 +11639,18 @@
           ],
           "default": null,
           "title": "Gamemode Id"
+        },
+        "in_competitive": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "In Competitive"
         },
         "name": {
           "anyOf": [
@@ -11453,6 +11873,37 @@
         "results"
       ],
       "title": "Paginated[AchievementRead]",
+      "type": "object"
+    },
+    "app.Paginated_CatalogAliasMissRead_": {
+      "properties": {
+        "page": {
+          "title": "Page",
+          "type": "integer"
+        },
+        "per_page": {
+          "title": "Per Page",
+          "type": "integer"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/components/schemas/app.CatalogAliasMissRead"
+          },
+          "title": "Results",
+          "type": "array"
+        },
+        "total": {
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "page",
+        "per_page",
+        "total",
+        "results"
+      ],
+      "title": "Paginated[CatalogAliasMissRead]",
       "type": "object"
     },
     "app.Paginated_EncounterReadWithUserStats_": {
@@ -31691,6 +32142,11 @@
         "image_path": {
           "title": "Image Path",
           "type": "string"
+        },
+        "in_competitive": {
+          "default": true,
+          "title": "In Competitive",
+          "type": "boolean"
         },
         "name": {
           "title": "Name",

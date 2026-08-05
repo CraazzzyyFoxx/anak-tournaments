@@ -23,4 +23,11 @@ var MetadataAdminRoutes = []edge.RouteSpec{
 	{Method: "POST", Pattern: "/api/v1/admin/gamemodes", Queue: "rpc.app.gamemodes.admin_create", Body: true, Auth: edge.AuthRequired},
 	{Method: "PATCH", Pattern: "/api/v1/admin/gamemodes/{id}", Queue: "rpc.app.gamemodes.admin_update", IDParam: "id", Body: true, Auth: edge.AuthRequired},
 	{Method: "DELETE", Pattern: "/api/v1/admin/gamemodes/{id}", Queue: "rpc.app.gamemodes.admin_delete", IDParam: "id", Auth: edge.AuthRequired, Success: 204},
+	// alias-miss queue: catalog names a match log used that no alias resolved.
+	// `attach` is a bespoke write rather than a PATCH on the entity's `aliases`
+	// so the browser never read-modify-writes the array (two admins would race)
+	// and closing the miss rides the same transaction.
+	{Method: "GET", Pattern: "/api/v1/admin/catalog-aliases/misses", Queue: "rpc.app.catalog_aliases.misses_list", AllQuery: true, Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/admin/catalog-aliases/attach", Queue: "rpc.app.catalog_aliases.attach", Body: true, Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/admin/catalog-aliases/misses/{id}/dismiss", Queue: "rpc.app.catalog_aliases.dismiss", IDParam: "id", Auth: edge.AuthRequired},
 }
