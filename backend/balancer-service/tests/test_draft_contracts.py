@@ -53,8 +53,8 @@ def test_feasibility_and_pick_options_have_typed_public_contracts() -> None:
         is_feasible=False,
         total_open_slots=2,
         matched_slots=1,
-        unmatched_slots=[{"team_id": 10, "role": "support", "ordinal": 0}],
-        role_deficits=[{"role": "support", "unmatched_slots": 1, "eligible_players": 0}],
+        unmatched_slots=[{"team_id": 10, "slot_code": "support", "ordinal": 0}],
+        slot_deficits=[{"slot_code": "support", "unmatched_slots": 1, "eligible_players": 0}],
         blocking_player_ids=[],
         reason_code="role_shortage",
     )
@@ -75,7 +75,7 @@ def test_feasibility_and_pick_options_have_typed_public_contracts() -> None:
         ],
     )
 
-    assert feasibility.unmatched_slots[0].role is DraftRole.SUPPORT
+    assert feasibility.unmatched_slots[0].slot_code == "support"
     assert options.pick_version == 4
     assert options.options[0].is_safe is False
 
@@ -170,8 +170,8 @@ def test_role_edit_result_serializes_before_and_after_feasibility() -> None:
             "is_feasible": False,
             "total_open_slots": 1,
             "matched_slots": 0,
-            "unmatched_slots": [{"team_id": 10, "role": "support", "ordinal": 0}],
-            "role_deficits": [{"role": "support", "unmatched_slots": 1, "eligible_players": 0}],
+            "unmatched_slots": [{"team_id": 10, "slot_code": "support", "ordinal": 0}],
+            "slot_deficits": [{"slot_code": "support", "unmatched_slots": 1, "eligible_players": 0}],
             "blocking_player_ids": [],
             "reason_code": "role_shortage",
         },
@@ -180,7 +180,7 @@ def test_role_edit_result_serializes_before_and_after_feasibility() -> None:
             "total_open_slots": 1,
             "matched_slots": 1,
             "unmatched_slots": [],
-            "role_deficits": [],
+            "slot_deficits": [],
             "blocking_player_ids": [],
             "reason_code": None,
         },

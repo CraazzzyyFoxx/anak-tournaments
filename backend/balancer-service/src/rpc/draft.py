@@ -410,8 +410,11 @@ def register(broker: Any, logger: Any) -> None:
             # snapshot players carry loaders.player_options() so those never
             # lazy-load.
             available = [p for p in snapshot.players if p.status == "available"]
-            counts = selection._team_role_counts(snapshot.players, snapshot.picks, current.draft_team_id)
-            capacity = selection._role_capacity(draft.team_size, counts)
+            shape = await feasibility.resolve_shape(session, draft)
+            counts = selection._team_slot_counts(
+                snapshot.players, snapshot.picks, current.draft_team_id, shape
+            )
+            capacity = selection._role_openings(shape, counts)
             fit_players = [
                 sug.FitPlayer(
                     player_id=p.id,
@@ -432,7 +435,7 @@ def register(broker: Any, logger: Any) -> None:
                 session,
                 draft,
                 team_id=current.draft_team_id,
-                state=feasibility.state_from_snapshot(draft, snapshot),
+                state=await feasibility.state_from_snapshot(session, draft, snapshot),
             )
             safe_options = {(option.player_id, option.role) for option in options if option.is_safe}
             ranked = sug.rank_suggestions(

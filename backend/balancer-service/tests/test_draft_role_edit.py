@@ -133,7 +133,7 @@ def test_role_edit_preview_can_restore_global_feasibility_without_mutating_state
     role_edit = _module()
     state = feasibility.DraftFeasibilityState(
         team_ids=(10, 20),
-        role_targets={DraftRole.TANK: 1, DraftRole.DPS: 1, DraftRole.SUPPORT: 1},
+        slot_targets={"tank": 1, "dps": 1, "support": 1},
         players=(
             feasibility.EligiblePlayer(1, frozenset({DraftRole.SUPPORT})),
             feasibility.EligiblePlayer(2, frozenset({DraftRole.DPS})),
@@ -141,8 +141,8 @@ def test_role_edit_preview_can_restore_global_feasibility_without_mutating_state
             feasibility.EligiblePlayer(4, frozenset({DraftRole.DPS})),
         ),
         assignments=(
-            feasibility.DraftAssignment(101, 10, DraftRole.TANK),
-            feasibility.DraftAssignment(102, 20, DraftRole.TANK),
+            feasibility.DraftAssignment(101, 10, "tank"),
+            feasibility.DraftAssignment(102, 20, "tank"),
         ),
     )
 
@@ -166,7 +166,7 @@ def test_apply_role_edit_updates_snapshot_version_and_private_audit() -> None:
     player = _player()
     state = feasibility.DraftFeasibilityState(
         team_ids=(10,),
-        role_targets={DraftRole.TANK: 1, DraftRole.DPS: 1, DraftRole.SUPPORT: 1},
+        slot_targets={"tank": 1, "dps": 1, "support": 1},
         players=(feasibility.EligiblePlayer(20, frozenset({DraftRole.DPS})),),
         assignments=(),
     )

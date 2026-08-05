@@ -36,9 +36,9 @@ __all__ = (
     "DraftPickRead",
     "DraftPickSelectRequest",
     "DraftPlayerRead",
-    "DraftRoleDeficitRead",
     "DraftRoleEditRequest",
     "DraftRoleEditResponse",
+    "DraftSlotDeficitRead",
     "DraftSlotRead",
     "DraftSeedRequest",
     "DraftSeedDiff",
@@ -314,14 +314,14 @@ class DraftSlotRead(BaseModel):
     model_config = _ReadConfig
 
     team_id: int
-    role: DraftRole
+    slot_code: str
     ordinal: int
 
 
-class DraftRoleDeficitRead(BaseModel):
+class DraftSlotDeficitRead(BaseModel):
     model_config = _ReadConfig
 
-    role: DraftRole
+    slot_code: str
     unmatched_slots: int
     eligible_players: int
 
@@ -333,7 +333,7 @@ class DraftFeasibilityResponse(BaseModel):
     total_open_slots: int
     matched_slots: int
     unmatched_slots: list[DraftSlotRead]
-    role_deficits: list[DraftRoleDeficitRead]
+    slot_deficits: list[DraftSlotDeficitRead]
     blocking_player_ids: list[int]
     reason_code: str | None = None
 

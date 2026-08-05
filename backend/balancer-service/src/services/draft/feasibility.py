@@ -1,9 +1,10 @@
-"""Pure role-feasibility rules for live draft sessions.
+"""Pure slot-feasibility rules for live draft sessions.
 
-A draft is feasible when every still-open ``(team, role)`` roster slot can be
-matched to a distinct available player who declared that role.  Evaluating a
-hypothetical pick removes both the chosen slot and player before matching, which
-prevents a locally legal pick from starving another team's future role slot.
+A draft is feasible when every still-open ``(team, slot)`` roster slot can be
+matched to a distinct available player who fits it.  A role slot fits a player
+who declared that role; a ``flex`` slot fits anybody.  Evaluating a hypothetical
+pick removes both the chosen slot and player before matching, which prevents a
+locally legal pick from starving another team's future roster slot.
 """
 
 from __future__ import annotations
@@ -18,7 +19,9 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.enums import DraftPickStatus, DraftPlayerStatus, DraftRole
+from shared.domain.roster_shape import FLEX_SLOT_CODE, ROSTER_SLOT_CODES, RosterShape
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam
+from shared.services.roster_shape_access import get_effective_roster_shape
 from src.services.draft import loaders
 from src.services.role_matching import maximum_bipartite_matching
 
@@ -33,19 +36,21 @@ class EligiblePlayer:
 class DraftAssignment:
     player_id: int
     team_id: int
-    role: DraftRole
+    # A roster slot code, so ``flex`` is expressible; see _remaining_capacity for
+    # how a role code that no longer has room falls back to a free flex slot.
+    slot_code: str
 
 
 @dataclass(frozen=True)
 class DraftSlot:
     team_id: int
-    role: DraftRole
+    slot_code: str
     ordinal: int
 
 
 @dataclass(frozen=True)
-class RoleDeficit:
-    role: DraftRole
+class SlotDeficit:
+    slot_code: str
     unmatched_slots: int
     eligible_players: int
 
@@ -56,7 +61,7 @@ class DraftFeasibilityReport:
     total_open_slots: int
     matched_slots: int
     unmatched_slots: tuple[DraftSlot, ...]
-    role_deficits: tuple[RoleDeficit, ...]
+    slot_deficits: tuple[SlotDeficit, ...]
     blocking_player_ids: tuple[int, ...]
     reason_code: str | None = None
 
@@ -74,27 +79,9 @@ class DraftPickOption:
 @dataclass(frozen=True)
 class DraftFeasibilityState:
     team_ids: tuple[int, ...]
-    role_targets: dict[DraftRole, int]
+    slot_targets: dict[str, int]
     players: tuple[EligiblePlayer, ...]
     assignments: tuple[DraftAssignment, ...]
-
-
-def role_targets_for_team_size(team_size: int) -> dict[DraftRole, int]:
-    if team_size >= 5:
-        return {
-            DraftRole.TANK: 1,
-            DraftRole.DPS: 2,
-            DraftRole.SUPPORT: max(2, team_size - 3),
-        }
-    if team_size <= 0:
-        return dict.fromkeys(DraftRole, 0)
-    tank = min(1, team_size)
-    dps = min(2, max(team_size - tank, 0))
-    return {
-        DraftRole.TANK: tank,
-        DraftRole.DPS: dps,
-        DraftRole.SUPPORT: max(team_size - tank - dps, 0),
-    }
 
 
 def _as_role(value: Any) -> DraftRole | None:
@@ -106,7 +93,7 @@ def _as_role(value: Any) -> DraftRole | None:
 
 def build_feasibility_state(
     *,
-    team_size: int,
+    shape: RosterShape,
     teams: Collection[DraftTeam],
     players: Collection[DraftPlayer],
     picks: Collection[DraftPick],
@@ -141,18 +128,33 @@ def build_feasibility_state(
             continue
         if player.status != DraftPlayerStatus.PICKED.value or player.drafted_by_team_id is None:
             continue
+        # Which slot a picked player occupies: on a role-less roster there is only
+        # flex, so every pick lands there and a missing role is no longer a reason
+        # to skip the player. Otherwise the drafted role names the slot, and the
+        # "role slot already full -> spill into flex" rule lives in
+        # _remaining_capacity, where the per-team counters already exist, instead
+        # of being recomputed here and again for every hypothetical pick.
+        if not shape.has_role_slots:
+            assignments.append(
+                DraftAssignment(
+                    player_id=player.id,
+                    team_id=player.drafted_by_team_id,
+                    slot_code=FLEX_SLOT_CODE,
+                )
+            )
+            continue
         assigned_role = picked_role_by_player.get(player.id) or primary_role
         if assigned_role is not None:
             assignments.append(
                 DraftAssignment(
                     player_id=player.id,
                     team_id=player.drafted_by_team_id,
-                    role=assigned_role,
+                    slot_code=assigned_role.value,
                 )
             )
     return DraftFeasibilityState(
         team_ids=team_ids,
-        role_targets=role_targets_for_team_size(team_size),
+        slot_targets=shape.slots,
         players=tuple(eligible_players),
         assignments=tuple(assignments),
     )
@@ -194,10 +196,28 @@ async def load_snapshot(session: AsyncSession, draft_session: DraftSession) -> D
     return DraftSnapshot(teams=tuple(teams), players=tuple(players), picks=tuple(picks))
 
 
-def state_from_snapshot(draft_session: DraftSession, snapshot: DraftSnapshot) -> DraftFeasibilityState:
-    """Pure translation of an already-loaded snapshot into the matching input."""
+async def resolve_shape(session: AsyncSession, draft_session: DraftSession) -> RosterShape:
+    """The roster shape this draft's teams must fill.
+
+    The single place that knows which ids a draft resolves its shape from, so
+    callers never re-derive the tournament/workspace precedence.  Both levels are
+    cache-backed, so calling this per request step is cheap.
+    """
+    return await get_effective_roster_shape(
+        session,
+        tournament_id=draft_session.tournament_id,
+        workspace_id=draft_session.workspace_id,
+    )
+
+
+async def state_from_snapshot(
+    session: AsyncSession,
+    draft_session: DraftSession,
+    snapshot: DraftSnapshot,
+) -> DraftFeasibilityState:
+    """Translate an already-loaded snapshot into the matching input."""
     return build_feasibility_state(
-        team_size=draft_session.team_size,
+        shape=await resolve_shape(session, draft_session),
         teams=snapshot.teams,
         players=snapshot.players,
         picks=snapshot.picks,
@@ -208,7 +228,7 @@ async def load_feasibility_state(
     session: AsyncSession,
     draft_session: DraftSession,
 ) -> DraftFeasibilityState:
-    return state_from_snapshot(draft_session, await load_snapshot(session, draft_session))
+    return await state_from_snapshot(session, draft_session, await load_snapshot(session, draft_session))
 
 
 async def analyze_session(
@@ -224,7 +244,7 @@ async def analyze_session(
     return await asyncio.to_thread(
         analyze_draft_feasibility,
         team_ids=state.team_ids,
-        role_targets=state.role_targets,
+        slot_targets=state.slot_targets,
         players=state.players,
         assignments=state.assignments,
         hypothetical=hypothetical,
@@ -246,50 +266,67 @@ async def evaluate_session_pick_options(
         evaluate_pick_options,
         team_id=team_id,
         team_ids=state.team_ids,
-        role_targets=state.role_targets,
+        slot_targets=state.slot_targets,
         players=state.players,
         assignments=state.assignments,
     )
 
 
-def _ordered_roles(role_targets: Mapping[DraftRole, int]) -> tuple[DraftRole, ...]:
-    return tuple(role for role in DraftRole if role_targets.get(role, 0) > 0)
+def _ordered_slot_codes(slot_targets: Mapping[str, int]) -> tuple[str, ...]:
+    return tuple(code for code in ROSTER_SLOT_CODES if slot_targets.get(code, 0) > 0)
+
+
+def _slot_fits(player: EligiblePlayer, slot_code: str) -> bool:
+    """The one new rule of the slot vocabulary: flex takes anybody."""
+    if slot_code == FLEX_SLOT_CODE:
+        return True
+    role = _as_role(slot_code)
+    return role is not None and role in player.playable_roles
 
 
 def describe_role_deficits(report: DraftFeasibilityReport) -> str:
     """Return a safe, compact explanation suitable for API errors."""
 
     return ", ".join(
-        f"{deficit.role.value}: {deficit.unmatched_slots} open, {deficit.eligible_players} eligible"
-        for deficit in report.role_deficits
+        f"{deficit.slot_code}: {deficit.unmatched_slots} open, {deficit.eligible_players} eligible"
+        for deficit in report.slot_deficits
     )
 
 
 def _remaining_capacity(
     *,
     team_ids: Collection[int],
-    role_targets: Mapping[DraftRole, int],
+    slot_targets: Mapping[str, int],
     assignments: Collection[DraftAssignment],
-) -> tuple[dict[tuple[int, DraftRole], int], bool]:
+) -> tuple[dict[tuple[int, str], int], bool]:
     remaining = {
-        (team_id, role): int(role_targets.get(role, 0))
+        (team_id, code): int(slot_targets.get(code, 0))
         for team_id in dict.fromkeys(team_ids)
-        for role in _ordered_roles(role_targets)
+        for code in _ordered_slot_codes(slot_targets)
     }
     overfilled = False
     for assignment in assignments:
-        key = (assignment.team_id, assignment.role)
-        if key not in remaining or remaining[key] <= 0:
-            overfilled = True
+        key = (assignment.team_id, assignment.slot_code)
+        if remaining.get(key, 0) > 0:
+            remaining[key] -= 1
             continue
-        remaining[key] -= 1
+        # A role slot with no room left spills into a free flex slot: flex accepts
+        # anybody, so an extra tank on a {tank: 1, flex: 5} roster is a legal flex
+        # pick, not an overfill. Doing it here keeps the rule in one place for
+        # already-resolved picks and hypothetical ones alike. Only when neither the
+        # named slot nor flex has room is the roster genuinely overfilled.
+        flex_key = (assignment.team_id, FLEX_SLOT_CODE)
+        if assignment.slot_code != FLEX_SLOT_CODE and remaining.get(flex_key, 0) > 0:
+            remaining[flex_key] -= 1
+            continue
+        overfilled = True
     return remaining, overfilled
 
 
-def _open_slots(remaining: Mapping[tuple[int, DraftRole], int]) -> tuple[DraftSlot, ...]:
+def _open_slots(remaining: Mapping[tuple[int, str], int]) -> tuple[DraftSlot, ...]:
     return tuple(
-        DraftSlot(team_id=team_id, role=role, ordinal=ordinal)
-        for (team_id, role), count in remaining.items()
+        DraftSlot(team_id=team_id, slot_code=code, ordinal=ordinal)
+        for (team_id, code), count in remaining.items()
         for ordinal in range(count)
     )
 
@@ -297,7 +334,7 @@ def _open_slots(remaining: Mapping[tuple[int, DraftRole], int]) -> tuple[DraftSl
 def analyze_draft_feasibility(
     *,
     team_ids: Collection[int],
-    role_targets: Mapping[DraftRole, int],
+    slot_targets: Mapping[str, int],
     players: Collection[EligiblePlayer],
     assignments: Collection[DraftAssignment] = (),
     hypothetical: DraftAssignment | None = None,
@@ -307,22 +344,22 @@ def analyze_draft_feasibility(
     all_assignments = (*assignments, *((hypothetical,) if hypothetical is not None else ()))
     remaining, overfilled = _remaining_capacity(
         team_ids=team_ids,
-        role_targets=role_targets,
+        slot_targets=slot_targets,
         assignments=all_assignments,
     )
     slots = _open_slots(remaining)
     assigned_player_ids = {assignment.player_id for assignment in all_assignments}
     available_players = tuple(player for player in players if player.player_id not in assigned_player_ids)
-    slots_by_role = {
-        role: tuple(slot for slot in slots if slot.role == role)
-        for role in _ordered_roles(role_targets)
+    slots_by_code = {
+        code: tuple(slot for slot in slots if slot.slot_code == code)
+        for code in _ordered_slot_codes(slot_targets)
     }
     eligible_slots = {
         player.player_id: tuple(
             slot
-            for role in _ordered_roles(role_targets)
-            if role in player.playable_roles
-            for slot in slots_by_role[role]
+            for code in _ordered_slot_codes(slot_targets)
+            if _slot_fits(player, code)
+            for slot in slots_by_code[code]
         )
         for player in available_players
     }
@@ -331,21 +368,21 @@ def analyze_draft_feasibility(
         slots=slots,
         eligible_slots=eligible_slots,
     )
-    unmatched_roles = {slot.role for slot in matching.unmatched_slots}
+    unmatched_codes = {slot.slot_code for slot in matching.unmatched_slots}
     blocking_players = tuple(
         player.player_id
         for player in available_players
-        if player.playable_roles & unmatched_roles
+        if any(_slot_fits(player, code) for code in unmatched_codes)
     )
-    unmatched_counts = Counter(slot.role for slot in matching.unmatched_slots)
-    role_deficits = tuple(
-        RoleDeficit(
-            role=role,
-            unmatched_slots=unmatched_counts[role],
-            eligible_players=sum(role in player.playable_roles for player in available_players),
+    unmatched_counts = Counter(slot.slot_code for slot in matching.unmatched_slots)
+    slot_deficits = tuple(
+        SlotDeficit(
+            slot_code=code,
+            unmatched_slots=unmatched_counts[code],
+            eligible_players=sum(_slot_fits(player, code) for player in available_players),
         )
-        for role in _ordered_roles(role_targets)
-        if unmatched_counts[role]
+        for code in _ordered_slot_codes(slot_targets)
+        if unmatched_counts[code]
     )
     reason_code = "role_overfilled" if overfilled else ("role_shortage" if matching.unmatched_slots else None)
     return DraftFeasibilityReport(
@@ -353,7 +390,7 @@ def analyze_draft_feasibility(
         total_open_slots=len(slots),
         matched_slots=matching.matched_count,
         unmatched_slots=matching.unmatched_slots,
-        role_deficits=role_deficits,
+        slot_deficits=slot_deficits,
         blocking_player_ids=blocking_players,
         reason_code=reason_code,
     )
@@ -363,7 +400,7 @@ def evaluate_pick_options(
     *,
     team_id: int,
     team_ids: Collection[int],
-    role_targets: Mapping[DraftRole, int],
+    slot_targets: Mapping[str, int],
     players: Collection[EligiblePlayer],
     assignments: Collection[DraftAssignment] = (),
 ) -> tuple[DraftPickOption, ...]:
@@ -371,7 +408,7 @@ def evaluate_pick_options(
 
     remaining, _ = _remaining_capacity(
         team_ids=team_ids,
-        role_targets=role_targets,
+        slot_targets=slot_targets,
         assignments=assignments,
     )
     options: list[DraftPickOption] = []
@@ -384,13 +421,15 @@ def evaluate_pick_options(
         for role in DraftRole:
             if role not in player.playable_roles:
                 continue
-            if remaining.get((team_id, role), 0) <= 0:
+            # A role a team can still take: its own role slot, or any free flex
+            # slot. Only when both are gone is the option genuinely unavailable.
+            if remaining.get((team_id, role.value), 0) + remaining.get((team_id, FLEX_SLOT_CODE), 0) <= 0:
                 options.append(
                     DraftPickOption(
                         player_id=player.player_id,
                         role=role,
                         is_safe=False,
-                        reason_code="role_filled",
+                        reason_code="slot_filled",
                     )
                 )
                 continue
@@ -399,10 +438,12 @@ def evaluate_pick_options(
             if cached is None:
                 report = analyze_draft_feasibility(
                     team_ids=team_ids,
-                    role_targets=role_targets,
+                    slot_targets=slot_targets,
                     players=players,
                     assignments=assignments,
-                    hypothetical=DraftAssignment(player_id=player.player_id, team_id=team_id, role=role),
+                    hypothetical=DraftAssignment(
+                        player_id=player.player_id, team_id=team_id, slot_code=role.value
+                    ),
                 )
                 representative_id = player.player_id
                 report_cache[cache_key] = (representative_id, report)
@@ -435,7 +476,7 @@ __all__ = (
     "DraftSlot",
     "DraftSnapshot",
     "EligiblePlayer",
-    "RoleDeficit",
+    "SlotDeficit",
     "analyze_draft_feasibility",
     "analyze_session",
     "build_feasibility_state",
@@ -444,6 +485,6 @@ __all__ = (
     "evaluate_session_pick_options",
     "load_feasibility_state",
     "load_snapshot",
-    "role_targets_for_team_size",
+    "resolve_shape",
     "state_from_snapshot",
 )

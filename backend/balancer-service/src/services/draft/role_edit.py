@@ -85,7 +85,7 @@ def preview_role_addition(
 ) -> RoleEditPreview:
     before = feasibility.analyze_draft_feasibility(
         team_ids=state.team_ids,
-        role_targets=state.role_targets,
+        slot_targets=state.slot_targets,
         players=state.players,
         assignments=state.assignments,
     )
@@ -106,7 +106,7 @@ def preview_role_addition(
         raise _err("player_not_available", "Player is not available in the remaining draft pool", status_code=404)
     after = feasibility.analyze_draft_feasibility(
         team_ids=state.team_ids,
-        role_targets=state.role_targets,
+        slot_targets=state.slot_targets,
         players=tuple(updated_players),
         assignments=state.assignments,
     )
@@ -119,16 +119,16 @@ def _report_json(report: feasibility.DraftFeasibilityReport) -> dict:
         "total_open_slots": report.total_open_slots,
         "matched_slots": report.matched_slots,
         "unmatched_slots": [
-            {"team_id": slot.team_id, "role": slot.role.value, "ordinal": slot.ordinal}
+            {"team_id": slot.team_id, "slot_code": slot.slot_code, "ordinal": slot.ordinal}
             for slot in report.unmatched_slots
         ],
-        "role_deficits": [
+        "slot_deficits": [
             {
-                "role": deficit.role.value,
+                "slot_code": deficit.slot_code,
                 "unmatched_slots": deficit.unmatched_slots,
                 "eligible_players": deficit.eligible_players,
             }
-            for deficit in report.role_deficits
+            for deficit in report.slot_deficits
         ],
         "blocking_player_ids": list(report.blocking_player_ids),
         "reason_code": report.reason_code,
