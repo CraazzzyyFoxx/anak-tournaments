@@ -6,11 +6,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.50'
-          memory: 256M
+          cpus: '1'
+          memory: 512M
         reservations:
-          cpus: '0.10'
-          memory: 64M
+          cpus: '0.5'
+          memory: 128M
     restart: unless-stopped
     volumes:
       - redis-data:/data
@@ -29,7 +29,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1.00'
+          cpus: '2.00'
           memory: 1G
         reservations:
           cpus: '0.50'
@@ -174,7 +174,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.50'
+          cpus: '1.000'
           memory: 512M
         reservations:
           cpus: '0.10'
@@ -456,7 +456,7 @@ services:
       resources:
         limits:
           cpus: '3.00'
-          memory: 1024M
+          memory: 2GB
         reservations:
           cpus: '0.25'
           memory: 256M
