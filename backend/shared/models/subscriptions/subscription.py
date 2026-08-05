@@ -32,6 +32,7 @@ __all__ = (
     "SubscriptionCheckLog",
     "SubscriptionEntitlement",
     "SubscriptionProviderConfig",
+    "WorkspaceSubscriptionRequirement",
 )
 
 SUBSCRIPTIONS_SCHEMA = "subscriptions"
@@ -68,6 +69,38 @@ class SubscriptionProviderConfig(db.TimeStampIntegerMixin):
 
     def __repr__(self) -> str:
         return f"<SubscriptionProviderConfig id={self.id} workspace_id={self.workspace_id} provider={self.provider}>"
+
+
+class WorkspaceSubscriptionRequirement(db.TimeStampIntegerMixin):
+    """The subscription rule a workspace enforces, shared by all its tournaments.
+
+    Named `Workspace...` because `shared.subscriptions.SubscriptionRequirement` is
+    the parsed value object this row's blob deserialises into; the two must stay
+    importable side by side.
+
+    One row per workspace today (``name='default'``, ``is_default=True``). The table
+    shape is deliberately preset-ready: more rows plus a nullable FK on
+    ``registration_form`` is a purely additive change, whereas a column on
+    ``workspace`` would have forced a data migration.
+
+    ``requirement_json`` keeps the exact shape ``shared.subscriptions.parse_requirement``
+    already validates -- ``{mode, requirements: [{provider, min_tier_rank}]}`` -- so
+    the Kleene composition is reused verbatim rather than reimplemented.
+    """
+
+    __tablename__ = "requirement"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "name", name="uq_subscription_requirement_workspace_name"),
+        {"schema": SUBSCRIPTIONS_SCHEMA},
+    )
+
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(64), nullable=False, server_default="default", default="default")
+    requirement_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, server_default="{}", default=dict)
+    is_default: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
+
+    def __repr__(self) -> str:
+        return f"<WorkspaceSubscriptionRequirement id={self.id} workspace_id={self.workspace_id} name={self.name}>"
 
 
 class SubscriptionEntitlement(db.TimeStampIntegerMixin):
