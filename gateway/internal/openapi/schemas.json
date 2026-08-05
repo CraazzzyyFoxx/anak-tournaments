@@ -37119,6 +37119,11 @@
     "tournament.WorkspaceSubscriptionRequirementRead": {
       "description": "The rule a whole workspace enforces, shared by every tournament in it.\n\n``requirement`` is the raw ``{mode, requirements: [{provider, min_tier_rank}]}``\nblob rather than a nested model on purpose: ``parse_requirement`` is the single\nauthority on that shape (it clamps thresholds and keeps the strictest duplicate),\nand a second Pydantic definition of it would be a second source of truth for the\nadmission rule.",
       "properties": {
+        "enforcing_tournaments": {
+          "default": 0,
+          "title": "Enforcing Tournaments",
+          "type": "integer"
+        },
         "requirement": {
           "additionalProperties": true,
           "title": "Requirement",
