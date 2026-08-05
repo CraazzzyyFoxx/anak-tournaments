@@ -38,6 +38,7 @@ export default defineConfig({
       "src/app/admin/subscriptions/**/*.test.tsx",
       "src/app/balancer/components/balance-import.test.ts",
       "src/app/balancer/components/balancer-page-selectors.test.ts",
+      "src/app/balancer/components/forced-flex-parity.test.ts",
       "src/app/balancer/components/BalancingPoolSidebar.behavior.test.tsx",
       "src/app/balancer/tool-context.test.ts",
       "src/app/balancer/redirect-map.test.ts",
