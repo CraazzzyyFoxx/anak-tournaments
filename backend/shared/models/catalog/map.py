@@ -1,4 +1,4 @@
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import ForeignKey, String, Boolean, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db
@@ -14,5 +14,5 @@ class Map(db.TimeStampIntegerMixin):
     gamemode_id: Mapped[int] = mapped_column(ForeignKey(Gamemode.id))
     name: Mapped[str] = mapped_column(String(), unique=True)
     image_path: Mapped[str] = mapped_column(String())
-    in_competitive: Mapped[bool] = mapped_column(db.Boolean(), default=True, server_default=db.text("true"))
+    in_competitive: Mapped[bool] = mapped_column(Boolean(), default=True, server_default=text("true"))
     gamemode: Mapped[Gamemode] = relationship(back_populates="maps")
