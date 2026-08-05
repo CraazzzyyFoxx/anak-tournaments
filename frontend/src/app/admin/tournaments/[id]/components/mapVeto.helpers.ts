@@ -4,6 +4,13 @@ export type VetoLevelType = "tournament" | "stage" | "stage_round";
 export type VetoStepAction = "ban" | "pick" | "decider";
 export type VetoStepSide = "first" | "second";
 
+export const BO2_SEQUENCE: VetoSequenceToken[] = [
+  "ban_first",
+  "ban_second",
+  "pick_first",
+  "pick_second"
+];
+
 export const BO3_SEQUENCE: VetoSequenceToken[] = [
   "ban_first",
   "ban_second",
@@ -97,6 +104,8 @@ export function getVetoPresetLabel(preset: VetoPreset | null): string {
   switch (preset) {
     case "bo1":
       return "Bo1";
+    case "bo2":
+      return "Bo2";
     case "bo3":
       return "Bo3";
     case "bo5":
@@ -116,6 +125,11 @@ export function getFormatSlots(preset: VetoPreset): FormatSlotConfig[] {
   switch (preset) {
     case "bo1":
       return [{ slotNumber: 1, label: "Map 1", suggestedGamemode: "Control" }];
+    case "bo2":
+      return [
+        { slotNumber: 1, label: "Map 1", suggestedGamemode: "Control" },
+        { slotNumber: 2, label: "Map 2", suggestedGamemode: "Hybrid" }
+      ];
     case "bo3":
       return [
         { slotNumber: 1, label: "Map 1", suggestedGamemode: "Control" },

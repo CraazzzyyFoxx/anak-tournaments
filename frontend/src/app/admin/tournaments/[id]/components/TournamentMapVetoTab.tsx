@@ -47,6 +47,7 @@ import type {
   VetoSequenceToken
 } from "@/types/tournament.types";
 import {
+  BO2_SEQUENCE,
   BO3_SEQUENCE,
   BO5_SEQUENCE,
   buildBo1Sequence,
@@ -62,7 +63,6 @@ import {
   type VetoStepAction,
   type VetoStepSide
 } from "./mapVeto.helpers";
-
 interface TournamentMapVetoTabProps {
   tournamentId: number;
   stages: Stage[];
@@ -179,7 +179,7 @@ export function TournamentMapVetoTab({
 
   // Gamemode Filter for Map Pool View
   const [activeGamemodeFilter, setActiveGamemodeFilter] = useState<string>("all");
-
+  const [customSlotGamemodes, setCustomSlotGamemodes] = useState<Record<number, string>>({});
   const [formState, setFormState] = useState<VetoConfigFormState>(emptyFormState);
   const [formError, setFormError] = useState<string | undefined>(undefined);
   const [configPendingDelete, setConfigPendingDelete] = useState<MapVetoConfig | null>(null);
@@ -316,13 +316,14 @@ export function TournamentMapVetoTab({
       const sequence =
         preset === "bo1"
           ? buildBo1Sequence(previous.mapIds.length)
-          : preset === "bo3"
-            ? [...BO3_SEQUENCE]
-            : [...BO5_SEQUENCE];
+          : preset === "bo2"
+            ? [...BO2_SEQUENCE]
+            : preset === "bo3"
+              ? [...BO3_SEQUENCE]
+              : [...BO5_SEQUENCE];
       return { ...previous, preset, sequence };
     });
   };
-
   const patchSequence = (mutate: (steps: VetoSequenceToken[]) => VetoSequenceToken[]) => {
     setFormState((previous) => ({
       ...previous,
@@ -385,6 +386,7 @@ export function TournamentMapVetoTab({
     minPool: number;
   }[] = [
     { preset: "bo1", label: "Bo1", description: "Best of 1 (1 карта)", minPool: 2 },
+    { preset: "bo2", label: "Bo2", description: "Best of 2 (2 карты)", minPool: BO2_SEQUENCE.length },
     { preset: "bo3", label: "Bo3", description: "Best of 3 (3 карты)", minPool: BO3_SEQUENCE.length },
     { preset: "bo5", label: "Bo5", description: "Best of 5 (5 карт)", minPool: BO5_SEQUENCE.length }
   ];
@@ -632,25 +634,57 @@ export function TournamentMapVetoTab({
               </div>
 
               <div className="grid gap-2 sm:grid-cols-3 md:grid-cols-5">
-                {formatSlots.map((slot) => (
-                  <div
-                    key={slot.slotNumber}
-                    className="flex flex-col gap-1 rounded-lg border border-border/70 bg-accent/30 p-2.5"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold">{slot.label}</span>
-                      <Badge variant="secondary" className="text-[10px]">
-                        {slot.suggestedGamemode}
-                      </Badge>
+                {formatSlots.map((slot) => {
+                  const assignedGm = customSlotGamemodes[slot.slotNumber] ?? slot.suggestedGamemode;
+                  return (
+                    <div
+                      key={slot.slotNumber}
+                      className={cn(
+                        "flex flex-col gap-2 rounded-xl border p-3 transition-all",
+                        activeGamemodeFilter === assignedGm
+                          ? "border-primary bg-primary/10 ring-2 ring-primary/30"
+                          : "border-border/70 bg-accent/20 hover:border-primary/40"
+                      )}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold">{slot.label}</span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-5 text-[10px] px-1.5"
+                          onClick={() => setActiveGamemodeFilter(assignedGm)}
+                        >
+                          Фильтр карт ➔
+                        </Button>
+                      </div>
+                      <div className="space-y-1">
+                        <span className="text-[10px] text-muted-foreground uppercase font-semibold">Игровой режим:</span>
+                        <Select
+                          value={assignedGm}
+                          onValueChange={(val: string) => {
+                            setCustomSlotGamemodes((prev) => ({ ...prev, [slot.slotNumber]: val }));
+                            setActiveGamemodeFilter(val);
+                          }}
+                          disabled={!canManage}
+                        >
+                          <SelectTrigger className="h-7 text-xs bg-background">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {gamemodesList.map((gm) => (
+                              <SelectItem key={gm} value={gm}>
+                                {gm}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
-                    <span className="text-[11px] text-muted-foreground">
-                      Режим: <strong className="text-foreground">{slot.suggestedGamemode}</strong>
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
-
             {/* Map Pool Filter & Selection */}
             <div className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">

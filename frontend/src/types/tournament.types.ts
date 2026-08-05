@@ -191,7 +191,7 @@ export type VetoSequenceToken =
   | "pick_second"
   | "decider";
 
-export type VetoPreset = "bo1" | "bo3" | "bo5" | "custom";
+export type VetoPreset = "bo1" | "bo2" | "bo3" | "bo5" | "custom";
 
 export interface MapVetoConfig {
   id: number;
