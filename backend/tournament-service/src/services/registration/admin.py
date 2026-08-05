@@ -31,7 +31,9 @@ from src.services.registration._common import (
     _active_roles,
     _register_registration_changed,
     active_roles_all_ranked,
+    apply_forced_flex,
     ensure_tournament_exists,
+    forced_flex_enabled,
     form_custom_field_defs,
     get_form_custom_field_defs,
     get_registration_form,
@@ -174,6 +176,8 @@ __all__ = [
     "get_tournament_grid_from_rows",
     "included_balancer_status",
     "registration_has_active_roles",
+    "apply_forced_flex",
+    "forced_flex_enabled",
     "replace_registration_roles",
     "sync_included_balancer_status",
     # sheet_parsing

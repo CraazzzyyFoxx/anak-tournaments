@@ -28,6 +28,7 @@ from src.services.registration._common import (
     _register_registration_changed,
     active_roles_all_ranked,
     ensure_tournament_exists,
+    forced_flex_enabled,
     get_registration_form,
     included_balancer_status,
     replace_registration_roles,
@@ -217,7 +218,13 @@ async def create_manual_registration(
         submitted_at=datetime.now(UTC),
         balancer_profile_overridden_at=datetime.now(UTC),
     )
-    replace_registration_roles(registration, roles, hero_catalog=hero_catalog, max_heroes=max_heroes)
+    replace_registration_roles(
+        registration,
+        roles,
+        hero_catalog=hero_catalog,
+        max_heroes=max_heroes,
+        forced_flex=forced_flex_enabled(form),
+    )
     session.add(registration)
     await session.flush()
     # Optionally anchor on a chosen site account: find-or-create that account's
@@ -317,7 +324,13 @@ async def update_registration_profile(
             raw_max = config.get("max_heroes")
             max_heroes = raw_max if isinstance(raw_max, int) and raw_max > 0 else DEFAULT_MAX_TOP_HEROES
 
-        replace_registration_roles(registration, roles, hero_catalog=hero_catalog, max_heroes=max_heroes)
+        replace_registration_roles(
+            registration,
+            roles,
+            hero_catalog=hero_catalog,
+            max_heroes=max_heroes,
+            forced_flex=forced_flex_enabled(form),
+        )
         sync_included_balancer_status(registration)
         override_changed = True
     # Mirror set_registration_exclusion exactly. Applied last so an explicit

@@ -174,6 +174,7 @@ def replace_registration_roles(
     *,
     hero_catalog: HeroCatalog | None = None,
     max_heroes: int | None = None,
+    forced_flex: bool = False,
 ) -> None:
     existing_by_role = {existing.role: existing for existing in registration.roles}
     next_roles: list[models.BalancerRegistrationRole] = []
@@ -208,6 +209,9 @@ def replace_registration_roles(
                 )
 
         next_roles.append(registration_role)
+
+    if forced_flex:
+        next_roles = apply_forced_flex(next_roles)
 
     registration.roles[:] = next_roles
 

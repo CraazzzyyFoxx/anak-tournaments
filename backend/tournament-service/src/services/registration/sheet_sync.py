@@ -32,7 +32,9 @@ from src import models
 from src.schemas.registration import CustomFieldDefinition
 from src.services.registration._common import (
     ensure_tournament_exists,
+    forced_flex_enabled,
     get_form_custom_field_defs,
+    get_registration_form,
     get_tournament_grid,
     replace_registration_roles,
     sync_included_balancer_status,
@@ -401,6 +403,7 @@ def apply_sheet_fields_to_registration(
     parsed_fields: dict[str, Any],
     *,
     allow_balancer_overwrite: bool,
+    forced_flex: bool = False,
 ) -> None:
     registration.display_name = (
         parsed_fields.get("display_name") or parsed_fields.get("battle_tag") or registration.display_name
@@ -423,7 +426,11 @@ def apply_sheet_fields_to_registration(
 
     if allow_balancer_overwrite:
         registration.admin_notes = parsed_fields.get("admin_notes")
-        replace_registration_roles(registration, build_registration_role_payloads(parsed_fields))
+        replace_registration_roles(
+            registration,
+            build_registration_role_payloads(parsed_fields),
+            forced_flex=forced_flex,
+        )
         sync_included_balancer_status(registration)
 
 
@@ -449,6 +456,10 @@ async def sync_google_sheet_feed(
     grid = await get_tournament_grid(session, tournament_id)
     tournament = await ensure_tournament_exists(session, tournament_id)
     custom_fields = await get_form_custom_field_defs(session, tournament_id)
+    # The sheet sync is the one role-write path that never read the form. In a
+    # forced-flex tournament a sheet row must land as a flex registration like
+    # any other, so the mode is resolved once per sync rather than per row.
+    forced_flex = forced_flex_enabled(await get_registration_form(session, tournament_id))
     now = datetime.now(UTC)
 
     try:
@@ -572,7 +583,11 @@ async def sync_google_sheet_feed(
                     exclude_from_balancer=False,
                     submitted_at=parsed_fields.get("submitted_at") or now,
                 )
-                replace_registration_roles(registration, build_registration_role_payloads(parsed_fields))
+                replace_registration_roles(
+                    registration,
+                    build_registration_role_payloads(parsed_fields),
+                    forced_flex=forced_flex,
+                )
                 session.add(registration)
                 await session.flush()
                 if registration.battle_tag_normalized:
@@ -584,6 +599,7 @@ async def sync_google_sheet_feed(
                     registration,
                     parsed_fields,
                     allow_balancer_overwrite=allow_balancer_overwrite,
+                    forced_flex=forced_flex,
                 )
                 if registration.status == "withdrawn":
                     registration.status = "approved"

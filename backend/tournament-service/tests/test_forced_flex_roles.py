@@ -36,6 +36,7 @@ os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
 
 _common = importlib.import_module("src.services.registration._common")
+_service = importlib.import_module("src.services.registration.service")
 
 
 def _form(built_in_fields: dict[str, Any] | None) -> Any:
@@ -142,3 +143,100 @@ class TestApplyForcedFlex:
 
         assert {entry.role for entry in result} == {"tank", "dps", "support"}
         assert all(entry.is_primary for entry in result)
+
+
+class TestWritePathsHonourForcedFlex:
+    """Both role-write funnels must normalize, not just the admin one.
+
+    ``build_registration_roles`` (public form) and ``replace_registration_roles``
+    (admin panel + Google Sheets) are independent implementations; the former's
+    docstring calls itself a mirror of the latter but nothing keeps them in
+    step. A registration created through either one has to come out flex.
+    """
+
+    class _PublicRole:
+        def __init__(self, role: str, is_primary: bool = False, subrole: str | None = None) -> None:
+            self.role = role
+            self.is_primary = is_primary
+            self.subrole = subrole
+            self.top_heroes = None
+
+    def test_public_path_forced(self) -> None:
+        entries = _service.build_registration_roles(
+            [self._PublicRole("dps", is_primary=True)],
+            forced_flex=True,
+        )
+
+        assert {entry.role for entry in entries} == {"tank", "dps", "support"}
+        assert all(entry.is_primary for entry in entries)
+
+    def test_public_path_optional_is_unchanged(self) -> None:
+        entries = _service.build_registration_roles([self._PublicRole("dps", is_primary=True)])
+
+        assert [entry.role for entry in entries] == ["dps"]
+
+    def test_public_path_keeps_the_submitted_subrole(self) -> None:
+        entries = _service.build_registration_roles(
+            [self._PublicRole("dps", is_primary=True, subrole="hitscan")],
+            forced_flex=True,
+        )
+
+        dps = next(entry for entry in entries if entry.role == "dps")
+        assert dps.subrole == "hitscan"
+
+    def test_admin_path_forced(self) -> None:
+        registration = _common.models.BalancerRegistration()
+        registration.roles = []
+
+        _common.replace_registration_roles(
+            registration,
+            [{"role": "support", "is_primary": False, "rank_value": 2900}],
+            forced_flex=True,
+        )
+
+        assert {entry.role for entry in registration.roles} == {"tank", "dps", "support"}
+        assert all(entry.is_primary for entry in registration.roles)
+
+    def test_admin_path_preserves_rank_and_is_active(self) -> None:
+        """The rank policy is derived at read time; the row keeps what it was given."""
+        registration = _common.models.BalancerRegistration()
+        registration.roles = []
+
+        _common.replace_registration_roles(
+            registration,
+            [{"role": "support", "is_primary": False, "rank_value": 2900}],
+            forced_flex=True,
+        )
+
+        support = next(entry for entry in registration.roles if entry.role == "support")
+        assert support.rank_value == 2900
+        assert support.is_active is True
+        assert [e.rank_value for e in registration.roles if e.role != "support"] == [None, None]
+
+    def test_admin_path_optional_is_unchanged(self) -> None:
+        registration = _common.models.BalancerRegistration()
+        registration.roles = []
+
+        _common.replace_registration_roles(
+            registration,
+            [{"role": "support", "is_primary": False, "rank_value": 2900}],
+        )
+
+        assert [entry.role for entry in registration.roles] == ["support"]
+        assert registration.roles[0].is_primary is False
+
+    def test_admin_path_reuses_existing_rows(self) -> None:
+        """Re-syncing must not orphan the row a rank was already attached to."""
+        registration = _common.models.BalancerRegistration()
+        existing = _common.models.BalancerRegistrationRole(role="dps", rank_value=4100)
+        registration.roles = [existing]
+
+        _common.replace_registration_roles(
+            registration,
+            [{"role": "dps", "is_primary": True, "rank_value": 4100}],
+            forced_flex=True,
+        )
+
+        dps = next(entry for entry in registration.roles if entry.role == "dps")
+        assert dps is existing
+        assert dps.rank_value == 4100
