@@ -26,6 +26,7 @@ from shared.core.enums import (
     TournamentStatus,
 )
 from shared.core.errors import ApiExc, ApiHTTPException
+from shared.domain.roster_shape import RosterShape
 from shared.models.balancer.draft import (
     DraftPick,
     DraftPlayer,
@@ -90,11 +91,13 @@ def _err(code: str, msg: str, status_code: int = 409) -> ApiHTTPException:
     return ApiHTTPException(status_code=status_code, detail=[ApiExc(code=code, msg=msg)])
 
 
-def validate_roster_shape(*, rounds: int, team_size: int) -> None:
-    if rounds != team_size - 1:
+def validate_draft_rounds(*, rounds: int, shape: RosterShape) -> None:
+    """A draft has exactly one pick per roster slot the captain does not fill."""
+    if rounds != shape.draft_rounds:
         raise _err(
             "invalid_roster_shape",
-            "rounds must equal team_size - 1 because the captain already fills one roster slot",
+            f"rounds must be {shape.draft_rounds}: the roster shape {shape.slots} has "
+            f"{shape.team_size} slots and the captain already fills one",
             status_code=422,
         )
 
@@ -184,26 +187,24 @@ async def create_session(
     *,
     tournament_id: int,
     workspace_id: int,
+    shape: RosterShape,
     pool_source: str = "balancer_balance",
     source_balance_id: int | None = None,
     fmt: DraftFormat = DraftFormat.SNAKE,
-    rounds: int = 4,
     pick_time_seconds: int = 45,
-    team_size: int = 5,
     autopick_strategy: str = "best_fit",
     allow_admin_override: bool = True,
     settings: dict | None = None,
 ) -> DraftSession:
-    validate_roster_shape(rounds=rounds, team_size=team_size)
+    # `rounds` is derived, never passed: the shape owns the roster size.
     await assert_no_active_draft(session, tournament_id)
     draft = DraftSession(
         tournament_id=tournament_id,
         workspace_id=workspace_id,
         status=DraftStatus.SETUP.value,
         format=fmt.value,
-        rounds=rounds,
+        rounds=shape.draft_rounds,
         pick_time_seconds=pick_time_seconds,
-        team_size=team_size,
         pool_source=pool_source,
         source_balance_id=source_balance_id,
         autopick_strategy=autopick_strategy,

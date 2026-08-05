@@ -19,7 +19,7 @@ from src.schemas.draft import (
     DraftSessionRead,
     DraftTeamRead,
 )
-from src.services.draft import loaders
+from src.services.draft import feasibility, loaders
 
 # Registration `notes` stay public: captains read them in the Player Inspector
 # while drafting. Only organizer-side metadata is stripped from the snapshot.
@@ -69,6 +69,17 @@ def public_additional_info(additional_info: dict | None) -> dict:
         for key, value in (additional_info or {}).items()
         if key not in _PRIVATE_ADDITIONAL_INFO_KEYS
     }
+
+
+async def session_read(session: AsyncSession, draft_session: DraftSession) -> DraftSessionRead:
+    """The only way a draft session leaves the service.
+
+    The roster shape is no longer a column on the row, so every reader resolves
+    it through the one helper that knows which ids a draft resolves from. Both
+    levels are cached, so this is free on the hot board path.
+    """
+    shape = await feasibility.resolve_shape(session, draft_session)
+    return DraftSessionRead.from_session(draft_session, shape=shape)
 
 
 async def build_board(session: AsyncSession, draft_session: DraftSession) -> DraftBoardSnapshot:
@@ -126,7 +137,7 @@ async def build_board(session: AsyncSession, draft_session: DraftSession) -> Dra
         else None
     )
     snapshot = DraftBoardSnapshot(
-        session=DraftSessionRead.model_validate(draft_session),
+        session=await session_read(session, draft_session),
         teams=[DraftTeamRead.model_validate(t) for t in teams],
         picks=[DraftPickRead.model_validate(p) for p in picks],
         players=[

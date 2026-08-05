@@ -1,10 +1,12 @@
-"""The Pydantic edge of the roster shape: one field type, four schemas.
+"""The Pydantic edge of the roster shape: one field type, one read model.
 
 ``TournamentCreate``/``TournamentUpdate`` (tournament-service) and
 ``WorkspaceCreate``/``WorkspaceUpdate`` (app-service) all accept the same raw
 slot map from the same admin form, so the normalize-or-reject step lives here
 once instead of being copy-pasted per schema -- the mirroring this whole feature
-exists to remove.
+exists to remove. ``RosterShapeRead`` lives here for the same reason: the admin
+tournament read and the draft board both hand a resolved shape to the frontend,
+and a per-service copy would be exactly the mirror this feature removes.
 
 It cannot live in ``shared.domain.roster_shape``: that module is deliberately
 Pydantic-free so the balancer and draft domain logic can import it without a
@@ -17,13 +19,13 @@ column can never hold a zero count (which would make
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
-from pydantic import BeforeValidator
+from pydantic import BaseModel, BeforeValidator
 
-from shared.domain.roster_shape import RosterShapeError, parse_roster_slots
+from shared.domain.roster_shape import RosterShape, RosterShapeError, parse_roster_slots
 
-__all__ = ("RosterSlotsField", "normalize_roster_slots")
+__all__ = ("RosterShapeRead", "RosterSlotsField", "normalize_roster_slots")
 
 
 def normalize_roster_slots(value: Any) -> Any:
@@ -44,3 +46,35 @@ def normalize_roster_slots(value: Any) -> Any:
 
 
 RosterSlotsField = Annotated[dict[str, int] | None, BeforeValidator(normalize_roster_slots)]
+
+
+class RosterShapeRead(BaseModel):
+    """A resolved roster shape. The frontend never recomputes the fallback chain."""
+
+    slots: dict[str, int]
+    team_size: int
+    flex_slots: int
+    has_role_slots: bool
+    draft_rounds: int
+    # Only a reader that inspects BOTH stored levels can name the level an
+    # override lives at. The draft board resolves just the effective shape, so it
+    # reports the shape without claiming a level -> None.
+    source: Literal["tournament", "workspace", "default"] | None = None
+
+    @classmethod
+    def from_shape(cls, shape: RosterShape, *, source: str | None = None) -> "RosterShapeRead":
+        """Project a domain shape, keeping every derived value on one payload.
+
+        ``source`` names the level the value is STORED at, not what it resolved
+        to: an override equal to the inherited default is still an override.
+        ``shape.slots`` hands back a fresh ``dict`` (never the module-level
+        ``MappingProxyType``), so the field serializes as a plain JSON object.
+        """
+        return cls(
+            slots=shape.slots,
+            team_size=shape.team_size,
+            flex_slots=shape.flex_slots,
+            has_role_slots=shape.has_role_slots,
+            draft_rounds=shape.draft_rounds,
+            source=source,  # type: ignore[arg-type]  # validated by the Literal
+        )

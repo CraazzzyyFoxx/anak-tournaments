@@ -22,6 +22,8 @@ from shared.core.enums import (
     DraftRole,
     DraftStatus,
 )
+from shared.domain.roster_shape import RosterShape
+from shared.schemas.roster_slots import RosterShapeRead
 from src.schemas.base import BaseRead
 
 __all__ = (
@@ -58,22 +60,19 @@ _ReadConfig = ConfigDict(from_attributes=True)
 # Requests
 # --------------------------------------------------------------------------- #
 class DraftSessionCreateRequest(BaseModel):
+    """Everything about a new draft EXCEPT its size.
+
+    ``rounds`` is derived from the tournament's roster shape server-side, so the
+    admin form has nothing to submit and nothing to keep in sync.
+    """
+
     pool_source: DraftPoolSource = DraftPoolSource.BALANCER_BALANCE
     source_balance_id: int | None = None
     format: DraftFormat = DraftFormat.SNAKE
-    rounds: int = 4
     pick_time_seconds: int = 45
-    team_size: int = 5
     autopick_strategy: DraftAutopickStrategy = DraftAutopickStrategy.BEST_FIT
     allow_admin_override: bool = True
     settings: dict[str, Any] = Field(default_factory=dict)
-
-    @field_validator("rounds")
-    @classmethod
-    def _rounds_range(cls, v: int) -> int:
-        if not 1 <= v <= 8:
-            raise ValueError("rounds must be between 1 and 8")
-        return v
 
     @field_validator("pick_time_seconds")
     @classmethod
@@ -81,19 +80,6 @@ class DraftSessionCreateRequest(BaseModel):
         if not 10 <= v <= 600:
             raise ValueError("pick_time_seconds must be between 10 and 600")
         return v
-
-    @field_validator("team_size")
-    @classmethod
-    def _team_size_range(cls, v: int) -> int:
-        if not 1 <= v <= 12:
-            raise ValueError("team_size must be between 1 and 12")
-        return v
-
-    @model_validator(mode="after")
-    def _rounds_match_roster_size(self) -> DraftSessionCreateRequest:
-        if self.rounds != self.team_size - 1:
-            raise ValueError("rounds must equal team_size - 1 because the captain already fills one roster slot")
-        return self
 
 
 class DraftManualCaptainInput(BaseModel):
@@ -273,7 +259,7 @@ class DraftSessionRead(BaseRead):
     format: DraftFormat
     rounds: int
     pick_time_seconds: int
-    team_size: int
+    roster_shape: RosterShapeRead
     current_pick_id: int | None
     pool_source: DraftPoolSource
     source_balance_id: int | None
@@ -283,6 +269,21 @@ class DraftSessionRead(BaseRead):
     export_status: str | None
     settings_json: dict[str, Any]
     version: int
+
+    @classmethod
+    def from_session(cls, draft_session: Any, *, shape: RosterShape) -> DraftSessionRead:
+        """The row plus the roster shape the row does not store.
+
+        Every other field maps straight off the ORM object, but the shape is
+        resolved from the tournament/workspace override chain, so it has to be
+        handed in. Building the payload off ``model_fields`` keeps that the ONLY
+        difference: add a column, and it is picked up here without an edit.
+        """
+        payload: dict[str, Any] = {
+            name: getattr(draft_session, name) for name in cls.model_fields if name != "roster_shape"
+        }
+        payload["roster_shape"] = RosterShapeRead.from_shape(shape)
+        return cls.model_validate(payload)
 
 
 class DraftBoardSnapshot(BaseModel):

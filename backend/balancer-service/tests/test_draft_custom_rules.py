@@ -19,12 +19,18 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from shared.core.enums import DraftFormat, DraftPlayerStatus, DraftRole
+from shared.domain.roster_shape import parse_roster_slots
 from shared.models.balancer.draft import DraftPick
 from shared.models.identity.user import User
 from shared.models.tenancy.workspace import Workspace
 from shared.models.tournament import Tournament
 from src import models
 from src.services.draft import lifecycle, selection
+
+# The 5-slot roster these tests draft for, replacing `rounds=4, team_size=5`:
+# `role_targets_for_team_size(5)` resolved to 1 tank / 2 dps / 2 support, and
+# `draft_rounds` derives the same 4 rounds.
+_SHAPE = parse_roster_slots({"tank": 1, "dps": 2, "support": 2})
 
 
 def _async_url() -> str:
@@ -127,8 +133,7 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
                 s,
                 tournament_id=self.tournament_id,
                 workspace_id=self.workspace_id,
-                rounds=4,
-                team_size=5,
+                shape=_SHAPE,
                 fmt=DraftFormat.CUSTOM,
                 settings={"round_rules": rules},
             )
@@ -178,8 +183,7 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
                 s,
                 tournament_id=self.tournament_id,
                 workspace_id=self.workspace_id,
-                rounds=4,
-                team_size=5,
+                shape=_SHAPE,
                 fmt=DraftFormat.CUSTOM,
                 settings={"round_rules": rules},
             )

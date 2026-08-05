@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.core.enums import DraftAutopickStrategy, DraftRole, DraftStatus
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.balancer.draft import DraftAuditEvent, DraftPick, DraftSession, DraftTeam
+from shared.services.roster_shape_access import get_effective_roster_shape
 from src import models
 from src.core import db
 from src.core.auth import (
@@ -264,7 +265,7 @@ async def _lifecycle_action(session, redis, session_id, action, event_type, user
         # Wake the supervisor so a freshly started/resumed draft gets its
         # autopick clock loop immediately (the idle discovery poll is relaxed).
         await clock_svc.notify_supervisor(redis)
-    return DraftSessionRead.model_validate(draft)
+    return await board_svc.session_read(session, draft)
 
 
 def register(broker: Any, logger: Any) -> None:
@@ -284,7 +285,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _session_get(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             draft = await _load_session(session, c.require_id(data))
-            return DraftSessionRead.model_validate(draft)
+            return await board_svc.session_read(session, draft)
 
         return await c.envelope(logger, "draft.session_get", op, session_factory=_SF)
 
@@ -466,16 +467,20 @@ def register(broker: Any, logger: Any) -> None:
             workspace_id = await _get_tournament_workspace_id(session, tournament_id)
             c.require_workspace_permission(data, user, workspace_id, "team", "import")
             payload = DraftSessionCreateRequest.model_validate(c.payload(data))
+            # The roster shape is the tournament's, not the request's: a draft
+            # cannot be created at a size the tournament does not run.
+            shape = await get_effective_roster_shape(
+                session, tournament_id=tournament_id, workspace_id=workspace_id
+            )
             draft = await lifecycle.create_session(
                 session,
                 tournament_id=tournament_id,
                 workspace_id=workspace_id,
+                shape=shape,
                 pool_source=payload.pool_source.value,
                 source_balance_id=payload.source_balance_id,
                 fmt=payload.format,
-                rounds=payload.rounds,
                 pick_time_seconds=payload.pick_time_seconds,
-                team_size=payload.team_size,
                 autopick_strategy=payload.autopick_strategy.value,
                 allow_admin_override=payload.allow_admin_override,
                 settings=payload.settings,
@@ -489,7 +494,7 @@ def register(broker: Any, logger: Any) -> None:
                 actor_user_id=user.id,
             )
             await session.commit()
-            return DraftSessionRead.model_validate(draft)
+            return await board_svc.session_read(session, draft)
 
         return await c.envelope(logger, "draft.session_create", op, session_factory=_SF)
 
@@ -555,7 +560,7 @@ def register(broker: Any, logger: Any) -> None:
                 after = await _seed_counts(session, draft.id)
                 report = await feasibility.analyze_session(session, draft)
                 response = DraftSeedResponse(
-                    session=DraftSessionRead.model_validate(draft),
+                    session=await board_svc.session_read(session, draft),
                     preview_only=payload.preview_only,
                     diff=_seed_diff(
                         before=before,
@@ -603,13 +608,17 @@ def register(broker: Any, logger: Any) -> None:
             if payload.allow_admin_override is not None:
                 draft.allow_admin_override = payload.allow_admin_override
             if payload.rounds is not None:
-                lifecycle.validate_roster_shape(rounds=payload.rounds, team_size=draft.team_size)
+                # Kept only so a stale client cannot silently desync the board:
+                # the sole accepted value is the one the shape already implies.
+                lifecycle.validate_draft_rounds(
+                    rounds=payload.rounds, shape=await feasibility.resolve_shape(session, draft)
+                )
                 draft.rounds = payload.rounds
             if payload.settings is not None:
                 draft.settings_json = payload.settings
             await session.commit()
             await session.refresh(draft)
-            return DraftSessionRead.model_validate(draft)
+            return await board_svc.session_read(session, draft)
 
         return await c.envelope(logger, "draft.session_patch", op, session_factory=_SF)
 
@@ -651,7 +660,7 @@ def register(broker: Any, logger: Any) -> None:
                 actor_user_id=user.id,
             )
             await session.commit()
-            return DraftSessionRead.model_validate(updated)
+            return await board_svc.session_read(session, updated)
 
         return await c.envelope(logger, "draft.export", op, session_factory=_SF)
 
@@ -684,7 +693,7 @@ def register(broker: Any, logger: Any) -> None:
                 session, _redis(logger), draft, result, made_event="draft.pick_made", actor_user_id=public_user_id
             )
             await session.commit()
-            return DraftSessionRead.model_validate(draft)
+            return await board_svc.session_read(session, draft)
 
         return await c.envelope(logger, "draft.pick_select", op, session_factory=_SF)
 
@@ -702,7 +711,7 @@ def register(broker: Any, logger: Any) -> None:
                 session, _redis(logger), draft, result, made_event="draft.autopicked", actor_user_id=None
             )
             await session.commit()
-            return DraftSessionRead.model_validate(draft)
+            return await board_svc.session_read(session, draft)
 
         return await c.envelope(logger, "draft.pick_autopick", op, session_factory=_SF)
 
@@ -752,6 +761,6 @@ def register(broker: Any, logger: Any) -> None:
                 session, _redis(logger), draft, result, made_event="draft.pick_made", actor_user_id=public_user_id
             )
             await session.commit()
-            return DraftSessionRead.model_validate(draft)
+            return await board_svc.session_read(session, draft)
 
         return await c.envelope(logger, "draft.pick_override", op, session_factory=_SF)
