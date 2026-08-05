@@ -56,6 +56,7 @@ import type { Team } from "@/types/team.types";
 import { invalidateTournamentWorkspace } from "./tournamentWorkspace.queryKeys";
 import { notify } from "@/lib/notify";
 import type { StageBestOfConfig } from "@/types/admin.types";
+import { BEST_OF_OPTIONS, parseStageBestOf } from "@/lib/best-of";
 
 const BRACKET_STAGE_TYPES: StageType[] = ["single_elimination", "double_elimination"];
 const GROUP_STAGE_TYPES: StageType[] = ["round_robin", "swiss"];
@@ -164,25 +165,11 @@ function normalizeMaxRounds(value: string | number, fallback = 5) {
   return Math.max(1, Math.floor(parsed));
 }
 
-const BEST_OF_OPTIONS = [1, 2, 3, 5, 7] as const;
-
-function readBestOfConfig(settings: Record<string, unknown>): StageBestOfConfig {
-  const raw = settings?.best_of;
-  if (!raw || typeof raw !== "object") return {};
-  const record = raw as Record<string, unknown>;
-  const byRoundRaw = record.by_round;
-  const by_round: Record<string, number> = {};
-  if (byRoundRaw && typeof byRoundRaw === "object") {
-    for (const [key, value] of Object.entries(byRoundRaw as Record<string, unknown>)) {
-      if (typeof value === "number") by_round[key] = value;
-    }
-  }
-  return {
-    default: typeof record.default === "number" ? record.default : undefined,
-    final: typeof record.final === "number" ? record.final : undefined,
-    by_round: Object.keys(by_round).length ? by_round : undefined
-  };
-}
+// Series-length parsing and the offered values live in `@/lib/best-of`, mirrored
+// from the backend resolver, so this editor and the veto editor cannot drift.
+// The shared parser is also stricter than the local one it replaced: it drops
+// non-integer and negative values instead of echoing back a number the server
+// would silently ignore.
 
 /** Strip empty fields; returns undefined when nothing is configured. */
 function buildBestOfSettings(draft: StageBestOfConfig): StageBestOfConfig | undefined {
@@ -707,7 +694,7 @@ export function StageManager({ tournamentId }: StageManagerProps) {
     ? stageSwissByePointsDrafts[selectedStage.id] ?? String(selectedStageSettings.swiss_bye_points ?? "")
     : "";
 
-  const currentBestOf = readBestOfConfig(selectedStageSettings);
+  const currentBestOf = parseStageBestOf(selectedStageSettings);
   const selectedBestOfDraft: StageBestOfConfig = selectedStage
     ? stageBestOfDrafts[selectedStage.id] ?? currentBestOf
     : {};

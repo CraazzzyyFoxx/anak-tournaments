@@ -67,6 +67,82 @@ def validate_veto_config(sequence: list[str], map_ids: list[int]) -> None:
         raise HTTPException(status_code=422, detail="sequence must contain at least one pick or a decider")
 
 
+# ── series length (owned by the bracket) ─────────────────────────────────────
+
+#: The only preset value that opts a config out of bracket-driven series
+#: length. Everything else -- the canonical ``"bracket"``, a legacy ``"bo3"``
+#: template label, or NULL from before the column existed -- is bracket-driven:
+#: none of them is a deliberately hand-authored step order.
+CUSTOM_PRESET = "custom"
+
+#: What the admin editor writes for a config that follows the bracket. Stored
+#: for provenance only; the check above is negative, so the server never has to
+#: know this value to behave correctly.
+BRACKET_PRESET = "bracket"
+
+#: Opening bans a generated sequence uses when the pool can spare them.
+LEAD_BANS = 2
+
+
+def build_sequence_for_best_of(best_of: int, pool_size: int) -> list[str]:
+    """Generate a side-agnostic sequence that plays exactly ``best_of`` maps.
+
+    Shape: a pair of opening bans, then alternating picks, then a decider when
+    the series length is odd. This reproduces the Bo2/Bo3/Bo5 presets token for
+    token and extends to any N, so a bracket configured Bo7 is no longer a
+    length the veto has no sequence for.
+
+    Bo1 is the exception: its standard veto bans the pool down to a single map
+    rather than opening two bans and deciding immediately, so it keeps that
+    shape.
+
+    Opening bans are dropped as needed to keep the sequence no longer than the
+    pool — the same rule ``validate_veto_config`` enforces on upsert.
+    """
+    if pool_size < 1:
+        return []
+    if best_of <= 1:
+        tokens = ["ban_first" if index % 2 == 0 else "ban_second" for index in range(pool_size - 1)]
+        tokens.append("decider")
+        return tokens
+
+    # A pool smaller than the series cannot play the whole series; clamp rather
+    # than emit a sequence the step engine would run off the end of.
+    played = min(best_of, pool_size)
+    picks = played - 1 if played % 2 else played
+    bans = max(0, min(LEAD_BANS, pool_size - played))
+
+    tokens = ["ban_first" if index % 2 == 0 else "ban_second" for index in range(bans)]
+    tokens.extend("pick_first" if index % 2 == 0 else "pick_second" for index in range(picks))
+    if played % 2:
+        tokens.append("decider")
+    return tokens
+
+
+def effective_sequence(config: models.MapVetoConfig, best_of: int, pool_size: int) -> list[str]:
+    """The sequence a session should actually run.
+
+    The bracket owns series length. ``Encounter.best_of`` is resolved from
+    ``Stage.settings_json['best_of']`` by the generator and may additionally
+    carry a per-encounter admin override, so a preset-backed config is
+    regenerated from it instead of trusting the length its template happened to
+    be authored with — the two used to diverge silently, handing a Bo2 match a
+    three-map veto.
+
+    An explicitly ``custom`` config is the organizer's own step order and is
+    passed through untouched; the admin editor flags it when its map count
+    disagrees with the bracket.
+    """
+    stored = list(config.veto_sequence_json or [])
+    if config.preset == CUSTOM_PRESET:
+        return stored
+    if best_of < 1:
+        # Legacy/degenerate rows carry best_of=0; the stored template is a
+        # better guess than an empty sequence.
+        return stored
+    return build_sequence_for_best_of(best_of, pool_size)
+
+
 def select_config(
     configs: list[models.MapVetoConfig],
     *,
@@ -266,6 +342,9 @@ async def ensure_veto_session(
     encounter — ``unavailable_reason`` names which. The config pool is copied
     to ``encounter_map_pool`` ONLY when the encounter has no pool rows yet, so
     a pre-existing admin-assigned pool is respected.
+
+    The step sequence comes from ``effective_sequence``: the bracket's
+    ``best_of`` drives it unless the config is explicitly ``custom``.
     """
     existing = await get_veto_session(session, encounter.id)
     if existing is not None:
@@ -276,6 +355,16 @@ async def ensure_veto_session(
     if config is None:
         return None
 
+    # Counted before the sequence is built, not after: a generated sequence is
+    # sized against the pool it will actually draw from, which is the
+    # admin-assigned pool when one already exists and the config's otherwise.
+    pool_count = await session.scalar(
+        select(sa.func.count())
+        .select_from(models.EncounterMapPool)
+        .where(models.EncounterMapPool.encounter_id == encounter.id)
+    )
+    pool_size = pool_count or len(config.map_pool)
+
     seeds = await resolve_seeds(session, encounter)
     now = datetime.now(UTC)
     veto = models.EncounterVetoSession(
@@ -285,7 +374,9 @@ async def ensure_veto_session(
         seed_source=seeds.seed_source,
         home_seed=seeds.home_seed,
         away_seed=seeds.away_seed,
-        resolved_sequence_json=resolve_sequence_tokens(config.veto_sequence_json, seeds.first_side),
+        resolved_sequence_json=resolve_sequence_tokens(
+            effective_sequence(config, encounter.best_of, pool_size), seeds.first_side
+        ),
         turn_timer_seconds=config.turn_timer_seconds,
         status=MapVetoSessionStatus.ACTIVE,
         started_at=now,
@@ -293,11 +384,6 @@ async def ensure_veto_session(
     )
     session.add(veto)
 
-    pool_count = await session.scalar(
-        select(sa.func.count())
-        .select_from(models.EncounterMapPool)
-        .where(models.EncounterMapPool.encounter_id == encounter.id)
-    )
     if not pool_count:
         for idx, config_map in enumerate(config.map_pool):
             session.add(

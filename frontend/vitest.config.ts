@@ -63,7 +63,12 @@ export default defineConfig({
       // so a directory glob here drags it into vitest and it fails on the import.
       "src/components/registration/SubscriptionRow.behavior.test.tsx",
       "src/components/registration/CheckInSubscriptionProof.behavior.test.tsx",
-      "src/components/registration/DetailsStep.behavior.test.tsx"
+      "src/components/registration/DetailsStep.behavior.test.tsx",
+      // Same mixed-runner situation in `src/lib`, so file-level again. This one
+      // mirrors the backend's best-of resolution and sequence generation, and
+      // the veto room runs the SERVER's sequence — an unrun drift check is
+      // worse than none, since it reports green either way.
+      "src/lib/best-of.test.ts"
     ]
   }
 });

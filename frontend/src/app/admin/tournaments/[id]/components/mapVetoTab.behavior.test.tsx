@@ -81,7 +81,13 @@ function catalogue(): MapRead[] {
   })) as MapRead[];
 }
 
-function stage(id: number, name: string, order: number, maxRounds: number): Stage {
+function stage(
+  id: number,
+  name: string,
+  order: number,
+  maxRounds: number,
+  bestOf?: Record<string, unknown>
+): Stage {
   return {
     id,
     tournament_id: 78,
@@ -94,7 +100,7 @@ function stage(id: number, name: string, order: number, maxRounds: number): Stag
     order,
     is_active: false,
     is_completed: true,
-    settings_json: null,
+    settings_json: bestOf ? { best_of: bestOf } : null,
     challonge_id: null,
     challonge_slug: null,
     items: []
@@ -114,7 +120,12 @@ const TOURNAMENT_DEFAULT: MapVetoConfig = {
   map_ids: [1, 4, 7, 2, 5]
 };
 
-const STAGES = [stage(188, "Groups", 0, 5), stage(189, "Playoffs", 1, 3)];
+// Groups runs Bo2, so a config carrying a Bo3 template disagrees with the
+// bracket — which is exactly the divergence the bracket now settles.
+const STAGES = [
+  stage(188, "Groups", 0, 5, { default: 2 }),
+  stage(189, "Playoffs", 1, 3, { default: 3, final: 5 })
+];
 
 let container: HTMLDivElement;
 let root: Root;
@@ -316,5 +327,105 @@ describe("TournamentMapVetoTab form seeding", () => {
     // the tournament default's 5-map pool as this stage's own configuration.
     expect(text()).toContain(en.mapVetoAdmin.levelNew);
     expect(text()).not.toContain(en.mapVetoAdmin.levelExisting);
+  });
+});
+
+describe("TournamentMapVetoTab series length comes from the bracket", () => {
+  /** The mode toggles are the only aria-pressed controls without an aria-label. */
+  function modeButton(label: string): HTMLButtonElement {
+    const match = [...container.querySelectorAll("button[aria-pressed]")].find(
+      (element) => (element.textContent ?? "").includes(label)
+    );
+    if (!match) throw new Error(`no mode button for ${JSON.stringify(label)}`);
+    return match as HTMLButtonElement;
+  }
+
+  it("never offers a control that claims to set the series format", async () => {
+    await mount();
+    await settle();
+
+    // The old editor shipped Bo1/Bo2/Bo3/Bo5 buttons whose choice the veto
+    // session now overrides, so the format must be stated, not chosen. Asserted
+    // on the controls rather than on prose: "3 maps played" also appears as a
+    // legitimate derived figure, so page text cannot tell the two apart.
+    expect(text()).toContain(en.mapVetoAdmin.formatSourceBracket);
+
+    const presetLabels = new Set(Object.values(en.mapVeto.preset));
+    const formatButtons = [...container.querySelectorAll("button")].filter((element) =>
+      presetLabels.has((element.textContent ?? "").trim())
+    );
+    expect(formatButtons).toEqual([]);
+  });
+
+  it("opens a legacy bo* config in bracket mode, not custom", async () => {
+    await mount();
+    await settle();
+
+    // TOURNAMENT_DEFAULT carries preset "bo3": a template label, not an opinion.
+    expect(modeButton(en.mapVetoAdmin.orderModeBracket).getAttribute("aria-pressed")).toBe("true");
+    expect(modeButton(en.mapVetoAdmin.orderModeCustom).getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("opens an explicitly custom config in custom mode", async () => {
+    listVetoConfigs.mockResolvedValue({
+      configs: [{ ...TOURNAMENT_DEFAULT, preset: "custom" }]
+    });
+    await mount();
+    await settle();
+
+    expect(modeButton(en.mapVetoAdmin.orderModeCustom).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("saves preset bracket with a sequence matching the stage's best-of", async () => {
+    upsertVetoConfig.mockResolvedValue({});
+    // Stage 188 (Groups) runs Bo2 while the stored template is Bo3.
+    listVetoConfigs.mockResolvedValue({
+      configs: [{ ...TOURNAMENT_DEFAULT, id: 901, stage_id: 188, round: null }]
+    });
+    await mount();
+    await settle();
+
+    await act(async () => {
+      buttonByText("Groups").click();
+    });
+    await settle();
+
+    await act(async () => {
+      buttonByText(en.mapVetoAdmin.save).click();
+    });
+    await settle();
+
+    expect(upsertVetoConfig).toHaveBeenCalledTimes(1);
+    const [, payload] = upsertVetoConfig.mock.calls[0] as [number, Record<string, unknown>];
+    expect(payload.preset).toBe("bracket");
+    // Bo2: two opening bans then a pick each, and no decider.
+    expect(payload.sequence).toEqual(["ban_first", "ban_second", "pick_first", "pick_second"]);
+  });
+
+  it("warns without blocking when a custom order disagrees with the bracket", async () => {
+    // Three played maps authored against a Bo2 stage.
+    listVetoConfigs.mockResolvedValue({
+      configs: [
+        {
+          ...TOURNAMENT_DEFAULT,
+          id: 902,
+          stage_id: 188,
+          round: null,
+          preset: "custom",
+          sequence: ["ban_first", "pick_second", "pick_first", "decider"]
+        }
+      ]
+    });
+    await mount();
+    await settle();
+
+    await act(async () => {
+      buttonByText("Groups").click();
+    });
+    await settle();
+
+    expect(text()).toContain(en.mapVetoAdmin.mismatchTitle);
+    // A custom order deliberately wins, so saving stays available.
+    expect(buttonByText(en.mapVetoAdmin.save).disabled).toBe(false);
   });
 });

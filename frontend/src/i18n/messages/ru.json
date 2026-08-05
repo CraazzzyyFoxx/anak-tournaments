@@ -3772,7 +3772,8 @@
       "bo2": "Bo2",
       "bo3": "Bo3",
       "bo5": "Bo5",
-      "custom": "Свой"
+      "custom": "Свой",
+      "bo7": "Bo7"
     },
     "scope": {
       "tournamentDefault": "Дефолт турнира",
@@ -3782,7 +3783,6 @@
     },
     "title": "Пул карт и мап-вето",
     "description": "Карты, которые капитаны банят и пикают, и порядок этих шагов.",
-    "format": "Формат",
     "mapsInPool": "{count, plural, one {# карта в пуле} few {# карты в пуле} many {# карт в пуле} other {# карты в пуле}}",
     "mapsPlayed": "{count, plural, one {# карта в серии} few {# карты в серии} many {# карт в серии} other {# карты в серии}}",
     "notConfiguredTitle": "Организатор ещё не опубликовал пул карт",
@@ -3809,7 +3809,12 @@
     "ungrouped": "Без режима",
     "sequenceTitle": "Последовательность вето",
     "sequenceDescription": "Порядок банов и пиков капитанов перед матчем.",
-    "sequenceStepAria": "Шаг {n}: {label}"
+    "sequenceStepAria": "Шаг {n}: {label}",
+    "bracketFormat": "Формат из сетки",
+    "bracketFormatVaries": "Зависит от раунда",
+    "bracketFormatUnknown": "Зависит от этапа",
+    "customOrder": "Свой порядок вето",
+    "customOrderMismatch": "Этот свой порядок играет {played, plural, one {# карту} few {# карты} many {# карт} other {# карты}}, а сетка требует {expected, plural, one {# карту} few {# карты} many {# карт} other {# карты}}."
   },
   "mapVetoAdmin": {
     "title": "Конструктор пула карт и мап-вето",
@@ -3833,14 +3838,6 @@
     "levelExisting": "Своя конфигурация",
     "levelDescription": "Выберите формат серии, таймер и карты, доступные капитанам для бана и пика.",
     "deleteLevel": "Удалить этот уровень",
-    "formatLabel": "Формат серии",
-    "formatRequiresPool": "Для {preset} нужно минимум {count, plural, one {# карта} few {# карты} many {# карт} other {# карты}} в пуле.",
-    "presetDescription": {
-      "bo1": "1 карта в серии",
-      "bo2": "2 карты в серии",
-      "bo3": "3 карты в серии",
-      "bo5": "5 карт в серии"
-    },
     "turnTimerLabel": "Таймер на ход",
     "turnTimerUnit": "секунд",
     "turnTimerHint": "Обратный отсчёт для капитанов в комнате вето. Ход принудительно не завершается.",
@@ -3891,6 +3888,25 @@
     "deleted": "Конфигурация вето удалена — уровень снова наследует настройки",
     "deleteTitle": "Удалить конфигурацию вето",
     "deleteDescription": "Конфигурация для «{level}» будет удалена. Матчи в этой области унаследуют настройки уровнем выше.",
-    "readOnly": "У вас нет прав на изменение конфигурации вето."
+    "readOnly": "У вас нет прав на изменение конфигурации вето.",
+    "formatSourceTitle": "Формат серии",
+    "formatSourceBracket": "Берётся из сетки",
+    "formatSourceHint": "Длина серии настраивается на этапе, а не здесь. Вето пересобирает шаги из best-of каждого матча при его старте.",
+    "formatEditStage": "Изменить в настройках этапа",
+    "formatPerRound": "Раунд {round}: {format}",
+    "formatStageDefault": "Дефолт этапа: {format}",
+    "formatFinalRound": "Финальный раунд: {format}",
+    "formatUnknownScope": "Дефолт турнира применяется ко всем этапам, поэтому длина серии берётся из того этапа, к которому относится матч.",
+    "orderModeTitle": "Порядок шагов вето",
+    "orderModeBracket": "Следовать сетке",
+    "orderModeBracketHint": "Баны и пики генерируются из best-of матча. Это то, что нужно почти любому турниру.",
+    "orderModeCustom": "Задать порядок вручную",
+    "orderModeCustomHint": "Выводит этот уровень из-под сетки. Шаги ниже используются дословно, что бы ни говорила сетка.",
+    "previewTitle": "Сгенерированные шаги",
+    "previewHint": "Предпросмотр для {format} при {count} картах в пуле.",
+    "previewStale": "Выберите карты, чтобы увидеть сгенерированные шаги.",
+    "mismatchTitle": "Этот порядок расходится с сеткой",
+    "mismatchBody": "Шаги играют {played, plural, one {# карту} few {# карты} many {# карт} other {# карты}}, а сетка требует {expected, plural, one {# карту} few {# карты} many {# карт} other {# карты}}. Побеждает свой порядок — исправьте одно из двух.",
+    "storedFallbackHint": "Сохраняется как резерв. Каждый матч пересобирает свои шаги из своего best-of."
   }
 }

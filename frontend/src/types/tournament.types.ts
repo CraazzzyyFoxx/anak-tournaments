@@ -191,7 +191,19 @@ export type VetoSequenceToken =
   | "pick_second"
   | "decider";
 
-export type VetoPreset = "bo1" | "bo2" | "bo3" | "bo5" | "custom";
+/**
+ * How a veto config decides its step order.
+ *
+ * - `"bracket"` — follow the bracket. The veto session regenerates the steps
+ *   from `Encounter.best_of` at match time, so this config carries no opinion
+ *   about series length. What is stored alongside it is a fallback preview.
+ * - `"custom"` — the organizer authored the steps; they are used verbatim and
+ *   this level is opted out of the bracket.
+ * - `"bo1"`…`"bo7"` — legacy template labels written before the bracket owned
+ *   series length. Behaviourally identical to `"bracket"`: the server treats
+ *   everything except `"custom"` as bracket-driven.
+ */
+export type VetoPreset = "bracket" | "custom" | "bo1" | "bo2" | "bo3" | "bo5" | "bo7";
 
 export interface MapVetoConfig {
   id: number;

@@ -23,7 +23,9 @@ os.environ.setdefault("CHALLONGE_API_KEY", "test")
 from shared.core.enums import MapPickSide, VetoSeedSource  # noqa: E402
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from src.services.encounter.veto_session import (  # noqa: E402
+    build_sequence_for_best_of,
     decide_seeds,
+    effective_sequence,
     resolve_sequence_tokens,
     select_config,
     validate_veto_config,
@@ -195,3 +197,115 @@ class ValidateVetoConfigTests(TestCase):
             validate_veto_config(["ban_first", "ban_second"], self.MAPS)
 
         self.assertEqual("sequence must contain at least one pick or a decider", ctx.exception.detail)
+
+
+
+class BuildSequenceForBestOfTests(TestCase):
+    """The generated sequence must play exactly ``best_of`` maps and stay inside
+    the pool, and it must reproduce the presets the admin editor already ships."""
+
+    def test_reproduces_the_shipped_presets_token_for_token(self) -> None:
+        self.assertEqual(
+            ["ban_first", "ban_second", "pick_first", "pick_second"],
+            build_sequence_for_best_of(2, 4),
+        )
+        self.assertEqual(
+            ["ban_first", "ban_second", "pick_first", "pick_second", "decider"],
+            build_sequence_for_best_of(3, 5),
+        )
+        self.assertEqual(
+            [
+                "ban_first",
+                "ban_second",
+                "pick_first",
+                "pick_second",
+                "pick_first",
+                "pick_second",
+                "decider",
+            ],
+            build_sequence_for_best_of(5, 7),
+        )
+
+    def test_bo1_bans_the_pool_down_to_one_map(self) -> None:
+        self.assertEqual(
+            ["ban_first", "ban_second", "ban_first", "ban_second", "decider"],
+            build_sequence_for_best_of(1, 5),
+        )
+
+    def test_covers_bo7_which_had_no_preset(self) -> None:
+        sequence = build_sequence_for_best_of(7, 9)
+
+        self.assertEqual(9, len(sequence))
+        self.assertEqual(7, sum(1 for token in sequence if not token.startswith("ban")))
+        self.assertEqual("decider", sequence[-1])
+
+    def test_plays_exactly_best_of_maps_and_validates_for_every_length(self) -> None:
+        for best_of in (1, 2, 3, 4, 5, 6, 7):
+            pool = list(range(1, best_of + 3))
+            sequence = build_sequence_for_best_of(best_of, len(pool))
+            played = sum(1 for token in sequence if not token.startswith("ban"))
+
+            self.assertEqual(best_of, played, f"best_of={best_of}")
+            # Whatever it generates must survive the upsert validator.
+            validate_veto_config(sequence, pool)
+
+    def test_drops_opening_bans_rather_than_outgrow_a_tight_pool(self) -> None:
+        # Pool exactly the series length: no room for bans at all.
+        sequence = build_sequence_for_best_of(3, 3)
+
+        self.assertEqual(["pick_first", "pick_second", "decider"], sequence)
+        validate_veto_config(sequence, [1, 2, 3])
+
+    def test_clamps_a_series_longer_than_the_pool(self) -> None:
+        sequence = build_sequence_for_best_of(7, 3)
+
+        self.assertLessEqual(len(sequence), 3)
+        validate_veto_config(sequence, [1, 2, 3])
+
+    def test_empty_pool_yields_no_steps(self) -> None:
+        self.assertEqual([], build_sequence_for_best_of(3, 0))
+
+
+class EffectiveSequenceTests(TestCase):
+    """The bracket owns series length; only an explicit ``custom`` opts out."""
+
+    TEMPLATE = ["ban_first", "ban_second", "pick_first", "pick_second", "decider"]
+
+    @staticmethod
+    def config(preset: str | None, sequence: list[str]) -> SimpleNamespace:
+        return SimpleNamespace(preset=preset, veto_sequence_json=sequence)
+
+    def test_regenerates_a_preset_config_from_the_bracket(self) -> None:
+        # A Bo3 template on a Bo2 encounter used to hand a two-map series a
+        # three-map veto.
+        sequence = effective_sequence(self.config("bo3", self.TEMPLATE), 2, 7)
+
+        self.assertEqual(2, sum(1 for token in sequence if not token.startswith("ban")))
+
+    def test_passes_an_explicit_custom_order_through_untouched(self) -> None:
+        custom = ["pick_second", "pick_first", "ban_first", "decider"]
+
+        self.assertEqual(custom, effective_sequence(self.config("custom", custom), 5, 9))
+
+    def test_the_bracket_sentinel_is_regenerated(self) -> None:
+        sequence = effective_sequence(self.config("bracket", self.TEMPLATE), 7, 9)
+
+        self.assertEqual(7, sum(1 for token in sequence if not token.startswith("ban")))
+
+    def test_a_null_preset_is_a_template_not_a_hand_authored_order(self) -> None:
+        sequence = effective_sequence(self.config(None, self.TEMPLATE), 5, 9)
+
+        self.assertEqual(5, sum(1 for token in sequence if not token.startswith("ban")))
+
+    def test_keeps_the_template_when_best_of_is_degenerate(self) -> None:
+        # Legacy rows carry best_of=0; an empty veto is worse than the template.
+        self.assertEqual(self.TEMPLATE, effective_sequence(self.config("bo3", self.TEMPLATE), 0, 7))
+
+    def test_preset_config_follows_a_per_encounter_override(self) -> None:
+        config = self.config("bo3", self.TEMPLATE)
+
+        for best_of in (1, 2, 3, 5, 7):
+            played = sum(
+                1 for token in effective_sequence(config, best_of, 9) if not token.startswith("ban")
+            )
+            self.assertEqual(best_of, played, f"best_of={best_of}")

@@ -15,11 +15,12 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { bestOfMessageKey, buildSequenceForBestOf, hasPerRoundBestOf, parseStageBestOf, resolveBestOf } from "@/lib/best-of";
 import { cn } from "@/lib/utils";
 import mapService from "@/services/map.service";
 import tournamentService from "@/services/tournament.service";
 import type { MapRead } from "@/types/map.types";
-import type { MapVetoConfig } from "@/types/tournament.types";
+import type { MapVetoConfig, StageType, VetoSequenceToken } from "@/types/tournament.types";
 import {
   getMapsPlayedCount,
   getVetoLevelDescriptor,
@@ -44,6 +45,28 @@ interface ResolvedPool {
   source: PoolSource;
 }
 
+/**
+ * The series length the bracket says the selected scope plays.
+ *
+ * `resolved` is the only shape allowed to name a number. The bracket resolves
+ * `best_of` per round, so a scope that spans rounds which differ — or the
+ * tournament default, which spans whole stages — has no single truthful answer,
+ * and saying "Bo3" there would be the same fabrication this page exists to
+ * stop telling.
+ */
+type BracketFormat =
+  | { kind: "resolved"; bestOf: number }
+  | { kind: "varies" }
+  | { kind: "unknown" };
+
+interface SequenceView {
+  sequence: VetoSequenceToken[];
+  /** The organizer authored these steps, opting this scope out of the bracket. */
+  isCustom: boolean;
+  /** Set when a custom order plays a different number of maps than the bracket. */
+  mismatch: { played: number; expected: number } | null;
+}
+
 interface PoolGroup {
   /** Stable filter key; gamemode name, or the sentinel for maps without one. */
   key: string;
@@ -61,6 +84,11 @@ const PILL_ON = "border-primary bg-primary text-primary-foreground shadow-xs";
 const PILL_OFF =
   "border-border/70 bg-card text-foreground hover:border-primary/50 hover:bg-accent/40";
 const MAP_GRID = "grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6";
+/** Stage types whose last round is the final the `final` override applies to. */
+const ELIMINATION_STAGES: Partial<Record<StageType, true>> = {
+  single_elimination: true,
+  double_elimination: true
+};
 
 export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageProps) {
   const t = useTranslations();
@@ -184,6 +212,62 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
   const selectedStage = selectedStageId != null ? stagesById.get(selectedStageId) : undefined;
   const roundCount = Math.max(0, selectedStage?.max_rounds ?? 0);
 
+  // Series length belongs to the bracket, never to the veto config: a session
+  // regenerates its steps from `Encounter.best_of`, so the config's stored
+  // preset and sequence are only a fallback template. Read it from the stage
+  // the viewer selected, and refuse to name a number for a scope that spans
+  // rounds or stages which may each run a different length.
+  const bracketFormat = useMemo<BracketFormat>(() => {
+    if (!selectedStage) return { kind: "unknown" };
+    const bestOfConfig = parseStageBestOf(selectedStage.settings_json);
+
+    if (selectedRound != null) {
+      // An approximation: the server decides `isFinal` from the max round of
+      // the *generated* encounter set, which this page cannot see. Presented as
+      // the configured length, not as a promise about a specific match.
+      const isFinal =
+        ELIMINATION_STAGES[selectedStage.stage_type] === true &&
+        selectedRound === selectedStage.max_rounds;
+      return { kind: "resolved", bestOf: resolveBestOf(bestOfConfig, selectedRound, { isFinal }) };
+    }
+
+    if (hasPerRoundBestOf(bestOfConfig)) return { kind: "varies" };
+    // No per-round entries and no final override, so every round of this stage
+    // resolves identically; round 1 stands for all of them.
+    return { kind: "resolved", bestOf: resolveBestOf(bestOfConfig, 1) };
+  }, [selectedStage, selectedRound]);
+
+  // The steps the room will actually take. A `custom` config is the organizer's
+  // own order and is shown verbatim; anything else is regenerated from the
+  // bracket exactly as the server's `effective_sequence` does, because the
+  // stored template may have been authored for a different series length.
+  const sequenceView = useMemo<SequenceView | null>(() => {
+    if (!resolved) return null;
+    const expected = bracketFormat.kind === "resolved" ? bracketFormat.bestOf : null;
+
+    if (resolved.config.preset === "custom") {
+      if (resolved.config.sequence.length === 0) return null;
+      const played = getMapsPlayedCount(resolved.config.sequence);
+      return {
+        sequence: resolved.config.sequence,
+        isCustom: true,
+        mismatch: expected != null && played !== expected ? { played, expected } : null
+      };
+    }
+
+    // Without a known series length there is no sequence to preview: generating
+    // one would put steps on screen for a length nobody configured.
+    if (expected == null) return null;
+    const sequence = buildSequenceForBestOf(expected, pool.length);
+    return sequence.length > 0 ? { sequence, isCustom: false, mismatch: null } : null;
+  }, [resolved, bracketFormat, pool.length]);
+
+  /**
+   * How many maps the listed sequence plays — null when there is no sequence to
+   * count, which is the same ambiguous-scope case that hides the sequence card.
+   */
+  const playedMaps = sequenceView ? getMapsPlayedCount(sequenceView.sequence) : null;
+
   const sourceLabel = useMemo(() => {
     if (!resolved) return null;
     if (resolved.source === "exact") return t("mapVeto.source.exact");
@@ -239,6 +323,21 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
     );
   }
 
+  // Only the lengths the stage editor offers have a translated Bo label; a
+  // stage configured to anything else still deserves a readable figure rather
+  // than a missing key.
+  const bestOfLabel = (bestOf: number) => {
+    const key = bestOfMessageKey(bestOf);
+    return key ? t(key) : `Bo${bestOf}`;
+  };
+
+  const formatValue =
+    bracketFormat.kind === "resolved"
+      ? bestOfLabel(bracketFormat.bestOf)
+      : bracketFormat.kind === "varies"
+        ? t("mapVeto.bracketFormatVaries")
+        : t("mapVeto.bracketFormatUnknown");
+
   const renderMapTile = (map: MapRead) => (
     <li
       key={map.id}
@@ -278,14 +377,21 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
             <div className="flex flex-wrap items-center gap-2 sm:justify-end">
               <Badge variant="secondary" className="gap-1.5">
                 <Swords className="h-3.5 w-3.5" aria-hidden />
-                {t("mapVeto.format")}
+                {t("mapVeto.bracketFormat")}
                 {": "}
-                {t(`mapVeto.preset.${resolved.config.preset ?? "custom"}`)}
+                {formatValue}
               </Badge>
-              <Badge variant="outline" className="gap-1.5">
-                <Layers className="h-3.5 w-3.5" aria-hidden />
-                {t("mapVeto.mapsPlayed", { count: getMapsPlayedCount(resolved.config.sequence) })}
-              </Badge>
+              {/* Counted off the sequence that will actually run, not off the
+                  bracket: a custom order overrides the bracket, so quoting the
+                  bracket's figure here would contradict the steps listed below.
+                  Omitted for an ambiguous scope, where any figure would have to
+                  pick one of several lengths and call it the one. */}
+              {playedMaps != null ? (
+                <Badge variant="outline" className="gap-1.5">
+                  <Layers className="h-3.5 w-3.5" aria-hidden />
+                  {t("mapVeto.mapsPlayed", { count: playedMaps })}
+                </Badge>
+              ) : null}
               <Badge variant="outline" className="gap-1.5">
                 <MapPin className="h-3.5 w-3.5" aria-hidden />
                 {t("mapVeto.mapsInPool", { count: pool.length })}
@@ -501,20 +607,35 @@ export default function TournamentMapsPage({ tournamentId }: TournamentMapsPageP
             </CardContent>
           </Card>
 
-          {resolved.config.sequence.length > 0 ? (
+          {sequenceView ? (
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle asChild>
-                  <h2 className="flex items-center gap-2 text-sm font-semibold">
-                    <Swords className="h-4 w-4 text-primary" aria-hidden />
-                    {t("mapVeto.sequenceTitle")}
-                  </h2>
-                </CardTitle>
+                <div className="flex flex-wrap items-center gap-2">
+                  <CardTitle asChild>
+                    <h2 className="flex items-center gap-2 text-sm font-semibold">
+                      <Swords className="h-4 w-4 text-primary" aria-hidden />
+                      {t("mapVeto.sequenceTitle")}
+                    </h2>
+                  </CardTitle>
+                  {sequenceView.isCustom ? (
+                    <Badge variant="secondary" className="text-[11px]">
+                      {t("mapVeto.customOrder")}
+                    </Badge>
+                  ) : null}
+                </div>
                 <CardDescription>{t("mapVeto.sequenceDescription")}</CardDescription>
+                {/* The custom order is the one the room follows, so the bracket
+                    is the side that gives. Name both numbers instead of leaving
+                    a viewer to reconcile the veto with the bracket silently. */}
+                {sequenceView.mismatch ? (
+                  <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-2.5 py-1.5 text-xs text-foreground">
+                    {t("mapVeto.customOrderMismatch", sequenceView.mismatch)}
+                  </p>
+                ) : null}
               </CardHeader>
               <CardContent>
                 <ol className="flex flex-wrap gap-2">
-                  {resolved.config.sequence.map((token, index) => {
+                  {sequenceView.sequence.map((token, index) => {
                     const action = tokenAction(token);
                     const label = t(`mapVeto.step.${tokenLabelKey(token)}`);
                     return (

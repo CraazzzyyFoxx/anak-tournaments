@@ -29,6 +29,7 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DEFAULT_BEST_OF, bestOfMessageKey, buildSequenceForBestOf, hasPerRoundBestOf, parseStageBestOf, resolveBestOf } from "@/lib/best-of";
 import { cn } from "@/lib/utils";
 import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
@@ -42,10 +43,6 @@ import type {
   VetoSequenceToken
 } from "@/types/tournament.types";
 import {
-  BO2_SEQUENCE,
-  BO3_SEQUENCE,
-  BO5_SEQUENCE,
-  buildBo1Sequence,
   buildToken,
   getMapsPlayedCount,
   getVetoLevelDescriptor,
@@ -70,20 +67,6 @@ const ALL_FILTER = "all";
 /** Pool filter bucket for maps whose gamemode relation is missing. */
 const UNGROUPED_FILTER = "__ungrouped__";
 
-/**
- * Smallest pool a preset can run in: a sequence may never be longer than the
- * pool it draws from (the backend enforces the same rule on upsert). Bo1 bans
- * down to one map, so two is enough; the fixed presets need one map per step.
- */
-const PRESET_MIN_POOL: Record<Exclude<VetoPreset, "custom">, number> = {
-  bo1: 2,
-  bo2: BO2_SEQUENCE.length,
-  bo3: BO3_SEQUENCE.length,
-  bo5: BO5_SEQUENCE.length
-};
-
-const SIZED_PRESETS = ["bo1", "bo2", "bo3", "bo5"] as const;
-
 interface GamemodeGroup {
   /** Filter value: the gamemode name, or the ungrouped sentinel. */
   key: string;
@@ -100,21 +83,46 @@ interface VetoFormValues {
   turnTimerSeconds: number | null;
 }
 
-function buildPresetSequence(
-  preset: Exclude<VetoPreset, "custom">,
-  poolSize: number
-): VetoSequenceToken[] {
-  switch (preset) {
-    case "bo1":
-      return buildBo1Sequence(poolSize);
-    case "bo2":
-      return [...BO2_SEQUENCE];
-    case "bo3":
-      return [...BO3_SEQUENCE];
-    default:
-      return [...BO5_SEQUENCE];
+/**
+ * Series length for the selected scope, as the bracket defines it.
+ *
+ * The veto does not own this. The generator resolves
+ * `Stage.settings_json.best_of` into `Encounter.best_of`, and the veto session
+ * rebuilds its steps from that value unless the config is explicitly custom —
+ * so this editor can only report the configured length, never set it.
+ *
+ * `bestOf` is the representative length: what the generated preview and the
+ * saved fallback sequence are built for. A single round resolves exactly; a
+ * whole stage uses its default; the tournament default spans stages that may
+ * each run a different length, so it can only fall back to Bo3.
+ */
+type BracketFormat =
+  | { scope: "round"; round: number; bestOf: number }
+  | {
+      scope: "stage";
+      bestOf: number;
+      /** Non-null only when the rounds do not all play the same length. */
+      perRound: { round: number; bestOf: number }[] | null;
+      /** The stage's final-round override, elimination stages only. */
+      finalBestOf: number | null;
+    }
+  | { scope: "tournament"; bestOf: number };
+
+/** Which sequence a level runs: the bracket's, or one the organizer authored. */
+type VetoOrderMode = "bracket" | "custom";
+
+const ORDER_MODE_OPTIONS = [
+  {
+    mode: "bracket",
+    label: "mapVetoAdmin.orderModeBracket",
+    hint: "mapVetoAdmin.orderModeBracketHint"
+  },
+  {
+    mode: "custom",
+    label: "mapVetoAdmin.orderModeCustom",
+    hint: "mapVetoAdmin.orderModeCustomHint"
   }
-}
+] as const;
 
 function MapPoolTile({
   map,
@@ -198,6 +206,7 @@ function VetoConfigForm({
   isSaving,
   saveError,
   scopeLabel,
+  bracketFormat,
   onSave,
   onRequestDelete
 }: {
@@ -207,6 +216,7 @@ function VetoConfigForm({
   isSaving: boolean;
   saveError?: string;
   scopeLabel: string;
+  bracketFormat: BracketFormat;
   onSave: (values: VetoFormValues) => void;
   /** Null when there is nothing to delete or the viewer cannot manage. */
   onRequestDelete: (() => void) | null;
@@ -217,11 +227,26 @@ function VetoConfigForm({
   const [mapIds, setMapIds] = useState<number[]>(() =>
     config ? [...config.map_ids] : maps.map((map) => map.id)
   );
-  const [sequence, setSequence] = useState<VetoSequenceToken[]>(() =>
-    config ? [...config.sequence] : [...BO3_SEQUENCE]
-  );
-  const [preset, setPreset] = useState<VetoPreset>(() =>
-    config ? config.preset ?? "custom" : "bo3"
+  /**
+   * The organizer's authored steps, kept in state even while the bracket drives
+   * the sequence — toggling the mode back restores hand work instead of
+   * regenerating over it.
+   */
+  const [customSequence, setCustomSequence] = useState<VetoSequenceToken[]>(() => {
+    if (config && config.sequence.length > 0) return [...config.sequence];
+    return buildSequenceForBestOf(
+      bracketFormat.bestOf,
+      config ? config.map_ids.length : maps.length
+    );
+  });
+  /**
+   * Only an explicit `custom` opts a level out of the bracket. A legacy `bo*`
+   * label and a NULL preset are both bracket-driven: the server regenerates
+   * their steps from `Encounter.best_of`, so the editor must not pretend the
+   * stored template is a choice the organizer made.
+   */
+  const [orderMode, setOrderMode] = useState<VetoOrderMode>(() =>
+    config?.preset === "custom" ? "custom" : "bracket"
   );
   const [turnTimerSeconds, setTurnTimerSeconds] = useState<number | null>(() =>
     config ? config.turn_timer_seconds : 30
@@ -269,40 +294,21 @@ function VetoConfigForm({
     0
   );
 
-  /**
-   * Bo1 is the one preset whose length depends on the pool, so any pool change
-   * has to rebuild its sequence. Computed outside the state updater to keep
-   * both writes pure.
-   */
-  const applyMapIds = (compute: (current: number[]) => number[]) => {
-    const next = compute(mapIds);
-    setMapIds(next);
-    if (preset === "bo1" && next.length > 0) {
-      setSequence(buildBo1Sequence(next.length));
-    }
-  };
-
   const selectVisible = () => {
     const missing = visibleMaps
       .filter((map) => !selectionOrder.has(map.id))
       .map((map) => map.id);
-    applyMapIds((current) => [...current, ...missing]);
+    setMapIds((current) => [...current, ...missing]);
   };
 
   const clearVisible = () => {
     const visible = new Set(visibleMaps.map((map) => map.id));
-    applyMapIds((current) => current.filter((id) => !visible.has(id)));
+    setMapIds((current) => current.filter((id) => !visible.has(id)));
   };
 
-  const applyPreset = (next: Exclude<VetoPreset, "custom">) => {
-    setPreset(next);
-    setSequence(buildPresetSequence(next, mapIds.length));
-  };
-
-  /** Any hand edit means the sequence no longer matches a named preset. */
+  /** Custom mode only: a generated sequence has no hand-edited counterpart. */
   const patchSequence = (mutate: (steps: VetoSequenceToken[]) => VetoSequenceToken[]) => {
-    setPreset("custom");
-    setSequence((current) => mutate([...current]));
+    setCustomSequence((current) => mutate([...current]));
   };
 
   const moveStep = (index: number, direction: -1 | 1) => {
@@ -315,23 +321,39 @@ function VetoConfigForm({
     });
   };
 
-  const presetOptions = SIZED_PRESETS.map((option) => {
-    const minPool = PRESET_MIN_POOL[option];
-    const blocked = mapIds.length < minPool;
-    return {
-      preset: option,
-      blocked,
-      // Stated, not merely implied: a greyed-out button with no reason is the
-      // most confusing thing on the page.
-      reason: blocked
-        ? t("mapVetoAdmin.formatRequiresPool", {
-            preset: t(`mapVeto.preset.${option}`),
-            count: minPool
-          })
-        : null
-    };
-  });
-  const blockedPresets = presetOptions.filter((option) => option.blocked);
+  /**
+   * In bracket mode the steps are not state: they are regenerated from the
+   * scope's series length and the current pool, exactly as the server
+   * regenerates them per match.
+   */
+  const generatedSequence = useMemo(
+    () => buildSequenceForBestOf(bracketFormat.bestOf, mapIds.length),
+    [bracketFormat.bestOf, mapIds.length]
+  );
+  const isCustom = orderMode === "custom";
+  const sequence = isCustom ? customSequence : generatedSequence;
+  const editable = canManage && isCustom;
+
+  /**
+   * Only the lengths the stage editor offers have a translated Bo label; a stage
+   * configured to anything else still deserves a readable figure over a missing
+   * message key.
+   */
+  const bestOfLabel = (bestOf: number) => {
+    const key = bestOfMessageKey(bestOf);
+    return key ? t(key) : `Bo${bestOf}`;
+  };
+
+  const mapsPlayed = getMapsPlayedCount(sequence);
+  /**
+   * A custom order deliberately overrides the bracket, so a disagreement is
+   * worth stating but must never block saving. The tournament default has no
+   * single expected length to disagree with.
+   */
+  const mismatch =
+    isCustom && bracketFormat.scope !== "tournament" && mapsPlayed !== bracketFormat.bestOf
+      ? { played: mapsPlayed, expected: bracketFormat.bestOf }
+      : null;
 
   const issues = validateVetoConfigForm(sequence, mapIds);
   const canSave = canManage && issues.length === 0 && !isSaving;
@@ -339,7 +361,7 @@ function VetoConfigForm({
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
     if (!canSave) return;
-    onSave({ mapIds, sequence, preset, turnTimerSeconds });
+    onSave({ mapIds, sequence, preset: isCustom ? "custom" : "bracket", turnTimerSeconds });
   };
 
   const renderTile = (map: MapRead) => {
@@ -353,7 +375,7 @@ function VetoConfigForm({
         selectionIndex={selectionOrder.get(map.id) ?? -1}
         disabled={!canManage || isSaving}
         onToggle={() =>
-          applyMapIds((current) =>
+          setMapIds((current) =>
             current.includes(map.id)
               ? current.filter((id) => id !== map.id)
               : [...current, map.id]
@@ -400,53 +422,66 @@ function VetoConfigForm({
             </p>
           ) : null}
 
-          <div className="grid gap-6 sm:grid-cols-2">
+          <div className="grid items-start gap-6 sm:grid-cols-2">
             <div className="space-y-3">
-              <h3 className="text-sm font-semibold">{t("mapVetoAdmin.formatLabel")}</h3>
-              <div
-                role="group"
-                aria-label={t("mapVetoAdmin.formatLabel")}
-                className="grid grid-cols-2 gap-2 sm:grid-cols-4"
-              >
-                {presetOptions.map(({ preset: option, blocked, reason }) => {
-                  const active = preset === option;
-                  return (
-                    <Button
-                      key={option}
-                      type="button"
-                      variant={active ? "default" : "outline"}
-                      aria-pressed={active}
-                      aria-label={reason ?? undefined}
-                      title={reason ?? undefined}
-                      disabled={!canManage || blocked}
-                      onClick={() => applyPreset(option)}
-                      className={cn(
-                        "h-auto flex-col gap-0.5 px-2 py-2.5 text-center",
-                        active ? "ring-2 ring-primary/40" : "border-border/70"
-                      )}
-                    >
-                      <span className="text-sm font-semibold">
-                        {t(`mapVeto.preset.${option}`)}
-                      </span>
-                      <span
-                        className={cn(
-                          "text-[10px]",
-                          active ? "text-primary-foreground/80" : "text-muted-foreground"
-                        )}
-                      >
-                        {t(`mapVetoAdmin.presetDescription.${option}`)}
-                      </span>
-                    </Button>
-                  );
-                })}
+              <h3 className="text-sm font-semibold">{t("mapVetoAdmin.formatSourceTitle")}</h3>
+              {/* Read-only on purpose: a control here would imply the veto sets
+                  the series length, which it has not done since the session
+                  started rebuilding its steps from `Encounter.best_of`. */}
+              <div className="space-y-2 rounded-xl border border-border/70 bg-accent/20 p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="outline">{t("mapVetoAdmin.formatSourceBracket")}</Badge>
+                  <span className="text-sm font-semibold">
+                    {bracketFormat.scope === "round"
+                      ? t("mapVetoAdmin.formatPerRound", {
+                          round: bracketFormat.round,
+                          format: bestOfLabel(bracketFormat.bestOf)
+                        })
+                      : bracketFormat.scope === "tournament"
+                        ? t("mapVeto.bracketFormatUnknown")
+                        : bracketFormat.perRound
+                          ? t("mapVeto.bracketFormatVaries")
+                          : t("mapVetoAdmin.formatStageDefault", {
+                              format: bestOfLabel(bracketFormat.bestOf)
+                            })}
+                  </span>
+                </div>
+
+                {bracketFormat.scope === "stage" && bracketFormat.perRound ? (
+                  <ul className="space-y-0.5 text-xs tabular-nums text-muted-foreground">
+                    {bracketFormat.perRound.map((entry) => (
+                      <li key={entry.round}>
+                        {t("mapVetoAdmin.formatPerRound", {
+                          round: entry.round,
+                          format: bestOfLabel(entry.bestOf)
+                        })}
+                      </li>
+                    ))}
+                    {/* Named separately rather than folded into a round row: the
+                        server picks the final from the generated bracket, which
+                        this editor cannot see. */}
+                    {bracketFormat.finalBestOf != null ? (
+                      <li>
+                        {t("mapVetoAdmin.formatFinalRound", {
+                          format: bestOfLabel(bracketFormat.finalBestOf)
+                        })}
+                      </li>
+                    ) : null}
+                  </ul>
+                ) : null}
+
+                {bracketFormat.scope === "tournament" ? (
+                  <p className="text-xs text-muted-foreground">
+                    {t("mapVetoAdmin.formatUnknownScope")}
+                  </p>
+                ) : null}
               </div>
-              {blockedPresets.length > 0 ? (
-                <ul className="space-y-0.5 text-xs text-muted-foreground">
-                  {blockedPresets.map(({ preset: option, reason }) => (
-                    <li key={option}>{reason}</li>
-                  ))}
-                </ul>
-              ) : null}
+              <p className="text-xs text-muted-foreground">
+                {t("mapVetoAdmin.formatSourceHint")}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {t("mapVetoAdmin.formatEditStage")}
+              </p>
             </div>
 
             <div className="space-y-3">
@@ -572,27 +607,72 @@ function VetoConfigForm({
           </section>
 
           <section className="space-y-3">
+            <h3 className="text-sm font-semibold">{t("mapVetoAdmin.orderModeTitle")}</h3>
+            <div
+              role="group"
+              aria-label={t("mapVetoAdmin.orderModeTitle")}
+              className="grid gap-2 sm:grid-cols-2"
+            >
+              {ORDER_MODE_OPTIONS.map((option) => {
+                const active = orderMode === option.mode;
+                return (
+                  <Button
+                    key={option.mode}
+                    type="button"
+                    variant={active ? "default" : "outline"}
+                    aria-pressed={active}
+                    disabled={!canManage}
+                    onClick={() => setOrderMode(option.mode)}
+                    className={cn(
+                      "h-auto flex-col items-start gap-1 whitespace-normal px-3 py-2.5 text-left",
+                      active ? "ring-2 ring-primary/40" : "border-border/70"
+                    )}
+                  >
+                    <span className="text-sm font-semibold">{t(option.label)}</span>
+                    <span
+                      className={cn(
+                        "text-[11px] font-normal",
+                        active ? "text-primary-foreground/80" : "text-muted-foreground"
+                      )}
+                    >
+                      {t(option.hint)}
+                    </span>
+                  </Button>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="space-y-3">
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div className="space-y-0.5">
-                <h3 className="text-sm font-semibold">{t("mapVetoAdmin.sequenceTitle")}</h3>
+                <h3 className="text-sm font-semibold">
+                  {isCustom ? t("mapVetoAdmin.sequenceTitle") : t("mapVetoAdmin.previewTitle")}
+                </h3>
                 <p className="text-xs text-muted-foreground">
-                  {t("mapVetoAdmin.sequenceDescription")}
+                  {isCustom
+                    ? t("mapVetoAdmin.sequenceDescription")
+                    : mapIds.length === 0
+                      ? t("mapVetoAdmin.previewStale")
+                      : t("mapVetoAdmin.previewHint", {
+                          format: bestOfLabel(bracketFormat.bestOf),
+                          count: mapIds.length
+                        })}
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant={preset === "custom" ? "secondary" : "outline"}>
-                  {t(`mapVeto.preset.${preset}`)}
-                </Badge>
-                <Badge variant="outline" className="tabular-nums">
-                  {t("mapVeto.mapsPlayed", { count: getMapsPlayedCount(sequence) })}
-                </Badge>
-              </div>
+              <Badge variant="outline" className="tabular-nums">
+                {t("mapVeto.mapsPlayed", { count: mapsPlayed })}
+              </Badge>
             </div>
 
             {sequence.length === 0 ? (
-              <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-                {t("mapVetoAdmin.sequenceEmpty")}
-              </p>
+              // A generated sequence is only empty when the pool is, and the
+              // description above already says so.
+              isCustom ? (
+                <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                  {t("mapVetoAdmin.sequenceEmpty")}
+                </p>
+              ) : null
             ) : (
               <ol className="space-y-2">
                 {sequence.map((token, index) => {
@@ -614,7 +694,7 @@ function VetoConfigForm({
                         {t("mapVetoAdmin.sequenceStep", { n: step })}
                       </span>
 
-                      {canManage ? (
+                      {editable ? (
                         <>
                           <Select
                             value={action}
@@ -726,7 +806,7 @@ function VetoConfigForm({
               </ol>
             )}
 
-            {canManage ? (
+            {editable ? (
               <Button
                 type="button"
                 variant="outline"
@@ -738,6 +818,20 @@ function VetoConfigForm({
                 {t("mapVetoAdmin.addStep")}
               </Button>
             ) : null}
+
+            {/* A warning, not a blocker: the live region has to exist before it
+                does, and saving stays allowed because custom wins on purpose. */}
+            <div aria-live="polite">
+              {mismatch ? (
+                <div className="space-y-1 rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+                  <p className="flex items-center gap-2 font-semibold">
+                    <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
+                    {t("mapVetoAdmin.mismatchTitle")}
+                  </p>
+                  <p>{t("mapVetoAdmin.mismatchBody", mismatch)}</p>
+                </div>
+              ) : null}
+            </div>
           </section>
 
           {/* The live region has to exist before the issues do. */}
@@ -767,6 +861,12 @@ function VetoConfigForm({
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
               <span>{t("mapVetoAdmin.saveError", { message: saveError })}</span>
             </div>
+          ) : null}
+
+          {orderMode === "bracket" ? (
+            <p className="text-xs text-muted-foreground">
+              {t("mapVetoAdmin.storedFallbackHint")}
+            </p>
           ) : null}
 
           {canManage ? (
@@ -906,6 +1006,47 @@ export function TournamentMapVetoTab({
   const roundsTitle =
     activeStageName == null ? "" : t("mapVetoAdmin.roundsTitle", { stage: activeStageName });
   const roundCount = activeStage != null && activeStage.max_rounds > 0 ? activeStage.max_rounds : 0;
+
+  /**
+   * Series length for the selected scope, resolved from the stage the bracket
+   * generator reads. Derived, never stored on the veto config: the veto has no
+   * say in how long a series is.
+   */
+  const stageBestOfConfig = useMemo(
+    () => (activeStage ? parseStageBestOf(activeStage.settings_json) : null),
+    [activeStage]
+  );
+  const isEliminationStage =
+    activeStage?.stage_type === "single_elimination" ||
+    activeStage?.stage_type === "double_elimination";
+
+  const bracketFormat = useMemo<BracketFormat>(() => {
+    if (levelType === "tournament" || activeStage == null || stageBestOfConfig == null) {
+      return { scope: "tournament", bestOf: DEFAULT_BEST_OF };
+    }
+    if (levelType === "stage_round" && round != null) {
+      // `isFinal` is an approximation: the server decides it from the max round
+      // of the generated encounter set, which the client cannot see.
+      return {
+        scope: "round",
+        round,
+        bestOf: resolveBestOf(stageBestOfConfig, round, {
+          isFinal: isEliminationStage && round === activeStage.max_rounds
+        })
+      };
+    }
+    return {
+      scope: "stage",
+      bestOf: stageBestOfConfig.default ?? DEFAULT_BEST_OF,
+      perRound: hasPerRoundBestOf(stageBestOfConfig)
+        ? Array.from({ length: roundCount }, (_, index) => index + 1).map((roundNumber) => ({
+            round: roundNumber,
+            bestOf: resolveBestOf(stageBestOfConfig, roundNumber)
+          }))
+        : null,
+      finalBestOf: isEliminationStage ? stageBestOfConfig.final ?? null : null
+    };
+  }, [levelType, activeStage, stageBestOfConfig, isEliminationStage, round, roundCount]);
 
   const hasTournamentConfig = configs.some(
     (config) => config.stage_id == null && config.round == null
@@ -1052,13 +1193,18 @@ export function TournamentMapVetoTab({
                             <span className="text-xs font-semibold">
                               {t("mapVetoAdmin.roundLabel", { round: roundNumber })}
                             </span>
+                            {/* The preset no longer names a format, so the only
+                                config-specific fact left worth a badge is that a
+                                round opted out of the bracket. */}
                             {roundConfig ? (
-                              <Badge
-                                variant="outline"
-                                className="border-success/60 text-[10px] text-success"
-                              >
-                                {t(`mapVeto.preset.${roundConfig.preset ?? "custom"}`)}
-                              </Badge>
+                              roundConfig.preset === "custom" ? (
+                                <Badge
+                                  variant="outline"
+                                  className="border-success/60 text-[10px] text-success"
+                                >
+                                  {t("mapVeto.preset.custom")}
+                                </Badge>
+                              ) : null
                             ) : (
                               <span className="text-[10px] text-muted-foreground">
                                 {t("mapVetoAdmin.roundInherits")}
@@ -1095,6 +1241,7 @@ export function TournamentMapVetoTab({
           isSaving={upsertMutation.isPending}
           saveError={upsertMutation.error?.message}
           scopeLabel={scopeLabel}
+          bracketFormat={bracketFormat}
           onSave={handleSave}
           onRequestDelete={
             canManage && activeConfig ? () => setConfigPendingDelete(activeConfig) : null

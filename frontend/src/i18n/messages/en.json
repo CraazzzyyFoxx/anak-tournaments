@@ -3772,7 +3772,8 @@
       "bo2": "Bo2",
       "bo3": "Bo3",
       "bo5": "Bo5",
-      "custom": "Custom"
+      "custom": "Custom",
+      "bo7": "Bo7"
     },
     "scope": {
       "tournamentDefault": "Tournament default",
@@ -3782,7 +3783,6 @@
     },
     "title": "Map pool and veto",
     "description": "The maps captains can ban and pick, and the order they do it in.",
-    "format": "Format",
     "mapsInPool": "{count, plural, one {# map in the pool} other {# maps in the pool}}",
     "mapsPlayed": "{count, plural, one {# map played} other {# maps played}}",
     "notConfiguredTitle": "The organizer has not published a map pool yet",
@@ -3809,7 +3809,12 @@
     "ungrouped": "No game mode",
     "sequenceTitle": "Veto sequence",
     "sequenceDescription": "The order captains ban and pick maps in before the match.",
-    "sequenceStepAria": "Step {n}: {label}"
+    "sequenceStepAria": "Step {n}: {label}",
+    "bracketFormat": "Format from the bracket",
+    "bracketFormatVaries": "Varies by round",
+    "bracketFormatUnknown": "Depends on the stage",
+    "customOrder": "Custom veto order",
+    "customOrderMismatch": "This custom order plays {played, plural, one {# map} other {# maps}}, but the bracket calls for {expected, plural, one {# map} other {# maps}}."
   },
   "mapVetoAdmin": {
     "title": "Map pool and veto builder",
@@ -3833,14 +3838,6 @@
     "levelExisting": "Own configuration",
     "levelDescription": "Choose the series format, the timer, and the maps captains may ban or pick.",
     "deleteLevel": "Delete this level",
-    "formatLabel": "Series format",
-    "formatRequiresPool": "{preset} needs at least {count, plural, one {# map} other {# maps}} in the pool.",
-    "presetDescription": {
-      "bo1": "1 map played",
-      "bo2": "2 maps played",
-      "bo3": "3 maps played",
-      "bo5": "5 maps played"
-    },
     "turnTimerLabel": "Turn timer",
     "turnTimerUnit": "seconds",
     "turnTimerHint": "Countdown shown to captains in the veto room. It does not enforce a turn.",
@@ -3891,6 +3888,25 @@
     "deleted": "Veto configuration deleted; this level now inherits",
     "deleteTitle": "Delete veto configuration",
     "deleteDescription": "The configuration for “{level}” will be deleted. Matches in this scope will inherit the next level up.",
-    "readOnly": "You do not have permission to change the veto configuration."
+    "readOnly": "You do not have permission to change the veto configuration.",
+    "formatSourceTitle": "Series format",
+    "formatSourceBracket": "Taken from the bracket",
+    "formatSourceHint": "Series length is configured on the stage, not here. The veto rebuilds its steps from each match's best-of when the match starts.",
+    "formatEditStage": "Edit it in the stage settings",
+    "formatPerRound": "Round {round}: {format}",
+    "formatStageDefault": "Stage default: {format}",
+    "formatFinalRound": "Final round: {format}",
+    "formatUnknownScope": "The tournament default applies to every stage, so the series length comes from whichever stage a match belongs to.",
+    "orderModeTitle": "Veto step order",
+    "orderModeBracket": "Follow the bracket",
+    "orderModeBracketHint": "Bans and picks are generated from the match's best-of. This is what almost every tournament wants.",
+    "orderModeCustom": "Author the order myself",
+    "orderModeCustomHint": "Opts this level out of the bracket. The steps below are used verbatim, whatever the bracket says.",
+    "previewTitle": "Generated steps",
+    "previewHint": "Preview for {format} with {count} maps in the pool.",
+    "previewStale": "Select maps to preview the generated steps.",
+    "mismatchTitle": "This order disagrees with the bracket",
+    "mismatchBody": "The steps play {played, plural, one {# map} other {# maps}} while the bracket calls for {expected, plural, one {# map} other {# maps}}. The custom order wins — fix one of the two.",
+    "storedFallbackHint": "Saved as a fallback. Each match regenerates its own steps from its best-of."
   }
 }
