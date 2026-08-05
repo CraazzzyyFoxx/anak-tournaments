@@ -3,6 +3,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, Field, field_validator
 
+from shared.schemas.roster_slots import RosterSlotsField
 from shared.tenancy.hostnames import validate_subdomain_label
 from src.schemas.base import BaseRead
 from src.schemas.division_grid import DivisionGridVersionRead
@@ -68,6 +69,7 @@ class WorkspaceRead(BaseRead):
     discord_guild_id: str | None = None
     default_division_grid_version_id: int | None
     default_division_grid_version: DivisionGridVersionRead | None = None
+    default_roster_slots_json: dict[str, int] | None = None
 
 
 class WorkspaceCreate(BaseModel):
@@ -76,6 +78,7 @@ class WorkspaceCreate(BaseModel):
     description: str | None = None
     icon_url: str | None = None
     default_division_grid_version_id: int | None = None
+    default_roster_slots_json: RosterSlotsField = None
 
 
 class WorkspaceUpdate(BaseModel):
@@ -100,6 +103,9 @@ class WorkspaceUpdate(BaseModel):
     seo_description: str | None = None
     discord_guild_id: str | None = Field(default=None, pattern=_DISCORD_SNOWFLAKE)
     default_division_grid_version_id: int | None = None
+    # Edited in place, unlike `default_division_grid_version_id` above: a roster
+    # shape has no activation semantics, so it needs no dedicated endpoint.
+    default_roster_slots_json: RosterSlotsField = None
 
     @field_validator(
         "brand_primary",
