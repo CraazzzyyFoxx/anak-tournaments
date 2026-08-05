@@ -47,24 +47,18 @@ class BalancerRegistrationForm(db.TimeStampIntegerMixin):
     require_open_profile: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
     open_profile_scope: Mapped[str] = mapped_column(String(8), nullable=False, server_default="main", default="main")
     show_ranks: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
-    # Subscription admission requirement. Enforced at CHECK-IN only, never at
-    # registration submission (a provider outage during open signups must not lock
-    # anybody out). ``require_subscription`` is a master toggle kept separate from
-    # the blob -- like ``Workspace.branding_enabled`` -- so switching the gate off
-    # mid-tournament does not destroy the organizer's thresholds.
+    # Subscription admission gate. ``require_subscription`` is the per-tournament
+    # decision and stays here; the RULE it enforces does not. That moved to
+    # ``subscriptions.requirement`` (one row per workspace) so a new tournament no
+    # longer re-asks for it -- see the 2026-08-05 workspace-subscription-requirement
+    # design. Resolve it through ``SubscriptionResolver.load_requirement``, never by
+    # reading a column here.
     #
-    # ``subscription_requirement_json`` is ``{mode, requirements}``:
-    #   {"mode": "any"|"all",
-    #    "requirements": [{"provider": "boosty", "min_tier_rank": 2}, ...]}
-    # A per-provider threshold is mandatory because Boosty "Уровень 2" and Twitch
-    # "Tier 2" are unrelated scales. Parsed by
-    # ``shared.subscriptions.parse_requirement``; composed with Kleene logic.
-    require_subscription: Mapped[bool] = mapped_column(
-        Boolean(), nullable=False, server_default="false", default=False
-    )
-    subscription_requirement_json: Mapped[dict[str, Any]] = mapped_column(
-        JSON, nullable=False, server_default="{}", default=dict
-    )
+    # The former ``subscription_requirement_json`` attribute is gone from the mapper
+    # deliberately, and BEFORE ``wsreq0002`` drops the column: SQLAlchemy emits every
+    # mapped column in every SELECT, so leaving it would break every form query the
+    # moment that migration lands.
+    require_subscription: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
 
     tournament: Mapped[Tournament] = relationship()
     workspace: Mapped[Workspace] = relationship()
