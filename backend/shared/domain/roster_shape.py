@@ -178,8 +178,7 @@ def parse_roster_slots(raw: Any) -> RosterShape:
             "A roster shape needs at least one slot with a positive count",
         )
 
-    _validate_team_size(sum(counts.values()))
-
+    # Size is validated by RosterShape.__post_init__ on the normalized entries.
     return RosterShape(
         entries=tuple((code, counts[code]) for code in ROSTER_SLOT_CODES if code in counts)
     )

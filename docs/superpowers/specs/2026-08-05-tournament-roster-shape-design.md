@@ -97,15 +97,22 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from types import MappingProxyType
+from typing import Any, Final
 
 from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
 
-FLEX_SLOT_CODE = "flex"
-ROSTER_SLOT_CODES: tuple[str, ...] = (*REGISTRATION_ROLE_CODES, FLEX_SLOT_CODE)
-DEFAULT_ROSTER_SLOTS: dict[str, int] = {"tank": 1, "dps": 2, "support": 2}
-MIN_TEAM_SIZE = 1
-MAX_TEAM_SIZE = 12
+FLEX_SLOT_CODE: Final = "flex"
+ROSTER_SLOT_CODES: Final[tuple[str, ...]] = (*REGISTRATION_ROLE_CODES, FLEX_SLOT_CODE)
+DEFAULT_ROSTER_SLOTS: Final[Mapping[str, int]] = MappingProxyType(
+    {"tank": 1, "dps": 2, "support": 2}
+)
+# A team is a captain plus at least one drafted player: a one-slot roster has
+# nothing to draft and nothing to balance.
+MIN_TEAM_SIZE: Final = 2
+# Upper bound inherited from the pre-existing draft validator
+# (balancer-service DraftSessionCreateRequest._team_size_range allowed 1..12).
+MAX_TEAM_SIZE: Final = 12
 
 
 class RosterShapeError(ValueError):
@@ -118,21 +125,32 @@ class RosterShapeError(ValueError):
 
 @dataclass(frozen=True)
 class RosterShape:
-    """Per-team slot counts. ``slots`` is normalized: canonical order, no zeros."""
+    """Per-team slot counts, normalized: canonical order, no zero entries.
 
-    slots: Mapping[str, int]
+    Built through ``parse_roster_slots``. The stored field is a tuple of pairs,
+    not a mapping, so the shape stays hashable, JSON-serializable, deep-copyable
+    and picklable -- see D13.
+    """
 
+    entries: tuple[tuple[str, int], ...]
+
+    @property
+    def slots(self) -> dict[str, int]: ...           # fresh dict every access
     @property
     def team_size(self) -> int: ...
     @property
     def flex_slots(self) -> int: ...
     @property
-    def role_slots(self) -> Mapping[str, int]: ...   # slots without ``flex``
+    def role_slots(self) -> dict[str, int]: ...      # slots without ``flex``
     @property
     def has_role_slots(self) -> bool: ...            # bool(role_slots)
     @property
-    def draft_rounds(self) -> int: ...               # max(1, team_size - 1)
-    def to_dict(self) -> dict[str, int]: ...
+    def draft_rounds(self) -> int: ...               # team_size - 1
+
+    def __post_init__(self) -> None: ...             # guards the invariants
+
+
+DEFAULT_ROSTER_SHAPE: Final[RosterShape] = parse_roster_slots(DEFAULT_ROSTER_SLOTS)
 
 
 def parse_roster_slots(raw: Any) -> RosterShape: ...
@@ -150,15 +168,20 @@ def resolve_roster_shape(
 | значение не `int` или `< 0` | `RosterShapeError("roster_slots_invalid_count", …)` |
 | нули в карте | выбрасываются: `{"tank":1,"dps":0}` → `{"tank":1}` |
 | карта пуста после нормализации | `RosterShapeError("roster_slots_empty", …)` |
-| `Σ` вне `1..12` | `RosterShapeError("roster_slots_out_of_range", …)` |
+| `Σ` вне `2..12` | `RosterShapeError("roster_slots_out_of_range", …)` |
 
 Ноль не хранится — это убирает вопрос «а `{"tank":0,"flex":6}` это ростер с
 ролями или без». `has_role_slots` становится однозначным.
 
+`RosterShape.__post_init__` держит те же инварианты, что и `parse_roster_slots`:
+конструктор публичен, и без проверки `RosterShape(entries=(("healer", -3),))`
+создавался бы молча, давая `team_size == -3`. Две точки входа с разными
+гарантиями в модуле-каноне — источник тихих багов.
+
 `resolve_roster_shape` — чистая трёхуровневая цепочка: `tournament_slots` →
-`workspace_slots` → `DEFAULT_ROSTER_SLOTS`. `None` и пустая карта на каждом
-уровне означают «нет значения, идём дальше»; невалидное значение поднимает
-ошибку, а не проглатывается.
+`workspace_slots` → `DEFAULT_ROSTER_SHAPE` (готовый объект, без повторного
+парсинга). `None` и пустая карта на каждом уровне означают «нет значения, идём
+дальше»; невалидное значение поднимает ошибку, а не проглатывается.
 
 ### 3.2 Резолвер: `backend/shared/services/roster_shape_access.py`
 
@@ -279,7 +302,7 @@ class DraftFeasibilityState:
 ```
 
 `role_targets_for_team_size(team_size)` **удаляется**. `build_feasibility_state`
-принимает `shape: RosterShape` и берёт `shape.to_dict()`.
+принимает `shape: RosterShape` и берёт `shape.slots`.
 
 Правило пригодности слота, единственное новое:
 
@@ -462,7 +485,7 @@ Workspace-дефолт — тот же компонент, переисполь�
 
 | Уровень | Что закрепляем |
 |---|---|
-| `shared/tests/test_roster_shape.py` | `parse_roster_slots`: каждый код ошибки; выброс нулей; границы 1..12; нормализованный порядок. `resolve_roster_shape`: все три уровня цепочки. `has_role_slots` для `{flex:6}` vs `{tank:1,flex:5}`. `draft_rounds` |
+| `shared/tests/test_roster_shape.py` | `parse_roster_slots`: каждый код ошибки; выброс нулей; границы `2..12` включая позитивный граничный `{flex: MAX_TEAM_SIZE}`; нормализованный порядок; **производность `ROSTER_SLOT_CODES` от `REGISTRATION_ROLE_CODES`**, а не только её значение. `RosterShape`: сериализуемость (`json.dumps(slots)`, `asdict`, `deepcopy`), хешируемость, `FrozenInstanceError`, `__post_init__` отвергает ненормализованный вход. `resolve_roster_shape`: все три уровня цепочки. `has_role_slots` для `{flex:6}` vs `{tank:1,flex:5}`. `draft_rounds` |
 | `shared/tests/test_roster_shape_migration_matches_models.py` | Колонки миграции совпадают с моделями — по образцу существующих `test_subscription_migration_matches_models.py` |
 | `balancer-service/tests/test_draft_feasibility.py` | flex-слот пригоден игроку, который не играет ни одну ролевую роль; `{tank:1,flex:5}` матчится; `{flex:6}` матчится всегда при достаточном пуле |
 | `balancer-service/tests/test_draft_selection_slots.py` (новый) | Пик с переполненной ролью уходит в свободный flex-слот; `slot_filled` только когда и роль, и flex исчерпаны; `target_role` игнорируется при `has_role_slots == False` |
@@ -494,6 +517,9 @@ Workspace-дефолт — тот же компонент, переисполь�
 | D10 | Ноль не хранится в карте | Хранить явные нули | Снимает двусмысленность `{"tank":0,"flex":6}` и делает `has_role_slots` однозначным |
 | D11 | Флекс-рейтинг = `max` по активным ролям | Средний; рейтинг primary-роли | Действующая политика проекта для «готов играть что угодно», закреплённая паритет-тестами `forced-flex-parity` на общих фикстурах |
 | D12 | Оба TS-порта `roleTargets` удаляются, а не синхронизируются | Контракт-тест на паритет | Реестр зеркал, строка 239: server-driven конфиг — предписанное лекарство для этого класса. Паритет-тест нужен только там, где дедуп невозможен (Python↔Rust) |
+| D13 | `RosterShape` хранит `entries: tuple[tuple[str,int],...]`; `slots`/`role_slots` — property, отдающие свежий `dict`; `to_dict()` удалён | (а) поле `Mapping` со значением `MappingProxyType`; (б) поле — обычный `dict` | `MappingProxyType` в публичном поле ломает `json.dumps`, `dataclasses.asdict`, `copy.deepcopy`, `pickle` и Pydantic `model_dump_json`/`model_copy(deep=True)` — ровно те пути, по которым форма едет в JSONB в задачах 5-6, причём pyright молчит, потому что `Mapping[str,int]` типизируется корректно. Кортеж пар решает всё сразу: хешируемость без ручного `__hash__`, сериализуемость, неизменяемость. Обычный `dict` в поле вернул бы мутабельность канона. `to_dict()` после этого побайтово дублировал `slots` — два имени для одного действия |
+| D14 | `MIN_TEAM_SIZE = 2`, `draft_rounds = team_size - 1` без клампа | `MIN_TEAM_SIZE = 1` с `max(1, team_size - 1)` | Ростер из одного слота нечего драфтить и нечего балансировать: капитан занимает единственный слот, корректный ответ — 0 пиков, а кламп возвращал 1 и заставил бы драфт пикать в укомплектованную команду. `max(1, …)` был перенесён из фронтового `roundsForTeamSize`, где это кламп поля ввода, а не доменное правило. Побочно: нижняя граница проверки диапазона перестаёт быть недостижимой |
+| D15 | Все константы модуля помечены `Final`; `DEFAULT_ROSTER_SLOTS` — `MappingProxyType`; добавлен готовый `DEFAULT_ROSTER_SHAPE` | Оставить обычные модульные значения | `DEFAULT_ROSTER_SLOTS["flex"] = 99` молча отравлял канон на всю жизнь процесса, а в задаче 2 он — хвост fallback-цепочки. Конвенция в репозитории уже есть: `shared/core/enums.py:206`. `DEFAULT_ROSTER_SHAPE` проверяет инвариант «дефолт сам валиден» на импорте и снимает повторный парсинг у задач 2-16 |
 
 ---
 

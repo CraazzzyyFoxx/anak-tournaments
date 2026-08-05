@@ -40,6 +40,16 @@
 - Create: `backend/shared/domain/roster_shape.py`
 - Test: `backend/shared/tests/test_roster_shape.py`
 
+> **Task 1 исправлен после ревью качества** (коммит `fix(shared): make RosterShape serializable, drop the draft_rounds clamp`). Код ниже — исходная редакция; итоговый контракт отличается шестью пунктами, см. D13-D15 в design doc:
+> 1. Поле хранения — `entries: tuple[tuple[str, int], ...]`; `slots` и `role_slots` — property, отдающие свежий `dict`. `to_dict()` удалён как дубликат `slots`, ручной `__hash__` удалён как ненужный.
+> 2. `MIN_TEAM_SIZE = 2`, `draft_rounds = team_size - 1` без `max(1, …)`. `{"flex": 1}` теперь отвергается.
+> 3. Все константы под `Final`; `DEFAULT_ROSTER_SLOTS` — `MappingProxyType`; добавлен `DEFAULT_ROSTER_SHAPE`.
+> 4. Добавлен `__post_init__`, держащий инварианты и для публичного конструктора.
+> 5. Тест сторожит производность `ROSTER_SLOT_CODES` от `REGISTRATION_ROLE_CODES`, а не только её значение.
+> 6. Добавлены пробы сериализуемости: `json.dumps(slots)`, `asdict`, `deepcopy`, `hash`.
+>
+> **Задачи 2-16 опираются на итоговый контракт**: везде `shape.slots`, нигде `shape.to_dict()`.
+
 **Step 1: Написать падающий тест**
 
 ```python
@@ -358,7 +368,7 @@ def resolve_roster_shape(tournament_slots: Any, workspace_slots: Any) -> RosterS
         if isinstance(candidate, Mapping) and not candidate:
             continue
         return parse_roster_slots(candidate)
-    return parse_roster_slots(DEFAULT_ROSTER_SLOTS)
+    return DEFAULT_ROSTER_SHAPE
 ```
 
 Реэкспорт в `backend/shared/domain/__init__.py` — добавить к существующему блоку `from .player_sub_roles import (...)`:
@@ -609,7 +619,7 @@ git commit -am "feat(tournament): expose resolved roster shape on tournament rea
         if value is None:
             return None
         try:
-            return parse_roster_slots(value).to_dict()
+            return parse_roster_slots(value).slots
         except RosterShapeError as exc:
             raise ValueError(exc.code) from exc
 ```
