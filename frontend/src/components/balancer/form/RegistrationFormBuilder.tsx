@@ -28,8 +28,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { notify } from "@/lib/notify";
 import { MUTED_BUTTON_CLASS } from "@/app/balancer/components/balancer-page-helpers";
-import SubscriptionRequirementEditor from "@/components/admin/subscriptions/SubscriptionRequirementEditor";
-import type { SubscriptionRequirement } from "@/types/registration.types";
+import { useRequirementDescription } from "@/components/admin/subscriptions/useRequirementDescription";
 import { ROLES, canonicalToRegistrationRole } from "@/lib/roles";
 import adminService from "@/services/admin.service";
 import balancerAdminService from "@/services/balancer-admin.service";
@@ -76,15 +75,6 @@ export default function RegistrationFormBuilder({
   const [openProfileScope, setOpenProfileScope] = useState<"main" | "all">("main");
   const [showRanks, setShowRanks] = useState(false);
   const [requireSubscription, setRequireSubscription] = useState(false);
-  const [subscriptionRequirement, setSubscriptionRequirement] = useState<SubscriptionRequirement>({
-    mode: "all",
-    requirements: [],
-  });
-  // Providers the resolver can actually answer for. Until a workspace-level
-  // provider-config admin surface exists, both known providers are offered and
-  // the editor's own warning covers a provider that turns out unconfigured (its
-  // verdict resolves to `undetermined`, which fails open).
-  const availableSubscriptionProviders = useMemo(() => ["boosty", "twitch"], []);
   const [builtInFields, setBuiltInFields] = useState<Record<string, BuiltInFieldConfig>>(() =>
     getBuiltInConfig({})
   );
@@ -99,6 +89,13 @@ export default function RegistrationFormBuilder({
     // the admin's unsaved edits.
     refetchOnWindowFocus: false
   });
+
+  // Read-only: the rule lives on the workspace now, and the server resolves it
+  // onto the read model so this page can show what the toggle above enforces
+  // without offering to edit it here.
+  const resolvedRequirement = useRequirementDescription(
+    formQuery.data?.subscription_requirement_json
+  );
 
   const loadedFormKeyRef = useRef<string | null>(null);
 
@@ -119,9 +116,6 @@ export default function RegistrationFormBuilder({
       setAutoApprove(data.auto_approve ?? false);
       setRequireOpenProfile(data.require_open_profile ?? false);
       setRequireSubscription(data.require_subscription ?? false);
-      setSubscriptionRequirement(
-        data.subscription_requirement_json ?? { mode: "all", requirements: [] },
-      );
       setOpenProfileScope((data.open_profile_scope as "main" | "all") ?? "main");
       setShowRanks(data.show_ranks ?? false);
       setBuiltInFields(getBuiltInConfig(data.built_in_fields ?? {}));
@@ -164,7 +158,6 @@ export default function RegistrationFormBuilder({
         open_profile_scope: openProfileScope,
         show_ranks: showRanks,
         require_subscription: requireSubscription,
-        subscription_requirement_json: subscriptionRequirement,
         built_in_fields: Object.fromEntries(
           Object.entries(builtInFields).map(([key, value]) => [
             key,
@@ -416,15 +409,19 @@ export default function RegistrationFormBuilder({
                     />
                     {t("subscription.require")}
                   </label>
-                  <SubscriptionRequirementEditor
-                    value={subscriptionRequirement}
-                    disabled={!requireSubscription}
-                    availableProviders={availableSubscriptionProviders}
-                    onChange={(next) => {
-                      setSubscriptionRequirement(next);
-                      setHasChanges(true);
-                    }}
-                  />
+                  <div className="space-y-1 text-sm">
+                    <p className="max-w-prose text-muted-foreground">
+                      {resolvedRequirement
+                        ? t("subscription.resolved", { rule: resolvedRequirement })
+                        : t("subscription.resolvedEmpty")}
+                    </p>
+                    <Link
+                      href="/admin/subscriptions"
+                      className="text-xs font-medium underline underline-offset-4"
+                    >
+                      {t("subscription.manage")}
+                    </Link>
+                  </div>
                 </CardContent>
               </Card>
 

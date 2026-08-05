@@ -10,6 +10,13 @@ import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import type { BuiltInFieldConfig } from "@/types/balancer-admin.types";
@@ -55,7 +62,7 @@ export function BuiltInFieldsCard({
                     onCheckedChange={(checked) => {
                       onUpdate(def.key, {
                         enabled: checked,
-                        ...(checked ? {} : { required: false })
+                        ...(checked ? {} : { required: false, mode: null })
                       });
                       if (!checked) {
                         setExpandedFields((prev) => ({ ...prev, [def.key]: false }));
@@ -86,6 +93,26 @@ export function BuiltInFieldsCard({
                         onCheckedChange={(checked) => onUpdate(def.key, { required: checked })}
                       />
                       {t("required")}
+                    </label>
+                  )}
+
+                  {cfg.enabled && def.supportsMode && (
+                    <label className="flex shrink-0 select-none items-center gap-2 text-xs text-muted-foreground">
+                      {t("mode")}
+                      <Select
+                        value={cfg.mode ?? "optional"}
+                        onValueChange={(value) =>
+                          onUpdate(def.key, { mode: value as "optional" | "forced" })
+                        }
+                      >
+                        <SelectTrigger className="h-8 w-[12rem]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="optional">{t("modeOptional")}</SelectItem>
+                          <SelectItem value="forced">{t("modeForced")}</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </label>
                   )}
 

@@ -23,6 +23,8 @@ export interface BuiltInFieldDef {
   supportsMaxHeroes?: boolean;
   /** Identity fields: shows a "Verified" toggle (require an OAuth-verified account). */
   supportsVerified?: boolean;
+  /** `flex_role`: shows an optional/forced mode select instead of "Required". */
+  supportsMode?: boolean;
 }
 
 export const DEFAULT_BATTLE_TAG_REGEX = String.raw`([\w0-9]{2,12}#[0-9]{4,})`;
@@ -93,6 +95,7 @@ export const BUILT_IN_FIELDS: BuiltInFieldDef[] = [
     defaultEnabled: true,
     defaultRequired: false,
     supportsRequired: false,
+    supportsMode: true,
   },
   {
     key: "boosty_nick",

@@ -333,6 +333,11 @@ export interface BuiltInFieldConfig {
    * submitted handle to match one of the registrant's OAuth-verified accounts.
    */
   require_verified?: boolean;
+  /**
+   * `flex_role` field only. "forced" makes every registration full flex and
+   * drives the max-rank policy in the balancer pool. Absent/null == "optional".
+   */
+  mode?: "optional" | "forced" | null;
 }
 
 export interface SubroleOption {

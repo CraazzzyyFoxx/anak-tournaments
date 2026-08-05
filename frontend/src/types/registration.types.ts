@@ -28,6 +28,12 @@ export interface BuiltInFieldConfig {
    * accounts for the field's provider. Implies the field is required.
    */
   require_verified?: boolean;
+  /**
+   * `flex_role` field only. "forced" is a tournament where role does not
+   * matter: the role step hides priorities and every role is submitted as
+   * primary. Absent/null == "optional".
+   */
+  mode?: "optional" | "forced" | null;
 }
 
 export interface SubroleOption {

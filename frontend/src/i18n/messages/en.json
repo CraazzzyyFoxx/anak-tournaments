@@ -3473,6 +3473,9 @@
       "description": "Toggle which standard fields appear on the registration form. Sub-roles for the role fields are configured in the Subroles tab.",
       "verifiedBadge": "Verified",
       "required": "Required",
+      "mode": "Mode",
+      "modeOptional": "Player chooses",
+      "modeForced": "Everyone is flex",
       "settingsAria": "{field} settings",
       "verifiedAccount": "Verified account",
       "verifiedAccountHelp": "Require an OAuth-verified account; the registrant picks from their verified accounts.",
@@ -3507,7 +3510,7 @@
         },
         "flex_role": {
           "label": "Flex Role",
-          "description": "Let players register as Flex (all roles, equal priority)"
+          "description": "\"Player chooses\" offers a Flex preset. \"Everyone is flex\" is a tournament where role does not matter: the priority column is hidden, every role is stored as primary, and the balancer and draft rate each player by their highest rank across all roles. The Additional Roles sub-role list stops applying — every role counts as main, so the allowlist comes from Primary Role."
         },
         "boosty_nick": {
           "label": "Boosty",
@@ -3588,7 +3591,10 @@
       "subscription": {
         "title": "Subscription",
         "require": "Require an active subscription",
-        "hint": "Enforced twice. At sign-up only what can be verified automatically blocks (provider APIs / Discord roles); a provider verified by a code from a subscriber-only post is deferred, since that field is only offered at check-in. At check-in everything is enforced. A verdict that cannot be determined (provider down, account not linked) fails open and never blocks."
+        "hint": "Enforced twice. At sign-up only what can be verified automatically blocks (provider APIs / Discord roles); a provider verified by a code from a subscriber-only post is deferred, since that field is only offered at check-in. At check-in everything is enforced. A verdict that cannot be determined (provider down, account not linked) fails open and never blocks.",
+        "resolved": "This workspace requires: {rule}",
+        "resolvedEmpty": "This workspace has no subscription rule configured, so the toggle above enforces nothing.",
+        "manage": "Configure the workspace rule"
       },
       "display": {
         "title": "Display Options",
