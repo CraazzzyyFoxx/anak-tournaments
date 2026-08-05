@@ -32,21 +32,43 @@ export const EMPTY_ROLE_SELECTION: RoleSelection = {
   topHeroes: [],
 };
 
+/** How the tournament presents the flex/priority choice. */
+export type FlexMode = "off" | "optional" | "all_roles" | "forced";
+
 /**
  * One entry per role, all `off` by default.
  *
- * `forced` is the tournament mode where role does not matter: every role starts
- * `main`, which is both the target state and a hard requirement — the wizard
- * only submits roles whose priority is not `off`, so an all-`off` start would
- * send no roles at all in a step that renders no priority control.
+ * The starting priority is the mode's, and it is load-bearing: the wizard only
+ * submits roles whose priority is not `off`.
+ *
+ * - `optional` — nothing selected; the registrant opts roles in.
+ * - `all_roles` — every role `fallback`: all three are submitted and playable,
+ *   but no priority is chosen yet. The backend rejects a submission that names
+ *   neither a priority nor flex, which is exactly the state this starts in.
+ * - `forced` — every role `main`, which is both the target state and the only
+ *   state, since that mode renders no choice at all.
  */
-export function createRoleSelections(forced = false): RoleSelections {
-  const priority: RolePriority = forced ? "main" : "off";
+export function createRoleSelections(mode: FlexMode = "optional"): RoleSelections {
+  const priority: RolePriority =
+    mode === "forced" ? "main" : mode === "all_roles" ? "fallback" : "off";
   return {
     tank: { ...EMPTY_ROLE_SELECTION, priority },
     dps: { ...EMPTY_ROLE_SELECTION, priority },
     support: { ...EMPTY_ROLE_SELECTION, priority },
   };
+}
+
+/**
+ * The single choice an `all_roles` tournament asks for: one priority role, or
+ * flex. `null` means the registrant has not chosen yet.
+ */
+export function priorityChoice(selections: RoleSelections): RoleCode | "flex" | null {
+  const mains = (Object.keys(selections) as RoleCode[]).filter(
+    (code) => selections[code].priority === "main",
+  );
+  if (mains.length === 0) return null;
+  if (mains.length === 1) return mains[0];
+  return "flex";
 }
 
 /** A flex registration is every role marked `main` — mirrors the backend rule. */

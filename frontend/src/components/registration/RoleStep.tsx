@@ -14,8 +14,15 @@ import {
 import type { Hero } from "@/types/hero.types";
 import type { RegistrationForm } from "@/types/registration.types";
 
-import { isFlexSelection, type RolePriority, type RoleSelections } from "./types";
+import {
+  isFlexSelection,
+  priorityChoice,
+  type FlexMode,
+  type RolePriority,
+  type RoleSelections,
+} from "./types";
 import { RoleMatrixRow } from "./role-step/RoleMatrixRow";
+import { SegmentedRadio, type SegmentedOption } from "./role-step/SegmentedRadio";
 
 interface RoleStepProps {
   selections: RoleSelections;
@@ -29,10 +36,12 @@ interface RoleStepProps {
   maxHeroes: number;
   /**
    * `off` — flex banned by the form. `optional` — the preset is offered.
-   * `forced` — a tournament where role does not matter: no priority column, no
-   * preset, every role permanently main.
+   * `all_roles` — every role mandatory; one radiogroup asks for a single
+   * priority role or flex, and the per-row priority disappears.
+   * `forced` — role does not matter at all: no choice, every role permanently
+   * main.
    */
-  flexMode: "off" | "optional" | "forced";
+  flexMode: FlexMode;
 }
 
 /**
@@ -58,6 +67,8 @@ export default function RoleStep({
 }: RoleStepProps) {
   const t = useTranslations();
   const isForced = flexMode === "forced";
+  const isAllRoles = flexMode === "all_roles";
+  const showPriority = !isForced && !isAllRoles;
   const isFlex = isForced || isFlexSelection(selections);
   const isAdditionalRolesRequired =
     form.built_in_fields?.additional_roles?.enabled !== false &&
@@ -150,9 +161,38 @@ export default function RoleStep({
     onChange(next);
   };
 
-  const columnClass = isForced
-    ? "sm:grid-cols-[minmax(6rem,0.8fr)_minmax(0,1fr)_minmax(0,8.5rem)]"
-    : "sm:grid-cols-[minmax(6rem,0.8fr)_minmax(0,13rem)_minmax(0,1fr)_minmax(0,8.5rem)]";
+  /**
+   * The `all_roles` choice: one priority role, or flex. Every role stays
+   * playable either way — only comfort changes, so the non-chosen roles become
+   * `fallback` rather than `off`.
+   */
+  const setPriorityChoice = (choice: RoleCode | "flex") => {
+    const next = { ...selections };
+    for (const role of ROLES) {
+      next[role.code] = {
+        ...next[role.code],
+        priority: choice === "flex" || role.code === choice ? "main" : "fallback",
+      };
+    }
+    onChange(next);
+  };
+
+  const columnClass = showPriority
+    ? "sm:grid-cols-[minmax(6rem,0.8fr)_minmax(0,13rem)_minmax(0,1fr)_minmax(0,8.5rem)]"
+    : "sm:grid-cols-[minmax(6rem,0.8fr)_minmax(0,1fr)_minmax(0,8.5rem)]";
+
+  const priorityOptions: readonly SegmentedOption<RoleCode | "flex">[] = [
+    ...ROLES.map((role) => ({
+      value: role.code as RoleCode | "flex",
+      label: role.display,
+      selectedClassName: (ROLE_ACCENTS[role.code] ?? ROLE_ACCENTS.flex).tile,
+    })),
+    {
+      value: "flex" as const,
+      label: t("registration.roles.matrix.choiceFlex"),
+      selectedClassName: ROLE_ACCENTS.flex.tile,
+    },
+  ];
 
   return (
     <div className="grid gap-3">
@@ -163,9 +203,11 @@ export default function RoleStep({
           <p className="max-w-[38rem] text-xs leading-5 text-[color:var(--aqt-fg-muted)]">
             {isForced
               ? t("registration.roles.matrix.hintForced")
-              : isAdditionalRolesRequired
-                ? t("registration.roles.matrix.hintRequired")
-                : t("registration.roles.matrix.hint")}
+              : isAllRoles
+                ? t("registration.roles.matrix.hintAllRoles")
+                : isAdditionalRolesRequired
+                  ? t("registration.roles.matrix.hintRequired")
+                  : t("registration.roles.matrix.hint")}
           </p>
         )}
 
@@ -194,6 +236,20 @@ export default function RoleStep({
         </p>
       )}
 
+      {isAllRoles && (
+        <div className="grid gap-1.5">
+          <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-[color:var(--aqt-fg-muted)]">
+            {t("registration.roles.matrix.choiceLabel")}
+          </span>
+          <SegmentedRadio
+            label={t("registration.roles.matrix.choiceLabel")}
+            value={priorityChoice(selections)}
+            options={priorityOptions}
+            onChange={setPriorityChoice}
+          />
+        </div>
+      )}
+
       <div
         aria-hidden
         className={cn(
@@ -202,7 +258,7 @@ export default function RoleStep({
         )}
       >
         <span>{t("registration.roles.matrix.columnRole")}</span>
-        {!isForced && <span>{t("registration.roles.matrix.columnPriority")}</span>}
+        {showPriority && <span>{t("registration.roles.matrix.columnPriority")}</span>}
         <span>{t("registration.roles.specialization")}</span>
         <span>{topHeroesEnabled ? t("registration.roles.topHeroes.title") : ""}</span>
       </div>
@@ -218,7 +274,7 @@ export default function RoleStep({
             heroes={heroesForRole(role.code)}
             topHeroesEnabled={topHeroesEnabled}
             maxHeroes={maxHeroes}
-            showPriority={!isForced}
+            showPriority={showPriority}
             onPriorityChange={(priority) => setPriority(role.code, priority)}
             onSubroleChange={(subrole) => setSubrole(role.code, subrole)}
             onHeroesChange={(heroes) => setHeroes(role.code, heroes)}

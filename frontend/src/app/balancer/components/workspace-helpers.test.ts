@@ -12,6 +12,7 @@ import {
   createSyntheticPlayerFromRegistration,
   getPlayerValidationIssues,
   isRegistrationIncludedInBalancer,
+  ratesByMaxRank,
   type PlayerValidationIssue,
 } from "@/app/balancer/components/workspace-helpers";
 import type {
@@ -19,6 +20,7 @@ import type {
   AdminRegistrationRole,
   BalancerApplication,
   BalancerPlayerRecord,
+  BuiltInFieldConfig,
 } from "@/types/balancer-admin.types";
 import { DEFAULT_DIVISION_GRID } from "@/lib/division-grid";
 import type { StatusMeta, StatusScope } from "@/types/registration.types";
@@ -452,7 +454,7 @@ describe("synthetic registration helpers", () => {
   });
 });
 
-describe("forced-flex effective ranks", () => {
+describe("every-role effective ranks", () => {
   const role = (
     roleCode: "tank" | "dps" | "support",
     rank: number | null,
@@ -468,20 +470,20 @@ describe("forced-flex effective ranks", () => {
     ow_rank_value: ow,
   });
 
-  const forced = (roles: AdminRegistrationRole[]) =>
+  const flattened = (roles: AdminRegistrationRole[]) =>
     createSyntheticPlayerFromRegistration(createRegistration({ roles }), DEFAULT_DIVISION_GRID, {
-      forcedFlex: true,
+      allRoles: true,
     });
 
   it("applies the max rank to all three roles", () => {
-    const player = forced([role("dps", 3900), role("support", 2400, null, { priority: 1 })]);
+    const player = flattened([role("dps", 3900), role("support", 2400, null, { priority: 1 })]);
 
     expect(player.role_entries_json.map((entry) => entry.role)).toEqual(["tank", "dps", "support"]);
     expect(player.role_entries_json.every((entry) => entry.rank_value === 3900)).toBe(true);
   });
 
   it("covers the unranked roles from a single ranked one", () => {
-    const player = forced([role("dps", 3900)]);
+    const player = flattened([role("dps", 3900)]);
 
     expect(player.role_entries_json.every((entry) => entry.rank_value === 3900)).toBe(true);
     expect(player.role_entries_json.every((entry) => entry.is_active)).toBe(true);
@@ -491,7 +493,7 @@ describe("forced-flex effective ranks", () => {
     // Replicating it across all three would emit the same rank_delta_warning
     // three times; leaving it per-role would compare an effective rank against
     // an unrelated role's OW rank. One comparison, one carrier.
-    const player = forced([role("dps", 3900, 4100), role("support", 2400, 2000, { priority: 1 })]);
+    const player = flattened([role("dps", 3900, 4100), role("support", 2400, 2000, { priority: 1 })]);
 
     const owByRole: Record<string, number | null> = Object.fromEntries(
       player.role_entries_json.map((entry) => [entry.role, entry.ow_rank_value]),
@@ -502,7 +504,7 @@ describe("forced-flex effective ranks", () => {
   });
 
   it("yields one rank-delta chip instead of three", () => {
-    const player = forced([role("dps", 3900, 4400), role("support", 2400, 2000, { priority: 1 })]);
+    const player = flattened([role("dps", 3900, 4400), role("support", 2400, 2000, { priority: 1 })]);
 
     const issues = getPlayerValidationIssues(player, null, { rank_delta_threshold: 300 });
 
@@ -510,7 +512,7 @@ describe("forced-flex effective ranks", () => {
   });
 
   it("keeps a within-threshold delta silent", () => {
-    const player = forced([role("dps", 3900, 4100), role("support", 2400, 2000, { priority: 1 })]);
+    const player = flattened([role("dps", 3900, 4100), role("support", 2400, 2000, { priority: 1 })]);
 
     const issues = getPlayerValidationIssues(player, null, { rank_delta_threshold: 300 });
 
@@ -518,14 +520,14 @@ describe("forced-flex effective ranks", () => {
   });
 
   it("counts an inactive role's rank and makes the role playable", () => {
-    const player = forced([role("tank", 3100, null, { is_active: false })]);
+    const player = flattened([role("tank", 3100, null, { is_active: false })]);
 
     expect(player.role_entries_json.every((entry) => entry.rank_value === 3100)).toBe(true);
     expect(player.role_entries_json.every((entry) => entry.is_active)).toBe(true);
   });
 
   it("leaves a rankless registration out of the pool", () => {
-    const player = forced([role("dps", null)]);
+    const player = flattened([role("dps", null)]);
 
     expect(player.role_entries_json.every((entry) => entry.rank_value === null)).toBe(true);
     expect(player.role_entries_json.every((entry) => entry.is_active === false)).toBe(true);
@@ -535,7 +537,7 @@ describe("forced-flex effective ranks", () => {
   });
 
   it("keeps each role's own specialization", () => {
-    const player = forced([
+    const player = flattened([
       role("dps", 3900, null, { subrole: "hitscan" }),
       role("support", 2400, null, { subrole: "main_heal", priority: 1 }),
     ]);
@@ -556,5 +558,32 @@ describe("forced-flex effective ranks", () => {
 
     expect(player.role_entries_json.map((entry) => entry.rank_value)).toEqual([3900, 2400]);
     expect(player.role_entries_json.map((entry) => entry.ow_rank_value)).toEqual([4100, 2000]);
+  });
+});
+
+describe("ratesByMaxRank", () => {
+  const config = (overrides: Partial<BuiltInFieldConfig> = {}): BuiltInFieldConfig =>
+    ({ enabled: true, required: false, ...overrides }) as BuiltInFieldConfig;
+
+  it("is on for all_roles and forced", () => {
+    expect(ratesByMaxRank(config({ mode: "all_roles" }))).toBe(true);
+    expect(ratesByMaxRank(config({ mode: "forced" }))).toBe(true);
+  });
+
+  it("is off for optional and for an absent mode", () => {
+    expect(ratesByMaxRank(config({ mode: "optional" }))).toBe(false);
+    expect(ratesByMaxRank(config())).toBe(false);
+  });
+
+  it("is off for a disabled field whatever the stored mode", () => {
+    // Disabling the field bans flex outright, so a stale mode must not survive it.
+    expect(ratesByMaxRank(config({ enabled: false, mode: "forced" }))).toBe(false);
+  });
+
+  it("fails closed on an unreadable config", () => {
+    // The caller passes a query result: guessing an every-role mode while the
+    // form is still loading would inflate every player's effective rank.
+    expect(ratesByMaxRank(undefined)).toBe(false);
+    expect(ratesByMaxRank(null)).toBe(false);
   });
 });

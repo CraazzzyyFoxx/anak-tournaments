@@ -5,7 +5,13 @@ import { act, useState, type ReactNode } from "react";
 import type { Hero } from "@/types/hero.types";
 import type { RegistrationForm } from "@/types/registration.types";
 
-import { createRoleSelections, isFlexSelection, type RoleSelections } from "./types";
+import {
+  createRoleSelections,
+  isFlexSelection,
+  priorityChoice,
+  type FlexMode,
+  type RoleSelections,
+} from "./types";
 
 const testWindow = new Window({ url: "http://localhost:3000/", width: 720, height: 900 });
 const previousGlobals = new Map<PropertyKey, PropertyDescriptor | undefined>();
@@ -88,12 +94,8 @@ let container = testWindow.document.createElement("div");
 let root = createRoot(container as unknown as Element);
 let latest: RoleSelections = createRoleSelections();
 
-type FlexMode = "off" | "optional" | "forced";
-
 function Harness({ flexMode = "optional" as FlexMode }: { flexMode?: FlexMode }) {
-  const [selections, setSelections] = useState<RoleSelections>(
-    createRoleSelections(flexMode === "forced"),
-  );
+  const [selections, setSelections] = useState<RoleSelections>(createRoleSelections(flexMode));
   return (
     <RoleStep
       selections={selections}
@@ -115,7 +117,7 @@ function mount(flexMode: FlexMode = "optional") {
   container = testWindow.document.createElement("div");
   testWindow.document.body.appendChild(container);
   root = createRoot(container as unknown as Element);
-  latest = createRoleSelections(flexMode === "forced");
+  latest = createRoleSelections(flexMode);
   act(() => root.render(<Harness flexMode={flexMode} />));
 }
 
@@ -228,6 +230,65 @@ describe("RoleStep forced-flex mode", () => {
 
     expect(container.querySelectorAll("[aria-pressed]").length).toBe(0);
     expect(surface().radios).toBe(9);
+  });
+});
+
+describe("RoleStep all-roles mode", () => {
+  it("replaces the three per-row priority groups with one", () => {
+    mount("all_roles");
+
+    // Four options — three roles plus flex — in a single group, against nine
+    // radios across three groups in optional mode.
+    expect(container.querySelectorAll('[role="radiogroup"]').length).toBe(1);
+    expect(surface().radios).toBe(4);
+    expect(container.querySelectorAll("[aria-pressed]").length).toBe(0);
+  });
+
+  it("starts with every role submittable but no priority chosen", () => {
+    // The whole point of the mode: the role SET is not a question, the priority
+    // is. `off` would drop the role from buildRolesPayload entirely.
+    mount("all_roles");
+
+    expect(Object.values(latest).some((entry) => entry.priority === "off")).toBe(false);
+    expect(priorityChoice(latest)).toBeNull();
+    expect(container.querySelectorAll('[aria-checked="true"]').length).toBe(0);
+  });
+
+  it("stays reachable by keyboard while nothing is chosen", () => {
+    // With no checked radio every tabIndex would be -1 and the only control of
+    // the mode would fall out of the tab order.
+    mount("all_roles");
+
+    expect(container.querySelectorAll('[role="radio"][tabindex="0"]').length).toBe(1);
+  });
+
+  it("picking a role leaves the other two playable, not off", () => {
+    mount("all_roles");
+    click('[role="radio"]', 1);
+
+    expect(latest.dps.priority).toBe("main");
+    expect(latest.tank.priority).toBe("fallback");
+    expect(latest.support.priority).toBe("fallback");
+    expect(priorityChoice(latest)).toBe("dps");
+  });
+
+  it("picking flex promotes all three, which is the flex submission", () => {
+    mount("all_roles");
+    click('[role="radio"]', 3);
+
+    expect(isFlexSelection(latest)).toBe(true);
+    expect(priorityChoice(latest)).toBe("flex");
+  });
+
+  it("switching the choice never accumulates two priority roles", () => {
+    // The backend rejects anything between one primary and all three, so the
+    // control has to be exclusive rather than additive.
+    mount("all_roles");
+    click('[role="radio"]', 0);
+    click('[role="radio"]', 2);
+
+    expect(priorityChoice(latest)).toBe("support");
+    expect(Object.values(latest).filter((entry) => entry.priority === "main").length).toBe(1);
   });
 });
 

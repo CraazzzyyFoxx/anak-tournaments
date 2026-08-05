@@ -14,7 +14,13 @@ export interface SegmentedOption<T extends string> {
 interface SegmentedRadioProps<T extends string> {
   /** Names the group for assistive technology — the row's role, e.g. "Tank priority". */
   label: string;
-  value: T;
+  /**
+   * `null` renders the group with nothing checked, for a choice the user has yet
+   * to make. The first option then carries the tab stop, so the group stays
+   * reachable — with no checked radio and every `tabIndex` at -1 it would drop
+   * out of the tab order entirely.
+   */
+  value: T | null;
   options: readonly SegmentedOption<T>[];
   onChange: (value: T) => void;
 }
@@ -36,7 +42,8 @@ export function SegmentedRadio<T extends string>({
 
   const move = (delta: number) => {
     const index = options.findIndex((option) => option.value === value);
-    const next = options[(index + delta + options.length) % options.length];
+    const from = index === -1 ? 0 : index;
+    const next = options[(from + delta + options.length) % options.length];
     onChange(next.value);
     const buttons = groupRef.current?.querySelectorAll<HTMLButtonElement>('[role="radio"]');
     buttons?.[options.indexOf(next)]?.focus();
@@ -57,7 +64,7 @@ export function SegmentedRadio<T extends string>({
             type="button"
             role="radio"
             aria-checked={checked}
-            tabIndex={checked ? 0 : -1}
+            tabIndex={checked || (value === null && option === options[0]) ? 0 : -1}
             onClick={() => onChange(option.value)}
             onKeyDown={(event) => {
               if (event.key === "ArrowRight" || event.key === "ArrowDown") {

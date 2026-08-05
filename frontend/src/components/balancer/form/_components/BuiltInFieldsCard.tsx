@@ -102,14 +102,17 @@ export function BuiltInFieldsCard({
                       <Select
                         value={cfg.mode ?? "optional"}
                         onValueChange={(value) =>
-                          onUpdate(def.key, { mode: value as "optional" | "forced" })
+                          onUpdate(def.key, {
+                            mode: value as "optional" | "all_roles" | "forced"
+                          })
                         }
                       >
-                        <SelectTrigger className="h-8 w-[12rem]">
+                        <SelectTrigger className="h-8 w-[14rem]">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="optional">{t("modeOptional")}</SelectItem>
+                          <SelectItem value="all_roles">{t("modeAllRoles")}</SelectItem>
                           <SelectItem value="forced">{t("modeForced")}</SelectItem>
                         </SelectContent>
                       </Select>

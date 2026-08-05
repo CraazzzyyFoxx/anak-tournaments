@@ -1,4 +1,5 @@
-"""Python half of the forced-flex effective-rank parity check.
+"""Python half of the effective-rank parity check, for both every-role modes
+(``all_roles`` and ``forced``).
 
 The rule lives in two languages -- ``_map_registration`` here and
 ``flattenRolesToMaxRank`` in

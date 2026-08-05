@@ -6,6 +6,7 @@ import {
   BalancerPlayerRecord,
   BalancerPlayerRoleEntry,
   BalancerRoleCode,
+  BuiltInFieldConfig,
   InternalBalancePayload,
   RegistrationRankAutofillResponse,
   SavedBalance
@@ -445,15 +446,35 @@ export function isRegistrationAvailableForBalancer(registration: AdminRegistrati
 
 /** Options for `createSyntheticPlayerFromRegistration`. */
 export interface SyntheticPlayerOptions {
-  /** `flex_role.mode === "forced"`: rate the player by their highest rank. */
-  forcedFlex?: boolean;
+  /**
+   * `flex_role.mode` is `all_roles` or `forced`: rate the player by their
+   * highest rank across all roles.
+   */
+  allRoles?: boolean;
 }
 
 /**
- * Effective per-role entries for a forced-flex registrant: one rank for all
- * three roles, the maximum across the roles that carry one.
+ * Whether a form's `flex_role` config rates players by their highest rank across
+ * all roles — true for `all_roles` and `forced`, false otherwise.
  *
- * This is what makes the mode work. In the balancer, eligibility for a role is
+ * Fails closed on an unreadable config: an unloaded or failed form read is
+ * treated as `optional`, because guessing an every-role mode would silently
+ * inflate every player's effective rank.
+ *
+ * Mirrors `_all_roles_required` in balancer-service and `all_roles_required` in
+ * tournament-service. Pinned by `forced-flex-parity.test.ts`.
+ */
+export function ratesByMaxRank(config: BuiltInFieldConfig | null | undefined): boolean {
+  if (!config || config.enabled === false) return false;
+  return config.mode === "all_roles" || config.mode === "forced";
+}
+
+/**
+ * Effective per-role entries for a registrant on a tournament where every role
+ * is playable: one rank for all three roles, the maximum across the roles that
+ * carry one.
+ *
+ * This is what makes those modes work. In the balancer, eligibility for a role is
  * the presence of a rating for it — `isActive && rank > 0` in the payload,
  * `role in ratings` in the solver — not the `isFullFlex` flag, which only zeroes
  * discomfort. Without flattening, a player ranked on DPS alone could never be
@@ -509,7 +530,7 @@ export function createSyntheticPlayerFromRegistration(
     battle_tag: battleTag,
     battle_tag_normalized: registration.battle_tag_normalized ?? battleTag.toLowerCase(),
     user_id: registration.user_id,
-    role_entries_json: options.forcedFlex
+    role_entries_json: options.allRoles
       ? flattenRolesToMaxRank(registration.roles, grid)
       : registration.roles.map((role) => ({
           role: role.role,

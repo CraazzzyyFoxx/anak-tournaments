@@ -67,6 +67,7 @@ import {
   buildVariantFromSavedBalance,
   downloadPlayersExport,
   getPlayerValidationIssues,
+  ratesByMaxRank,
   type BalanceVariant
 } from "./workspace-helpers";
 
@@ -266,10 +267,7 @@ export function BalancerMainPageClient() {
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const registrations = registrationsQuery.data ?? [];
-  // Fails closed: an unloaded or failed form read is treated as optional. Guessing
-  // "forced" would silently inflate every player's effective rank.
-  const flexRoleConfig = registrationFormQuery.data?.built_in_fields?.flex_role;
-  const forcedFlex = flexRoleConfig?.enabled !== false && flexRoleConfig?.mode === "forced";
+  const allRoles = ratesByMaxRank(registrationFormQuery.data?.built_in_fields?.flex_role);
   const {
     registrationsById,
     applications,
@@ -282,8 +280,8 @@ export function BalancerMainPageClient() {
     invalidPlayerStates,
     flexPoolCount
   } = useMemo(
-    () => buildBalancerPageCollections(registrations, divisionGrid, forcedFlex),
-    [divisionGrid, registrations, forcedFlex]
+    () => buildBalancerPageCollections(registrations, divisionGrid, allRoles),
+    [divisionGrid, registrations, allRoles]
   );
 
   const workspaceBalancerConfig = workspaceBalancerConfigQuery.data ?? null;

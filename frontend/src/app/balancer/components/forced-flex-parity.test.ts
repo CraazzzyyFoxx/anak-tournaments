@@ -1,5 +1,6 @@
 /**
- * TS half of the forced-flex effective-rank parity check.
+ * TS half of the effective-rank parity check, for both every-role modes
+ * (`all_roles` and `forced`).
  *
  * The rule lives in two languages -- `flattenRolesToMaxRank` here and
  * `_map_registration` in balancer-service -- because the balancer payload is

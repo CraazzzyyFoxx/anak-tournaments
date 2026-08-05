@@ -13,7 +13,7 @@ import type {
   RoleInput,
 } from "@/types/registration.types";
 import type { RoleSelections } from "./types";
-import { createRoleSelections, isFlexSelection } from "./types";
+import { createRoleSelections, isFlexSelection, type FlexMode } from "./types";
 import type { User } from "@/types/user.types";
 import type { AdminRegistration } from "@/types/balancer-admin.types";
 
@@ -130,16 +130,22 @@ export default function UnifiedRegistrationForm({
 }: UnifiedRegistrationFormProps) {
   const t = useTranslations();
   const openAccountSettings = useAccountSettingsModalStore((s) => s.open);
-  // `flex_role.mode === "forced"` starts every role `main`, and it has to be the
-  // reducer's INITIAL state: `buildRolesPayload` only submits roles whose
-  // priority is not `off`, and the forced step renders no priority control, so an
-  // all-`off` start would submit no roles at all.
+  // The mode has to be the reducer's INITIAL state, not something applied later:
+  // `buildRolesPayload` only submits roles whose priority is not `off`, and the
+  // modes that render no per-row priority control could never lift a role off it,
+  // so an all-`off` start would submit no roles at all.
   const flexRoleConfig = formConfig.built_in_fields?.flex_role;
-  const flexMode: "off" | "optional" | "forced" =
-    flexRoleConfig?.enabled === false ? "off" : flexRoleConfig?.mode === "forced" ? "forced" : "optional";
+  const flexMode: FlexMode =
+    flexRoleConfig?.enabled === false
+      ? "off"
+      : flexRoleConfig?.mode === "forced"
+        ? "forced"
+        : flexRoleConfig?.mode === "all_roles"
+          ? "all_roles"
+          : "optional";
   const [state, dispatch] = useReducer(formReducer, flexMode, (initialFlexMode) => ({
     ...initialState,
-    roleSelections: createRoleSelections(initialFlexMode === "forced"),
+    roleSelections: createRoleSelections(initialFlexMode),
   }));
   const [error, setError] = useState<string | null>(null);
   // Step errors stay hidden until the registrant tries to advance: the form used

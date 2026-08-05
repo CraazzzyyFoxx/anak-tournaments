@@ -331,6 +331,9 @@
         "hint": "Mark the roles you can play. Fallback roles are used during balancing when a team is short on one.",
         "hintRequired": "Mark your main role and at least one fallback role. Fallback roles are used during balancing when a team is short on one.",
         "hintForced": "On this tournament everyone plays any role, so there is nothing to prioritise. Pick a specialization and your top heroes for each role if you like.",
+        "hintAllRoles": "Every role counts on this tournament, so pick the one you want to be prioritised on — or Flex, if you have no preference. You will still be put on the others when a team is short. Pick a specialization and your top heroes for each role if you like.",
+        "choiceLabel": "Priority",
+        "choiceFlex": "Flex",
         "columnRole": "Role",
         "columnPriority": "Priority",
         "off": "Skip",
@@ -3481,6 +3484,7 @@
       "required": "Required",
       "mode": "Mode",
       "modeOptional": "Player chooses",
+      "modeAllRoles": "All roles, one priority",
       "modeForced": "Everyone is flex",
       "settingsAria": "{field} settings",
       "verifiedAccount": "Verified account",
@@ -3516,7 +3520,7 @@
         },
         "flex_role": {
           "label": "Flex Role",
-          "description": "\"Player chooses\" offers a Flex preset. \"Everyone is flex\" is a tournament where role does not matter: the priority column is hidden, every role is stored as primary, and the balancer and draft rate each player by their highest rank across all roles. The Additional Roles sub-role list stops applying — every role counts as main, so the allowlist comes from Primary Role."
+          "description": "\"Player chooses\" offers a Flex preset. \"All roles, one priority\" makes every role mandatory and asks the player for a single priority role, or Flex — their other roles stay playable but less comfortable, which keeps the balancer's comfort trade-off alive. \"Everyone is flex\" removes the choice entirely. Both of the latter rate a player by their highest rank across all roles, and in both the Additional Roles sub-role list stops applying because every role counts as main."
         },
         "boosty_nick": {
           "label": "Boosty",
