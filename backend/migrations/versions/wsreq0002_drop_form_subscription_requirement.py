@@ -12,12 +12,21 @@ admin builder and the check-in dialog alike. Symmetrically, ``wsreq0001`` must r
 BEFORE the new code, which selects the new table. Neither ordering works for a single
 combined revision, which is why there are two.
 
-``downgrade`` restores the column and refills it from each tournament's workspace
-default, so the pre-``wsreq0001`` code can run again. It is not perfectly
-value-preserving: ``wsreq0001`` collapsed a workspace's rules to one, so a workspace
-that somehow held several before would get the elected one back everywhere. In
-practice ``wsreq0001`` refuses to run at all in that case, so the only way to reach
-here is from a workspace that had exactly one rule -- for which the restore is exact.
+``downgrade`` restores the column at its ``{}`` server default and stops there. It
+does NOT refill it: per-form rules are NOT recoverable by this revision and must be
+re-entered by hand. An earlier version copied the workspace's elected rule onto every
+form in that workspace, which is worse than doing nothing -- a form that held ``{}``
+or the empty-but-present ``{"mode": "all", "requirements": []}`` while
+``require_subscription`` was on was a documented no-op, and refilling it would arm a
+real rule on a tournament that never had one, so a rollback would start refusing
+check-ins for players it used to admit. On the production shape that is the majority
+of forms. Between a rollback that wrongly refuses players mid-event and one that
+admits too many, this codebase consistently prefers the latter.
+
+Nothing is lost: the elected rule still lives in ``subscriptions.requirement`` (this
+revision does not drop that table -- ``wsreq0001``'s downgrade does), so an operator
+who needs the old per-form behaviour back can copy it onto the specific forms that
+genuinely had it.
 
 Revision ID: wsreq0002
 Revises: wsreq0001
@@ -43,19 +52,12 @@ def upgrade() -> None:
 def downgrade() -> None:
     # NOT NULL is restored via a server default, which stays: that is how the column
     # was originally declared in `subs0002`, so keeping it makes the schema identical
-    # rather than merely similar.
+    # rather than merely similar. Every row therefore comes back as `{}` -- the
+    # no-rule value. Deliberately no refill: see the docstring. Copying the
+    # workspace's elected rule onto every form would arm tournaments that never had a
+    # rule and make a rollback refuse check-ins it previously allowed.
     op.add_column(
         "registration_form",
         sa.Column("subscription_requirement_json", sa.JSON(), nullable=False, server_default="{}"),
         schema="balancer",
-    )
-    op.execute(
-        """
-        update balancer.registration_form f
-           set subscription_requirement_json = r.requirement_json
-          from tournament.tournament t
-          join subscriptions.requirement r
-            on r.workspace_id = t.workspace_id and r.is_default
-         where t.id = f.tournament_id
-        """
     )

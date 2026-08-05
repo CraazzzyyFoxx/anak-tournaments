@@ -14,11 +14,31 @@ opposite orderings relative to the code roll:
   and SQLAlchemy emits every mapped column in every SELECT, so dropping it while the
   previous release is still serving would break every registration-form read.
 
-The backfill elects one rule per workspace from the distinct non-empty blobs its
-tournaments hold. When a workspace holds MORE than one distinct rule there is no
-correct answer, so the migration aborts with the offending workspace ids rather than
-picking one: silently choosing an admission rule would quietly change who may
-register, which is exactly the failure this guard exists to prevent.
+The backfill elects one rule per workspace, and "configured" is decided SEMANTICALLY,
+not textually: a form counts only when its blob holds a non-empty ``requirements``
+array. The old wizard seeded ``{"mode": "all", "requirements": []}`` into every form
+it created, so most rows carry that rather than ``{}`` -- and it means exactly what
+``{}`` means, namely no rule (the old gates never called a provider for it).
+Comparing the rendered text against ``'{}'`` would therefore count every such form as
+a configured rule: workspaces holding nothing but empty-but-present blobs would each
+get a pointless ``default`` row, making "no rule" and "empty rule" indistinguishable
+in the one table whose whole purpose is to answer that question, and the guard below
+would report ambiguity for workspaces whose forms differ only in whitespace or key
+order. The predicate is wrapped in ``jsonb_typeof`` -- the pattern this repo already
+standardises on, see ``dbarch03._as_jsonb_array`` and ``dbarch05`` -- so a JSON
+scalar or a wrong container collapses to "not configured" instead of raising.
+
+When a workspace holds MORE than one distinct rule there is no correct answer, so the
+migration aborts with the offending workspace ids rather than picking one: silently
+choosing an admission rule would quietly change who may register. That check is a
+``DO $$ ... RAISE EXCEPTION $$`` block (the shape used by ``dbarch02`` and
+``dbarch03``) rather than a Python-side query, so it is emitted into -- and enforced
+by -- an offline ``--sql`` script as well, and a DBA reading that script can see the
+check exists at all. To be honest about what that buys: the offline path was never
+silently WRONG, because two rules in one workspace would collide on
+``uq_subscription_requirement_workspace_name`` either way. It just failed with a
+constraint-violation message naming an index instead of an actionable one naming the
+workspaces to fix.
 
 Revision ID: wsreq0001
 Revises: wsguild0002
@@ -37,6 +57,17 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 SCHEMA = "subscriptions"
+
+# "Configured" means a non-empty ``requirements`` array -- see the docstring for why
+# the textual `!= '{}'` test is wrong. The ``jsonb_typeof`` check comes first so a
+# JSON scalar or a wrong container cannot make ``jsonb_array_length`` raise; ``->`` on
+# a non-object jsonb yields SQL NULL, which ``jsonb_typeof`` reports as NULL and the
+# comparison rejects. Used by BOTH the guard and the backfill so the two agree on what
+# "configured" means.
+_CONFIGURED = (
+    "jsonb_typeof((f.subscription_requirement_json::jsonb) -> 'requirements') = 'array' "
+    "and jsonb_array_length((f.subscription_requirement_json::jsonb) -> 'requirements') > 0"
+)
 
 
 def upgrade() -> None:
@@ -73,38 +104,54 @@ def upgrade() -> None:
         schema=SCHEMA,
     )
 
-    # The guard interrogates live data, so it only runs online: an offline
-    # `--sql` render has no connection to query (`execute` returns None there),
-    # and the DBA applying that script runs the same pre-flight query by hand.
-    if not op.get_context().as_sql:
-        conn = op.get_bind()
-        ambiguous = conn.execute(
-            sa.text(
-                """
-                select t.workspace_id, count(distinct f.subscription_requirement_json::text) as variants
-                  from balancer.registration_form f
-                  join tournament.tournament t on t.id = f.tournament_id
-                 where coalesce(f.subscription_requirement_json::text, '{}') not in ('{}', 'null')
-                 group by t.workspace_id
-                having count(distinct f.subscription_requirement_json::text) > 1
-                """
-            )
-        ).all()
-        if ambiguous:
-            raise RuntimeError(
-                "Cannot elect a default subscription requirement for workspace(s) "
-                f"{[row[0] for row in ambiguous]}: they hold more than one distinct rule. "
-                "Resolve by hand (pick the intended rule per workspace) before migrating -- "
-                "silently choosing an admission rule is exactly the failure this guard exists to prevent."
-            )
-
+    # Ambiguity guard, expressed as plpgsql so it travels WITH the migration script:
+    # it runs identically online and under `--sql`, where a Python-side
+    # `conn.execute` returns None and the check would vanish from the render
+    # entirely. `count(distinct ...::jsonb)` compares parsed values, so differing
+    # whitespace or key order cannot manufacture false ambiguity.
     op.execute(
+        f"""
+        DO $$
+        DECLARE
+            ambiguous bigint[];
+        BEGIN
+            SELECT array_agg(workspace_id ORDER BY workspace_id) INTO ambiguous
+            FROM (
+                SELECT t.workspace_id
+                FROM balancer.registration_form f
+                JOIN tournament.tournament t ON t.id = f.tournament_id
+                WHERE {_CONFIGURED}
+                GROUP BY t.workspace_id
+                HAVING count(DISTINCT f.subscription_requirement_json::jsonb) > 1
+            ) s;
+            IF ambiguous IS NOT NULL THEN
+                RAISE EXCEPTION
+                    'wsreq0001: cannot elect a default subscription requirement for '
+                    'workspace(s) %: each holds more than one distinct rule. Resolve by hand '
+                    '(pick the intended rule per workspace and clear the others) before '
+                    'migrating -- silently choosing an admission rule is exactly the failure '
+                    'this guard exists to prevent.', ambiguous;
+            END IF;
+        END $$;
         """
+    )
+
+    # One row per workspace via `DISTINCT ON` over the scalar key -- never a bare
+    # `DISTINCT` over the select list, because `subscription_requirement_json` is
+    # `json`, a type with no equality operator, so a `json` column in a DISTINCT list
+    # is rejected at PLAN time on every row count. `DISTINCT ON` is correct here
+    # precisely because the guard above has already proven there is exactly one
+    # distinct rule per workspace, which makes the tiebreaker immaterial. Same shape
+    # as `wsguild0001` step 2.
+    op.execute(
+        f"""
         insert into subscriptions.requirement (workspace_id, name, requirement_json, is_default)
-        select distinct t.workspace_id, 'default', f.subscription_requirement_json, true
+        select distinct on (t.workspace_id)
+               t.workspace_id, 'default', f.subscription_requirement_json, true
           from balancer.registration_form f
           join tournament.tournament t on t.id = f.tournament_id
-         where coalesce(f.subscription_requirement_json::text, '{}') not in ('{}', 'null')
+         where {_CONFIGURED}
+         order by t.workspace_id, f.id
         """
     )
 
