@@ -36,6 +36,7 @@ from shared.models.balancer.draft import (
 )
 from shared.models.registration.registration import (
     BalancerRegistration,
+    BalancerRegistrationForm,
     BalancerRegistrationRole,
     BalancerRegistrationRoleHero,
 )
@@ -433,14 +434,40 @@ def _registration_player_id(reg: BalancerRegistration) -> int | None:
     return member.player_id if member is not None else None
 
 
-def _map_registration(reg: BalancerRegistration) -> dict:
+def _forced_flex_enabled(form: BalancerRegistrationForm | None) -> bool:
+    """Whether the tournament forces every registration to be full flex.
+
+    Mirror of ``tournament-service`` ``registration/_common.forced_flex_enabled``:
+    ``flex_role.mode == "forced"`` with the field enabled, everything else
+    optional, unreadable form fails closed. The two live in different services
+    with no shared module between them, so the contract is pinned by
+    ``tests/test_draft_forced_flex.py`` and the parity fixtures.
+    """
+    if form is None:
+        return False
+    config = (getattr(form, "built_in_fields_json", None) or {}).get("flex_role")
+    if not isinstance(config, dict):
+        return False
+    if config.get("enabled", True) is False:
+        return False
+    return config.get("mode") == "forced"
+
+
+def _map_registration(reg: BalancerRegistration, *, forced_flex: bool = False) -> dict:
     """Derive draft role/rank fields from a tournament registration's roles.
 
     The registration-based pool is the balancer source of truth (3NF). Active
     role rows sorted by priority -> primary (preferring is_primary) + secondaries;
     rank/sub-role come from the primary role.
+
+    Under ``forced_flex`` role stops being a constraint: every role is playable
+    and the player's strength is the maximum rank across all their roles. The
+    ``is_active`` filter is deliberately bypassed there -- a Google-Sheets row
+    whose rank did not parse arrives with ``is_active=False`` and would
+    otherwise silently lose a playable role.
     """
-    active = sorted((r for r in (reg.roles or []) if r.is_active), key=lambda r: r.priority)
+    entries = sorted((reg.roles or []), key=lambda r: r.priority)
+    active = entries if forced_flex else [r for r in entries if r.is_active]
     roles: list[DraftRole] = []
     for r in active:
         role = _to_draft_role(r.role)
@@ -450,9 +477,15 @@ def _map_registration(reg: BalancerRegistration) -> dict:
     if primary_entry is None and active:
         primary_entry = active[0]
     primary = (_to_draft_role(primary_entry.role) if primary_entry else None) or (roles[0] if roles else DraftRole.DPS)
+    if forced_flex:
+        roles = [primary, *(role for role in DraftRole if role != primary)]
     secondary = [r for r in roles if r != primary]
     ranks = [r.rank_value for r in active if r.rank_value is not None]
-    rank_value = (primary_entry.rank_value if primary_entry else None) or (max(ranks) if ranks else None)
+    effective_rank = max(ranks) if ranks else None
+    if forced_flex:
+        rank_value = effective_rank
+    else:
+        rank_value = (primary_entry.rank_value if primary_entry else None) or effective_rank
     sub_role = primary_entry.subrole if primary_entry else None
 
     # Per-role rank catalogue and top heroes, keyed by role.value, promoted to
@@ -484,6 +517,12 @@ def _map_registration(reg: BalancerRegistration) -> dict:
         )
         if heroes:
             role_top_heroes[role.value] = heroes
+
+    if forced_flex:
+        # Every role playable at the same strength. Keyed off DraftRole rather
+        # than the rows so a registration written before the mode was switched
+        # on (fewer than three role rows) still comes out fully flex.
+        role_ranks = {} if effective_rank is None else {role.value: effective_rank for role in DraftRole}
 
     return {
         "primary_role": primary,
@@ -582,6 +621,15 @@ async def seed_from_pool(
     the registration.
     """
     pool = await load_pool(session, draft_session.tournament_id)
+    # First read of the registration form from balancer-service. One query per
+    # seed; the mode decides whether role is a constraint at all.
+    forced_flex = _forced_flex_enabled(
+        await session.scalar(
+            sa.select(BalancerRegistrationForm).where(
+                BalancerRegistrationForm.tournament_id == draft_session.tournament_id
+            )
+        )
+    )
     by_id = {reg.id: reg for reg in pool}
     if not captain_registration_ids:
         raise _err("draft_no_captains", "Select at least one captain from the pool")
@@ -596,7 +644,7 @@ async def seed_from_pool(
                 f"Captain registration {rid} is not in the balancer pool for this tournament",
                 status_code=422,
             )
-        mapped_by_id[rid] = _map_registration(reg)
+        mapped_by_id[rid] = _map_registration(reg, forced_flex=forced_flex)
 
     ordered_ids = order_captain_ids(
         [(rid, mapped_by_id[rid]["rank_value"]) for rid in captain_registration_ids],
@@ -631,7 +679,7 @@ async def seed_from_pool(
     for reg in pool:
         if reg.id in captain_ids:
             continue
-        mapped = _map_registration(reg)
+        mapped = _map_registration(reg, forced_flex=forced_flex)
         players.append(
             PlayerSeed(
                 primary_role=mapped["primary_role"],
