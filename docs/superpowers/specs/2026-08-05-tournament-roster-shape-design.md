@@ -238,9 +238,9 @@ op.drop_column("draft_session", "team_size", schema="balancer")
 
 ### 4.1 Чтение
 
-`TournamentRead` (`tournament-service/src/schemas/tournament.py`) получает
-**разрешённую** форму, а не сырую колонку — фронт не должен воспроизводить
-цепочку fallback:
+`TournamentRead` (`tournament-service/src/schemas/tournament.py`) отдаёт и сырую
+колонку, и **разрешённую** форму — фронт не должен воспроизводить цепочку
+fallback:
 
 ```python
 class RosterShapeRead(BaseModel):
@@ -254,15 +254,36 @@ class RosterShapeRead(BaseModel):
 
 class TournamentRead(BaseRead):
     ...
-    roster_slots_json: dict[str, int] | None   # сырой override, для формы редактирования
-    roster_shape: RosterShapeRead              # разрешённая форма, для всего остального
+    roster_slots_json: dict[str, int] | None   # сырой override, из колонки
+    roster_shape: RosterShapeRead | None = None  # opt-in entity, см. ниже
 ```
 
 `source` нужен админке, чтобы честно показать «Наследуется от workspace» вместо
 молчаливого отображения дефолта как собственной настройки.
 
-`WorkspaceRead` получает `default_roster_slots_json: dict[str,int] | None` и
-`default_roster_shape: RosterShapeRead`.
+**`roster_shape` — opt-in entity, а не обязательное поле.** Это следует из
+устройства `tournament-service`, а не из вкуса: `TournamentRead` вложен в
+`EncounterRead.tournament`, `TeamRead.tournament`, `PlayerRead.tournament`,
+`StandingRead.tournament`, `AchievementRead.tournaments`, `OwalStandings.days` и
+ещё несколько схем, и все они собираются из ORM-строк без сессии под рукой.
+Обязательное поле заставило бы резолвить форму в каждом из них.
+
+Механизм в репозитории уже есть и применяется к точно такому же случаю:
+`tournament/flows.py:to_pydantic` принимает список `entities` и заполняет
+`division_grid_version` только когда `_entity_requested(entities, "division_grid_version")`.
+`roster_shape` заполняется там же и так же — при `"roster_shape" in entities`, —
+вызовом `get_effective_roster_shape`. Потребители, которым форма нужна
+(админский сериализатор `_ser_tournament`, вкладка Settings), запрашивают её
+явно; вложенные и списочные чтения за неё не платят. `get_read` кеширован ключом
+`tournaments/{id}:{entities}`, поэтому opt-in не отравляет кеш.
+
+`roster_slots_json` — обычная колонка, всегда присутствует, `from_attributes`
+заполняет её сам.
+
+`WorkspaceRead` получает `default_roster_slots_json: dict[str,int] | None`;
+разрешённая форма воркспейса отдельным полем не нужна — у воркспейса нет уровня
+выше, кроме встроенного дефолта, и админка воркспейса показывает сырую карту
+плюс тот же встроенный дефолт как подсказку.
 
 ### 4.2 Запись
 
@@ -531,6 +552,7 @@ Workspace-дефолт — тот же компонент, переисполь�
 | D13 | `RosterShape` хранит `entries: tuple[tuple[str,int],...]`; `slots`/`role_slots` — property, отдающие свежий `dict`; `to_dict()` удалён | (а) поле `Mapping` со значением `MappingProxyType`; (б) поле — обычный `dict` | `MappingProxyType` в публичном поле ломает `json.dumps`, `dataclasses.asdict`, `copy.deepcopy`, `pickle` и Pydantic `model_dump_json`/`model_copy(deep=True)` — ровно те пути, по которым форма едет в JSONB в задачах 5-6, причём pyright молчит, потому что `Mapping[str,int]` типизируется корректно. Кортеж пар решает всё сразу: хешируемость без ручного `__hash__`, сериализуемость, неизменяемость. Обычный `dict` в поле вернул бы мутабельность канона. `to_dict()` после этого побайтово дублировал `slots` — два имени для одного действия |
 | D14 | `MIN_TEAM_SIZE = 2`, `draft_rounds = team_size - 1` без клампа | `MIN_TEAM_SIZE = 1` с `max(1, team_size - 1)` | Ростер из одного слота нечего драфтить и нечего балансировать: капитан занимает единственный слот, корректный ответ — 0 пиков, а кламп возвращал 1 и заставил бы драфт пикать в укомплектованную команду. `max(1, …)` был перенесён из фронтового `roundsForTeamSize`, где это кламп поля ввода, а не доменное правило. Побочно: нижняя граница проверки диапазона перестаёт быть недостижимой |
 | D15 | Все константы модуля помечены `Final`; `DEFAULT_ROSTER_SLOTS` — `MappingProxyType`; добавлен готовый `DEFAULT_ROSTER_SHAPE` | Оставить обычные модульные значения | `DEFAULT_ROSTER_SLOTS["flex"] = 99` молча отравлял канон на всю жизнь процесса, а в задаче 2 он — хвост fallback-цепочки. Конвенция в репозитории уже есть: `shared/core/enums.py:206`. `DEFAULT_ROSTER_SHAPE` проверяет инвариант «дефолт сам валиден» на импорте и снимает повторный парсинг у задач 2-16 |
+| D16 | `TournamentRead.roster_shape` — opt-in entity (`RosterShapeRead \| None`), заполняемая в `to_pydantic` при `"roster_shape" in entities` | (а) обязательное поле; (б) вычисляемое поле из одной колонки без резолва | `TournamentRead` вложен минимум в шесть других схем (`EncounterRead`, `TeamRead`, `PlayerRead`, `StandingRead`, `AchievementRead`, `OwalStandings`), которые собираются из ORM-строк без сессии — обязательное поле потребовало бы резолвить форму в каждой. Вычисляемое поле не умеет fallback на воркспейс, потому что для него нужен запрос к БД. Механизм opt-in уже применяется в этом же файле к `division_grid_version`, а `get_read` кеширован ключом `tournaments/{id}:{entities}`, так что opt-in не отравляет кеш |
 
 ---
 

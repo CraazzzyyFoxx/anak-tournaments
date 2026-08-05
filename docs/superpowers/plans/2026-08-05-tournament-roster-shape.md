@@ -545,21 +545,34 @@ git commit -m "feat(shared): add cached roster shape resolver"
 ## Task 5: Чтение формы в `TournamentRead`
 
 **Files:**
-- Modify: `backend/tournament-service/src/schemas/tournament.py` (после `division_grid_version`, ~строка 67)
-- Modify: `backend/tournament-service/src/schemas/workspace.py`
 - Create: `backend/tournament-service/src/schemas/roster_shape.py`
+- Modify: `backend/tournament-service/src/schemas/__init__.py` — реэкспорт
+- Modify: `backend/tournament-service/src/schemas/tournament.py:42-67` — два поля в `TournamentRead`
+- Modify: `backend/tournament-service/src/schemas/workspace.py:21-23` — `default_roster_slots_json` в `WorkspaceRead`
+- Modify: `backend/tournament-service/src/services/tournament/flows.py:48-147` — заполнение в `to_pydantic`
+- Modify: `backend/tournament-service/src/services/admin/registry.py:101-102` — `_ser_tournament` запрашивает entity
 - Test: `backend/tournament-service/tests/test_roster_shape_api.py`
 
-**Step 1: Написать падающий тест** — `TournamentRead.roster_shape.source == "default"` для турнира без override и без workspace-дефолта; `"workspace"` когда задан только workspace; `"tournament"` когда задан override.
+**Step 1: Написать падающий тест**
+
+- `to_pydantic(..., entities=["roster_shape"])` для турнира без override и без дефолта воркспейса → `roster_shape.source == "default"`, `slots == {"tank":1,"dps":2,"support":2}`;
+- только дефолт воркспейса → `source == "workspace"`;
+- override на турнире → `source == "tournament"`, и он побеждает дефолт;
+- `{"flex": 6}` на турнире → `has_role_slots is False`, `team_size == 6`, `draft_rounds == 5`;
+- **`entities` без `"roster_shape"` → поле `None` и НИ ОДНОГО обращения к резолверу.** Это главный тест opt-in: без него следующий человек сделает поле обязательным и уронит вложенные чтения;
+- `roster_slots_json` присутствует всегда, независимо от `entities`, потому что это обычная колонка;
+- повреждённое значение в колонке при запрошенном `roster_shape` → `RosterShapeError` наружу, а не тихий дефолт.
 
 **Step 2: Запустить** → FAIL
+
+Run: `cd backend && uv run pytest tournament-service/tests/test_roster_shape_api.py -v`
 
 **Step 3: Схема**
 
 ```python
 # backend/tournament-service/src/schemas/roster_shape.py
 class RosterShapeRead(BaseModel):
-    """Resolved roster shape. The frontend never recomputes the fallback chain."""
+    """A resolved roster shape. The frontend never recomputes the fallback chain."""
 
     slots: dict[str, int]
     team_size: int
@@ -572,16 +585,56 @@ class RosterShapeRead(BaseModel):
     def from_shape(cls, shape: RosterShape, *, source: str) -> RosterShapeRead: ...
 ```
 
-`TournamentRead` получает `roster_slots_json: dict[str,int] | None` (сырой override для формы редактирования) и `roster_shape: RosterShapeRead`. `WorkspaceRead` — `default_roster_slots_json` и `default_roster_shape`.
+`TournamentRead` получает:
+```python
+    roster_slots_json: dict[str, int] | None = None
+    # Opt-in entity (D16): TournamentRead is nested in six other schemas that are
+    # built from ORM rows without a session, so this cannot be required.
+    roster_shape: RosterShapeRead | None = None
+```
+`WorkspaceRead` получает `default_roster_slots_json: dict[str, int] | None`. Разрешённая форма воркспейса отдельным полем НЕ нужна — у воркспейса нет уровня выше встроенного дефолта.
 
-Заполнять `roster_shape` там, где уже заполняется `division_grid_version` — найти это место через `codegraph_explore "TournamentRead build division_grid_version"`.
+**Step 4: Заполнение**
 
-**Step 4: Запустить тест** → PASS
+`to_pydantic` в `flows.py` уже устроен как opt-in по `entities` — повтори ровно то, что рядом делает `division_grid_version` (строки 108-115):
 
-**Step 5: Commit**
+```python
+    roster_shape = None
+    if _entity_requested(entities, "roster_shape"):
+        # Both levels explicitly, so `source` is known rather than reverse-engineered
+        # from the result. Both getters are cache-backed, so this is not an extra query.
+        tournament_slots = await get_tournament_roster_slots(session, tournament.id)
+        workspace_slots = await get_workspace_roster_slots(session, tournament.workspace_id)
+        shape = resolve_roster_shape(tournament_slots, workspace_slots)
+        source = (
+            "tournament" if tournament_slots
+            else "workspace" if workspace_slots
+            else "default"
+        )
+        roster_shape = RosterShapeRead.from_shape(shape, source=source)
+```
+
+НЕ вычисляй `source` сравнением разрешённой формы с колонками: override, совпадающий по значению с дефолтом воркспейса, всё равно остаётся override, и админка обязана показать это честно, а не «наследуется».
+
+`_ser_tournament` в `registry.py:101-102` меняет `["stages"]` на `["stages", "roster_shape"]` — иначе админское чтение вернёт `None` и Settings нечего будет показать.
+
+**Step 5: Запустить**
+
+Run: `cd backend && uv run pytest tournament-service/tests/test_roster_shape_api.py -v` → PASS
+Run: `cd backend && uv run pytest tournament-service/tests -q` → 0 failed
+
+**Step 6: Ре-экспорт манифеста гейтвея**
+
+Схемы изменились, а CI сверяет закоммиченный манифест:
+```bash
+cd backend && bash scripts/export_openapi_schemas.sh
+```
+
+**Step 7: Commit**
 
 ```bash
-git commit -am "feat(tournament): expose resolved roster shape on tournament read"
+git add backend/tournament-service backend/shared gateway/internal/openapi/schemas.json
+git commit -m "feat(tournament): expose resolved roster shape as an opt-in entity"
 ```
 
 ---
