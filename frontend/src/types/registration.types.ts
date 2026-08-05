@@ -33,7 +33,7 @@ export interface BuiltInFieldConfig {
    * matter: the role step hides priorities and every role is submitted as
    * primary. Absent/null == "optional".
    */
-  mode?: "optional" | "forced" | null;
+  mode?: "optional" | "all_roles" | "forced" | null;
 }
 
 export interface SubroleOption {

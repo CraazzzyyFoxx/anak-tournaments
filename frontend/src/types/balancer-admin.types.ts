@@ -337,7 +337,7 @@ export interface BuiltInFieldConfig {
    * `flex_role` field only. "forced" makes every registration full flex and
    * drives the max-rank policy in the balancer pool. Absent/null == "optional".
    */
-  mode?: "optional" | "forced" | null;
+  mode?: "optional" | "all_roles" | "forced" | null;
 }
 
 export interface SubroleOption {
