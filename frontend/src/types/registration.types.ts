@@ -169,21 +169,6 @@ export type RegistrationStatus = string;
 
 export type BalancerStatus = string;
 
-export interface StatusMeta {
-  value: string;
-  scope: "registration" | "balancer";
-  is_builtin: boolean;
-  kind: "builtin" | "custom";
-  is_override: boolean;
-  can_edit: boolean;
-  can_delete: boolean;
-  can_reset: boolean;
-  icon_slug: string | null;
-  icon_color: string | null;
-  name: string;
-  description: string | null;
-}
-
 export interface TournamentHistoryEntry {
   tournament_id: number;
   tournament_name: string;

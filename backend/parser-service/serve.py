@@ -73,6 +73,7 @@ from src.rpc import (
     subscription as rpc_subscription,
 )
 from src.services.achievement.engine.consumer import handle_achievement_evaluate
+from src.services.challonge import sync as challonge_sync
 from src.services.match_logs import flows as logs_flows
 from src.services.match_logs import realtime as logs_realtime
 from src.services.match_logs import reaper as logs_reaper
@@ -195,6 +196,10 @@ async def stop_worker() -> None:
     await s3_client.close()
     await rank_tasks.rank_client.close()
     await rank_tasks.close_redis()
+    # challonge/sync.py keeps its own module-level Redis client for the sync job
+    # lock (_get_redis). It was never closed here, so every worker shutdown leaked
+    # the connection.
+    await challonge_sync.close_redis()
     await _clients.realtime_redis.aclose()
 
 
