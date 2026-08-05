@@ -410,13 +410,26 @@ export default function RegistrationFormBuilder({
                     {t("subscription.require")}
                   </label>
                   <div className="space-y-1 text-sm">
+                    {/* The workspace rule reaches this card as a projection ON the
+                        form, so `resolvedRequirement === ""` means two different
+                        things: the workspace has no rule, or there is no form to read
+                        one from (`reg_form_get` returns null until the first save --
+                        rows are created lazily). Only the first licenses the "enforces
+                        nothing" claim; asserting it for a brand-new tournament states a
+                        truth nobody has looked up, right beside the toggle it describes.
+                        `!formExists` also covers `formQuery.isPending`, which implies
+                        `data === undefined`. */}
                     <p className="max-w-prose text-muted-foreground">
-                      {resolvedRequirement
-                        ? t("subscription.resolved", { rule: resolvedRequirement })
-                        : t("subscription.resolvedEmpty")}
+                      {!formExists
+                        ? t("subscription.resolvedUnknown")
+                        : resolvedRequirement
+                          ? t("subscription.resolved", { rule: resolvedRequirement })
+                          : t("subscription.resolvedEmpty")}
                     </p>
+                    {/* `?tab=providers`: /admin/subscriptions opens on the collector
+                        dashboard otherwise, which is not where the rule is edited. */}
                     <Link
-                      href="/admin/subscriptions"
+                      href="/admin/subscriptions?tab=providers"
                       className="text-xs font-medium underline underline-offset-4"
                     >
                       {t("subscription.manage")}

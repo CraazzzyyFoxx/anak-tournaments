@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
@@ -23,6 +24,8 @@ interface SelectedPlayer {
 
 type TabValue = "status" | "settings" | "providers";
 
+const TABS: readonly TabValue[] = ["status", "settings", "providers"];
+
 export default function SubscriptionCollectionAdminPage() {
   // Mirrors /admin/rank: the collector's global config stays superuser-only, while
   // health, history and per-player inspection are open to admins.
@@ -32,7 +35,17 @@ export default function SubscriptionCollectionAdminPage() {
   // (`sub_config_list` / `sub_config_upsert`), so reuse that permission rather than
   // invent a role check: whoever sees the tab can also save what is on it.
   const canConfigureWorkspace = canAccessPermission("team.update", currentWorkspaceId);
-  const [activeTab, setActiveTab] = useState<TabValue>("status");
+  const searchParams = useSearchParams();
+  // `?tab=` exists so a deep link can land on the tab it means -- the registration form
+  // builder links straight to `?tab=providers`, where the workspace rule is edited.
+  // Read once, for the initial value only: after mount the toggle group owns the tab, so
+  // clicking around must not be fought by a URL that no longer reflects it. Anything
+  // absent or unrecognised keeps the historical default rather than 404ing a tab -- the
+  // param is a convenience, not a route.
+  const [activeTab, setActiveTab] = useState<TabValue>(() => {
+    const requested = searchParams.get("tab");
+    return TABS.includes(requested as TabValue) ? (requested as TabValue) : "status";
+  });
   const [selected, setSelected] = useState<SelectedPlayer | null>(null);
   const openPlayer = (userId: number, label: string) => setSelected({ userId, label });
 

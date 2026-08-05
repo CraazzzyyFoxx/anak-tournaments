@@ -3595,6 +3595,7 @@
         "hint": "Enforced twice. At sign-up only what can be verified automatically blocks (provider APIs / Discord roles); a provider verified by a code from a subscriber-only post is deferred, since that field is only offered at check-in. At check-in everything is enforced. A verdict that cannot be determined (provider down, account not linked) fails open and never blocks.",
         "resolved": "This workspace requires: {rule}",
         "resolvedEmpty": "This workspace has no subscription rule configured, so the toggle above enforces nothing.",
+        "resolvedUnknown": "This tournament has no saved form yet, so the workspace rule has not been read — save the form to see what the toggle will enforce.",
         "manage": "Configure the workspace rule"
       },
       "display": {
@@ -3731,6 +3732,21 @@
       "duplicateRole": "Two tiers on the same role id. The server rejects this — the resulting verdict would depend on ordering.",
       "rolesMissing": "A guild without a role mapping resolves to <em>undetermined</em>, which fails open — the gate will not enforce anything.",
       "codesMissing": "Code-only with no code configured is unsatisfiable, so it resolves to <em>undetermined</em> and fails open — nobody is checked, and nobody is blocked."
+    }
+  },
+  "subscriptionWorkspace": {
+    "title": "Subscription requirement",
+    "description": "One rule for the whole workspace. Each tournament only decides whether to enforce it, with the \"Require an active subscription\" toggle on its registration form.",
+    "loading": "Loading…",
+    "loadError": "Couldn't load the requirement. Check your connection and reload the page.",
+    "save": "Save",
+    "saving": "Saving…",
+    "unsavedChanges": "Unsaved changes",
+    "saved": "Workspace subscription requirement saved",
+    "saveFailed": "Failed to save the subscription requirement",
+    "warning": {
+      "disarming": "{count, plural, =0 {Clearing the rule stops enforcement across the whole workspace. No tournament is enforcing it right now, but any whose \"Require an active subscription\" toggle is on will then admit everybody without reporting a reason.} one {Clearing the rule stops enforcement for the # tournament enforcing it right now — it will admit everybody without reporting a reason, toggle still on.} other {Clearing the rule stops enforcement for all # tournaments enforcing it right now — they will admit everybody without reporting a reason, toggles still on.}}",
+      "changed": "{count, plural, =0 {Changing the rule changes who is admitted everywhere in this workspace at once. No tournament is enforcing it right now.} one {Changing the rule changes who is admitted in the # tournament enforcing it right now, even one already in progress: tightening it retroactively refuses patrons who have already been admitted.} other {Changing the rule changes who is admitted across all # tournaments enforcing it right now, including ones already in progress: tightening it retroactively refuses patrons who have already been admitted.}}"
     }
   }
 }

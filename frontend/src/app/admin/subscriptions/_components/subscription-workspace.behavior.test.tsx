@@ -2,7 +2,8 @@
 //
 // The requirement is now workspace-wide, so the two things this card must get
 // right are both about blast radius: which providers it will even offer, and
-// telling the admin that emptying the rule disarms every tournament at once.
+// telling the admin that ANY change to the rule -- emptying it or merely
+// tightening it -- re-decides admission for every tournament at once.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
@@ -57,7 +58,7 @@ async function mount(
   requirement: SubscriptionRequirement,
   configs: SubscriptionProviderConfigRead[]
 ) {
-  getSubscriptionRequirement.mockResolvedValue({ requirement });
+  getSubscriptionRequirement.mockResolvedValue({ requirement, enforcing_tournaments: 3 });
   listSubscriptionProviders.mockResolvedValue({ configs, discord_guild_id: null });
 
   const container = document.createElement("div");
@@ -102,14 +103,19 @@ async function click(el: HTMLElement) {
   });
 }
 
-const CLEARING_WARNING = "Clearing the rule stops enforcement";
+// Both messages are keyed on `enforcing_tournaments`, so the copy quotes a real count.
+const DISARM_WARNING = "Clearing the rule stops enforcement for all 3 tournaments";
+const CHANGE_WARNING = "Changing the rule changes who is admitted across all 3 tournaments";
 
 beforeEach(() => {
   document.body.innerHTML = "";
   listSubscriptionProviders.mockReset();
   getSubscriptionRequirement.mockReset();
   upsertSubscriptionRequirement.mockReset();
-  upsertSubscriptionRequirement.mockResolvedValue({ requirement: { mode: "all", requirements: [] } });
+  upsertSubscriptionRequirement.mockResolvedValue({
+    requirement: { mode: "all", requirements: [] },
+    enforcing_tournaments: 3
+  });
 });
 
 describe("WorkspaceRequirementCard", () => {
@@ -129,17 +135,45 @@ describe("WorkspaceRequirementCard", () => {
     ]);
     expect(withBoosty.textContent).toContain("Add provider");
 
-    // A workspace that never had a rule is not "clearing" one, so the warning
-    // must not nag an admin who has nothing to disarm.
-    expect(withBoosty.textContent).not.toContain(CLEARING_WARNING);
+    // A workspace that never had a rule is not changing one, so the warning must
+    // not nag an admin who has touched nothing.
+    expect(withBoosty.textContent).not.toContain(DISARM_WARNING);
+    expect(withBoosty.textContent).not.toContain(CHANGE_WARNING);
   });
 
-  it("warns about disarming every tournament only once the stored rule is emptied", async () => {
+  it("warns about disarming once the stored rule is emptied, quoting the blast radius", async () => {
     const container = await mount(BOOSTY_RULE, [config("boosty", true)]);
-    expect(container.textContent).not.toContain(CLEARING_WARNING);
+    expect(container.textContent).not.toContain(DISARM_WARNING);
 
     await click(container.querySelector<HTMLElement>('[aria-label="Remove Boosty"]')!);
-    expect(container.textContent).toContain(CLEARING_WARNING);
+    expect(container.textContent).toContain(DISARM_WARNING);
+  });
+
+  it("warns about a rule that is merely tightened, not only one that is emptied", async () => {
+    // The regression this pins: adding a second required provider under `all` mode
+    // retroactively refuses patrons the gate already admitted, across every
+    // enforcing tournament at once. Warning only on empty-out missed that entirely.
+    const container = await mount(BOOSTY_RULE, [config("boosty", true), config("twitch", true)]);
+    expect(container.textContent).not.toContain(CHANGE_WARNING);
+
+    await click(button(container, "Add provider"));
+
+    expect(container.textContent).toContain(CHANGE_WARNING);
+    // Still armed, so this is not the disarming message.
+    expect(container.textContent).not.toContain(DISARM_WARNING);
+  });
+
+  it("drops the warning again when an edit is reverted to the stored rule", async () => {
+    // `sameRule` compares the rule, not the object: an admin who adds a provider and
+    // removes it again has changed nothing and must not be warned about nothing.
+    const container = await mount(BOOSTY_RULE, [config("boosty", true), config("twitch", true)]);
+
+    await click(button(container, "Add provider"));
+    expect(container.textContent).toContain(CHANGE_WARNING);
+
+    await click(container.querySelector<HTMLElement>('[aria-label="Remove Twitch"]')!);
+    expect(container.textContent).not.toContain(CHANGE_WARNING);
+    expect(container.textContent).not.toContain(DISARM_WARNING);
   });
 
   it("saves the rule wholesale and keeps Save inert until something changed", async () => {

@@ -161,6 +161,11 @@ export interface SubscriptionProviderConfigUpsert {
  *  above: an organizer configures admission once, not per tournament. */
 export interface WorkspaceSubscriptionRequirementRead {
   requirement: SubscriptionRequirement;
+  /** Live tournaments whose own `require_subscription` toggle is on, i.e. exactly the
+   *  set this rule currently gates. Server-computed with the same predicate the
+   *  collector sweeps on, so the admin card can quote a real blast radius instead of
+   *  warning in the abstract. */
+  enforcing_tournaments: number;
 }
 
 /** Same shape as the read because the rule is replaced wholesale. A partial

@@ -8,6 +8,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import SubscriptionProvidersCard from "@/components/admin/subscriptions/SubscriptionProviderCard";
 import SubscriptionRequirementEditor from "@/components/admin/subscriptions/SubscriptionRequirementEditor";
@@ -25,6 +26,21 @@ import type { SubscriptionRequirement } from "@/types/registration.types";
 
 const EMPTY_REQUIREMENT: SubscriptionRequirement = { mode: "all", requirements: [] };
 
+/** Rule equality as the SERVER sees it: mode plus the provider/threshold set. Order is
+ *  not part of the rule (`parse_requirement` dedupes into a dict and the Kleene
+ *  composition is commutative), so reordering the editor's rows must not be reported as
+ *  a policy change. */
+function sameRule(a: SubscriptionRequirement, b: SubscriptionRequirement): boolean {
+  if ((a.mode ?? "all") !== (b.mode ?? "all")) return false;
+  const key = (r: SubscriptionRequirement) =>
+    JSON.stringify(
+      (r.requirements ?? [])
+        .map((row) => `${row.provider}:${row.min_tier_rank ?? 1}`)
+        .sort()
+    );
+  return key(a) === key(b);
+}
+
 export function WorkspaceSubscriptionPanel({ workspaceId }: { workspaceId: number }) {
   return (
     <div className="space-y-6">
@@ -37,6 +53,7 @@ export function WorkspaceSubscriptionPanel({ workspaceId }: { workspaceId: numbe
 /** Exported so its own behaviour can be exercised without the provider card's
  *  queries and second Save button in the way. */
 export function WorkspaceRequirementCard({ workspaceId }: { workspaceId: number }) {
+  const t = useTranslations("subscriptionWorkspace");
   const queryClient = useQueryClient();
   const requirementKey = ["subscription-requirement", workspaceId] as const;
 
@@ -71,40 +88,39 @@ export function WorkspaceRequirementCard({ workspaceId }: { workspaceId: number 
     onSuccess: async () => {
       setDraft(null);
       await queryClient.invalidateQueries({ queryKey: requirementKey });
-      notify.success("Workspace subscription requirement saved");
+      notify.success(t("saved"));
     },
     onError: (error: unknown) =>
-      notify.error(
-        error instanceof Error ? error.message : "Failed to save the subscription requirement"
-      )
+      notify.error(error instanceof Error ? error.message : t("saveFailed"))
   });
 
-  // Emptying the rule disarms every tournament in the workspace at once, including
-  // ones whose own `require_subscription` toggle is still on — those then admit
-  // everybody without saying so. No endpoint aggregates that count (the toggle
-  // lives on each tournament's own registration form, so counting would be one
-  // request per tournament), so warn about the action rather than quote a number.
-  const clearing =
-    (stored.requirements?.length ?? 0) > 0 && (value.requirements?.length ?? 0) === 0;
+  // Any change to a live rule changes who is admitted, across every tournament in the
+  // workspace at once -- so the warning tracks CHANGE, not just emptying. Tightening
+  // Boosty 1 -> 3, or `any` -> `all`, retroactively refuses patrons the gate already
+  // let in, which mid-tournament is as consequential as disarming it. `draft === null`
+  // means untouched, and `sameRule` absorbs an edit-then-revert.
+  const changed = draft !== null && !sameRule(value, stored);
+  // Emptying is called out separately: it disarms every tournament whose own
+  // `require_subscription` toggle is still on, and those then admit everybody without
+  // saying so -- the opposite failure from the one above.
+  const disarming = (value.requirements?.length ?? 0) === 0;
+  // The server counts the tournaments actually gated by this rule (same predicate the
+  // collector sweeps on), so the copy can name the blast radius instead of gesturing at it.
+  const enforcingTournaments = requirementQuery.data?.enforcing_tournaments ?? 0;
 
   return (
     <Card>
       <CardHeader>
         <CardTitle asChild>
-          <h2>Subscription requirement</h2>
+          <h2>{t("title")}</h2>
         </CardTitle>
-        <CardDescription className="max-w-prose">
-          One rule for the whole workspace. Each tournament only decides whether to enforce it,
-          with the &quot;Require an active subscription&quot; toggle on its registration form.
-        </CardDescription>
+        <CardDescription className="max-w-prose">{t("description")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {requirementQuery.isLoading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
+          <p className="text-sm text-muted-foreground">{t("loading")}</p>
         ) : requirementQuery.isError ? (
-          <p className="text-sm text-danger">
-            Couldn&apos;t load the requirement. Check your connection and reload the page.
-          </p>
+          <p className="text-sm text-danger">{t("loadError")}</p>
         ) : (
           <>
             <SubscriptionRequirementEditor
@@ -113,13 +129,13 @@ export function WorkspaceRequirementCard({ workspaceId }: { workspaceId: number 
               onChange={setDraft}
             />
 
-            {clearing && (
+            {changed && (
               <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 p-2.5">
                 <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden />
                 <p className="max-w-prose text-xs text-warning">
-                  Clearing the rule stops enforcement for every tournament in this workspace,
-                  including any whose &quot;Require an active subscription&quot; toggle is still
-                  on — those will admit everybody without reporting a reason.
+                  {t(disarming ? "warning.disarming" : "warning.changed", {
+                    count: enforcingTournaments
+                  })}
                 </p>
               </div>
             )}
@@ -130,10 +146,10 @@ export function WorkspaceRequirementCard({ workspaceId }: { workspaceId: number 
                 onClick={() => save.mutate()}
                 disabled={save.isPending || draft === null}
               >
-                {save.isPending ? "Saving…" : "Save"}
+                {save.isPending ? t("saving") : t("save")}
               </Button>
               {draft !== null && !save.isPending && (
-                <span className="text-xs text-muted-foreground">Unsaved changes</span>
+                <span className="text-xs text-muted-foreground">{t("unsavedChanges")}</span>
               )}
             </div>
           </>
