@@ -39,7 +39,9 @@ def _code(exc: Exception) -> str:
 
 
 def _draft(status: DraftStatus = DraftStatus.PAUSED) -> DraftSession:
-    return DraftSession(id=1, tournament_id=1, workspace_id=1, status=status.value, team_size=3, rounds=2)
+    # `rounds` is all a session stores about its size now; the roster shape is
+    # resolved per tournament, and role_edit reads it through feasibility.
+    return DraftSession(id=1, tournament_id=1, workspace_id=1, status=status.value, rounds=2)
 
 
 def _player() -> DraftPlayer:

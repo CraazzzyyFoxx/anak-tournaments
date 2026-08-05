@@ -6,11 +6,11 @@ every existing row, which the fallback chain in
 ``shared.domain.roster_shape.resolve_roster_shape`` reads as "inherit", so the
 migration needs no backfill to preserve today's 1/2/2 behaviour.
 
-The deliberate omission is the point of half these tests: the revision must NOT
-drop ``balancer.draft_session.team_size``. The balancer still reads that column,
-and its tests still construct ``DraftSession(..., team_size=...)`` directly.
-Dropping it here would leave ``balancer-service/tests`` red for six tasks; the
-drop belongs in a later revision, alongside the code that stops writing it.
+The deliberate omission is the point of half these tests: ``roster0001`` must NOT
+drop ``balancer.draft_session.team_size``. That drop is ``roster0002``, landed
+with the code change that stopped writing the column — ``TestTeamSizeIsGone`` and
+``TestDropRevision`` below guard the pair, so this file is the single place where
+"the shape replaced the scalar" is checked against both revisions and the models.
 
 A metadata check: the models are compiled against the Postgres dialect and the
 revision is parsed, so no live database is needed. Not a substitute for applying
@@ -32,36 +32,38 @@ from shared import models
 MIGRATION = (
     pathlib.Path(__file__).resolve().parents[2] / "migrations" / "versions" / "roster0001_add_roster_slots.py"
 )
+# The follow-up revision that retires the scalar this shape replaced.
+DROP_MIGRATION = MIGRATION.with_name("roster0002_drop_draft_session_team_size.py")
 
 TOURNAMENT_COLUMN = "roster_slots_json"
 WORKSPACE_COLUMN = "default_roster_slots_json"
 
 
-def _text() -> str:
-    return MIGRATION.read_text(encoding="utf-8")
+def _text(migration: pathlib.Path = MIGRATION) -> str:
+    return migration.read_text(encoding="utf-8")
 
 
 def _ddl(model) -> str:
     return str(CreateTable(model.__table__).compile(dialect=postgresql.dialect()))
 
 
-def _function(name: str) -> ast.FunctionDef:
+def _function(name: str, migration: pathlib.Path = MIGRATION) -> ast.FunctionDef:
     """The revision's ``upgrade``/``downgrade`` body as an AST node.
 
     Parsed rather than string-matched because the whole point of
     ``TestUpgradeDropsNothing`` is *which* function a ``drop_column`` sits in —
     ``downgrade`` legitimately has two of them.
     """
-    for node in ast.parse(_text()).body:
+    for node in ast.parse(_text(migration)).body:
         if isinstance(node, ast.FunctionDef) and node.name == name:
             return node
-    raise AssertionError(f"revision has no {name}()")
+    raise AssertionError(f"{migration.name} has no {name}()")
 
 
-def _op_calls(function: str, op_name: str) -> list[ast.Call]:
+def _op_calls(function: str, op_name: str, migration: pathlib.Path = MIGRATION) -> list[ast.Call]:
     return [
         node
-        for node in ast.walk(_function(function))
+        for node in ast.walk(_function(function, migration))
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
         and node.func.attr == op_name
@@ -88,10 +90,12 @@ def _added_columns(function: str = "upgrade") -> list[tuple[str, str, str | None
     return described
 
 
-def _dropped_columns(function: str = "downgrade") -> list[tuple[str, str, str | None]]:
+def _dropped_columns(
+    function: str = "downgrade", migration: pathlib.Path = MIGRATION
+) -> list[tuple[str, str, str | None]]:
     return [
         (ast.literal_eval(call.args[0]), ast.literal_eval(call.args[1]), _schema_of(call))
-        for call in _op_calls(function, "drop_column")
+        for call in _op_calls(function, "drop_column", migration)
     ]
 
 
@@ -173,11 +177,10 @@ class TestUpgradeDropsNothing:
     """``upgrade`` must be purely additive.
 
     ``balancer.draft_session.team_size`` is the column this whole feature
-    eventually replaces, and it is tempting to drop it in the same revision.
-    It must not happen here: the balancer keeps reading and writing
-    ``team_size`` for several more tasks, so an early drop turns
-    ``balancer-service/tests`` red across all of them. The drop gets its own
-    revision, landed with the code change that stops using the column.
+    replaces, and it was tempting to drop it in the same revision. It must not
+    happen here: the balancer still read and wrote ``team_size`` when
+    ``roster0001`` landed, so an early drop would have turned
+    ``balancer-service/tests`` red for several tasks. The drop is ``roster0002``.
     """
 
     def test_upgrade_has_no_drop_column(self):
@@ -197,21 +200,27 @@ class TestDowngradeIsSymmetric:
         assert len(_dropped_columns()) == 2
 
 
-class TestTeamSizeSurvives:
-    """This task must not touch ``DraftSession.team_size``.
+class TestTeamSizeIsGone:
+    """The inversion ``TestTeamSizeSurvives`` announced.
 
-    Deliberately inverted later: the task that teaches the balancer to read the
-    roster shape instead will delete this column and flip this assertion to
-    ``not in``. If you are reading this because the assertion failed, check
-    whether that task landed before assuming the test rotted.
+    The balancer no longer reads or writes ``balancer.draft_session.team_size``:
+    a draft's size is resolved from the roster shape and ``rounds`` is derived
+    from it. Two answers to "how big is a team here" is exactly the mirroring
+    this feature removes, so the column and the mapped attribute both go.
     """
 
-    def test_draft_session_still_maps_team_size(self):
-        assert "team_size" in models.DraftSession.__table__.columns
+    def test_draft_session_no_longer_maps_team_size(self):
+        assert "team_size" not in models.DraftSession.__table__.columns
 
-    def test_the_revision_never_touches_the_column(self):
-        """Checked against the DDL calls, not the source text: the docstring
-        deliberately *does* mention ``team_size`` to explain why it survives."""
+    def test_the_rounds_column_survives(self):
+        """``rounds`` is per-session state (the pick grid is built from it), not a
+        second copy of the shape, so the drop must not take it along."""
+        assert "rounds" in models.DraftSession.__table__.columns
+
+    def test_roster0001_still_never_touches_the_column(self):
+        """Checked against the DDL calls, not the source text: that revision's
+        docstring deliberately *does* mention ``team_size`` to explain why it
+        survived there. The drop belongs to ``roster0002`` alone."""
         for function in ("upgrade", "downgrade"):
             literals = {
                 node.value
@@ -221,3 +230,30 @@ class TestTeamSizeSurvives:
             assert "team_size" not in literals
             assert "draft_session" not in literals
             assert "balancer" not in literals
+
+
+class TestDropRevision:
+    def test_revision_is_present_and_chains_off_roster0001(self):
+        assert DROP_MIGRATION.is_file(), f"missing {DROP_MIGRATION}"
+        text = _text(DROP_MIGRATION)
+        assert re.search(r'^revision[^=]*=\s*"roster0002"', text, re.M)
+        assert re.search(r'^down_revision[^=]*=\s*"roster0001"', text, re.M)
+
+    def test_upgrade_drops_exactly_the_one_column(self):
+        assert _dropped_columns("upgrade", DROP_MIGRATION) == [("draft_session", "team_size", "balancer")]
+
+    def test_upgrade_drops_nothing_else(self):
+        for op_name in ("drop_table", "drop_constraint", "drop_index"):
+            assert _op_calls("upgrade", op_name, DROP_MIGRATION) == []
+
+    def test_downgrade_restores_the_column_and_backfills_it_from_rounds(self):
+        """``rounds == team_size - 1`` held for every session ever written, so the
+        scalar is reconstructible and the downgrade must not leave it at its
+        server_default for older rosters."""
+        restored = [
+            (ast.literal_eval(call.args[0]), ast.literal_eval(call.args[1].args[0]), _schema_of(call))
+            for call in _op_calls("downgrade", "add_column", DROP_MIGRATION)
+        ]
+        assert restored == [("draft_session", "team_size", "balancer")]
+        executed = [ast.literal_eval(call.args[0]) for call in _op_calls("downgrade", "execute", DROP_MIGRATION)]
+        assert executed == ["UPDATE balancer.draft_session SET team_size = rounds + 1"]
