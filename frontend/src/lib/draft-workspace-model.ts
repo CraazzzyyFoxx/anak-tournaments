@@ -165,3 +165,16 @@ export function roleTargetsForTeamSize(teamSize: number): Record<DraftRole, numb
   const dps = Math.min(2, Math.max(teamSize - tank, 0));
   return { tank, dps, support: Math.max(teamSize - tank - dps, 0) };
 }
+
+/**
+ * How many picks a team still has to wait before it is on the clock, or `null`
+ * when it is already on the clock or has no pick left. Shared by the spectator
+ * board and the captain command bar so both count the same way.
+ */
+export function picksUntilTeamTurn(picks: DraftPick[], teamId: number): number | null {
+  const upcoming = picks
+    .filter((pick) => pick.status === "upcoming" || pick.status === "on_clock")
+    .sort((left, right) => left.overall_no - right.overall_no);
+  const index = upcoming.findIndex((pick) => pick.draft_team_id === teamId);
+  return index > 0 ? index : null;
+}

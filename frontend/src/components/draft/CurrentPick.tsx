@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { HeroCoord } from "@/components/site/PageHero";
 import type { DraftBoard } from "@/types/draft.types";
 
+import { picksUntilTeamTurn } from "@/lib/draft-workspace-model";
 import { accentToken, resolveDraftAccent } from "@/lib/draft-visual";
 import { DraftClockRing } from "./DraftClockRing";
 
@@ -25,14 +26,10 @@ export function CurrentPick({ board, isMyPick = false, myTeamId = null }: Curren
   const blocked = accent === "blocked";
   const paused = board.session.status === "paused";
 
-  let picksUntilMyTurn: number | null = null;
-  if (!isMyPick && board.session.status === "live" && myTeamId != null) {
-    const upcoming = board.picks
-      .filter((pick) => pick.status === "upcoming" || pick.status === "on_clock")
-      .sort((a, b) => a.overall_no - b.overall_no);
-    const myNextIdx = upcoming.findIndex((pick) => pick.draft_team_id === myTeamId);
-    picksUntilMyTurn = myNextIdx > 0 ? myNextIdx : null;
-  }
+  const picksUntilMyTurn =
+    !isMyPick && board.session.status === "live" && myTeamId != null
+      ? picksUntilTeamTurn(board.picks, myTeamId)
+      : null;
 
   return (
     <section
