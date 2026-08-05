@@ -8,6 +8,7 @@ from src.core import enums, pagination
 from src.schemas import UserRead
 from src.schemas.base import BaseRead
 from src.schemas.division_grid import DivisionGridVersionRead
+from src.schemas.roster_shape import RosterShapeRead
 from src.schemas.stage import StageSummaryRead
 
 __all__ = (
@@ -65,6 +66,10 @@ class TournamentRead(BaseRead):
     teams_count: int | None = None
     division_grid_version_id: int | None
     division_grid_version: DivisionGridVersionRead | None = None
+    roster_slots_json: dict[str, int] | None = None
+    # Opt-in entity (D16): TournamentRead is nested in six other schemas that are
+    # built from ORM rows without a session, so this cannot be required.
+    roster_shape: RosterShapeRead | None = None
 
 
 class OwalStandingDay(BaseModel):

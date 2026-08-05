@@ -99,7 +99,9 @@ def _dump(obj: Any) -> Any:
 
 
 async def _ser_tournament(session: AsyncSession, m: Any) -> Any:
-    return _dump(await tournament_flows.to_pydantic(session, m, ["stages"]))
+    # `roster_shape` is opt-in (D16): the admin Settings tab renders the roster
+    # form from it, so this read must ask for it explicitly.
+    return _dump(await tournament_flows.to_pydantic(session, m, ["stages", "roster_shape"]))
 
 
 async def _ser_team(session: AsyncSession, m: Any) -> Any:

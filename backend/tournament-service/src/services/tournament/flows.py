@@ -8,10 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from shared.division_grid import DivisionGrid
+from shared.domain.roster_shape import resolve_roster_shape
 from shared.models.identity.auth_user import AuthUser
 from shared.services.challonge_refs import ChallongeRef, resolve_stage_challonge, resolve_tournament_challonge
 from shared.services.division_grid_normalization import DivisionGridNormalizationError, DivisionGridNormalizer
 from shared.services.division_grid_resolution import resolve_tournament_division
+from shared.services.roster_shape_access import get_tournament_roster_slots, get_workspace_roster_slots
 from shared.services.tournament_visibility import visible_tournaments_predicate
 from src import models, schemas
 from src.core import config, enums, errors, pagination
@@ -113,6 +115,17 @@ async def to_pydantic(
                 division_grid_version_model,
                 from_attributes=True,
             )
+    roster_shape = None
+    if _entity_requested(entities, "roster_shape"):
+        # Both levels are read explicitly so `source` is KNOWN rather than
+        # reverse-engineered from the resolved shape: an override that happens to
+        # equal the workspace default is still an override. Both getters are
+        # cache-backed, so this costs no query on a warm read.
+        tournament_slots = await get_tournament_roster_slots(session, tournament.id)
+        workspace_slots = await get_workspace_roster_slots(session, tournament.workspace_id)
+        shape = resolve_roster_shape(tournament_slots, workspace_slots)
+        source = "tournament" if tournament_slots else "workspace" if workspace_slots else "default"
+        roster_shape = schemas.RosterShapeRead.from_shape(shape, source=source)
     tournament_challonge_id, tournament_challonge_slug = challonge_ref if challonge_ref is not None else (None, None)
     return schemas.TournamentRead(
         id=tournament.id,
@@ -139,6 +152,8 @@ async def to_pydantic(
         loss_points=tournament.loss_points,
         division_grid_version_id=tournament.division_grid_version_id,
         division_grid_version=division_grid_version,
+        roster_slots_json=tournament.roster_slots_json,
+        roster_shape=roster_shape,
         stages=stages,
         participants_count=participants_count,
         registrations_count=registrations_count,

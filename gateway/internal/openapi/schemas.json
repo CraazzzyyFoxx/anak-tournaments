@@ -34609,6 +34609,53 @@
       "title": "RoleWithSubrole",
       "type": "object"
     },
+    "tournament.RosterShapeRead": {
+      "description": "A resolved roster shape. The frontend never recomputes the fallback chain.",
+      "properties": {
+        "draft_rounds": {
+          "title": "Draft Rounds",
+          "type": "integer"
+        },
+        "flex_slots": {
+          "title": "Flex Slots",
+          "type": "integer"
+        },
+        "has_role_slots": {
+          "title": "Has Role Slots",
+          "type": "boolean"
+        },
+        "slots": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Slots",
+          "type": "object"
+        },
+        "source": {
+          "enum": [
+            "tournament",
+            "workspace",
+            "default"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "team_size": {
+          "title": "Team Size",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "slots",
+        "team_size",
+        "flex_slots",
+        "has_role_slots",
+        "draft_rounds",
+        "source"
+      ],
+      "title": "RosterShapeRead",
+      "type": "object"
+    },
     "tournament.Score": {
       "properties": {
         "away": {
@@ -37181,6 +37228,32 @@
           ],
           "default": null,
           "title": "Registrations Count"
+        },
+        "roster_shape": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/tournament.RosterShapeRead"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "roster_slots_json": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Roster Slots Json"
         },
         "stages": {
           "default": [],

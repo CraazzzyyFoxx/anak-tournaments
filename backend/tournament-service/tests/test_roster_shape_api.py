@@ -1,0 +1,365 @@
+"""Read-side exposure of the resolved roster shape (D16).
+
+``TournamentRead.roster_shape`` is an **opt-in entity**, not a required field:
+``TournamentRead`` is nested in six other schemas (``EncounterRead.tournament``,
+``TeamRead.tournament``, ``PlayerRead.tournament``, ``StandingRead.tournament``,
+``AchievementRead.tournaments``, ``OwalStandings.days``) that are built from ORM
+rows without a session at hand. Making it mandatory would force every one of
+them to resolve the fallback chain, so ``to_pydantic`` fills it only when the
+caller asks — exactly like ``division_grid_version``.
+
+These stay DB-free: the two cache-backed level getters are patched (or fed a
+fake ``session.scalar``), so nothing touches Postgres or Redis.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any, cast
+from unittest import IsolatedAsyncioTestCase
+from unittest.mock import AsyncMock, patch
+
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import make_transient_to_detached
+
+backend_root = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(backend_root))
+sys.path.insert(0, str(backend_root / "tournament-service"))
+
+os.environ["DEBUG"] = "true"
+os.environ.setdefault("PROJECT_URL", "http://localhost")
+os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
+os.environ.setdefault("RABBITMQ_URL", "amqp://guest:guest@localhost:5672")
+os.environ.setdefault("POSTGRES_USER", "postgres")
+os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
+os.environ.setdefault("POSTGRES_DB", "postgres")
+os.environ.setdefault("POSTGRES_HOST", "localhost")
+os.environ.setdefault("POSTGRES_PORT", "5432")
+os.environ.setdefault("CHALLONGE_USERNAME", "test")
+os.environ.setdefault("CHALLONGE_API_KEY", "test")
+
+from shared.domain.roster_shape import (  # noqa: E402
+    DEFAULT_ROSTER_SHAPE,
+    RosterShapeError,
+    parse_roster_slots,
+)
+from src import models, schemas  # noqa: E402
+from src.core import enums  # noqa: E402
+from src.services.admin import registry  # noqa: E402
+from src.services.tournament import flows as tournament_flows  # noqa: E402
+
+_WORKSPACE_ID = 4
+
+
+def _tournament(
+    *,
+    tournament_id: int = 1,
+    roster_slots_json: dict[str, int] | None = None,
+) -> models.Tournament:
+    tournament = models.Tournament(
+        id=tournament_id,
+        created_at=datetime.now(UTC),
+        updated_at=None,
+        workspace_id=_WORKSPACE_ID,
+        name=f"Tournament {tournament_id}",
+        description=None,
+        is_league=False,
+        is_finished=False,
+        is_hidden=False,
+        status=enums.TournamentStatus.LIVE,
+        start_date=datetime.now(UTC),
+        end_date=datetime.now(UTC),
+        auto_transitions_enabled=True,
+        allow_late_registration=False,
+        win_points=1.0,
+        draw_points=0.5,
+        loss_points=0.0,
+        team_formation="balancer",
+        division_grid_version_id=5,
+        roster_slots_json=roster_slots_json,
+    )
+    # Detached, so `_loaded_relationship` reports unloaded relationships instead
+    # of triggering lazy IO against the fake session.
+    make_transient_to_detached(tournament)
+    return tournament
+
+
+def _levels(
+    tournament_slots: dict[str, int] | None,
+    workspace_slots: dict[str, int] | None,
+) -> tuple[AsyncMock, AsyncMock]:
+    """Patched stand-ins for the two cache-backed level getters."""
+    return AsyncMock(return_value=tournament_slots), AsyncMock(return_value=workspace_slots)
+
+
+def _patched(get_tournament: AsyncMock, get_workspace: AsyncMock) -> Any:
+    return (
+        patch.object(tournament_flows, "get_tournament_roster_slots", get_tournament),
+        patch.object(tournament_flows, "get_workspace_roster_slots", get_workspace),
+    )
+
+
+async def _read(
+    tournament: models.Tournament,
+    entities: list[str],
+    *,
+    tournament_slots: dict[str, int] | None = None,
+    workspace_slots: dict[str, int] | None = None,
+) -> tuple[schemas.TournamentRead, AsyncMock, AsyncMock]:
+    get_tournament, get_workspace = _levels(tournament_slots, workspace_slots)
+    first, second = _patched(get_tournament, get_workspace)
+    with first, second:
+        read = await tournament_flows.to_pydantic(
+            cast(AsyncSession, object()),
+            tournament,
+            entities,
+        )
+    return read, get_tournament, get_workspace
+
+
+class RosterShapeResolutionTests(IsolatedAsyncioTestCase):
+    async def test_no_override_and_no_workspace_default_yields_builtin_default(self) -> None:
+        read, _, _ = await _read(_tournament(), ["roster_shape"])
+
+        assert read.roster_shape is not None
+        self.assertEqual("default", read.roster_shape.source)
+        self.assertEqual({"tank": 1, "dps": 2, "support": 2}, read.roster_shape.slots)
+        self.assertEqual(5, read.roster_shape.team_size)
+        self.assertEqual(4, read.roster_shape.draft_rounds)
+        self.assertIs(True, read.roster_shape.has_role_slots)
+        self.assertEqual(0, read.roster_shape.flex_slots)
+
+    async def test_workspace_default_only_is_reported_as_workspace(self) -> None:
+        read, _, _ = await _read(
+            _tournament(tournament_id=2),
+            ["roster_shape"],
+            workspace_slots={"tank": 2, "dps": 2, "support": 2},
+        )
+
+        assert read.roster_shape is not None
+        self.assertEqual("workspace", read.roster_shape.source)
+        self.assertEqual({"tank": 2, "dps": 2, "support": 2}, read.roster_shape.slots)
+        self.assertEqual(6, read.roster_shape.team_size)
+
+    async def test_tournament_override_wins_over_workspace_default(self) -> None:
+        read, _, _ = await _read(
+            _tournament(tournament_id=3, roster_slots_json={"tank": 1, "dps": 1, "support": 1}),
+            ["roster_shape"],
+            tournament_slots={"tank": 1, "dps": 1, "support": 1},
+            workspace_slots={"tank": 2, "dps": 2, "support": 2},
+        )
+
+        assert read.roster_shape is not None
+        self.assertEqual("tournament", read.roster_shape.source)
+        self.assertEqual({"tank": 1, "dps": 1, "support": 1}, read.roster_shape.slots)
+        self.assertEqual(3, read.roster_shape.team_size)
+
+    async def test_override_equal_to_workspace_default_still_reads_as_tournament(self) -> None:
+        # `source` says where the value is STORED, not what it resolves to. An
+        # admin must see the shape is pinned on the tournament rather than
+        # inherited, otherwise editing the workspace default looks like it will
+        # move this tournament -- and it will not.
+        slots = {"tank": 1, "dps": 2, "support": 2}
+        read, _, _ = await _read(
+            _tournament(tournament_id=4, roster_slots_json=dict(slots)),
+            ["roster_shape"],
+            tournament_slots=dict(slots),
+            workspace_slots=dict(slots),
+        )
+
+        assert read.roster_shape is not None
+        self.assertEqual("tournament", read.roster_shape.source)
+
+    async def test_all_flex_roster_disables_role_slots(self) -> None:
+        read, _, _ = await _read(
+            _tournament(tournament_id=5, roster_slots_json={"flex": 6}),
+            ["roster_shape"],
+            tournament_slots={"flex": 6},
+        )
+
+        assert read.roster_shape is not None
+        self.assertIs(False, read.roster_shape.has_role_slots)
+        self.assertEqual(6, read.roster_shape.team_size)
+        self.assertEqual(5, read.roster_shape.draft_rounds)
+        self.assertEqual(6, read.roster_shape.flex_slots)
+        self.assertEqual({"flex": 6}, read.roster_shape.slots)
+
+    async def test_corrupt_stored_slots_raise_instead_of_degrading_to_default(self) -> None:
+        # A stored map the parser rejects must surface, not silently become the
+        # built-in 5v5: a tournament running the wrong roster size is worse than
+        # a loud failure.
+        with self.assertRaises(RosterShapeError) as caught:
+            await _read(
+                _tournament(tournament_id=6, roster_slots_json={"healer": 6}),
+                ["roster_shape"],
+                tournament_slots={"healer": 6},
+            )
+
+        self.assertEqual("roster_slots_unknown_code", caught.exception.code)
+
+
+class RosterShapeOptInTests(IsolatedAsyncioTestCase):
+    async def test_resolver_is_never_called_when_entity_not_requested(self) -> None:
+        # THE opt-in guarantee. `TournamentRead` is nested in six other schemas
+        # built from ORM rows without a session; if this ever becomes an
+        # unconditional read, every one of them pays two extra lookups per row.
+        read, get_tournament, get_workspace = await _read(
+            _tournament(tournament_id=7, roster_slots_json={"flex": 6}),
+            ["stages", "division_grid_version"],
+            tournament_slots={"flex": 6},
+        )
+
+        self.assertIsNone(read.roster_shape)
+        get_tournament.assert_not_awaited()
+        get_workspace.assert_not_awaited()
+        self.assertEqual(0, get_tournament.await_count)
+        self.assertEqual(0, get_workspace.await_count)
+
+    async def test_nested_empty_entities_also_skip_the_resolver(self) -> None:
+        # The nested callsites (`to_pydantic(session, team.tournament, [])`)
+        # pass an empty list -- the exact path that must stay free of IO.
+        read, get_tournament, get_workspace = await _read(
+            _tournament(tournament_id=8, roster_slots_json={"flex": 6}),
+            [],
+            tournament_slots={"flex": 6},
+        )
+
+        self.assertIsNone(read.roster_shape)
+        get_tournament.assert_not_awaited()
+        get_workspace.assert_not_awaited()
+
+    async def test_roster_slots_json_column_is_always_exposed(self) -> None:
+        # The raw override column is a plain column, not an entity: the admin
+        # form needs to distinguish "no override" from "override equal to the
+        # inherited value" without asking for the resolved shape.
+        override = {"tank": 2, "dps": 2, "support": 2}
+        with_entity, _, _ = await _read(
+            _tournament(tournament_id=9, roster_slots_json=dict(override)),
+            ["roster_shape"],
+            tournament_slots=dict(override),
+        )
+        without_entity, _, _ = await _read(
+            _tournament(tournament_id=10, roster_slots_json=dict(override)),
+            [],
+        )
+
+        self.assertEqual(override, with_entity.roster_slots_json)
+        self.assertEqual(override, without_entity.roster_slots_json)
+        self.assertIsNone(without_entity.roster_shape)
+
+    async def test_absent_override_serializes_as_none(self) -> None:
+        read, _, _ = await _read(_tournament(tournament_id=11), [])
+
+        self.assertIsNone(read.roster_slots_json)
+
+
+class RosterShapeWiringTests(IsolatedAsyncioTestCase):
+    async def test_levels_are_read_through_the_real_cache_backed_getters(self) -> None:
+        # Drives the REAL `roster_shape_access` getters (unpatched) against a
+        # fake session, so a wrong import or argument order in `to_pydantic`
+        # cannot hide behind mocks. Order is tournament level first, then
+        # workspace level.
+        scalars = iter([{"flex": 4}, None])
+        calls: list[object] = []
+
+        class _FakeSession:
+            async def scalar(self, statement: object) -> object:
+                calls.append(statement)
+                return next(scalars)
+
+        read = await tournament_flows.to_pydantic(
+            cast(AsyncSession, _FakeSession()),
+            # Ids unused by any other test, so the session-scoped in-memory
+            # cache from conftest cannot serve a stale entry.
+            _tournament(tournament_id=90_001, roster_slots_json={"flex": 4}),
+            ["roster_shape"],
+        )
+
+        assert read.roster_shape is not None
+        self.assertEqual("tournament", read.roster_shape.source)
+        self.assertEqual({"flex": 4}, read.roster_shape.slots)
+        self.assertEqual(2, len(calls))
+
+
+class RosterShapeReadSchemaTests(IsolatedAsyncioTestCase):
+    async def test_from_shape_mirrors_the_domain_shape(self) -> None:
+        shape = parse_roster_slots({"tank": 1, "flex": 3})
+        read = schemas.RosterShapeRead.from_shape(shape, source="workspace")
+
+        self.assertEqual(shape.slots, read.slots)
+        self.assertEqual(shape.team_size, read.team_size)
+        self.assertEqual(shape.flex_slots, read.flex_slots)
+        self.assertEqual(shape.has_role_slots, read.has_role_slots)
+        self.assertEqual(shape.draft_rounds, read.draft_rounds)
+        self.assertEqual("workspace", read.source)
+
+    def test_model_dump_json_emits_a_plain_json_object_for_slots(self) -> None:
+        # `DEFAULT_ROSTER_SLOTS` is a `MappingProxyType`; a shape that leaked it
+        # through serialized fine under type checking and blew up right here.
+        read = schemas.RosterShapeRead.from_shape(DEFAULT_ROSTER_SHAPE, source="default")
+
+        payload = read.model_dump_json()
+        self.assertIn('"slots":{"tank":1,"dps":2,"support":2}', payload.replace(" ", ""))
+
+        dumped = read.model_dump(mode="json")
+        self.assertIs(dict, type(dumped["slots"]))
+        self.assertEqual({"tank": 1, "dps": 2, "support": 2}, dumped["slots"])
+
+    def test_source_is_constrained_to_the_three_levels(self) -> None:
+        with self.assertRaises(ValueError):
+            schemas.RosterShapeRead.from_shape(DEFAULT_ROSTER_SHAPE, source="guesswork")
+
+
+class AdminTournamentSerializerTests(IsolatedAsyncioTestCase):
+    async def test_ser_tournament_fills_the_resolved_shape(self) -> None:
+        # The admin Settings tab reads the tournament through this serializer.
+        # Without the entity it would render an empty roster form and nobody
+        # would notice until a human opened the page.
+        get_tournament, get_workspace = _levels({"tank": 2, "dps": 2, "support": 2}, None)
+        first, second = _patched(get_tournament, get_workspace)
+        tournament = _tournament(tournament_id=12, roster_slots_json={"tank": 2, "dps": 2, "support": 2})
+
+        with first, second:
+            dumped = await registry._ser_tournament(cast(AsyncSession, object()), tournament)
+
+        self.assertIsNotNone(dumped["roster_shape"])
+        self.assertEqual("tournament", dumped["roster_shape"]["source"])
+        self.assertEqual({"tank": 2, "dps": 2, "support": 2}, dumped["roster_shape"]["slots"])
+        self.assertEqual(6, dumped["roster_shape"]["team_size"])
+        self.assertEqual({"tank": 2, "dps": 2, "support": 2}, dumped["roster_slots_json"])
+        get_tournament.assert_awaited_once()
+
+
+class WorkspaceReadTests(IsolatedAsyncioTestCase):
+    def test_workspace_read_exposes_its_default_slots(self) -> None:
+        workspace = schemas.WorkspaceRead(
+            id=_WORKSPACE_ID,
+            slug="aq",
+            name="AQ",
+            description=None,
+            icon_url=None,
+            is_active=True,
+            default_division_grid_version_id=None,
+            default_roster_slots_json={"tank": 1, "flex": 4},
+        )
+
+        self.assertEqual({"tank": 1, "flex": 4}, workspace.default_roster_slots_json)
+        # A workspace has nothing above the built-in default, so it exposes the
+        # raw column only -- no resolved shape field.
+        self.assertNotIn("roster_shape", schemas.WorkspaceRead.model_fields)
+
+    def test_default_slots_are_optional(self) -> None:
+        workspace = schemas.WorkspaceRead(
+            id=_WORKSPACE_ID,
+            slug="aq",
+            name="AQ",
+            description=None,
+            icon_url=None,
+            is_active=True,
+            default_division_grid_version_id=None,
+        )
+
+        self.assertIsNone(workspace.default_roster_slots_json)

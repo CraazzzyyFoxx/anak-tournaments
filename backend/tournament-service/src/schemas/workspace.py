@@ -21,6 +21,7 @@ class WorkspaceRead(BaseRead):
     is_active: bool
     default_division_grid_version_id: int | None
     default_division_grid_version: DivisionGridVersionRead | None = None
+    default_roster_slots_json: dict[str, int] | None = None
 
 
 class WorkspaceCreate(BaseModel):

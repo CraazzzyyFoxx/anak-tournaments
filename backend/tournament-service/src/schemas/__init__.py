@@ -7,6 +7,7 @@ from .gamemode import *
 from .hero import *
 from .map import *
 from .user_base import *
+from .roster_shape import *
 from .stage import *
 from .tournament import *
 from .team import *

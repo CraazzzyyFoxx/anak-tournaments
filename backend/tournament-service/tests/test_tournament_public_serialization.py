@@ -52,6 +52,9 @@ def _tournament() -> models.Tournament:
         loss_points=0.0,
         team_formation="balancer",
         division_grid_version_id=5,
+        # Serialized as a plain column: an unset attribute on a detached
+        # instance would trigger a refresh instead of reading NULL.
+        roster_slots_json=None,
     )
 
 

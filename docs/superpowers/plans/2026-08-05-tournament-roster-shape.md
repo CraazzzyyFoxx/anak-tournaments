@@ -19,9 +19,8 @@
 | Тест одного файла (shared) | `cd backend && uv run pytest shared/tests/test_roster_shape.py -v` |
 | Тест одного файла (сервис) | `cd backend && uv run pytest balancer-service/tests/test_x.py -v` |
 | Все suites бэкенда | `cd backend && for svc in shared app-service parser-service balancer-service tournament-service analytics-service identity-service discord-service; do uv run pytest "$svc/tests"; done` |
-| Линт бэкенда | `cd backend && uv run bash scripts/lint.sh` |
-| **Ре-экспорт манифеста гейтвея** | `cd backend && bash scripts/export_openapi_schemas.sh` |
-| Проверка манифеста (как в CI) | `cd backend && bash scripts/export_openapi_schemas.sh --check` |
+| **Ре-экспорт манифеста гейтвея** | `cd backend && UV=<путь-к-uv> bash scripts/export_openapi_schemas.sh` |
+| Проверка манифеста (как в CI) | `cd backend && UV=<путь-к-uv> bash scripts/export_openapi_schemas.sh --check` |
 | Тест фронта | `cd frontend && bunx vitest run src/lib/roster-shape.test.ts` |
 | Линт фронта | `cd frontend && bun run lint` |
 | Миграция | `make migrate` |
@@ -31,6 +30,10 @@
 **Важно:** CI проверяет закоммиченный `gateway/internal/openapi/schemas.json` против Pydantic-моделей. Любая правка схем требует ре-экспорта в том же коммите.
 
 ---
+
+**Грабли с `UV`.** На Git-for-Windows bash дочерний шелл скрипта не видит `uv` в PATH, и скрипт падает на `line 49: uv: command not found`. Скрипт это предусматривает переменной `UV` (`uv_bin="${UV:-uv}"`, строка 32), но передать её через `export` из родительского шелла в этой среде не удалось. Рабочий способ — воспроизвести шаги скрипта напрямую (`uv run python backend/scripts/export_openapi_schemas.py` в каждом сервисе, затем `merge_openapi_schemas.py`), либо запустить в среде, где `uv` виден дочерним процессам. В CI переменная не нужна.
+
+**Wire-facing `WorkspaceRead` живёт в app-service, не в tournament-service.** `backend/app-service/src/schemas/workspace.py:36` — это та схема, которую читает фронтенд, и там же `WorkspaceCreate`/`WorkspaceUpdate` с `default_division_grid_version_id`. Копия в `tournament-service/src/schemas/workspace.py` обслуживает внутренние чтения. Поле `default_roster_slots_json` нужно в ОБЕИХ: в tournament-service (сделано в Task 5) и в app-service (Task 6, вместе с записью).
 
 # Фаза 1. Канон в shared
 
