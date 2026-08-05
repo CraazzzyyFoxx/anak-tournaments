@@ -38,7 +38,10 @@ var PublicWriteRoutes = []edge.RouteSpec{
 	{Method: "DELETE", Pattern: "/api/v1/tournaments/{tournament_id}/registration/me", Queue: "rpc.tournament.reg_pub_withdraw_me", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/tournaments/{tournament_id}/registration/me/check-in", Queue: "rpc.tournament.reg_pub_check_in", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},
 	{Method: "GET", Pattern: "/api/v1/tournaments/{tournament_id}/registration/list", Queue: "rpc.tournament.reg_pub_list", Path: []string{"tournament_id"}, Auth: edge.AuthOptional},
-	{Method: "GET", Pattern: "/api/v1/tournaments/{tournament_id}/veto-configs", Queue: "rpc.tournament.get_veto_configs", Path: []string{"tournament_id"}, Auth: edge.AuthOptional},
+	// `IDParam`, not `Path`: this dispatches into `reads.py`, whose handlers read
+	// the path id as `data["id"]` (see its module docstring). Declaring it as
+	// `Path` left `data["id"]` unset and 422'd every call.
+	{Method: "GET", Pattern: "/api/v1/tournaments/{tournament_id}/veto-configs", Queue: "rpc.tournament.get_veto_configs", IDParam: "tournament_id", Auth: edge.AuthOptional},
 
 	// Subscription entitlements — the patron's own standing plus challenge-code
 	// redemption (the Boosty fallback for organizers without a Discord server).
