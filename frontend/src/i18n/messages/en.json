@@ -3914,5 +3914,37 @@
     "mismatchTitle": "This order disagrees with the bracket",
     "mismatchBody": "The steps play {played, plural, one {# map} other {# maps}} while the bracket calls for {expected, plural, one {# map} other {# maps}}. The custom order wins — fix one of the two.",
     "storedFallbackHint": "Saved as a fallback. Each match regenerates its own steps from its best-of."
+  },
+  "rosterShape": {
+    "title": "Roster shape",
+    "description": "How many slots of each kind one team has. The draft picks into exactly these slots, and the balancer fills them.",
+    "mode": "Shape",
+    "modes": {
+      "inherit": "Inherit from the workspace",
+      "ow5v5": "Overwatch 5v5 · 1/2/2",
+      "flex6": "6 flex slots",
+      "custom": "Custom shape"
+    },
+    "slots": "Slots per team",
+    "slotCodes": {
+      "tank": "Tank",
+      "dps": "Damage",
+      "support": "Support",
+      "flex": "Flex"
+    },
+    "total": "{total, plural, one {# slot} other {# slots}} · {rounds, plural, one {# draft round} other {# draft rounds}}",
+    "errors": {
+      "too_few": "A team needs at least 2 slots — with one, the captain is the whole roster and there is nothing to draft.",
+      "too_many": "A team can have at most 12 slots."
+    },
+    "preview": "What a captain fills",
+    "previewEmpty": "Add at least one slot to see what a captain fills.",
+    "inherited": "Inherited from the {source}: {shape}.",
+    "inheritedSources": {
+      "workspace": "workspace default",
+      "default": "built-in Overwatch 5v5 default"
+    },
+    "overriding": "This tournament pins its own shape instead of following the workspace.",
+    "locked": "A draft session has already been created, so the roster shape is locked. Complete or cancel it to change the shape."
   }
 }

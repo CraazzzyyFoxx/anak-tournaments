@@ -137,6 +137,11 @@ export interface Tournament {
   roster_slots_json: RosterSlotMap | null;
   /** Resolved shape. `null` when the read did not opt into the entity. */
   roster_shape: RosterShape | null;
+  /**
+   * `true` while a draft session is in flight, i.e. while the write-path guard
+   * would reject a roster-shape change. `null` on reads that did not opt in.
+   */
+  roster_locked_by_draft: boolean | null;
 }
 
 // ─── Map Pool ───────────────────────────────────────────────────────────────

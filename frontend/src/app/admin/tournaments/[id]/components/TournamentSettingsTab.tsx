@@ -24,6 +24,8 @@ import { DateTimePicker } from "@/components/ui/date-picker";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { DeleteConfirmDialog } from "@/components/admin/DeleteConfirmDialog";
 import { EYEBROW_CLASS } from "@/components/admin/tone";
+import { RosterShapeEditor } from "@/components/admin/tournaments/RosterShapeEditor";
+import { payloadTotalError } from "@/components/admin/tournaments/roster-shape-editor.model";
 import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
 import { normalizeChallongeSlug } from "@/lib/challonge";
@@ -149,8 +151,13 @@ export function TournamentSettingsTab({
     (phase) => phase !== "draft" || formData.team_formation === "draft"
   );
 
+  // The server rejects an out-of-range roster total with a 422; blocking the save
+  // here keeps that verdict inline, where the numbers are.
+  const rosterTotalError = payloadTotalError(formData.roster_slots_json);
+
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
+    if (rosterTotalError) return;
 
     const payload: TournamentUpdateInput = {
       name: formData.name.trim(),
@@ -169,7 +176,8 @@ export function TournamentSettingsTab({
       auto_transitions_enabled: formData.auto_transitions_enabled,
       allow_late_registration: formData.allow_late_registration,
       division_grid_version_id: formData.division_grid_version_id,
-      team_formation: formData.team_formation
+      team_formation: formData.team_formation,
+      roster_slots_json: formData.roster_slots_json
     };
 
     updateMutation.mutate({
@@ -199,7 +207,12 @@ export function TournamentSettingsTab({
               <RotateCcw className="mr-1.5 size-3.5" aria-hidden />
               Discard
             </Button>
-            <Button type="submit" size="sm" className="h-8" disabled={updateMutation.isPending}>
+            <Button
+              type="submit"
+              size="sm"
+              className="h-8"
+              disabled={updateMutation.isPending || rosterTotalError !== null}
+            >
               <Save className="mr-1.5 size-3.5" aria-hidden />
               {updateMutation.isPending ? "Saving…" : "Save changes"}
             </Button>
@@ -404,6 +417,14 @@ export function TournamentSettingsTab({
                   </div>
                 </div>
               </section>
+
+              <RosterShapeEditor
+                value={formData.roster_slots_json}
+                effective={tournament.roster_shape}
+                locked={tournament.roster_locked_by_draft === true}
+                disabled={!canUpdateTournament}
+                onChange={(next) => setFormData({ ...formData, roster_slots_json: next })}
+              />
             </CardContent>
           </Card>
         </div>

@@ -208,6 +208,7 @@ export interface SubscriptionCollectionConfig {
 
 // ─── Tournament ──────────────────────────────────────────────────────────────
 
+import type { RosterSlotMap } from "@/lib/roster-shape";
 import type {
   StageItemType,
   StageType,
@@ -249,6 +250,8 @@ export interface TournamentUpdateInput {
   draw_points?: number;
   loss_points?: number;
   division_grid_version_id?: number | null;
+  /** Roster shape override; `null` clears it back to the workspace default. */
+  roster_slots_json?: RosterSlotMap | null;
 }
 
 export interface TournamentPhaseScheduleEntryInput {
