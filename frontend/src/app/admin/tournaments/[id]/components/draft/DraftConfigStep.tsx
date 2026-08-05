@@ -137,12 +137,37 @@ export function DraftConfigStep({ value, onChange, locked = false }: DraftConfig
         <span id={formatLabelId} className="text-sm font-medium leading-none">
           {t("format")}
         </span>
-        <div className="grid gap-3 md:grid-cols-3" role="radiogroup" aria-labelledby={formatLabelId}>
+        {/* radiogroup promises arrow-key traversal and a single tab stop, so the
+            group owns the arrows and only the checked option stays tabbable. */}
+        <div
+          className="grid gap-3 md:grid-cols-3"
+          role="radiogroup"
+          aria-labelledby={formatLabelId}
+          onKeyDown={(event) => {
+            if (locked) return;
+            const delta =
+              event.key === "ArrowRight" || event.key === "ArrowDown"
+                ? 1
+                : event.key === "ArrowLeft" || event.key === "ArrowUp"
+                  ? -1
+                  : 0;
+            if (delta === 0) return;
+            event.preventDefault();
+            const index = Math.max(0, FORMATS.indexOf(value.format));
+            const next = FORMATS[(index + delta + FORMATS.length) % FORMATS.length];
+            patch({ format: next });
+            event.currentTarget
+              .querySelector<HTMLButtonElement>(`[data-format="${next}"]`)
+              ?.focus();
+          }}
+        >
           {FORMATS.map((format) => (
             <button
               key={format}
               type="button"
               role="radio"
+              data-format={format}
+              tabIndex={value.format === format ? 0 : -1}
               aria-checked={value.format === format}
               disabled={locked}
               onClick={() => patch({ format })}
